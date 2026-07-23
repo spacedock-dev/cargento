@@ -1,5 +1,9 @@
 # Cargento
 
+[![Validate](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml/badge.svg)](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+
 Agnostic agent cartography and visualization.
 
 Cargento maps live coding-agent activity on your machine into a single local dashboard — sessions, subagents, task progress, turn ETAs, and token output rate across eight harnesses: Claude Code, Codex, Gemini CLI / Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, and Factory Droid.
@@ -85,3 +89,11 @@ claude plugin validate ./cargento --strict
 ```
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract.
+
+## 5. Contributing
+
+Contributions are welcome — new harness support is especially valuable. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and PR conventions. This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md), and security issues should be reported privately per [SECURITY.md](SECURITY.md).
+
+## 6. License
+
+Cargento is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.

@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in the dashboard is broken or wrong
+labels: [bug]
+body:
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Affected harness
+      description: Which coding-agent harness does the problem involve?
+      options:
+        - Claude Code
+        - Codex
+        - Gemini CLI / Antigravity CLI
+        - GitHub Copilot CLI
+        - OpenCode
+        - Cursor CLI
+        - Goose
+        - Factory Droid
+        - Dashboard itself (UI/server, no specific harness)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      placeholder: |
+        1. Start the server with `python3 .../server.py --port 4553`
+        2. ...
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "macOS 15.5, Python 3.12, installed via Claude Code plugin"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server output / API response
+      description: Startup output, tracebacks, or a relevant `/api/data` snippet. Redact anything sensitive — session titles and prompts can contain private data.
+      render: text

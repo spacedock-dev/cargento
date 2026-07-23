@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest an improvement or a new harness to support
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the gap — e.g. a harness whose sessions don't appear, or a signal the dashboard doesn't surface.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: If you're proposing a new harness, include where its local session data lives (paths, file formats) — that's most of the work.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
