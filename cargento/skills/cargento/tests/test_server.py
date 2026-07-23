@@ -775,6 +775,165 @@ class CargentoServerTest(unittest.TestCase):
         # An immutable=1-only reader misses these frames (rate stays 0).
         self.assertEqual(50, activity["rate_per_min"])
 
+    def test_codex_meta_tolerates_malformed_payload_types(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            non_dict = Path(tmp) / "rollout-a.jsonl"
+            non_dict.write_text('{"payload":42}\n')
+            bad_fields = Path(tmp) / "rollout-b.jsonl"
+            bad_fields.write_text(json.dumps(
+                {"payload": {"id": "s1", "agent_nickname": 7, "agent_path": 42,
+                             "source": "not-a-dict"}}
+            ) + "\n")
+
+            meta_a = dashboard.codex_meta(str(non_dict))
+            meta_b = dashboard.codex_meta(str(bad_fields))
+
+        self.assertIsNone(meta_a["session_id"])
+        self.assertFalse(meta_a["subagent"])
+        self.assertEqual("s1", meta_b["session_id"])
+        self.assertIsNone(meta_b["agent_label"])
+        self.assertIsNone(meta_b["parent_session_id"])
+
+    def test_claude_subagents_tolerate_malformed_meta(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sess = Path(tmp) / "abc.jsonl"
+            sess.write_text("{}\n")
+            sub = Path(tmp) / "abc" / "subagents"
+            sub.mkdir(parents=True)
+            (sub / "agent-1.jsonl").write_text("{}\n")
+            (sub / "agent-1.meta.json").write_text('{"name":42,"description":7}')
+            (sub / "agent-2.jsonl").write_text("{}\n")
+            (sub / "agent-2.meta.json").write_text("42")  # non-dict meta
+
+            agents = dashboard.load_claude_subagents(
+                str(sess), dashboard.time.time()
+            )
+
+        # Both agents survive with the fallback label instead of TypeError.
+        self.assertEqual(["subagent", "subagent"],
+                         [a["label"] for a in agents])
+
+    def test_copilot_sessions_are_discovered_and_analyzed(self):
+        now = dashboard.time.time()
+        iso = dashboard.datetime.fromtimestamp(
+            now - 5, dashboard.timezone.utc
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            events = Path(tmp) / "session-state" / "11112222-aaaa" / "events.jsonl"
+            events.parent.mkdir(parents=True)
+            events.write_text("\n".join([
+                json.dumps({"type": "session.start", "timestamp": iso,
+                            "data": {"context": {"cwd": "/w/myproj"}}}),
+                json.dumps({"type": "user.message", "timestamp": iso,
+                            "data": {"text": "fix the login bug"}}),
+                json.dumps({"type": "subagent.started", "timestamp": iso,
+                            "data": {"id": "a1", "name": "researcher"}}),
+            ]) + "\n")
+
+            with mock.patch.object(dashboard, "COPILOT_DIR", str(tmp)):
+                sessions = dashboard.collect_copilot(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        s = sessions[0]
+        self.assertEqual("working", s["state"])
+        self.assertEqual("myproj", s["project"])
+        self.assertEqual("fix the login bug", s["last_prompt"])
+        self.assertEqual(["researcher"], s["subagents"])
+
+    def test_cursor_sessions_discovered_with_title(self):
+        now = dashboard.time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            chat = Path(tmp) / "ws1" / "33334444-bbbb"
+            chat.mkdir(parents=True)
+            con = sqlite3.connect(chat / "store.db")
+            con.execute("CREATE TABLE meta (value TEXT)")
+            hex_json = json.dumps({"name": "My Refactor Chat"}).encode().hex()
+            con.execute("INSERT INTO meta VALUES (?)", (hex_json,))
+            con.commit()
+            con.close()
+
+            with mock.patch.object(dashboard, "CURSOR_CHATS", str(tmp)):
+                sessions = dashboard.collect_cursor(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("working", sessions[0]["state"])
+        self.assertEqual("My Refactor Chat", sessions[0]["title"])
+
+    def test_goose_sessions_from_shared_db(self):
+        now = dashboard.time.time()
+        stamp = dashboard.datetime.fromtimestamp(
+            now - 10, dashboard.timezone.utc
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "sessions.db"
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE sessions (id TEXT, description TEXT,"
+                " working_dir TEXT, updated_at TEXT, session_type TEXT,"
+                " parent_session_id TEXT, archived_at TEXT)"
+            )
+            con.executemany("INSERT INTO sessions VALUES (?,?,?,?,?,?,?)", [
+                ("g1", "Fix flaky tests", "/w/gooseproj", stamp, None, None, None),
+                ("g2", "helper", "/w", stamp, "subagent", "g1", None),
+                ("g3", "infra", "/w", stamp, "terminal", None, None),
+                ("g4", "old", "/w", stamp, None, None, stamp),  # archived
+            ])
+            con.execute(
+                "CREATE TABLE messages (session_id TEXT, role TEXT,"
+                " created_timestamp INTEGER, content_json TEXT)"
+            )
+            con.execute(
+                "INSERT INTO messages VALUES ('g1', 'user', ?, ?)",
+                (int(now - 20), json.dumps([{"type": "text", "text": "add retries"}])),
+            )
+            con.execute(
+                "CREATE TABLE usage_ledger (session_id TEXT,"
+                " created_timestamp INTEGER, output_tokens INTEGER)"
+            )
+            con.execute(
+                "INSERT INTO usage_ledger VALUES ('g1', ?, 1000)", (int(now - 60),)
+            )
+            con.commit()
+            con.close()
+
+            with mock.patch.object(dashboard, "GOOSE_DB", str(db)):
+                sessions = dashboard.collect_goose(now, 24, False)
+
+        self.assertEqual(1, len(sessions))  # subagent/infra/archived filtered
+        s = sessions[0]
+        self.assertEqual("working", s["state"])
+        self.assertEqual("gooseproj", s["project"])
+        self.assertEqual("Fix flaky tests", s["title"])
+        self.assertEqual("add retries", s["last_prompt"])
+        self.assertEqual(["helper"], s["subagents"])
+        self.assertEqual(100, s["rate_per_min"])  # 1000 tokens / 10 min window
+
+    def test_droid_sessions_from_project_transcripts(self):
+        now = dashboard.time.time()
+        iso = dashboard.datetime.fromtimestamp(
+            now - 5, dashboard.timezone.utc
+        ).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "proj-x" / "d1d2d3d4.jsonl"
+            fp.parent.mkdir(parents=True)
+            fp.write_text("\n".join([
+                json.dumps({"type": "session_start", "id": "d1d2d3d4",
+                            "sessionTitle": "Ship feature", "cwd": "/w/droidproj"}),
+                json.dumps({"type": "message", "timestamp": iso,
+                            "message": {"role": "user", "content":
+                                        [{"type": "text", "text": "ship it"}]}}),
+            ]) + "\n")
+
+            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
+                sessions = dashboard.collect_droid(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        s = sessions[0]
+        self.assertEqual("working", s["state"])
+        self.assertEqual("droidproj", s["project"])
+        self.assertEqual("Ship feature", s["title"])
+        self.assertEqual("ship it", s["last_prompt"])
+
 
 if __name__ == "__main__":
     unittest.main()

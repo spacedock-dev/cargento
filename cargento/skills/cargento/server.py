@@ -209,10 +209,20 @@ def codex_meta(path):
     """Codex rollout line 1 (session_meta): identity, cwd, and whether the
     file is a subagent thread (thread_source == "subagent")."""
     def parse(d):
-        p = d.get("payload") or {}
+        # Every field is untyped JSON from disk — one malformed rollout must
+        # not AttributeError the whole Codex collector.
+        p = d.get("payload")
+        if not isinstance(p, dict):
+            p = {}
         source = p.get("source") or {}
         subagent = source.get("subagent") if isinstance(source, dict) else {}
         spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else {}
+        nickname = p.get("agent_nickname")
+        agent_path = p.get("agent_path")
+        label = nickname if isinstance(nickname, str) and nickname else (
+            agent_path.rsplit("/", 1)[-1]
+            if isinstance(agent_path, str) and agent_path else None
+        )
         return {
             "session_id": p.get("session_id") or p.get("id"),
             "parent_session_id": (
@@ -220,8 +230,7 @@ def codex_meta(path):
             ),
             "cwd": p.get("cwd"),
             "subagent": p.get("thread_source") == "subagent",
-            "agent_label": (p.get("agent_nickname")
-                            or (p.get("agent_path") or "").rsplit("/", 1)[-1] or None),
+            "agent_label": label or None,
         }
     return first_line_meta(path, parse)
 
@@ -827,9 +836,16 @@ def load_claude_subagents(transcript, now):
         try:
             with open(fp[:-len(".jsonl")] + ".meta.json") as f:
                 meta = json.load(f)
-            label = meta.get("name") or meta.get("description") or meta.get("agentType")
         except (OSError, json.JSONDecodeError):
-            pass
+            meta = None
+        # Meta values are untyped JSON — a non-string name must not
+        # TypeError the whole Claude collector.
+        if isinstance(meta, dict):
+            for key in ("name", "description", "agentType"):
+                value = meta.get(key)
+                if isinstance(value, str) and value:
+                    label = value
+                    break
         agents.append({"label": (label or "subagent")[:70], "mtime": mtime})
     agents.sort(key=lambda a: -a["mtime"])
     return agents
