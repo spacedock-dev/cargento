@@ -14,7 +14,7 @@ Anything that weakens either invariant — a bind-address escape, request-driven
 Please **do not open a public issue** for security problems. Instead:
 
 - Use [GitHub private vulnerability reporting](https://github.com/spacedock-dev/cargento/security/advisories/new), or
-- Email dev@datarecce.io with a description and reproduction steps.
+- Email dev@reccehq.com with a description and reproduction steps.
 
 You can expect an acknowledgment within a few days. Please allow time for a fix to land and release before public disclosure.
 
