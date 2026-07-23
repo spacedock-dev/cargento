@@ -43,7 +43,7 @@ Every behavior change to `server.py` needs a regression test in `cargento/skills
 
 ### Rules the validator enforces
 
-- The plugin **version** must be identical in four places (marketplace entry + Claude, Codex, and Gemini manifests); the **description** in five (those plus the Antigravity `plugin.json`).
+- The plugin **version** must be identical everywhere it appears (marketplace metadata + entry, and the Claude, Codex, and Gemini manifests); the **description** in five places (marketplace entry, those three manifests, plus the Antigravity `plugin.json`). **Never bump versions in a PR** — the `version-guard` check will fail it; see [Releases](#releases).
 - Skill bodies must stay **host-neutral**: no `${CLAUDE_PLUGIN_ROOT}`, no host-specific tool names. Describe capabilities, not tool APIs.
 - The skill description stays under 300 characters, and `agents/openai.yaml` keeps its 25–64 character short description.
 - Every Markdown link inside the skill must resolve within the repository.
@@ -79,6 +79,18 @@ The most valuable contribution! Each harness is one entry in the `HARNESSES` reg
 - Discovery must be cheap (a `glob` or `isdir`), and the collector must degrade gracefully on schema drift.
 - Document the data source and its caveats in `SKILL.md`'s data-sources list.
 - Add tests with a synthetic store fixture.
+
+## Releases
+
+Releases are tag-driven and fully automated (maintainers only):
+
+```bash
+git checkout main && git pull
+git tag v0.2.0        # v-prefixed is canonical; bare 0.2.0 also works — pick ONE form per release
+git push origin v0.2.0
+```
+
+The [Release workflow](.github/workflows/release.yml) refuses the tag unless it is on main, is strict semver, and is strictly greater than every existing release tag — semver only moves forward, and back-tagging is impossible. It then runs the full validation suite on the main tip, writes one bump commit updating all owned version fields (skipped when the manifests already carry the tagged version — which is also how you release the current version as-is), moves the tag onto the released commit, and publishes a GitHub Release with generated notes. Every step is idempotent, so re-running a partially failed release finishes it. Release tags are immutable (a tag ruleset blocks deleting or moving them), and PRs can never change version fields (the `version-guard` check).
 
 ## Reporting bugs and requesting features
 

@@ -1,0 +1,138 @@
+name: Version Guard
+
+# Version fields are owned by the tag-driven Release workflow: pushing a
+# semver tag on main bumps every manifest in one release commit. Ordinary
+# PRs therefore must never change a version field — there is no label
+# escape hatch. Adapted (and simplified for a single plugin) from
+# DataRecce/recce-team.
+#
+# What it compares — the PR HEAD vs merge-base(origin/main, HEAD) — failing
+# on any change to:
+#   - cargento/.claude-plugin/plugin.json  .version
+#   - cargento/.codex-plugin/plugin.json   .version
+#   - cargento/gemini-extension.json       .version
+#   - .claude-plugin/marketplace.json      .metadata.version
+#   - .claude-plugin/marketplace.json      .plugins[].version (keyed by .source)
+#
+# Why merge-base and an explicit head checkout, not the default merge ref:
+# the merge ref is rebuilt against the CURRENT main tip, so a release commit
+# landing on main mid-PR would read as a "version change" on a PR that never
+# touched version files. Comparing the PR head against its merge-base with
+# main attributes only the PR's own changes.
+#
+# Deliberately exempt: files or marketplace entries that don't exist at the
+# merge-base (initial add), and pushes to main (the release commit lands
+# directly on main via the Actions ruleset bypass, never through a PR).
+#
+# Security model:
+#   - Read-only: `permissions: contents: read`; `pull_request` (not _target),
+#     so fork PRs get a read-only token and no secrets.
+#   - actions/checkout pinned to an immutable SHA.
+#   - Repo-controlled JSON values are compared as quoted shell strings and
+#     passed to jq via --arg only, and newline-collapsed before they reach
+#     `::error::` annotation lines, so a crafted value cannot emit its own
+#     workflow commands.
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: version-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  version-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout PR head
+        # actions/checkout@v6.0.2 — pinned to immutable SHA.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          # The PR head itself — NOT the default merge ref (see header).
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Check version fields against merge-base
+        run: |
+          set -euo pipefail
+          FAIL=0
+
+          if ! MERGE_BASE=$(git merge-base "origin/$GITHUB_BASE_REF" "$HEAD_SHA"); then
+            echo "::error::cannot compute merge-base of origin/$GITHUB_BASE_REF and $HEAD_SHA — cannot compare version fields"
+            exit 1
+          fi
+          echo "Comparing HEAD ($HEAD_SHA) against merge-base ($MERGE_BASE)"
+
+          # Compare one jq-extracted field between the merge-base blob and
+          # the checked-out head file. Skips silently when the file is absent
+          # on either side or the field is absent at the merge-base.
+          check_field() {
+            local file="$1" jqpath="$2" label="$3"
+            local base_v head_v
+            if ! git cat-file -e "$MERGE_BASE:$file" 2>/dev/null || [ ! -f "$file" ]; then
+              return 0
+            fi
+            base_v=$(git show "$MERGE_BASE:$file" | jq -r "$jqpath // empty")
+            head_v=$(jq -r "$jqpath // empty" "$file")
+            base_v=${base_v//$'\n'/ }
+            head_v=${head_v//$'\n'/ }
+            if [ -n "$base_v" ] && [ "$base_v" != "$head_v" ]; then
+              echo "::error file=$file::$label changed ($base_v -> $head_v). Version fields are owned by the tag-driven Release workflow — revert this bump and release by tagging main instead. See CONTRIBUTING.md 'Releases'."
+              FAIL=1
+            fi
+          }
+
+          check_field "cargento/.claude-plugin/plugin.json" '.version' "plugin manifest version"
+          check_field "cargento/.codex-plugin/plugin.json" '.version' "codex manifest version"
+          check_field "cargento/gemini-extension.json" '.version' "Gemini CLI extension version"
+
+          MP=".claude-plugin/marketplace.json"
+          if git cat-file -e "$MERGE_BASE:$MP" 2>/dev/null && [ -f "$MP" ]; then
+            check_field "$MP" '.metadata.version' "marketplace metadata.version"
+
+            # Materialize + validate the merge-base blob BEFORE the read
+            # loop: a failure inside `< <(...)` process substitution is not
+            # observed by set -e, so a malformed base blob would otherwise
+            # skip every per-plugin check and fail OPEN.
+            base_mp=$(mktemp)
+            if ! git show "$MERGE_BASE:$MP" > "$base_mp" \
+               || ! jq -e '.plugins | type == "array"' "$base_mp" > /dev/null; then
+              echo "::error::cannot read $MP at merge-base $MERGE_BASE (or its .plugins is not an array) — refusing to skip per-plugin version checks"
+              exit 1
+            fi
+
+            while IFS=$'\t' read -r src base_v; do
+              [ -n "$src" ] || continue
+              head_v=$(jq -r --arg s "$src" '[.plugins[] | select(.source == $s) | .version][0] // empty' "$MP")
+              src=${src//$'\n'/ }
+              base_v=${base_v//$'\n'/ }
+              head_v=${head_v//$'\n'/ }
+              if [ -z "$head_v" ]; then
+                # A renamed .source paired with a version bump would
+                # otherwise slip past the keyed comparison — fail closed on
+                # any source that disappears from the marketplace.
+                echo "::error file=$MP::marketplace source $src exists at the merge-base but not on this PR head. Removing or renaming a plugin source needs explicit maintainer review (and a version-guard update if intentional)."
+                FAIL=1
+              elif [ -n "$base_v" ] && [ "$base_v" != "$head_v" ]; then
+                echo "::error file=$MP::marketplace version for source $src changed ($base_v -> $head_v). Version fields are owned by the tag-driven Release workflow — revert this bump and release by tagging main instead."
+                FAIL=1
+              fi
+            done < <(jq -r '.plugins[] | [.source, .version] | @tsv' "$base_mp")
+          fi
+
+          if [ "$FAIL" = "1" ]; then
+            echo
+            echo "Version bumps happen at release time: push a strictly-greater semver"
+            echo "tag on main and the Release workflow writes the bump commit."
+            exit 1
+          fi
+          echo "Version field policy satisfied."

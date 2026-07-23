@@ -1,0 +1,143 @@
+name: Plugin Compatibility
+
+# Canary: installs the LATEST published Codex, Claude Code, Gemini CLI, and
+# Antigravity CLI releases and smoke-tests cargento's native package layout
+# in each — detecting upstream compatibility changes as soon as they ship.
+# Adapted from DataRecce/recce-team (single-plugin, no MCP, no hooks).
+#
+# The fast contract checks (validator + unit tests) live in validate.yml,
+# which is the required PR status check; this workflow is the slower,
+# deliberately unpinned client canary. The weekly schedule keeps it useful
+# between PRs — upstream clients release faster than this repo changes.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '17 6 * * 1'  # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  latest-client-smoke:
+    # Skip fork PRs: the canary installs unpinned upstream clients, which is
+    # deliberate on trusted refs but an unnecessary supply-chain surface (and
+    # runner cost) for untrusted forks. Fork PRs still get the pinned,
+    # read-only `validate` required check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        # actions/checkout@v6.0.2 — pinned to immutable SHA.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        # actions/setup-node@v6.0.0 — pinned to immutable SHA.
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '24'
+
+      - name: Install latest Codex, Claude Code, and Gemini CLI
+        # Deliberately unpinned: this canary detects breaking changes in the
+        # newest published clients before users encounter them.
+        run: npm install --global @openai/codex@latest @anthropic-ai/claude-code@latest @google/gemini-cli@latest
+
+      - name: Install latest Antigravity CLI
+        # The binary version floats (the bootstrap resolves the latest
+        # release and verifies its SHA-512), preserving the canary. Only the
+        # bootstrap script itself is pinned by hash so CI never executes
+        # unreviewed shell fetched over the network.
+        env:
+          AGY_INSTALLER_SHA256: ee1ea43ce4e9e56356c4ab6dad907ef357ae4bdfcaadb682735909fb57c9c640
+        run: |
+          set -euo pipefail
+          curl -fsSL https://antigravity.google/cli/install.sh -o "$RUNNER_TEMP/install-agy.sh"
+          echo "${AGY_INSTALLER_SHA256}  $RUNNER_TEMP/install-agy.sh" | sha256sum --check - || {
+            echo "::error::antigravity.google/cli/install.sh changed upstream." \
+              "Review the new script, then update AGY_INSTALLER_SHA256 in this workflow." \
+              "New hash: $(sha256sum "$RUNNER_TEMP/install-agy.sh" | cut -d' ' -f1)"
+            exit 1
+          }
+          bash "$RUNNER_TEMP/install-agy.sh" --dir "$RUNNER_TEMP/agy-bin"
+          echo "$RUNNER_TEMP/agy-bin" >> "$GITHUB_PATH"
+
+      - name: Record tested client versions
+        run: |
+          codex --version
+          claude --version
+          gemini --version
+          agy --version
+
+      - name: Strictly validate Claude Code packages
+        run: |
+          set -euo pipefail
+          claude plugin validate . --strict
+          claude plugin validate ./cargento --strict
+
+      - name: Install and inspect the plugin with Codex
+        run: |
+          set -euo pipefail
+          codex plugin marketplace add "$GITHUB_WORKSPACE"
+          codex plugin add cargento@cargento-marketplace --json | tee /tmp/cargento-install.json
+          codex plugin list | tee /tmp/cargento-codex-plugins.txt
+          grep -F 'cargento@cargento-marketplace' /tmp/cargento-codex-plugins.txt
+
+          INSTALL_PATH=$(jq -er '.installedPath' /tmp/cargento-install.json)
+          EXPECTED_SKILLS=$(find cargento/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l)
+          ACTUAL_SKILLS=$(find "$INSTALL_PATH/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l)
+          test "$ACTUAL_SKILLS" -eq "$EXPECTED_SKILLS"
+          test -f "$INSTALL_PATH/skills/cargento/SKILL.md"
+          test -f "$INSTALL_PATH/skills/cargento/agents/openai.yaml"
+          test -f "$INSTALL_PATH/skills/cargento/server.py"
+
+      - name: Validate and install the plugin with Antigravity CLI
+        run: |
+          set -euo pipefail
+          agy plugin validate ./cargento | tee /tmp/cargento-agy.txt
+          # Anchor on the success shape ("N processed"); a plain substring
+          # grep also matches AGY's "skipped (not found)" failure output.
+          SKILLS=$(find cargento/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
+          grep -E "skills[[:space:]]+: ${SKILLS} processed" /tmp/cargento-agy.txt
+
+          # Isolated HOME so the runner's real AGY state is never touched.
+          export HOME="$RUNNER_TEMP/agy-home"
+          mkdir -p "$HOME"
+          agy plugin install "$GITHUB_WORKSPACE/cargento"
+          agy plugin list | tee /tmp/cargento-agy-plugins.txt
+          jq -e '.imports | map(.name) | index("cargento") != null' /tmp/cargento-agy-plugins.txt
+          jq -e '.imports[] | select(.name == "cargento") | .components | index("skills") != null' /tmp/cargento-agy-plugins.txt
+
+      - name: Install the extension with Gemini CLI
+        env:
+          # Official headless-mode switch: trust only for this isolated CI step.
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
+        run: |
+          set -euo pipefail
+          gemini extensions install "$GITHUB_WORKSPACE/cargento" --consent
+          cd "$RUNNER_TEMP"
+          # Strip ANSI color codes so the anchors below are stable, and
+          # anchor on the "✓ name (version)" loaded marker — a bare name
+          # grep is satisfied by the checkout path in "Source:" lines.
+          gemini extensions list 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee /tmp/cargento-gemini-extensions.txt
+          grep -E '^✓ cargento \([0-9]+\.[0-9]+\.[0-9]+\)' /tmp/cargento-gemini-extensions.txt
+          grep -F 'Enabled (User): true' /tmp/cargento-gemini-extensions.txt
+
+      - name: Smoke test the dashboard server end to end
+        run: |
+          set -euo pipefail
+          python3 cargento/skills/cargento/server.py --port 4553 &
+          SERVER_PID=$!
+          for _ in $(seq 1 20); do
+            curl -sf http://127.0.0.1:4553/api/data > /tmp/cargento-api.json && break
+            sleep 0.5
+          done
+          jq -e '.harnesses | type == "array"' /tmp/cargento-api.json
+          curl -sf http://127.0.0.1:4553/ | grep -F '<title>Cargento</title>'
+          kill "$SERVER_PID"

@@ -55,9 +55,19 @@ claude plugin validate . --strict
 claude plugin validate ./cargento --strict
 ```
 
-## Versioning
+## Versioning and Releases
 
-The plugin version must be identical in four places: the `.claude-plugin/marketplace.json` plugin entry, `cargento/.claude-plugin/plugin.json`, `cargento/.codex-plugin/plugin.json`, and `cargento/gemini-extension.json`. The plugin description must be identical in five (those four plus the Antigravity `cargento/plugin.json`). `scripts/validate_plugins.py` enforces both.
+The plugin version must be identical in five places: `.claude-plugin/marketplace.json` (`metadata.version` and the plugin entry), `cargento/.claude-plugin/plugin.json`, `cargento/.codex-plugin/plugin.json`, and `cargento/gemini-extension.json`. The plugin description must be identical in five (the marketplace entry, those three manifests, plus the Antigravity `cargento/plugin.json`). `scripts/validate_plugins.py` enforces both.
+
+Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does). To release:
+
+```bash
+git checkout main && git pull
+git tag v0.2.0        # v-prefixed is canonical (bare 0.2.0 also works — pick ONE form per release)
+git push origin v0.2.0
+```
+
+The Release workflow validates the tag (must be on main, strict semver, strictly greater than every existing release tag — back-tagging is impossible), runs the full validation suite on the main tip, writes one `chore(release)` bump commit via `scripts/bump_version.py`, moves the tag onto that commit, and publishes a GitHub Release. Every step is idempotent: a re-run after a partial failure resumes cleanly, and tagging the version the manifests already carry releases it as-is (that is how the initial 0.1.0 ships). If main advances between tag push and the run, the release includes those extra commits. Release tags are immutable — a tag ruleset blocks deleting or moving them.
 
 ## Portability Rules
 

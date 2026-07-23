@@ -27,5 +27,7 @@ jobs:
         run: python3 scripts/validate_plugins.py
       - name: Run validator unit tests
         run: python3 -m unittest scripts/tests/test_validate_plugins.py
+      - name: Run release bump-script unit tests
+        run: python3 -m unittest scripts/tests/test_bump_version.py
       - name: Run dashboard server tests
         run: python3 -m unittest cargento/skills/cargento/tests/test_server.py

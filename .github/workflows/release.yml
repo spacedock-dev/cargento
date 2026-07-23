@@ -1,0 +1,174 @@
+name: Release
+
+# Tag-driven releases. To release: update main, then push a strict-semver
+# tag on the main tip (either `0.2.0` or `v0.2.0`):
+#
+#     git tag v0.2.0 && git push origin v0.2.0
+#
+# This workflow then:
+#   1. refuses the tag unless it is on main (an ancestor of the main tip),
+#      is strict semver, and is STRICTLY GREATER than every existing
+#      release tag (no back-tagging, ever);
+#   2. runs the full validation suite on the main tip — the tree being
+#      released;
+#   3. writes one release commit on main bumping all five owned version
+#      fields via scripts/bump_version.py — skipped when the manifests
+#      already carry the tagged version (a re-run resuming after a partial
+#      failure, or an intentional release of the current version);
+#   4. moves the tag onto the released commit (so `git checkout <tag>`
+#      shows the released manifests);
+#   5. publishes a GitHub Release with generated notes (skipped if it
+#      already exists).
+#
+# Every step is idempotent, so a re-run after any partial failure finishes
+# the release instead of wedging. If main advances between the tag push
+# and this run, the release simply includes those extra commits — the tag
+# ends up on the bump commit at the tip either way.
+#
+# Ruleset interplay: main requires PRs + the `validate` check, and semver
+# tags are immutable — both with a bypass for the repository's release
+# deploy key (secret RELEASE_DEPLOY_KEY), which is what lets steps 4–5 push
+# the bump commit and move the tag over SSH. The deploy-key push also
+# re-triggers the validate workflow on main (GITHUB_TOKEN pushes would
+# not), so the bump commit gets a normal post-merge check run too.
+# Humans cannot delete or move release tags at all.
+#
+# Security model:
+#   - contents:write only (for gh release create) — pushes go over SSH via
+#     the deploy key, which exists solely for this workflow.
+#   - Tag names reach shell only via GITHUB_REF_NAME (validated against a
+#     strict regex before any use in annotations or commands).
+#   - actions/checkout pinned to an immutable SHA; the ssh-key input wires
+#     the deploy key into the checkout's push credentials.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main with full history and tags
+        # actions/checkout@v6.0.2 — pinned to immutable SHA.
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: main
+          fetch-depth: 0
+          # Pushes authenticate as the release deploy key — the bypass actor
+          # on both rulesets. GITHUB_TOKEN cannot push to protected main.
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          persist-credentials: true
+
+      - name: Validate tag placement and semver monotonicity
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          VERSION="${TAG#v}"
+
+          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::tag '$TAG' is not strict semver"
+            exit 1
+          fi
+
+          git fetch origin main --tags --force
+          TAG_COMMIT=$(git rev-parse "refs/tags/$TAG^{commit}")
+          MAIN_TIP=$(git rev-parse origin/main)
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" "$MAIN_TIP"; then
+            echo "::error::tag $TAG ($TAG_COMMIT) is not on main — release tags must be created on main. Tag the main tip with the next version instead."
+            exit 1
+          fi
+
+          # No back-tagging: strictly greater than every existing release
+          # tag (numeric semver comparison, not lexicographic).
+          git tag -l 'v[0-9]*.[0-9]*.[0-9]*' '[0-9]*.[0-9]*.[0-9]*' > /tmp/all-tags.txt
+          python3 - "$TAG" /tmp/all-tags.txt <<'PY'
+          import re
+          import sys
+
+          strict = re.compile(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+
+          def parse(tag):
+              m = strict.fullmatch(tag)
+              return tuple(int(p) for p in m.groups()) if m else None
+
+          new_tag = sys.argv[1]
+          new = parse(new_tag)
+          with open(sys.argv[2]) as f:
+              for line in f.read().split():
+                  if line == new_tag:
+                      continue
+                  old = parse(line)
+                  if old is not None and old >= new:
+                      sys.exit(f"::error::tag {new_tag} is not strictly greater than existing release tag {line} — back-tagging is not allowed")
+          PY
+
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Run the full validation suite on the release tree (main tip)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --requirement requirements-validation.txt
+          python3 scripts/validate_plugins.py
+          python3 -m unittest scripts/tests/test_validate_plugins.py
+          python3 -m unittest scripts/tests/test_bump_version.py
+          python3 -m unittest cargento/skills/cargento/tests/test_server.py
+
+      - name: Bump version fields, re-validate, and push the release commit
+        run: |
+          set -euo pipefail
+          CURRENT=$(python3 scripts/bump_version.py --current)
+          if [ "$CURRENT" = "$VERSION" ]; then
+            # Idempotent resume (a re-run after a partial failure) or an
+            # intentional release of the version the manifests already
+            # carry — nothing to bump.
+            echo "Manifests already at $VERSION — skipping bump commit."
+            exit 0
+          fi
+          # The script independently refuses any target that is not strictly
+          # greater than the current manifest version.
+          python3 scripts/bump_version.py "$VERSION"
+          python3 scripts/validate_plugins.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/marketplace.json \
+                  cargento/.claude-plugin/plugin.json \
+                  cargento/.codex-plugin/plugin.json \
+                  cargento/gemini-extension.json
+          git commit -m "chore(release): $TAG" -m "Bump plugin version to $VERSION (tag-driven release)."
+          # No --force: if main advanced mid-run this rejects cleanly and a
+          # re-run resumes from the new tip.
+          git push origin HEAD:main
+
+      - name: Move the tag onto the release commit
+        run: |
+          set -euo pipefail
+          # So `git checkout <tag>` shows the released (bumped) manifests.
+          # Allowed only via the Actions bypass on the tag ruleset.
+          git tag -f "$TAG" HEAD
+          git push --force origin "refs/tags/$TAG"
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to publish."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "Cargento $VERSION" \
+            --generate-notes \
+            --verify-tag
