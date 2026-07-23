@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cargento"
+  short_description: "Live cartography of active coding-agent sessions"
+  default_prompt: "Use $cargento to open the live agent cartography dashboard."

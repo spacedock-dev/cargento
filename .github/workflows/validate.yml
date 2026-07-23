@@ -1,0 +1,31 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# `claude plugin validate --strict` and `agy plugin validate` are part of the
+# documented pre-PR suite (see AGENTS.md) but run locally only — those CLIs
+# are not available on stock runners. scripts/validate_plugins.py is the
+# load-bearing contract gate here.
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validation dependencies
+        run: python3 -m pip install -r requirements-validation.txt
+      - name: Validate plugin contracts
+        run: python3 scripts/validate_plugins.py
+      - name: Run validator unit tests
+        run: python3 -m unittest scripts/tests/test_validate_plugins.py
+      - name: Run dashboard server tests
+        run: python3 -m unittest cargento/skills/cargento/tests/test_server.py

@@ -1,0 +1,6 @@
+# Local editor, agent, and interpreter state
+.codex/
+.idea/
+.DS_Store
+__pycache__/
+*.py[cod]

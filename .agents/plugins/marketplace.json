@@ -1,0 +1,20 @@
+{
+  "name": "cargento-marketplace",
+  "interface": {
+    "displayName": "Cargento"
+  },
+  "plugins": [
+    {
+      "name": "cargento",
+      "source": {
+        "source": "local",
+        "path": "./cargento"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Development"
+    }
+  ]
+}

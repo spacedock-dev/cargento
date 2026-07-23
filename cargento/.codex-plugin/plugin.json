@@ -1,0 +1,36 @@
+{
+  "name": "cargento",
+  "version": "0.1.0",
+  "description": "Agnostic agent cartography and visualization — a live local dashboard mapping coding-agent sessions across Claude Code, Codex, Gemini, Antigravity, Copilot, OpenCode, Cursor, Goose, and Droid",
+  "author": {
+    "name": "Jared Scott",
+    "email": "jared.scott@variable.team",
+    "url": "https://github.com/spacedock-dev"
+  },
+  "homepage": "https://github.com/spacedock-dev/cargento/tree/main/cargento",
+  "repository": "https://github.com/spacedock-dev/cargento",
+  "keywords": [
+    "cargento",
+    "agents",
+    "cartography",
+    "dashboard",
+    "visualization"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cargento",
+    "shortDescription": "Agent cartography and visualization",
+    "longDescription": "Cargento maps live coding-agent activity on this machine into a single local dashboard — sessions, subagents, task progress, turn ETAs, and token output rate across Claude Code, Codex, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, and Factory Droid.",
+    "developerName": "Jared Scott",
+    "category": "Development",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Open the live agent cartography dashboard.",
+      "Show my coding-agent sessions and their progress."
+    ],
+    "websiteURL": "https://github.com/spacedock-dev/cargento"
+  }
+}
