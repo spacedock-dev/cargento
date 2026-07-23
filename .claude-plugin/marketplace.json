@@ -1,8 +1,8 @@
 {
   "name": "cargento-marketplace",
   "owner": {
-    "name": "Jared Scott",
-    "email": "jared.scott@variable.team"
+    "name": "DataRecce",
+    "email": "dev@datarecce.io"
   },
   "metadata": {
     "description": "Cargento — agnostic agent cartography and visualization",
