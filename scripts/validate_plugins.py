@@ -581,6 +581,11 @@ def validate_marketplaces(
         resolve_contract_path(ROOT, entry.get("source"), f"{name} source", claude_path, validation)
         codex_manifest = codex_manifests.get(name)
         claude_manifest = load_json(ROOT / name / ".claude-plugin/plugin.json", validation)
+        if claude_manifest is not None and claude_manifest.get("name") != name:
+            validation.error(
+                ROOT / name / ".claude-plugin/plugin.json",
+                "name must match the plugin directory",
+            )
         gemini_manifest = gemini_manifests.get(name)
         versions = {
             entry.get("version"),

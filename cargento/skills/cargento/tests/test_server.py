@@ -671,6 +671,110 @@ class CargentoServerTest(unittest.TestCase):
             dashboard.PAGE,
         )
 
+    def test_load_tasks_coerces_malformed_field_types(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "12345678-abcd-ef00-1234-567890abcdef"
+            root.mkdir(parents=True)
+            (root / "1.json").write_text(json.dumps(
+                {"id": "1", "subject": {"nested": True}, "activeForm": 42,
+                 "status": 7}
+            ))
+            (root / "2.json").write_text(json.dumps(["not", "a", "task"]))
+
+            with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
+                tasks = dashboard.load_tasks()
+
+        rows = tasks["12345678"]
+        self.assertEqual(1, len(rows))  # the non-dict record is skipped
+        task = rows[0]
+        self.assertEqual("(untitled)", task["subject"])
+        self.assertEqual("", task["activeForm"])
+        self.assertEqual("pending", task["status"])
+        # The concatenation that previously raised TypeError must work.
+        self.assertEqual(
+            "(untitled)…", (task["activeForm"] or task["subject"]) + "…"
+        )
+
+    def test_read_tail_keeps_first_record_when_window_starts_on_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.jsonl"
+            path.write_bytes(b"aaaa\nbbbb\ncccc\n")  # 15 bytes
+
+            # Window of 10 starts right after the newline at offset 4:
+            # "bbbb" is a complete record and must be kept.
+            with mock.patch.object(dashboard, "TAIL_BYTES", 10):
+                aligned = dashboard.read_tail(str(path))
+            # Window of 9 starts mid-"bbbb": the partial line must drop.
+            with mock.patch.object(dashboard, "TAIL_BYTES", 9):
+                misaligned = dashboard.read_tail(str(path))
+
+        self.assertEqual(["bbbb", "cccc", ""], aligned)
+        self.assertEqual(["cccc", ""], misaligned)
+
+    def test_opencode_show_all_returns_every_session(self):
+        now = dashboard.time.time()
+        stale = int((now - 48 * 3600) * 1000)  # outside the 24h window
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "opencode.db"
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT,"
+                " title TEXT, time_updated INTEGER, time_archived INTEGER)"
+            )
+            con.executemany(
+                "INSERT INTO session VALUES (?, NULL, '/w', ?, ?, NULL)",
+                [(f"ses_{i:04d}", f"Session {i}", stale - i) for i in range(250)],
+            )
+            con.commit()
+            con.close()
+
+            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
+                everything = dashboard.collect_opencode(now, 24, True)
+                windowed = dashboard.collect_opencode(now, 24, False)
+
+        self.assertEqual(250, len(everything))  # previously capped at 200
+        self.assertEqual(0, len(windowed))
+
+    def test_antigravity_activity_sees_uncheckpointed_wal_frames(self):
+        now = dashboard.time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "live.db"
+            writer = sqlite3.connect(db)
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.execute(
+                "CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER,"
+                " status INTEGER, metadata BLOB)"
+            )
+            writer.commit()
+
+            def step_metadata(epoch, output_tokens):
+                def varint(value):
+                    encoded = bytearray()
+                    while value > 0x7F:
+                        encoded.append((value & 0x7F) | 0x80)
+                        value >>= 7
+                    encoded.append(value)
+                    return bytes(encoded)
+
+                timestamp = varint(1 << 3) + varint(int(epoch))
+                metadata = varint((1 << 3) | 2) + varint(len(timestamp)) + timestamp
+                usage = varint(3 << 3) + varint(output_tokens)
+                metadata += varint((9 << 3) | 2) + varint(len(usage)) + usage
+                return metadata
+
+            writer.execute(
+                "INSERT INTO steps VALUES (1, 15, 3, ?)",
+                (step_metadata(now - 30, 500),),
+            )
+            writer.commit()  # committed to the WAL; not yet checkpointed
+            try:
+                activity = dashboard.antigravity_step_activity(str(db), now)
+            finally:
+                writer.close()
+
+        # An immutable=1-only reader misses these frames (rate stays 0).
+        self.assertEqual(50, activity["rate_per_min"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -310,6 +310,42 @@ class ValidatorTests(unittest.TestCase):
 
         self.assertEqual(validation.errors, [])
 
+    def test_claude_manifest_name_must_match_plugin_directory(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+            root = Path(directory)
+            (root / ".agents/plugins").mkdir(parents=True)
+            (root / ".agents/plugins/marketplace.json").write_text(
+                '{"plugins":[{"name":"cargento",'
+                '"source":{"source":"local","path":"./cargento"}}]}\n'
+            )
+            (root / ".claude-plugin").mkdir()
+            (root / ".claude-plugin/marketplace.json").write_text(
+                '{"plugins":[{"name":"cargento","source":"./cargento",'
+                '"version":"0.1.0","description":"Desc"}]}\n'
+            )
+            (root / "cargento/.claude-plugin").mkdir(parents=True)
+            (root / "cargento/.claude-plugin/plugin.json").write_text(
+                '{"name":"wrong-plugin-name","version":"0.1.0","description":"Desc"}\n'
+            )
+            manifest = {"version": "0.1.0", "description": "Desc"}
+            validation = validator.Validation()
+
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_marketplaces(
+                    {"cargento": dict(manifest)},
+                    {"cargento": dict(manifest)},
+                    {"cargento": {"description": "Desc"}},
+                    validation,
+                )
+
+            self.assertTrue(
+                any(
+                    ".claude-plugin/plugin.json" in error
+                    and "name must match the plugin directory" in error
+                    for error in validation.errors
+                )
+            )
+
     def test_markdown_link_rejects_missing_bundled_resource(self) -> None:
         path = self.write_temp("Read [the bundled reference](../missing/file.md).\n", "SKILL.md")
         validation = validator.Validation()

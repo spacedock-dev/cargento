@@ -139,14 +139,19 @@ def read_tail(path):
     try:
         size = os.path.getsize(path)
         with open(path, "rb") as f:
+            truncated = False
             if size > TAIL_BYTES:
-                f.seek(size - TAIL_BYTES)
+                # Only drop the first line when the seek actually lands
+                # mid-record: if the byte before the window is a newline,
+                # the window starts on a complete record.
+                f.seek(size - TAIL_BYTES - 1)
+                truncated = f.read(1) != b"\n"
             data = f.read().decode("utf-8", "replace")
     except OSError:
         return []
     lines = data.split("\n")
-    if size > TAIL_BYTES:
-        lines = lines[1:]  # first line is almost certainly truncated
+    if truncated:
+        lines = lines[1:]
     return lines
 
 
@@ -778,6 +783,8 @@ def load_tasks():
             st = os.stat(fp)
         except (OSError, json.JSONDecodeError):
             continue
+        if not isinstance(task, dict):
+            continue
         dirname = os.path.basename(os.path.dirname(fp))
         if dirname.startswith("session-"):
             dirname = dirname[len("session-"):]
@@ -785,11 +792,16 @@ def load_tasks():
         if not prefix:
             continue
         created = getattr(st, "st_birthtime", st.st_mtime)
+        # Field types are unvalidated JSON from disk — coerce non-strings so
+        # one malformed record cannot TypeError the whole Claude collector.
+        subject = task.get("subject")
+        active_form = task.get("activeForm")
+        status = task.get("status")
         by_session.setdefault(prefix, []).append({
             "id": task.get("id"),
-            "subject": task.get("subject") or "(untitled)",
-            "activeForm": task.get("activeForm") or "",
-            "status": task.get("status") or "pending",
+            "subject": subject if isinstance(subject, str) and subject else "(untitled)",
+            "activeForm": active_form if isinstance(active_form, str) else "",
+            "status": status if isinstance(status, str) and status else "pending",
             "created": created,
             "updated": st.st_mtime,
         })
@@ -1289,29 +1301,37 @@ def antigravity_step_info(metadata):
 def antigravity_step_activity(path, now):
     """Read live rate, turn boundaries, and current action from a store.
 
-    ``immutable=1`` prevents SQLite from creating journal/shm files or
-    contending with the live Antigravity writer. A transient or incompatible
-    store simply returns an empty activity snapshot.
+    Prefer a plain ``mode=ro`` connection: it sees committed WAL frames, so
+    activity from a live Antigravity writer is current. Some stores refuse
+    plain read-only opens (e.g. WAL recovery is needed but the reader cannot
+    create shm/journal files); for those, fall back to ``immutable=1``, which
+    never contends with the writer but may lag until checkpoint. A transient
+    or incompatible store simply returns an empty activity snapshot.
     """
     result = {
         "rate_per_min": 0,
         "turns": None,
         "last_tool_action": "",
     }
-    try:
-        con = sqlite3.connect(
-            f"file:{path}?mode=ro&immutable=1", uri=True, timeout=0.2
-        )
-        rows = con.execute(
-            "SELECT step_type, metadata FROM steps "
-            "ORDER BY idx DESC LIMIT ?",
-            (SQL_MSG_LIMIT,),
-        ).fetchall()
-    except sqlite3.Error:
-        return result
-    finally:
-        if "con" in locals():
+    query = (
+        "SELECT step_type, metadata FROM steps "
+        "ORDER BY idx DESC LIMIT ?"
+    )
+    rows = None
+    for uri in (f"file:{path}?mode=ro", f"file:{path}?mode=ro&immutable=1"):
+        try:
+            con = sqlite3.connect(uri, uri=True, timeout=0.2)
+        except sqlite3.Error:
+            continue
+        try:
+            rows = con.execute(query, (SQL_MSG_LIMIT,)).fetchall()
+            break
+        except sqlite3.Error:
+            continue
+        finally:
             con.close()
+    if rows is None:
+        return result
 
     events = []
     usage_events = []
@@ -1510,16 +1530,18 @@ def collect_opencode(now, window_hours, show_all):
             con = _sql_ro(db)
         except sqlite3.Error:
             continue
+        # ?all=1 promises every session ever; LIMIT -1 is SQLite's "no limit".
+        limit = -1 if show_all else 200
         try:
             try:
                 rows = con.execute(
                     "SELECT id, parent_id, directory, title, time_updated, time_archived "
-                    "FROM session ORDER BY time_updated DESC LIMIT 200").fetchall()
+                    "FROM session ORDER BY time_updated DESC LIMIT ?", (limit,)).fetchall()
             except sqlite3.OperationalError:  # older schema without time_archived
                 rows = con.execute(
                     "SELECT id, parent_id, directory, title, time_updated, "
                     "NULL AS time_archived FROM session "
-                    "ORDER BY time_updated DESC LIMIT 200").fetchall()
+                    "ORDER BY time_updated DESC LIMIT ?", (limit,)).fetchall()
         except sqlite3.Error:
             con.close()
             continue
