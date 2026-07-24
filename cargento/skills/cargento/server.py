@@ -9,8 +9,9 @@ summary UI at http://localhost:<port>/ and JSON at /api/data.
 Waiting-on-you detection (Claude only):
 - transcript tail shows a pending AskUserQuestion (tool_use with no
   tool_result yet) -> NEEDS INPUT, popup fired
-- POST /api/notify (wired to the Claude Code Notification hook) -> NEEDS
-  INPUT for that session, popup fired (covers permission prompts / idle)
+- POST /api/notify (wired to Claude Code Notification + SessionEnd hooks)
+  -> popup for idle prompts, NEEDS INPUT for actionable prompts, and clear
+  standing hook state when the session exits
 """
 
 from __future__ import annotations
@@ -76,6 +77,27 @@ HOME_PREFIX = HOME.replace("/", "-")
 
 # Tools that mean Claude is blocked on the human, not just running long.
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
+# Claude Code's documented Notification matcher values. ``idle_timeout`` is
+# accepted as a compatibility alias, while current payloads use
+# ``idle_prompt``. Unknown structured values remain actionable so a newly
+# introduced prompt type does not silently disappear.
+IDLE_NOTIFICATION_TYPES = {"idle_prompt", "idle_timeout"}
+INFORMATIONAL_NOTIFICATION_TYPES = {
+    "agent_completed",
+    "auth_success",
+    "elicitation_complete",
+    "elicitation_response",
+}
+ACTIONABLE_NOTIFICATION_TYPES = {
+    "agent_needs_input",
+    "elicitation_dialog",
+    "permission_prompt",
+}
+CLEARING_NOTIFICATION_TYPES = IDLE_NOTIFICATION_TYPES | {
+    "agent_completed",
+    "elicitation_complete",
+    "elicitation_response",
+}
 
 _lock = threading.Lock()
 # session prefix -> {"ts": epoch, "message": str, "user_event"?: str | None}
@@ -101,6 +123,31 @@ def notification_text(value: Any, limit: int) -> str:
     text = str(value or "").encode("utf-8", "replace").decode("utf-8")
     text = re.sub(r"[\x00-\x1f\x7f]+", " ", text)
     return text[:limit]
+
+
+def normalized_notification_type(value: Any) -> str:
+    """Return a normalized structured notification type, if present."""
+    return value.strip().lower() if isinstance(value, str) and value.strip() else ""
+
+
+def notification_disposition(notification_type: Any, message: str) -> tuple[bool, bool]:
+    """Return ``(needs_input, popup)`` for a Notification-hook payload.
+
+    Structured Claude Code payloads are authoritative. Text matching remains
+    only as a compatibility fallback for older hooks that omitted
+    ``notification_type``.
+    """
+    kind = normalized_notification_type(notification_type)
+    if kind in IDLE_NOTIFICATION_TYPES:
+        return (False, True)
+    if kind in INFORMATIONAL_NOTIFICATION_TYPES:
+        return (False, False)
+    if kind in ACTIONABLE_NOTIFICATION_TYPES:
+        return (True, True)
+    if kind:
+        return (True, True)  # future/unknown structured prompt: fail visible
+    idle_nudge = message.strip().lower().startswith("claude is waiting for your input")
+    return (not idle_nudge, True)
 
 
 def project_label(dirname: str) -> str:
@@ -1329,14 +1376,20 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         info = analyze_transcript(transcript) if (transcript and active) else None
 
         state, state_detail = "idle", "awaiting your message"
+        blocked_since = None
         # mtime floor: match the other collectors when the newest write has
         # no parseable timestamp (partial line, untimestamped record)
         parsed_last_event = info["last_event_ts"] if info else 0
         last_event = max(parsed_last_event, transcript_mtime)
-        hook = current_hook(prefix, (info or {}).get("last_user_event"), parsed_last_event)
+        hook = (
+            current_hook(prefix, (info or {}).get("last_user_event"), parsed_last_event)
+            if active
+            else None
+        )
         if info and info["pending_input_tool"]:
             p = info["pending_input_tool"]
             state = "needs_input"
+            blocked_since = p["ts"] or last_activity
             state_detail = f"open question ({p['name']}), waiting {fmt_duration(now - p['ts']) if p['ts'] else '?'}"
         # Fresh activity beats a hook: Claude Code emits "waiting for your
         # input" notifications for sessions that keep running via background
@@ -1352,6 +1405,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 state_detail = working_detail(info, subagents)
         elif hook:
             state = "needs_input"
+            blocked_since = hook["ts"]
             state_detail = hook["message"] or "waiting for your input"
         if active:
             maybe_popup(
@@ -1386,6 +1440,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
                 "state": state,
                 "state_detail": state_detail,
+                "blocked_since": blocked_since,
                 "active": active,
                 "last_activity": last_activity,
                 # Subagent output now lives in the children's own transcripts;
@@ -2865,10 +2920,10 @@ function workingCard(d, sess){
 }
 
 function needRow(d, sess){
-  const blocked = fmtDur(d.generated - sess.last_activity);
+  const blocked = fmtDur(d.generated - (sess.blocked_since || sess.last_activity));
   return `<div class="need"><div style="min-width:0">` +
     `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)} · ${esc(sess.session)}</div>` +
-    `<div class="need-title">${esc(sess.title || sess.project)}</div>` +
+    `<div class="need-title">${esc(sess.title || sess.last_prompt || sess.project)}</div>` +
     `<div class="need-detail">${esc(sess.state_detail)}</div></div>` +
     `<div style="flex:none"><div class="blocked-k">blocked</div><div class="blocked-v">${esc(blocked)}</div></div></div>`;
 }
@@ -2891,12 +2946,12 @@ function render(d){
   // pointermove fires during the render operation.
   const savedPointer = sparkPointer ? {x: sparkPointer.x, y: sparkPointer.y} : null;
   const s = d.summary;
-  const needs = d.sessions.filter(x => x.state === "needs_input");
+  const needs = d.sessions.filter(x => x.active && x.state === "needs_input");
   const working = d.sessions.filter(x => x.state === "working");
   const idle = d.sessions.filter(x => x.state === "idle");
 
-  const needsVal = s.needs_input > 0
-    ? `<div class="tile-val alert">${s.needs_input}</div>`
+  const needsVal = needs.length > 0
+    ? `<div class="tile-val alert">${needs.length}</div>`
     : `<div class="tile-val">0</div>`;
   const tiles =
     `<div class="tile"><div class="tile-label">Needs you</div>${needsVal}` +
@@ -2961,7 +3016,7 @@ function render(d){
   renderInProgress = false;
 
   restoreSparkState(sparkFocused, savedPointer);
-  document.title = (s.needs_input > 0 ? `(${s.needs_input}!) ` : "") + "Cargento";
+  document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
 }
 
 async function refresh(){
@@ -3086,6 +3141,14 @@ class Handler(BaseHTTPRequestHandler):
             payload = {}
         session_id = payload.get("session_id")
         prefix = session_id[:8] if isinstance(session_id, str) else ""
+        hook_event_name = payload.get("hook_event_name")
+        if isinstance(hook_event_name, str) and hook_event_name.lower() == "sessionend":
+            if prefix:
+                with _lock:
+                    _hook_notifs.pop(prefix, None)
+                    _last_state.pop(prefix, None)
+            self._send(b'{"ok":true,"cleared":"session_end"}', "application/json")
+            return
         raw_message = payload.get("message")
         message = notification_text(
             raw_message
@@ -3093,6 +3156,8 @@ class Handler(BaseHTTPRequestHandler):
             else "Claude is waiting for your input",
             500,
         )
+        kind = normalized_notification_type(payload.get("notification_type"))
+        needs_input, popup = notification_disposition(kind, message)
         # Subagent sessions also emit Notification-hook events (permission
         # prompts inside agents). They are not user-facing sessions — a popup
         # about them is noise the human cannot act on from the dashboard.
@@ -3100,13 +3165,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(b'{"ok":true,"suppressed":"subagent"}', "application/json")
             return
         now = time.time()
-        # Claude Code sends "Claude is waiting for your input" after EVERY
-        # completed turn — that is this dashboard's definition of idle
-        # ("awaiting your message"), not of blocked. Idle nudges may popup
-        # once below, but they never become standing needs-input state; only
-        # real blockers (permission prompts, plan approvals, open questions)
-        # do. Unknown messages are treated as blockers, conservatively.
-        idle_nudge = message.strip().lower().startswith("claude is waiting for your input")
         hook = {"ts": now, "message": message}
         transcript_path = payload.get("transcript_path")
         if prefix and isinstance(transcript_path, str):
@@ -3114,8 +3172,13 @@ class Handler(BaseHTTPRequestHandler):
             if found:
                 hook["user_event"] = user_event
         with _lock:
-            if prefix and not idle_nudge:
-                bounded_put(_hook_notifs, prefix, hook)
+            if prefix:
+                clears_input = kind in CLEARING_NOTIFICATION_TYPES or (not kind and not needs_input)
+                if clears_input:
+                    _hook_notifs.pop(prefix, None)
+                    _last_state.pop(prefix, None)
+                elif needs_input:
+                    bounded_put(_hook_notifs, prefix, hook)
             popup_key = prefix or "_anonymous"
             session_ready = now - _last_popup.get(popup_key, 0) >= POPUP_COOLDOWN_SEC
             global_ready = now - _last_popup.get("_global", 0) >= GLOBAL_POPUP_COOLDOWN_SEC
@@ -3125,7 +3188,7 @@ class Handler(BaseHTTPRequestHandler):
             # POPUP_REPEAT_SUPPRESS_SEC.
             prev_msg, prev_ts = _last_popup_message.get(popup_key, ("", 0.0))
             repeat = message == prev_msg and now - prev_ts < POPUP_REPEAT_SUPPRESS_SEC
-            fire = session_ready and global_ready and not repeat
+            fire = popup and session_ready and global_ready and not repeat
             if fire:
                 bounded_put(_last_popup, popup_key, now)
                 bounded_put(_last_popup, "_global", now)

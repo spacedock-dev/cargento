@@ -497,6 +497,43 @@ class CargentoServerTest(unittest.TestCase):
 
         self.assertEqual("user-before-hook", user_event)
 
+    def test_answer_result_after_tail_boundary_does_not_leave_question_open(self) -> None:
+        question = {
+            "type": "assistant",
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "question-1",
+                        "name": "AskUserQuestion",
+                        "input": {},
+                    }
+                ],
+            },
+        }
+        answer = {
+            "type": "user",
+            "timestamp": "2026-01-01T00:10:00+00:00",
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "question-1"}],
+            },
+        }
+        # The only possible split in append-only JSONL puts the older
+        # tool_use outside the tail and its later answer inside it. The answer
+        # cannot age out before the question that precedes it.
+        filler = {"type": "assistant", "message": {"content": "x" * dashboard.TAIL_BYTES}}
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "session.jsonl"
+            transcript.write_text(
+                "\n".join(json.dumps(record) for record in (question, filler, answer)) + "\n"
+            )
+            info = dashboard.analyze_transcript(str(transcript))
+
+        self.assertIsNone(info["pending_input_tool"])
+
     def test_transcript_mtime_alone_does_not_clear_newer_hook(self) -> None:
         now = dashboard.time.time()
         event_time = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).isoformat()
@@ -935,6 +972,44 @@ console.log(JSON.stringify(out));
         self.assertEqual({"t": 1010, "v": 3, "replayDropped": True}, out["clock"])
         self.assertEqual({"hasLine": True, "finite": True, "single": True}, out["svg"])
 
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_needs_input_ui_uses_block_anchor_and_displayed_count(self) -> None:
+        checks = """
+__els.app = {innerHTML:""};
+const activeNeed = {
+  harness:"claude", session:"12345678", sid:"12345678", project:"sample",
+  title:null, last_prompt:"Fallback prompt", state:"needs_input",
+  state_detail:"permission needed", active:true, last_activity:100,
+  blocked_since:970, rate_per_min:0, total:0, done:0, open:0,
+  progress_pct:0, eta_h:null, turn:null, subagents:[], tasks:[]
+};
+const inactiveNeed = {...activeNeed, sid:"old", session:"old", active:false};
+const data = {
+  generated:1000, window_hours:24, show_all:true, harnesses:[],
+  summary:{needs_input:99, working:0, rate_per_min:0, active_sessions:1,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0},
+  sessions:[activeNeed, inactiveNeed]
+};
+const row = needRow(data, activeNeed);
+render(data);
+console.log(JSON.stringify({
+  rowUsesPrompt: row.includes("Fallback prompt"),
+  rowUsesAnchor: row.includes(">30s<"),
+  title: document.title,
+  shownNeeds: (__els.app.innerHTML.match(/class="need"/g) || []).length
+}));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(
+            {
+                "rowUsesPrompt": True,
+                "rowUsesAnchor": True,
+                "title": "(1!) Cargento",
+                "shownNeeds": 1,
+            },
+            out,
+        )
+
     def _post_notify(self, port: int, body: dict[str, Any]) -> bytes:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
         conn.request(
@@ -1181,6 +1256,216 @@ console.log(JSON.stringify(out));
                 httpd.shutdown()
                 httpd.server_close()
                 thread.join(timeout=2)
+
+    def test_structured_notification_type_overrides_message_text(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with mock.patch.object(dashboard, "notify_mac") as notify:
+                # Informational notifications neither block nor claim that
+                # Claude is waiting on the human.
+                self._post_notify(
+                    httpd.server_port,
+                    {
+                        "session_id": "aaaa1111",
+                        "hook_event_name": "Notification",
+                        "notification_type": "auth_success",
+                        "message": "Authentication successful",
+                    },
+                )
+                self.assertEqual(0, notify.call_count)
+                self.assertNotIn("aaaa1111", dashboard._hook_notifs)
+
+                # Structured idle type wins even when the message is a
+                # version/localization variant that lacks the old prefix, and
+                # clears any older standing prompt for this session.
+                with dashboard._lock:
+                    dashboard._hook_notifs["bbbb2222"] = {
+                        "ts": dashboard.time.time() - 60,
+                        "message": "older permission prompt",
+                    }
+                    dashboard._last_state["bbbb2222"] = "needs_input"
+                self._post_notify(
+                    httpd.server_port,
+                    {
+                        "session_id": "bbbb2222",
+                        "hook_event_name": "Notification",
+                        "notification_type": "idle_prompt",
+                        "message": "Your agent has finished its turn",
+                    },
+                )
+                self.assertEqual(1, notify.call_count)
+                self.assertNotIn("bbbb2222", dashboard._hook_notifs)
+                self.assertNotIn("bbbb2222", dashboard._last_state)
+
+                with dashboard._lock:
+                    dashboard._last_popup["_global"] = dashboard.time.time() - 120
+
+                # Structured permission type also wins over misleading text.
+                self._post_notify(
+                    httpd.server_port,
+                    {
+                        "session_id": "cccc3333",
+                        "hook_event_name": "Notification",
+                        "notification_type": "permission_prompt",
+                        "message": "Claude is waiting for your input to approve Bash",
+                    },
+                )
+                self.assertEqual(2, notify.call_count)
+                self.assertIn("cccc3333", dashboard._hook_notifs)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_notification_disposition_covers_documented_types(self) -> None:
+        expected = {
+            "idle_prompt": (False, True),
+            "permission_prompt": (True, True),
+            "auth_success": (False, False),
+            "elicitation_dialog": (True, True),
+            "elicitation_complete": (False, False),
+            "elicitation_response": (False, False),
+            "agent_needs_input": (True, True),
+            "agent_completed": (False, False),
+        }
+        for notification_type, disposition in expected.items():
+            with self.subTest(notification_type=notification_type):
+                self.assertEqual(
+                    disposition,
+                    dashboard.notification_disposition(notification_type, "variant text"),
+                )
+
+    def test_elicitation_completion_clears_dialog_hook(self) -> None:
+        with dashboard._lock:
+            dashboard._hook_notifs["feed1234"] = {
+                "ts": dashboard.time.time() - 30,
+                "message": "MCP input requested",
+            }
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self._post_notify(
+                httpd.server_port,
+                {
+                    "session_id": "feed1234",
+                    "hook_event_name": "Notification",
+                    "notification_type": "elicitation_complete",
+                    "message": "MCP elicitation completed",
+                },
+            )
+            with dashboard._lock:
+                self.assertNotIn("feed1234", dashboard._hook_notifs)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_session_end_hook_clears_standing_permission_state(self) -> None:
+        with dashboard._lock:
+            dashboard._hook_notifs["deadbeef"] = {
+                "ts": dashboard.time.time() - 60,
+                "message": "permission needed",
+            }
+            dashboard._last_state["deadbeef"] = "needs_input"
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            data = self._post_notify(
+                httpd.server_port,
+                {
+                    "session_id": "deadbeef-0000-0000-0000-000000000000",
+                    "hook_event_name": "SessionEnd",
+                    "reason": "prompt_input_exit",
+                },
+            )
+            self.assertIn(b'"cleared":"session_end"', data)
+            with dashboard._lock:
+                self.assertNotIn("deadbeef", dashboard._hook_notifs)
+                self.assertNotIn("deadbeef", dashboard._last_state)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_hook_block_uses_hook_time_and_inactive_sessions_are_idle(self) -> None:
+        now = dashboard.time.time()
+        session_id = "abcd1234-0000-0000-0000-000000000000"
+        event_time = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "sample"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "user-before-hook",
+                        "timestamp": event_time,
+                        "message": {"role": "user", "content": "run it"},
+                    }
+                )
+                + "\n"
+            )
+            old = now - 600
+            dashboard.os.utime(transcript, (old, old))
+            hook_time = now - 45
+            with dashboard._lock:
+                dashboard._hook_notifs[session_id[:8]] = {
+                    "ts": hook_time,
+                    "message": "permission needed",
+                    "user_event": "user-before-hook",
+                }
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            ):
+                active = dashboard.collect_claude(now, 24, False)[0]
+                inactive = dashboard.collect_claude(now, 0.1, True)[0]
+
+        self.assertEqual("needs_input", active["state"])
+        self.assertEqual(hook_time, active["blocked_since"])
+        self.assertEqual("idle", inactive["state"])
+
+    def test_transcript_open_question_outranks_fresh_activity(self) -> None:
+        now = dashboard.time.time()
+        session_id = "face9999-0000-0000-0000-000000000000"
+        question_time = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "sample"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "timestamp": question_time,
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "question-1",
+                                    "name": "AskUserQuestion",
+                                    "input": {},
+                                }
+                            ],
+                        },
+                    }
+                )
+                + "\n"
+            )
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            ):
+                session = dashboard.collect_claude(now, 24, False)[0]
+
+        self.assertEqual("needs_input", session["state"])
+        self.assertEqual(dashboard.parse_ts(question_time), session["blocked_since"])
 
     def test_background_task_flap_lifecycle_end_to_end(self) -> None:
         # Full lifecycle of the live 936f2c2b case, through the real notify

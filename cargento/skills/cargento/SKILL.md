@@ -25,7 +25,7 @@ Data sources (read-only, no external calls; all parsing is defensive — a broke
 
 | State | Meaning | Derived from |
 |---|---|---|
-| **Needs input** (red, popup fired) | Claude is blocked on the human | pending `AskUserQuestion`/`ExitPlanMode` in transcript, or a Notification-hook POST (permission prompt / idle). Claude only — other harnesses have no needs-input detection |
+| **Needs input** (red, popup fired) | Claude is blocked on the human | pending `AskUserQuestion`/`ExitPlanMode` in transcript, or an actionable Notification-hook POST (permission prompt / MCP elicitation). Claude only — other harnesses have no needs-input detection |
 | **Working** (blue) | Actively generating | transcript/subagent/DB activity within the last 90s; detail = in-progress task's activeForm, else running subagents, else last tool |
 | **Idle** (gray) | Turn ended | anything else — "awaiting your message" |
 
@@ -47,15 +47,18 @@ Tell the user the URL, that the page auto-refreshes every 5 seconds, and that po
 
 ## Notifications
 
-Two paths, both firing `osascript display notification` (60s per-session cooldown plus a 5s global floor):
+Two paths manage needs-input state. Actionable and idle notifications fire `osascript display notification` (60s per-session cooldown plus a 15s global floor):
 
 1. **Transcript detection** — an open AskUserQuestion flips the session to Needs input on the next poll (the UI polling `/api/data` drives this; keep a dashboard tab open).
-2. **Notification hook** — a `Notification` hook in user settings (`~/.claude/settings.json`) POSTing the hook payload to `http://127.0.0.1:4553/api/notify`. Covers permission prompts and idle waits, works even with no browser tab open. Idle nudges ("Claude is waiting for your input" — sent after every completed turn) pop a notification but never mark the session blocked; only real blockers (permission prompts, plan approvals, open questions) create Needs-input state. This hook is NOT installed by the plugin — if the user wants path 2, offer to add it to their `~/.claude/settings.json`:
+2. **Lifecycle hooks** — `Notification` and `SessionEnd` hooks in user settings (`~/.claude/settings.json`) POSTing their payloads to `http://127.0.0.1:4553/api/notify`. Notifications cover permission prompts and idle waits, even with no browser tab open. The structured `notification_type` decides whether a notification is actionable. Idle nudges (`idle_prompt`, message "Claude is waiting for your input") pop once but never mark the session blocked; authentication/completion notifications do neither; permission prompts and MCP elicitation dialogs create Needs-input state. `SessionEnd` clears a standing hook when Claude exits cleanly. These hooks are NOT installed by the plugin — if the user wants path 2, offer to add them to their `~/.claude/settings.json`:
 
 ```json
 "hooks": {
   "Notification": [
     {"matcher": "", "hooks": [{"type": "command", "command": "curl -s -m 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:4553/api/notify >/dev/null 2>&1 || true", "async": true}]}
+  ],
+  "SessionEnd": [
+    {"matcher": "", "hooks": [{"type": "command", "command": "curl -s -m 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:4553/api/notify >/dev/null 2>&1 || true"}]}
   ]
 }
 ```
@@ -96,5 +99,5 @@ lsof -ti tcp:4553 -sTCP:LISTEN | xargs kill
 ## Common mistakes
 
 - The server binds to 127.0.0.1 only — do not "fix" it to 0.0.0.0; it exposes local session data.
-- A session stuck on "Needs input" after you already answered: the state clears on the next transcript event; a server restart also clears hook-reported notifications (they're in-memory).
+- A session stuck on "Needs input" after you already answered: the state clears on the next transcript event; `SessionEnd` clears it on a clean Claude exit; a server restart also clears hook-reported notifications (they're in-memory). An abrupt kill cannot be distinguished from a terminal left open at a prompt, so it clears only by a later transcript event or restart.
 - After two missed refreshes, the live header changes to "stalled" and shows the last successful update — restart the server, no need to reload the page.
