@@ -30,10 +30,12 @@ class CargentoServerTest(unittest.TestCase):
         with dashboard._lock:
             dashboard._hook_notifs.clear()
             dashboard._last_popup.clear()
+            dashboard._last_popup_message.clear()
             dashboard._last_state.clear()
         with dashboard._cache_lock:
             dashboard._meta_cache.clear()
             dashboard._cursor_title_cache.clear()
+            dashboard._agent_class_cache.clear()
         with dashboard._scan_lock:
             dashboard._turn_scan.clear()
         with dashboard._collect_memo_lock:
@@ -360,7 +362,9 @@ class CargentoServerTest(unittest.TestCase):
     def test_popup_caches_are_bounded_and_globally_rate_limited(self) -> None:
         with (
             mock.patch.object(dashboard, "MAX_CACHE_ENTRIES", 2),
-            mock.patch.object(dashboard.time, "time", side_effect=[100.0, 101.0, 106.0]),
+            # session2 lands inside the 15s global floor and is dropped;
+            # session3 lands after it and fires.
+            mock.patch.object(dashboard.time, "time", side_effect=[100.0, 101.0, 120.0]),
             mock.patch.object(dashboard, "notify_mac") as notify,
         ):
             dashboard.maybe_popup("session1", "needs_input", "one")
@@ -760,6 +764,240 @@ console.log(JSON.stringify(out));
         # Viewer-clock stamping: server said 999111, viewer clock said 1010.
         self.assertEqual({"t": 1010, "v": 3, "replayDropped": True}, out["clock"])
         self.assertEqual({"hasLine": True, "finite": True, "single": True}, out["svg"])
+
+    def _post_notify(self, port: int, body: dict[str, Any]) -> bytes:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        conn.request(
+            "POST",
+            "/api/notify",
+            body=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        response = conn.getresponse()
+        self.assertEqual(200, response.status)
+        data = response.read()
+        conn.close()
+        return data
+
+    def test_notify_from_subagent_session_is_suppressed(self) -> None:
+        # Subagent sessions emit Notification-hook events too (permission
+        # prompts inside agents); they must not raise popups or hook state.
+        now = dashboard.time.time()
+        child_id = "cccc3333-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            proj.mkdir(parents=True)
+            (proj / f"{child_id}.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "agentName": "helper",
+                        "teamName": "session-aaaa1111",
+                        "timestamp": dashboard.datetime.fromtimestamp(
+                            now, dashboard.UTC
+                        ).isoformat(),
+                        "message": {"role": "user", "content": "x"},
+                    }
+                )
+                + "\n"
+            )
+            httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with (
+                    mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                    mock.patch.object(dashboard, "notify_mac") as notify,
+                ):
+                    data = self._post_notify(
+                        httpd.server_port,
+                        {"session_id": child_id, "message": "permission"},
+                    )
+                self.assertIn(b"suppressed", data)
+                notify.assert_not_called()
+                with dashboard._lock:
+                    self.assertNotIn(child_id[:8], dashboard._hook_notifs)
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=2)
+
+    def test_notify_repeated_identical_message_popups_once(self) -> None:
+        # Claude re-emits the same notification while a session stays blocked;
+        # only the first within the suppression window may popup. A different
+        # message from the same session still pops.
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+
+        def expire_cooldowns() -> None:
+            with dashboard._lock:
+                dashboard._last_popup["fedcba98"] = dashboard.time.time() - 120
+                dashboard._last_popup["_global"] = dashboard.time.time() - 120
+
+        try:
+            with mock.patch.object(dashboard, "notify_mac") as notify:
+                self._post_notify(
+                    httpd.server_port,
+                    {"session_id": "fedcba98", "message": "permission needed"},
+                )
+                self.assertEqual(1, notify.call_count)
+                expire_cooldowns()
+                self._post_notify(
+                    httpd.server_port,
+                    {"session_id": "fedcba98", "message": "permission needed"},
+                )
+                self.assertEqual(1, notify.call_count)  # identical: suppressed
+                expire_cooldowns()
+                self._post_notify(
+                    httpd.server_port,
+                    {"session_id": "fedcba98", "message": "open question"},
+                )
+                self.assertEqual(2, notify.call_count)  # new message: pops
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_turn_clock_reanchors_after_quiet_gap(self) -> None:
+        # Time blocked on a human (permission prompt, AskUserQuestion, sleep)
+        # writes nothing to the transcript. A quiet gap longer than
+        # TURN_GAP_RESET_SEC inside a turn must re-anchor the elapsed clock at
+        # the post-gap event instead of billing the wait as generation time.
+        base = 1_784_000_000.0
+
+        def iso(offset: float) -> str:
+            return str(dashboard.datetime.fromtimestamp(base + offset, dashboard.UTC).isoformat())
+
+        records = [
+            {
+                "type": "user",
+                "timestamp": iso(0),
+                "message": {"role": "user", "content": "start the work"},
+            },
+            {
+                "type": "assistant",
+                "timestamp": iso(20),
+                "message": {"role": "assistant", "content": []},
+            },
+            {
+                "type": "assistant",
+                "timestamp": iso(40),
+                "message": {"role": "assistant", "content": []},
+            },
+            # 45-minute wait on the human, then generation resumes.
+            {
+                "type": "assistant",
+                "timestamp": iso(40 + 2700),
+                "message": {"role": "assistant", "content": []},
+            },
+            {
+                "type": "assistant",
+                "timestamp": iso(70 + 2700),
+                "message": {"role": "assistant", "content": []},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "session.jsonl"
+            path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            scan = dashboard.scan_turns(str(path), "claude")
+
+        assert scan is not None
+        # Clock re-anchored at the post-gap record, not the original prompt.
+        self.assertEqual(base + 40 + 2700, scan["turn_start"])
+        # The pre-gap active segment is banked as a finished duration.
+        self.assertIn(40.0, scan["durations"])
+
+    def test_local_command_output_is_not_a_turn_start(self) -> None:
+        rec = {
+            "type": "user",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "role": "user",
+                "content": "<local-command-stdout>ok</local-command-stdout>",
+            },
+        }
+        self.assertIsNone(dashboard._turn_signal(rec, "claude"))
+        caveat = {
+            "type": "user",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "role": "user",
+                "content": "<local-command-caveat>x</local-command-caveat>",
+            },
+        }
+        self.assertIsNone(dashboard._turn_signal(caveat, "claude"))
+
+    def test_modern_subagent_transcripts_fold_into_parent_session(self) -> None:
+        # Harness >= 2.x writes subagent transcripts as ordinary top-level
+        # <uuid>.jsonl files whose records carry agentName and
+        # teamName "session-<parent prefix>". They must NOT surface as
+        # standalone sessions; they attach to the parent as named running
+        # subagents, keep it working, and contribute to its output rate.
+        now = dashboard.time.time()
+        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        stale_iso = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        parent_id = "aaaa1111-0000-0000-0000-000000000000"
+        child_id = "bbbb2222-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            proj.mkdir(parents=True)
+            parent_fp = proj / f"{parent_id}.jsonl"
+            parent_fp.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": parent_id,
+                        "timestamp": stale_iso,
+                        "message": {"role": "user", "content": "build the feature"},
+                    }
+                )
+                + "\n"
+            )
+            child_fp = proj / f"{child_id}.jsonl"
+            child_fp.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": child_id,
+                        "agentName": "spark-reviewer",
+                        "teamName": f"session-{parent_id[:8]}",
+                        "timestamp": iso,
+                        "message": {"role": "user", "content": "review the sparkline"},
+                    }
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": child_id,
+                        "agentName": "spark-reviewer",
+                        "teamName": f"session-{parent_id[:8]}",
+                        "timestamp": iso,
+                        "message": {
+                            "role": "assistant",
+                            "content": [],
+                            "usage": {"output_tokens": 500},
+                        },
+                    }
+                )
+                + "\n"
+            )
+            # Parent quiet for 10 minutes; child fresh.
+            old = now - 600
+            dashboard.os.utime(parent_fp, (old, old))
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        parent = sessions[0]
+        self.assertEqual(parent_id[:8], parent["session"])
+        self.assertEqual("working", parent["state"])
+        self.assertEqual(["spark-reviewer"], parent["subagents"])
+        self.assertGreater(parent["rate_per_min"], 0)
 
     def test_long_turn_warning_uses_styled_tooltip_not_native_title(self) -> None:
         # The (!) icon must use the app's styled tooltip (fast, themed), not

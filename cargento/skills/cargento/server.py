@@ -58,9 +58,15 @@ FACTORY_PROJECTS = os.path.join(HOME, ".factory", "projects")
 
 RATE_WINDOW_SEC = 600  # usage rate is measured over the last 10 minutes
 WORKING_THRESHOLD_SEC = 90  # activity newer than this = WORKING
+# A transcript that writes nothing for this long mid-turn was waiting on a
+# human (permission prompt, open question) or asleep — not generating. The
+# turn clock re-anchors after such a gap so "elapsed" measures work, not
+# waiting. Kept well above the longest common tool run.
+TURN_GAP_RESET_SEC = 300
 TAIL_BYTES = 400_000  # only the transcript tail is parsed per refresh
 POPUP_COOLDOWN_SEC = 60  # per-session floor between macOS popups
-GLOBAL_POPUP_COOLDOWN_SEC = 5  # floor across caller-controlled session ids
+GLOBAL_POPUP_COOLDOWN_SEC = 15  # floor across caller-controlled session ids
+POPUP_REPEAT_SUPPRESS_SEC = 600  # identical message per session: one popup per window
 LONG_TURN_WARN_SEC = 900  # warn when a request runs (or is estimated) this long
 SQL_MSG_LIMIT = 400  # newest messages fetched per DB-backed session
 MAX_CACHE_ENTRIES = 8192  # bound process-lifetime caches over long uptime
@@ -74,6 +80,7 @@ INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 _lock = threading.Lock()
 _hook_notifs: dict[str, dict[str, Any]] = {}  # session prefix -> {"ts": epoch, "message": str}
 _last_popup: dict[str, float] = {}  # session prefix -> epoch
+_last_popup_message: dict[str, tuple[str, float]] = {}  # prefix -> (message, epoch)
 _last_state: dict[str, str] = {}  # session prefix -> state string (popup on transition)
 _cache_lock = threading.Lock()
 
@@ -613,6 +620,12 @@ def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
         isinstance(c, dict) and c.get("type") == "tool_result" for c in content
     ):
         return None
+    # Local command output/caveat records are user-typed but are not prompts —
+    # nothing generates in response to them, so they must not start a turn.
+    if isinstance(content, str) and content.lstrip().startswith(
+        ("<local-command-stdout>", "<local-command-caveat>")
+    ):
+        return None
     return ("prompt", None)
 
 
@@ -621,6 +634,15 @@ def _apply_turn_record(st: dict[str, Any], record: Any, harness: str) -> None:
     ep = parse_ts(record.get("timestamp") or "")
     if not ep:
         return
+    # A quiet stretch longer than TURN_GAP_RESET_SEC inside a turn means the
+    # agent was not generating (permission wait, AskUserQuestion, sleep).
+    # Bank the active segment and restart the clock at the post-gap event so
+    # "elapsed" reflects work, not waiting.
+    if st["turn_start"] and st["prev_ts"] and ep - st["prev_ts"] > TURN_GAP_RESET_SEC:
+        if st["prev_ts"] > st["turn_start"]:
+            st["durations"].append(st["prev_ts"] - st["turn_start"])
+        st["turn_start"] = ep
+        st["last_start"] = ep
     sig = _turn_signal(record, harness)
     if sig:
         kind, override = sig
@@ -659,6 +681,7 @@ def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any
                     return context
                 pos = line_end
                 active_decided = False
+                later_ts: float | None = None
                 while pos > 0:
                     line_start = data.rfind(b"\n", 0, pos) + 1
                     raw = data[line_start:pos]
@@ -676,6 +699,16 @@ def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any
                         ep = parse_ts(record.get("timestamp") or "")
                         if not ep:
                             continue
+                        # Walking backward: `later_ts` is the timestamp of the
+                        # record that chronologically FOLLOWS this one. A quiet
+                        # gap re-anchors the turn at the post-gap record, same
+                        # rule as the forward scanner.
+                        if later_ts is not None and later_ts - ep > TURN_GAP_RESET_SEC:
+                            if not active_decided:
+                                context["turn_start"] = later_ts
+                            context["last_start"] = later_ts
+                            return context
+                        later_ts = ep
                         if context["prev_ts"] is None:
                             context["prev_ts"] = ep
                         sig = _turn_signal(record, harness)
@@ -999,18 +1032,105 @@ def working_detail(info: dict[str, Any] | None, subagents: list[Any]) -> str:
 # Harness collectors — each returns a list of session dicts
 
 
+# Subagent-transcript classification cache. Whether a top-level transcript
+# belongs to a subagent is immutable for a given file, but young files may
+# not have written their identifying records yet — so negative results are
+# only cached once the file is big enough to be conclusive.
+_agent_class_cache: dict[str, tuple[bool, str, str]] = {}
+_AGENT_SCAN_LINES = 50
+_AGENT_CACHE_NEGATIVE_MIN_BYTES = 16384
+
+
+def claude_agent_identity(path: str) -> tuple[bool, str, str]:
+    """Classify a top-level transcript: (is_subagent, agent_name, parent_prefix).
+
+    Harness >= 2.x writes subagent transcripts as ordinary <uuid>.jsonl files
+    in the project directory; their records carry ``agentName`` and
+    ``teamName`` = "session-<parent 8-char prefix>". Older harnesses used
+    <session>/subagents/agent-*.jsonl, still handled by
+    load_claude_subagents().
+    """
+    with _cache_lock:
+        cached = _agent_class_cache.get(path)
+    if cached is not None:
+        return cached
+    is_agent, name, parent = False, "", ""
+    size = 0
+    lines_seen = 0
+    try:
+        size = os.path.getsize(path)
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for lines_seen, line in enumerate(f, start=1):
+                if lines_seen > _AGENT_SCAN_LINES or (is_agent and parent):
+                    break
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                agent_name = rec.get("agentName")
+                if not is_agent and isinstance(agent_name, str) and agent_name:
+                    is_agent, name = True, agent_name
+                team = rec.get("teamName")
+                if not parent and isinstance(team, str) and team.startswith("session-"):
+                    parent = team[len("session-") :][:8]
+    except OSError:
+        return (False, "", "")
+    result = (is_agent, name, parent)
+    # A positive is conclusive; a negative is only trusted once the file has
+    # enough content that the identifying records would have appeared.
+    if is_agent or lines_seen >= _AGENT_SCAN_LINES or size >= _AGENT_CACHE_NEGATIVE_MIN_BYTES:
+        with _cache_lock:
+            bounded_put(_agent_class_cache, path, result)
+    return result
+
+
+def claude_prefix_is_agent(prefix: str) -> bool:
+    """True when the newest transcript for this 8-char prefix belongs to a
+    subagent. Used to suppress popups for agent sessions."""
+    newest, newest_mtime = None, 0.0
+    for fp in glob.glob(os.path.join(PROJECTS_DIR, "*", f"{prefix}*.jsonl")):
+        try:
+            mtime = os.path.getmtime(fp)
+        except OSError:
+            continue
+        if mtime > newest_mtime:
+            newest, newest_mtime = fp, mtime
+    if not newest:
+        return False
+    return claude_agent_identity(newest)[0]
+
+
 def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     tasks_by_session = load_tasks()
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
+    agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
     for fp in glob.glob(os.path.join(PROJECTS_DIR, "*", "*.jsonl")):
         base = os.path.basename(fp)
         if "-agent-" in base or base.startswith("agent-"):
-            continue  # subagent transcripts aren't top-level sessions
+            continue  # legacy subagent transcripts aren't top-level sessions
+        try:
+            mtime = os.path.getmtime(fp)
+        except OSError:
+            continue  # transcript rotated/deleted between glob and stat
+        if show_all or now - mtime <= window_hours * 3600:
+            is_agent, agent_name, parent_prefix = claude_agent_identity(fp)
+            if is_agent:
+                # Fold into the parent session; never a standalone session.
+                # Without a parent prefix there is nothing to attach to.
+                if parent_prefix and now - mtime <= window_hours * 3600:
+                    agent_children.setdefault(parent_prefix, []).append(
+                        {
+                            "path": fp,
+                            "mtime": mtime,
+                            "label": (agent_name or "subagent")[:70],
+                        }
+                    )
+                continue
         prefix = base[:8]
         try:
-            if prefix not in transcripts or os.path.getmtime(fp) > os.path.getmtime(
-                transcripts[prefix]
-            ):
+            if prefix not in transcripts or mtime > os.path.getmtime(transcripts[prefix]):
                 transcripts[prefix] = fp
         except OSError:
             continue  # transcript rotated/deleted between glob and stat
@@ -1028,8 +1148,20 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             transcript_mtime = 0
         latest_task_mtime = max((t["updated"] for t in tasks), default=0)
         subagents = load_claude_subagents(transcript, now)
-        latest_agent_mtime = max((a["mtime"] for a in subagents), default=0)
-        last_activity = max(latest_task_mtime, transcript_mtime, latest_agent_mtime)
+        children = agent_children.get(prefix, [])
+        subagents += [
+            {"label": c["label"], "mtime": c["mtime"]}
+            for c in children
+            if now - c["mtime"] <= WORKING_THRESHOLD_SEC  # fresh = running
+        ]
+        latest_agent_mtime = max(
+            (a["mtime"] for a in subagents),
+            default=0,
+        )
+        latest_child_mtime = max((c["mtime"] for c in children), default=0)
+        last_activity = max(
+            latest_task_mtime, transcript_mtime, latest_agent_mtime, latest_child_mtime
+        )
         active = (now - last_activity) <= window_hours * 3600
         if not (active or show_all):
             continue
@@ -1096,7 +1228,14 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": last_activity,
-                "rate_per_min": rate_from(info, now),
+                # Subagent output now lives in the children's own transcripts;
+                # fold it in so the session's rate reflects all its work.
+                "rate_per_min": rate_from(info, now)
+                + sum(
+                    rate_from(analyze_transcript(c["path"]), now)
+                    for c in children
+                    if now - c["mtime"] <= RATE_WINDOW_SEC
+                ),
                 "total": total,
                 "done": done,
                 "open": open_count,
@@ -2794,6 +2933,12 @@ class Handler(BaseHTTPRequestHandler):
             else "Claude is waiting for your input",
             500,
         )
+        # Subagent sessions also emit Notification-hook events (permission
+        # prompts inside agents). They are not user-facing sessions — a popup
+        # about them is noise the human cannot act on from the dashboard.
+        if prefix and claude_prefix_is_agent(prefix):
+            self._send(b'{"ok":true,"suppressed":"subagent"}', "application/json")
+            return
         now = time.time()
         with _lock:
             if prefix:
@@ -2801,10 +2946,17 @@ class Handler(BaseHTTPRequestHandler):
             popup_key = prefix or "_anonymous"
             session_ready = now - _last_popup.get(popup_key, 0) >= POPUP_COOLDOWN_SEC
             global_ready = now - _last_popup.get("_global", 0) >= GLOBAL_POPUP_COOLDOWN_SEC
-            fire = session_ready and global_ready
+            # Claude re-emits the same idle/permission notification for as
+            # long as the session stays blocked; repeating the popup adds no
+            # information. One popup per distinct message per session within
+            # POPUP_REPEAT_SUPPRESS_SEC.
+            prev_msg, prev_ts = _last_popup_message.get(popup_key, ("", 0.0))
+            repeat = message == prev_msg and now - prev_ts < POPUP_REPEAT_SUPPRESS_SEC
+            fire = session_ready and global_ready and not repeat
             if fire:
                 bounded_put(_last_popup, popup_key, now)
                 bounded_put(_last_popup, "_global", now)
+                bounded_put(_last_popup_message, popup_key, (message, now))
         if fire:
             notify_mac("Claude is waiting on you", message)
         self._send(b'{"ok":true}', "application/json")
