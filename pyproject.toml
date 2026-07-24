@@ -48,6 +48,11 @@ max-args = 8
 python_version = "3.9"
 strict = true
 warn_unreachable = true
+# Pin the analysis platform so local (macOS) and CI (Linux) agree: the
+# dashboard is macOS-first (osascript notifications) and degrades gracefully
+# elsewhere at runtime; without this, sys.platform narrowing makes the
+# darwin-only code "unreachable" only on Linux runners.
+platform = "darwin"
 files = [
   "cargento/skills/cargento/server.py",
   "cargento/skills/cargento/tests",
