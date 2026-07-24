@@ -36,10 +36,17 @@ class CargentoServerTest(unittest.TestCase):
             dashboard._meta_cache.clear()
             dashboard._cursor_title_cache.clear()
             dashboard._agent_class_cache.clear()
+            dashboard._claude_title_cache.clear()
+            dashboard._claude_user_event_cache.clear()
         with dashboard._scan_lock:
             dashboard._turn_scan.clear()
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
+        # No test may fire a real macOS popup ("[sample] permission" spam
+        # during dev runs). Tests asserting popups use their own nested patch.
+        notify_patcher = mock.patch.object(dashboard, "notify_mac")
+        notify_patcher.start()
+        self.addCleanup(notify_patcher.stop)
 
     def test_load_tasks_supports_current_and_legacy_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -343,6 +350,31 @@ class CargentoServerTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
+    def test_hook_user_event_accepts_matching_project_transcript(self) -> None:
+        session_id = "12345678-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            project = projects / "sample"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "user-before-hook",
+                        "message": {"content": "run the command"},
+                    }
+                )
+                + "\n"
+            )
+            with mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)):
+                found, user_event = dashboard.claude_hook_user_event(
+                    str(transcript), session_id[:8]
+                )
+
+        self.assertTrue(found)
+        self.assertEqual("user-before-hook", user_event)
+
     def test_cross_site_fetch_metadata_is_rejected(self) -> None:
         httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -399,16 +431,71 @@ class CargentoServerTest(unittest.TestCase):
         )
         self.assertTrue(dashboard.goose_user_prompt([{"type": "text", "text": "hello"}]))
 
-    def test_new_transcript_event_clears_hook_notification(self) -> None:
+    def test_new_user_event_clears_hook_without_comparing_clocks(self) -> None:
         with dashboard._lock:
             dashboard._hook_notifs["12345678"] = {
-                "ts": 100.0,
+                "ts": 10_000.0,
                 "message": "permission",
+                "user_event": "before",
             }
 
-        self.assertIsNotNone(dashboard.current_hook("12345678", 99.0))
-        self.assertIsNone(dashboard.current_hook("12345678", 102.0))
+        self.assertIsNotNone(dashboard.current_hook("12345678", "before", 0.0))
+        self.assertIsNone(dashboard.current_hook("12345678", "after", 0.0))
         self.assertNotIn("12345678", dashboard._hook_notifs)
+
+    def test_untimestamped_user_record_clears_hook_notification(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "12345678-session.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "before",
+                        "message": {"content": "approve"},
+                    }
+                )
+                + "\n"
+            )
+            before = dashboard.analyze_transcript(str(transcript))["last_user_event"]
+            with dashboard._lock:
+                dashboard._hook_notifs["12345678"] = {
+                    "ts": 10_000.0,
+                    "message": "permission",
+                    "user_event": before,
+                }
+            with transcript.open("a") as output:
+                output.write(
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "message": {"content": "continue without a timestamp"},
+                        }
+                    )
+                    + "\n"
+                )
+            after = dashboard.analyze_transcript(str(transcript))["last_user_event"]
+
+        self.assertNotEqual(before, after)
+        self.assertIsNone(dashboard.current_hook("12345678", after, 0.0))
+
+    def test_assistant_only_tail_does_not_change_hook_user_event(self) -> None:
+        records = [
+            {
+                "type": "user",
+                "uuid": "user-before-hook",
+                "message": {"content": "approve"},
+            },
+            {
+                "type": "assistant",
+                "message": {"content": "x" * (dashboard.TAIL_BYTES + 100)},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "12345678-session.jsonl"
+            transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+            user_event = dashboard.analyze_transcript(str(transcript))["last_user_event"]
+
+        self.assertEqual("user-before-hook", user_event)
 
     def test_transcript_mtime_alone_does_not_clear_newer_hook(self) -> None:
         now = dashboard.time.time()
@@ -439,11 +526,94 @@ class CargentoServerTest(unittest.TestCase):
             with (
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
                 mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
+                mock.patch.object(dashboard, "notify_mac"),
             ):
                 sessions = dashboard.collect_claude(now, 24, False)
 
-        self.assertEqual("needs_input", sessions[0]["state"])
+        # Fresh activity now takes display precedence (the hook only
+        # surfaces once the session goes quiet) — but the property this test
+        # protects still holds: mtime alone must NOT clear the stored hook.
+        self.assertEqual("working", sessions[0]["state"])
         self.assertIn("12345678", dashboard._hook_notifs)
+
+    def test_claude_agent_identity_reads_only_a_bounded_prefix(self) -> None:
+        record = json.dumps(
+            {
+                "type": "user",
+                "agentName": "reviewer",
+                "teamName": "session-12345678",
+            }
+        )
+        source = mock.mock_open(read_data=(record + "\n" + ("x" * 100_000)).encode())
+        with (
+            mock.patch("builtins.open", source),
+            mock.patch.object(dashboard.os.path, "getsize", return_value=1_000_000),
+        ):
+            identity = dashboard.claude_agent_identity("/fake/transcript.jsonl")
+
+        self.assertEqual((True, "reviewer", "12345678"), identity)
+        source().read.assert_called_once_with(dashboard._AGENT_SCAN_BYTES)
+
+    def test_claude_agent_negative_cache_waits_for_conclusive_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "young.jsonl"
+            transcript.write_text("{}\n")
+            self.assertEqual(
+                (False, "", ""),
+                dashboard.claude_agent_identity(str(transcript)),
+            )
+            self.assertNotIn(str(transcript), dashboard._agent_class_cache)
+
+            transcript.write_text("{}\n" * 50)
+            self.assertEqual(
+                (False, "", ""),
+                dashboard.claude_agent_identity(str(transcript)),
+            )
+
+        self.assertIn(str(transcript), dashboard._agent_class_cache)
+
+    def test_claude_title_prefers_newest_ai_title_outside_tail(self) -> None:
+        records = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"content": "stale first prompt"},
+            },
+            {"type": "ai-title", "aiTitle": "Older generated title"},
+            {"type": "ai-title", "aiTitle": "Current generated title"},
+            {
+                "type": "assistant",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "message": {"content": "x" * (dashboard.TAIL_BYTES + 100)},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "session.jsonl"
+            transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+            info = dashboard.analyze_transcript(str(transcript))
+
+        self.assertEqual("Current generated title", info["title"])
+
+    def test_claude_title_falls_back_to_first_user_prompt(self) -> None:
+        records = [
+            {"type": "system", "timestamp": "2026-01-01T00:00:00Z"},
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "message": {"content": "First useful prompt\nwith details"},
+            },
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "message": {"content": "Later prompt"},
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "session.jsonl"
+            transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+            info = dashboard.analyze_transcript(str(transcript))
+
+        self.assertEqual("First useful prompt", info["title"])
 
     def test_legacy_claude_agent_files_are_not_top_level_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -858,6 +1028,91 @@ console.log(JSON.stringify(out));
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=2)
+
+    def test_hook_without_marker_clears_on_newer_parsed_event(self) -> None:
+        # Payloads without transcript_path (the documented curl simulation,
+        # older Claude Code versions) get no user-event marker; they must
+        # fall back to the parsed-timestamp rule instead of sticking forever.
+        with dashboard._lock:
+            dashboard._hook_notifs["cafe1234"] = {"ts": 1000.0, "message": "hi"}
+        self.assertIsNotNone(dashboard.current_hook("cafe1234", None, 999.0))
+        self.assertIsNone(dashboard.current_hook("cafe1234", None, 1001.0))
+        with dashboard._lock:
+            self.assertNotIn("cafe1234", dashboard._hook_notifs)
+
+    def test_hook_does_not_mark_actively_working_session_blocked(self) -> None:
+        # Claude Code emits "waiting for your input" notifications for
+        # sessions that keep running via background tasks (live case
+        # 936f2c2b). While the transcript still receives events, the session
+        # reads Working; the hook only surfaces once the session goes quiet.
+        now = dashboard.time.time()
+        session_id = "dddd4444-0000-0000-0000-000000000000"
+
+        def transcript(last_offset: float) -> str:
+            iso_new = dashboard.datetime.fromtimestamp(now - last_offset, dashboard.UTC).isoformat()
+            return (
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": session_id,
+                        "uuid": "u-1",
+                        "timestamp": dashboard.datetime.fromtimestamp(
+                            now - 900, dashboard.UTC
+                        ).isoformat(),
+                        "message": {"role": "user", "content": "kick off reviews"},
+                    }
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "type": "system",
+                        "sessionId": session_id,
+                        "timestamp": iso_new,
+                        "content": "background shell event",
+                    }
+                )
+                + "\n"
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            proj.mkdir(parents=True)
+            fp = proj / f"{session_id}.jsonl"
+
+            def collect_with(last_offset: float) -> dict[str, Any]:
+                fp.write_text(transcript(last_offset))
+                with dashboard._lock:
+                    dashboard._hook_notifs[session_id[:8]] = {
+                        "ts": now - 60,
+                        "message": "Claude is waiting for your input",
+                        "user_event": "u-1",  # marker unchanged: hook uncleared
+                    }
+                with (
+                    mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                    mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                ):
+                    sessions = dashboard.collect_claude(now, 24, False)
+                return next(s for s in sessions if s["session"] == session_id[:8])
+
+            fresh = collect_with(5)  # events still flowing -> working
+            self.assertEqual("working", fresh["state"])
+            # NOTE: os.utime so mtime matches the stale story
+            fp.write_text(transcript(600))
+            old = now - 600
+            dashboard.os.utime(fp, (old, old))
+            with dashboard._lock:
+                dashboard._hook_notifs[session_id[:8]] = {
+                    "ts": now - 60,
+                    "message": "Claude is waiting for your input",
+                    "user_event": "u-1",
+                }
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+            quiet = next(s for s in sessions if s["session"] == session_id[:8])
+            self.assertEqual("needs_input", quiet["state"])
 
     def test_turn_clock_reanchors_after_quiet_gap(self) -> None:
         # Time blocked on a human (permission prompt, AskUserQuestion, sleep)
