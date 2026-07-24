@@ -1927,7 +1927,7 @@ def collect(window_hours, show_all):
     state_rank = {"needs_input": 0, "working": 1, "idle": 2}
     # Session id as tiebreaker (not last_activity) so rows don't reshuffle
     # on every refresh while sessions are generating.
-    out_sessions.sort(key=lambda x: (state_rank.get(x["state"], 3), x["session"]))
+    out_sessions.sort(key=lambda x: (state_rank.get(x["state"], 3), x["sid"]))
     active_sessions = [x for x in out_sessions if x["active"]]
     total_tasks = sum(x["total"] for x in out_sessions)
     total_done = sum(x["done"] for x in out_sessions)
@@ -2146,6 +2146,7 @@ function pushPoint(arr, t, v){
 }
 
 function recordRates(d){
+  if(typeof d.generated !== 'number' || !isFinite(d.generated)) return;
   pushPoint(rateHistory, d.generated, d.summary.rate_per_min || 0);
   const seen = new Set();
   for(const x of d.sessions){
@@ -2155,19 +2156,37 @@ function recordRates(d){
     if(!arr) sessRateHistory.set(key, arr = []);
     pushPoint(arr, d.generated, x.rate_per_min || 0);
   }
-  for(const k of [...sessRateHistory.keys()]) if(!seen.has(k)) sessRateHistory.delete(k);
+  // Remove entries for departed sessions AND aged-out orphaned buffers (no updates in 600s).
+  // This ensures memory doesn't leak if a session disappears before the next recordRates() call.
+  for(const [k, arr] of sessRateHistory){
+    if(!seen.has(k) || (arr.length && arr[arr.length-1].t < d.generated - 600)){
+      sessRateHistory.delete(k);
+    }
+  }
 }
 
 const SPARK_PAD = 3;
-const sparkX = (t, now, w) => w - SPARK_PAD - (now - t) * (w - 2*SPARK_PAD) / SPARK_WINDOW_SEC;
-const sparkY = (v, max, h) => h - SPARK_PAD - (v / max) * (h - 2*SPARK_PAD);
+const sparkX = (t, now, w) => {
+  if(!isFinite(t) || !isFinite(now) || !isFinite(w) || SPARK_WINDOW_SEC <= 0) return 0;
+  return w - SPARK_PAD - (now - t) * (w - 2*SPARK_PAD) / SPARK_WINDOW_SEC;
+};
+const sparkY = (v, max, h) => {
+  if(!isFinite(v) || !isFinite(max) || !isFinite(h) || max <= 0) return h - SPARK_PAD;
+  return h - SPARK_PAD - (v / max) * (h - 2*SPARK_PAD);
+};
 
 function sparkSVG(pts, now, w, h, stretch){
+  if(!isFinite(w) || !isFinite(h) || !isFinite(now) || w <= 0 || h <= 0) return "";
   const base = h - SPARK_PAD;
   let marks = "";
   if(pts && pts.length > 1){
     const max = Math.max(1, ...pts.map(p => p.v));
-    const xy = pts.map(p => [sparkX(p.t, now, w), sparkY(p.v, max, h)]);
+    if(!isFinite(max)) return ""; // Guard against NaN from points
+    const xy = pts.map(p => {
+      const x = sparkX(p.t, now, w);
+      const y = sparkY(p.v, max, h);
+      return [isFinite(x) ? x : 0, isFinite(y) ? y : h/2]; // Default to safe values if NaN
+    });
     const pathPts = xy.map(c => c[0].toFixed(2) + "," + c[1].toFixed(2));
     const area = "M" + xy[0][0].toFixed(2) + "," + base + " L" + pathPts.join(" L") +
       " L" + xy[xy.length-1][0].toFixed(2) + "," + base + " Z";
@@ -2188,13 +2207,15 @@ function sparkSVG(pts, now, w, h, stretch){
 
 function heroSpark(d){
   // Stretched viewBox (0..100 units) so the HTML end-dot and crosshair can
-  // share the same coordinates as percentages of the wrap's width.
+  // share the same coordinates as percentages of the wrap's width and height.
   let dot = "";
   if(rateHistory.length > 1){
     const max = Math.max(1, ...rateHistory.map(p => p.v));
     const last = rateHistory[rateHistory.length-1];
-    dot = `<span class="spark-dot" style="left:${sparkX(last.t, d.generated, 100).toFixed(2)}%;` +
-      `top:${sparkY(last.v, max, 46).toFixed(1)}px"></span>`;
+    const dotX = sparkX(last.t, d.generated, 100);
+    const dotY = sparkY(last.v, max, 100); // Use 100 to get percentage coordinates (0-100%)
+    dot = `<span class="spark-dot" style="left:${dotX.toFixed(2)}%;` +
+      `top:${dotY.toFixed(2)}%"></span>`;
   }
   return `<div class="spark-wrap" id="spark-main" tabindex="0" data-now="${d.generated}"` +
     ` role="img" aria-label="output rate, trailing 5 minutes">` +
@@ -2203,58 +2224,92 @@ function heroSpark(d){
 }
 
 function hideSparkHover(){
-  for(const id of ["spark-x", "spark-tip"]){
-    const el = document.getElementById(id);
-    if(el) el.style.opacity = 0;
+  if(sparkHoverCache && sparkHoverCache.xline) sparkHoverCache.xline.style.opacity = 0;
+  if(sparkHoverCache && sparkHoverCache.tip) sparkHoverCache.tip.style.opacity = 0;
+}
+
+// Cache DOM nodes and child elements for efficient hover updates.
+let sparkHoverCache = null;
+function initSparkHoverCache(){
+  sparkHoverCache = {
+    xline: document.getElementById("spark-x"),
+    tip: document.getElementById("spark-tip"),
+    tipVal: null,
+    tipTime: null
+  };
+  if(sparkHoverCache.tip){
+    // Create tip children once and reuse them.
+    sparkHoverCache.tipVal = document.createElement("b");
+    sparkHoverCache.tipTime = document.createTextNode("");
+    sparkHoverCache.tip.appendChild(sparkHoverCache.tipVal);
+    sparkHoverCache.tip.appendChild(sparkHoverCache.tipTime);
   }
+  return sparkHoverCache;
 }
 
 function showSparkHover(frac){
   const wrap = document.getElementById("spark-main");
   if(!wrap || rateHistory.length < 2) return;
   const now = parseFloat(wrap.dataset.now);
+  if(typeof now !== 'number' || !isFinite(now)) return;
   const t = now - (1 - Math.min(1, Math.max(0, frac))) * SPARK_WINDOW_SEC;
   let best = rateHistory[0];
   for(const p of rateHistory) if(Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+  if(!isFinite(best.v) || !isFinite(best.t)) return;
   const x = sparkX(best.t, now, 100);
-  const xline = document.getElementById("spark-x");
-  const tip = document.getElementById("spark-tip");
-  if(!xline || !tip) return;
-  xline.style.left = x.toFixed(2) + "%";
-  xline.style.opacity = 1;
-  tip.style.left = Math.min(88, Math.max(12, x)).toFixed(2) + "%";
-  tip.textContent = "";
-  const b = document.createElement("b");
-  b.textContent = best.v.toLocaleString();
-  tip.appendChild(b);
-  tip.appendChild(document.createTextNode(
-    " tok/min · " + new Date(best.t * 1000).toLocaleTimeString()));
-  tip.style.opacity = 1;
+  if(!isFinite(x)) return;
+
+  // Use cached DOM nodes instead of recreating on every move event.
+  let cache = sparkHoverCache;
+  if(!cache || !cache.xline || !cache.xline.parentElement){
+    cache = initSparkHoverCache();
+  }
+  if(!cache.xline || !cache.tip || !cache.tipVal || !cache.tipTime) return;
+
+  cache.xline.style.left = x.toFixed(2) + "%";
+  cache.xline.style.opacity = 1;
+  cache.tip.style.left = Math.min(88, Math.max(12, x)).toFixed(2) + "%";
+  // Update cached tip content instead of recreating DOM.
+  cache.tipVal.textContent = best.v.toLocaleString();
+  cache.tipTime.textContent = " tok/min · " + new Date(best.t * 1000).toLocaleTimeString();
+  cache.tip.style.opacity = 1;
 }
 
 let sparkPointer = null; // last pointer position while over the sparkline
+let renderInProgress = false; // prevent race between DOM updates and event handlers
 
 document.addEventListener("pointermove", e => {
+  if(renderInProgress) return; // Skip updates during render
   const wrap = e.target.closest ? e.target.closest("#spark-main") : null;
   if(!wrap){ sparkPointer = null; hideSparkHover(); return; }
   sparkPointer = {x: e.clientX, y: e.clientY};
   const r = wrap.getBoundingClientRect();
   showSparkHover((e.clientX - r.left) / Math.max(1, r.width));
 });
-document.addEventListener("focusin", e => { if(e.target.id === "spark-main") showSparkHover(1); });
-document.addEventListener("focusout", e => { if(e.target.id === "spark-main") hideSparkHover(); });
+document.addEventListener("focusin", e => {
+  if(e.target && e.target.id === "spark-main") showSparkHover(1);
+});
+document.addEventListener("focusout", e => {
+  if(e.target && e.target.id === "spark-main") hideSparkHover();
+});
 
 // render() replaces #app wholesale, which kills the sparkline's focus and
 // resets its hover layer; re-apply both against the freshly built DOM.
-function restoreSparkState(hadFocus){
+function restoreSparkState(hadFocus, savedPointer){
+  // Invalidate the hover cache since the DOM was replaced.
+  sparkHoverCache = null;
+
   const wrap = document.getElementById("spark-main");
   if(!wrap) return;
   if(hadFocus){ wrap.focus({preventScroll: true}); return; } // focusin re-shows tip
-  if(!sparkPointer) return;
+
+  // Restore hover state based on saved pointer position (captured before render).
+  if(!savedPointer) return;
   const r = wrap.getBoundingClientRect();
-  if(sparkPointer.x >= r.left && sparkPointer.x <= r.right &&
-     sparkPointer.y >= r.top && sparkPointer.y <= r.bottom)
-    showSparkHover((sparkPointer.x - r.left) / Math.max(1, r.width));
+  if(savedPointer.x >= r.left && savedPointer.x <= r.right &&
+     savedPointer.y >= r.top && savedPointer.y <= r.bottom){
+    showSparkHover((savedPointer.x - r.left) / Math.max(1, r.width));
+  }
 }
 
 const ICON_PATH = {
@@ -2299,18 +2354,24 @@ function harnessStrip(harnesses){
 }
 
 function rateTile(d){
-  const total = (d.summary.rate_per_min || 0).toLocaleString();
+  const rate = d.summary.rate_per_min || 0;
+  const total = (isFinite(rate) ? rate : 0).toLocaleString();
   const byH = {};
-  for(const x of d.sessions){ if(x.active && x.rate_per_min) byH[x.harness] = (byH[x.harness]||0) + x.rate_per_min; }
+  for(const x of d.sessions){
+    if(x.active && x.rate_per_min && isFinite(x.rate_per_min)){
+      byH[x.harness] = (byH[x.harness]||0) + x.rate_per_min;
+    }
+  }
   const shown = (d.harnesses || []).filter(h => h.discovered)
     .map(h => ({key:h.key, v:byH[h.key] || 0}))
     .sort((a,b) => b.v - a.v).slice(0,5);
   const max = Math.max(1, ...shown.map(r => r.v));
   const rows = shown.length ? `<div class="rate-rows">` + shown.map(r => {
-    const pct = Math.max(r.v ? 4 : 0, Math.round(r.v * 100 / max));
+    const v = isFinite(r.v) ? r.v : 0;
+    const pct = Math.max(v ? 4 : 0, Math.round(v * 100 / max));
     return `<div class="rrow"><span class="rrow-badge">${badge(r.key, true)}</span>` +
       `<span class="rrow-bar"><span class="rrow-fill" style="width:${pct}%"></span></span>` +
-      `<span class="rrow-v">${r.v.toLocaleString()}</span></div>`;
+      `<span class="rrow-v">${v.toLocaleString()}</span></div>`;
   }).join("") + `</div>` : "";
   return `<div class="tile"><div class="tile-top"><span class="tile-label">Output rate</span>` +
     `<span class="tile-cap">tok / min · 10 min</span></div>` +
@@ -2398,6 +2459,9 @@ function toggleIdle(){ idleExpanded = !idleExpanded; if(lastData) render(lastDat
 function render(d){
   lastData = d;
   const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
+  // Capture pointer position before render so we can restore it afterward, even if
+  // pointermove fires during the render operation.
+  const savedPointer = sparkPointer ? {x: sparkPointer.x, y: sparkPointer.y} : null;
   const s = d.summary;
   const needs = d.sessions.filter(x => x.state === "needs_input");
   const working = d.sessions.filter(x => x.state === "working");
@@ -2459,14 +2523,16 @@ function render(d){
       bandHtml + workingHtml + idleHtml;
   }
 
+  renderInProgress = true;
   document.getElementById("app").innerHTML =
     `<div class="top"><div><div class="brand">Cargento</div>` +
     `<div class="sub"><span class="live" id="live-dot"></span>` +
     `<span id="live-status">live · updated ${new Date(d.generated*1000).toLocaleTimeString()} · auto-refresh 5s</span>` +
     (d.show_all ? " · showing all" : "") + `</div></div>` +
     `<div class="hstrip">${harnessStrip(d.harnesses)}</div></div>` + body;
+  renderInProgress = false;
 
-  restoreSparkState(sparkFocused);
+  restoreSparkState(sparkFocused, savedPointer);
   document.title = (s.needs_input > 0 ? `(${s.needs_input}!) ` : "") + "Cargento";
 }
 

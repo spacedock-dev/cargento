@@ -765,7 +765,7 @@ console.log(JSON.stringify(out));
         # and keyboard focus on the rate sparkline must be restored after.
         self.assertIn("sparkPointer", dashboard.PAGE)
         self.assertIn("restoreSparkState", dashboard.PAGE)
-        self.assertIn("restoreSparkState(sparkFocused)", dashboard.PAGE)
+        self.assertIn("restoreSparkState(sparkFocused, savedPointer)", dashboard.PAGE)
         self.assertIn("preventScroll", dashboard.PAGE)
 
     def test_load_tasks_coerces_malformed_field_types(self):
