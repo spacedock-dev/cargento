@@ -83,6 +83,7 @@ See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for d
 python3 -m pip install -r requirements-validation.txt
 python3 scripts/validate_plugins.py
 python3 -m unittest scripts/tests/test_validate_plugins.py
+python3 -m unittest scripts/tests/test_bump_version.py
 python3 -m unittest cargento/skills/cargento/tests/test_server.py
 claude plugin validate . --strict
 claude plugin validate ./cargento --strict

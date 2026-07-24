@@ -32,6 +32,7 @@ Run the full validation suite locally — CI runs the same commands, but finding
 ```bash
 python3 scripts/validate_plugins.py
 python3 -m unittest scripts/tests/test_validate_plugins.py
+python3 -m unittest scripts/tests/test_bump_version.py
 python3 -m unittest cargento/skills/cargento/tests/test_server.py
 # If you have the native CLIs installed:
 claude plugin validate . --strict
@@ -69,7 +70,7 @@ Format: `<type>(<scope>): <description>` — types: `feat`, `fix`, `docs`, `refa
 
 1. Fork (or branch, for maintainers) and make your change.
 2. Run the validation suite above.
-3. Open a PR against `main`. `main` is protected: PRs are required, the `validate` check must pass, history is linear (squash/rebase), all conversations must be resolved, and merged branches are deleted automatically.
+3. Open a PR against `main`. `main` is protected: PRs are required, the `validate` and `version-guard` checks must pass, history is linear (squash/rebase), all conversations must be resolved, and merged branches are deleted automatically.
 4. If your PR closes an issue, use an explicit `Closes #NNN` line.
 
 ## Adding support for a new harness

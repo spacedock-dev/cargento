@@ -110,6 +110,14 @@ jobs:
               exit 1
             fi
 
+            # Duplicate sources on the head would defeat the keyed
+            # comparison below (select(...)[0] sees only the first entry) —
+            # reject them outright before comparing anything.
+            if ! jq -e '(.plugins | map(.source) | length) == (.plugins | map(.source) | unique | length)' "$MP" > /dev/null; then
+              echo "::error file=$MP::duplicate plugin sources in the marketplace — one entry per source, and version fields are owned by the Release workflow"
+              FAIL=1
+            fi
+
             while IFS=$'\t' read -r src base_v; do
               [ -n "$src" ] || continue
               head_v=$(jq -r --arg s "$src" '[.plugins[] | select(.source == $s) | .version][0] // empty' "$MP")

@@ -346,6 +346,48 @@ class ValidatorTests(unittest.TestCase):
                 )
             )
 
+    def test_marketplace_rejects_duplicates_and_metadata_version_drift(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+            root = Path(directory)
+            (root / ".agents/plugins").mkdir(parents=True)
+            (root / ".agents/plugins/marketplace.json").write_text(
+                '{"plugins":[{"name":"cargento",'
+                '"source":{"source":"local","path":"./cargento"}}]}\n'
+            )
+            (root / ".claude-plugin").mkdir()
+            (root / ".claude-plugin/marketplace.json").write_text(
+                '{"metadata":{"version":"9.9.9"},'
+                '"plugins":['
+                '{"name":"cargento","source":"./cargento","version":"0.1.0","description":"Desc"},'
+                '{"name":"cargento","source":"./cargento","version":"0.1.0","description":"Desc"}'
+                ']}\n'
+            )
+            (root / "cargento/.claude-plugin").mkdir(parents=True)
+            (root / "cargento/.claude-plugin/plugin.json").write_text(
+                '{"name":"cargento","version":"0.1.0","description":"Desc"}\n'
+            )
+            manifest = {"version": "0.1.0", "description": "Desc"}
+            validation = validator.Validation()
+
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_marketplaces(
+                    {"cargento": dict(manifest)},
+                    {"cargento": dict(manifest)},
+                    {"cargento": {"description": "Desc"}},
+                    validation,
+                )
+
+            self.assertTrue(
+                any("duplicate plugin names" in error for error in validation.errors)
+            )
+            self.assertTrue(
+                any("duplicate plugin sources" in error for error in validation.errors)
+            )
+            # metadata.version 9.9.9 vs everything else 0.1.0 must be drift.
+            self.assertTrue(
+                any("version fields are not in parity" in error for error in validation.errors)
+            )
+
     def test_markdown_link_rejects_missing_bundled_resource(self) -> None:
         path = self.write_temp("Read [the bundled reference](../missing/file.md).\n", "SKILL.md")
         validation = validator.Validation()

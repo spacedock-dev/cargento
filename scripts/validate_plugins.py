@@ -572,6 +572,13 @@ def validate_marketplaces(
     if not isinstance(entries, list):
         validation.error(claude_path, "plugins must be an array")
         return
+    names = [entry.get("name") for entry in entries if isinstance(entry, dict)]
+    sources = [entry.get("source") for entry in entries if isinstance(entry, dict)]
+    if len(names) != len(set(names)):
+        validation.error(claude_path, "duplicate plugin names in marketplace")
+    if len(sources) != len(set(sources)):
+        validation.error(claude_path, "duplicate plugin sources in marketplace")
+    metadata_version = (claude_marketplace.get("metadata") or {}).get("version")
     by_name = {entry.get("name"): entry for entry in entries if isinstance(entry, dict)}
     for name in PLUGIN_NAMES:
         entry = by_name.get(name)
@@ -588,6 +595,7 @@ def validate_marketplaces(
             )
         gemini_manifest = gemini_manifests.get(name)
         versions = {
+            metadata_version,
             entry.get("version"),
             claude_manifest.get("version") if claude_manifest else None,
             codex_manifest.get("version") if codex_manifest else None,
