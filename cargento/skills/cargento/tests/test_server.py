@@ -1114,6 +1114,119 @@ console.log(JSON.stringify(out));
             quiet = next(s for s in sessions if s["session"] == session_id[:8])
             self.assertEqual("needs_input", quiet["state"])
 
+    def test_background_task_flap_lifecycle_end_to_end(self) -> None:
+        # Full lifecycle of the live 936f2c2b case, through the real notify
+        # endpoint: a turn ends into background work, Claude re-emits
+        # "waiting for your input" hooks, background events keep the
+        # transcript active. The session must read Working steadily (no
+        # needs_input flapping), clear the hook when the session self-resumes
+        # with a new user record, and only surface needs_input once the
+        # session is genuinely quiet with a standing hook.
+        now = dashboard.time.time()
+        session_id = "eeee5555-0000-0000-0000-000000000000"
+
+        def iso(age: float) -> str:
+            return str(dashboard.datetime.fromtimestamp(now - age, dashboard.UTC).isoformat())
+
+        def user_rec(uuid: str, age: float, text: str) -> str:
+            return (
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": session_id,
+                        "uuid": uuid,
+                        "timestamp": iso(age),
+                        "message": {"role": "user", "content": text},
+                    }
+                )
+                + "\n"
+            )
+
+        def system_rec(age: float) -> str:
+            return (
+                json.dumps(
+                    {
+                        "type": "system",
+                        "sessionId": session_id,
+                        "timestamp": iso(age),
+                        "content": "background shell event",
+                    }
+                )
+                + "\n"
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            proj.mkdir(parents=True)
+            fp = proj / f"{session_id}.jsonl"
+            patches = (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            )
+            httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with patches[0], patches[1]:
+
+                    def post_hook() -> None:
+                        self._post_notify(
+                            httpd.server_port,
+                            {
+                                "session_id": session_id,
+                                "message": "Claude is waiting for your input",
+                                "transcript_path": str(fp),
+                            },
+                        )
+
+                    def state() -> str:
+                        result = dashboard.collect_claude(now, 24, False)
+                        return str(
+                            next(s for s in result if s["session"] == session_id[:8])["state"]
+                        )
+
+                    # Turn ended; hook fires; background events keep flowing.
+                    fp.write_text(user_rec("u-1", 300, "review the PRs") + system_rec(50))
+                    post_hook()
+                    self.assertEqual("working", state())
+
+                    # More background events + a RE-POSTED identical hook:
+                    # still working, poll after poll — no flapping.
+                    fp.write_text(
+                        user_rec("u-1", 300, "review the PRs") + system_rec(50) + system_rec(20)
+                    )
+                    post_hook()
+                    self.assertEqual("working", state())
+                    self.assertEqual("working", state())
+
+                    # Background work completes; the session self-resumes with
+                    # a NEW user record (task notification): hook must CLEAR.
+                    fp.write_text(
+                        user_rec("u-1", 300, "review the PRs")
+                        + system_rec(50)
+                        + user_rec("u-2", 10, "task-notification: reviews done")
+                    )
+                    self.assertEqual("working", state())
+                    with dashboard._lock:
+                        self.assertNotIn(session_id[:8], dashboard._hook_notifs)
+
+                    # Final turn ends for real: standing hook + genuinely
+                    # quiet transcript (old record timestamps AND old mtime)
+                    # -> blocked on the human.
+                    fp.write_text(
+                        user_rec("u-1", 900, "review the PRs")
+                        + system_rec(700)
+                        + user_rec("u-2", 600, "task-notification: reviews done")
+                    )
+                    old = now - 600
+                    dashboard.os.utime(fp, (old, old))
+                    post_hook()
+                    self.assertEqual("needs_input", state())
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=2)
+
     def test_turn_clock_reanchors_after_quiet_gap(self) -> None:
         # Time blocked on a human (permission prompt, AskUserQuestion, sleep)
         # writes nothing to the transcript. A quiet gap longer than
