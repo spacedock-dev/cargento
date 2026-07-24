@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import http.client
 import importlib.util
@@ -12,17 +14,19 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 from unittest import mock
-
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
 SPEC = importlib.util.spec_from_file_location("cargento_server", SERVER_PATH)
+assert SPEC is not None
+assert SPEC.loader is not None
 dashboard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(dashboard)
 
 
 class CargentoServerTest(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         with dashboard._lock:
             dashboard._hook_notifs.clear()
             dashboard._last_popup.clear()
@@ -35,7 +39,7 @@ class CargentoServerTest(unittest.TestCase):
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
 
-    def test_load_tasks_supports_current_and_legacy_directories(self):
+    def test_load_tasks_supports_current_and_legacy_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             current = root / "12345678-abcd-ef00-1234-567890abcdef"
@@ -56,18 +60,14 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual("Current", tasks["12345678"][0]["subject"])
         self.assertEqual("Legacy", tasks["abcdef12"][0]["subject"])
 
-    def test_codex_meta_extracts_parent_thread_id(self):
+    def test_codex_meta_extracts_parent_thread_id(self) -> None:
         record = {
             "type": "session_meta",
             "payload": {
                 "id": "child-thread",
                 "thread_source": "subagent",
                 "agent_nickname": "reviewer",
-                "source": {
-                    "subagent": {
-                        "thread_spawn": {"parent_thread_id": "parent-thread"}
-                    }
-                },
+                "source": {"subagent": {"thread_spawn": {"parent_thread_id": "parent-thread"}}},
             },
         }
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,7 +79,7 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual("child-thread", meta["session_id"])
         self.assertEqual("parent-thread", meta["parent_session_id"])
 
-    def test_gemini_set_snapshot_updates_summary_and_turns(self):
+    def test_gemini_set_snapshot_updates_summary_and_turns(self) -> None:
         messages = [
             {
                 "type": "user",
@@ -111,14 +111,11 @@ class CargentoServerTest(unittest.TestCase):
 
         self.assertEqual("resumed prompt", info["last_prompt"])
         self.assertEqual("resumed prompt", info["title"])
-        self.assertEqual([(dashboard.parse_ts("2026-01-01T00:00:05Z"), 42)],
-                         info["usage_events"])
+        self.assertEqual([(dashboard.parse_ts("2026-01-01T00:00:05Z"), 42)], info["usage_events"])
         self.assertEqual([5.0], turns["durations"])
-        self.assertEqual(
-            dashboard.parse_ts("2026-01-01T00:00:10Z"), turns["turn_start"]
-        )
+        self.assertEqual(dashboard.parse_ts("2026-01-01T00:00:10Z"), turns["turn_start"])
 
-    def test_large_repeated_gemini_snapshot_does_not_churn_dedup_cache(self):
+    def test_large_repeated_gemini_snapshot_does_not_churn_dedup_cache(self) -> None:
         messages = [
             {
                 "type": "user",
@@ -150,7 +147,7 @@ class CargentoServerTest(unittest.TestCase):
 
         self.assertEqual([5.0], turns["durations"])
 
-    def test_antigravity_sessions_are_discovered_and_collected(self):
+    def test_antigravity_sessions_are_discovered_and_collected(self) -> None:
         now = dashboard.time.time()
         session_id = "c38d2d70-a01e-46f8-9286-60493c4c0e7e"
         with tempfile.TemporaryDirectory() as tmp:
@@ -169,27 +166,28 @@ class CargentoServerTest(unittest.TestCase):
                 f"appDataDir={root} cascadeManager=true\n"
                 "I0723 14:19:32.952541 server.go:917] Created conversation "
                 f"{session_id}\n"
-                'I0723 14:47:19.285802 input_loop.go:34] HandleUserInput '
+                "I0723 14:47:19.285802 input_loop.go:34] HandleUserInput "
                 'called with text: "show my assigned issues"\n'
                 "I0723 14:47:19.285967 conversation_manager.go:499] "
                 f"Forwarding user message to conversation {session_id} "
                 "(items=1, media=0)\n"
             )
 
-            with mock.patch.object(
-                dashboard, "GEMINI_TMP", str(legacy)
-            ), mock.patch.object(
-                dashboard,
-                "ANTIGRAVITY_CONVERSATIONS_DIR",
-                str(conversations),
-                create=True,
-            ), mock.patch.object(
-                dashboard, "ANTIGRAVITY_LOG_DIR", str(logs), create=True
-            ), mock.patch.object(
-                dashboard,
-                "ANTIGRAVITY_LAST_CONVERSATIONS",
-                str(root / "cache" / "last_conversations.json"),
-                create=True,
+            with (
+                mock.patch.object(dashboard, "GEMINI_TMP", str(legacy)),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_CONVERSATIONS_DIR",
+                    str(conversations),
+                    create=True,
+                ),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(logs), create=True),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(root / "cache" / "last_conversations.json"),
+                    create=True,
+                ),
             ):
                 gemini = next(h for h in dashboard.HARNESSES if h[0] == "gemini")
                 discovered = gemini[2]()
@@ -203,29 +201,30 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual("show my assigned issues", sessions[0]["title"])
         self.assertEqual("working", sessions[0]["state"])
 
-    def test_antigravity_steps_supply_rate_action_and_turn_progress(self):
+    def test_antigravity_steps_supply_rate_action_and_turn_progress(self) -> None:
         now = dashboard.time.time()
         session_id = "c38d2d70-a01e-46f8-9286-60493c4c0e7e"
 
-        def varint(value):
+        def varint(value: int) -> bytes:
             encoded = bytearray()
-            while value > 0x7f:
-                encoded.append((value & 0x7f) | 0x80)
+            while value > 0x7F:
+                encoded.append((value & 0x7F) | 0x80)
                 value >>= 7
             encoded.append(value)
             return bytes(encoded)
 
-        def int_field(number, value):
+        def int_field(number: int, value: int) -> bytes:
             return varint(number << 3) + varint(value)
 
-        def bytes_field(number, value):
-            return (
-                varint((number << 3) | 2)
-                + varint(len(value))
-                + value
-            )
+        def bytes_field(number: int, value: bytes) -> bytes:
+            return varint((number << 3) | 2) + varint(len(value)) + value
 
-        def step_metadata(epoch, output_tokens=None, summary=None, action=None):
+        def step_metadata(
+            epoch: float,
+            output_tokens: int | None = None,
+            summary: str | None = None,
+            action: str | None = None,
+        ) -> bytes:
             timestamp = int_field(1, int(epoch))
             metadata = bytes_field(1, timestamp)
             if output_tokens is not None:
@@ -271,8 +270,7 @@ class CargentoServerTest(unittest.TestCase):
                 (7, 15, 3, step_metadata(now - 10, output_tokens=400)),
             ]
             connection.executemany(
-                "INSERT INTO steps (idx, step_type, status, metadata) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO steps (idx, step_type, status, metadata) VALUES (?, ?, ?, ?)",
                 rows,
             )
             connection.commit()
@@ -284,25 +282,26 @@ class CargentoServerTest(unittest.TestCase):
                 f"appDataDir={root} cascadeManager=true\n"
                 "I0723 14:19:32.952541 server.go:917] Created conversation "
                 f"{session_id}\n"
-                'I0723 14:47:19.285802 input_loop.go:34] HandleUserInput '
+                "I0723 14:47:19.285802 input_loop.go:34] HandleUserInput "
                 'called with text: "show my assigned issues"\n'
                 "I0723 14:47:19.285967 conversation_manager.go:499] "
                 f"Forwarding user message to conversation {session_id} "
                 "(items=1, media=0)\n"
             )
 
-            with mock.patch.object(
-                dashboard, "GEMINI_TMP", str(legacy)
-            ), mock.patch.object(
-                dashboard,
-                "ANTIGRAVITY_CONVERSATIONS_DIR",
-                str(conversations),
-            ), mock.patch.object(
-                dashboard, "ANTIGRAVITY_LOG_DIR", str(logs)
-            ), mock.patch.object(
-                dashboard,
-                "ANTIGRAVITY_LAST_CONVERSATIONS",
-                str(root / "cache" / "last_conversations.json"),
+            with (
+                mock.patch.object(dashboard, "GEMINI_TMP", str(legacy)),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_CONVERSATIONS_DIR",
+                    str(conversations),
+                ),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(logs)),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(root / "cache" / "last_conversations.json"),
+                ),
             ):
                 sessions = dashboard.collect_gemini(now, 24, False)
 
@@ -311,16 +310,12 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual("Running project report", sessions[0]["state_detail"])
         self.assertEqual("1m", sessions[0]["turn"]["elapsed_h"])
 
-    def test_notify_endpoint_accepts_valid_non_object_and_deep_json(self):
-        httpd = dashboard.ThreadingHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler
-        )
+    def test_notify_endpoint_accepts_valid_non_object_and_deep_json(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         bodies = [
-            json.dumps(
-                {"session_id": "12345678", "message": "before\u0000after"}
-            ).encode(),
+            json.dumps({"session_id": "12345678", "message": "before\u0000after"}).encode(),
             b"[1,2,3]",
             b"null",
             b'"text"',
@@ -329,9 +324,7 @@ class CargentoServerTest(unittest.TestCase):
         try:
             with mock.patch.object(dashboard, "notify_mac") as notify:
                 for body in bodies:
-                    conn = http.client.HTTPConnection(
-                        "127.0.0.1", httpd.server_port, timeout=2
-                    )
+                    conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
                     conn.request(
                         "POST",
                         "/api/notify",
@@ -348,19 +341,13 @@ class CargentoServerTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
-    def test_cross_site_fetch_metadata_is_rejected(self):
-        httpd = dashboard.ThreadingHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler
-        )
+    def test_cross_site_fetch_metadata_is_rejected(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
-            conn = http.client.HTTPConnection(
-                "127.0.0.1", httpd.server_port, timeout=2
-            )
-            conn.request(
-                "GET", "/api/data", headers={"Sec-Fetch-Site": "cross-site"}
-            )
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
+            conn.request("GET", "/api/data", headers={"Sec-Fetch-Site": "cross-site"})
             response = conn.getresponse()
             self.assertEqual(403, response.status)
             response.read()
@@ -370,14 +357,12 @@ class CargentoServerTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
-    def test_popup_caches_are_bounded_and_globally_rate_limited(self):
-        with mock.patch.object(
-            dashboard, "MAX_CACHE_ENTRIES", 2
-        ), mock.patch.object(
-            dashboard.time, "time", side_effect=[100.0, 101.0, 106.0]
-        ), mock.patch.object(
-            dashboard, "notify_mac"
-        ) as notify:
+    def test_popup_caches_are_bounded_and_globally_rate_limited(self) -> None:
+        with (
+            mock.patch.object(dashboard, "MAX_CACHE_ENTRIES", 2),
+            mock.patch.object(dashboard.time, "time", side_effect=[100.0, 101.0, 106.0]),
+            mock.patch.object(dashboard, "notify_mac") as notify,
+        ):
             dashboard.maybe_popup("session1", "needs_input", "one")
             dashboard.maybe_popup("session2", "needs_input", "two")
             dashboard.maybe_popup("session3", "needs_input", "three")
@@ -386,12 +371,12 @@ class CargentoServerTest(unittest.TestCase):
         self.assertLessEqual(len(dashboard._last_state), 2)
         self.assertLessEqual(len(dashboard._last_popup), 2)
 
-    def test_metadata_cache_is_safe_under_concurrent_reads(self):
+    def test_metadata_cache_is_safe_under_concurrent_reads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "meta.jsonl"
             path.write_text(json.dumps({"value": "ok"}) + "\n")
 
-            def read():
+            def read() -> Any:
                 return dashboard.first_line_meta(
                     str(path), lambda value: {"value": value.get("value")}
                 )
@@ -402,17 +387,15 @@ class CargentoServerTest(unittest.TestCase):
         self.assertTrue(all(result == {"value": "ok"} for result in results))
         self.assertEqual(1, len(dashboard._meta_cache))
 
-    def test_goose_tool_response_is_not_a_user_prompt(self):
+    def test_goose_tool_response_is_not_a_user_prompt(self) -> None:
         self.assertFalse(
             dashboard.goose_user_prompt(
                 [{"type": "toolResponse", "toolResult": {"status": "success"}}]
             )
         )
-        self.assertTrue(
-            dashboard.goose_user_prompt([{"type": "text", "text": "hello"}])
-        )
+        self.assertTrue(dashboard.goose_user_prompt([{"type": "text", "text": "hello"}]))
 
-    def test_new_transcript_event_clears_hook_notification(self):
+    def test_new_transcript_event_clears_hook_notification(self) -> None:
         with dashboard._lock:
             dashboard._hook_notifs["12345678"] = {
                 "ts": 100.0,
@@ -423,11 +406,9 @@ class CargentoServerTest(unittest.TestCase):
         self.assertIsNone(dashboard.current_hook("12345678", 102.0))
         self.assertNotIn("12345678", dashboard._hook_notifs)
 
-    def test_transcript_mtime_alone_does_not_clear_newer_hook(self):
+    def test_transcript_mtime_alone_does_not_clear_newer_hook(self) -> None:
         now = dashboard.time.time()
-        event_time = dashboard.datetime.fromtimestamp(
-            now - 10, dashboard.timezone.utc
-        ).isoformat()
+        event_time = dashboard.datetime.fromtimestamp(now - 10, dashboard.timezone.utc).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
             tasks = Path(tmp) / "tasks"
@@ -451,15 +432,16 @@ class CargentoServerTest(unittest.TestCase):
                     "message": "permission",
                 }
 
-            with mock.patch.object(
-                dashboard, "PROJECTS_DIR", str(projects)
-            ), mock.patch.object(dashboard, "TASKS_DIR", str(tasks)):
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
+            ):
                 sessions = dashboard.collect_claude(now, 24, False)
 
         self.assertEqual("needs_input", sessions[0]["state"])
         self.assertIn("12345678", dashboard._hook_notifs)
 
-    def test_legacy_claude_agent_files_are_not_top_level_sessions(self):
+    def test_legacy_claude_agent_files_are_not_top_level_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
             tasks = Path(tmp) / "tasks"
@@ -469,22 +451,20 @@ class CargentoServerTest(unittest.TestCase):
             (project / "agent-abcd.jsonl").write_text("{}\n")
             (project / "12345678-session.jsonl").write_text("{}\n")
 
-            with mock.patch.object(
-                dashboard, "PROJECTS_DIR", str(projects)
-            ), mock.patch.object(dashboard, "TASKS_DIR", str(tasks)):
-                sessions = dashboard.collect_claude(
-                    dashboard.time.time(), 24, True
-                )
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
+            ):
+                sessions = dashboard.collect_claude(dashboard.time.time(), 24, True)
 
         self.assertEqual(["12345678"], [session["session"] for session in sessions])
 
-    def test_codex_subagent_usage_is_added_after_own_start_boundary(self):
+    def test_codex_subagent_usage_is_added_after_own_start_boundary(self) -> None:
         now = dashboard.time.time()
 
-        def timestamp(offset):
-            return dashboard.datetime.fromtimestamp(
-                now + offset, dashboard.timezone.utc
-            ).isoformat()
+        def timestamp(offset: float) -> str:
+            iso = dashboard.datetime.fromtimestamp(now + offset, dashboard.timezone.utc).isoformat()
+            return str(iso)
 
         parent_id = "11111111-1111-1111-1111-111111111111"
         child_id = "22222222-2222-2222-2222-222222222222"
@@ -498,23 +478,17 @@ class CargentoServerTest(unittest.TestCase):
                 "id": child_id,
                 "thread_source": "subagent",
                 "agent_nickname": "worker",
-                "source": {
-                    "subagent": {
-                        "thread_spawn": {"parent_thread_id": parent_id}
-                    }
-                },
+                "source": {"subagent": {"thread_spawn": {"parent_thread_id": parent_id}}},
             },
         }
 
-        def token_record(offset, output_tokens):
+        def token_record(offset: float, output_tokens: int) -> dict[str, Any]:
             return {
                 "type": "event_msg",
                 "timestamp": timestamp(offset),
                 "payload": {
                     "type": "token_count",
-                    "info": {
-                        "last_token_usage": {"output_tokens": output_tokens}
-                    },
+                    "info": {"last_token_usage": {"output_tokens": output_tokens}},
                 },
             }
 
@@ -524,10 +498,7 @@ class CargentoServerTest(unittest.TestCase):
             parent = day / "rollout-parent.jsonl"
             child = day / "rollout-child.jsonl"
             parent.write_text(
-                "\n".join(
-                    json.dumps(record)
-                    for record in [parent_meta, token_record(-10, 100)]
-                )
+                "\n".join(json.dumps(record) for record in [parent_meta, token_record(-10, 100)])
                 + "\n"
             )
             child.write_text(
@@ -550,16 +521,14 @@ class CargentoServerTest(unittest.TestCase):
                 + "\n"
             )
 
-            with mock.patch.object(
-                dashboard, "CODEX_SESSIONS_DIR", str(Path(tmp))
-            ):
+            with mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(Path(tmp))):
                 sessions = dashboard.collect_codex(now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(100, sessions[0]["rate_per_min"])
         self.assertEqual(["worker"], sessions[0]["subagents"])
 
-    def test_large_transcript_recovers_turn_start_before_bounded_tail(self):
+    def test_large_transcript_recovers_turn_start_before_bounded_tail(self) -> None:
         prompt_time = "2026-01-01T00:00:00Z"
         prompt = {
             "type": "user",
@@ -576,16 +545,13 @@ class CargentoServerTest(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "large.jsonl"
-            path.write_text(
-                "\n".join(json.dumps(record) for record in [prompt] + events)
-                + "\n"
-            )
+            path.write_text("\n".join(json.dumps(record) for record in [prompt, *events]) + "\n")
             with mock.patch.object(dashboard, "TURN_SCAN_MAX_BYTES", 200):
                 turns = dashboard.scan_turns(str(path), "claude")
 
         self.assertEqual(dashboard.parse_ts(prompt_time), turns["turn_start"])
 
-    def test_large_append_recovers_new_turn_start_from_skipped_delta(self):
+    def test_large_append_recovers_new_turn_start_from_skipped_delta(self) -> None:
         first_time = "2026-01-01T00:00:00Z"
         second_time = "2026-01-01T00:01:00Z"
         first_prompt = {
@@ -610,9 +576,7 @@ class CargentoServerTest(unittest.TestCase):
                             json.dumps(
                                 {
                                     "type": "assistant",
-                                    "timestamp": (
-                                        f"2026-01-01T00:01:{second:02d}Z"
-                                    ),
+                                    "timestamp": (f"2026-01-01T00:01:{second:02d}Z"),
                                     "message": {"content": "x" * 40},
                                 }
                             )
@@ -622,11 +586,11 @@ class CargentoServerTest(unittest.TestCase):
 
         self.assertEqual(dashboard.parse_ts(second_time), turns["turn_start"])
 
-    def test_collect_json_single_flights_concurrent_cold_requests(self):
-        calls = []
+    def test_collect_json_single_flights_concurrent_cold_requests(self) -> None:
+        calls: list[tuple[float, bool]] = []
         calls_lock = threading.Lock()
 
-        def fake_collect(window_hours, show_all):
+        def fake_collect(window_hours: float, show_all: bool) -> dict[str, Any]:
             with calls_lock:
                 calls.append((window_hours, show_all))
             dashboard.time.sleep(0.02)
@@ -634,9 +598,7 @@ class CargentoServerTest(unittest.TestCase):
 
         with mock.patch.object(dashboard, "collect", fake_collect):
             with ThreadPoolExecutor(max_workers=12) as pool:
-                bodies = list(
-                    pool.map(lambda _: dashboard.collect_json(24, False), range(24))
-                )
+                bodies = list(pool.map(lambda _: dashboard.collect_json(24, False), range(24)))
             alternate = dashboard.collect_json(24, True)
 
         self.assertEqual(1, calls.count((24, False)))
@@ -645,22 +607,21 @@ class CargentoServerTest(unittest.TestCase):
         self.assertNotEqual(bodies[0], alternate)
         self.assertEqual(2, len(dashboard._collect_memo))
 
-    def test_collector_failure_is_exposed_in_harness_status(self):
-        def fail(*_args):
+    def test_collector_failure_is_exposed_in_harness_status(self) -> None:
+        def fail(*_args: object) -> list[dict[str, Any]]:
             raise RuntimeError("broken store")
 
         harnesses = [("test", "Test", lambda: True, fail)]
-        with mock.patch.object(
-            dashboard, "HARNESSES", harnesses
-        ), contextlib.redirect_stdout(io.StringIO()):
+        with (
+            mock.patch.object(dashboard, "HARNESSES", harnesses),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
             result = dashboard.collect(24, False)
 
         self.assertTrue(result["harnesses"][0]["discovered"])
-        self.assertEqual(
-            "RuntimeError: broken store", result["harnesses"][0]["error"]
-        )
+        self.assertEqual("RuntimeError: broken store", result["harnesses"][0]["error"])
 
-    def test_page_marks_repeated_refresh_failures_as_stalled(self):
+    def test_page_marks_repeated_refresh_failures_as_stalled(self) -> None:
         self.assertIn('id="live-status"', dashboard.PAGE)
         self.assertIn("window.__refreshFailures < 2", dashboard.PAGE)
         self.assertIn("stalled · last update", dashboard.PAGE)
@@ -668,13 +629,13 @@ class CargentoServerTest(unittest.TestCase):
         self.assertIn("latestSettledRefresh", dashboard.PAGE)
         self.assertIn("sequence < latestSettledRefresh", dashboard.PAGE)
 
-    def test_output_rate_rows_use_hoverable_harness_badges(self):
+    def test_output_rate_rows_use_hoverable_harness_badges(self) -> None:
         self.assertIn(
             '<span class="rrow-badge">${badge(r.key, true)}</span>',
             dashboard.PAGE,
         )
 
-    def test_page_ships_trailing_rate_sparklines(self):
+    def test_page_ships_trailing_rate_sparklines(self) -> None:
         # Overall + per-session trailing sparklines: client-side ring buffers
         # over a 5-minute window, rendered as SVG in the rate tile and cards.
         self.assertIn("SPARK_WINDOW_SEC = 300", dashboard.PAGE)
@@ -688,9 +649,9 @@ class CargentoServerTest(unittest.TestCase):
         self.assertIn("recordRates(data)", dashboard.PAGE)
         self.assertIn("arr.shift()", dashboard.PAGE)
 
-    def test_base_session_exposes_full_sid_and_truncated_display_id(self):
+    def test_base_session_exposes_full_sid_and_truncated_display_id(self) -> None:
         s = dashboard.base_session("gemini", "session-abcdef123", "proj")
-        self.assertEqual("session-", s["session"])   # display stays 8 chars
+        self.assertEqual("session-", s["session"])  # display stays 8 chars
         self.assertEqual("session-abcdef123", s["sid"])  # identity stays full
 
     # Functional DOM/window stubs for executing the page script under node:
@@ -700,6 +661,11 @@ class CargentoServerTest(unittest.TestCase):
 const __listeners = {};
 const __els = {};
 const __fire = (type, ev) => (__listeners[type] || []).forEach(f => f(ev));
+// Deterministic viewer clock: sparkline points are stamped with Date.now()
+// at receipt, so tests pin it and advance it explicitly via __setNow.
+let __nowSec = 1000;
+const __setNow = s => { __nowSec = s; };
+Date.now = () => __nowSec * 1000;
 const location = {search: ""};
 const document = {
   addEventListener(type, fn){ (__listeners[type] = __listeners[type] || []).push(fn); },
@@ -716,19 +682,25 @@ const fetch = () => new Promise(() => {});
 const setInterval = () => 0;
 """
 
-    def _run_page_js(self, checks):
-        script = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE,
-                           re.S).group(1)
+    def _run_page_js(self, checks: str) -> Any:
+        match = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE, re.DOTALL)
+        assert match is not None
+        script = match.group(1)
         with tempfile.TemporaryDirectory() as tmp:
             js = Path(tmp) / "page_test.js"
             js.write_text(self.PAGE_JS_STUBS + script + checks)
-            proc = subprocess.run(["node", str(js)], capture_output=True,
-                                  text=True, timeout=30)
+            proc = subprocess.run(
+                [shutil.which("node") or "node", str(js)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
         self.assertEqual(0, proc.returncode, proc.stderr)
         return json.loads(proc.stdout.strip().splitlines()[-1])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_sparkline_buffers_behave_correctly(self):
+    def test_sparkline_buffers_behave_correctly(self) -> None:
         # Execute the page's actual JS (ring buffers + SVG generation) under
         # node with a minimal DOM stub, and assert on observable behavior.
         checks = """
@@ -751,10 +723,22 @@ const out = {};
   const b = sessRateHistory.get("gemini:session-bbbb");
   out.aliasing = {buffers: sessRateHistory.size,
                   a: a && a[0] && a[0].v, b: b && b[0] && b[0].v};
+  __setNow(1005);
   recordRates({generated: 1005, summary: {rate_per_min: 6}, sessions: [
     {harness:"gemini", session:"session-", sid:"session-aaaa", rate_per_min:6}]});
   const a2 = sessRateHistory.get("gemini:session-aaaa") || [];
   out.dropped = {buffers: sessRateHistory.size, aLen: a2.length};
+}
+{
+  // Points carry the VIEWER's clock: a skewed/lagging server `generated`
+  // must not shift timestamps, and a replayed `generated` records nothing.
+  __setNow(1010);
+  recordRates({generated: 999111, summary: {rate_per_min: 3}, sessions: []});
+  const last = rateHistory[rateHistory.length-1];
+  const lenBefore = rateHistory.length;
+  __setNow(1011);
+  recordRates({generated: 999111, summary: {rate_per_min: 4}, sessions: []});
+  out.clock = {t: last.t, v: last.v, replayDropped: rateHistory.length === lenBefore};
 }
 {
   const pts = [{t:900, v:0}, {t:950, v:50}, {t:1000, v:100}];
@@ -769,15 +753,15 @@ console.log(JSON.stringify(out));
 """
         out = self._run_page_js(checks)
         # 300s window over t=0..400 step 5 keeps t=100..400; duplicate dropped.
-        self.assertEqual(
-            {"len": 61, "first": 100, "last": 400, "lastV": 400}, out["pruned"])
+        self.assertEqual({"len": 61, "first": 100, "last": 400, "lastV": 400}, out["pruned"])
         self.assertEqual({"buffers": 2, "a": 5, "b": 9}, out["aliasing"])
         # Departed session-bbbb is pruned; session-aaaa accumulates.
         self.assertEqual({"buffers": 1, "aLen": 2}, out["dropped"])
-        self.assertEqual(
-            {"hasLine": True, "finite": True, "single": True}, out["svg"])
+        # Viewer-clock stamping: server said 999111, viewer clock said 1010.
+        self.assertEqual({"t": 1010, "v": 3, "replayDropped": True}, out["clock"])
+        self.assertEqual({"hasLine": True, "finite": True, "single": True}, out["svg"])
 
-    def test_long_turn_warning_uses_styled_tooltip_not_native_title(self):
+    def test_long_turn_warning_uses_styled_tooltip_not_native_title(self) -> None:
         # The (!) icon must use the app's styled tooltip (fast, themed), not
         # the native title attribute (multi-second hover delay).
         self.assertNotIn('class="lwarn" title=', dashboard.PAGE)
@@ -786,7 +770,7 @@ console.log(JSON.stringify(out));
         self.assertIn(".lwarn:hover .ltip", dashboard.PAGE)
         self.assertIn("transition-delay:.2s", dashboard.PAGE)
 
-    def test_page_restores_sparkline_hover_and_focus_after_render(self):
+    def test_page_restores_sparkline_hover_and_focus_after_render(self) -> None:
         # render() replaces #app's innerHTML every poll; the hover crosshair
         # and keyboard focus on the rate sparkline must be restored after.
         self.assertIn("sparkPointer", dashboard.PAGE)
@@ -795,7 +779,7 @@ console.log(JSON.stringify(out));
         self.assertIn("preventScroll", dashboard.PAGE)
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_sparkline_hover_lifecycle_across_renders_and_window_exit(self):
+    def test_sparkline_hover_lifecycle_across_renders_and_window_exit(self) -> None:
         # Behavioral coverage for the interaction layer: hover shows on
         # pointermove, survives a full render() DOM swap, is CLEARED when the
         # pointer leaves the window (no in-document pointermove fires), stays
@@ -837,19 +821,24 @@ out.focusRestored = document.activeElement === wrap && tip.style.opacity == 1;
 console.log(JSON.stringify(out));
 """
         out = self._run_page_js(checks)
-        self.assertEqual({"hoverShown": True, "restoredAfterRender": True,
-                          "clearedOnExit": True,
-                          "staysHiddenAfterRender": True,
-                          "focusRestored": True}, out)
+        self.assertEqual(
+            {
+                "hoverShown": True,
+                "restoredAfterRender": True,
+                "clearedOnExit": True,
+                "staysHiddenAfterRender": True,
+                "focusRestored": True,
+            },
+            out,
+        )
 
-    def test_load_tasks_coerces_malformed_field_types(self):
+    def test_load_tasks_coerces_malformed_field_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "12345678-abcd-ef00-1234-567890abcdef"
             root.mkdir(parents=True)
-            (root / "1.json").write_text(json.dumps(
-                {"id": "1", "subject": {"nested": True}, "activeForm": 42,
-                 "status": 7}
-            ))
+            (root / "1.json").write_text(
+                json.dumps({"id": "1", "subject": {"nested": True}, "activeForm": 42, "status": 7})
+            )
             (root / "2.json").write_text(json.dumps(["not", "a", "task"]))
 
             with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
@@ -862,11 +851,9 @@ console.log(JSON.stringify(out));
         self.assertEqual("", task["activeForm"])
         self.assertEqual("pending", task["status"])
         # The concatenation that previously raised TypeError must work.
-        self.assertEqual(
-            "(untitled)…", (task["activeForm"] or task["subject"]) + "…"
-        )
+        self.assertEqual("(untitled)…", (task["activeForm"] or task["subject"]) + "…")
 
-    def test_read_tail_keeps_first_record_when_window_starts_on_boundary(self):
+    def test_read_tail_keeps_first_record_when_window_starts_on_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "t.jsonl"
             path.write_bytes(b"aaaa\nbbbb\ncccc\n")  # 15 bytes
@@ -882,7 +869,7 @@ console.log(JSON.stringify(out));
         self.assertEqual(["bbbb", "cccc", ""], aligned)
         self.assertEqual(["cccc", ""], misaligned)
 
-    def test_opencode_show_all_returns_every_session(self):
+    def test_opencode_show_all_returns_every_session(self) -> None:
         now = dashboard.time.time()
         stale = int((now - 48 * 3600) * 1000)  # outside the 24h window
         with tempfile.TemporaryDirectory() as tmp:
@@ -906,7 +893,7 @@ console.log(JSON.stringify(out));
         self.assertEqual(250, len(everything))  # previously capped at 200
         self.assertEqual(0, len(windowed))
 
-    def test_antigravity_activity_sees_uncheckpointed_wal_frames(self):
+    def test_antigravity_activity_sees_uncheckpointed_wal_frames(self) -> None:
         now = dashboard.time.time()
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "live.db"
@@ -918,8 +905,8 @@ console.log(JSON.stringify(out));
             )
             writer.commit()
 
-            def step_metadata(epoch, output_tokens):
-                def varint(value):
+            def step_metadata(epoch: float, output_tokens: int) -> bytes:
+                def varint(value: int) -> bytes:
                     encoded = bytearray()
                     while value > 0x7F:
                         encoded.append((value & 0x7F) | 0x80)
@@ -946,15 +933,24 @@ console.log(JSON.stringify(out));
         # An immutable=1-only reader misses these frames (rate stays 0).
         self.assertEqual(50, activity["rate_per_min"])
 
-    def test_codex_meta_tolerates_malformed_payload_types(self):
+    def test_codex_meta_tolerates_malformed_payload_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             non_dict = Path(tmp) / "rollout-a.jsonl"
             non_dict.write_text('{"payload":42}\n')
             bad_fields = Path(tmp) / "rollout-b.jsonl"
-            bad_fields.write_text(json.dumps(
-                {"payload": {"id": "s1", "agent_nickname": 7, "agent_path": 42,
-                             "source": "not-a-dict"}}
-            ) + "\n")
+            bad_fields.write_text(
+                json.dumps(
+                    {
+                        "payload": {
+                            "id": "s1",
+                            "agent_nickname": 7,
+                            "agent_path": 42,
+                            "source": "not-a-dict",
+                        }
+                    }
+                )
+                + "\n"
+            )
 
             meta_a = dashboard.codex_meta(str(non_dict))
             meta_b = dashboard.codex_meta(str(bad_fields))
@@ -965,7 +961,7 @@ console.log(JSON.stringify(out));
         self.assertIsNone(meta_b["agent_label"])
         self.assertIsNone(meta_b["parent_session_id"])
 
-    def test_claude_subagents_tolerate_malformed_meta(self):
+    def test_claude_subagents_tolerate_malformed_meta(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             sess = Path(tmp) / "abc.jsonl"
             sess.write_text("{}\n")
@@ -976,30 +972,45 @@ console.log(JSON.stringify(out));
             (sub / "agent-2.jsonl").write_text("{}\n")
             (sub / "agent-2.meta.json").write_text("42")  # non-dict meta
 
-            agents = dashboard.load_claude_subagents(
-                str(sess), dashboard.time.time()
-            )
+            agents = dashboard.load_claude_subagents(str(sess), dashboard.time.time())
 
         # Both agents survive with the fallback label instead of TypeError.
-        self.assertEqual(["subagent", "subagent"],
-                         [a["label"] for a in agents])
+        self.assertEqual(["subagent", "subagent"], [a["label"] for a in agents])
 
-    def test_copilot_sessions_are_discovered_and_analyzed(self):
+    def test_copilot_sessions_are_discovered_and_analyzed(self) -> None:
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(
-            now - 5, dashboard.timezone.utc
-        ).isoformat()
+        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.timezone.utc).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             events = Path(tmp) / "session-state" / "11112222-aaaa" / "events.jsonl"
             events.parent.mkdir(parents=True)
-            events.write_text("\n".join([
-                json.dumps({"type": "session.start", "timestamp": iso,
-                            "data": {"context": {"cwd": "/w/myproj"}}}),
-                json.dumps({"type": "user.message", "timestamp": iso,
-                            "data": {"text": "fix the login bug"}}),
-                json.dumps({"type": "subagent.started", "timestamp": iso,
-                            "data": {"id": "a1", "name": "researcher"}}),
-            ]) + "\n")
+            events.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session.start",
+                                "timestamp": iso,
+                                "data": {"context": {"cwd": "/w/myproj"}},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "user.message",
+                                "timestamp": iso,
+                                "data": {"text": "fix the login bug"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "subagent.started",
+                                "timestamp": iso,
+                                "data": {"id": "a1", "name": "researcher"},
+                            }
+                        ),
+                    ]
+                )
+                + "\n"
+            )
 
             with mock.patch.object(dashboard, "COPILOT_DIR", str(tmp)):
                 sessions = dashboard.collect_copilot(now, 24, False)
@@ -1011,7 +1022,7 @@ console.log(JSON.stringify(out));
         self.assertEqual("fix the login bug", s["last_prompt"])
         self.assertEqual(["researcher"], s["subagents"])
 
-    def test_cursor_sessions_discovered_with_title(self):
+    def test_cursor_sessions_discovered_with_title(self) -> None:
         now = dashboard.time.time()
         with tempfile.TemporaryDirectory() as tmp:
             chat = Path(tmp) / "ws1" / "33334444-bbbb"
@@ -1030,11 +1041,11 @@ console.log(JSON.stringify(out));
         self.assertEqual("working", sessions[0]["state"])
         self.assertEqual("My Refactor Chat", sessions[0]["title"])
 
-    def test_goose_sessions_from_shared_db(self):
+    def test_goose_sessions_from_shared_db(self) -> None:
         now = dashboard.time.time()
-        stamp = dashboard.datetime.fromtimestamp(
-            now - 10, dashboard.timezone.utc
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        stamp = dashboard.datetime.fromtimestamp(now - 10, dashboard.timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "sessions.db"
             con = sqlite3.connect(db)
@@ -1043,12 +1054,15 @@ console.log(JSON.stringify(out));
                 " working_dir TEXT, updated_at TEXT, session_type TEXT,"
                 " parent_session_id TEXT, archived_at TEXT)"
             )
-            con.executemany("INSERT INTO sessions VALUES (?,?,?,?,?,?,?)", [
-                ("g1", "Fix flaky tests", "/w/gooseproj", stamp, None, None, None),
-                ("g2", "helper", "/w", stamp, "subagent", "g1", None),
-                ("g3", "infra", "/w", stamp, "terminal", None, None),
-                ("g4", "old", "/w", stamp, None, None, stamp),  # archived
-            ])
+            con.executemany(
+                "INSERT INTO sessions VALUES (?,?,?,?,?,?,?)",
+                [
+                    ("g1", "Fix flaky tests", "/w/gooseproj", stamp, None, None, None),
+                    ("g2", "helper", "/w", stamp, "subagent", "g1", None),
+                    ("g3", "infra", "/w", stamp, "terminal", None, None),
+                    ("g4", "old", "/w", stamp, None, None, stamp),  # archived
+                ],
+            )
             con.execute(
                 "CREATE TABLE messages (session_id TEXT, role TEXT,"
                 " created_timestamp INTEGER, content_json TEXT)"
@@ -1061,9 +1075,7 @@ console.log(JSON.stringify(out));
                 "CREATE TABLE usage_ledger (session_id TEXT,"
                 " created_timestamp INTEGER, output_tokens INTEGER)"
             )
-            con.execute(
-                "INSERT INTO usage_ledger VALUES ('g1', ?, 1000)", (int(now - 60),)
-            )
+            con.execute("INSERT INTO usage_ledger VALUES ('g1', ?, 1000)", (int(now - 60),))
             con.commit()
             con.close()
 
@@ -1079,21 +1091,37 @@ console.log(JSON.stringify(out));
         self.assertEqual(["helper"], s["subagents"])
         self.assertEqual(100, s["rate_per_min"])  # 1000 tokens / 10 min window
 
-    def test_droid_sessions_from_project_transcripts(self):
+    def test_droid_sessions_from_project_transcripts(self) -> None:
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(
-            now - 5, dashboard.timezone.utc
-        ).isoformat()
+        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.timezone.utc).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             fp = Path(tmp) / "proj-x" / "d1d2d3d4.jsonl"
             fp.parent.mkdir(parents=True)
-            fp.write_text("\n".join([
-                json.dumps({"type": "session_start", "id": "d1d2d3d4",
-                            "sessionTitle": "Ship feature", "cwd": "/w/droidproj"}),
-                json.dumps({"type": "message", "timestamp": iso,
-                            "message": {"role": "user", "content":
-                                        [{"type": "text", "text": "ship it"}]}}),
-            ]) + "\n")
+            fp.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_start",
+                                "id": "d1d2d3d4",
+                                "sessionTitle": "Ship feature",
+                                "cwd": "/w/droidproj",
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "message",
+                                "timestamp": iso,
+                                "message": {
+                                    "role": "user",
+                                    "content": [{"type": "text", "text": "ship it"}],
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n"
+            )
 
             with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
                 sessions = dashboard.collect_droid(now, 24, False)

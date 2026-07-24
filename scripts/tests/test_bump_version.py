@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Tests for the release version-bump script."""
 
 from __future__ import annotations
@@ -8,46 +7,59 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import bump_version  # noqa: E402
+import bump_version
 
 
 def make_repo(root: Path, version: str = "0.1.0", drift: str | None = None) -> None:
     (root / ".claude-plugin").mkdir(parents=True)
     (root / "cargento/.claude-plugin").mkdir(parents=True)
     (root / "cargento/.codex-plugin").mkdir(parents=True)
-    (root / ".claude-plugin/marketplace.json").write_text(json.dumps({
-        "name": "cargento-marketplace",
-        "metadata": {"description": "d", "version": version},
-        "plugins": [{"name": "cargento", "source": "./cargento", "version": version}],
-    }, indent=2) + "\n")
-    for rel in ("cargento/.claude-plugin/plugin.json",
-                "cargento/.codex-plugin/plugin.json",
-                "cargento/gemini-extension.json"):
+    (root / ".claude-plugin/marketplace.json").write_text(
+        json.dumps(
+            {
+                "name": "cargento-marketplace",
+                "metadata": {"description": "d", "version": version},
+                "plugins": [{"name": "cargento", "source": "./cargento", "version": version}],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    for rel in (
+        "cargento/.claude-plugin/plugin.json",
+        "cargento/.codex-plugin/plugin.json",
+        "cargento/gemini-extension.json",
+    ):
         v = drift if drift and rel.endswith("gemini-extension.json") else version
-        (root / rel).write_text(json.dumps(
-            {"name": "cargento", "version": v, "description": "d"}, indent=2
-        ) + "\n")
+        (root / rel).write_text(
+            json.dumps({"name": "cargento", "version": v, "description": "d"}, indent=2) + "\n"
+        )
 
 
 class BumpVersionTests(unittest.TestCase):
-    def with_repo(self, **kwargs) -> Path:
+    def with_repo(self, **kwargs: Any) -> Path:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name)
         make_repo(root, **kwargs)
-        patches = [
+        patches: list[Any] = [
             mock.patch.object(bump_version, "ROOT", root),
             mock.patch.object(
                 bump_version, "MARKETPLACE", root / ".claude-plugin/marketplace.json"
             ),
-            mock.patch.object(bump_version, "MANIFESTS", (
-                root / "cargento/.claude-plugin/plugin.json",
-                root / "cargento/.codex-plugin/plugin.json",
-                root / "cargento/gemini-extension.json",
-            )),
+            mock.patch.object(
+                bump_version,
+                "MANIFESTS",
+                (
+                    root / "cargento/.claude-plugin/plugin.json",
+                    root / "cargento/.codex-plugin/plugin.json",
+                    root / "cargento/gemini-extension.json",
+                ),
+            ),
         ]
         for p in patches:
             p.start()
@@ -62,9 +74,11 @@ class BumpVersionTests(unittest.TestCase):
         marketplace = json.loads((root / ".claude-plugin/marketplace.json").read_text())
         self.assertEqual("0.2.0", marketplace["metadata"]["version"])
         self.assertEqual("0.2.0", marketplace["plugins"][0]["version"])
-        for rel in ("cargento/.claude-plugin/plugin.json",
-                    "cargento/.codex-plugin/plugin.json",
-                    "cargento/gemini-extension.json"):
+        for rel in (
+            "cargento/.claude-plugin/plugin.json",
+            "cargento/.codex-plugin/plugin.json",
+            "cargento/gemini-extension.json",
+        ):
             self.assertEqual("0.2.0", json.loads((root / rel).read_text())["version"])
         self.assertEqual("0.2.0", bump_version.current_version())
 

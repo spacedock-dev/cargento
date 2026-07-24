@@ -13,7 +13,10 @@ Waiting-on-you detection (Claude only):
   INPUT for that session, popup fired (covers permission prompts / idle)
 """
 
+from __future__ import annotations
+
 import argparse
+import contextlib
 import glob
 import hashlib
 import json
@@ -27,7 +30,11 @@ import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 HOME = os.path.expanduser("~")
 DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
@@ -38,9 +45,7 @@ PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
 CODEX_SESSIONS_DIR = os.path.join(HOME, ".codex", "sessions")
 GEMINI_TMP = os.path.join(HOME, ".gemini", "tmp")
 ANTIGRAVITY_CLI_DIR = os.path.join(HOME, ".gemini", "antigravity-cli")
-ANTIGRAVITY_CONVERSATIONS_DIR = os.path.join(
-    ANTIGRAVITY_CLI_DIR, "conversations"
-)
+ANTIGRAVITY_CONVERSATIONS_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "conversations")
 ANTIGRAVITY_LOG_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "log")
 ANTIGRAVITY_LAST_CONVERSATIONS = os.path.join(
     ANTIGRAVITY_CLI_DIR, "cache", "last_conversations.json"
@@ -67,13 +72,13 @@ HOME_PREFIX = HOME.replace("/", "-")
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 
 _lock = threading.Lock()
-_hook_notifs = {}  # session prefix -> {"ts": epoch, "message": str}
-_last_popup = {}  # session prefix -> epoch
-_last_state = {}  # session prefix -> state string (popup on transition)
+_hook_notifs: dict[str, dict[str, Any]] = {}  # session prefix -> {"ts": epoch, "message": str}
+_last_popup: dict[str, float] = {}  # session prefix -> epoch
+_last_state: dict[str, str] = {}  # session prefix -> state string (popup on transition)
 _cache_lock = threading.Lock()
 
 
-def bounded_put(cache, key, value):
+def bounded_put(cache: dict[Any, Any], key: Any, value: Any) -> None:
     """Set a bounded insertion-ordered cache entry.
 
     Callers must hold the lock that protects ``cache``.
@@ -83,27 +88,26 @@ def bounded_put(cache, key, value):
     cache[key] = value
 
 
-def notification_text(value, limit):
+def notification_text(value: Any, limit: int) -> str:
     """Return argv-safe single-line notification text."""
     text = str(value or "").encode("utf-8", "replace").decode("utf-8")
     text = re.sub(r"[\x00-\x1f\x7f]+", " ", text)
     return text[:limit]
 
 
-def project_label(dirname):
-    if dirname.startswith(HOME_PREFIX):
-        dirname = dirname[len(HOME_PREFIX):]
+def project_label(dirname: str) -> str:
+    dirname = dirname.removeprefix(HOME_PREFIX)
     return dirname.lstrip("-") or "(home)"
 
 
-def parse_ts(ts):
+def parse_ts(ts: Any) -> float | None:
     try:
         return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
     except (ValueError, AttributeError):
         return None
 
 
-def parse_utc_sql(v):
+def parse_utc_sql(v: Any) -> float:
     """SQL TIMESTAMP text (e.g. goose datetime('now'): "YYYY-MM-DD HH:MM:SS",
     stored UTC without offset) -> epoch."""
     try:
@@ -115,14 +119,14 @@ def parse_utc_sql(v):
         return 0
 
 
-def norm_epoch(v):
+def norm_epoch(v: Any) -> float:
     """Numeric timestamp in unknown unit (s or ms) -> epoch seconds."""
     if not isinstance(v, (int, float)) or v <= 0:
         return 0
     return v / 1000 if v > 1e12 else v
 
 
-def fmt_duration(seconds):
+def fmt_duration(seconds: float | None) -> str:
     if seconds is None or seconds < 0:
         return "–"
     seconds = int(seconds)
@@ -135,7 +139,7 @@ def fmt_duration(seconds):
     return f"{seconds // 86400}d {(seconds % 86400) // 3600}h"
 
 
-def read_tail(path):
+def read_tail(path: str) -> list[str]:
     try:
         size = os.path.getsize(path)
         with open(path, "rb") as f:
@@ -155,7 +159,7 @@ def read_tail(path):
     return lines
 
 
-def extract_text(v, depth=0):
+def extract_text(v: Any, depth: int = 0) -> str:
     """Best-effort text from harness message payloads whose exact shape
     varies (string, list of parts, nested dicts)."""
     if depth > 4 or v is None:
@@ -174,17 +178,17 @@ def extract_text(v, depth=0):
     return ""
 
 
-def alnum(s):
+def alnum(s: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
 
 
 # ---------------------------------------------------------------------------
 # First-line metadata cache (JSONL harnesses write immutable line-1 metadata)
 
-_meta_cache = {}  # path -> parsed metadata dict
+_meta_cache: dict[str, dict[str, Any]] = {}  # path -> parsed metadata dict
 
 
-def first_line_meta(path, parse):
+def first_line_meta(path: str, parse: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     """parse(first-line JSON dict) -> dict; cached per path. Not cached on
     read/parse failure so a partially written first line retries later."""
     with _cache_lock:
@@ -205,10 +209,11 @@ def first_line_meta(path, parse):
         return m
 
 
-def codex_meta(path):
+def codex_meta(path: str) -> dict[str, Any]:
     """Codex rollout line 1 (session_meta): identity, cwd, and whether the
     file is a subagent thread (thread_source == "subagent")."""
-    def parse(d):
+
+    def parse(d: dict[str, Any]) -> dict[str, Any]:
         # Every field is untyped JSON from disk — one malformed rollout must
         # not AttributeError the whole Codex collector.
         p = d.get("payload")
@@ -219,9 +224,14 @@ def codex_meta(path):
         spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else {}
         nickname = p.get("agent_nickname")
         agent_path = p.get("agent_path")
-        label = nickname if isinstance(nickname, str) and nickname else (
-            agent_path.rsplit("/", 1)[-1]
-            if isinstance(agent_path, str) and agent_path else None
+        label = (
+            nickname
+            if isinstance(nickname, str) and nickname
+            else (
+                agent_path.rsplit("/", 1)[-1]
+                if isinstance(agent_path, str) and agent_path
+                else None
+            )
         )
         return {
             "session_id": p.get("session_id") or p.get("id"),
@@ -232,35 +242,43 @@ def codex_meta(path):
             "subagent": p.get("thread_source") == "subagent",
             "agent_label": label or None,
         }
+
     return first_line_meta(path, parse)
 
 
-def gemini_meta(path):
+def gemini_meta(path: str) -> dict[str, Any]:
     """Gemini chat recording line 1: sessionId, kind (main|subagent),
     directories (cwd list)."""
-    def parse(d):
+
+    def parse(d: dict[str, Any]) -> dict[str, Any]:
         dirs = d.get("directories")
         return {
             "session_id": d.get("sessionId"),
             "kind": d.get("kind"),
             "cwd": dirs[0] if isinstance(dirs, list) and dirs else None,
         }
+
     return first_line_meta(path, parse)
 
 
-def copilot_meta(path):
+def copilot_meta(path: str) -> dict[str, Any]:
     """Copilot events.jsonl line 1 is normally session.start with
     data.context.cwd."""
-    def parse(d):
+
+    def parse(d: dict[str, Any]) -> dict[str, Any]:
         data = d.get("data") or {}
         ctx = data.get("context") or {}
-        return {"cwd": ctx.get("cwd") or data.get("cwd")} if d.get("type") == "session.start" else {}
+        return (
+            {"cwd": ctx.get("cwd") or data.get("cwd")} if d.get("type") == "session.start" else {}
+        )
+
     return first_line_meta(path, parse)
 
 
-def droid_meta(path):
+def droid_meta(path: str) -> dict[str, Any]:
     """Droid transcript line 1 (session_start): id, session title, cwd."""
-    def parse(d):
+
+    def parse(d: dict[str, Any]) -> dict[str, Any]:
         if d.get("type") != "session_start":
             return {}
         return {
@@ -268,6 +286,7 @@ def droid_meta(path):
             "title": d.get("sessionTitle") or d.get("title"),
             "cwd": d.get("cwd"),
         }
+
     return first_line_meta(path, parse)
 
 
@@ -275,9 +294,9 @@ def droid_meta(path):
 # Transcript analyzers (tail pass -> title, prompt, usage, activity)
 
 
-def analyze_transcript(path):
+def analyze_transcript(path: str) -> dict[str, Any]:
     """Claude Code transcript tail."""
-    info = {
+    info: dict[str, Any] = {
         "title": None,
         "last_prompt": None,
         "usage_events": [],  # (epoch, output_tokens)
@@ -285,7 +304,7 @@ def analyze_transcript(path):
         "last_tool": None,
         "last_event_ts": 0,
     }
-    pending = {}  # tool_use id -> {"name", "ts"} for INPUT_TOOLS only
+    pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts"} for INPUT_TOOLS only
     for line in read_tail(path):
         if not line or line[0] != "{":
             continue
@@ -320,10 +339,10 @@ def analyze_transcript(path):
     return info
 
 
-def analyze_codex_transcript(path):
+def analyze_codex_transcript(path: str) -> dict[str, Any]:
     """Codex rollout tail: user_message (prompt/title), token_count (usage),
     tool calls. Turn spans come from scan_turns; cwd/subagents from meta."""
-    info = {
+    info: dict[str, Any] = {
         "title": None,
         "last_prompt": None,
         "usage_events": [],
@@ -357,15 +376,15 @@ def analyze_codex_transcript(path):
     return info
 
 
-def record_fingerprint(record):
+def record_fingerprint(record: Any) -> bytes:
     """Stable bounded-size identity for repeated transcript records."""
-    raw = json.dumps(
-        record, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8", "replace")
+    raw = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8", "replace"
+    )
     return hashlib.blake2b(raw, digest_size=16).digest()
 
 
-def gemini_records(record):
+def gemini_records(record: Any) -> tuple[Any, ...]:
     """Expand a Gemini control record into its contained messages."""
     snapshot = record.get("$set")
     messages = snapshot.get("messages") if isinstance(snapshot, dict) else None
@@ -374,7 +393,7 @@ def gemini_records(record):
     return (record,)
 
 
-def incremental_gemini_records(record, state):
+def incremental_gemini_records(record: Any, state: dict[str, Any]) -> tuple[Any, ...]:
     """Return only messages added since the prior cumulative $set snapshot."""
     snapshot = record.get("$set")
     messages = snapshot.get("messages") if isinstance(snapshot, dict) else None
@@ -386,21 +405,18 @@ def incremental_gemini_records(record, state):
     if (
         previous_count
         and len(messages) >= previous_count
-        and record_fingerprint(messages[previous_count - 1])
-        == state["gemini_snapshot_tail"]
+        and record_fingerprint(messages[previous_count - 1]) == state["gemini_snapshot_tail"]
     ):
         start = previous_count
     state["gemini_snapshot_count"] = len(messages)
-    state["gemini_snapshot_tail"] = (
-        record_fingerprint(messages[-1]) if messages else None
-    )
+    state["gemini_snapshot_tail"] = record_fingerprint(messages[-1]) if messages else None
     return messages[start:]
 
 
-def analyze_gemini_transcript(path):
+def analyze_gemini_transcript(path: str) -> dict[str, Any]:
     """Gemini chats/*.jsonl tail: type 'user' | 'gemini' records with
     per-message tokens; resumed-session $set snapshots are expanded."""
-    info = {
+    info: dict[str, Any] = {
         "title": None,
         "last_prompt": None,
         "usage_events": [],
@@ -439,11 +455,11 @@ def analyze_gemini_transcript(path):
     return info
 
 
-def analyze_copilot_events(path):
+def analyze_copilot_events(path: str) -> dict[str, Any]:
     """Copilot events.jsonl tail: typed events with data payloads. Field
     names inside data are de-facto (not a stable API) — extracted
     defensively."""
-    info = {
+    info: dict[str, Any] = {
         "title": None,
         "last_prompt": None,
         "usage_events": [],
@@ -480,8 +496,13 @@ def analyze_copilot_events(path):
                 info["last_tool"] = str(name)
         elif t == "subagent.started":
             key = data.get("id") or data.get("subagentId") or d.get("id")
-            label = (data.get("name") or data.get("agentName") or data.get("agent")
-                     or data.get("agentType") or "subagent")
+            label = (
+                data.get("name")
+                or data.get("agentName")
+                or data.get("agent")
+                or data.get("agentType")
+                or "subagent"
+            )
             info["pending_agents"][key] = str(label)[:70]
         elif t == "subagent.completed":
             key = data.get("id") or data.get("subagentId") or d.get("id")
@@ -492,10 +513,10 @@ def analyze_copilot_events(path):
     return info
 
 
-def analyze_droid_transcript(path):
+def analyze_droid_transcript(path: str) -> dict[str, Any]:
     """Droid transcript tail: {type: "message", timestamp, message: {role,
     content: [Anthropic-style blocks]}}."""
-    info = {
+    info: dict[str, Any] = {
         "title": None,
         "last_prompt": None,
         "usage_events": [],
@@ -535,12 +556,12 @@ def analyze_droid_transcript(path):
 # Turn tracking
 
 
-_turn_scan = {}  # path -> incremental turn-tracking state
+_turn_scan: dict[str, Any] = {}  # path -> incremental turn-tracking state
 _scan_lock = threading.Lock()  # ThreadingHTTPServer: serialize scanner state
 TURN_SCAN_MAX_BYTES = 8 * 1024 * 1024  # cap per-call read of a transcript delta
 
 
-def _turn_signal(d, harness):
+def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
     """Classify a transcript record for turn tracking.
 
     Returns ("prompt"|"start"|"end", epoch_override|None) or None.
@@ -568,7 +589,8 @@ def _turn_signal(d, harness):
             return None
         content = d.get("content")
         if isinstance(content, list) and any(
-                isinstance(c, dict) and "functionResponse" in c for c in content):
+            isinstance(c, dict) and "functionResponse" in c for c in content
+        ):
             return None  # tool response recorded as a user part, not a prompt
         return ("prompt", None)
     if harness == "droid":
@@ -579,7 +601,8 @@ def _turn_signal(d, harness):
             return None
         content = msg.get("content")
         if isinstance(content, list) and any(
-                isinstance(c, dict) and c.get("type") == "tool_result" for c in content):
+            isinstance(c, dict) and c.get("type") == "tool_result" for c in content
+        ):
             return None
         return ("prompt", None)
     # claude
@@ -587,12 +610,13 @@ def _turn_signal(d, harness):
         return None
     content = (d.get("message") or {}).get("content")
     if isinstance(content, list) and any(
-            isinstance(c, dict) and c.get("type") == "tool_result" for c in content):
+        isinstance(c, dict) and c.get("type") == "tool_result" for c in content
+    ):
         return None
     return ("prompt", None)
 
 
-def _apply_turn_record(st, record, harness):
+def _apply_turn_record(st: dict[str, Any], record: Any, harness: str) -> None:
     """Apply one chronological transcript record to incremental turn state."""
     ep = parse_ts(record.get("timestamp") or "")
     if not ep:
@@ -605,8 +629,12 @@ def _apply_turn_record(st, record, harness):
                 st["durations"].append(ep - st["turn_start"])
             st["turn_start"] = None
         else:
-            if (kind == "prompt" and st["turn_start"] and st["prev_ts"]
-                    and st["prev_ts"] > st["turn_start"]):
+            if (
+                kind == "prompt"
+                and st["turn_start"]
+                and st["prev_ts"]
+                and st["prev_ts"] > st["turn_start"]
+            ):
                 st["durations"].append(st["prev_ts"] - st["turn_start"])
             start = norm_epoch(override) or ep
             st["turn_start"] = start
@@ -614,11 +642,11 @@ def _apply_turn_record(st, record, harness):
     st["prev_ts"] = ep
 
 
-def _latest_turn_context(path, end_pos, harness):
+def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any]:
     """Find the nearest turn boundary before ``end_pos`` without loading the
     prefix into memory. Used when the file is larger than the forward-read
     budget so a long current turn is not lost."""
-    context = {"turn_start": None, "last_start": None, "prev_ts": None}
+    context: dict[str, Any] = {"turn_start": None, "last_start": None, "prev_ts": None}
     if end_pos <= 0:
         return context
     try:
@@ -642,9 +670,7 @@ def _latest_turn_context(path, end_pos, harness):
                     except json.JSONDecodeError:
                         continue
                     records = (
-                        reversed(gemini_records(decoded))
-                        if harness == "gemini"
-                        else (decoded,)
+                        reversed(gemini_records(decoded)) if harness == "gemini" else (decoded,)
                     )
                     for record in records:
                         ep = parse_ts(record.get("timestamp") or "")
@@ -668,7 +694,7 @@ def _latest_turn_context(path, end_pos, harness):
         return context
 
 
-def scan_turns(path, harness):
+def scan_turns(path: str, harness: str) -> dict[str, Any] | None:
     """Whole-file turn tracker for JSONL harnesses. The transcript tail can
     be shorter than the current turn (long turns bury the prompt >TAIL_BYTES
     back), so turns are tracked incrementally: each call parses only bytes
@@ -718,11 +744,7 @@ def scan_turns(path, harness):
                 d = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            records = (
-                incremental_gemini_records(d, st)
-                if harness == "gemini"
-                else (d,)
-            )
+            records = incremental_gemini_records(d, st) if harness == "gemini" else (d,)
             for record in records:
                 if harness == "gemini":
                     fingerprint = record_fingerprint(record)
@@ -736,7 +758,7 @@ def scan_turns(path, harness):
         return st
 
 
-def turns_from_events(events):
+def turns_from_events(events: list[tuple[float, bool]]) -> dict[str, Any]:
     """Turn state from chronologically sorted (epoch, is_user_prompt) pairs —
     used by DB-backed harnesses where messages come from SQL, not a file."""
     turn_start = prev = None
@@ -752,7 +774,7 @@ def turns_from_events(events):
     return {"turn_start": turn_start, "durations": durations[-50:]}
 
 
-def turn_progress(scan, state, now):
+def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[str, Any] | None:
     """Naive current-turn ETA: estimated total = median of this session's
     past turns that lasted at least as long as the current one has so far."""
     if state != "working" or not scan or not scan.get("turn_start"):
@@ -780,9 +802,9 @@ def turn_progress(scan, state, now):
 # Claude task files + subagents
 
 
-def load_tasks():
+def load_tasks() -> dict[str, list[dict[str, Any]]]:
     """session prefix -> list of task dicts."""
-    by_session = {}
+    by_session: dict[str, list[dict[str, Any]]] = {}
     for fp in glob.glob(os.path.join(TASKS_DIR, "*", "*.json")):
         if os.path.basename(fp).startswith("."):
             continue
@@ -795,8 +817,7 @@ def load_tasks():
         if not isinstance(task, dict):
             continue
         dirname = os.path.basename(os.path.dirname(fp))
-        if dirname.startswith("session-"):
-            dirname = dirname[len("session-"):]
+        dirname = dirname.removeprefix("session-")
         prefix = dirname[:8]
         if not prefix:
             continue
@@ -806,25 +827,28 @@ def load_tasks():
         subject = task.get("subject")
         active_form = task.get("activeForm")
         status = task.get("status")
-        by_session.setdefault(prefix, []).append({
-            "id": task.get("id"),
-            "subject": subject if isinstance(subject, str) and subject else "(untitled)",
-            "activeForm": active_form if isinstance(active_form, str) else "",
-            "status": status if isinstance(status, str) and status else "pending",
-            "created": created,
-            "updated": st.st_mtime,
-        })
+        by_session.setdefault(prefix, []).append(
+            {
+                "id": task.get("id"),
+                "subject": subject if isinstance(subject, str) and subject else "(untitled)",
+                "activeForm": active_form if isinstance(active_form, str) else "",
+                "status": status if isinstance(status, str) and status else "pending",
+                "created": created,
+                "updated": st.st_mtime,
+            }
+        )
     return by_session
 
 
-def load_claude_subagents(transcript, now):
+def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, Any]]:
     """Running Claude subagents: <project>/<session-uuid>/subagents/
     agent-*.jsonl next to the session transcript; fresh mtime = running."""
     if not transcript:
         return []
-    sess_dir = os.path.join(os.path.dirname(transcript),
-                            os.path.basename(transcript)[:-len(".jsonl")])
-    agents = []
+    sess_dir = os.path.join(
+        os.path.dirname(transcript), os.path.basename(transcript)[: -len(".jsonl")]
+    )
+    agents: list[dict[str, Any]] = []
     for fp in glob.glob(os.path.join(sess_dir, "subagents", "agent-*.jsonl")):
         try:
             mtime = os.path.getmtime(fp)
@@ -834,7 +858,7 @@ def load_claude_subagents(transcript, now):
             continue
         label = None
         try:
-            with open(fp[:-len(".jsonl")] + ".meta.json") as f:
+            with open(fp[: -len(".jsonl")] + ".meta.json") as f:
                 meta = json.load(f)
         except (OSError, json.JSONDecodeError):
             meta = None
@@ -855,18 +879,23 @@ def load_claude_subagents(transcript, now):
 # Notifications
 
 
-def notify_mac(title, message):
+def notify_mac(title: Any, message: Any) -> None:
     if sys.platform != "darwin":
         return
 
-    def esc(s):
+    def esc(s: str) -> str:
         return str(s).replace("\\", "\\\\").replace('"', '\\"')
+
     safe_message = notification_text(message, 180)
     safe_title = notification_text(title, 60)
     script = f'display notification "{esc(safe_message)}" with title "{esc(safe_title)}" sound name "Glass"'
     try:
-        result = subprocess.run(
-            ["osascript", "-e", script], timeout=5, capture_output=True, text=True
+        result = subprocess.run(  # noqa: S603 — fixed binary, esc()-sanitized args
+            ["/usr/bin/osascript", "-e", script],
+            timeout=5,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if result.returncode:
             detail = (result.stderr or result.stdout or "unknown error").strip()
@@ -875,7 +904,7 @@ def notify_mac(title, message):
         print(f"[notify] osascript failed: {type(exc).__name__}: {exc}")
 
 
-def current_hook(prefix, last_event):
+def current_hook(prefix: str, last_event: float) -> dict[str, Any] | None:
     """Return an uncleared hook notification for a session."""
     with _lock:
         hook = _hook_notifs.get(prefix)
@@ -885,7 +914,7 @@ def current_hook(prefix, last_event):
         return hook
 
 
-def maybe_popup(prefix, state, detail):
+def maybe_popup(prefix: str, state: str, detail: str | None) -> None:
     """Popup when a session transitions into a needs-input state."""
     now = time.time()
     with _lock:
@@ -906,7 +935,7 @@ def maybe_popup(prefix, state, detail):
 # Session assembly helpers
 
 
-def base_session(harness, sid, project):
+def base_session(harness: str, sid: Any, project: str) -> dict[str, Any]:
     # "session" is the 8-char display id; "sid" keeps the full identity so
     # the client can key per-session state without truncation collisions
     # (e.g. Gemini "session-*" fallback ids all display as "session-").
@@ -935,21 +964,21 @@ def base_session(harness, sid, project):
     }
 
 
-def rate_from(info, now):
+def rate_from(info: dict[str, Any] | None, now: float) -> int:
     if not info:
         return 0
-    recent = sum(tok for ep, tok in info["usage_events"] if now - ep <= RATE_WINDOW_SEC)
+    recent: float = sum(tok for ep, tok in info["usage_events"] if now - ep <= RATE_WINDOW_SEC)
     return round(recent / (RATE_WINDOW_SEC / 60))
 
 
-def codex_subagent_rate(path, now):
+def codex_subagent_rate(path: str, now: float) -> int:
     """Recent Codex subagent output after its own task_started boundary."""
     scan = scan_turns(path, "codex")
     start = scan.get("last_start") if scan else None
     if not start:
         return 0
     info = analyze_codex_transcript(path)
-    recent = sum(
+    recent: float = sum(
         tokens
         for epoch, tokens in info["usage_events"]
         if epoch >= start and now - epoch <= RATE_WINDOW_SEC
@@ -957,7 +986,7 @@ def codex_subagent_rate(path, now):
     return round(recent / (RATE_WINDOW_SEC / 60))
 
 
-def working_detail(info, subagents):
+def working_detail(info: dict[str, Any] | None, subagents: list[Any]) -> str:
     if subagents:
         n = len(subagents)
         return f"running {n} subagent{'s' if n > 1 else ''}"
@@ -970,25 +999,29 @@ def working_detail(info, subagents):
 # Harness collectors — each returns a list of session dicts
 
 
-def collect_claude(now, window_hours, show_all):
+def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     tasks_by_session = load_tasks()
-    transcripts = {}  # prefix -> newest transcript path
+    transcripts: dict[str, str] = {}  # prefix -> newest transcript path
     for fp in glob.glob(os.path.join(PROJECTS_DIR, "*", "*.jsonl")):
         base = os.path.basename(fp)
         if "-agent-" in base or base.startswith("agent-"):
             continue  # subagent transcripts aren't top-level sessions
         prefix = base[:8]
         try:
-            if prefix not in transcripts or os.path.getmtime(fp) > os.path.getmtime(transcripts[prefix]):
+            if prefix not in transcripts or os.path.getmtime(fp) > os.path.getmtime(
+                transcripts[prefix]
+            ):
                 transcripts[prefix] = fp
         except OSError:
             continue  # transcript rotated/deleted between glob and stat
 
-    out = []
+    out: list[dict[str, Any]] = []
     for prefix in set(transcripts) | set(tasks_by_session):
         transcript = transcripts.get(prefix)
-        tasks = sorted(tasks_by_session.get(prefix, []),
-                       key=lambda t: int(t["id"]) if str(t["id"]).isdigit() else 0)
+        tasks = sorted(
+            tasks_by_session.get(prefix, []),
+            key=lambda t: int(t["id"]) if str(t["id"]).isdigit() else 0,
+        )
         try:
             transcript_mtime = os.path.getmtime(transcript) if transcript else 0
         except OSError:
@@ -1001,7 +1034,11 @@ def collect_claude(now, window_hours, show_all):
         if not (active or show_all):
             continue
 
-        project = project_label(os.path.basename(os.path.dirname(transcript))) if transcript else "unknown"
+        project = (
+            project_label(os.path.basename(os.path.dirname(transcript)))
+            if transcript
+            else "unknown"
+        )
         info = analyze_transcript(transcript) if (transcript and active) else None
 
         state, state_detail = "idle", "awaiting your message"
@@ -1025,70 +1062,85 @@ def collect_claude(now, window_hours, show_all):
             else:
                 state_detail = working_detail(info, subagents)
         if active:
-            maybe_popup(prefix, state,
-                        f"[{project}] {state_detail}" if state == "needs_input" else None)
+            maybe_popup(
+                prefix, state, f"[{project}] {state_detail}" if state == "needs_input" else None
+            )
 
         total = len(tasks)
         done = sum(1 for t in tasks if t["status"] == "completed")
         open_count = total - done
-        durations = [t["updated"] - t["created"] for t in tasks
-                     if t["status"] == "completed" and (t["updated"] - t["created"]) >= 30]
-        eta_sec = (sum(durations) / len(durations)) * open_count if durations and open_count else None
+        durations = [
+            t["updated"] - t["created"]
+            for t in tasks
+            if t["status"] == "completed" and (t["updated"] - t["created"]) >= 30
+        ]
+        eta_sec = (
+            (sum(durations) / len(durations)) * open_count if durations and open_count else None
+        )
 
         for t in tasks:
-            elapsed = (t["updated"] - t["created"]) if t["status"] == "completed" else (now - t["created"])
+            elapsed = (
+                (t["updated"] - t["created"])
+                if t["status"] == "completed"
+                else (now - t["created"])
+            )
             t["elapsed_h"] = fmt_duration(elapsed)
             t["updated_ago"] = fmt_duration(now - t["updated"]) + " ago"
 
         s = base_session("claude", prefix, project)
-        s.update({
-            "title": (info or {}).get("title"),
-            "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-            "state": state,
-            "state_detail": state_detail,
-            "active": active,
-            "last_activity": last_activity,
-            "rate_per_min": rate_from(info, now),
-            "total": total,
-            "done": done,
-            "open": open_count,
-            "progress_pct": round(done * 100 / total) if total else 0,
-            "eta_h": fmt_duration(eta_sec) if eta_sec else None,
-            "turn": turn_progress(scan_turns(transcript, "claude") if info else None, state, now),
-            "subagents": [a["label"] for a in subagents],
-            "tasks": tasks,
-        })
+        s.update(
+            {
+                "title": (info or {}).get("title"),
+                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": last_activity,
+                "rate_per_min": rate_from(info, now),
+                "total": total,
+                "done": done,
+                "open": open_count,
+                "progress_pct": round(done * 100 / total) if total else 0,
+                "eta_h": fmt_duration(eta_sec) if eta_sec else None,
+                "turn": turn_progress(
+                    scan_turns(transcript, "claude") if (info and transcript) else None,
+                    state,
+                    now,
+                ),
+                "subagents": [a["label"] for a in subagents],
+                "tasks": tasks,
+            }
+        )
         out.append(s)
     return out
 
 
-def collect_codex(now, window_hours, show_all):
+def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     # Resumes and subagent threads write separate rollout files; group by the
     # session_meta session_id, keep the newest top-level file per session,
     # and treat fresh subagent-thread files as that session's running agents.
-    sessions = {}  # session_id -> (mtime, path)
-    agent_data = {}  # parent session_id -> {"agents": [(label, mtime)], "rate": int}
+    sessions: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
+    # parent session_id -> {"agents": [(label, mtime)], "rate": int}
+    agent_data: dict[str, dict[str, Any]] = {}
     for fp in glob.glob(os.path.join(CODEX_SESSIONS_DIR, "*", "*", "*", "rollout-*.jsonl")):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
         meta = codex_meta(fp)
-        sid = meta.get("session_id") or os.path.basename(fp)[:-len(".jsonl")][-36:]
+        sid = meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")][-36:]
         if meta.get("subagent"):
             parent_sid = meta.get("parent_session_id") or sid
             data = agent_data.setdefault(parent_sid, {"agents": [], "rate": 0})
             if now - mtime <= RATE_WINDOW_SEC:
                 data["rate"] += codex_subagent_rate(fp, now)
             if now - mtime <= WORKING_THRESHOLD_SEC:
-                data["agents"].append(
-                    ((meta.get("agent_label") or "subagent")[:70], mtime)
-                )
+                data["agents"].append(((meta.get("agent_label") or "subagent")[:70], mtime))
             continue
         if sid not in sessions or mtime > sessions[sid][0]:
             sessions[sid] = (mtime, fp)
 
-    out = []
+    out: list[dict[str, Any]] = []
     for sid, (mtime, fp) in sessions.items():
         data = agent_data.get(sid) or {"agents": [], "rate": 0}
         agents = sorted(data["agents"], key=lambda a: -a[1])
@@ -1105,22 +1157,24 @@ def collect_codex(now, window_hours, show_all):
             state_detail = working_detail(info, subagents)
 
         s = base_session("codex", sid, os.path.basename(codex_meta(fp).get("cwd") or "") or "codex")
-        s.update({
-            "title": (info or {}).get("title"),
-            "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-            "state": state,
-            "state_detail": state_detail,
-            "active": active,
-            "last_activity": last_activity,
-            "rate_per_min": rate_from(info, now) + data["rate"],
-            "turn": turn_progress(scan_turns(fp, "codex") if info else None, state, now),
-            "subagents": subagents,
-        })
+        s.update(
+            {
+                "title": (info or {}).get("title"),
+                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": last_activity,
+                "rate_per_min": rate_from(info, now) + data["rate"],
+                "turn": turn_progress(scan_turns(fp, "codex") if info else None, state, now),
+                "subagents": subagents,
+            }
+        )
         out.append(s)
     return out
 
 
-def antigravity_log_lines(path):
+def antigravity_log_lines(path: str) -> list[str]:
     """Read the beginning and bounded tail of an Antigravity CLI log.
 
     Workspace and conversation identity are written near the beginning,
@@ -1138,7 +1192,9 @@ def antigravity_log_lines(path):
     return head + tail
 
 
-def antigravity_session_metadata(now, window_hours, show_all):
+def antigravity_session_metadata(
+    now: float, window_hours: float, show_all: bool
+) -> dict[str, dict[str, Any]]:
     """Best-effort conversation metadata from Antigravity's public-facing
     CLI logs and last-conversation cache.
 
@@ -1147,7 +1203,7 @@ def antigravity_session_metadata(now, window_hours, show_all):
     workspace, conversation id, and human prompt. Broken or rotated files are
     skipped so one incomplete Antigravity run cannot break the dashboard.
     """
-    sessions = {}
+    sessions: dict[str, dict[str, Any]] = {}
     try:
         with open(ANTIGRAVITY_LAST_CONVERSATIONS, encoding="utf-8") as source:
             recent = json.load(source)
@@ -1160,12 +1216,12 @@ def antigravity_session_metadata(now, window_hours, show_all):
 
     logs = glob.glob(os.path.join(ANTIGRAVITY_LOG_DIR, "cli-*.log"))
     if not show_all:
-        recent_logs = []
+        recent_logs: list[str] = []
         for path in logs:
             try:
                 if now - os.path.getmtime(path) <= window_hours * 3600:
                     recent_logs.append(path)
-            except OSError:
+            except OSError:  # noqa: PERF203 — per-file stat; a vanished log must not abort the scan
                 continue
         logs = recent_logs
     try:
@@ -1173,15 +1229,9 @@ def antigravity_session_metadata(now, window_hours, show_all):
     except OSError:
         logs.sort()
 
-    workspace_re = re.compile(
-        r"workspaceDirs=\[(.*?)\]\s+appDataDir="
-    )
-    session_re = re.compile(
-        r"(?:Created|Streaming) conversation ([0-9a-fA-F-]{36})"
-    )
-    forward_re = re.compile(
-        r"Forwarding user message to conversation ([0-9a-fA-F-]{36})"
-    )
+    workspace_re = re.compile(r"workspaceDirs=\[(.*?)\]\s+appDataDir=")
+    session_re = re.compile(r"(?:Created|Streaming) conversation ([0-9a-fA-F-]{36})")
+    forward_re = re.compile(r"Forwarding user message to conversation ([0-9a-fA-F-]{36})")
     prompt_marker = "HandleUserInput called with text: "
 
     for path in logs:
@@ -1218,18 +1268,16 @@ def antigravity_session_metadata(now, window_hours, show_all):
     return sessions
 
 
-def antigravity_store_mtime(path):
+def antigravity_store_mtime(path: str) -> float:
     """Newest durable activity marker for a live conversation store."""
-    mtimes = []
+    mtimes: list[float] = []
     for candidate in (path, path + "-wal"):
-        try:
+        with contextlib.suppress(OSError):
             mtimes.append(os.path.getmtime(candidate))
-        except OSError:
-            pass
     return max(mtimes, default=0)
 
 
-def protobuf_fields(payload):
+def protobuf_fields(payload: Any) -> Iterator[tuple[int, int, Any]]:
     """Yield ``(field_number, wire_type, value)`` from a protobuf message.
 
     Antigravity persists step metadata as protobuf without shipping Python
@@ -1240,18 +1288,19 @@ def protobuf_fields(payload):
     payload = bytes(payload or b"")
     offset = 0
 
-    def read_varint(position):
+    def read_varint(position: int) -> tuple[int, int]:
         value = 0
         for shift in range(0, 70, 7):
             if position >= len(payload):
                 raise ValueError("truncated protobuf varint")
             byte = payload[position]
             position += 1
-            value |= (byte & 0x7f) << shift
+            value |= (byte & 0x7F) << shift
             if byte < 0x80:
                 return value, position
         raise ValueError("oversized protobuf varint")
 
+    value: Any  # varint int or a length-delimited/fixed-width bytes slice
     while offset < len(payload):
         key, offset = read_varint(offset)
         number, wire_type = key >> 3, key & 7
@@ -1262,7 +1311,7 @@ def protobuf_fields(payload):
         elif wire_type == 1:
             if offset + 8 > len(payload):
                 raise ValueError("truncated protobuf fixed64")
-            value = payload[offset:offset + 8]
+            value = payload[offset : offset + 8]
             offset += 8
         elif wire_type == 2:
             size, offset = read_varint(offset)
@@ -1274,14 +1323,14 @@ def protobuf_fields(payload):
         elif wire_type == 5:
             if offset + 4 > len(payload):
                 raise ValueError("truncated protobuf fixed32")
-            value = payload[offset:offset + 4]
+            value = payload[offset : offset + 4]
             offset += 4
         else:
             raise ValueError(f"unsupported protobuf wire type {wire_type}")
         yield number, wire_type, value
 
 
-def protobuf_first(payload, number, wire_type):
+def protobuf_first(payload: Any, number: int, wire_type: int) -> Any:
     try:
         for field, wire, value in protobuf_fields(payload):
             if field == number and wire == wire_type:
@@ -1291,15 +1340,15 @@ def protobuf_first(payload, number, wire_type):
     return None
 
 
-def protobuf_timestamp(payload):
+def protobuf_timestamp(payload: Any) -> float:
     seconds = protobuf_first(payload, 1, 0)
     nanos = protobuf_first(payload, 2, 0) or 0
     if not seconds:
         return 0
-    return seconds + nanos / 1_000_000_000
+    return float(seconds + nanos / 1_000_000_000)
 
 
-def antigravity_step_info(metadata):
+def antigravity_step_info(metadata: Any) -> dict[str, Any]:
     """Timestamp, output usage, and tool labels from a step metadata blob."""
     started = protobuf_first(metadata, 1, 2)
     usage = protobuf_first(metadata, 9, 2)
@@ -1307,7 +1356,7 @@ def antigravity_step_info(metadata):
     action = protobuf_first(metadata, 31, 2)
     output_tokens = protobuf_first(usage, 3, 0) if usage else 0
 
-    def text(value):
+    def text(value: Any) -> str:
         if not value:
             return ""
         return notification_text(value.decode("utf-8", "replace"), 140)
@@ -1320,7 +1369,7 @@ def antigravity_step_info(metadata):
     }
 
 
-def antigravity_step_activity(path, now):
+def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
     """Read live rate, turn boundaries, and current action from a store.
 
     Prefer a plain ``mode=ro`` connection: it sees committed WAL frames, so
@@ -1330,15 +1379,12 @@ def antigravity_step_activity(path, now):
     never contends with the writer but may lag until checkpoint. A transient
     or incompatible store simply returns an empty activity snapshot.
     """
-    result = {
+    result: dict[str, Any] = {
         "rate_per_min": 0,
         "turns": None,
         "last_tool_action": "",
     }
-    query = (
-        "SELECT step_type, metadata FROM steps "
-        "ORDER BY idx DESC LIMIT ?"
-    )
+    query = "SELECT step_type, metadata FROM steps ORDER BY idx DESC LIMIT ?"
     rows = None
     for uri in (f"file:{path}?mode=ro", f"file:{path}?mode=ro&immutable=1"):
         try:
@@ -1375,28 +1421,25 @@ def antigravity_step_activity(path, now):
         if action and epoch >= last_prompt:
             latest_action = (epoch, action)
 
-    recent = sum(
-        tokens for epoch, tokens in usage_events
-        if now - epoch <= RATE_WINDOW_SEC
-    )
+    recent = sum(tokens for epoch, tokens in usage_events if now - epoch <= RATE_WINDOW_SEC)
     result["rate_per_min"] = round(recent / (RATE_WINDOW_SEC / 60))
     result["turns"] = turns_from_events(events) if events else None
     result["last_tool_action"] = latest_action[1]
     return result
 
 
-def collect_antigravity(now, window_hours, show_all):
+def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     metadata = antigravity_session_metadata(now, window_hours, show_all)
-    out = []
+    out: list[dict[str, Any]] = []
     for db in glob.glob(os.path.join(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")):
-        sid = os.path.basename(db)[:-len(".db")]
+        sid = os.path.basename(db)[: -len(".db")]
         mtime = antigravity_store_mtime(db)
         if not mtime:
             continue
         active = (now - mtime) <= window_hours * 3600
         if not (active or show_all):
             continue
-        activity = (
+        activity: dict[str, Any] = (
             antigravity_step_activity(db, now)
             if active
             else {"rate_per_min": 0, "turns": None, "last_tool_action": ""}
@@ -1404,36 +1447,37 @@ def collect_antigravity(now, window_hours, show_all):
         state, state_detail = "idle", "awaiting your message"
         if now - mtime <= WORKING_THRESHOLD_SEC:
             state = "working"
-            state_detail = (
-                activity["last_tool_action"] or "generating response…"
-            )
+            state_detail = activity["last_tool_action"] or "generating response…"
 
         meta = metadata.get(sid) or {}
         prompt = str(meta.get("last_prompt") or "").strip()
         cwd = str(meta.get("cwd") or "").strip()
         project = os.path.basename(cwd.rstrip(os.sep)) or "antigravity"
         session = base_session("gemini", sid, project)
-        session.update({
-            "title": prompt.split("\n")[0][:80] or None,
-            "last_prompt": prompt[:140],
-            "state": state,
-            "state_detail": state_detail,
-            "active": active,
-            "last_activity": mtime,
-            "rate_per_min": activity["rate_per_min"],
-            "turn": turn_progress(activity["turns"], state, now),
-        })
+        session.update(
+            {
+                "title": prompt.split("\n")[0][:80] or None,
+                "last_prompt": prompt[:140],
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": mtime,
+                "rate_per_min": activity["rate_per_min"],
+                "turn": turn_progress(activity["turns"], state, now),
+            }
+        )
         out.append(session)
     return out
 
 
-def collect_gemini(now, window_hours, show_all):
+def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     # Legacy Gemini CLI main sessions:
     # <tmp>/<project>/chats/session-*.jsonl. Subagents:
     # <tmp>/<project>/chats/<safeParentSessionId>/<id>.jsonl — linked to the
     # parent purely by the directory name. Antigravity CLI sessions are
     # appended from its per-conversation SQLite stores below.
-    agents_by_parent = {}  # sanitized parent session id -> [(label, mtime)]
+    # sanitized parent session id -> [(label, mtime)]
+    agents_by_parent: dict[str, list[tuple[str, float]]] = {}
     for fp in glob.glob(os.path.join(GEMINI_TMP, "*", "chats", "*", "*.jsonl")):
         try:
             mtime = os.path.getmtime(fp)
@@ -1445,7 +1489,9 @@ def collect_gemini(now, window_hours, show_all):
         label = "subagent " + os.path.basename(fp)[:8]
         agents_by_parent.setdefault(parent, []).append((label, mtime))
 
-    sessions = {}  # session id (or filename fallback) -> (mtime, path)
+    sessions: dict[
+        str, tuple[float, str]
+    ] = {}  # session id (or filename fallback) -> (mtime, path)
     for fp in glob.glob(os.path.join(GEMINI_TMP, "*", "chats", "session-*.jsonl")):
         try:
             mtime = os.path.getmtime(fp)
@@ -1454,11 +1500,11 @@ def collect_gemini(now, window_hours, show_all):
         meta = gemini_meta(fp)
         if meta.get("kind") == "subagent":
             continue
-        sid = meta.get("session_id") or os.path.basename(fp)[:-len(".jsonl")]
+        sid = meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")]
         if sid not in sessions or mtime > sessions[sid][0]:
             sessions[sid] = (mtime, fp)
 
-    out = []
+    out: list[dict[str, Any]] = []
     for sid, (mtime, fp) in sessions.items():
         agents = sorted(agents_by_parent.get(alnum(sid), []), key=lambda a: -a[1])
         last_activity = max(mtime, max((m for _, m in agents), default=0))
@@ -1475,26 +1521,31 @@ def collect_gemini(now, window_hours, show_all):
 
         cwd = gemini_meta(fp).get("cwd")
         project = os.path.basename(cwd or "") or project_label(
-            os.path.basename(os.path.dirname(os.path.dirname(fp))))
+            os.path.basename(os.path.dirname(os.path.dirname(fp)))
+        )
         s = base_session("gemini", sid, project)
-        s.update({
-            "title": (info or {}).get("title"),
-            "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-            "state": state,
-            "state_detail": state_detail,
-            "active": active,
-            "last_activity": last_activity,
-            "rate_per_min": rate_from(info, now),
-            "turn": turn_progress(scan_turns(fp, "gemini") if info else None, state, now),
-            "subagents": subagents,
-        })
+        s.update(
+            {
+                "title": (info or {}).get("title"),
+                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": last_activity,
+                "rate_per_min": rate_from(info, now),
+                "turn": turn_progress(scan_turns(fp, "gemini") if info else None, state, now),
+                "subagents": subagents,
+            }
+        )
         out.append(s)
     out.extend(collect_antigravity(now, window_hours, show_all))
     return out
 
 
-def collect_copilot(now, window_hours, show_all):
-    files = {}  # session uuid -> newest events.jsonl (current dir wins ties)
+def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    files: dict[
+        str, tuple[float, str]
+    ] = {}  # session uuid -> newest events.jsonl (dir tie: current)
     # history-session-state is assumed to share the <uuid>/events.jsonl
     # layout — unverified legacy format; a mismatch just means those old
     # sessions stay invisible.
@@ -1508,7 +1559,7 @@ def collect_copilot(now, window_hours, show_all):
             if sid not in files or mtime > files[sid][0]:
                 files[sid] = (mtime, fp)
 
-    out = []
+    out: list[dict[str, Any]] = []
     for sid, (mtime, fp) in files.items():
         active = (now - mtime) <= window_hours * 3600
         if not (active or show_all):
@@ -1516,7 +1567,7 @@ def collect_copilot(now, window_hours, show_all):
         info = analyze_copilot_events(fp) if active else None
         last_event = max(info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
-        subagents = []
+        subagents: list[str] = []
         if now - last_event <= WORKING_THRESHOLD_SEC:
             state = "working"
             subagents = list((info or {}).get("pending_agents", {}).values())
@@ -1524,29 +1575,31 @@ def collect_copilot(now, window_hours, show_all):
 
         cwd = (info or {}).get("cwd") or copilot_meta(fp).get("cwd")
         s = base_session("copilot", sid, os.path.basename(cwd or "") or "copilot")
-        s.update({
-            "title": (info or {}).get("title"),
-            "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-            "state": state,
-            "state_detail": state_detail,
-            "active": active,
-            "last_activity": mtime,
-            "turn": turn_progress(scan_turns(fp, "copilot") if info else None, state, now),
-            "subagents": subagents,
-        })
+        s.update(
+            {
+                "title": (info or {}).get("title"),
+                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": mtime,
+                "turn": turn_progress(scan_turns(fp, "copilot") if info else None, state, now),
+                "subagents": subagents,
+            }
+        )
         out.append(s)
     return out
 
 
-def _sql_ro(path):
+def _sql_ro(path: str) -> sqlite3.Connection:
     """Read-only SQLite connection that never blocks a live agent's writes."""
     con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=0.2)
     con.row_factory = sqlite3.Row
     return con
 
 
-def collect_opencode(now, window_hours, show_all):
-    out = []
+def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for db in glob.glob(os.path.join(OPENCODE_DATA, "opencode*.db")):
         try:
             con = _sql_ro(db)
@@ -1558,18 +1611,24 @@ def collect_opencode(now, window_hours, show_all):
             try:
                 rows = con.execute(
                     "SELECT id, parent_id, directory, title, time_updated, time_archived "
-                    "FROM session ORDER BY time_updated DESC LIMIT ?", (limit,)).fetchall()
+                    "FROM session ORDER BY time_updated DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
             except sqlite3.OperationalError:  # older schema without time_archived
                 rows = con.execute(
                     "SELECT id, parent_id, directory, title, time_updated, "
                     "NULL AS time_archived FROM session "
-                    "ORDER BY time_updated DESC LIMIT ?", (limit,)).fetchall()
+                    "ORDER BY time_updated DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
         except sqlite3.Error:
             con.close()
             continue
         try:
-            children = {}  # parent session id -> [(title, epoch)]
-            tops = []
+            children: dict[
+                Any, list[tuple[str, float]]
+            ] = {}  # parent session id -> [(title, epoch)]
+            tops: list[tuple[Any, float]] = []
             for r in rows:
                 if r["time_archived"]:
                     continue  # archival bumps time_updated; don't ghost as working
@@ -1577,7 +1636,8 @@ def collect_opencode(now, window_hours, show_all):
                 if r["parent_id"]:
                     if now - upd <= WORKING_THRESHOLD_SEC:
                         children.setdefault(r["parent_id"], []).append(
-                            ((r["title"] or "subagent")[:70], upd))
+                            ((r["title"] or "subagent")[:70], upd)
+                        )
                 else:
                     tops.append((r, upd))
             for r, upd in tops:
@@ -1603,7 +1663,8 @@ def collect_opencode(now, window_hours, show_all):
                         msgs = con.execute(
                             "SELECT type, time_created, data FROM session_message "
                             "WHERE session_id = ? ORDER BY time_created DESC LIMIT ?",
-                            (r["id"], SQL_MSG_LIMIT)).fetchall()
+                            (r["id"], SQL_MSG_LIMIT),
+                        ).fetchall()
                         for m in reversed(msgs):
                             is_user = m["type"] == "user"
                             events.append((norm_epoch(m["time_created"]), is_user))
@@ -1617,28 +1678,31 @@ def collect_opencode(now, window_hours, show_all):
                         pass
                     turn = turn_progress(turns_from_events(events), state, now)
 
-                s = base_session("opencode", r["id"],
-                                 os.path.basename(r["directory"] or "") or "opencode")
-                s.update({
-                    "title": (r["title"] or "").strip()[:80] or None,
-                    "last_prompt": last_prompt,
-                    "state": state,
-                    "state_detail": state_detail,
-                    "active": active,
-                    "last_activity": last_activity,
-                    "turn": turn,
-                    "subagents": subagents,
-                })
+                s = base_session(
+                    "opencode", r["id"], os.path.basename(r["directory"] or "") or "opencode"
+                )
+                s.update(
+                    {
+                        "title": (r["title"] or "").strip()[:80] or None,
+                        "last_prompt": last_prompt,
+                        "state": state,
+                        "state_detail": state_detail,
+                        "active": active,
+                        "last_activity": last_activity,
+                        "turn": turn,
+                        "subagents": subagents,
+                    }
+                )
                 out.append(s)
         finally:
             con.close()
     return out
 
 
-_cursor_title_cache = {}  # db path -> (mtime, title)
+_cursor_title_cache: dict[str, tuple[float, str | None]] = {}  # db path -> (mtime, title)
 
 
-def _cursor_title(db, mtime):
+def _cursor_title(db: str, mtime: float) -> str | None:
     """Session name from the meta table: hex-encoded UTF-8 JSON (some
     versions store plain JSON; value may be NULL or non-text). mode=ro (not
     immutable) so names still in the WAL are visible. Memoized by mtime —
@@ -1658,16 +1722,13 @@ def _cursor_title(db, mtime):
         rows = []
     finally:
         con.close()
-    for (v,) in rows:
-        if isinstance(v, bytes):
-            v = v.decode("utf-8", "replace")
+    for (raw,) in rows:
+        v = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
         if not isinstance(v, str):
             continue
         candidates = [v]  # plain JSON first: a hex string can't parse to a dict
-        try:
+        with contextlib.suppress(ValueError):
             candidates.append(bytes.fromhex(v).decode("utf-8", "replace"))
-        except ValueError:
-            pass
         for decoded in candidates:
             try:
                 d = json.loads(decoded)
@@ -1688,10 +1749,10 @@ def _cursor_title(db, mtime):
         return title
 
 
-def collect_cursor(now, window_hours, show_all):
+def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     # One store.db per chat; content is opaque-ish (hex JSON blobs), so
     # Cursor rows are discovery + state + title only — no turn ETA.
-    out = []
+    out: list[dict[str, Any]] = []
     for db in glob.glob(os.path.join(CURSOR_CHATS, "*", "*", "store.db")):
         sid = os.path.basename(os.path.dirname(db))
         try:
@@ -1708,18 +1769,20 @@ def collect_cursor(now, window_hours, show_all):
         if now - mtime <= WORKING_THRESHOLD_SEC:
             state, state_detail = "working", "generating…"
         s = base_session("cursor", sid, "cursor")
-        s.update({
-            "title": _cursor_title(db, mtime) if active else None,
-            "state": state,
-            "state_detail": state_detail,
-            "active": active,
-            "last_activity": mtime,
-        })
+        s.update(
+            {
+                "title": _cursor_title(db, mtime) if active else None,
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": mtime,
+            }
+        )
         out.append(s)
     return out
 
 
-def goose_user_prompt(content):
+def goose_user_prompt(content: Any) -> bool:
     """Return whether a Goose role=user message came from the human.
 
     Goose also records tool results with role=user; those entries carry a
@@ -1728,12 +1791,11 @@ def goose_user_prompt(content):
     if not isinstance(content, list):
         return True
     return not any(
-        isinstance(part, dict) and alnum(part.get("type")) == "toolresponse"
-        for part in content
+        isinstance(part, dict) and alnum(part.get("type")) == "toolresponse" for part in content
     )
 
 
-def collect_goose(now, window_hours, show_all):
+def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     # Single shared sessions.db (v1.10.0+): per-session activity comes from
     # the updated_at column, NOT file mtime (the DB is shared by all
     # sessions). Legacy per-session .jsonl files are not supported.
@@ -1745,15 +1807,17 @@ def collect_goose(now, window_hours, show_all):
         try:
             rows = con.execute(
                 "SELECT id, description, working_dir, updated_at, "
-                "session_type, parent_session_id, archived_at FROM sessions").fetchall()
+                "session_type, parent_session_id, archived_at FROM sessions"
+            ).fetchall()
         except sqlite3.OperationalError:  # older schema without those columns
             rows = con.execute(
                 "SELECT id, description, working_dir, updated_at, "
                 "NULL AS session_type, NULL AS parent_session_id, "
-                "NULL AS archived_at FROM sessions").fetchall()
+                "NULL AS archived_at FROM sessions"
+            ).fetchall()
 
-        children = {}  # parent session id -> [(label, epoch)]
-        tops = []
+        children: dict[Any, list[tuple[str, float]]] = {}  # parent session id -> [(label, epoch)]
+        tops: list[tuple[Any, float]] = []
         for r in rows:
             if r["archived_at"]:
                 continue  # archival bumps updated_at; don't resurrect
@@ -1762,13 +1826,14 @@ def collect_goose(now, window_hours, show_all):
             if stype == "subagent":
                 if r["parent_session_id"] and now - upd <= WORKING_THRESHOLD_SEC:
                     children.setdefault(r["parent_session_id"], []).append(
-                        ((r["description"] or "subagent")[:70], upd))
+                        ((r["description"] or "subagent")[:70], upd)
+                    )
                 continue
             if stype in ("hidden", "terminal", "gateway", "acp"):
                 continue  # infrastructure sessions goose's own list hides
             tops.append((r, upd))
 
-        out = []
+        out: list[dict[str, Any]] = []
         for r, upd in tops:
             agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
             last_activity = max(upd, max((m for _, m in agents), default=0))
@@ -1790,7 +1855,8 @@ def collect_goose(now, window_hours, show_all):
                     msgs = con.execute(
                         "SELECT role, created_timestamp, content_json FROM messages "
                         "WHERE session_id = ? ORDER BY created_timestamp DESC LIMIT ?",
-                        (r["id"], SQL_MSG_LIMIT)).fetchall()
+                        (r["id"], SQL_MSG_LIMIT),
+                    ).fetchall()
                     for m in reversed(msgs):
                         ep = norm_epoch(m["created_timestamp"])
                         try:
@@ -1809,37 +1875,43 @@ def collect_goose(now, window_hours, show_all):
                     led = con.execute(
                         "SELECT created_timestamp, output_tokens FROM usage_ledger "
                         "WHERE session_id = ? ORDER BY created_timestamp DESC LIMIT 200",
-                        (r["id"],)).fetchall()
-                    recent = sum((x["output_tokens"] or 0) for x in led
-                                 if now - norm_epoch(x["created_timestamp"]) <= RATE_WINDOW_SEC)
+                        (r["id"],),
+                    ).fetchall()
+                    recent = sum(
+                        (x["output_tokens"] or 0)
+                        for x in led
+                        if now - norm_epoch(x["created_timestamp"]) <= RATE_WINDOW_SEC
+                    )
                     rate = round(recent / (RATE_WINDOW_SEC / 60))
                 except sqlite3.Error:
                     pass
                 turn = turn_progress(turns_from_events(events), state, now)
 
-            s = base_session("goose", r["id"],
-                             os.path.basename(r["working_dir"] or "") or "goose")
-            s.update({
-                "title": (r["description"] or "").strip()[:80] or None,
-                "last_prompt": last_prompt,
-                "state": state,
-                "state_detail": state_detail,
-                "active": active,
-                "last_activity": last_activity,
-                "rate_per_min": rate,
-                "turn": turn,
-                "subagents": subagents,
-            })
+            s = base_session("goose", r["id"], os.path.basename(r["working_dir"] or "") or "goose")
+            s.update(
+                {
+                    "title": (r["description"] or "").strip()[:80] or None,
+                    "last_prompt": last_prompt,
+                    "state": state,
+                    "state_detail": state_detail,
+                    "active": active,
+                    "last_activity": last_activity,
+                    "rate_per_min": rate,
+                    "turn": turn,
+                    "subagents": subagents,
+                }
+            )
             out.append(s)
-        return out
     except sqlite3.Error:
         return []
+    else:
+        return out
     finally:
         con.close()
 
 
-def collect_droid(now, window_hours, show_all):
-    out = []
+def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for fp in glob.glob(os.path.join(FACTORY_PROJECTS, "*", "*.jsonl")):
         try:
             mtime = os.path.getmtime(fp)
@@ -1849,7 +1921,7 @@ def collect_droid(now, window_hours, show_all):
         if not (active or show_all):
             continue
         meta = droid_meta(fp)
-        sid = str(meta.get("session_id") or os.path.basename(fp)[:-len(".jsonl")])
+        sid = str(meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")])
         info = analyze_droid_transcript(fp) if active else None
         last_event = max(info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
@@ -1858,17 +1930,20 @@ def collect_droid(now, window_hours, show_all):
             state_detail = working_detail(info, [])
 
         project = os.path.basename(meta.get("cwd") or "") or project_label(
-            os.path.basename(os.path.dirname(fp)))
+            os.path.basename(os.path.dirname(fp))
+        )
         s = base_session("droid", sid, project)
-        s.update({
-            "title": (meta.get("title") or "").strip()[:80] or (info or {}).get("title"),
-            "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-            "state": state,
-            "state_detail": state_detail,
-            "active": active,
-            "last_activity": mtime,
-            "turn": turn_progress(scan_turns(fp, "droid") if info else None, state, now),
-        })
+        s.update(
+            {
+                "title": (meta.get("title") or "").strip()[:80] or (info or {}).get("title"),
+                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": mtime,
+                "turn": turn_progress(scan_turns(fp, "droid") if info else None, state, now),
+            }
+        )
         out.append(s)
     return out
 
@@ -1877,41 +1952,63 @@ def collect_droid(now, window_hours, show_all):
 # Harness registry — a harness appears in the dashboard only if discovered
 
 
-HARNESSES = [
+HARNESSES: list[
+    tuple[str, str, Callable[[], bool], Callable[[float, float, bool], list[dict[str, Any]]]]
+] = [
     ("claude", "Claude", lambda: os.path.isdir(PROJECTS_DIR), collect_claude),
     ("codex", "Codex", lambda: os.path.isdir(CODEX_SESSIONS_DIR), collect_codex),
     # Predicate matches both supported Gemini stores: legacy Gemini CLI
     # JSONL and current Antigravity CLI per-conversation SQLite databases.
-    ("gemini", "Gemini",
-     lambda: bool(
-         glob.glob(os.path.join(GEMINI_TMP, "*", "chats", "session-*.jsonl"))
-         or glob.glob(os.path.join(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"))
-     ),
-     collect_gemini),
-    ("copilot", "Copilot",
-     lambda: os.path.isdir(os.path.join(COPILOT_DIR, "session-state"))
-     or os.path.isdir(os.path.join(COPILOT_DIR, "history-session-state")),
-     collect_copilot),
-    ("opencode", "OpenCode", lambda: bool(glob.glob(os.path.join(OPENCODE_DATA, "opencode*.db"))),
-     collect_opencode),
-    ("cursor", "Cursor", lambda: bool(glob.glob(os.path.join(CURSOR_CHATS, "*", "*", "store.db"))),
-     collect_cursor),
+    (
+        "gemini",
+        "Gemini",
+        lambda: bool(
+            glob.glob(os.path.join(GEMINI_TMP, "*", "chats", "session-*.jsonl"))
+            or glob.glob(os.path.join(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"))
+        ),
+        collect_gemini,
+    ),
+    (
+        "copilot",
+        "Copilot",
+        lambda: (
+            os.path.isdir(os.path.join(COPILOT_DIR, "session-state"))
+            or os.path.isdir(os.path.join(COPILOT_DIR, "history-session-state"))
+        ),
+        collect_copilot,
+    ),
+    (
+        "opencode",
+        "OpenCode",
+        lambda: bool(glob.glob(os.path.join(OPENCODE_DATA, "opencode*.db"))),
+        collect_opencode,
+    ),
+    (
+        "cursor",
+        "Cursor",
+        lambda: bool(glob.glob(os.path.join(CURSOR_CHATS, "*", "*", "store.db"))),
+        collect_cursor,
+    ),
     ("goose", "Goose", lambda: os.path.isfile(GOOSE_DB), collect_goose),
-    ("droid", "Droid", lambda: bool(glob.glob(os.path.join(FACTORY_PROJECTS, "*", "*.jsonl"))),
-     collect_droid),
+    (
+        "droid",
+        "Droid",
+        lambda: bool(glob.glob(os.path.join(FACTORY_PROJECTS, "*", "*.jsonl"))),
+        collect_droid,
+    ),
 ]
 
 
-def collect(window_hours, show_all):
+def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
     now = time.time()
-    out_sessions = []
-    harnesses = []
+    out_sessions: list[dict[str, Any]] = []
+    harnesses: list[dict[str, Any]] = []
     for key, label, discover, collector in HARNESSES:
         try:
             found = bool(discover())
         except OSError:
             found = False
-        harness = {
+        harness: dict[str, Any] = {
             "key": key,
             "label": label,
             "discovered": found,
@@ -1922,7 +2019,7 @@ def collect(window_hours, show_all):
             continue
         try:
             out_sessions.extend(collector(now, window_hours, show_all))
-        except Exception as e:  # one broken harness must not take down the rest
+        except Exception as e:  # noqa: BLE001 — one broken harness must not take down the rest
             harness["error"] = f"{type(e).__name__}: {e}"
             print(f"[{key}] collector error: {harness['error']}")
 
@@ -2138,13 +2235,19 @@ function fmtDur(sec){
 
 // Trailing output-rate sparklines: client-side ring buffers that start when
 // the page opens and drop points once they age out of the visual window.
+// Points are stamped with the VIEWER's clock at receipt — the axis and the
+// tooltip timestamps must agree with the user's watch, and the server's
+// `generated` value can lag (2.5s response memoization) or skew. `generated`
+// is used only to drop replayed/memoized payloads.
 const SPARK_WINDOW_SEC = 300;
+const nowSec = () => Date.now() / 1000;
 const rateHistory = [];               // overall: [{t, v}]
 const sessRateHistory = new Map();    // "harness:sid" -> [{t, v}]
 const sessKey = x => x.harness + ":" + (x.sid || x.session);
+let lastGenerated = 0;
 
 function pushPoint(arr, t, v){
-  if(arr.length && arr[arr.length-1].t >= t) return; // memoized/replayed payload
+  if(arr.length && arr[arr.length-1].t >= t) return; // non-advancing clock
   arr.push({t, v});
   const cutoff = t - SPARK_WINDOW_SEC;
   while(arr.length && arr[0].t < cutoff) arr.shift();
@@ -2152,19 +2255,22 @@ function pushPoint(arr, t, v){
 
 function recordRates(d){
   if(typeof d.generated !== 'number' || !isFinite(d.generated)) return;
-  pushPoint(rateHistory, d.generated, d.summary.rate_per_min || 0);
+  if(d.generated <= lastGenerated) return; // memoized/replayed payload
+  lastGenerated = d.generated;
+  const t = nowSec();
+  pushPoint(rateHistory, t, d.summary.rate_per_min || 0);
   const seen = new Set();
   for(const x of d.sessions){
     const key = sessKey(x);
     seen.add(key);
     let arr = sessRateHistory.get(key);
     if(!arr) sessRateHistory.set(key, arr = []);
-    pushPoint(arr, d.generated, x.rate_per_min || 0);
+    pushPoint(arr, t, x.rate_per_min || 0);
   }
   // Remove entries for departed sessions AND aged-out orphaned buffers (no updates in 600s).
   // This ensures memory doesn't leak if a session disappears before the next recordRates() call.
   for(const [k, arr] of sessRateHistory){
-    if(!seen.has(k) || (arr.length && arr[arr.length-1].t < d.generated - 600)){
+    if(!seen.has(k) || (arr.length && arr[arr.length-1].t < t - 600)){
       sessRateHistory.delete(k);
     }
   }
@@ -2210,14 +2316,17 @@ function sparkSVG(pts, now, w, h, stretch){
     ` vector-effect="non-scaling-stroke"/>${marks}</svg>`;
 }
 
-function heroSpark(d){
+function heroSpark(){
   // Stretched viewBox (0..100 units) so the HTML end-dot and crosshair can
   // share the same coordinates as percentages of the wrap's width and height.
+  // The axis anchors to the viewer's clock — the same clock the points are
+  // stamped with — so hover timestamps never drift from wall time.
+  const axisNow = nowSec();
   let dot = "";
   if(rateHistory.length > 1){
     const max = Math.max(1, ...rateHistory.map(p => p.v));
     const last = rateHistory[rateHistory.length-1];
-    const dotX = sparkX(last.t, d.generated, 100);
+    const dotX = sparkX(last.t, axisNow, 100);
     const dotY = sparkY(last.v, max, 100); // Use 100 to get percentage coordinates (0-100%)
     dot = `<span class="spark-dot" style="left:${dotX.toFixed(2)}%;` +
       `top:${dotY.toFixed(2)}%"></span>`;
@@ -2225,9 +2334,9 @@ function heroSpark(d){
   const lastV = rateHistory.length ? rateHistory[rateHistory.length-1].v : null;
   const nowLabel = lastV == null ? "" :
     `, now ${lastV.toLocaleString()} tokens per minute`;
-  return `<div class="spark-wrap" id="spark-main" tabindex="0" data-now="${d.generated}"` +
+  return `<div class="spark-wrap" id="spark-main" tabindex="0" data-now="${axisNow}"` +
     ` role="img" aria-label="output rate, trailing 5 minutes${nowLabel}">` +
-    sparkSVG(rateHistory, d.generated, 100, 46, true) + dot +
+    sparkSVG(rateHistory, axisNow, 100, 46, true) + dot +
     `<span class="spark-x" id="spark-x"></span><span class="spark-tip" id="spark-tip"></span></div>`;
 }
 
@@ -2392,7 +2501,7 @@ function rateTile(d){
   }).join("") + `</div>` : "";
   return `<div class="tile"><div class="tile-top"><span class="tile-label">Output rate</span>` +
     `<span class="tile-cap">tok / min · 10 min</span></div>` +
-    `<div class="tile-val">${total}</div>${heroSpark(d)}${rows}</div>`;
+    `<div class="tile-val">${total}</div>${heroSpark()}${rows}</div>`;
 }
 
 function turnBlock(t){
@@ -2428,7 +2537,7 @@ function workingCard(d, sess){
   const spark = (hist && hist.length > 1)
     ? `<span class="rate-spark" title="${(sess.rate_per_min || 0).toLocaleString()}` +
       ` tok/min · trailing 5 min">` +
-      sparkSVG(hist, d.generated, 84, 26, false) + `</span>`
+      sparkSVG(hist, nowSec(), 84, 26, false) + `</span>`
     : "";
   const rateMeter = (sess.active && sess.rate_per_min)
     ? `<div class="rate-meter"><div class="rate-flex">${spark}` +
@@ -2596,17 +2705,19 @@ setInterval(refresh, 5000);
 """
 
 
-_collect_memo = {}  # (window_hours, show_all) -> {"ts": epoch, "body": bytes}
+# (window_hours, show_all) -> {"ts": epoch, "body": bytes}
+_collect_memo: dict[tuple[float, bool], dict[str, Any]] = {}
 _collect_memo_lock = threading.Lock()
 COLLECT_MEMO_SEC = 2.5  # multiple tabs / curl loops share one scan per window
 
 
-def collect_json(window_hours, show_all):
+def collect_json(window_hours: float, show_all: bool) -> bytes:
     key = (window_hours, show_all)
     with _collect_memo_lock:
         cached = _collect_memo.get(key)
         if cached and time.time() - cached["ts"] < COLLECT_MEMO_SEC:
-            return cached["body"]
+            body: bytes = cached["body"]
+            return body
         # Hold the lock through collection: ThreadingHTTPServer callers share
         # one filesystem/SQLite scan rather than stampeding cold cache entries.
         body = json.dumps(collect(window_hours, show_all)).encode()
@@ -2620,20 +2731,18 @@ class Handler(BaseHTTPRequestHandler):
     # Loopback-origin requests only: the Host check defeats DNS rebinding,
     # the Origin check defeats cross-site fetch()es from web pages (both
     # reach 127.0.0.1-bound servers through the victim's browser).
-    LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+    LOCAL_HOSTS: ClassVar[set[str]] = {"127.0.0.1", "localhost", "::1", "[::1]"}
 
-    def _local_ok(self):
+    def _local_ok(self) -> bool:
         host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
         if host not in self.LOCAL_HOSTS:
             return False
         if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
             return False
         origin = self.headers.get("Origin")
-        if origin and (urlparse(origin).hostname or "") not in self.LOCAL_HOSTS:
-            return False
-        return True
+        return not origin or (urlparse(origin).hostname or "") in self.LOCAL_HOSTS
 
-    def _send(self, body, ctype, code=200):
+    def _send(self, body: bytes, ctype: str, code: int = 200) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -2641,21 +2750,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if not self._local_ok():
             self.send_error(403)
             return
         url = urlparse(self.path)
         if url.path == "/api/data":
             show_all = parse_qs(url.query).get("all", ["0"])[0] == "1"
-            self._send(collect_json(self.window_hours, show_all),
-                       "application/json")
+            self._send(collect_json(self.window_hours, show_all), "application/json")
         elif url.path == "/":
             self._send(PAGE.encode(), "text/html; charset=utf-8")
         else:
             self.send_error(404)
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         # Ingest Claude Code Notification-hook payloads:
         # {"session_id": "...", "message": "...", ...}
         if not self._local_ok():
@@ -2691,12 +2799,8 @@ class Handler(BaseHTTPRequestHandler):
             if prefix:
                 bounded_put(_hook_notifs, prefix, {"ts": now, "message": message})
             popup_key = prefix or "_anonymous"
-            session_ready = (
-                now - _last_popup.get(popup_key, 0) >= POPUP_COOLDOWN_SEC
-            )
-            global_ready = (
-                now - _last_popup.get("_global", 0) >= GLOBAL_POPUP_COOLDOWN_SEC
-            )
+            session_ready = now - _last_popup.get(popup_key, 0) >= POPUP_COOLDOWN_SEC
+            global_ready = now - _last_popup.get("_global", 0) >= GLOBAL_POPUP_COOLDOWN_SEC
             fire = session_ready and global_ready
             if fire:
                 bounded_put(_last_popup, popup_key, now)
@@ -2705,15 +2809,19 @@ class Handler(BaseHTTPRequestHandler):
             notify_mac("Claude is waiting on you", message)
         self._send(b'{"ok":true}', "application/json")
 
-    def log_message(self, *args):
+    def log_message(self, *args: Any) -> None:
         pass  # keep stdout quiet
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, default=4553)
-    ap.add_argument("--window-hours", type=float, default=24,
-                    help="sessions with no activity in this window are hidden (default 24)")
+    ap.add_argument(
+        "--window-hours",
+        type=float,
+        default=24,
+        help="sessions with no activity in this window are hidden (default 24)",
+    )
     args = ap.parse_args()
     Handler.window_hours = args.window_hours
     # Bind to loopback only — this exposes local session data.

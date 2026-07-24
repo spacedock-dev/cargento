@@ -1,0 +1,81 @@
+# Tooling configuration for Cargento's Python code (the dashboard skill
+# server, its tests, and the repo validation/release scripts). There is no
+# installable package here — this file only configures lint/type/coverage.
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+extend-exclude = [".venv", "venv"]
+
+[tool.ruff.lint]
+# Strict-by-default: every rule family on, with a curated, documented
+# ignore list rather than a permissive selection.
+select = ["ALL"]
+# The dashboard UI deliberately uses "–" as its empty-value placeholder.
+allowed-confusables = ["–"]
+ignore = [
+  "D",       # pydocstyle: docstring-on-everything is churn for a single-module server
+  "ANN",     # flake8-annotations: mypy --strict owns annotation enforcement
+  "COM812",  # trailing-comma rule conflicts with the ruff formatter
+  "ISC001",  # implicit-str-concat rule conflicts with the ruff formatter
+  "PTH",     # server.py deliberately uses os.path (hot filesystem scans, stdlib style)
+  "DTZ",     # naive local-time handling is by design (local session mtimes)
+  "FBT",     # boolean positional flags (show_all, strict) are part of the existing API
+  "TD",      # TODO-format enforcement — no tracked-issue convention in this repo
+  "FIX",     # same as TD
+  "PT",      # flake8-pytest-style: this repo is deliberately stdlib-unittest
+  "T20",     # print is the output channel for CLI entry points (server, scripts)
+  "EM",      # exception-message style (assign-before-raise) — churn, no clarity gain
+  "TRY003",  # long messages in raise are fine for the validator's error reporting
+  "PLR2004", # threshold/format literals (86400, 60, …) read better inline here
+  "CPY001",  # no per-file copyright-header convention (LICENSE covers the repo)
+]
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+# The embedded HTML/CSS/JS page and SVG icon paths make long source lines
+# unavoidable, and the ten defensive harness collectors are inherently
+# branchy — refactoring them to satisfy complexity limits would trade real
+# robustness for score.
+"cargento/skills/cargento/server.py" = ["E501", "C901", "PLR0911", "PLR0912", "PLR0915"]
+"scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
+# Tests: assert usage, subprocess invocations of node, and long fixture lines.
+"**/tests/*.py" = ["S101", "S603", "S108", "E501", "SLF001", "INP001"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_unreachable = true
+files = [
+  "cargento/skills/cargento/server.py",
+  "cargento/skills/cargento/tests",
+  "scripts",
+]
+
+# PyYAML ships no type stubs and we add no runtime/type dependencies, so the
+# untyped import is expected. Ignoring missing imports also silences the
+# subclassing-Any error for the SafeLoader subclass in validate_plugins.py.
+[[tool.mypy.overrides]]
+module = ["yaml", "yaml.*"]
+ignore_missing_imports = true
+disallow_subclassing_any = false
+
+[tool.coverage.run]
+branch = true
+source = [
+  "cargento/skills/cargento",
+  "scripts",
+]
+
+[tool.coverage.report]
+# Coverage is reported for the code under test only; the test modules
+# themselves would inflate the number.
+omit = ["*/tests/*"]
+show_missing = false
+precision = 1
+# Measured baseline at gate introduction: 71.0% (branch coverage). This
+# number only ratchets UP — never lower it in a PR. Use the
+# `coverage-exception` PR label for a deliberate, visible bypass.
+fail_under = 70

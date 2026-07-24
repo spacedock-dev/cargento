@@ -12,7 +12,6 @@ from typing import Any
 import yaml
 from yaml.constructor import ConstructorError
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_NAMES = ("cargento",)
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -28,7 +27,7 @@ SHARED_FRONTMATTER_FIELDS = {"name", "description", "license"}
 MAX_CATALOG_TOKEN_ESTIMATE = 4_000
 
 
-class UniqueKeyLoader(yaml.SafeLoader):
+class UniqueKeyLoader(yaml.SafeLoader):  # type: ignore[misc]  # PyYAML ships no stubs, so SafeLoader is Any
     """Safe YAML loader that rejects duplicate mapping keys."""
 
 
@@ -97,7 +96,7 @@ def load_yaml_mapping(
     text: str, path: Path, validation: Validation, label: str
 ) -> dict[str, Any] | None:
     try:
-        value = yaml.load(text, Loader=UniqueKeyLoader)
+        value = yaml.load(text, Loader=UniqueKeyLoader)  # noqa: S506 — SafeLoader subclass
     except yaml.YAMLError as exc:
         validation.error(path, f"invalid {label} YAML ({exc})")
         return None
@@ -306,8 +305,13 @@ def validate_codex_manifest(plugin_root: Path, validation: Validation) -> dict[s
         prompts = interface.get("defaultPrompt")
         if not isinstance(prompts, list) or not 1 <= len(prompts) <= 3:
             validation.error(path, "interface.defaultPrompt must contain one to three prompts")
-        elif any(not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 128 for prompt in prompts):
-            validation.error(path, "default prompts must be non-empty strings of at most 128 characters")
+        elif any(
+            not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 128
+            for prompt in prompts
+        ):
+            validation.error(
+                path, "default prompts must be non-empty strings of at most 128 characters"
+            )
 
     mcp_servers = manifest.get("mcpServers")
     if isinstance(mcp_servers, dict):
@@ -344,9 +348,7 @@ def validate_antigravity_manifest(
     return manifest
 
 
-def validate_gemini_extension(
-    plugin_root: Path, validation: Validation
-) -> dict[str, Any] | None:
+def validate_gemini_extension(plugin_root: Path, validation: Validation) -> dict[str, Any] | None:
     path = plugin_root / "gemini-extension.json"
     manifest = load_json(path, validation)
     if manifest is None:
@@ -429,9 +431,7 @@ def validate_mcp_endpoint_parity(
             )
 
     if gemini_manifest is not None:
-        compare(
-            gemini_manifest.get("mcpServers"), "url", plugin_root / "gemini-extension.json"
-        )
+        compare(gemini_manifest.get("mcpServers"), "url", plugin_root / "gemini-extension.json")
     if mcp_config is not None:
         compare(mcp_config.get("mcpServers"), "serverUrl", plugin_root / "mcp_config.json")
     else:
@@ -472,7 +472,8 @@ def validate_description_parity(
         drifted = ", ".join(sorted(present))
         validation.error(
             ROOT / plugin_name,
-            f"description drift across manifests ({drifted}); align them with .claude-plugin/plugin.json",
+            f"description drift across manifests ({drifted}); "
+            "align them with .claude-plugin/plugin.json",
         )
 
 
@@ -506,17 +507,27 @@ def validate_skills(plugin_root: Path, validation: Validation) -> tuple[set[str]
         )
         openai_path = path.parent / "agents/openai.yaml"
         if not openai_path.is_file():
-            validation.error(openai_path, "Codex presentation metadata is required by repository policy")
+            validation.error(
+                openai_path, "Codex presentation metadata is required by repository policy"
+            )
         else:
             fields = parse_openai_metadata(openai_path, validation)
             if fields is None:
                 continue
             for field in ("display_name", "short_description", "default_prompt"):
                 if not isinstance(fields.get(field), str) or not fields[field].strip():
-                    validation.error(openai_path, f"interface.{field} must be a quoted non-empty string")
+                    validation.error(
+                        openai_path, f"interface.{field} must be a quoted non-empty string"
+                    )
             short_description = fields.get("short_description", "")
-            if isinstance(short_description, str) and short_description and not 25 <= len(short_description) <= 64:
-                validation.error(openai_path, "interface.short_description must be 25 to 64 characters")
+            if (
+                isinstance(short_description, str)
+                and short_description
+                and not 25 <= len(short_description) <= 64
+            ):
+                validation.error(
+                    openai_path, "interface.short_description must be 25 to 64 characters"
+                )
             default_prompt = fields.get("default_prompt", "")
             if isinstance(default_prompt, str) and f"${name}" not in default_prompt:
                 validation.error(openai_path, f"interface.default_prompt must mention ${name}")
@@ -560,7 +571,9 @@ def validate_marketplaces(
                 if not isinstance(source, dict) or source.get("source") != "local":
                     validation.error(codex_path, f"{name}: expected a local source object")
                     continue
-                resolve_contract_path(ROOT, source.get("path"), f"{name} source", codex_path, validation)
+                resolve_contract_path(
+                    ROOT, source.get("path"), f"{name} source", codex_path, validation
+                )
             if names != set(PLUGIN_NAMES):
                 validation.error(codex_path, f"plugin names must be {sorted(PLUGIN_NAMES)}")
 
@@ -572,9 +585,9 @@ def validate_marketplaces(
     if not isinstance(entries, list):
         validation.error(claude_path, "plugins must be an array")
         return
-    names = [entry.get("name") for entry in entries if isinstance(entry, dict)]
+    marketplace_names = [entry.get("name") for entry in entries if isinstance(entry, dict)]
     sources = [entry.get("source") for entry in entries if isinstance(entry, dict)]
-    if len(names) != len(set(names)):
+    if len(marketplace_names) != len(set(marketplace_names)):
         validation.error(claude_path, "duplicate plugin names in marketplace")
     if len(sources) != len(set(sources)):
         validation.error(claude_path, "duplicate plugin sources in marketplace")
@@ -602,16 +615,27 @@ def validate_marketplaces(
             gemini_manifest.get("version") if gemini_manifest else None,
         }
         if len(versions) != 1:
-            validation.error(claude_path, f"{name} version fields are not in parity: {sorted(map(str, versions))}")
+            validation.error(
+                claude_path,
+                f"{name} version fields are not in parity: {sorted(map(str, versions))}",
+            )
         antigravity_manifest = antigravity_manifests.get(name)
         validate_description_parity(
             name,
             {
                 "marketplace entry": entry.get("description"),
-                ".claude-plugin/plugin.json": claude_manifest.get("description") if claude_manifest else None,
-                ".codex-plugin/plugin.json": codex_manifest.get("description") if codex_manifest else None,
-                "gemini-extension.json": gemini_manifest.get("description") if gemini_manifest else None,
-                "plugin.json": antigravity_manifest.get("description") if antigravity_manifest else None,
+                ".claude-plugin/plugin.json": (
+                    claude_manifest.get("description") if claude_manifest else None
+                ),
+                ".codex-plugin/plugin.json": (
+                    codex_manifest.get("description") if codex_manifest else None
+                ),
+                "gemini-extension.json": (
+                    gemini_manifest.get("description") if gemini_manifest else None
+                ),
+                "plugin.json": (
+                    antigravity_manifest.get("description") if antigravity_manifest else None
+                ),
             },
             validation,
         )
@@ -649,7 +673,9 @@ def main() -> int:
         catalog_lines.extend(plugin_catalog_lines)
         legacy_commands = list((plugin_root / "commands").glob("*.md"))
         if legacy_commands:
-            validation.error(plugin_root / "commands", "legacy commands must be migrated to shared skills")
+            validation.error(
+                plugin_root / "commands", "legacy commands must be migrated to shared skills"
+            )
 
     validate_marketplaces(manifests, gemini_manifests, antigravity_manifests, validation)
     validate_readme(skill_names, validation)
@@ -670,7 +696,8 @@ def main() -> int:
         return 1
     print(
         f"Validated {sum(map(len, skill_names.values()))} skills across "
-        f"{len(PLUGIN_NAMES)} plugins ({catalog_token_estimate} repository-estimated catalog tokens, "
+        f"{len(PLUGIN_NAMES)} plugins "
+        f"({catalog_token_estimate} repository-estimated catalog tokens, "
         f"{len(catalog_text)} rendered bytes)."
     )
     return 0

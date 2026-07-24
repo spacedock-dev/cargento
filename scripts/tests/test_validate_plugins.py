@@ -1,18 +1,15 @@
-#!/usr/bin/env python3
 """Negative and rendering tests for the repository plugin validator."""
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-import sys
-
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import validate_plugins as validator  # noqa: E402
+import validate_plugins as validator
 
 
 class ValidatorTests(unittest.TestCase):
@@ -20,7 +17,7 @@ class ValidatorTests(unittest.TestCase):
         directory = Path(tempfile.mkdtemp(prefix="cargento-validator-"))
         path = directory / name
         path.write_text(body)
-        self.addCleanup(lambda: directory.rmdir())
+        self.addCleanup(directory.rmdir)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
         return path
 
@@ -52,7 +49,9 @@ class ValidatorTests(unittest.TestCase):
         validation = validator.Validation()
 
         self.assertIsNone(validator.parse_openai_metadata(path, validation))
-        self.assertTrue(any("invalid agents/openai.yaml YAML" in error for error in validation.errors))
+        self.assertTrue(
+            any("invalid agents/openai.yaml YAML" in error for error in validation.errors)
+        )
 
     def test_catalog_estimate_includes_namespace_and_locator(self) -> None:
         path = validator.ROOT / "cargento/skills/cargento/SKILL.md"
@@ -90,7 +89,9 @@ class ValidatorTests(unittest.TestCase):
         validator.parse_openai_metadata(path, validation)
 
         self.assertTrue(any("icon_small" in error for error in validation.errors))
-        self.assertTrue(any("dependencies must be a mapping" in error for error in validation.errors))
+        self.assertTrue(
+            any("dependencies must be a mapping" in error for error in validation.errors)
+        )
         self.assertTrue(any("policy must be a mapping" in error for error in validation.errors))
 
     def test_antigravity_manifest_requires_runtime_marker_at_plugin_root(self) -> None:
@@ -131,7 +132,10 @@ class ValidatorTests(unittest.TestCase):
             validator.validate_antigravity_manifest(plugin_root, validation)
 
             self.assertTrue(
-                any("unsupported Antigravity manifest fields" in error for error in validation.errors)
+                any(
+                    "unsupported Antigravity manifest fields" in error
+                    for error in validation.errors
+                )
             )
             self.assertTrue(
                 any("name must match the plugin directory" in error for error in validation.errors)
@@ -152,9 +156,7 @@ class ValidatorTests(unittest.TestCase):
             self.assertTrue(
                 any("version must be a non-empty string" in error for error in validation.errors)
             )
-            self.assertTrue(
-                any("needs a url or command" in error for error in validation.errors)
-            )
+            self.assertTrue(any("needs a url or command" in error for error in validation.errors))
 
     def test_mcp_endpoint_parity_rejects_drift_and_missing_antigravity_config(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
@@ -169,10 +171,16 @@ class ValidatorTests(unittest.TestCase):
             validator.validate_mcp_endpoint_parity(plugin_root, gemini_manifest, None, validation)
 
             self.assertTrue(
-                any("gemini-extension.json" in error and "must mirror" in error for error in validation.errors)
+                any(
+                    "gemini-extension.json" in error and "must mirror" in error
+                    for error in validation.errors
+                )
             )
             self.assertTrue(
-                any("mcp_config.json" in error and "must exist" in error for error in validation.errors)
+                any(
+                    "mcp_config.json" in error and "must exist" in error
+                    for error in validation.errors
+                )
             )
 
     def test_mcp_endpoint_parity_rejects_runtime_endpoints_without_base(self) -> None:
@@ -275,12 +283,16 @@ class ValidatorTests(unittest.TestCase):
 
             self.assertTrue(any("must exist and mirror" in error for error in validation.errors))
 
-            (plugin_root / "hooks.json").write_text('{"hooks":{"SessionStart":[{"matcher":"x"}]}}\n')
+            (plugin_root / "hooks.json").write_text(
+                '{"hooks":{"SessionStart":[{"matcher":"x"}]}}\n'
+            )
             validation = validator.Validation()
 
             validator.validate_hooks_adapter(plugin_root, validation)
 
-            self.assertTrue(any("must mirror hooks/hooks.json exactly" in error for error in validation.errors))
+            self.assertTrue(
+                any("must mirror hooks/hooks.json exactly" in error for error in validation.errors)
+            )
 
     def test_description_parity_rejects_drifted_manifests(self) -> None:
         validation = validator.Validation()
@@ -360,7 +372,7 @@ class ValidatorTests(unittest.TestCase):
                 '"plugins":['
                 '{"name":"cargento","source":"./cargento","version":"0.1.0","description":"Desc"},'
                 '{"name":"cargento","source":"./cargento","version":"0.1.0","description":"Desc"}'
-                ']}\n'
+                "]}\n"
             )
             (root / "cargento/.claude-plugin").mkdir(parents=True)
             (root / "cargento/.claude-plugin/plugin.json").write_text(
@@ -377,12 +389,8 @@ class ValidatorTests(unittest.TestCase):
                     validation,
                 )
 
-            self.assertTrue(
-                any("duplicate plugin names" in error for error in validation.errors)
-            )
-            self.assertTrue(
-                any("duplicate plugin sources" in error for error in validation.errors)
-            )
+            self.assertTrue(any("duplicate plugin names" in error for error in validation.errors))
+            self.assertTrue(any("duplicate plugin sources" in error for error in validation.errors))
             # metadata.version 9.9.9 vs everything else 0.1.0 must be drift.
             self.assertTrue(
                 any("version fields are not in parity" in error for error in validation.errors)

@@ -22,6 +22,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MARKETPLACE = ROOT / ".claude-plugin/marketplace.json"
@@ -37,20 +38,21 @@ def parse_semver(value: str) -> tuple[int, int, int]:
     match = SEMVER_RE.fullmatch(value)
     if not match:
         raise SystemExit(f"error: {value!r} is not strict semver (X.Y.Z)")
-    return tuple(int(part) for part in match.groups())
+    major, minor, patch = match.groups()
+    return (int(major), int(minor), int(patch))
 
 
-def load(path: Path) -> dict:
+def load(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"error: cannot read {path}: {exc}")
+        raise SystemExit(f"error: cannot read {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise SystemExit(f"error: {path} top level must be an object")
     return data
 
 
-def save(path: Path, data: dict) -> None:
+def save(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
@@ -61,25 +63,21 @@ def current_version() -> str:
     version = (marketplace.get("metadata") or {}).get("version")
     if not isinstance(version, str):
         raise SystemExit("error: marketplace metadata.version missing")
-    versions = {version}
+    versions: set[Any] = {version}
     for entry in marketplace.get("plugins") or []:
         if isinstance(entry, dict):
             versions.add(entry.get("version"))
     for path in MANIFESTS:
         versions.add(load(path).get("version"))
     if len(versions) != 1:
-        raise SystemExit(
-            f"error: version fields are not in parity: {sorted(map(str, versions))}"
-        )
+        raise SystemExit(f"error: version fields are not in parity: {sorted(map(str, versions))}")
     return version
 
 
 def bump(target: str) -> None:
     current = current_version()
     if parse_semver(target) <= parse_semver(current):
-        raise SystemExit(
-            f"error: target {target} must be strictly greater than current {current}"
-        )
+        raise SystemExit(f"error: target {target} must be strictly greater than current {current}")
     marketplace = load(MARKETPLACE)
     marketplace["metadata"]["version"] = target
     for entry in marketplace["plugins"]:

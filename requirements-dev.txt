@@ -1,0 +1,5 @@
+# Development / CI quality-gate toolchain. Pinned exactly — the quality gate
+# must be reproducible; bumps are deliberate PRs.
+ruff==0.16.0
+mypy==2.3.0
+coverage==7.15.2

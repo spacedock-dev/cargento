@@ -1,0 +1,33 @@
+name: Semgrep SAST
+
+# Weekly static security scan of the repository (server module, scripts, and
+# workflows). Adapted from DataRecce/recce-cloud-infra `sast.yml`; scheduled
+# rather than per-PR so PR latency stays low — the Quality Gate carries the
+# per-PR checks (ruff's flake8-bandit rules cover the common Python CWEs).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: semgrep/semgrep
+    steps:
+      # actions/checkout@v7.0.1 — pinned to immutable SHA.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config auto \
+            --error \
+            --severity WARNING

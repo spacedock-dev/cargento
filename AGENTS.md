@@ -47,14 +47,23 @@ git commit -s -m "feat(skill): add new capability to cargento"
 Run the full validation suite locally before opening any PR; do not rely on CI to surface failures:
 
 ```bash
-python3 -m pip install -r requirements-validation.txt
+python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
+ruff check .
+ruff format --check .
+mypy
+python3 scripts/lint_embedded.py
 python3 scripts/validate_plugins.py
-python3 -m unittest scripts/tests/test_validate_plugins.py
-python3 -m unittest scripts/tests/test_bump_version.py
-python3 -m unittest cargento/skills/cargento/tests/test_server.py
+coverage run -m unittest cargento.skills.cargento.tests.test_server \
+  scripts.tests.test_validate_plugins scripts.tests.test_bump_version \
+  scripts.tests.test_lint_embedded
+coverage report   # enforces the fail_under threshold from pyproject.toml
 claude plugin validate . --strict
 claude plugin validate ./cargento --strict
 ```
+
+## Quality Gate
+
+Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the embedded HTML/CSS/JS asset linter (`scripts/lint_embedded.py`), and the full unittest suite under `coverage` with the `fail_under` threshold from `pyproject.toml`. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
 
 ## Versioning and Releases
 
