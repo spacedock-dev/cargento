@@ -1114,6 +1114,74 @@ console.log(JSON.stringify(out));
             quiet = next(s for s in sessions if s["session"] == session_id[:8])
             self.assertEqual("needs_input", quiet["state"])
 
+    def test_idle_nudge_pops_but_never_marks_session_blocked(self) -> None:
+        # Claude Code emits "Claude is waiting for your input" after EVERY
+        # completed turn. That is the dashboard's own definition of idle —
+        # it may popup once as a nudge but must never flip a session to
+        # needs_input. Permission prompts (different message) still do.
+        now = dashboard.time.time()
+        session_id = "ffff6666-0000-0000-0000-000000000000"
+        old_iso = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            proj.mkdir(parents=True)
+            fp = proj / f"{session_id}.jsonl"
+            fp.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": session_id,
+                        "uuid": "u-1",
+                        "timestamp": old_iso,
+                        "message": {"role": "user", "content": "do the thing"},
+                    }
+                )
+                + "\n"
+            )
+            old = now - 600
+            dashboard.os.utime(fp, (old, old))
+            httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with (
+                    mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                    mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                    mock.patch.object(dashboard, "notify_mac") as notify,
+                ):
+                    # Idle nudge: pops once, no blocked state, no stored hook.
+                    self._post_notify(
+                        httpd.server_port,
+                        {
+                            "session_id": session_id,
+                            "message": "Claude is waiting for your input",
+                            "transcript_path": str(fp),
+                        },
+                    )
+                    self.assertEqual(1, notify.call_count)
+                    with dashboard._lock:
+                        self.assertNotIn(session_id[:8], dashboard._hook_notifs)
+                    sessions = dashboard.collect_claude(now, 24, False)
+                    target = next(s for s in sessions if s["session"] == session_id[:8])
+                    self.assertEqual("idle", target["state"])
+
+                    # A permission prompt still blocks when the session is quiet.
+                    self._post_notify(
+                        httpd.server_port,
+                        {
+                            "session_id": session_id,
+                            "message": "Claude needs your permission to use Bash",
+                            "transcript_path": str(fp),
+                        },
+                    )
+                    sessions = dashboard.collect_claude(now, 24, False)
+                    target = next(s for s in sessions if s["session"] == session_id[:8])
+                    self.assertEqual("needs_input", target["state"])
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=2)
+
     def test_background_task_flap_lifecycle_end_to_end(self) -> None:
         # Full lifecycle of the live 936f2c2b case, through the real notify
         # endpoint: a turn ends into background work, Claude re-emits
@@ -1170,11 +1238,13 @@ console.log(JSON.stringify(out));
                 with patches[0], patches[1]:
 
                     def post_hook() -> None:
+                        # Permission-kind message: idle nudges never block at
+                        # all (see test_idle_nudge_pops_but_never_marks_...).
                         self._post_notify(
                             httpd.server_port,
                             {
                                 "session_id": session_id,
-                                "message": "Claude is waiting for your input",
+                                "message": "Claude needs your permission to use Bash",
                                 "transcript_path": str(fp),
                             },
                         )

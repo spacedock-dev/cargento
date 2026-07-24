@@ -50,7 +50,7 @@ Tell the user the URL, that the page auto-refreshes every 5 seconds, and that po
 Two paths, both firing `osascript display notification` (60s per-session cooldown plus a 5s global floor):
 
 1. **Transcript detection** — an open AskUserQuestion flips the session to Needs input on the next poll (the UI polling `/api/data` drives this; keep a dashboard tab open).
-2. **Notification hook** — a `Notification` hook in user settings (`~/.claude/settings.json`) POSTing the hook payload to `http://127.0.0.1:4553/api/notify`. Covers permission prompts and idle waits, works even with no browser tab open. This hook is NOT installed by the plugin — if the user wants path 2, offer to add it to their `~/.claude/settings.json`:
+2. **Notification hook** — a `Notification` hook in user settings (`~/.claude/settings.json`) POSTing the hook payload to `http://127.0.0.1:4553/api/notify`. Covers permission prompts and idle waits, works even with no browser tab open. Idle nudges ("Claude is waiting for your input" — sent after every completed turn) pop a notification but never mark the session blocked; only real blockers (permission prompts, plan approvals, open questions) create Needs-input state. This hook is NOT installed by the plugin — if the user wants path 2, offer to add it to their `~/.claude/settings.json`:
 
 ```json
 "hooks": {

@@ -3100,6 +3100,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(b'{"ok":true,"suppressed":"subagent"}', "application/json")
             return
         now = time.time()
+        # Claude Code sends "Claude is waiting for your input" after EVERY
+        # completed turn — that is this dashboard's definition of idle
+        # ("awaiting your message"), not of blocked. Idle nudges may popup
+        # once below, but they never become standing needs-input state; only
+        # real blockers (permission prompts, plan approvals, open questions)
+        # do. Unknown messages are treated as blockers, conservatively.
+        idle_nudge = message.strip().lower().startswith("claude is waiting for your input")
         hook = {"ts": now, "message": message}
         transcript_path = payload.get("transcript_path")
         if prefix and isinstance(transcript_path, str):
@@ -3107,7 +3114,7 @@ class Handler(BaseHTTPRequestHandler):
             if found:
                 hook["user_event"] = user_event
         with _lock:
-            if prefix:
+            if prefix and not idle_nudge:
                 bounded_put(_hook_notifs, prefix, hook)
             popup_key = prefix or "_anonymous"
             session_ready = now - _last_popup.get(popup_key, 0) >= POPUP_COOLDOWN_SEC
