@@ -45,7 +45,10 @@ max-args = 8
 "**/tests/*.py" = ["S101", "S603", "S108", "E501", "SLF001", "INP001"]
 
 [tool.mypy]
-python_version = "3.9"
+# Lowest analysis target mypy 2.x supports. The server's RUNTIME floor is
+# older (annotations are never evaluated thanks to `from __future__ import
+# annotations`); mypy's target only affects stdlib stubs and syntax analysis.
+python_version = "3.10"
 strict = true
 warn_unreachable = true
 # Pin the analysis platform so local (macOS) and CI (Linux) agree: the
