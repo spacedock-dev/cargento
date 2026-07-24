@@ -17,11 +17,11 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      # actions/checkout@v6.0.2 — pinned to immutable SHA (this is the
+      # actions/checkout@v7.0.1 — pinned to immutable SHA (this is the
       # required check; mutable major tags don't belong here).
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      # actions/setup-python@v6.0.0 — pinned to immutable SHA.
-      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # actions/setup-python@v7.0.0 — pinned to immutable SHA.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
       - name: Install validation dependencies
