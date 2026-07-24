@@ -693,21 +693,44 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual("session-", s["session"])   # display stays 8 chars
         self.assertEqual("session-abcdef123", s["sid"])  # identity stays full
 
+    # Functional DOM/window stubs for executing the page script under node:
+    # listeners are captured so tests can fire synthetic events, and
+    # getElementById serves whatever elements a test registers in __els.
+    PAGE_JS_STUBS = """
+const __listeners = {};
+const __els = {};
+const __fire = (type, ev) => (__listeners[type] || []).forEach(f => f(ev));
+const location = {search: ""};
+const document = {
+  addEventListener(type, fn){ (__listeners[type] = __listeners[type] || []).push(fn); },
+  getElementById(id){ return __els[id] || null; },
+  createElement(){ return {textContent: "", style: {}, appendChild(){}}; },
+  createTextNode(){ return {textContent: ""}; },
+  activeElement: null,
+  hidden: false,
+  title: ""
+};
+const window = {addEventListener(type, fn){
+  (__listeners["window:" + type] = __listeners["window:" + type] || []).push(fn); }};
+const fetch = () => new Promise(() => {});
+const setInterval = () => 0;
+"""
+
+    def _run_page_js(self, checks):
+        script = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE,
+                           re.S).group(1)
+        with tempfile.TemporaryDirectory() as tmp:
+            js = Path(tmp) / "page_test.js"
+            js.write_text(self.PAGE_JS_STUBS + script + checks)
+            proc = subprocess.run(["node", str(js)], capture_output=True,
+                                  text=True, timeout=30)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_sparkline_buffers_behave_correctly(self):
         # Execute the page's actual JS (ring buffers + SVG generation) under
         # node with a minimal DOM stub, and assert on observable behavior.
-        script = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE,
-                           re.S).group(1)
-        stubs = """
-const location = {search: ""};
-const document = {addEventListener(){}, getElementById(){ return null; },
-                  createElement(){ return {appendChild(){}}; },
-                  createTextNode(){ return {}; }, title: ""};
-const window = {};
-const fetch = () => new Promise(() => {});
-const setInterval = () => 0;
-"""
         checks = """
 const out = {};
 {
@@ -744,13 +767,7 @@ const out = {};
 }
 console.log(JSON.stringify(out));
 """
-        with tempfile.TemporaryDirectory() as tmp:
-            js = Path(tmp) / "page_test.js"
-            js.write_text(stubs + script + checks)
-            proc = subprocess.run(["node", str(js)], capture_output=True,
-                                  text=True, timeout=30)
-        self.assertEqual(0, proc.returncode, proc.stderr)
-        out = json.loads(proc.stdout.strip().splitlines()[-1])
+        out = self._run_page_js(checks)
         # 300s window over t=0..400 step 5 keeps t=100..400; duplicate dropped.
         self.assertEqual(
             {"len": 61, "first": 100, "last": 400, "lastV": 400}, out["pruned"])
@@ -767,6 +784,54 @@ console.log(JSON.stringify(out));
         self.assertIn("restoreSparkState", dashboard.PAGE)
         self.assertIn("restoreSparkState(sparkFocused, savedPointer)", dashboard.PAGE)
         self.assertIn("preventScroll", dashboard.PAGE)
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sparkline_hover_lifecycle_across_renders_and_window_exit(self):
+        # Behavioral coverage for the interaction layer: hover shows on
+        # pointermove, survives a full render() DOM swap, is CLEARED when the
+        # pointer leaves the window (no in-document pointermove fires), stays
+        # cleared on later renders, and keyboard focus is restored.
+        checks = """
+const out = {};
+const wrap = {
+  id: "spark-main",
+  dataset: {now: "1000"},
+  style: {},
+  closest(sel){ return sel === "#spark-main" ? this : null; },
+  getBoundingClientRect(){
+    return {left: 0, top: 0, right: 100, bottom: 46, width: 100, height: 46};
+  },
+  focus(){ document.activeElement = this; __fire("focusin", {target: this}); }
+};
+const tip = {style: {}, appendChild(){}};
+const xline = {style: {}, parentElement: wrap};
+__els["spark-main"] = wrap; __els["spark-tip"] = tip; __els["spark-x"] = xline;
+__els["app"] = {innerHTML: ""};
+pushPoint(rateHistory, 995, 100);
+pushPoint(rateHistory, 1000, 200);
+const d = {generated: 1000, window_hours: 24, show_all: false, harnesses: [],
+           summary: {needs_input: 0, working: 0, rate_per_min: 200,
+                     total_tasks: 0, open_tasks: 0, progress_pct: 0,
+                     total_done: 0},
+           sessions: []};
+__fire("pointermove", {target: wrap, clientX: 50, clientY: 20});
+out.hoverShown = tip.style.opacity == 1;
+render(d);
+out.restoredAfterRender = tip.style.opacity == 1;
+__fire("mouseout", {relatedTarget: null});   // pointer left the window
+out.clearedOnExit = tip.style.opacity == 0 && sparkPointer === null;
+render(d);
+out.staysHiddenAfterRender = tip.style.opacity == 0;
+wrap.focus();
+render(d);
+out.focusRestored = document.activeElement === wrap && tip.style.opacity == 1;
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual({"hoverShown": True, "restoredAfterRender": True,
+                          "clearedOnExit": True,
+                          "staysHiddenAfterRender": True,
+                          "focusRestored": True}, out)
 
     def test_load_tasks_coerces_malformed_field_types(self):
         with tempfile.TemporaryDirectory() as tmp:

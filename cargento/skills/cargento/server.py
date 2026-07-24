@@ -910,6 +910,8 @@ def base_session(harness, sid, project):
     # "session" is the 8-char display id; "sid" keeps the full identity so
     # the client can key per-session state without truncation collisions
     # (e.g. Gemini "session-*" fallback ids all display as "session-").
+    # Claude passes its 8-char prefix, so sid == session there — that whole
+    # collector is already keyed on the prefix upstream.
     return {
         "session": str(sid)[:8],
         "sid": str(sid),
@@ -2217,8 +2219,11 @@ function heroSpark(d){
     dot = `<span class="spark-dot" style="left:${dotX.toFixed(2)}%;` +
       `top:${dotY.toFixed(2)}%"></span>`;
   }
+  const lastV = rateHistory.length ? rateHistory[rateHistory.length-1].v : null;
+  const nowLabel = lastV == null ? "" :
+    `, now ${lastV.toLocaleString()} tokens per minute`;
   return `<div class="spark-wrap" id="spark-main" tabindex="0" data-now="${d.generated}"` +
-    ` role="img" aria-label="output rate, trailing 5 minutes">` +
+    ` role="img" aria-label="output rate, trailing 5 minutes${nowLabel}">` +
     sparkSVG(rateHistory, d.generated, 100, 46, true) + dot +
     `<span class="spark-x" id="spark-x"></span><span class="spark-tip" id="spark-tip"></span></div>`;
 }
@@ -2292,6 +2297,15 @@ document.addEventListener("focusin", e => {
 document.addEventListener("focusout", e => {
   if(e.target && e.target.id === "spark-main") hideSparkHover();
 });
+
+// The pointer can leave the page without a final in-document pointermove
+// (window-edge exit, alt-tab, tab switch). Clear the saved position on those
+// paths, or restoreSparkState() resurrects the tooltip for a pointer that is
+// gone on every subsequent poll.
+function clearSparkPointer(){ sparkPointer = null; hideSparkHover(); }
+document.addEventListener("mouseout", e => { if(!e.relatedTarget) clearSparkPointer(); });
+window.addEventListener("blur", clearSparkPointer);
+document.addEventListener("visibilitychange", () => { if(document.hidden) clearSparkPointer(); });
 
 // render() replaces #app wholesale, which kills the sparkline's focus and
 // resets its hover layer; re-apply both against the freshly built DOM.
@@ -2407,7 +2421,8 @@ function taskBlock(sess){
 function workingCard(d, sess){
   const hist = sessRateHistory.get(sessKey(sess));
   const spark = (hist && hist.length > 1)
-    ? `<span class="rate-spark" title="tok/min · trailing 5 min">` +
+    ? `<span class="rate-spark" title="${(sess.rate_per_min || 0).toLocaleString()}` +
+      ` tok/min · trailing 5 min">` +
       sparkSVG(hist, d.generated, 84, 26, false) + `</span>`
     : "";
   const rateMeter = (sess.active && sess.rate_per_min)
