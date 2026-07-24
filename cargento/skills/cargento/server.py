@@ -2070,7 +2070,10 @@ PAGE = r"""<!doctype html>
   .pct{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
   .turnbar{height:9px;border-radius:5px;background:var(--line);overflow:hidden}
   .turnfill{display:block;height:100%;border-radius:5px;background:var(--accent)}
-  .lwarn{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:color-mix(in oklab,var(--alert) 18%,transparent);color:var(--alert);font-family:var(--mono);font-weight:700;font-size:12px;cursor:help}
+  .lwarn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:color-mix(in oklab,var(--alert) 18%,transparent);color:var(--alert);font-family:var(--mono);font-weight:700;font-size:12px;cursor:help;outline:none}
+  .lwarn:focus-visible{box-shadow:0 0 0 2px color-mix(in oklab,var(--alert) 45%,transparent)}
+  .lwarn .ltip{position:absolute;bottom:calc(100% + 8px);right:-6px;width:max-content;max-width:250px;white-space:normal;text-align:left;opacity:0;pointer-events:none;transform:translateY(3px);transition:opacity .14s ease,transform .14s ease;font-family:var(--mono);font-size:11px;font-weight:500;line-height:1.5;color:var(--bg);background:var(--ink);padding:7px 10px;border-radius:8px;box-shadow:0 6px 18px -6px rgba(0,0,0,.5);z-index:40}
+  .lwarn:hover .ltip,.lwarn:focus-visible .ltip{opacity:1;transform:translateY(0);transition-delay:.2s}
   .subs{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
   .subs-k{font-family:var(--mono);font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em}
   .subpill{display:inline-flex;align-items:center;gap:7px;padding:4px 12px;border-radius:999px;background:color-mix(in oklab,var(--accent) 13%,transparent);border:1px solid color-mix(in oklab,var(--accent) 30%,transparent);font-size:12px;color:var(--ink)}
@@ -2394,7 +2397,9 @@ function rateTile(d){
 
 function turnBlock(t){
   if(!t) return "";
-  const warn = t.long ? `<span class="lwarn" title="This request is running long (or estimated to). Double-check what the agent is doing matches your expectations.">!</span>` : "";
+  const warn = t.long ? `<span class="lwarn" tabindex="0" role="note"` +
+    ` aria-label="This request is running long (or estimated to). Double-check what the agent is doing matches your expectations.">!` +
+    `<span class="ltip">This request is running long (or estimated to). Double-check what the agent is doing matches your expectations.</span></span>` : "";
   const pct = (t.pct != null) ? `<span class="pct">${t.pct}%</span>` : "";
   const bar = (t.pct != null) ? `<div class="turnbar"><span class="turnfill" style="width:${t.pct}%"></span></div>` : "";
   const eta = t.eta_h ? `~${esc(t.eta_h)} left (est)` : "running longer than recent turns";

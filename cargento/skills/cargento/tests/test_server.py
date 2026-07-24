@@ -777,6 +777,15 @@ console.log(JSON.stringify(out));
         self.assertEqual(
             {"hasLine": True, "finite": True, "single": True}, out["svg"])
 
+    def test_long_turn_warning_uses_styled_tooltip_not_native_title(self):
+        # The (!) icon must use the app's styled tooltip (fast, themed), not
+        # the native title attribute (multi-second hover delay).
+        self.assertNotIn('class="lwarn" title=', dashboard.PAGE)
+        self.assertIn('<span class="ltip">', dashboard.PAGE)
+        self.assertIn('class="lwarn" tabindex="0"', dashboard.PAGE)
+        self.assertIn(".lwarn:hover .ltip", dashboard.PAGE)
+        self.assertIn("transition-delay:.2s", dashboard.PAGE)
+
     def test_page_restores_sparkline_hover_and_focus_after_render(self):
         # render() replaces #app's innerHTML every poll; the hover crosshair
         # and keyboard focus on the rate sparkline must be restored after.
