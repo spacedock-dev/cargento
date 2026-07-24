@@ -408,7 +408,7 @@ class CargentoServerTest(unittest.TestCase):
 
     def test_transcript_mtime_alone_does_not_clear_newer_hook(self) -> None:
         now = dashboard.time.time()
-        event_time = dashboard.datetime.fromtimestamp(now - 10, dashboard.timezone.utc).isoformat()
+        event_time = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
             tasks = Path(tmp) / "tasks"
@@ -463,7 +463,7 @@ class CargentoServerTest(unittest.TestCase):
         now = dashboard.time.time()
 
         def timestamp(offset: float) -> str:
-            iso = dashboard.datetime.fromtimestamp(now + offset, dashboard.timezone.utc).isoformat()
+            iso = dashboard.datetime.fromtimestamp(now + offset, dashboard.UTC).isoformat()
             return str(iso)
 
         parent_id = "11111111-1111-1111-1111-111111111111"
@@ -979,7 +979,7 @@ console.log(JSON.stringify(out));
 
     def test_copilot_sessions_are_discovered_and_analyzed(self) -> None:
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.timezone.utc).isoformat()
+        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             events = Path(tmp) / "session-state" / "11112222-aaaa" / "events.jsonl"
             events.parent.mkdir(parents=True)
@@ -1043,7 +1043,7 @@ console.log(JSON.stringify(out));
 
     def test_goose_sessions_from_shared_db(self) -> None:
         now = dashboard.time.time()
-        stamp = dashboard.datetime.fromtimestamp(now - 10, dashboard.timezone.utc).strftime(
+        stamp = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1093,7 +1093,7 @@ console.log(JSON.stringify(out));
 
     def test_droid_sessions_from_project_transcripts(self) -> None:
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.timezone.utc).isoformat()
+        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             fp = Path(tmp) / "proj-x" / "d1d2d3d4.jsonl"
             fp.parent.mkdir(parents=True)

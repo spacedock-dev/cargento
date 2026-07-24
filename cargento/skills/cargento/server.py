@@ -28,7 +28,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
@@ -102,8 +102,8 @@ def project_label(dirname: str) -> str:
 
 def parse_ts(ts: Any) -> float | None:
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
-    except (ValueError, AttributeError):
+        return datetime.fromisoformat(ts).timestamp()
+    except (ValueError, TypeError):
         return None
 
 
@@ -113,7 +113,7 @@ def parse_utc_sql(v: Any) -> float:
     try:
         dt = datetime.fromisoformat(str(v).replace(" ", "T"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt.timestamp()
     except (ValueError, TypeError):
         return 0
@@ -1221,7 +1221,7 @@ def antigravity_session_metadata(
             try:
                 if now - os.path.getmtime(path) <= window_hours * 3600:
                     recent_logs.append(path)
-            except OSError:  # noqa: PERF203 — per-file stat; a vanished log must not abort the scan
+            except OSError:
                 continue
         logs = recent_logs
     try:

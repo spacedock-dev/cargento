@@ -3,7 +3,7 @@
 # installable package here — this file only configures lint/type/coverage.
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 100
 extend-exclude = [".venv", "venv"]
 
@@ -45,10 +45,9 @@ max-args = 8
 "**/tests/*.py" = ["S101", "S603", "S108", "E501", "SLF001", "INP001"]
 
 [tool.mypy]
-# Lowest analysis target mypy 2.x supports. The server's RUNTIME floor is
-# older (annotations are never evaluated thanks to `from __future__ import
-# annotations`); mypy's target only affects stdlib stubs and syntax analysis.
-python_version = "3.10"
+# Python 3.11 is the supported runtime floor (documented in SKILL.md and
+# README); ruff's target-version above must stay in lockstep.
+python_version = "3.11"
 strict = true
 warn_unreachable = true
 # Pin the analysis platform so local (macOS) and CI (Linux) agree: the

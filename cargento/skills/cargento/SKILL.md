@@ -37,7 +37,7 @@ Resolve `server.py` relative to this `SKILL.md` in the installed plugin, then ru
 python3 <resolved-skill-directory>/server.py --port 4553
 ```
 
-Stdlib-only, Python 3.8+, no dependencies. Run it in the background using your harness's background-execution option (or append `&` to the command), confirm it responds (`curl -s http://localhost:4553/api/data | head -c 200`), then open the UI:
+Stdlib-only, Python 3.11+, no dependencies. Run it in the background using your harness's background-execution option (or append `&` to the command), confirm it responds (`curl -s http://localhost:4553/api/data | head -c 200`), then open the UI:
 
 ```bash
 open http://localhost:4553/    # Linux: xdg-open

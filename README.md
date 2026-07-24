@@ -19,7 +19,7 @@ This repo contains **one plugin**:
 ### Prerequisites
 
 - Codex, Claude Code, Antigravity/AGY, or Gemini CLI installed
-- Python 3.8+ (the dashboard server is stdlib-only, no dependencies)
+- Python 3.11+ (the dashboard server is stdlib-only, no dependencies)
 
 ### Claude Code Installation
 
