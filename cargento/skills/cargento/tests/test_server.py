@@ -3,7 +3,10 @@ import http.client
 import importlib.util
 import io
 import json
+import re
+import shutil
 import sqlite3
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -684,6 +687,86 @@ class CargentoServerTest(unittest.TestCase):
         # Buffers only grow on fresh payloads and drop points past the window.
         self.assertIn("recordRates(data)", dashboard.PAGE)
         self.assertIn("arr.shift()", dashboard.PAGE)
+
+    def test_base_session_exposes_full_sid_and_truncated_display_id(self):
+        s = dashboard.base_session("gemini", "session-abcdef123", "proj")
+        self.assertEqual("session-", s["session"])   # display stays 8 chars
+        self.assertEqual("session-abcdef123", s["sid"])  # identity stays full
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sparkline_buffers_behave_correctly(self):
+        # Execute the page's actual JS (ring buffers + SVG generation) under
+        # node with a minimal DOM stub, and assert on observable behavior.
+        script = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE,
+                           re.S).group(1)
+        stubs = """
+const location = {search: ""};
+const document = {addEventListener(){}, getElementById(){ return null; },
+                  createElement(){ return {appendChild(){}}; },
+                  createTextNode(){ return {}; }, title: ""};
+const window = {};
+const fetch = () => new Promise(() => {});
+const setInterval = () => 0;
+"""
+        checks = """
+const out = {};
+{
+  const arr = [];
+  for(let t = 0; t <= 400; t += 5) pushPoint(arr, t, t);
+  pushPoint(arr, 400, 999); // same-timestamp replay must be ignored
+  out.pruned = {len: arr.length, first: arr[0].t,
+                last: arr[arr.length-1].t, lastV: arr[arr.length-1].v};
+}
+{
+  // Two live sessions whose display ids truncate identically must not
+  // share one buffer (Gemini "session-*" fallback ids all become
+  // "session-" after display truncation).
+  recordRates({generated: 1000, summary: {rate_per_min: 14}, sessions: [
+    {harness:"gemini", session:"session-", sid:"session-aaaa", rate_per_min:5},
+    {harness:"gemini", session:"session-", sid:"session-bbbb", rate_per_min:9}]});
+  const a = sessRateHistory.get("gemini:session-aaaa");
+  const b = sessRateHistory.get("gemini:session-bbbb");
+  out.aliasing = {buffers: sessRateHistory.size,
+                  a: a && a[0] && a[0].v, b: b && b[0] && b[0].v};
+  recordRates({generated: 1005, summary: {rate_per_min: 6}, sessions: [
+    {harness:"gemini", session:"session-", sid:"session-aaaa", rate_per_min:6}]});
+  const a2 = sessRateHistory.get("gemini:session-aaaa") || [];
+  out.dropped = {buffers: sessRateHistory.size, aLen: a2.length};
+}
+{
+  const pts = [{t:900, v:0}, {t:950, v:50}, {t:1000, v:100}];
+  const svg = sparkSVG(pts, 1000, 100, 46, true);
+  const nums = (svg.match(/-?\\d+(\\.\\d+)?/g) || []).map(Number);
+  out.svg = {hasLine: svg.includes("<polyline"),
+             finite: nums.length > 0 && nums.every(Number.isFinite),
+             single: !sparkSVG([{t:1000, v:1}], 1000, 100, 46, true)
+                       .includes("<polyline")};
+}
+console.log(JSON.stringify(out));
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            js = Path(tmp) / "page_test.js"
+            js.write_text(stubs + script + checks)
+            proc = subprocess.run(["node", str(js)], capture_output=True,
+                                  text=True, timeout=30)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        out = json.loads(proc.stdout.strip().splitlines()[-1])
+        # 300s window over t=0..400 step 5 keeps t=100..400; duplicate dropped.
+        self.assertEqual(
+            {"len": 61, "first": 100, "last": 400, "lastV": 400}, out["pruned"])
+        self.assertEqual({"buffers": 2, "a": 5, "b": 9}, out["aliasing"])
+        # Departed session-bbbb is pruned; session-aaaa accumulates.
+        self.assertEqual({"buffers": 1, "aLen": 2}, out["dropped"])
+        self.assertEqual(
+            {"hasLine": True, "finite": True, "single": True}, out["svg"])
+
+    def test_page_restores_sparkline_hover_and_focus_after_render(self):
+        # render() replaces #app's innerHTML every poll; the hover crosshair
+        # and keyboard focus on the rate sparkline must be restored after.
+        self.assertIn("sparkPointer", dashboard.PAGE)
+        self.assertIn("restoreSparkState", dashboard.PAGE)
+        self.assertIn("restoreSparkState(sparkFocused)", dashboard.PAGE)
+        self.assertIn("preventScroll", dashboard.PAGE)
 
     def test_load_tasks_coerces_malformed_field_types(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -907,8 +907,12 @@ def maybe_popup(prefix, state, detail):
 
 
 def base_session(harness, sid, project):
+    # "session" is the 8-char display id; "sid" keeps the full identity so
+    # the client can key per-session state without truncation collisions
+    # (e.g. Gemini "session-*" fallback ids all display as "session-").
     return {
-        "session": sid,
+        "session": str(sid)[:8],
+        "sid": str(sid),
         "harness": harness,
         "project": project,
         "title": None,
@@ -1098,7 +1102,7 @@ def collect_codex(now, window_hours, show_all):
             state = "working"
             state_detail = working_detail(info, subagents)
 
-        s = base_session("codex", sid[:8], os.path.basename(codex_meta(fp).get("cwd") or "") or "codex")
+        s = base_session("codex", sid, os.path.basename(codex_meta(fp).get("cwd") or "") or "codex")
         s.update({
             "title": (info or {}).get("title"),
             "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
@@ -1406,7 +1410,7 @@ def collect_antigravity(now, window_hours, show_all):
         prompt = str(meta.get("last_prompt") or "").strip()
         cwd = str(meta.get("cwd") or "").strip()
         project = os.path.basename(cwd.rstrip(os.sep)) or "antigravity"
-        session = base_session("gemini", sid[:8], project)
+        session = base_session("gemini", sid, project)
         session.update({
             "title": prompt.split("\n")[0][:80] or None,
             "last_prompt": prompt[:140],
@@ -1470,7 +1474,7 @@ def collect_gemini(now, window_hours, show_all):
         cwd = gemini_meta(fp).get("cwd")
         project = os.path.basename(cwd or "") or project_label(
             os.path.basename(os.path.dirname(os.path.dirname(fp))))
-        s = base_session("gemini", str(sid)[:8], project)
+        s = base_session("gemini", sid, project)
         s.update({
             "title": (info or {}).get("title"),
             "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
@@ -1517,7 +1521,7 @@ def collect_copilot(now, window_hours, show_all):
             state_detail = working_detail(info, subagents)
 
         cwd = (info or {}).get("cwd") or copilot_meta(fp).get("cwd")
-        s = base_session("copilot", sid[:8], os.path.basename(cwd or "") or "copilot")
+        s = base_session("copilot", sid, os.path.basename(cwd or "") or "copilot")
         s.update({
             "title": (info or {}).get("title"),
             "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
@@ -1611,7 +1615,7 @@ def collect_opencode(now, window_hours, show_all):
                         pass
                     turn = turn_progress(turns_from_events(events), state, now)
 
-                s = base_session("opencode", str(r["id"])[:8],
+                s = base_session("opencode", r["id"],
                                  os.path.basename(r["directory"] or "") or "opencode")
                 s.update({
                     "title": (r["title"] or "").strip()[:80] or None,
@@ -1701,7 +1705,7 @@ def collect_cursor(now, window_hours, show_all):
         state, state_detail = "idle", "awaiting your message"
         if now - mtime <= WORKING_THRESHOLD_SEC:
             state, state_detail = "working", "generating…"
-        s = base_session("cursor", sid[:8], "cursor")
+        s = base_session("cursor", sid, "cursor")
         s.update({
             "title": _cursor_title(db, mtime) if active else None,
             "state": state,
@@ -1811,7 +1815,7 @@ def collect_goose(now, window_hours, show_all):
                     pass
                 turn = turn_progress(turns_from_events(events), state, now)
 
-            s = base_session("goose", str(r["id"])[:8],
+            s = base_session("goose", r["id"],
                              os.path.basename(r["working_dir"] or "") or "goose")
             s.update({
                 "title": (r["description"] or "").strip()[:80] or None,
@@ -1853,7 +1857,7 @@ def collect_droid(now, window_hours, show_all):
 
         project = os.path.basename(meta.get("cwd") or "") or project_label(
             os.path.basename(os.path.dirname(fp)))
-        s = base_session("droid", sid[:8], project)
+        s = base_session("droid", sid, project)
         s.update({
             "title": (meta.get("title") or "").strip()[:80] or (info or {}).get("title"),
             "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
@@ -2131,7 +2135,8 @@ function fmtDur(sec){
 // the page opens and drop points once they age out of the visual window.
 const SPARK_WINDOW_SEC = 300;
 const rateHistory = [];               // overall: [{t, v}]
-const sessRateHistory = new Map();    // "harness:session" -> [{t, v}]
+const sessRateHistory = new Map();    // "harness:sid" -> [{t, v}]
+const sessKey = x => x.harness + ":" + (x.sid || x.session);
 
 function pushPoint(arr, t, v){
   if(arr.length && arr[arr.length-1].t >= t) return; // memoized/replayed payload
@@ -2144,7 +2149,7 @@ function recordRates(d){
   pushPoint(rateHistory, d.generated, d.summary.rate_per_min || 0);
   const seen = new Set();
   for(const x of d.sessions){
-    const key = x.harness + ":" + x.session;
+    const key = sessKey(x);
     seen.add(key);
     let arr = sessRateHistory.get(key);
     if(!arr) sessRateHistory.set(key, arr = []);
@@ -2227,14 +2232,30 @@ function showSparkHover(frac){
   tip.style.opacity = 1;
 }
 
+let sparkPointer = null; // last pointer position while over the sparkline
+
 document.addEventListener("pointermove", e => {
   const wrap = e.target.closest ? e.target.closest("#spark-main") : null;
-  if(!wrap){ hideSparkHover(); return; }
+  if(!wrap){ sparkPointer = null; hideSparkHover(); return; }
+  sparkPointer = {x: e.clientX, y: e.clientY};
   const r = wrap.getBoundingClientRect();
   showSparkHover((e.clientX - r.left) / Math.max(1, r.width));
 });
 document.addEventListener("focusin", e => { if(e.target.id === "spark-main") showSparkHover(1); });
 document.addEventListener("focusout", e => { if(e.target.id === "spark-main") hideSparkHover(); });
+
+// render() replaces #app wholesale, which kills the sparkline's focus and
+// resets its hover layer; re-apply both against the freshly built DOM.
+function restoreSparkState(hadFocus){
+  const wrap = document.getElementById("spark-main");
+  if(!wrap) return;
+  if(hadFocus){ wrap.focus({preventScroll: true}); return; } // focusin re-shows tip
+  if(!sparkPointer) return;
+  const r = wrap.getBoundingClientRect();
+  if(sparkPointer.x >= r.left && sparkPointer.x <= r.right &&
+     sparkPointer.y >= r.top && sparkPointer.y <= r.bottom)
+    showSparkHover((sparkPointer.x - r.left) / Math.max(1, r.width));
+}
 
 const ICON_PATH = {
   claude: "M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z",
@@ -2323,7 +2344,7 @@ function taskBlock(sess){
 }
 
 function workingCard(d, sess){
-  const hist = sessRateHistory.get(sess.harness + ":" + sess.session);
+  const hist = sessRateHistory.get(sessKey(sess));
   const spark = (hist && hist.length > 1)
     ? `<span class="rate-spark" title="tok/min · trailing 5 min">` +
       sparkSVG(hist, d.generated, 84, 26, false) + `</span>`
@@ -2376,6 +2397,7 @@ function toggleIdle(){ idleExpanded = !idleExpanded; if(lastData) render(lastDat
 
 function render(d){
   lastData = d;
+  const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
   const s = d.summary;
   const needs = d.sessions.filter(x => x.state === "needs_input");
   const working = d.sessions.filter(x => x.state === "working");
@@ -2444,6 +2466,7 @@ function render(d){
     (d.show_all ? " · showing all" : "") + `</div></div>` +
     `<div class="hstrip">${harnessStrip(d.harnesses)}</div></div>` + body;
 
+  restoreSparkState(sparkFocused);
   document.title = (s.needs_input > 0 ? `(${s.needs_input}!) ` : "") + "Cargento";
 }
 
