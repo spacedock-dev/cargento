@@ -2007,6 +2007,15 @@ PAGE = r"""<!doctype html>
   .rrow-bar{flex:1;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
   .rrow-fill{display:block;height:100%;border-radius:3px;background:var(--accent)}
   .rrow-v{font-family:var(--mono);font-size:11px;color:var(--ink2);width:46px;text-align:right;font-variant-numeric:tabular-nums}
+  .spark-wrap{position:relative;margin:12px 0 4px;outline:none;cursor:crosshair;border-radius:6px}
+  .spark-wrap:focus-visible{box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .spark-wrap svg{display:block;width:100%;height:46px}
+  .spark-dot{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--accent);border:2px solid var(--panel);transform:translate(-50%,-50%);pointer-events:none}
+  .spark-x{position:absolute;top:0;bottom:0;width:1px;background:var(--ink3);opacity:0;pointer-events:none;transition:opacity .12s}
+  .spark-tip{position:absolute;bottom:calc(100% + 7px);transform:translateX(-50%);opacity:0;pointer-events:none;white-space:nowrap;font-family:var(--mono);font-size:11px;color:var(--bg);background:var(--ink);padding:4px 9px;border-radius:6px;z-index:30;transition:opacity .12s}
+  .spark-tip b{font-weight:700}
+  .rate-flex{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+  .rate-spark svg{display:block;width:84px;height:26px}
   .subnote{display:flex;gap:22px;margin-top:-12px;font-family:var(--mono);font-size:11.5px;color:var(--ink3);align-items:center;flex-wrap:wrap}
   .subnote b{color:var(--ink2);font-weight:700}
   .subnote .div{width:1px;height:11px;background:var(--line)}
@@ -2118,6 +2127,115 @@ function fmtDur(sec){
   return Math.floor(sec/86400) + "d " + Math.floor((sec%86400)/3600) + "h";
 }
 
+// Trailing output-rate sparklines: client-side ring buffers that start when
+// the page opens and drop points once they age out of the visual window.
+const SPARK_WINDOW_SEC = 300;
+const rateHistory = [];               // overall: [{t, v}]
+const sessRateHistory = new Map();    // "harness:session" -> [{t, v}]
+
+function pushPoint(arr, t, v){
+  if(arr.length && arr[arr.length-1].t >= t) return; // memoized/replayed payload
+  arr.push({t, v});
+  const cutoff = t - SPARK_WINDOW_SEC;
+  while(arr.length && arr[0].t < cutoff) arr.shift();
+}
+
+function recordRates(d){
+  pushPoint(rateHistory, d.generated, d.summary.rate_per_min || 0);
+  const seen = new Set();
+  for(const x of d.sessions){
+    const key = x.harness + ":" + x.session;
+    seen.add(key);
+    let arr = sessRateHistory.get(key);
+    if(!arr) sessRateHistory.set(key, arr = []);
+    pushPoint(arr, d.generated, x.rate_per_min || 0);
+  }
+  for(const k of [...sessRateHistory.keys()]) if(!seen.has(k)) sessRateHistory.delete(k);
+}
+
+const SPARK_PAD = 3;
+const sparkX = (t, now, w) => w - SPARK_PAD - (now - t) * (w - 2*SPARK_PAD) / SPARK_WINDOW_SEC;
+const sparkY = (v, max, h) => h - SPARK_PAD - (v / max) * (h - 2*SPARK_PAD);
+
+function sparkSVG(pts, now, w, h, stretch){
+  const base = h - SPARK_PAD;
+  let marks = "";
+  if(pts && pts.length > 1){
+    const max = Math.max(1, ...pts.map(p => p.v));
+    const xy = pts.map(p => [sparkX(p.t, now, w), sparkY(p.v, max, h)]);
+    const pathPts = xy.map(c => c[0].toFixed(2) + "," + c[1].toFixed(2));
+    const area = "M" + xy[0][0].toFixed(2) + "," + base + " L" + pathPts.join(" L") +
+      " L" + xy[xy.length-1][0].toFixed(2) + "," + base + " Z";
+    marks = `<path d="${area}" fill="var(--accent)" fill-opacity=".12"/>` +
+      `<polyline points="${pathPts.join(" ")}" fill="none"` +
+      ` stroke="color-mix(in oklab,var(--accent) 72%,var(--ink3))" stroke-width="2"` +
+      ` stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+    if(!stretch){
+      const e = xy[xy.length-1];
+      marks += `<circle cx="${e[0].toFixed(2)}" cy="${e[1].toFixed(2)}" r="3.5"` +
+        ` fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`;
+    }
+  }
+  return `<svg viewBox="0 0 ${w} ${h}"${stretch ? ' preserveAspectRatio="none"' : ""} aria-hidden="true">` +
+    `<line x1="0" y1="${base}" x2="${w}" y2="${base}" stroke="var(--line)" stroke-width="1"` +
+    ` vector-effect="non-scaling-stroke"/>${marks}</svg>`;
+}
+
+function heroSpark(d){
+  // Stretched viewBox (0..100 units) so the HTML end-dot and crosshair can
+  // share the same coordinates as percentages of the wrap's width.
+  let dot = "";
+  if(rateHistory.length > 1){
+    const max = Math.max(1, ...rateHistory.map(p => p.v));
+    const last = rateHistory[rateHistory.length-1];
+    dot = `<span class="spark-dot" style="left:${sparkX(last.t, d.generated, 100).toFixed(2)}%;` +
+      `top:${sparkY(last.v, max, 46).toFixed(1)}px"></span>`;
+  }
+  return `<div class="spark-wrap" id="spark-main" tabindex="0" data-now="${d.generated}"` +
+    ` role="img" aria-label="output rate, trailing 5 minutes">` +
+    sparkSVG(rateHistory, d.generated, 100, 46, true) + dot +
+    `<span class="spark-x" id="spark-x"></span><span class="spark-tip" id="spark-tip"></span></div>`;
+}
+
+function hideSparkHover(){
+  for(const id of ["spark-x", "spark-tip"]){
+    const el = document.getElementById(id);
+    if(el) el.style.opacity = 0;
+  }
+}
+
+function showSparkHover(frac){
+  const wrap = document.getElementById("spark-main");
+  if(!wrap || rateHistory.length < 2) return;
+  const now = parseFloat(wrap.dataset.now);
+  const t = now - (1 - Math.min(1, Math.max(0, frac))) * SPARK_WINDOW_SEC;
+  let best = rateHistory[0];
+  for(const p of rateHistory) if(Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+  const x = sparkX(best.t, now, 100);
+  const xline = document.getElementById("spark-x");
+  const tip = document.getElementById("spark-tip");
+  if(!xline || !tip) return;
+  xline.style.left = x.toFixed(2) + "%";
+  xline.style.opacity = 1;
+  tip.style.left = Math.min(88, Math.max(12, x)).toFixed(2) + "%";
+  tip.textContent = "";
+  const b = document.createElement("b");
+  b.textContent = best.v.toLocaleString();
+  tip.appendChild(b);
+  tip.appendChild(document.createTextNode(
+    " tok/min · " + new Date(best.t * 1000).toLocaleTimeString()));
+  tip.style.opacity = 1;
+}
+
+document.addEventListener("pointermove", e => {
+  const wrap = e.target.closest ? e.target.closest("#spark-main") : null;
+  if(!wrap){ hideSparkHover(); return; }
+  const r = wrap.getBoundingClientRect();
+  showSparkHover((e.clientX - r.left) / Math.max(1, r.width));
+});
+document.addEventListener("focusin", e => { if(e.target.id === "spark-main") showSparkHover(1); });
+document.addEventListener("focusout", e => { if(e.target.id === "spark-main") hideSparkHover(); });
+
 const ICON_PATH = {
   claude: "M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z",
   codex: "M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z",
@@ -2175,7 +2293,7 @@ function rateTile(d){
   }).join("") + `</div>` : "";
   return `<div class="tile"><div class="tile-top"><span class="tile-label">Output rate</span>` +
     `<span class="tile-cap">tok / min · 10 min</span></div>` +
-    `<div class="tile-val">${total}</div>${rows}</div>`;
+    `<div class="tile-val">${total}</div>${heroSpark(d)}${rows}</div>`;
 }
 
 function turnBlock(t){
@@ -2204,10 +2322,17 @@ function taskBlock(sess){
   return `<div class="tasks">${rows}</div>`;
 }
 
-function workingCard(sess){
+function workingCard(d, sess){
+  const hist = sessRateHistory.get(sess.harness + ":" + sess.session);
+  const spark = (hist && hist.length > 1)
+    ? `<span class="rate-spark" title="tok/min · trailing 5 min">` +
+      sparkSVG(hist, d.generated, 84, 26, false) + `</span>`
+    : "";
   const rateMeter = (sess.active && sess.rate_per_min)
-    ? `<div class="rate-meter"><div class="rate-num">${sess.rate_per_min.toLocaleString()}</div>` +
-      `<div class="rate-lab">tok / min</div><div class="rate-track"><span class="rate-live"></span></div></div>`
+    ? `<div class="rate-meter"><div class="rate-flex">${spark}` +
+      `<div><div class="rate-num">${sess.rate_per_min.toLocaleString()}</div>` +
+      `<div class="rate-lab">tok / min</div></div></div>` +
+      `<div class="rate-track"><span class="rate-live"></span></div></div>`
     : "";
   const bits = [];
   if(sess.total) bits.push(`${sess.done}/${sess.total} done · ${sess.progress_pct}%`);
@@ -2284,7 +2409,7 @@ function render(d){
   if(working.length){
     workingHtml = `<div class="stack"><div class="sec"><span class="sec-k">Working now</span>` +
       `<span class="sec-count">${working.length}</span><span class="sec-rule"></span></div>` +
-      working.map(workingCard).join("") + `</div>`;
+      working.map(s => workingCard(d, s)).join("") + `</div>`;
   } else if(d.sessions.length){
     workingHtml = `<div class="stack"><div class="sec"><span class="sec-k">Working now</span>` +
       `<span class="sec-count">0</span><span class="sec-rule"></span></div>` +
@@ -2330,10 +2455,11 @@ async function refresh(){
     const data = await r.json();
     if(sequence < latestSettledRefresh) return;
     latestSettledRefresh = sequence;
+    recordRates(data);
     render(data);
     window.__refreshFailures = 0;
   }catch(e){
-    if(window.__SAMPLE){ render(window.__SAMPLE); return; }
+    if(window.__SAMPLE){ recordRates(window.__SAMPLE); render(window.__SAMPLE); return; }
     if(sequence < latestSettledRefresh) return;
     latestSettledRefresh = sequence;
     console.error("dashboard refresh failed", e);

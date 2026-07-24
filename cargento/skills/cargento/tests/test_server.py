@@ -671,6 +671,20 @@ class CargentoServerTest(unittest.TestCase):
             dashboard.PAGE,
         )
 
+    def test_page_ships_trailing_rate_sparklines(self):
+        # Overall + per-session trailing sparklines: client-side ring buffers
+        # over a 5-minute window, rendered as SVG in the rate tile and cards.
+        self.assertIn("SPARK_WINDOW_SEC = 300", dashboard.PAGE)
+        self.assertIn("const rateHistory = []", dashboard.PAGE)
+        self.assertIn("const sessRateHistory = new Map()", dashboard.PAGE)
+        self.assertIn("function recordRates", dashboard.PAGE)
+        self.assertIn("function sparkSVG", dashboard.PAGE)
+        self.assertIn('class="spark-wrap"', dashboard.PAGE)
+        self.assertIn('class="rate-spark"', dashboard.PAGE)
+        # Buffers only grow on fresh payloads and drop points past the window.
+        self.assertIn("recordRates(data)", dashboard.PAGE)
+        self.assertIn("arr.shift()", dashboard.PAGE)
+
     def test_load_tasks_coerces_malformed_field_types(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "12345678-abcd-ef00-1234-567890abcdef"
