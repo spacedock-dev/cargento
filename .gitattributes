@@ -1,0 +1,4 @@
+# Normalize line endings in the repository so a Windows checkout does not
+# rewrite sources to CRLF. Ruff tolerates CRLF (line-ending = "auto"), but the
+# repository keeps one canonical form.
+* text=auto eol=lf

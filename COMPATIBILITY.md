@@ -13,7 +13,7 @@ The repository keeps one shared skill implementation for all clients. Platform-n
 
 ## Platform-specific behavior
 
-- The dashboard server is stdlib-only Python 3.8+; it runs identically regardless of which harness launched it.
+- The dashboard server is stdlib-only Python 3.11+ (it uses `datetime.UTC`); it runs identically regardless of which harness launched it. The floor is also declared in `SKILL.md` and `pyproject.toml` — keep all three in lockstep.
 - Popup notifications use macOS `osascript`; on Linux the dashboard works but popups silently no-op, and completed-task ages/estimates degrade (no file birthtime).
 - Needs-input detection exists only for Claude Code sessions — other harnesses expose no equivalent signal in their local stores.
 
