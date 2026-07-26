@@ -192,8 +192,13 @@ the browser's Notification API, since localhost is a secure context.
 - **E2 [verified — NEW]** — **Future timestamps never age out.** Every state test is
   `now - ts <= threshold`, which is trivially true for negative ages (`:1319-1434, 1778-1803,
   1864-1873, 1991-2006, 2178-2200`). A clock-skewed mtime — routine after a WSL2 host suspend, or
-  from a cross-boundary copy — pins a session to **Working forever** and inflates the token rate.
-  Cheap fix: one `plausible_age()` helper clamping negatives.
+  from a cross-boundary copy — pins a session to **Working** for the whole duration of the skew and
+  inflates the token rate. It also leaks into the UI: a future-dated turn start produced
+  `pct: -144000`.
+  **Corrected during implementation:** clamping the age at zero does *not* fix this — zero reads as
+  "just now", which is still fresh. An implausibly future timestamp must be *rejected* so no
+  activity is invented from it, with a small tolerance band clamped instead (sampling noise between
+  `stat()` and the collection clock, and coarse filesystem write times, are not skew).
 - **E3 [documented — NEW]** — NTFS last-write time is not fully updated while a writer holds the
   handle open. Working/Idle is almost entirely mtime-based, so an actively generating Windows
   session can read Idle. Mitigate by tracking size/WAL-size deltas between polls and preferring
@@ -347,9 +352,11 @@ Phase 0 from v1 is gone: its exit condition was "CI is red," but `quality-gate` 
 that fails if any child fails (`quality-gate.yml:178`), so it was unmergeable by construction, and
 it proposed tests for helpers that did not exist yet.
 
-### Phase 1 — Mergeable CI foundation + core correctness (one PR) — **M, 3-5 days**
-The CI and the fixes must land together, because a Windows runner added before the SQLite fix is
-just a red required check.
+### Phase 1 — Mergeable CI foundation + core correctness — **DONE**
+The CI and the fixes had to land together, because a Windows runner added before the SQLite fix is
+just a red required check. Every item below is implemented, each with regression tests that were
+confirmed to fail against the pre-fix behavior. Branch coverage rose 71.0% → 75.2%; the floor was
+ratcheted to 74.
 
 1. **Do not matrix the existing `test` job.** It is Bash-specific throughout: `\` line
    continuations (`:88`), `HAS=$(gh ...)`, `[ ... ]`, `>> "$GITHUB_OUTPUT"`, brace groups (`:100+`).
@@ -363,19 +370,22 @@ just a red required check.
    applied at `:1743`, `:1950`, `:2070`. **No `immutable=1` generalization** (B2).
 3. `glob.escape()` on literal roots at all ~11 sites (A5) + deterministic sort where a "newest
    wins" tie is possible.
-4. `plausible_age()` clamping negative ages (E2).
+4. `age()`/`is_fresh()` rejecting implausibly future timestamps (E2) — see the correction noted
+   under E2; the originally planned clamp would have been a no-op.
 5. `encoding="utf-8"` + `ValueError` handling at `:1025`, `:1074` (E1).
-6. Guarded safe diagnostic writer (D7).
+6. `diag()`, a diagnostic writer that cannot raise (D7).
 7. `os.path.basename` instead of `rsplit("/")` at `:286` (F2).
-8. Lazy `sqlite3` import + per-harness unavailable diagnostic (B3).
+8. Guarded `sqlite3` import; the four DB-backed harnesses report undiscovered rather than
+   present-but-empty, and startup says why (B3).
 9. `COMPATIBILITY.md` 3.8 → 3.11 (H5); `.gitattributes` as policy.
 
-*Expected to surface real Windows failures at the SQLite call sites —
+*Item 2 shipped with the runner because the Windows SQLite call sites would otherwise have failed
 `test_antigravity_steps_supply_rate_action_and_turn_progress`,
-`test_opencode_show_all_returns_every_session`, `test_cursor_sessions_discovered_with_title`,
-`test_goose_sessions_from_shared_db` — which is why 2 ships with the runner.*
+`test_opencode_show_all_returns_every_session`, `test_cursor_sessions_discovered_with_title`, and
+`test_goose_sessions_from_shared_db` on the very job being added.*
 
-**Exit:** `platform-tests` green on all three OSes and required.
+**Exit:** `platform-tests` green on all three OSes and required. *Pending first CI run on the PR —
+the Windows and macOS runners have not yet executed this suite.*
 
 ### Phase 2 — Resolver + diagnostics — **L, 1-2 weeks**
 10. Per-harness candidate **sets**, scan-all-and-dedupe (D-1), pure-function resolution (D-4).
