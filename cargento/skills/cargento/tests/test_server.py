@@ -2097,6 +2097,60 @@ console.log(JSON.stringify(out));
         self.assertEqual("ship it", s["last_prompt"])
 
 
+class ClockSkewTest(unittest.TestCase):
+    # A future timestamp satisfies every `now - ts <= threshold` test, so before
+    # age()/is_fresh() a clock-skewed store pinned its session to Working
+    # permanently and kept feeding its tokens into the output rate.
+    NOW = 1_700_000_000.0
+    SKEW = 86_400.0  # a day ahead, e.g. a WSL2 guest clock after host suspend
+
+    def test_an_implausibly_future_timestamp_is_rejected(self) -> None:
+        self.assertIsNone(dashboard.age(self.NOW, self.NOW + self.SKEW))
+        self.assertEqual(10.0, dashboard.age(self.NOW, self.NOW - 10))
+
+    def test_sampling_noise_is_clamped_rather_than_rejected(self) -> None:
+        # stat() and the collection clock are read microseconds apart, and
+        # coarse filesystems round upward — a small overshoot is not skew.
+        jitter = dashboard.FUTURE_SKEW_TOLERANCE_SEC / 2
+        self.assertEqual(0.0, dashboard.age(self.NOW, self.NOW + jitter))
+        self.assertTrue(dashboard.is_fresh(self.NOW, self.NOW + jitter, 1))
+
+    def test_a_future_timestamp_does_not_read_as_activity(self) -> None:
+        # The whole point: negative ages used to pass every threshold test.
+        self.assertFalse(
+            dashboard.is_fresh(self.NOW, self.NOW + self.SKEW, dashboard.WORKING_THRESHOLD_SEC)
+        )
+
+    def test_future_dated_tokens_do_not_inflate_the_output_rate(self) -> None:
+        info = {"usage_events": [(self.NOW + self.SKEW, 5000)]}
+        self.assertEqual(0, dashboard.rate_from(info, self.NOW))
+
+    def test_a_future_dated_turn_start_yields_no_eta(self) -> None:
+        scan = {"turn_start": self.NOW + self.SKEW, "durations": [60.0]}
+        self.assertIsNone(dashboard.turn_progress(scan, "working", self.NOW))
+
+    def test_a_future_dated_transcript_does_not_read_as_working(self) -> None:
+        session_id = "beefcafe-1111-2222-3333-444455556666"
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            project = projects / "-w-skewed"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(json.dumps({"type": "user", "uuid": "u1"}) + "\n")
+            future = self.NOW + self.SKEW
+            os.utime(transcript, (future, future))
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+            ):
+                # A day-ahead mtime previously made `now - mtime` negative, so
+                # the session reported "working" for the whole day of skew.
+                sessions = dashboard.collect_claude(self.NOW, 24, True)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("idle", sessions[0]["state"])
+
+
 class GlobUnderTest(unittest.TestCase):
     # A legal directory name on every supported platform — deliberately not
     # using "*" or "?", which Windows forbids in filenames. Interpolated into a

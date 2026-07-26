@@ -71,6 +71,10 @@ POPUP_COOLDOWN_SEC = 60  # per-session floor between macOS popups
 GLOBAL_POPUP_COOLDOWN_SEC = 15  # floor across caller-controlled session ids
 POPUP_REPEAT_SUPPRESS_SEC = 600  # identical message per session: one popup per window
 LONG_TURN_WARN_SEC = 900  # warn when a request runs (or is estimated) this long
+# How far ahead of the collection clock a store timestamp may read before it is
+# treated as skew rather than activity. Generous enough to absorb sampling noise
+# and coarse filesystem write times; far below any real clock drift.
+FUTURE_SKEW_TOLERANCE_SEC = 120
 SQL_MSG_LIMIT = 400  # newest messages fetched per DB-backed session
 MAX_CACHE_ENTRIES = 8192  # bound process-lifetime caches over long uptime
 GEMINI_SEEN_ENTRIES = 2048  # bound per-transcript snapshot deduplication
@@ -237,6 +241,36 @@ def extract_text(v: Any, depth: int = 0) -> str:
 
 def alnum(s: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def age(now: float, timestamp: float) -> float | None:
+    """Seconds since ``timestamp``; ``None`` when the timestamp is implausible.
+
+    A timestamp far in the future is not activity. It arrives from a store
+    restored from backup, a file copied across the WSL boundary with its original
+    mtime, or a guest whose clock drifted while the host was suspended. Read as
+    an ordinary age, ``now - timestamp`` goes negative and satisfies *every*
+    ``<= threshold`` comparison built on it — so the session reads Working, and
+    keeps reading Working, for as long as the skew lasts. A clock a day ahead
+    buys a day of phantom activity and phantom output tokens.
+
+    Note that merely clamping the result at zero does not help: zero reads as
+    "just now", which is still fresh. An implausible timestamp has to be
+    rejected outright so no activity is invented from it. Overshoots within
+    ``FUTURE_SKEW_TOLERANCE_SEC`` are clamped instead of rejected, because at
+    that scale they are sampling noise — ``stat()`` and the collection clock are
+    read microseconds apart, and coarse filesystems (FAT's two-second write
+    time, some network mounts) round upward.
+    """
+    if timestamp - now > FUTURE_SKEW_TOLERANCE_SEC:
+        return None
+    return max(0.0, now - timestamp)
+
+
+def is_fresh(now: float, timestamp: float, window_sec: float) -> bool:
+    """Whether ``timestamp`` is a plausible time within ``window_sec`` of now."""
+    seconds = age(now, timestamp)
+    return seconds is not None and seconds <= window_sec
 
 
 def glob_under(root: str, *pattern: str) -> list[str]:
@@ -1041,7 +1075,9 @@ def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[s
     past turns that lasted at least as long as the current one has so far."""
     if state != "working" or not scan or not scan.get("turn_start"):
         return None
-    elapsed = max(0, now - scan["turn_start"])
+    elapsed = age(now, scan["turn_start"])
+    if elapsed is None:
+        return None  # turn start is implausibly ahead of the clock; no ETA
     history = scan.get("durations") or []
     cands = sorted(d for d in history if d >= elapsed)
     if cands:
@@ -1116,7 +1152,7 @@ def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, 
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
-        if now - mtime > WORKING_THRESHOLD_SEC:
+        if not is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
             continue
         label = None
         try:
@@ -1243,7 +1279,9 @@ def base_session(harness: str, sid: Any, project: str) -> dict[str, Any]:
 def rate_from(info: dict[str, Any] | None, now: float) -> int:
     if not info:
         return 0
-    recent: float = sum(tok for ep, tok in info["usage_events"] if now - ep <= RATE_WINDOW_SEC)
+    recent: float = sum(
+        tok for ep, tok in info["usage_events"] if is_fresh(now, ep, RATE_WINDOW_SEC)
+    )
     return round(recent / (RATE_WINDOW_SEC / 60))
 
 
@@ -1257,7 +1295,7 @@ def codex_subagent_rate(path: str, now: float) -> int:
     recent: float = sum(
         tokens
         for epoch, tokens in info["usage_events"]
-        if epoch >= start and now - epoch <= RATE_WINDOW_SEC
+        if epoch >= start and is_fresh(now, epoch, RATE_WINDOW_SEC)
     )
     return round(recent / (RATE_WINDOW_SEC / 60))
 
@@ -1365,12 +1403,12 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             mtime = os.path.getmtime(fp)
         except OSError:
             continue  # transcript rotated/deleted between glob and stat
-        if show_all or now - mtime <= window_hours * 3600:
+        if show_all or is_fresh(now, mtime, window_hours * 3600):
             is_agent, agent_name, parent_prefix = claude_agent_identity(fp)
             if is_agent:
                 # Fold into the parent session; never a standalone session.
                 # Without a parent prefix there is nothing to attach to.
-                if parent_prefix and now - mtime <= window_hours * 3600:
+                if parent_prefix and is_fresh(now, mtime, window_hours * 3600):
                     agent_children.setdefault(parent_prefix, []).append(
                         {
                             "path": fp,
@@ -1403,7 +1441,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         subagents += [
             {"label": c["label"], "mtime": c["mtime"]}
             for c in children
-            if now - c["mtime"] <= WORKING_THRESHOLD_SEC  # fresh = running
+            if is_fresh(now, c["mtime"], WORKING_THRESHOLD_SEC)  # fresh = running
         ]
         latest_agent_mtime = max(
             (a["mtime"] for a in subagents),
@@ -1413,7 +1451,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         last_activity = max(
             latest_task_mtime, transcript_mtime, latest_agent_mtime, latest_child_mtime
         )
-        active = (now - last_activity) <= window_hours * 3600
+        active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
 
@@ -1439,13 +1477,13 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             p = info["pending_input_tool"]
             state = "needs_input"
             blocked_since = p["ts"] or last_activity
-            state_detail = f"open question ({p['name']}), waiting {fmt_duration(now - p['ts']) if p['ts'] else '?'}"
+            state_detail = f"open question ({p['name']}), waiting {fmt_duration(age(now, p['ts'])) if p['ts'] else '?'}"
         # Fresh activity beats a hook: Claude Code emits "waiting for your
         # input" notifications for sessions that keep running via background
         # tasks and will resume on their own. A hook only surfaces as
         # needs-input once the session actually goes quiet; permission-prompt
         # popups are unaffected (they fire on the POST itself).
-        elif subagents or now - last_event <= WORKING_THRESHOLD_SEC:
+        elif subagents or is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
             state = "working"
             in_prog = next((t for t in tasks if t["status"] == "in_progress"), None)
             if in_prog:
@@ -1477,10 +1515,10 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             elapsed = (
                 (t["updated"] - t["created"])
                 if t["status"] == "completed"
-                else (now - t["created"])
+                else age(now, t["created"])
             )
             t["elapsed_h"] = fmt_duration(elapsed)
-            t["updated_ago"] = fmt_duration(now - t["updated"]) + " ago"
+            t["updated_ago"] = fmt_duration(age(now, t["updated"])) + " ago"
 
         s = base_session("claude", prefix, project)
         s.update(
@@ -1498,7 +1536,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 + sum(
                     rate_from(analyze_transcript(c["path"]), now)
                     for c in children
-                    if now - c["mtime"] <= RATE_WINDOW_SEC
+                    if is_fresh(now, c["mtime"], RATE_WINDOW_SEC)
                 ),
                 "total": total,
                 "done": done,
@@ -1535,9 +1573,9 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         if meta.get("subagent"):
             parent_sid = meta.get("parent_session_id") or sid
             data = agent_data.setdefault(parent_sid, {"agents": [], "rate": 0})
-            if now - mtime <= RATE_WINDOW_SEC:
+            if is_fresh(now, mtime, RATE_WINDOW_SEC):
                 data["rate"] += codex_subagent_rate(fp, now)
-            if now - mtime <= WORKING_THRESHOLD_SEC:
+            if is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
                 data["agents"].append(((meta.get("agent_label") or "subagent")[:70], mtime))
             continue
         if sid not in sessions or mtime > sessions[sid][0]:
@@ -1548,14 +1586,14 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         data = agent_data.get(sid) or {"agents": [], "rate": 0}
         agents = sorted(data["agents"], key=lambda a: -a[1])
         last_activity = max(mtime, max((m for _, m in agents), default=0))
-        active = (now - last_activity) <= window_hours * 3600
+        active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_codex_transcript(fp) if active else None
         last_event = max(info["last_event_ts"] if info else 0, last_activity)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if now - last_event <= WORKING_THRESHOLD_SEC:
+        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, subagents)
 
@@ -1622,7 +1660,7 @@ def antigravity_session_metadata(
         recent_logs: list[str] = []
         for path in logs:
             try:
-                if now - os.path.getmtime(path) <= window_hours * 3600:
+                if is_fresh(now, os.path.getmtime(path), window_hours * 3600):
                     recent_logs.append(path)
             except OSError:
                 continue
@@ -1824,7 +1862,7 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
         if action and epoch >= last_prompt:
             latest_action = (epoch, action)
 
-    recent = sum(tokens for epoch, tokens in usage_events if now - epoch <= RATE_WINDOW_SEC)
+    recent = sum(tokens for epoch, tokens in usage_events if is_fresh(now, epoch, RATE_WINDOW_SEC))
     result["rate_per_min"] = round(recent / (RATE_WINDOW_SEC / 60))
     result["turns"] = turns_from_events(events) if events else None
     result["last_tool_action"] = latest_action[1]
@@ -1839,7 +1877,7 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
         mtime = antigravity_store_mtime(db)
         if not mtime:
             continue
-        active = (now - mtime) <= window_hours * 3600
+        active = is_fresh(now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
         activity: dict[str, Any] = (
@@ -1848,7 +1886,7 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
             else {"rate_per_min": 0, "turns": None, "last_tool_action": ""}
         )
         state, state_detail = "idle", "awaiting your message"
-        if now - mtime <= WORKING_THRESHOLD_SEC:
+        if is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = activity["last_tool_action"] or "generating response…"
 
@@ -1886,7 +1924,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
-        if now - mtime > WORKING_THRESHOLD_SEC:
+        if not is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
             continue
         parent = alnum(os.path.basename(os.path.dirname(fp)))
         label = "subagent " + os.path.basename(fp)[:8]
@@ -1911,14 +1949,14 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     for sid, (mtime, fp) in sessions.items():
         agents = sorted(agents_by_parent.get(alnum(sid), []), key=lambda a: -a[1])
         last_activity = max(mtime, max((m for _, m in agents), default=0))
-        active = (now - last_activity) <= window_hours * 3600
+        active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_gemini_transcript(fp) if active else None
         last_event = max(info["last_event_ts"] if info else 0, last_activity)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if now - last_event <= WORKING_THRESHOLD_SEC:
+        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, subagents)
 
@@ -1964,14 +2002,14 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
 
     out: list[dict[str, Any]] = []
     for sid, (mtime, fp) in files.items():
-        active = (now - mtime) <= window_hours * 3600
+        active = is_fresh(now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_copilot_events(fp) if active else None
         last_event = max(info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
         subagents: list[str] = []
-        if now - last_event <= WORKING_THRESHOLD_SEC:
+        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
             state = "working"
             subagents = list((info or {}).get("pending_agents", {}).values())
             state_detail = working_detail(info, subagents)
@@ -2043,7 +2081,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                     continue  # archival bumps time_updated; don't ghost as working
                 upd = norm_epoch(r["time_updated"])
                 if r["parent_id"]:
-                    if now - upd <= WORKING_THRESHOLD_SEC:
+                    if is_fresh(now, upd, WORKING_THRESHOLD_SEC):
                         children.setdefault(r["parent_id"], []).append(
                             ((r["title"] or "subagent")[:70], upd)
                         )
@@ -2052,12 +2090,12 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
             for r, upd in tops:
                 agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
                 last_activity = max(upd, max((m for _, m in agents), default=0))
-                active = (now - last_activity) <= window_hours * 3600
+                active = is_fresh(now, last_activity, window_hours * 3600)
                 if not (active or show_all):
                     continue
                 subagents = [label for label, _ in agents]
                 state, state_detail = "idle", "awaiting your message"
-                if now - last_activity <= WORKING_THRESHOLD_SEC:
+                if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
                     state = "working"
                     state_detail = working_detail(None, subagents)
 
@@ -2171,11 +2209,11 @@ def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict
                 mtime = max(mtime, os.path.getmtime(wal))
         except OSError:
             continue
-        active = (now - mtime) <= window_hours * 3600
+        active = is_fresh(now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
         state, state_detail = "idle", "awaiting your message"
-        if now - mtime <= WORKING_THRESHOLD_SEC:
+        if is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
             state, state_detail = "working", "generating…"
         s = base_session("cursor", sid, "cursor")
         s.update(
@@ -2233,7 +2271,7 @@ def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[
             upd = parse_utc_sql(r["updated_at"])
             stype = alnum(r["session_type"])
             if stype == "subagent":
-                if r["parent_session_id"] and now - upd <= WORKING_THRESHOLD_SEC:
+                if r["parent_session_id"] and is_fresh(now, upd, WORKING_THRESHOLD_SEC):
                     children.setdefault(r["parent_session_id"], []).append(
                         ((r["description"] or "subagent")[:70], upd)
                     )
@@ -2246,12 +2284,12 @@ def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[
         for r, upd in tops:
             agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
             last_activity = max(upd, max((m for _, m in agents), default=0))
-            active = (now - last_activity) <= window_hours * 3600
+            active = is_fresh(now, last_activity, window_hours * 3600)
             if not (active or show_all):
                 continue
             subagents = [label for label, _ in agents]
             state, state_detail = "idle", "awaiting your message"
-            if now - last_activity <= WORKING_THRESHOLD_SEC:
+            if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
                 state = "working"
                 state_detail = working_detail(None, subagents)
 
@@ -2289,7 +2327,7 @@ def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[
                     recent = sum(
                         (x["output_tokens"] or 0)
                         for x in led
-                        if now - norm_epoch(x["created_timestamp"]) <= RATE_WINDOW_SEC
+                        if is_fresh(now, norm_epoch(x["created_timestamp"]), RATE_WINDOW_SEC)
                     )
                     rate = round(recent / (RATE_WINDOW_SEC / 60))
                 except sqlite3.Error:
@@ -2326,7 +2364,7 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
-        active = (now - mtime) <= window_hours * 3600
+        active = is_fresh(now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
         meta = droid_meta(fp)
@@ -2334,7 +2372,7 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
         info = analyze_droid_transcript(fp) if active else None
         last_event = max(info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
-        if now - last_event <= WORKING_THRESHOLD_SEC:
+        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, [])
 
