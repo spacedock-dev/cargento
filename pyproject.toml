@@ -82,7 +82,10 @@ source = [
 omit = ["*/tests/*"]
 show_missing = false
 precision = 1
-# Measured baseline at gate introduction: 71.0% (branch coverage). This
-# number only ratchets UP — never lower it in a PR. Use the
-# `coverage-exception` PR label for a deliberate, visible bypass.
-fail_under = 70
+# Measured baseline at gate introduction: 71.0% (branch coverage), raised to
+# 75.2% by the cross-platform regression tests. This number only ratchets UP —
+# never lower it in a PR. Use the `coverage-exception` PR label for a
+# deliberate, visible bypass. Held one point below the measured figure to
+# absorb run-to-run variance (the node-dependent tests skip where node is
+# absent).
+fail_under = 74

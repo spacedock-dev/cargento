@@ -175,23 +175,58 @@ jobs:
           body-path: coverage-comment.md
           edit-mode: replace
 
+  # The same unittest suite on every supported platform. Deliberately separate
+  # from `test` rather than a matrix over it: that job is Bash throughout (`\`
+  # line continuations, `gh`, `[ ... ]`, `$GITHUB_OUTPUT`, brace groups), none
+  # of which is valid in the default `pwsh` shell on windows-latest, and three
+  # matrix children would race on the one sticky coverage comment and the one
+  # coverage artifact. Coverage stays Ubuntu-only so the ratchet stays
+  # meaningful; this job only answers "does it run there at all".
+  platform-tests:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false # one platform failing must not hide the others
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      # actions/checkout@v7.0.1 — pinned to immutable SHA.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # actions/setup-python@v7.0.0 — pinned to immutable SHA.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      # `python`, not `python3`: the latter is not a reliable spelling on
+      # native Windows. Every step below is single-line and shell-agnostic.
+      - name: Show interpreter
+        run: python -c "import sys, os; print(sys.version, os.name, sys.platform)"
+      - name: Confirm sqlite3 is present on this runner
+        run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
+      - name: Run unittest suite
+        run: python -m unittest cargento.skills.cargento.tests.test_server scripts.tests.test_validate_plugins scripts.tests.test_bump_version scripts.tests.test_lint_embedded
+
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).
   quality-gate:
     name: quality-gate
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, platform-tests]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Verify all gate jobs succeeded
         run: |
-          echo "lint:      ${{ needs.lint.result }}"
-          echo "typecheck: ${{ needs.typecheck.result }}"
-          echo "test:      ${{ needs.test.result }}"
+          echo "lint:           ${{ needs.lint.result }}"
+          echo "typecheck:      ${{ needs.typecheck.result }}"
+          echo "test:           ${{ needs.test.result }}"
+          echo "platform-tests: ${{ needs.platform-tests.result }}"
           if [ "${{ needs.lint.result }}" != "success" ] ||
              [ "${{ needs.typecheck.result }}" != "success" ] ||
-             [ "${{ needs.test.result }}" != "success" ]; then
+             [ "${{ needs.test.result }}" != "success" ] ||
+             [ "${{ needs.platform-tests.result }}" != "success" ]; then
             echo "::error::One or more quality-gate jobs did not succeed."
             exit 1
           fi
