@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import contextlib
+import glob
 import http.client
 import importlib.util
 import io
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -2093,6 +2095,75 @@ console.log(JSON.stringify(out));
         self.assertEqual("droidproj", s["project"])
         self.assertEqual("Ship feature", s["title"])
         self.assertEqual("ship it", s["last_prompt"])
+
+
+class GlobUnderTest(unittest.TestCase):
+    # A legal directory name on every supported platform — deliberately not
+    # using "*" or "?", which Windows forbids in filenames. Interpolated into a
+    # glob pattern, "[...]" is a character class that matches nothing, so
+    # discovery returned zero sessions with no error at all.
+    HOSTILE = "A [Contractor]"
+
+    def test_metacharacters_in_the_root_are_treated_literally(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / self.HOSTILE
+            (root / "sub").mkdir(parents=True)
+            (root / "sub" / "found.jsonl").write_text("{}\n")
+
+            self.assertEqual([], glob.glob(str(root / "*" / "*.jsonl")))  # the old behavior
+            self.assertEqual(
+                [str(root / "sub" / "found.jsonl")], dashboard.glob_under(str(root), "*", "*.jsonl")
+            )
+
+    def test_results_are_sorted_for_deterministic_tie_breaks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("c.jsonl", "a.jsonl", "b.jsonl"):
+                (Path(tmp) / name).write_text("{}\n")
+            found = [Path(p).name for p in dashboard.glob_under(str(tmp), "*.jsonl")]
+        self.assertEqual(["a.jsonl", "b.jsonl", "c.jsonl"], found)
+
+    def test_claude_sessions_survive_a_metacharacter_in_the_projects_root(self) -> None:
+        now = 1_700_000_000.0
+        session_id = "abcdef12-3456-7890-abcd-ef1234567890"
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / self.HOSTILE / "projects"
+            project = projects / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "u1",
+                        "timestamp": "2023-11-14T22:13:20+00:00",
+                        "message": {"content": "hostile path prompt"},
+                    }
+                )
+                + "\n"
+            )
+            os.utime(transcript, (now, now))
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("hostile path prompt", sessions[0]["title"])
+
+    def test_notify_session_id_cannot_inject_a_glob_pattern(self) -> None:
+        # The prefix reaches this glob straight from a POST body, so it must be
+        # escaped rather than interpreted.
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            (projects / "proj").mkdir(parents=True)
+            (projects / "proj" / "aaaaaaaa.jsonl").write_text(
+                json.dumps({"type": "user", "agentName": "worker", "teamName": "session-bbbbbbbb"})
+                + "\n"
+            )
+            with mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)):
+                self.assertFalse(dashboard.claude_prefix_is_agent("[a-z]*"))
+                self.assertTrue(dashboard.claude_prefix_is_agent("aaaaaaaa"))
 
 
 class SqliteUriTest(unittest.TestCase):

@@ -239,6 +239,21 @@ def alnum(s: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
 
 
+def glob_under(root: str, *pattern: str) -> list[str]:
+    """Glob ``pattern`` beneath a literal directory ``root``.
+
+    ``root`` is a real path, not a pattern. Interpolating it into a glob makes
+    any metacharacter in it (``[``, ``*``, ``?``) match nothing at all, so a
+    home directory such as ``/Users/A [Contractor]`` silently hides every
+    session — the failure is total and looks identical to "no sessions".
+
+    Results are sorted because ``glob()`` order is unspecified: several callers
+    keep the newest file per session, and an unsorted list makes an equal-mtime
+    tie resolve differently from one platform (or one call) to the next.
+    """
+    return sorted(glob.glob(os.path.join(glob.escape(root), *pattern)))
+
+
 def sqlite_ro_uri(path: str, *, immutable: bool = False, windows: bool | None = None) -> str:
     """Return a read-only SQLite URI for a filesystem path.
 
@@ -1052,7 +1067,7 @@ def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[s
 def load_tasks() -> dict[str, list[dict[str, Any]]]:
     """session prefix -> list of task dicts."""
     by_session: dict[str, list[dict[str, Any]]] = {}
-    for fp in glob.glob(os.path.join(TASKS_DIR, "*", "*.json")):
+    for fp in glob_under(TASKS_DIR, "*", "*.json"):
         if os.path.basename(fp).startswith("."):
             continue
         try:
@@ -1096,7 +1111,7 @@ def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, 
         os.path.dirname(transcript), os.path.basename(transcript)[: -len(".jsonl")]
     )
     agents: list[dict[str, Any]] = []
-    for fp in glob.glob(os.path.join(sess_dir, "subagents", "agent-*.jsonl")):
+    for fp in glob_under(sess_dir, "subagents", "agent-*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -1326,7 +1341,7 @@ def claude_prefix_is_agent(prefix: str) -> bool:
     """True when the newest transcript for this 8-char prefix belongs to a
     subagent. Used to suppress popups for agent sessions."""
     newest, newest_mtime = None, 0.0
-    for fp in glob.glob(os.path.join(PROJECTS_DIR, "*", f"{prefix}*.jsonl")):
+    for fp in glob_under(PROJECTS_DIR, "*", glob.escape(prefix) + "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -1342,7 +1357,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
     tasks_by_session = load_tasks()
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
     agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
-    for fp in glob.glob(os.path.join(PROJECTS_DIR, "*", "*.jsonl")):
+    for fp in glob_under(PROJECTS_DIR, "*", "*.jsonl"):
         base = os.path.basename(fp)
         if "-agent-" in base or base.startswith("agent-"):
             continue  # legacy subagent transcripts aren't top-level sessions
@@ -1510,7 +1525,7 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
     sessions: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
     # parent session_id -> {"agents": [(label, mtime)], "rate": int}
     agent_data: dict[str, dict[str, Any]] = {}
-    for fp in glob.glob(os.path.join(CODEX_SESSIONS_DIR, "*", "*", "*", "rollout-*.jsonl")):
+    for fp in glob_under(CODEX_SESSIONS_DIR, "*", "*", "*", "rollout-*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -1602,7 +1617,7 @@ def antigravity_session_metadata(
     except (OSError, ValueError, TypeError, RecursionError):
         pass
 
-    logs = glob.glob(os.path.join(ANTIGRAVITY_LOG_DIR, "cli-*.log"))
+    logs = glob_under(ANTIGRAVITY_LOG_DIR, "cli-*.log")
     if not show_all:
         recent_logs: list[str] = []
         for path in logs:
@@ -1819,7 +1834,7 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
 def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     metadata = antigravity_session_metadata(now, window_hours, show_all)
     out: list[dict[str, Any]] = []
-    for db in glob.glob(os.path.join(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")):
+    for db in glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"):
         sid = os.path.basename(db)[: -len(".db")]
         mtime = antigravity_store_mtime(db)
         if not mtime:
@@ -1866,7 +1881,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     # appended from its per-conversation SQLite stores below.
     # sanitized parent session id -> [(label, mtime)]
     agents_by_parent: dict[str, list[tuple[str, float]]] = {}
-    for fp in glob.glob(os.path.join(GEMINI_TMP, "*", "chats", "*", "*.jsonl")):
+    for fp in glob_under(GEMINI_TMP, "*", "chats", "*", "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -1880,7 +1895,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     sessions: dict[
         str, tuple[float, str]
     ] = {}  # session id (or filename fallback) -> (mtime, path)
-    for fp in glob.glob(os.path.join(GEMINI_TMP, "*", "chats", "session-*.jsonl")):
+    for fp in glob_under(GEMINI_TMP, "*", "chats", "session-*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -1938,7 +1953,7 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
     # layout — unverified legacy format; a mismatch just means those old
     # sessions stay invisible.
     for base in ("session-state", "history-session-state"):
-        for fp in glob.glob(os.path.join(COPILOT_DIR, base, "*", "events.jsonl")):
+        for fp in glob_under(os.path.join(COPILOT_DIR, base), "*", "events.jsonl"):
             sid = os.path.basename(os.path.dirname(fp))
             try:
                 mtime = os.path.getmtime(fp)
@@ -1994,7 +2009,7 @@ def _sql_ro(path: str) -> sqlite3.Connection:
 
 def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for db in glob.glob(os.path.join(OPENCODE_DATA, "opencode*.db")):
+    for db in glob_under(OPENCODE_DATA, "opencode*.db"):
         try:
             con = _sql_ro(db)
         except sqlite3.Error:
@@ -2147,7 +2162,7 @@ def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict
     # One store.db per chat; content is opaque-ish (hex JSON blobs), so
     # Cursor rows are discovery + state + title only — no turn ETA.
     out: list[dict[str, Any]] = []
-    for db in glob.glob(os.path.join(CURSOR_CHATS, "*", "*", "store.db")):
+    for db in glob_under(CURSOR_CHATS, "*", "*", "store.db"):
         sid = os.path.basename(os.path.dirname(db))
         try:
             mtime = os.path.getmtime(db)
@@ -2306,7 +2321,7 @@ def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[
 
 def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for fp in glob.glob(os.path.join(FACTORY_PROJECTS, "*", "*.jsonl")):
+    for fp in glob_under(FACTORY_PROJECTS, "*", "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -2357,8 +2372,8 @@ HARNESSES: list[
         "gemini",
         "Gemini",
         lambda: bool(
-            glob.glob(os.path.join(GEMINI_TMP, "*", "chats", "session-*.jsonl"))
-            or glob.glob(os.path.join(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"))
+            glob_under(GEMINI_TMP, "*", "chats", "session-*.jsonl")
+            or glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
         ),
         collect_gemini,
     ),
@@ -2374,20 +2389,20 @@ HARNESSES: list[
     (
         "opencode",
         "OpenCode",
-        lambda: bool(glob.glob(os.path.join(OPENCODE_DATA, "opencode*.db"))),
+        lambda: bool(glob_under(OPENCODE_DATA, "opencode*.db")),
         collect_opencode,
     ),
     (
         "cursor",
         "Cursor",
-        lambda: bool(glob.glob(os.path.join(CURSOR_CHATS, "*", "*", "store.db"))),
+        lambda: bool(glob_under(CURSOR_CHATS, "*", "*", "store.db")),
         collect_cursor,
     ),
     ("goose", "Goose", lambda: os.path.isfile(GOOSE_DB), collect_goose),
     (
         "droid",
         "Droid",
-        lambda: bool(glob.glob(os.path.join(FACTORY_PROJECTS, "*", "*.jsonl"))),
+        lambda: bool(glob_under(FACTORY_PROJECTS, "*", "*.jsonl")),
         collect_droid,
     ),
 ]
