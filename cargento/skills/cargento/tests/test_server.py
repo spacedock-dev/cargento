@@ -2095,5 +2095,106 @@ console.log(JSON.stringify(out));
         self.assertEqual("ship it", s["last_prompt"])
 
 
+class SqliteUriTest(unittest.TestCase):
+    """Both platform branches are exercised on every runner via ``windows=``."""
+
+    def test_posix_paths_escape_sqlite_reserved_characters(self) -> None:
+        # SQLite percent-decodes the path portion and treats ? and # as
+        # delimiters, so these three must not survive literally.
+        cases = {
+            "/data/plain.db": "file:/data/plain.db?mode=ro",
+            "/data/a%41b.db": "file:/data/a%2541b.db?mode=ro",
+            "/data/q?h.db": "file:/data/q%3Fh.db?mode=ro",
+            "/data/f#g.db": "file:/data/f%23g.db?mode=ro",
+            "/data/we ird.db": "file:/data/we%20ird.db?mode=ro",
+            # A backslash is a legal POSIX filename character and must be
+            # escaped, never treated as a separator.
+            "/data/a\\b.db": "file:/data/a%5Cb.db?mode=ro",
+        }
+        for path, expected in cases.items():
+            with self.subTest(path=path):
+                self.assertEqual(expected, dashboard.sqlite_ro_uri(path, windows=False))
+
+    def test_posix_double_slash_root_gets_an_empty_authority(self) -> None:
+        # "//dir" would otherwise parse as the URI authority "dir".
+        self.assertEqual(
+            "file:////dir/x.db",
+            dashboard.sqlite_ro_uri("//dir/x.db", windows=False)[: -len("?mode=ro")],
+        )
+
+    def test_windows_paths_use_sqlite_drive_letter_form(self) -> None:
+        # SQLite only recognizes a drive letter as "/X:/...".
+        self.assertEqual(
+            "file:/C:/Users/a/x.db?mode=ro",
+            dashboard.sqlite_ro_uri(r"C:\Users\a\x.db", windows=True),
+        )
+        self.assertEqual(
+            "file:/C:/Users/a%25b/x.db?mode=ro",
+            dashboard.sqlite_ro_uri(r"C:\Users\a%b\x.db", windows=True),
+        )
+
+    def test_windows_unc_paths_keep_an_empty_authority(self) -> None:
+        # "//server/share" would parse as the authority "server"; SQLite only
+        # accepts an empty or "localhost" authority.
+        self.assertEqual(
+            "file:////server/share/x.db?mode=ro",
+            dashboard.sqlite_ro_uri(r"\\server\share\x.db", windows=True),
+        )
+
+    def test_immutable_flag_is_opt_in(self) -> None:
+        self.assertEqual(
+            "file:/data/x.db?mode=ro&immutable=1",
+            dashboard.sqlite_ro_uri("/data/x.db", immutable=True, windows=False),
+        )
+
+    def test_reserved_characters_open_a_real_database(self) -> None:
+        # End-to-end on the host platform: before this builder existed, the "%"
+        # path failed to open with "unable to open database file".
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("a%41b.db", "we ird.db", "f#g.db"):
+                path = Path(tmp) / name
+                seed = sqlite3.connect(str(path))
+                seed.execute("CREATE TABLE t(x)")
+                seed.execute("INSERT INTO t VALUES (7)")
+                seed.commit()
+                seed.close()
+                with self.subTest(name=name):
+                    con = sqlite3.connect(dashboard.sqlite_ro_uri(str(path)), uri=True)
+                    try:
+                        self.assertEqual((7,), con.execute("SELECT x FROM t").fetchone())
+                    finally:
+                        con.close()
+
+    def test_collectors_read_stores_whose_path_has_a_percent(self) -> None:
+        # The regression that matters: a store under a directory containing "%"
+        # must still produce sessions rather than silently disappearing.
+        now = 1_700_000_000.0
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "100%pure"
+            data.mkdir()
+            db = data / "opencode.db"
+            con = sqlite3.connect(str(db))
+            con.execute(
+                "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT, "
+                "title TEXT, time_updated INTEGER, time_archived INTEGER)"
+            )
+            con.execute(
+                "INSERT INTO session VALUES ('s1', NULL, '/w/proj', 'Percent', ?, NULL)",
+                (int(now * 1000),),
+            )
+            con.execute(
+                "CREATE TABLE session_message (session_id TEXT, type TEXT, "
+                "time_created INTEGER, data TEXT)"
+            )
+            con.commit()
+            con.close()
+
+            with mock.patch.object(dashboard, "OPENCODE_DATA", str(data)):
+                sessions = dashboard.collect_opencode(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("Percent", sessions[0]["title"])
+
+
 if __name__ == "__main__":
     unittest.main()

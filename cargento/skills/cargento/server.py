@@ -22,7 +22,9 @@ import glob
 import hashlib
 import json
 import mmap
+import ntpath
 import os
+import posixpath
 import re
 import sqlite3
 import subprocess
@@ -32,7 +34,7 @@ import time
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -235,6 +237,38 @@ def extract_text(v: Any, depth: int = 0) -> str:
 
 def alnum(s: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def sqlite_ro_uri(path: str, *, immutable: bool = False, windows: bool | None = None) -> str:
+    """Return a read-only SQLite URI for a filesystem path.
+
+    Interpolating a path straight into ``file:{path}?mode=ro`` is wrong on every
+    platform: SQLite percent-decodes the path portion, so a store path
+    containing ``%`` becomes unopenable, and ``?``/``#`` terminate the path
+    early. On Windows a ``C:\\dir`` path is not a valid URI path at all —
+    SQLite documents that backslashes must become forward slashes and that a
+    drive letter is only recognized in the form ``/X:/``.
+
+    ``windows`` selects the path flavor and defaults to the running platform;
+    tests pass it explicitly so both branches are exercised everywhere.
+    """
+    if windows is None:
+        windows = os.name == "nt"
+    absolute = (ntpath if windows else posixpath).abspath(path)
+    if windows:
+        absolute = absolute.replace("\\", "/")
+        if not absolute.startswith("/"):
+            absolute = "/" + absolute  # C:/dir -> /C:/dir, SQLite's drive form
+    # "/" stays a separator and ":" must survive for the drive form; everything
+    # else SQLite would reinterpret (%, ?, #) gets escaped.
+    quoted = quote(absolute, safe="/:")
+    if quoted.startswith("//") and not quoted.startswith("///"):
+        # "//server/share" (UNC) or a POSIX "//dir" would parse as a URI
+        # authority, which SQLite rejects unless it is empty or "localhost".
+        # Two more slashes make the authority explicitly empty.
+        quoted = "//" + quoted
+    query = "?mode=ro&immutable=1" if immutable else "?mode=ro"
+    return f"file:{quoted}{query}"
 
 
 # ---------------------------------------------------------------------------
@@ -1740,7 +1774,7 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
     }
     query = "SELECT step_type, metadata FROM steps ORDER BY idx DESC LIMIT ?"
     rows = None
-    for uri in (f"file:{path}?mode=ro", f"file:{path}?mode=ro&immutable=1"):
+    for uri in (sqlite_ro_uri(path), sqlite_ro_uri(path, immutable=True)):
         try:
             con = sqlite3.connect(uri, uri=True, timeout=0.2)
         except sqlite3.Error:
@@ -1946,8 +1980,14 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
 
 
 def _sql_ro(path: str) -> sqlite3.Connection:
-    """Read-only SQLite connection that never blocks a live agent's writes."""
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=0.2)
+    """Read-only SQLite connection that never blocks a live agent's writes.
+
+    Deliberately no ``immutable=1`` fallback: these are databases a live agent
+    is still writing, and SQLite documents that opening a changing database as
+    immutable can return incorrect results or SQLITE_CORRUPT. A failure here is
+    reported, not silently downgraded.
+    """
+    con = sqlite3.connect(sqlite_ro_uri(path), uri=True, timeout=0.2)
     con.row_factory = sqlite3.Row
     return con
 
@@ -2067,7 +2107,7 @@ def _cursor_title(db: str, mtime: float) -> str | None:
         return hit[1]
     title = None
     try:
-        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=0.2)
+        con = sqlite3.connect(sqlite_ro_uri(db), uri=True, timeout=0.2)
     except sqlite3.Error:
         return None
     try:
