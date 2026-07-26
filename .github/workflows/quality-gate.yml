@@ -199,8 +199,17 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-validation.txt
       # `python`, not `python3`: the latter is not a reliable spelling on
       # native Windows. Every step below is single-line and shell-agnostic.
+      #
+      # The dashboard server itself is stdlib-only, but the repository
+      # validator that scripts/tests/test_validate_plugins.py imports needs
+      # PyYAML. The lint/type tooling in requirements-dev.txt is not needed
+      # here — this job only runs unittest.
+      - name: Install validation requirements
+        run: python -m pip install -r requirements-validation.txt
       - name: Show interpreter
         run: python -c "import sys, os; print(sys.version, os.name, sys.platform)"
       - name: Confirm sqlite3 is present on this runner
