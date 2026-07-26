@@ -26,7 +26,6 @@ import ntpath
 import os
 import posixpath
 import re
-import sqlite3
 import subprocess
 import sys
 import threading
@@ -35,6 +34,17 @@ from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, quote, urlparse
+
+try:
+    import sqlite3
+except ImportError as exc:  # pragma: no cover — depends on the interpreter build
+    # ``sqlite3`` is an optional stdlib module: minimal and musl-based builds
+    # (Alpine images, hand-rolled interpreters) ship without the extension. A
+    # bare ``import`` here would take the whole dashboard down, including the
+    # five harnesses that need no database at all.
+    SQLITE_IMPORT_ERROR: str | None = str(exc)
+else:
+    SQLITE_IMPORT_ERROR = None
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -243,6 +253,30 @@ def alnum(s: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
 
 
+def sqlite_available() -> bool:
+    """Whether the optional ``sqlite3`` extension module was importable."""
+    return SQLITE_IMPORT_ERROR is None
+
+
+def diag(message: str) -> None:
+    """Write a diagnostic line without ever raising.
+
+    Diagnostics carry harness-derived text (tool names, session titles, error
+    strings) and the skill is normally started with stdout redirected to a log,
+    where the stream uses the locale encoding rather than the console's Unicode
+    path — so text outside that encoding raises UnicodeEncodeError. This is
+    called from inside the collectors' own exception handler, where a second
+    exception would escape it and take down the refresh it was reporting on.
+    """
+    try:
+        print(message)
+    except (OSError, ValueError):
+        # Retry ASCII-safe; if even that fails (stdout closed or detached) a
+        # diagnostic must still never be fatal.
+        with contextlib.suppress(OSError, ValueError):
+            print(message.encode("ascii", "backslashreplace").decode("ascii"))
+
+
 def age(now: float, timestamp: float) -> float | None:
     """Seconds since ``timestamp``; ``None`` when the timestamp is implausible.
 
@@ -365,10 +399,11 @@ def codex_meta(path: str) -> dict[str, Any]:
         label = (
             nickname
             if isinstance(nickname, str) and nickname
+            # basename(), not rsplit("/"): on Windows the recorded path is
+            # backslash-separated, and a hardcoded "/" would keep the whole
+            # path as the agent's label.
             else (
-                agent_path.rsplit("/", 1)[-1]
-                if isinstance(agent_path, str) and agent_path
-                else None
+                os.path.basename(agent_path) if isinstance(agent_path, str) and agent_path else None
             )
         )
         return {
@@ -1107,10 +1142,15 @@ def load_tasks() -> dict[str, list[dict[str, Any]]]:
         if os.path.basename(fp).startswith("."):
             continue
         try:
-            with open(fp) as f:
+            # Explicit UTF-8: the locale default is cp1252 on Windows, which
+            # silently mojibakes non-ASCII task subjects and raises
+            # UnicodeDecodeError on the bytes that code page leaves undefined.
+            # That is a ValueError but not a JSONDecodeError, so it escaped the
+            # handler below and errored the whole Claude collector for a pass.
+            with open(fp, encoding="utf-8") as f:
                 task = json.load(f)
             st = os.stat(fp)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError):
             continue
         if not isinstance(task, dict):
             continue
@@ -1156,9 +1196,9 @@ def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, 
             continue
         label = None
         try:
-            with open(fp[: -len(".jsonl")] + ".meta.json") as f:
+            with open(fp[: -len(".jsonl")] + ".meta.json", encoding="utf-8") as f:
                 meta = json.load(f)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError):  # ValueError covers UnicodeDecodeError
             meta = None
         # Meta values are untyped JSON — a non-string name must not
         # TypeError the whole Claude collector.
@@ -1197,9 +1237,9 @@ def notify_mac(title: Any, message: Any) -> None:
         )
         if result.returncode:
             detail = (result.stderr or result.stdout or "unknown error").strip()
-            print(f"[notify] osascript failed: {detail[:300]}")
+            diag(f"[notify] osascript failed: {detail[:300]}")
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        print(f"[notify] osascript failed: {type(exc).__name__}: {exc}")
+        diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}")
 
 
 def current_hook(
@@ -1825,6 +1865,8 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
         "turns": None,
         "last_tool_action": "",
     }
+    if not sqlite_available():
+        return result
     query = "SELECT step_type, metadata FROM steps ORDER BY idx DESC LIMIT ?"
     rows = None
     for uri in (sqlite_ro_uri(path), sqlite_ro_uri(path, immutable=True)):
@@ -2046,6 +2088,8 @@ def _sql_ro(path: str) -> sqlite3.Connection:
 
 
 def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    if not sqlite_available():
+        return []
     out: list[dict[str, Any]] = []
     for db in glob_under(OPENCODE_DATA, "opencode*.db"):
         try:
@@ -2197,6 +2241,8 @@ def _cursor_title(db: str, mtime: float) -> str | None:
 
 
 def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    if not sqlite_available():
+        return []
     # One store.db per chat; content is opaque-ish (hex JSON blobs), so
     # Cursor rows are discovery + state + title only — no turn ETA.
     out: list[dict[str, Any]] = []
@@ -2243,6 +2289,8 @@ def goose_user_prompt(content: Any) -> bool:
 
 
 def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    if not sqlite_available():
+        return []
     # Single shared sessions.db (v1.10.0+): per-session activity comes from
     # the updated_at column, NOT file mtime (the DB is shared by all
     # sessions). Legacy per-session .jsonl files are not supported.
@@ -2411,7 +2459,7 @@ HARNESSES: list[
         "Gemini",
         lambda: bool(
             glob_under(GEMINI_TMP, "*", "chats", "session-*.jsonl")
-            or glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
+            or (sqlite_available() and glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"))
         ),
         collect_gemini,
     ),
@@ -2427,16 +2475,16 @@ HARNESSES: list[
     (
         "opencode",
         "OpenCode",
-        lambda: bool(glob_under(OPENCODE_DATA, "opencode*.db")),
+        lambda: sqlite_available() and bool(glob_under(OPENCODE_DATA, "opencode*.db")),
         collect_opencode,
     ),
     (
         "cursor",
         "Cursor",
-        lambda: bool(glob_under(CURSOR_CHATS, "*", "*", "store.db")),
+        lambda: sqlite_available() and bool(glob_under(CURSOR_CHATS, "*", "*", "store.db")),
         collect_cursor,
     ),
-    ("goose", "Goose", lambda: os.path.isfile(GOOSE_DB), collect_goose),
+    ("goose", "Goose", lambda: sqlite_available() and os.path.isfile(GOOSE_DB), collect_goose),
     (
         "droid",
         "Droid",
@@ -2468,7 +2516,7 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
             out_sessions.extend(collector(now, window_hours, show_all))
         except Exception as e:  # noqa: BLE001 — one broken harness must not take down the rest
             harness["error"] = f"{type(e).__name__}: {e}"
-            print(f"[{key}] collector error: {harness['error']}")
+            diag(f"[{key}] collector error: {harness['error']}")
 
     state_rank = {"needs_input": 0, "working": 1, "idle": 2}
     # Session id as tiebreaker (not last_activity) so rows don't reshuffle
@@ -3305,9 +3353,15 @@ def main() -> None:
     )
     args = ap.parse_args()
     Handler.window_hours = args.window_hours
+    if not sqlite_available():
+        diag(
+            f"Cargento: sqlite3 unavailable ({SQLITE_IMPORT_ERROR}) — OpenCode, Cursor, "
+            "Goose, and Antigravity sessions cannot be read. Install the sqlite3 "
+            "extension for this interpreter to enable them."
+        )
     # Bind to loopback only — this exposes local session data.
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Cargento: http://localhost:{args.port}/")
+    diag(f"Cargento: http://localhost:{args.port}/")
     server.serve_forever()
 
 

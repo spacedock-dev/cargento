@@ -2097,6 +2097,135 @@ console.log(JSON.stringify(out));
         self.assertEqual("ship it", s["last_prompt"])
 
 
+class TextIoTest(unittest.TestCase):
+    def test_task_json_is_read_as_utf8_regardless_of_locale(self) -> None:
+        # The locale default is cp1252 on Windows, which mojibakes this subject
+        # and raises on the bytes that code page leaves undefined.
+        subject = "Ship the café ☕ feature"
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp) / "abcdef12-0000-0000-0000-000000000000"
+            session.mkdir()
+            (session / "1.json").write_text(
+                json.dumps({"id": "1", "subject": subject, "status": "pending"}),
+                encoding="utf-8",
+            )
+            with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
+                tasks = dashboard.load_tasks()
+
+        self.assertEqual([subject], [t["subject"] for t in tasks["abcdef12"]])
+
+    def test_undecodable_task_file_is_skipped_not_raised(self) -> None:
+        # UnicodeDecodeError is a ValueError but not a JSONDecodeError, so the
+        # original handler let it escape and error the whole Claude collector.
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp) / "abcdef12-0000-0000-0000-000000000000"
+            session.mkdir()
+            (session / "1.json").write_bytes(b'{"subject": "\xff\xfe bad utf-8"}')
+            (session / "2.json").write_text(
+                json.dumps({"id": "2", "subject": "good", "status": "pending"}),
+                encoding="utf-8",
+            )
+            with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
+                tasks = dashboard.load_tasks()
+
+        self.assertEqual(["good"], [t["subject"] for t in tasks["abcdef12"]])
+
+    def test_diag_survives_an_unencodable_stream(self) -> None:
+        class AsciiOnly(io.TextIOBase):
+            def __init__(self) -> None:
+                self.written: list[str] = []
+
+            def write(self, s: str) -> int:
+                s.encode("ascii")  # raises UnicodeEncodeError like a redirected log
+                self.written.append(s)
+                return len(s)
+
+        stream = AsciiOnly()
+        with contextlib.redirect_stdout(stream):
+            dashboard.diag("collector error: café ☕")
+        self.assertIn("caf\\xe9", "".join(stream.written))
+
+    def test_diag_never_raises_on_a_closed_stream(self) -> None:
+        closed = io.StringIO()
+        closed.close()
+        with contextlib.redirect_stdout(closed):
+            dashboard.diag("anything")  # must not raise
+
+    def test_codex_agent_label_uses_the_basename_on_either_separator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rollout = Path(tmp) / "rollout-1.jsonl"
+            rollout.write_text(
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "sess-1",
+                            "thread_source": "subagent",
+                            "agent_path": "/home/u/agents/reviewer.md",
+                        },
+                    }
+                )
+                + "\n"
+            )
+            self.assertEqual("reviewer.md", dashboard.codex_meta(str(rollout))["agent_label"])
+
+
+class SqliteOptionalTest(unittest.TestCase):
+    """sqlite3 is an optional stdlib module; minimal builds ship without it."""
+
+    @contextlib.contextmanager
+    def without_sqlite(self) -> Any:
+        with mock.patch.object(dashboard, "SQLITE_IMPORT_ERROR", "No module named '_sqlite3'"):
+            yield
+
+    def test_db_backed_collectors_return_empty_instead_of_raising(self) -> None:
+        with self.without_sqlite():
+            self.assertFalse(dashboard.sqlite_available())
+            for collector in (
+                dashboard.collect_opencode,
+                dashboard.collect_cursor,
+                dashboard.collect_goose,
+                dashboard.collect_antigravity,
+            ):
+                with self.subTest(collector=collector.__name__):
+                    self.assertEqual([], collector(1_700_000_000.0, 24, False))
+
+    def test_db_backed_harnesses_are_not_advertised_as_discovered(self) -> None:
+        # Reporting "discovered" for a store we cannot open would show the
+        # harness as present but permanently empty.
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "opencode.db"
+            db.write_bytes(b"")
+            with (
+                self.without_sqlite(),
+                mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)),
+                mock.patch.object(dashboard, "GOOSE_DB", str(db)),
+            ):
+                found = {
+                    h["key"]: h["discovered"] for h in dashboard.collect(24, False)["harnesses"]
+                }
+
+        self.assertFalse(found["opencode"])
+        self.assertFalse(found["goose"])
+
+    def test_jsonl_harnesses_still_work_without_sqlite(self) -> None:
+        now = 1_700_000_000.0
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            (projects / "-w-proj").mkdir(parents=True)
+            transcript = projects / "-w-proj" / "aabbccdd-0000-0000-0000-000000000000.jsonl"
+            transcript.write_text(json.dumps({"type": "user", "uuid": "u1"}) + "\n")
+            os.utime(transcript, (now, now))
+            with (
+                self.without_sqlite(),
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+
+
 class ClockSkewTest(unittest.TestCase):
     # A future timestamp satisfies every `now - ts <= threshold` test, so before
     # age()/is_fresh() a clock-skewed store pinned its session to Working
