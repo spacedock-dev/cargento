@@ -137,9 +137,8 @@ def parse_frontmatter(path: Path, validation: Validation) -> dict[str, Any] | No
 
 
 def parse_openai_metadata(path: Path, validation: Validation) -> dict[str, Any] | None:
-    document = load_yaml_mapping(
-        path.read_text(encoding="utf-8"), path, validation, "agents/openai.yaml"
-    )
+    yaml_text = path.read_text(encoding="utf-8")
+    document = load_yaml_mapping(yaml_text, path, validation, "agents/openai.yaml")
     if document is None:
         return None
     unknown_top_level = set(document) - {"interface", "dependencies", "policy"}
