@@ -44,7 +44,7 @@ def parse_semver(value: str) -> tuple[int, int, int]:
 
 def load(path: Path) -> dict[str, Any]:
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"error: cannot read {path}: {exc}") from exc
     if not isinstance(data, dict):
@@ -53,7 +53,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def save(path: Path, data: dict[str, Any]) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def current_version() -> str:

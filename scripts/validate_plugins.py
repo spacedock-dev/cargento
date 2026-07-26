@@ -68,16 +68,24 @@ class Validation:
         self.errors: list[str] = []
 
     def error(self, path: Path | str, message: str) -> None:
+        candidate = Path(path)
         try:
-            label = Path(path).resolve().relative_to(ROOT).as_posix()
-        except (TypeError, ValueError):
-            label = str(path)
+            # Resolve both sides: resolve() rewrites 8.3 short names on Windows
+            # and /var -> /private/var on macOS, so comparing a resolved path
+            # against an unresolved ROOT raises ValueError for paths that are
+            # in fact inside it.
+            label = candidate.resolve().relative_to(Path(ROOT).resolve()).as_posix()
+        except (TypeError, ValueError, OSError):
+            # Genuinely outside ROOT, or unresolvable. Still render with forward
+            # slashes so error text reads identically on every platform —
+            # str(path) would emit backslashes on Windows.
+            label = candidate.as_posix()
         self.errors.append(f"{label}: {message}")
 
 
 def load_json(path: Path, validation: Validation) -> dict[str, Any] | None:
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         validation.error(path, f"cannot read file ({exc})")
         return None
@@ -107,7 +115,7 @@ def load_yaml_mapping(
 
 
 def parse_frontmatter(path: Path, validation: Validation) -> dict[str, Any] | None:
-    lines = path.read_text().splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0] != "---":
         validation.error(path, "SKILL.md must begin with YAML frontmatter")
         return None
@@ -129,7 +137,7 @@ def parse_frontmatter(path: Path, validation: Validation) -> dict[str, Any] | No
 
 
 def parse_openai_metadata(path: Path, validation: Validation) -> dict[str, Any] | None:
-    document = load_yaml_mapping(path.read_text(), path, validation, "agents/openai.yaml")
+    document = load_yaml_mapping(path.read_text(encoding="utf-8"), path, validation, "agents/openai.yaml")
     if document is None:
         return None
     unknown_top_level = set(document) - {"interface", "dependencies", "policy"}
@@ -230,7 +238,7 @@ def approx_token_count(text: str) -> int:
 
 
 def validate_markdown_links(path: Path, validation: Validation) -> None:
-    prose = re.sub(r"```.*?```", "", path.read_text(), flags=re.DOTALL)
+    prose = re.sub(r"```.*?```", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
     for raw_target in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", prose):
         target = raw_target.strip().strip("<>").split("#", 1)[0]
         if not target or target.startswith(("#", "http://", "https://", "mailto:")):
@@ -537,7 +545,7 @@ def validate_skills(plugin_root: Path, validation: Validation) -> tuple[set[str]
     # cannot route an agent into a missing or repository-external file.
     for resource_path in sorted(skills_root.rglob("*.md")):
         validate_markdown_links(resource_path, validation)
-        body = resource_path.read_text()
+        body = resource_path.read_text(encoding="utf-8")
         for marker, guidance in PORTABILITY_MARKERS.items():
             if marker in body:
                 validation.error(resource_path, f"shared skill contains {marker!r}; {guidance}")
@@ -643,7 +651,7 @@ def validate_marketplaces(
 
 def validate_readme(skill_names: dict[str, set[str]], validation: Validation) -> None:
     path = ROOT / "README.md"
-    body = path.read_text()
+    body = path.read_text(encoding="utf-8")
     for plugin, names in skill_names.items():
         for name in names:
             if f"/{plugin}:{name}" not in body:

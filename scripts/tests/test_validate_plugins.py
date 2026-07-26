@@ -358,6 +358,29 @@ class ValidatorTests(unittest.TestCase):
                 )
             )
 
+    def test_error_labels_use_forward_slashes_on_every_platform(self) -> None:
+        # resolve() rewrites 8.3 short names on Windows and /var -> /private/var
+        # on macOS, so a path inside ROOT can still fail relative_to(). The
+        # fallback must not leak native separators into the error text.
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-label-") as directory:
+            root = Path(directory)
+            nested = root / "cargento" / ".claude-plugin" / "plugin.json"
+            nested.parent.mkdir(parents=True)
+            nested.write_text("{}\n")
+            validation = validator.Validation()
+            with mock.patch.object(validator, "ROOT", root):
+                validation.error(nested, "boom")
+            # Inside a resolved ROOT: label is relative.
+            self.assertEqual(["cargento/.claude-plugin/plugin.json: boom"], validation.errors)
+
+            # Outside ROOT: still forward slashes, never backslashes.
+            outside = validator.Validation()
+            with mock.patch.object(validator, "ROOT", root / "elsewhere"):
+                outside.error(nested, "boom")
+        self.assertEqual(1, len(outside.errors))
+        self.assertNotIn("\\", outside.errors[0])
+        self.assertIn("cargento/.claude-plugin/plugin.json", outside.errors[0])
+
     def test_marketplace_rejects_duplicates_and_metadata_version_drift(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
             root = Path(directory)

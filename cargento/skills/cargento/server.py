@@ -47,27 +47,157 @@ else:
     SQLITE_IMPORT_ERROR = None
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
 
 HOME = os.path.expanduser("~")
 DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
 
-# Per-harness data roots
-TASKS_DIR = os.path.join(HOME, ".claude", "tasks")
-PROJECTS_DIR = os.path.join(HOME, ".claude", "projects")
-CODEX_SESSIONS_DIR = os.path.join(HOME, ".codex", "sessions")
-GEMINI_TMP = os.path.join(HOME, ".gemini", "tmp")
-ANTIGRAVITY_CLI_DIR = os.path.join(HOME, ".gemini", "antigravity-cli")
+# Documented per-harness relocation variables. When one of these is set it is
+# authoritative: only paths derived from it are searched, so a user who
+# relocated a store never silently reads a stale default instead. Variables
+# whose semantics are not documented upstream are deliberately absent rather
+# than guessed at — a wrong override would break a working setup, while a
+# missing one only costs an entry in --diagnose.
+STORE_ENV_VARS = ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "COPILOT_HOME")
+
+
+def resolve_store_roots(
+    *, platform_name: str, environ: Mapping[str, str], home: str
+) -> dict[str, list[str]]:
+    """Candidate locations for every harness store, best candidate first.
+
+    Pure: everything it depends on is an argument, so each platform's layout is
+    exercisable from any runner (and mypy sees every branch, rather than
+    treating the other platforms' as unreachable).
+
+    Candidates are cheap — one that does not exist simply never matches — so
+    the lists include plausible-but-unconfirmed locations alongside documented
+    ones. What must never happen is silently searching *only* a wrong path,
+    which is why --diagnose reports every candidate it considered.
+    """
+    windows = platform_name == "win32"
+    # Join with the *target* platform's rules, not the host's, so a Windows
+    # layout resolved on a Linux runner is byte-identical to the real thing.
+    join = ntpath.join if windows else posixpath.join
+
+    def under_home(*parts: str) -> str:
+        return join(home, *parts)
+
+    def env_dir(name: str) -> str | None:
+        value = environ.get(name)
+        return value.strip() or None if isinstance(value, str) else None
+
+    xdg_data = env_dir("XDG_DATA_HOME") or under_home(".local", "share")
+    # Windows app-data roots; None elsewhere so those entries drop out.
+    local_app_data = env_dir("LOCALAPPDATA") if windows else None
+    roaming_app_data = env_dir("APPDATA") if windows else None
+
+    claude_home = env_dir("CLAUDE_CONFIG_DIR") or under_home(".claude")
+    codex_home = env_dir("CODEX_HOME") or under_home(".codex")
+    # GEMINI_CLI_HOME names a parent: the CLI creates ".gemini" inside it.
+    gemini_root = env_dir("GEMINI_CLI_HOME")
+    gemini_home = join(gemini_root, ".gemini") if gemini_root else under_home(".gemini")
+    copilot_home = env_dir("COPILOT_HOME") or under_home(".copilot")
+    antigravity_home = join(gemini_home, "antigravity-cli")
+
+    def ordered(*candidates: str | None) -> list[str]:
+        """Drop ``None`` and duplicates, keep order.
+
+        Candidates coincide on some setups — XDG_DATA_HOME already pointing at
+        ~/.local/share, a Windows profile without LOCALAPPDATA — and a repeated
+        root would scan the same store twice. ``normcase`` folds case and
+        separators on Windows, where paths are case-insensitive; on POSIX it is
+        the identity.
+        """
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            key = ntpath.normcase(candidate) if windows else candidate
+            if key not in seen:
+                seen.add(key)
+                deduped.append(candidate)
+        return deduped
+
+    def app_data(root: str | None, *parts: str) -> str | None:
+        return join(root, *parts) if root else None
+
+    return {
+        "claude.projects": ordered(join(claude_home, "projects")),
+        "claude.tasks": ordered(join(claude_home, "tasks")),
+        "codex.sessions": ordered(join(codex_home, "sessions")),
+        "gemini.tmp": ordered(join(gemini_home, "tmp")),
+        "antigravity.root": ordered(antigravity_home),
+        "copilot.root": ordered(copilot_home),
+        # OpenCode: the XDG location is confirmed and must stay first — it is
+        # what works on Linux and macOS today, and the first candidate becomes
+        # the primary constant. Windows builds have been reported both under
+        # %LOCALAPPDATA% and at a literal ~/.local/share; both follow.
+        "opencode.data": ordered(
+            join(xdg_data, "opencode"),
+            app_data(local_app_data, "opencode", "data"),
+            app_data(local_app_data, "opencode"),
+            under_home(".local", "share", "opencode") if windows else None,
+        ),
+        "cursor.chats": ordered(under_home(".cursor", "chats")),
+        # Goose: the Windows build uses an org-scoped app-data directory.
+        "goose.db": ordered(
+            join(xdg_data, "goose", "sessions", "sessions.db"),
+            app_data(roaming_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
+            app_data(local_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
+        ),
+        "droid.projects": ordered(under_home(".factory", "projects")),
+    }
+
+
+STORE_ROOTS: dict[str, list[str]] = resolve_store_roots(
+    platform_name=sys.platform, environ=os.environ, home=HOME
+)
+
+
+def store_roots(key: str, primary: str) -> list[str]:
+    """Every candidate root for ``key``, ``primary`` first.
+
+    ``primary`` is the module constant below rather than a lookup, because that
+    constant is the override seam: tests patch it to point a collector at a
+    fixture. When it no longer matches the resolved default it is treated as an
+    explicit instruction and searched *alone* — otherwise a fixture could pick
+    up a real store elsewhere on the machine and a test would pass or fail on
+    whatever the developer happened to have running.
+    """
+    candidates = STORE_ROOTS.get(key) or []
+    if not candidates or primary != candidates[0]:
+        return [primary]
+    return candidates
+
+
+def glob_stores(key: str, primary: str, *pattern: str) -> list[str]:
+    """``glob_under`` across every candidate root for a store.
+
+    Collectors already key sessions by id and keep the newest file per key, so
+    scanning more than one root merges naturally instead of double-counting.
+    """
+    return [path for root in store_roots(key, primary) for path in glob_under(root, *pattern)]
+
+
+# Per-harness data roots. Each is the best candidate for its store and stays a
+# module-level constant: it is the documented override seam (see store_roots).
+TASKS_DIR = STORE_ROOTS["claude.tasks"][0]
+PROJECTS_DIR = STORE_ROOTS["claude.projects"][0]
+CODEX_SESSIONS_DIR = STORE_ROOTS["codex.sessions"][0]
+GEMINI_TMP = STORE_ROOTS["gemini.tmp"][0]
+ANTIGRAVITY_CLI_DIR = STORE_ROOTS["antigravity.root"][0]
 ANTIGRAVITY_CONVERSATIONS_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "conversations")
 ANTIGRAVITY_LOG_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "log")
 ANTIGRAVITY_LAST_CONVERSATIONS = os.path.join(
     ANTIGRAVITY_CLI_DIR, "cache", "last_conversations.json"
 )
-COPILOT_DIR = os.path.join(HOME, ".copilot")
-OPENCODE_DATA = os.path.join(DATA_HOME, "opencode")
-CURSOR_CHATS = os.path.join(HOME, ".cursor", "chats")
-GOOSE_DB = os.path.join(DATA_HOME, "goose", "sessions", "sessions.db")
-FACTORY_PROJECTS = os.path.join(HOME, ".factory", "projects")
+COPILOT_DIR = STORE_ROOTS["copilot.root"][0]
+OPENCODE_DATA = STORE_ROOTS["opencode.data"][0]
+CURSOR_CHATS = STORE_ROOTS["cursor.chats"][0]
+GOOSE_DB = STORE_ROOTS["goose.db"][0]
+FACTORY_PROJECTS = STORE_ROOTS["droid.projects"][0]
 
 RATE_WINDOW_SEC = 600  # usage rate is measured over the last 10 minutes
 WORKING_THRESHOLD_SEC = 90  # activity newer than this = WORKING
