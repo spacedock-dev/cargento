@@ -25,8 +25,11 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
 SPEC = importlib.util.spec_from_file_location("cargento_server", SERVER_PATH)
@@ -5037,6 +5040,63 @@ class SpacedockReadContractTest(unittest.TestCase):
                 str(state), ["intake", "review", "posted"], time.time(), 3600
             ),
         )
+
+    def test_entity_files_report_a_stat_that_identifies_the_file(self) -> None:
+        """`scandir` caches a stat, and on Windows that cached result reports
+        st_ino and st_dev as zero — which can never match the fstat of an open
+        descriptor, so every entity file would be refused on that platform
+        alone. Reproduced here by simulating the cached stat, because a POSIX
+        runner cannot otherwise see it."""
+        root = self.workflow(self.README)
+        state = root / ".spacedock-state"
+        self.entity(state, "drc-1", "review")
+        real_scandir = os.scandir
+
+        class WindowsLikeEntry:
+            def __init__(self, entry: os.DirEntry[str]) -> None:
+                self.name, self.path = entry.name, entry.path
+                self._entry = entry
+
+            def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+                return self._entry.is_dir(follow_symlinks=follow_symlinks)
+
+            def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
+                real = self._entry.stat(follow_symlinks=follow_symlinks)
+                fields = list(real)
+                fields[1] = 0  # st_ino
+                fields[2] = 0  # st_dev
+                # Only the identity fields are zeroed. The nanosecond times
+                # have to be carried through the extended dict or they come
+                # back as None and the failure under test is masked by a
+                # TypeError in the sort.
+                return os.stat_result(
+                    fields,
+                    {
+                        "st_atime_ns": real.st_atime_ns,
+                        "st_mtime_ns": real.st_mtime_ns,
+                        "st_ctime_ns": real.st_ctime_ns,
+                    },
+                )
+
+        @contextlib.contextmanager
+        def windows_like_scandir(path: str) -> Iterator[list[WindowsLikeEntry]]:
+            with real_scandir(path) as entries:
+                yield [WindowsLikeEntry(entry) for entry in entries]
+
+        with mock.patch.object(dashboard.os, "scandir", windows_like_scandir):
+            found = dashboard.sd_entity_files(str(state))
+            self.assertEqual(1, len(found))
+            _, path, info = found[0]
+            self.assertEqual(
+                (os.stat(path).st_dev, os.stat(path).st_ino),
+                (info.st_dev, info.st_ino),
+            )
+            self.assertEqual(
+                [("drc-1", "review")],
+                dashboard.sd_read_entities(
+                    str(state), ["intake", "review", "posted"], time.time(), 3600
+                ),
+            )
 
     def test_entity_state_older_than_the_window_is_history_not_work(self) -> None:
         """A first officer discovers every workflow in the project. One retired

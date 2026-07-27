@@ -2374,6 +2374,14 @@ def sd_entity_files(entity_dir: str) -> list[tuple[str, str, os.stat_result]]:
     Newest-first because the cap that follows is a budget: a mature queue holds
     far more entities than it is running, and the ones being written are the
     ones in flight.
+
+    Every candidate is `lstat`ed for real rather than taking the stat
+    ``scandir`` already cached. On Windows that cached result reports
+    ``st_ino`` and ``st_dev`` as zero, which can never match the ``fstat`` of an
+    open descriptor — so the identity check in :func:`sd_read_frontmatter`
+    would refuse every entity file and the strip would come back empty on that
+    platform alone. A silent per-platform false negative is exactly the failure
+    mode D-4 in ``docs/design-cross-platform.md`` exists to keep out.
     """
     try:
         with os.scandir(os.path.realpath(entity_dir)) as entries:
@@ -2392,11 +2400,11 @@ def sd_entity_files(entity_dir: str) -> list[tuple[str, str, os.stat_result]]:
         try:
             if entry.is_dir(follow_symlinks=False):
                 path = os.path.join(entry.path, "index.md")
-                info = os.lstat(path)
-            elif name.endswith(".md") and entry.is_file(follow_symlinks=False):
-                path, info = entry.path, entry.stat(follow_symlinks=False)
+            elif name.endswith(".md"):
+                path = entry.path
             else:
                 continue
+            info = os.lstat(path)
         except OSError:
             continue  # entity written or retired between the listing and the stat
         if not stat_module.S_ISREG(info.st_mode):
