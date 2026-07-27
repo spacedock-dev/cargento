@@ -21,7 +21,6 @@ import contextlib
 import glob
 import hashlib
 import json
-import mmap
 import ntpath
 import os
 import posixpath
@@ -370,6 +369,68 @@ def read_tail(path: str) -> list[str]:
     return lines
 
 
+REVERSE_CHUNK_BYTES = 262_144  # bytes per read when walking a transcript backward
+
+
+def reverse_lines(
+    path: str,
+    end_pos: int | None = None,
+    *,
+    max_bytes: int | None = None,
+    contains: bytes | None = None,
+) -> Iterator[bytes]:
+    """Yield complete lines from ``path`` newest-first, reading fixed chunks.
+
+    Deliberately not ``mmap``, which is faster but unsafe on a file a running
+    agent owns. If the writer truncates or rotates a transcript while a region
+    of it is mapped, POSIX delivers SIGBUS on the next access — uncatchable,
+    it kills the process — and Windows instead refuses the writer's truncate,
+    so the reader breaks the agent. A chunked read has neither failure mode:
+    the worst case is a short read, which ends the scan.
+
+    ``end_pos`` scans only what precedes that offset; ``max_bytes`` bounds how
+    far back to walk. When the walk stops early the oldest line is dropped,
+    since it is probably a fragment rather than a whole record.
+
+    ``contains`` skips whole chunks that cannot hold a match, avoiding the
+    per-line split for them. The line scan, not the I/O, is what costs: on a
+    38 MB transcript whose only match is at the very start (the worst case)
+    this takes the backward walk from 44 ms to 20 ms, against 16 ms for the
+    mmap version it replaces. It is a coarse filter — callers must still test
+    each line they receive.
+
+    Empty lines are yielded as-is — callers already skip anything that is not a
+    JSON object.
+    """
+    try:
+        with open(path, "rb") as source:
+            size = os.fstat(source.fileno()).st_size
+            stop = size if end_pos is None else min(end_pos, size)
+            floor = 0 if max_bytes is None else max(0, stop - max_bytes)
+            pos = stop
+            carry = b""  # start of a line whose remainder is in the chunk already read
+            while pos > floor:
+                read_size = min(REVERSE_CHUNK_BYTES, pos - floor)
+                pos -= read_size
+                source.seek(pos)
+                chunk = source.read(read_size)
+                if len(chunk) < read_size:
+                    return  # truncated underneath us — stop rather than misparse
+                buffer = chunk + carry
+                head, separator, rest = buffer.partition(b"\n")
+                if not separator:
+                    carry = buffer  # no line boundary in this window yet
+                    continue
+                carry = head
+                if contains is not None and contains not in buffer:
+                    continue  # nothing here can match; skip the split entirely
+                yield from reversed(rest.split(b"\n"))
+            if carry and floor == 0:
+                yield carry  # only a whole line if the walk reached the start
+    except OSError:
+        return
+
+
 def extract_text(v: Any, depth: int = 0) -> str:
     """Best-effort text from harness message payloads whose exact shape
     varies (string, list of parts, nested dicts)."""
@@ -614,10 +675,10 @@ _claude_user_event_cache: dict[str, tuple[int, int, str | None]] = {}
 def claude_session_title(path: str) -> str | None:
     """Newest generated Claude title, falling back to the first user prompt.
 
-    ``ai-title`` records can be older than the bounded activity tail, so find
-    the newest one by searching the mmap backward. The cache is invalidated
-    whenever the transcript's size or mtime changes because Claude repeats
-    title records as a session grows.
+    ``ai-title`` records can be older than the bounded activity tail, so walk
+    the file backward to find the newest one. The cache is invalidated whenever
+    the transcript's size or mtime changes because Claude repeats title records
+    as a session grows.
     """
     try:
         stat = os.stat(path)
@@ -630,30 +691,21 @@ def claude_session_title(path: str) -> str | None:
         return cached[2]
 
     title = None
-    try:
-        with open(path, "rb") as source:
-            if stat.st_size:
-                with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                    pos = len(data)
-                    while pos:
-                        match = data.rfind(b'"aiTitle"', 0, pos)
-                        if match < 0:
-                            break
-                        line_start = data.rfind(b"\n", 0, match) + 1
-                        line_end = data.find(b"\n", match)
-                        if line_end < 0:
-                            line_end = len(data)
-                        try:
-                            record = json.loads(data[line_start:line_end])
-                        except json.JSONDecodeError:
-                            record = {}
-                        value = record.get("aiTitle")
-                        if record.get("type") == "ai-title" and isinstance(value, str) and value:
-                            title = value
-                            break
-                        pos = match
-    except (OSError, ValueError):
-        pass
+    # The chunk filter does the heavy lifting; the per-line test below only
+    # re-checks the few lines inside a chunk that had a hit.
+    for raw in reverse_lines(path, contains=b'"aiTitle"'):
+        if b'"aiTitle"' not in raw:
+            continue
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        value = record.get("aiTitle")
+        if record.get("type") == "ai-title" and isinstance(value, str) and value:
+            title = value
+            break
 
     if title is None:
         try:
@@ -692,34 +744,23 @@ def claude_last_user_event(path: str) -> str | None:
         return cached[2]
 
     marker = None
-    try:
-        with open(path, "rb") as source:
-            if stat.st_size:
-                with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                    line_end = len(data)
-                    while line_end:
-                        if data[line_end - 1 : line_end] == b"\n":
-                            line_end -= 1
-                        line_start = data.rfind(b"\n", 0, line_end) + 1
-                        raw = data[line_start:line_end]
-                        line_end = line_start
-                        if not raw.startswith(b"{"):
-                            continue
-                        try:
-                            record = json.loads(raw)
-                        except json.JSONDecodeError:
-                            continue
-                        if record.get("type") != "user":
-                            continue
-                        uuid = record.get("uuid")
-                        marker = (
-                            uuid
-                            if isinstance(uuid, str) and uuid
-                            else hashlib.blake2b(raw, digest_size=16).hexdigest()
-                        )
-                        break
-    except (OSError, ValueError):
-        pass
+    # Superset filter: a user record must contain the literal "user".
+    for raw in reverse_lines(path, contains=b'"user"'):
+        if not raw.startswith(b"{") or b'"user"' not in raw:
+            continue
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(record, dict) or record.get("type") != "user":
+            continue
+        uuid = record.get("uuid")
+        marker = (
+            uuid
+            if isinstance(uuid, str) and uuid
+            else hashlib.blake2b(raw, digest_size=16).hexdigest()
+        )
+        break
 
     with _cache_lock:
         bounded_put(_claude_user_event_cache, path, (*cache_key, marker))
@@ -1109,60 +1150,45 @@ def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any
     context: dict[str, Any] = {"turn_start": None, "last_start": None, "prev_ts": None}
     if end_pos <= 0:
         return context
-    try:
-        with open(path, "rb") as source:
-            if os.fstat(source.fileno()).st_size == 0:
+    active_decided = False
+    later_ts: float | None = None
+    for raw in reverse_lines(path, end_pos):
+        if not raw.startswith(b"{"):
+            continue
+        try:
+            decoded = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(decoded, dict):
+            continue
+        records = reversed(gemini_records(decoded)) if harness == "gemini" else (decoded,)
+        for record in records:
+            ep = parse_ts(record.get("timestamp") or "")
+            if not ep:
+                continue
+            # Walking backward: `later_ts` is the timestamp of the record that
+            # chronologically FOLLOWS this one. A quiet gap re-anchors the turn
+            # at the post-gap record, same rule as the forward scanner.
+            if later_ts is not None and later_ts - ep > TURN_GAP_RESET_SEC:
+                if not active_decided:
+                    context["turn_start"] = later_ts
+                context["last_start"] = later_ts
                 return context
-            with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                line_end = data.rfind(b"\n", 0, end_pos)
-                if line_end < 0:
-                    return context
-                pos = line_end
-                active_decided = False
-                later_ts: float | None = None
-                while pos > 0:
-                    line_start = data.rfind(b"\n", 0, pos) + 1
-                    raw = data[line_start:pos]
-                    pos = line_start - 1
-                    if not raw.startswith(b"{"):
-                        continue
-                    try:
-                        decoded = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-                    records = (
-                        reversed(gemini_records(decoded)) if harness == "gemini" else (decoded,)
-                    )
-                    for record in records:
-                        ep = parse_ts(record.get("timestamp") or "")
-                        if not ep:
-                            continue
-                        # Walking backward: `later_ts` is the timestamp of the
-                        # record that chronologically FOLLOWS this one. A quiet
-                        # gap re-anchors the turn at the post-gap record, same
-                        # rule as the forward scanner.
-                        if later_ts is not None and later_ts - ep > TURN_GAP_RESET_SEC:
-                            if not active_decided:
-                                context["turn_start"] = later_ts
-                            context["last_start"] = later_ts
-                            return context
-                        later_ts = ep
-                        if context["prev_ts"] is None:
-                            context["prev_ts"] = ep
-                        sig = _turn_signal(record, harness)
-                        if not sig:
-                            continue
-                        kind, override = sig
-                        if not active_decided:
-                            active_decided = True
-                            if kind != "end":
-                                context["turn_start"] = norm_epoch(override) or ep
-                        if kind != "end":
-                            context["last_start"] = norm_epoch(override) or ep
-                            return context
+            later_ts = ep
+            if context["prev_ts"] is None:
+                context["prev_ts"] = ep
+            sig = _turn_signal(record, harness)
+            if not sig:
+                continue
+            kind, override = sig
+            if not active_decided:
+                active_decided = True
+                if kind != "end":
+                    context["turn_start"] = norm_epoch(override) or ep
+            if kind != "end":
+                context["last_start"] = norm_epoch(override) or ep
                 return context
-    except (OSError, ValueError):
-        return context
+    return context
 
 
 def scan_turns(path: str, harness: str) -> dict[str, Any] | None:

@@ -2099,6 +2099,132 @@ console.log(JSON.stringify(out));
         self.assertEqual("ship it", s["last_prompt"])
 
 
+class ReverseLinesTest(unittest.TestCase):
+    """Replaces the reverse mmap scans. A mapped region whose file is truncated
+    underneath it raises SIGBUS on POSIX (uncatchable) and blocks the writer's
+    truncate on Windows; these are transcripts a live agent may rotate."""
+
+    def write(self, tmp: str, text: str) -> str:
+        path = Path(tmp) / "t.jsonl"
+        path.write_text(text)
+        return str(path)
+
+    def read_back(self, path: str, **kwargs: Any) -> list[str]:
+        return [raw.decode() for raw in dashboard.reverse_lines(path, **kwargs)]
+
+    def test_yields_lines_newest_first(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "a\nb\nc\n")
+            self.assertEqual(["", "c", "b", "a"], self.read_back(path))
+
+    def test_file_without_a_trailing_newline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "a\nb\nc")
+            self.assertEqual(["c", "b", "a"], self.read_back(path))
+
+    def test_empty_and_missing_files_yield_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual([], self.read_back(self.write(tmp, "")))
+            self.assertEqual([], self.read_back(str(Path(tmp) / "absent.jsonl")))
+
+    def test_lines_spanning_chunk_boundaries_are_reassembled(self) -> None:
+        # The whole risk of chunked reverse reading: a record split across two
+        # reads must come back intact. Forced with a chunk far smaller than the
+        # lines, at several sizes so no single alignment can hide a bug.
+        lines = [f"{i:04d}-" + "x" * (i % 37) for i in range(200)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "\n".join(lines) + "\n")
+            for chunk in (1, 2, 3, 7, 64, 1000):
+                with (
+                    self.subTest(chunk=chunk),
+                    mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk),
+                ):
+                    got = [line for line in self.read_back(path) if line]
+                    self.assertEqual(list(reversed(lines)), got)
+
+    def test_contains_filter_never_hides_a_matching_line(self) -> None:
+        # The filter tests whole chunks, so a match split across a chunk
+        # boundary is exactly what could go missing. Sweep every alignment.
+        with tempfile.TemporaryDirectory() as tmp:
+            for offset in range(40):
+                text = "x" * offset + "\nfiller\nNEEDLE-here\nfiller\n"
+                path = self.write(tmp, text)
+                for chunk in (1, 2, 3, 5, 8, 13):
+                    with (
+                        self.subTest(offset=offset, chunk=chunk),
+                        mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk),
+                    ):
+                        got = [
+                            raw.decode()
+                            for raw in dashboard.reverse_lines(path, contains=b"NEEDLE")
+                            if b"NEEDLE" in raw
+                        ]
+                        self.assertEqual(["NEEDLE-here"], got)
+
+    def test_contains_filter_matches_the_unfiltered_walk(self) -> None:
+        lines = [f"rec{i}" + ("-TARGET" if i % 97 == 0 else "") for i in range(500)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "\n".join(lines) + "\n")
+            for chunk in (4, 16, 256):
+                with (
+                    self.subTest(chunk=chunk),
+                    mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk),
+                ):
+                    unfiltered = [r for r in dashboard.reverse_lines(path) if b"TARGET" in r]
+                    filtered = [
+                        r
+                        for r in dashboard.reverse_lines(path, contains=b"TARGET")
+                        if b"TARGET" in r
+                    ]
+                    self.assertEqual(unfiltered, filtered)
+                    self.assertEqual(6, len(filtered))
+
+    def test_end_pos_limits_the_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "aaa\nbbb\nccc\n")
+            self.assertEqual(["", "bbb", "aaa"], self.read_back(path, end_pos=8))
+
+    def test_max_bytes_drops_the_oldest_partial_line(self) -> None:
+        # Stopping mid-file means the oldest line reached is probably a
+        # fragment, so it is discarded rather than parsed as a record.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "aaaa\nbbbb\ncccc\n")
+            self.assertEqual(["", "cccc"], self.read_back(path, max_bytes=6))
+
+    def test_a_file_truncated_mid_scan_stops_cleanly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "\n".join(f"line{i}" for i in range(500)) + "\n")
+            with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", 16):
+                walker = dashboard.reverse_lines(path)
+                next(walker)
+                Path(path).write_text("")  # writer rotates the transcript
+                remaining = list(walker)  # must not raise
+        self.assertIsInstance(remaining, list)
+
+    def test_title_and_user_event_still_scan_the_whole_file(self) -> None:
+        # Both readers look past the bounded activity tail, which is why they
+        # walk backward at all rather than reusing read_tail().
+        filler = [json.dumps({"type": "assistant", "message": {}}) for _ in range(400)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(
+                tmp,
+                "\n".join(
+                    [
+                        json.dumps({"type": "ai-title", "aiTitle": "Old title"}),
+                        json.dumps({"type": "user", "uuid": "u-old"}),
+                        *filler,
+                        json.dumps({"type": "ai-title", "aiTitle": "Newest title"}),
+                        json.dumps({"type": "user", "uuid": "u-new"}),
+                        *filler,
+                    ]
+                )
+                + "\n",
+            )
+            with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", 128):
+                self.assertEqual("Newest title", dashboard.claude_session_title(path))
+                self.assertEqual("u-new", dashboard.claude_last_user_event(path))
+
+
 class StoreRootsTest(unittest.TestCase):
     """resolve_store_roots is pure, so every platform's layout is checked here
     regardless of which runner is executing."""
