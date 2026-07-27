@@ -387,13 +387,21 @@ ratcheted to 74.
 **Exit:** `platform-tests` green on all three OSes and required. *Pending first CI run on the PR —
 the Windows and macOS runners have not yet executed this suite.*
 
-### Phase 2 — Resolver + diagnostics — **IN PROGRESS** (items 10-14 landed)
-10. Per-harness candidate **sets**, scan-all-and-dedupe (D-1), pure-function resolution (D-4).
-11. Verified env overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `COPILOT_HOME`, `GEMINI_CLI_HOME`
-    (append `.gemini`), `GOOSE_PATH_ROOT`.
-12. Confirmed Windows/XDG defaults only; everything else "override required."
-13. `--diagnose --json` (D-2).
-14. Migration tests proving current macOS paths still resolve first-class.
+### Phase 2 — Resolver + diagnostics — **DONE**
+10. **Done.** Per-harness candidate sets and pure-function resolution (D-1, D-4). Scan-all
+    de-duplication was *claimed* here before it existed: the collectors that append per store
+    (OpenCode, Goose) emitted the same session twice when a migration left it in two places. Now
+    collapsed by `(harness, sid)` in `collect()`, keeping the freshest copy.
+11. **Done.** Verified env overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `COPILOT_HOME`,
+    `GEMINI_CLI_HOME` (which names a parent — `.gemini` is appended). **`GOOSE_PATH_ROOT` is not
+    implemented**; an earlier revision of this section listed it as landed, which was wrong. Its
+    semantics are not documented upstream, and D-6 says not to guess at an override that would
+    break a working setup. `SKILL.md` continues to state it is unsupported.
+12. **Done.** Confirmed Windows/XDG defaults only; everything else "override required."
+13. **Done.** `--diagnose --json` (D-2). It now also reports store open/query failures the
+    collectors swallow — without those, a corrupt database read as a healthy store with no
+    sessions, which is the exact confusion the command exists to remove.
+14. **Done.** Migration tests proving current macOS paths still resolve first-class.
 
 **Exit:** every harness present on a box is discovered on all three OSes, and when it isn't, one
 command says why.

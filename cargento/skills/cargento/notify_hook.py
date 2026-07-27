@@ -102,7 +102,10 @@ def main(argv: list[str]) -> int:
         payload = b"{}"
     try:  # a malformed payload is the harness's problem, not worth forwarding
         json.loads(payload)
-    except ValueError:
+    except (ValueError, RecursionError):
+        # RecursionError, not just ValueError: deeply nested JSON blows the
+        # decoder's stack, and that escaped as a non-zero exit — exactly what
+        # this script promises never to do.
         return 0
     # Last-resort guard. forward() already handles every failure it expects;
     # this catches the ones it does not, because a hook that raises would

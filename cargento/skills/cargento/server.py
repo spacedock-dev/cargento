@@ -27,6 +27,7 @@ import os
 import posixpath
 import re
 import socket
+import stat as stat_module
 import subprocess
 import sys
 import threading
@@ -48,7 +49,7 @@ else:
     SQLITE_IMPORT_ERROR = None
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
 HOME = os.path.expanduser("~")
 DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
@@ -86,7 +87,13 @@ def resolve_store_roots(
 
     def env_dir(name: str) -> str | None:
         value = environ.get(name)
-        return value.strip() or None if isinstance(value, str) else None
+        if not isinstance(value, str) or not value.strip():
+            return None
+        # Returned byte-for-byte, not stripped: trailing whitespace is legal in
+        # a POSIX path, and XDG_DATA_HOME was already honoured before this
+        # resolver existed. Stripping it would silently move an existing
+        # OpenCode or Goose store out from under a macOS or Linux user.
+        return value
 
     xdg_data = env_dir("XDG_DATA_HOME") or under_home(".local", "share")
     # Windows app-data roots; None elsewhere so those entries drop out.
@@ -390,9 +397,16 @@ def reverse_lines(
     so the reader breaks the agent. A chunked read has neither failure mode:
     the worst case is a short read, which ends the scan.
 
-    ``end_pos`` scans only what precedes that offset; ``max_bytes`` bounds how
-    far back to walk. When the walk stops early the oldest line is dropped,
-    since it is probably a fragment rather than a whole record.
+    ``end_pos`` scans only what precedes that offset, exclusively — but a line
+    that *ends* exactly at ``end_pos`` is still yielded. That boundary is not
+    arbitrary: ``scan_turns`` resumes its forward pass at the same offset, and
+    a forward read starting on a newline never sees the record that newline
+    terminates. Dropping it here would lose that record entirely, which is what
+    the previous mmap implementation did.
+
+    ``max_bytes`` bounds how far back to walk. When the walk stops early the
+    oldest line is dropped, since it is probably a fragment rather than a whole
+    record.
 
     ``contains`` skips whole chunks that cannot hold a match, avoiding the
     per-line split for them. The line scan, not the I/O, is what costs: on a
@@ -410,7 +424,11 @@ def reverse_lines(
             stop = size if end_pos is None else min(end_pos, size)
             floor = 0 if max_bytes is None else max(0, stop - max_bytes)
             pos = stop
-            carry = b""  # start of a line whose remainder is in the chunk already read
+            # Fragments of a line whose start lies further back, newest first.
+            # Kept as a list and joined once: concatenating bytes per chunk made
+            # a single very long record quadratic (a 64 MB one-line transcript
+            # took 0.9 s), and large tool results do produce such records.
+            carry: list[bytes] = []
             while pos > floor:
                 read_size = min(REVERSE_CHUNK_BYTES, pos - floor)
                 pos -= read_size
@@ -418,17 +436,24 @@ def reverse_lines(
                 chunk = source.read(read_size)
                 if len(chunk) < read_size:
                     return  # truncated underneath us — stop rather than misparse
-                buffer = chunk + carry
-                head, separator, rest = buffer.partition(b"\n")
-                if not separator:
-                    carry = buffer  # no line boundary in this window yet
+                last_newline = chunk.rfind(b"\n")
+                if last_newline < 0:
+                    carry.append(chunk)  # no line boundary in this window yet
                     continue
-                carry = head
-                if contains is not None and contains not in buffer:
-                    continue  # nothing here can match; skip the split entirely
-                yield from reversed(rest.split(b"\n"))
-            if carry and floor == 0:
-                yield carry  # only a whole line if the walk reached the start
+                carry.append(chunk[last_newline + 1 :])
+                completed = b"".join(reversed(carry))
+                # Everything before the final newline splits cleanly; its first
+                # element is the next line's tail and becomes the new carry.
+                parts = chunk[:last_newline].split(b"\n")
+                carry = [parts[0]]
+                if contains is None or contains in chunk or contains in completed:
+                    yield completed
+                    yield from reversed(parts[1:])
+            # Emit the first line even when empty (a file starting with a
+            # newline has one), but only if the walk actually reached the start
+            # of the file — otherwise it is a fragment, not a record.
+            if floor == 0 and stop > 0:
+                yield b"".join(reversed(carry))
     except OSError:
         return
 
@@ -539,6 +564,39 @@ class LoopbackHTTPServer(ThreadingHTTPServer):
         super().server_bind()
 
 
+def dedupe_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse sessions found in more than one candidate store.
+
+    Scanning every candidate root means a session left behind by a migration
+    can be discovered twice. Most collectors key by session id internally and
+    merge naturally, but the database-backed ones append per store — so the
+    same id produced two rows and counted its tokens twice in the summary.
+    The freshest copy wins.
+    """
+    best: dict[tuple[str, str], dict[str, Any]] = {}
+    for session in sessions:
+        key = (str(session["harness"]), str(session["sid"]))
+        current = best.get(key)
+        if current is None or session["last_activity"] > current["last_activity"]:
+            best[key] = session
+    return list(best.values())
+
+
+_store_errors: dict[str, str] = {}
+
+
+def record_store_error(path: str, exc: BaseException) -> None:
+    """Remember why a store could not be read, for ``--diagnose``.
+
+    Collectors swallow these so one broken store cannot take the dashboard
+    down. Without recording them, a corrupt or locked database is reported as
+    a healthy store holding no sessions — precisely the confusion --diagnose
+    exists to remove.
+    """
+    with _cache_lock:
+        bounded_put(_store_errors, path, f"{type(exc).__name__}: {exc}")
+
+
 def sqlite_available() -> bool:
     """Whether the optional ``sqlite3`` extension module was importable."""
     return SQLITE_IMPORT_ERROR is None
@@ -591,6 +649,18 @@ def is_fresh(now: float, timestamp: float, window_sec: float) -> bool:
     """Whether ``timestamp`` is a plausible time within ``window_sec`` of now."""
     seconds = age(now, timestamp)
     return seconds is not None and seconds <= window_sec
+
+
+def any_fresh(now: float, timestamps: Iterable[float], window_sec: float) -> bool:
+    """Whether *any* of ``timestamps`` is plausible and inside the window.
+
+    Deliberately not ``is_fresh(now, max(timestamps), …)``. ``max()`` picks the
+    implausible one — a future timestamp is by definition the largest — and
+    rejecting it then discards the good evidence alongside it. A transcript
+    being written right now but holding one clock-skewed record would read
+    Idle, which is the opposite of what rejecting future timestamps is for.
+    """
+    return any(is_fresh(now, timestamp, window_sec) for timestamp in timestamps)
 
 
 def glob_under(root: str, *pattern: str) -> list[str]:
@@ -800,7 +870,9 @@ def claude_session_title(path: str) -> str | None:
                         continue
                     try:
                         record = json.loads(line)
-                    except json.JSONDecodeError:
+                    except ValueError:
+                        continue
+                    if not isinstance(record, dict):
                         continue
                     signal = _turn_signal(record, "claude")
                     if not signal or signal[0] != "prompt":
@@ -1179,7 +1251,13 @@ def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
     # claude
     if t != "user" or d.get("isMeta"):
         return None
-    content = (d.get("message") or {}).get("content")
+    message = d.get("message")
+    if not isinstance(message, dict):
+        # Untyped JSON from disk: {"type":"user","message":"a string"} is
+        # syntactically valid and used to AttributeError out of the whole
+        # Claude collector on every refresh.
+        return None
+    content = message.get("content")
     if isinstance(content, list) and any(
         isinstance(c, dict) and c.get("type") == "tool_result" for c in content
     ):
@@ -1774,7 +1852,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         # mtime floor: match the other collectors when the newest write has
         # no parseable timestamp (partial line, untimestamped record)
         parsed_last_event = info["last_event_ts"] if info else 0
-        last_event = max(parsed_last_event, transcript_mtime)
+        last_event_sources = (parsed_last_event, transcript_mtime)
         hook = (
             current_hook(prefix, (info or {}).get("last_user_event"), parsed_last_event)
             if active
@@ -1790,7 +1868,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         # tasks and will resume on their own. A hook only surfaces as
         # needs-input once the session actually goes quiet; permission-prompt
         # popups are unaffected (they fire on the POST itself).
-        elif subagents or is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
+        elif subagents or any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
             state = "working"
             in_prog = next((t for t in tasks if t["status"] == "in_progress"), None)
             if in_prog:
@@ -1893,14 +1971,14 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         data = agent_data.get(sid) or {"agents": [], "rate": 0}
         agents = sorted(data["agents"], key=lambda a: -a[1])
         last_activity = max(mtime, max((m for _, m in agents), default=0))
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        active = any_fresh(now, (mtime, *(m for _, m in agents)), window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_codex_transcript(fp) if active else None
-        last_event = max(info["last_event_ts"] if info else 0, last_activity)
+        last_event_sources = (info["last_event_ts"] if info else 0, last_activity)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
+        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, subagents)
 
@@ -2139,7 +2217,8 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
     for uri in (sqlite_ro_uri(path), sqlite_ro_uri(path, immutable=True)):
         try:
             con = sqlite3.connect(uri, uri=True, timeout=0.2)
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            record_store_error(path, exc)
             continue
         try:
             rows = con.execute(query, (SQL_MSG_LIMIT,)).fetchall()
@@ -2258,14 +2337,14 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     for sid, (mtime, fp) in sessions.items():
         agents = sorted(agents_by_parent.get(alnum(sid), []), key=lambda a: -a[1])
         last_activity = max(mtime, max((m for _, m in agents), default=0))
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        active = any_fresh(now, (mtime, *(m for _, m in agents)), window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_gemini_transcript(fp) if active else None
-        last_event = max(info["last_event_ts"] if info else 0, last_activity)
+        last_event_sources = (info["last_event_ts"] if info else 0, last_activity)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
+        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, subagents)
 
@@ -2315,10 +2394,10 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
         if not (active or show_all):
             continue
         info = analyze_copilot_events(fp) if active else None
-        last_event = max(info["last_event_ts"] if info else 0, mtime)
+        last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
         subagents: list[str] = []
-        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
+        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
             state = "working"
             subagents = list((info or {}).get("pending_agents", {}).values())
             state_detail = working_detail(info, subagents)
@@ -2361,7 +2440,8 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
     for db in glob_stores("opencode.data", OPENCODE_DATA, "opencode*.db"):
         try:
             con = _sql_ro(db)
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            record_store_error(db, exc)
             continue
         # ?all=1 promises every session ever; LIMIT -1 is SQLite's "no limit".
         limit = -1 if show_all else 200
@@ -2379,7 +2459,8 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                     "ORDER BY time_updated DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            record_store_error(db, exc)
             con.close()
             continue
         try:
@@ -2401,7 +2482,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
             for r, upd in tops:
                 agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
                 last_activity = max(upd, max((m for _, m in agents), default=0))
-                active = is_fresh(now, last_activity, window_hours * 3600)
+                active = any_fresh(now, (upd, *(m for _, m in agents)), window_hours * 3600)
                 if not (active or show_all):
                     continue
                 subagents = [label for label, _ in agents]
@@ -2472,7 +2553,8 @@ def _cursor_title(db: str, mtime: float) -> str | None:
     title = None
     try:
         con = sqlite3.connect(sqlite_ro_uri(db), uri=True, timeout=0.2)
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        record_store_error(db, exc)
         return None
     try:
         rows = con.execute("SELECT value FROM meta LIMIT 5").fetchall()
@@ -2574,7 +2656,8 @@ def collect_goose_db(
     # sessions). Legacy per-session .jsonl files are not supported.
     try:
         con = _sql_ro(goose_db)
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        record_store_error(goose_db, exc)
         return []
     try:
         try:
@@ -2610,7 +2693,7 @@ def collect_goose_db(
         for r, upd in tops:
             agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
             last_activity = max(upd, max((m for _, m in agents), default=0))
-            active = is_fresh(now, last_activity, window_hours * 3600)
+            active = any_fresh(now, (upd, *(m for _, m in agents)), window_hours * 3600)
             if not (active or show_all):
                 continue
             subagents = [label for label, _ in agents]
@@ -2675,7 +2758,8 @@ def collect_goose_db(
                 }
             )
             out.append(s)
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        record_store_error(goose_db, exc)
         return []
     else:
         return out
@@ -2696,9 +2780,9 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
         meta = droid_meta(fp)
         sid = str(meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")])
         info = analyze_droid_transcript(fp) if active else None
-        last_event = max(info["last_event_ts"] if info else 0, mtime)
+        last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, last_event, WORKING_THRESHOLD_SEC):
+        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, [])
 
@@ -2737,7 +2821,10 @@ HARNESSES: list[
         "Gemini",
         lambda: bool(
             glob_stores("gemini.tmp", GEMINI_TMP, "*", "chats", "session-*.jsonl")
-            or (sqlite_available() and glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"))
+            # Antigravity discovery needs no sqlite3: identity and working/idle
+            # come from store mtime and the CLI logs. Only the token rate and
+            # turn ETA read the database, and those degrade to zero without it.
+            or glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
         ),
         collect_gemini,
     ),
@@ -2806,6 +2893,7 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
             harness["error"] = f"{type(e).__name__}: {e}"
             diag(f"[{key}] collector error: {harness['error']}")
 
+    out_sessions = dedupe_sessions(out_sessions)
     state_rank = {"needs_input": 0, "working": 1, "idle": 2}
     # Session id as tiebreaker (not last_activity) so rows don't reshuffle
     # on every refresh while sessions are generating.
@@ -3592,8 +3680,21 @@ class Handler(BaseHTTPRequestHandler):
         ):
             return False
         origin = self.headers.get("Origin")
-        # urlparse().hostname already strips IPv6 brackets and lowercases.
-        return not origin or (urlparse(origin).hostname or "") in self.LOCAL_HOSTS
+        if not origin:
+            return True  # same-origin GETs send none
+        # Compare the whole origin, not just the host. Every port on this
+        # machine is the *same site*, so Sec-Fetch-Site reports "same-site" for
+        # a page served from another local port — and a hostname-only check
+        # then trusted it. Any unrelated local dev server could POST here
+        # (text/plain is CORS-safelisted, so no preflight would stop it).
+        parsed = urlparse(origin)
+        if parsed.scheme != "http" or (parsed.hostname or "") not in self.LOCAL_HOSTS:
+            return False
+        listening_port = getattr(self.server, "server_port", None)
+        try:
+            return parsed.port is not None and parsed.port == listening_port
+        except ValueError:
+            return False  # unparseable port in the Origin header
 
     def _is_document_navigation(self) -> bool:
         """Whether this is the browser navigating a tab to us, top level.
@@ -3740,18 +3841,27 @@ def store_primaries() -> dict[str, str]:
 def candidate_report(path: str) -> dict[str, Any]:
     """What a single candidate store path actually is on disk."""
     entry: dict[str, Any] = {"path": path, "kind": "missing", "readable": False, "entries": None}
+    # stat(), not isdir()/isfile(): those swallow OSError and return False, so
+    # a candidate under an unreadable parent reported "missing" — the exact
+    # confusion between "absent" and "inaccessible" this exists to remove.
     try:
-        if os.path.isdir(path):
-            entry["kind"] = "directory"
+        stat_result = os.stat(path)
+    except FileNotFoundError:
+        return entry
+    except OSError as exc:
+        entry["kind"] = "inaccessible"
+        entry["error"] = f"{type(exc).__name__}: {exc}"
+        return entry
+    if stat_module.S_ISDIR(stat_result.st_mode):
+        entry["kind"] = "directory"
+        try:
             entry["entries"] = len(os.listdir(path))
             entry["readable"] = True
-        elif os.path.isfile(path):
-            entry["kind"] = "file"
-            entry["readable"] = os.access(path, os.R_OK)
-    except OSError as exc:
-        # Permission denied, a disconnected network mount, an antivirus lock:
-        # the distinction between "absent" and "unreadable" is the whole point.
-        entry["error"] = f"{type(exc).__name__}: {exc}"
+        except OSError as exc:
+            entry["error"] = f"{type(exc).__name__}: {exc}"
+    else:
+        entry["kind"] = "file"
+        entry["readable"] = os.access(path, os.R_OK)
     return entry
 
 
@@ -3763,7 +3873,11 @@ def diagnose(window_hours: float) -> dict[str, Any]:
     This is the counterweight: it names every location searched and what was
     found there. Local only — nothing is transmitted anywhere.
     """
+    with _cache_lock:
+        _store_errors.clear()  # this run's failures only
     data = collect(window_hours, show_all=True)
+    with _cache_lock:
+        store_errors = dict(_store_errors)
     sessions_by_harness: dict[str, int] = {}
     for session in data["sessions"]:
         key = str(session["harness"])
@@ -3779,6 +3893,9 @@ def diagnose(window_hours: float) -> dict[str, Any]:
             "version": sqlite3.sqlite_version if sqlite_available() else None,
         },
         "env": {name: os.environ[name] for name in STORE_ENV_VARS if os.environ.get(name)},
+        # Failures the collectors swallowed. Without these a corrupt database
+        # reads as a healthy store with no sessions.
+        "store_errors": store_errors,
         "stores": {
             key: {
                 "primary": primary,
@@ -3817,6 +3934,13 @@ def render_diagnosis(report: dict[str, Any]) -> str:
         lines.append(f"  [{mark}] {harness['label']!s:<10} {detail}")
         if harness["error"]:
             lines.append(f"           error: {harness['error']}")
+
+    if report["store_errors"]:
+        lines.append("")
+        lines.append("Stores that failed to open or query")
+        for path, message in report["store_errors"].items():
+            lines.append(f"  [  --] {path}")
+            lines.append(f"           {message}")
 
     lines.append("")
     lines.append("Stores searched (in order)")

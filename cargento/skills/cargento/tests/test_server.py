@@ -12,11 +12,13 @@ import ntpath
 import os
 import re
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -990,11 +992,14 @@ let __notifications = [];
 let __notifyPermission = "default";
 function Notification(title, opts){ __notifications.push(Object.assign({title}, opts)); }
 Object.defineProperty(Notification, "permission", {get: () => __notifyPermission});
-Notification.requestPermission = cb => {
+// Settles on a later microtask, as the real API does: a synchronous stub let
+// code that re-renders immediately (before permission resolves) pass.
+Notification.requestPermission = cb => Promise.resolve().then(() => {
   __notifyPermission = "granted";
   if(cb) cb("granted");
-  return Promise.resolve("granted");
-};
+  return "granted";
+});
+const __settle = () => new Promise(r => setImmediate(r));
 """
 
     def _run_page_js(self, checks: str) -> Any:
@@ -1003,7 +1008,11 @@ Notification.requestPermission = cb => {
         script = match.group(1)
         with tempfile.TemporaryDirectory() as tmp:
             js = Path(tmp) / "page_test.js"
-            js.write_text(self.PAGE_JS_STUBS + script + checks)
+            # Checks run inside an async IIFE so they can await the async
+            # stubs (permission settles on a microtask, as in a browser).
+            js.write_text(
+                self.PAGE_JS_STUBS + script + "\n;(async () => {\n" + checks + "\n})();\n"
+            )
             proc = subprocess.run(
                 [shutil.which("node") or "node", str(js)],
                 capture_output=True,
@@ -1175,6 +1184,8 @@ __notifyPermission = "default";
 render(payload(""));
 out.buttonBefore = __els.app.innerHTML.includes("Enable notifications");
 requestNotifyPermission();
+out.buttonWhilePending = __els.app.innerHTML.includes("Enable notifications");
+await __settle(); await __settle();
 out.buttonAfter = __els.app.innerHTML.includes("Enable notifications");
 console.log(JSON.stringify(out));
 """
@@ -1184,6 +1195,7 @@ console.log(JSON.stringify(out));
         self.assertEqual("", out["granted"], "no control once permission is granted")
         self.assertEqual("", out["native"], "server owns popups; no control needed")
         self.assertTrue(out["buttonBefore"])
+        self.assertTrue(out["buttonWhilePending"], "must not clear before permission settles")
         self.assertFalse(out["buttonAfter"], "control should clear after granting")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -2455,6 +2467,24 @@ class ReverseLinesTest(unittest.TestCase):
                 remaining = list(walker)  # must not raise
         self.assertIsInstance(remaining, list)
 
+    def test_a_line_ending_exactly_at_end_pos_is_yielded(self) -> None:
+        # Where the reverse and forward halves of scan_turns meet. The forward
+        # pass resumes at the same offset, and a forward read starting on a
+        # newline never sees the record that newline terminates — so the
+        # reverse pass has to yield it. The previous mmap reader searched
+        # rfind("\n", 0, end_pos), which excluded that byte and dropped the
+        # record from both halves.
+        #
+        # Note this does not make the split lossless in general: a record
+        # straddling the split offset is still missed by both halves. That is a
+        # pre-existing limit of the bounded scan, unchanged by this PR.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write(tmp, "first\nsecond\nthird\n")
+            split = len("first\nsecond")  # the newline terminating "second"
+            self.assertEqual(b"\n", Path(path).read_bytes()[split : split + 1])
+            got = [raw.decode() for raw in dashboard.reverse_lines(path, split) if raw]
+        self.assertEqual(["second", "first"], got)
+
     def test_title_and_user_event_still_scan_the_whole_file(self) -> None:
         # Both readers look past the bounded activity tail, which is why they
         # walk backward at all rather than reusing read_tail().
@@ -2893,6 +2923,208 @@ class NotifyHookTest(unittest.TestCase):
         self.assertFalse(delivered, "a refused redirect must not report success")
 
 
+class ReviewFixTest(unittest.TestCase):
+    """Regressions found by the adversarial review passes on PR #7."""
+
+    NOW = 1_700_000_000.0
+
+    def test_a_future_record_does_not_mask_a_fresh_mtime(self) -> None:
+        # max(event_ts, mtime) picks the implausible one — a future timestamp
+        # is by definition the largest — so rejecting it discarded the good
+        # evidence too and an actively-written session read Idle.
+        future_iso = "2023-11-15T00:00:00+00:00"  # a day ahead of NOW
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            project.mkdir()
+            transcript = project / "s.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": future_iso,
+                        "message": {"role": "user", "content": "hi"},
+                    }
+                )
+                + "\n"
+            )
+            os.utime(transcript, (self.NOW, self.NOW))  # written right now
+            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
+                fresh = dashboard.collect_droid(self.NOW, 24, False)
+                os.utime(transcript, (self.NOW - 100_000, self.NOW - 100_000))
+                stale = dashboard.collect_droid(self.NOW, 24, True)
+
+        self.assertEqual("working", fresh[0]["state"], "fresh mtime was masked")
+        self.assertEqual("idle", stale[0]["state"], "future record invented activity")
+
+    def test_any_fresh_ignores_one_implausible_source(self) -> None:
+        self.assertTrue(dashboard.any_fresh(self.NOW, (self.NOW + 86_400, self.NOW), 90))
+        self.assertFalse(dashboard.any_fresh(self.NOW, (self.NOW + 86_400, self.NOW - 500), 90))
+        self.assertFalse(dashboard.any_fresh(self.NOW, (), 90))
+
+    def test_the_same_session_in_two_stores_yields_one_row(self) -> None:
+        # Scanning every candidate root can find a session left behind by a
+        # migration twice; the DB-backed collectors append per store.
+        rows = [
+            {**dashboard.base_session("opencode", "same", "p"), "last_activity": 10.0},
+            {**dashboard.base_session("opencode", "same", "p"), "last_activity": 99.0},
+            {**dashboard.base_session("goose", "same", "p"), "last_activity": 5.0},
+        ]
+        merged = dashboard.dedupe_sessions(rows)
+        self.assertEqual(2, len(merged), "duplicate session id was not merged")
+        opencode = next(r for r in merged if r["harness"] == "opencode")
+        self.assertEqual(99.0, opencode["last_activity"], "kept the staler copy")
+
+    def test_a_corrupt_database_is_reported_by_diagnose(self) -> None:
+        # Collectors swallow SQLite failures so one broken store cannot take
+        # the dashboard down — which made --diagnose call a corrupt database a
+        # healthy store with no sessions.
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "sessions.db"
+            broken.write_text("definitely not a database")
+            with (
+                mock.patch.dict(dashboard.STORE_ROOTS, {"goose.db": [str(broken)]}),
+                mock.patch.object(dashboard, "GOOSE_DB", str(broken)),
+            ):
+                report = dashboard.diagnose(24)
+
+        self.assertIn(str(broken), report["store_errors"])
+        self.assertIn("not a database", report["store_errors"][str(broken)])
+        self.assertIn("failed to open", dashboard.render_diagnosis(report))
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission bits; Windows uses ACLs")
+    def test_an_unreadable_parent_reports_inaccessible_not_missing(self) -> None:
+        # isdir()/isfile() swallow OSError and return False, so a candidate
+        # under a locked parent looked simply absent.
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / "locked"
+            (parent / "inner").mkdir(parents=True)
+            parent.chmod(0o000)
+            try:
+                report = dashboard.candidate_report(str(parent / "inner"))
+            finally:
+                parent.chmod(0o700)
+
+        self.assertEqual("inaccessible", report["kind"])
+        self.assertIn("PermissionError", report["error"])
+
+    def test_candidate_report_survives_a_listable_but_unreadable_directory(self) -> None:
+        # Platform-independent: the Windows failure mode is an ACL or a
+        # Defender lock, which surfaces as listdir raising, not as a mode bit.
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(dashboard.os, "listdir", side_effect=PermissionError("locked")),
+        ):
+            report = dashboard.candidate_report(tmp)
+        self.assertEqual("directory", report["kind"])
+        self.assertFalse(report["readable"])
+        self.assertIn("PermissionError", report["error"])
+
+    def test_a_non_dict_message_does_not_kill_the_claude_collector(self) -> None:
+        # {"type":"user","message":"a string"} is valid JSON and used to
+        # AttributeError out of the collector on every refresh.
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "s.jsonl"
+            transcript.write_text(json.dumps({"type": "user", "message": "not-an-object"}) + "\n")
+            self.assertIsNone(dashboard.claude_session_title(str(transcript)))
+            self.assertIsNone(dashboard._turn_signal({"type": "user", "message": "str"}, "claude"))
+
+    def test_reverse_lines_stays_linear_on_one_long_record(self) -> None:
+        # chunk + carry per chunk made this quadratic: a 64 MB single-line
+        # transcript took 0.9s, and large tool results do produce such records.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "long.jsonl"
+            timings = []
+            for megabytes in (4, 16):
+                path.write_bytes(b"x" * (megabytes * 1024 * 1024))
+                start = time.perf_counter()
+                list(dashboard.reverse_lines(str(path)))
+                timings.append(time.perf_counter() - start)
+        # Quadratic would be ~16x for 4x the bytes. Linear is ~4x; allow 8x for
+        # a loaded CI runner while still failing a quadratic regression.
+        self.assertLess(timings[1], max(timings[0], 0.005) * 8, f"non-linear: {timings}")
+
+    def test_env_paths_are_not_stripped(self) -> None:
+        # Trailing whitespace is legal in a POSIX path, and XDG_DATA_HOME was
+        # honoured before this resolver existed — stripping it would move an
+        # existing store out from under a macOS or Linux user.
+        roots = dashboard.resolve_store_roots(
+            platform_name="darwin", environ={"XDG_DATA_HOME": "/data/Agent Data "}, home="/h"
+        )
+        self.assertEqual("/data/Agent Data /opencode", roots["opencode.data"][0])
+        # Whitespace-only still counts as unset.
+        blank = dashboard.resolve_store_roots(
+            platform_name="darwin", environ={"XDG_DATA_HOME": "   "}, home="/h"
+        )
+        self.assertEqual("/h/.local/share/opencode", blank["opencode.data"][0])
+
+    def test_a_page_on_another_local_port_cannot_post(self) -> None:
+        # Every port on this machine is the same *site*, so Sec-Fetch-Site says
+        # "same-site" for a page served from another local port. A hostname-only
+        # Origin check trusted it, and text/plain is CORS-safelisted so no
+        # preflight would have stopped the request.
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        port = httpd.server_port
+        cases = [
+            (f"http://127.0.0.1:{port}", 200, "the dashboard's own page"),
+            (f"http://localhost:{port}", 200, "same port, other spelling"),
+            ("http://localhost:9999", 403, "another local dev server"),
+            ("http://127.0.0.1:9999", 403, "another local port"),
+            ("http://localhost", 403, "port 80"),
+            ("https://evil.example", 403, "remote origin"),
+        ]
+        try:
+            for origin, expected, why in cases:
+                with self.subTest(why=why):
+                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+                    conn.request(
+                        "POST",
+                        "/api/notify",
+                        body=b'{"session_id":"aaaaaaaa"}',
+                        headers={"Origin": origin, "Content-Type": "text/plain"},
+                    )
+                    response = conn.getresponse()
+                    self.assertEqual(expected, response.status)
+                    response.read()
+                    conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_exclusive_port_option_is_requested_before_bind(self) -> None:
+        # Clearing SO_REUSEADDR stops Cargento hijacking someone else's port;
+        # SO_EXCLUSIVEADDRUSE is what stops anyone hijacking Cargento's. Only
+        # meaningful if it is applied before bind().
+        order: list[str] = []
+        real_setsockopt = socket.socket.setsockopt
+        real_bind = socket.socket.bind
+
+        def traced_setsockopt(self: Any, level: int, option: int, value: Any) -> Any:
+            order.append(f"setsockopt:{option}")
+            return real_setsockopt(self, level, option, value)
+
+        def traced_bind(self: Any, address: Any) -> Any:
+            order.append("bind")
+            return real_bind(self, address)
+
+        with (
+            mock.patch.object(socket.socket, "setsockopt", traced_setsockopt),
+            mock.patch.object(socket.socket, "bind", traced_bind),
+            mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", 0xFFFB, create=True),
+            # The fake option number is rejected by the OS; that path warns,
+            # which is correct behaviour but noise in the test output.
+            mock.patch.object(dashboard, "diag"),
+        ):
+            httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            httpd.server_close()
+
+        self.assertIn("setsockopt:65531", order)
+        self.assertEqual("bind", order[-1], "options must be set before bind()")
+        self.assertLess(order.index("setsockopt:65531"), order.index("bind"))
+
+
 class NativeNotifierTest(unittest.TestCase):
     """Pure in platform_name, so both branches run on every runner rather than
     only the host's (design decision D-4)."""
@@ -2994,6 +3226,27 @@ class TextIoTest(unittest.TestCase):
             )
             self.assertEqual("reviewer.md", dashboard.codex_meta(str(rollout))["agent_label"])
 
+    @unittest.skipUnless(os.name == "nt", "os.path is ntpath only on Windows")
+    def test_codex_agent_label_splits_windows_separators(self) -> None:
+        # The POSIX case above passes under the old rsplit("/") too, so it
+        # could not catch the bug it was written for. Only ntpath splits "\\".
+        with tempfile.TemporaryDirectory() as tmp:
+            rollout = Path(tmp) / "rollout-2.jsonl"
+            rollout.write_text(
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "s2",
+                            "thread_source": "subagent",
+                            "agent_path": r"C:\Users\j\agents\reviewer.md",
+                        },
+                    }
+                )
+                + "\n"
+            )
+            self.assertEqual("reviewer.md", dashboard.codex_meta(str(rollout))["agent_label"])
+
 
 class SqliteOptionalTest(unittest.TestCase):
     """sqlite3 is an optional stdlib module; minimal builds ship without it."""
@@ -3049,6 +3302,49 @@ class SqliteOptionalTest(unittest.TestCase):
                 sessions = dashboard.collect_claude(now, 24, False)
 
         self.assertEqual(1, len(sessions))
+
+
+class SqliteTrulyAbsentTest(unittest.TestCase):
+    """Patching the flag leaves sqlite3 imported, so it cannot catch an unbound
+    name. This imports server.py in a subprocess where the module genuinely
+    fails to import."""
+
+    SCRIPT = """
+import builtins, importlib.util, sys
+real_import = builtins.__import__
+def blocked(name, *a, **k):
+    if name == "sqlite3" or name.startswith("sqlite3."):
+        raise ImportError("No module named 'sqlite3'")
+    return real_import(name, *a, **k)
+builtins.__import__ = blocked
+sys.modules.pop("sqlite3", None)
+spec = importlib.util.spec_from_file_location("srv", {path!r})
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)          # must not raise
+builtins.__import__ = real_import
+assert not m.sqlite_available(), "sqlite_available() should be False"
+now = 1_700_000_000.0
+for fn in (m.collect_opencode, m.collect_cursor, m.collect_goose):
+    assert fn(now, 24, True) == [], fn.__name__
+# Antigravity is discovered from store mtime and CLI logs, so it survives
+# without sqlite3 — only its rate and ETA degrade. It must not raise.
+m.collect_antigravity(now, 24, True)
+data = m.collect(24, True)          # full pass, including discovery predicates
+found = {{h["key"]: h["discovered"] for h in data["harnesses"]}}
+assert found["opencode"] is False and found["goose"] is False and found["cursor"] is False
+report = m.diagnose(24)             # --diagnose must work too
+assert report["sqlite"]["available"] is False
+m.render_diagnosis(report)
+print("OK")
+"""
+
+    def test_server_imports_and_runs_without_sqlite3(self) -> None:
+        script = self.SCRIPT.format(path=str(SERVER_PATH))
+        result = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=60, check=False
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("OK", result.stdout)
 
 
 class ClockSkewTest(unittest.TestCase):
