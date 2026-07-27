@@ -1804,6 +1804,9 @@ SD_MAX_STAGES = 32
 SD_MAX_WORKFLOWS = 8  # one first officer can drive several workflows
 SD_MAX_ENTITIES = 12  # strips rendered per workflow
 SD_MAX_BOOT_RECORDS = 16
+# Decode attempts per tool result. A transcript full of `{"command"` lookalikes
+# would otherwise cost one failed decode each while the collection lock is held.
+SD_MAX_BOOT_CANDIDATES = 64
 # Spacedock's own stage-name grammar (internal/status/stages.go): lowercase
 # kebab, at least two characters, interior hyphens legal. Hyphens inside stage
 # names are why worker names cannot be parsed positionally.
@@ -1872,6 +1875,7 @@ def sd_stage_names(lines: list[str]) -> list[str]:
     names: list[str] = []
     stages_indent: int | None = None
     states_indent: int | None = None
+    item_indent: int | None = None
     for raw in lines:
         body = raw.strip()
         if not body or body.startswith("#"):
@@ -1889,7 +1893,17 @@ def sd_stage_names(lines: list[str]) -> list[str]:
             continue
         if indent <= states_indent and not body.startswith("- "):
             break  # dedented to a sibling of states:
-        if not body.startswith("- name:"):
+        if body.startswith("- "):
+            if item_indent is None:
+                item_indent = indent
+            if indent == item_indent and not body.startswith("- name:"):
+                # A states entry this scanner cannot model (flow style
+                # `- {name: x}`, a quoted key, an anchor). Skipping it would emit
+                # a spine missing a stage the workflow really declares — a wrong
+                # strip, the one outcome worse than no strip. Deeper `- ` items
+                # are nested values (a stage's `decision.options`), not states.
+                return []
+        if not body.startswith("- name:") or indent != item_indent:
             continue
         value = body[len("- name:") :].strip().strip("\"'")
         if not value or not SD_STAGE_RE.match(value) or value in names:
@@ -1900,80 +1914,73 @@ def sd_stage_names(lines: list[str]) -> list[str]:
     return names
 
 
-def sd_parse_worker(name: str, stages: list[str]) -> tuple[str, str, str] | None:
-    """``(slug, stage, cycle)`` from an ensign worker name, or None.
+def sd_tool_result_text(record: dict[str, Any]) -> list[str]:
+    """The text of every ``tool_result`` block in one transcript record.
 
-    Spacedock composes the name as ``spacedock-ensign-{slug}-{stage}``, but a
-    first officer appends its own cycle markers and observed names carry them on
-    either side of the stage — so positional parsing is wrong. Instead find the
-    known stage whose token run sits closest to the end, then require every
-    leftover token after it to be cycle-shaped. A leftover token that is not
-    means this stage vocabulary belongs to a different workflow, and the name is
-    rejected rather than mis-attributed.
+    Provenance matters: boot output is *command output*, so it counts only when
+    it arrives in a tool result. Scanning the raw line would let ordinary
+    conversation text — anything a user pasted or a model echoed — nominate an
+    absolute path for Cargento to open.
     """
-    body = name.removeprefix("spacedock-ensign-")
-    if body == name:
-        return None
-    tokens = body.split("-")
-    best: tuple[int, int, str] | None = None
-    for stage in stages:
-        stage_tokens = stage.split("-")
-        width = len(stage_tokens)
-        for start in range(len(tokens) - width, -1, -1):
-            if tokens[start : start + width] != stage_tokens:
-                continue
-            if best is None or (start, start + width) > (best[0], best[1]):
-                best = (start, start + width, stage)
-            break
-    if best is None:
-        return None
-    start, end, stage = best
-    head, tail = tokens[:start], tokens[end:]
-    if any(not SD_CYCLE_RE.match(token) for token in tail):
-        return None
-    slug = "-".join(token for token in head if not SD_CYCLE_RE.match(token))
-    if not slug:
-        return None
-    cycle = "-".join(token for token in head + tail if SD_CYCLE_RE.match(token))
-    return (slug, stage, cycle)
+    message = record.get("message")
+    if not isinstance(message, dict):
+        return []
+    content = message.get("content")
+    if not isinstance(content, list):
+        return []
+    out: list[str] = []
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "tool_result":
+            continue
+        text = block.get("content")
+        if isinstance(text, str):
+            out.append(text)
+        elif isinstance(text, list):
+            out.extend(
+                part["text"]
+                for part in text
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            )
+    return out
 
 
-def sd_boot_records(blob: str) -> list[dict[str, Any]]:
-    """Every ``spacedock status --boot`` envelope in a transcript head blob.
+def sd_boot_records(data: bytes) -> list[dict[str, Any]]:
+    """Every ``spacedock status --boot`` envelope in a transcript head.
 
-    The envelope reaches the transcript inside a JSON-encoded tool result, so
-    its braces and quotes are escaped. Each ``"command":"boot"`` marker is
-    walked back to the opening brace and forward to the balancing one, then
-    unescaped and decoded. A record that does not decode is skipped, never
-    fatal.
+    Decoded line by line as the JSONL it is, so the JSON decoder does the
+    unescaping and each envelope is located inside already-plain text. An
+    earlier version scanned the escaped bytes with a hand-rolled brace balancer,
+    which both mis-sliced a path containing a brace and rescanned to the end of
+    the blob for every unbalanced marker — quadratic, under the collection lock.
     """
     out: list[dict[str, Any]] = []
-    for match in re.finditer(r'\\"command\\":\\"boot\\"', blob):
-        opening = blob.rfind("{", 0, match.start())
-        if opening < 0:
+    decoder = json.JSONDecoder()
+    for line in data.split(b"\n"):
+        if b"definition_dir" not in line:
             continue
-        depth = 0
-        closing = -1
-        for index in range(opening, len(blob)):
-            char = blob[index]
-            if char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
-                if depth == 0:
-                    closing = index + 1
-                    break
-        if closing < 0:
-            continue
-        raw = blob[opening:closing].replace('\\"', '"').replace("\\\\", "\\")
         try:
-            record = json.loads(raw)
+            record = json.loads(line)
         except ValueError:
             continue
-        if isinstance(record, dict) and record.get("command") == "boot":
-            out.append(record)
-        if len(out) >= SD_MAX_BOOT_RECORDS:
-            break
+        if not isinstance(record, dict):
+            continue
+        for text in sd_tool_result_text(record):
+            position = 0
+            for _ in range(SD_MAX_BOOT_CANDIDATES):
+                begin = text.find('{"command"', position)
+                if begin < 0:
+                    break
+                try:
+                    envelope, position = decoder.raw_decode(text, begin)
+                except ValueError:
+                    # raw_decode fails at the first bad byte, so stepping past a
+                    # bad candidate cannot degrade into a whole-blob rescan.
+                    position = begin + 1
+                    continue
+                if isinstance(envelope, dict) and envelope.get("command") == "boot":
+                    out.append(envelope)
+                    if len(out) >= SD_MAX_BOOT_RECORDS:
+                        return out
     return out
 
 
@@ -2150,7 +2157,7 @@ def sd_transcript_boot(path: str) -> list[dict[str, Any]]:
         with open(path, "rb") as handle:
             blob = handle.read(SD_BOOT_SCAN_BYTES)
         if b"definition_dir" in blob:
-            records = sd_boot_records(blob.decode("utf-8", "replace"))
+            records = sd_boot_records(blob)
     except OSError:
         return []
     with _cache_lock:
@@ -2216,6 +2223,19 @@ def sd_read_workflow(workflow_dir: str) -> dict[str, Any] | None:
     descriptor = sd_open_regular(readme)
     if descriptor is not None:
         raw = b""
+        # The descriptor must be the same file the containment check and the
+        # cache key describe. O_NOFOLLOW guards only the final component, so a
+        # parent-directory swap between stat and open would otherwise seed the
+        # cache from a different file under a trusted key.
+        try:
+            opened = os.fstat(descriptor)
+            same_file = (opened.st_dev, opened.st_ino) == (info.st_dev, info.st_ino)
+        except OSError:
+            same_file = False
+        if not same_file:
+            with contextlib.suppress(OSError):
+                os.close(descriptor)
+            return None
         try:
             handle = os.fdopen(descriptor, "rb")
         except OSError:
@@ -2236,6 +2256,38 @@ def sd_read_workflow(workflow_dir: str) -> dict[str, Any] | None:
     return result
 
 
+def sd_attribute_worker(
+    name: str, slugs: list[str], stages: list[str]
+) -> tuple[str, str, str] | None:
+    """``(slug, stage, cycle)`` for a worker, anchored on a *known* slug.
+
+    Guessing the slug by stripping cycle-shaped tokens is wrong twice over: real
+    entity slugs end in cycle-shaped tokens of their own (`…-pr-1506-r3` is one
+    entity, not `…-pr-1506` on round 3), and a guessed slug matches every other
+    workflow that declares the same stage. So the slug comes from this
+    workflow's own boot snapshot, longest first so a slug that prefixes another
+    cannot win.
+    """
+    body = name.removeprefix("spacedock-ensign-")
+    if body == name:
+        return None
+    for slug in sorted(slugs, key=len, reverse=True):
+        remainder = body.removeprefix(slug + "-")
+        if remainder == body:
+            continue
+        tokens = remainder.split("-")
+        for stage in sorted(stages, key=len, reverse=True):
+            stage_tokens = stage.split("-")
+            for offset in range(len(tokens) - len(stage_tokens), -1, -1):
+                if tokens[offset : offset + len(stage_tokens)] != stage_tokens:
+                    continue
+                rest = tokens[:offset] + tokens[offset + len(stage_tokens) :]
+                if any(not SD_CYCLE_RE.match(token) for token in rest):
+                    continue
+                return (slug, stage, "-".join(rest))
+    return None
+
+
 def sd_session_workflows(
     boot: list[dict[str, Any]], worker_names: list[str]
 ) -> list[dict[str, Any]]:
@@ -2252,18 +2304,19 @@ def sd_session_workflows(
         if info is None:
             continue
         stages: list[str] = info["stages"]
+        booted = sd_boot_entities(boot, workflow_dir)
         entities: list[dict[str, Any]] = []
         seen: set[str] = set()
         for name in worker_names:
-            parsed = sd_parse_worker(name, stages)
-            if parsed is None:
+            attributed = sd_attribute_worker(name, list(booted), stages)
+            if attributed is None:
                 continue
-            slug, stage, cycle = parsed
+            slug, stage, cycle = attributed
             if slug in seen:
                 continue
             seen.add(slug)
             entities.append({"slug": slug, "stage": stage, "cycle": cycle, "live": True})
-        for slug, stage in sd_boot_entities(boot, workflow_dir).items():
+        for slug, stage in booted.items():
             if slug in seen or stage not in stages:
                 continue
             seen.add(slug)
@@ -2490,13 +2543,17 @@ def claude_spacedock(
     project file. Only a first officer gets strips: an ensign is a single worker
     whose own stage is already the parent's strip.
     """
-    if not transcript or not SPACEDOCK_ENABLED:
+    if not transcript:
         return None
     setting = claude_agent_setting(transcript)
     if setting == SPACEDOCK_ENSIGN:
         return {"role": "ensign", "workflows": []}
     if setting != SPACEDOCK_FO:
         return None
+    if not SPACEDOCK_ENABLED:
+        # The switch withdraws the project read, not the role: the badge comes
+        # from the transcript head, which is a store path either way.
+        return {"role": "first-officer", "workflows": []}
     boot = sd_transcript_boot(transcript)
     names = [str(a.get("label") or "") for a in subagents]
     return {"role": "first-officer", "workflows": sd_session_workflows(boot, names)}
@@ -3984,7 +4041,7 @@ function sdBlock(sess){
       `<span class="sd-role">${esc(role)}</span></div></div>`;
   }
   let rows = "";
-  for(const wf of wfs.slice(0, 4)){
+  for(const wf of wfs){
     const stages = wf.stages || [];
     for(const ent of (wf.entities || [])){
       const idx = stages.indexOf(ent.stage);

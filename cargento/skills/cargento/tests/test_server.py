@@ -4716,6 +4716,7 @@ class SpacedockParserTest(unittest.TestCase):
             "no states block": "stages:\n  defaults:\n    worktree: false\n",
             "stages absent": "state: .spacedock-state\n",
             "illegal name": "stages:\n  states:\n    - name: Intake_Bad\n",
+            "flow item": "stages:\n  states:\n    - {name: intake}\n    - name: review\n",
             "single char name": "stages:\n  states:\n    - name: x\n",
             "duplicate name": "stages:\n  states:\n    - name: review\n    - name: review\n",
         }
@@ -4724,51 +4725,86 @@ class SpacedockParserTest(unittest.TestCase):
                 lines = ("---\n" + block + "---\n").split("\n")[1:-2]
                 self.assertEqual([], dashboard.sd_stage_names(lines))
 
-    def test_worker_names_parse_against_the_declared_stage_list(self) -> None:
-        """Real names carry cycle markers on either side of the stage."""
+    def test_workers_are_attributed_to_a_known_slug(self) -> None:
+        """Cycle markers appear on either side of the stage, and a slug may end
+        in a cycle-shaped token of its own — so the slug must be known, never
+        guessed off the name."""
+        slugs = ["case-7", "verify-the-thing", "case-7-r3"]
         cases = [
             ("spacedock-ensign-case-7-uat", ("case-7", "uat", "")),
-            (
-                "spacedock-ensign-case-7-fix-and-harden",
-                ("case-7", "fix-and-harden", ""),
-            ),
+            ("spacedock-ensign-case-7-fix-and-harden", ("case-7", "fix-and-harden", "")),
             ("spacedock-ensign-case-7-cycle2-verify", ("case-7", "verify", "cycle2")),
             ("spacedock-ensign-case-7-verify-c2", ("case-7", "verify", "c2")),
-            ("spacedock-ensign-case-7-r3-verify", ("case-7", "verify", "r3")),
             ("spacedock-ensign-case-7-verify-pass2b", ("case-7", "verify", "pass2b")),
-            # A slug that itself contains a stage name: the match closest to the
-            # end wins, so the slug survives intact.
+            # A slug ending in a cycle-shaped token is one entity, not a retry of
+            # a shorter slug: longest-slug-first keeps them apart.
+            ("spacedock-ensign-case-7-r3-verify", ("case-7-r3", "verify", "")),
+            # A slug containing a stage name survives intact.
             ("spacedock-ensign-verify-the-thing-uat", ("verify-the-thing", "uat", "")),
         ]
         for name, expected in cases:
             with self.subTest(name=name):
-                self.assertEqual(expected, dashboard.sd_parse_worker(name, self.DEBUG_FLYWHEEL))
+                self.assertEqual(
+                    expected,
+                    dashboard.sd_attribute_worker(name, slugs, self.DEBUG_FLYWHEEL),
+                )
 
-    def test_worker_names_are_rejected_rather_than_mis_attributed(self) -> None:
+    def test_workers_are_rejected_rather_than_mis_attributed(self) -> None:
+        slugs = ["case-7"]
         for label, name in [
             ("not an ensign", "some-other-agent-uat"),
+            ("slug unknown to this workflow", "spacedock-ensign-case-9-uat"),
             ("no known stage", "spacedock-ensign-case-7-shipit"),
-            ("real content after the stage", "spacedock-ensign-case-7-uat-extra"),
-            ("no slug left", "spacedock-ensign-uat"),
+            ("real content beside the stage", "spacedock-ensign-case-7-uat-extra"),
         ]:
             with self.subTest(case=label):
-                self.assertIsNone(dashboard.sd_parse_worker(name, self.DEBUG_FLYWHEEL))
+                self.assertIsNone(dashboard.sd_attribute_worker(name, slugs, self.DEBUG_FLYWHEEL))
 
-    def test_boot_records_decode_escaped_envelopes_and_skip_junk(self) -> None:
+    def test_boot_records_require_tool_result_provenance(self) -> None:
+        """Boot output is command output. Conversation text that merely contains
+        an envelope must not be able to nominate a path for Cargento to open."""
         envelope = (
-            '{\\"command\\":\\"boot\\",\\"id_style\\":\\"slug\\",'
-            '\\"dispatchable\\":[{\\"slug\\":\\"drc-1\\",\\"current\\":\\"review\\",'
-            '\\"next\\":\\"disposition\\"}],'
-            '\\"definition_dir\\":\\"/w/one\\",\\"entity_dir\\":\\"/w/one\\"}'
+            '{"command":"boot","id_style":"slug",'
+            '"dispatchable":[{"slug":"drc-1","current":"review","next":"disposition"}],'
+            '"definition_dir":"/w/one","entity_dir":"/w/one"}'
         )
-        blob = '{"type":"tool_result","content":"=== BOOT ===\n' + envelope + '"}'
-        records = dashboard.sd_boot_records(blob)
+
+        def line(block_type: str) -> bytes:
+            return json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [{"type": block_type, "content": "=== BOOT ===\n" + envelope}]
+                    },
+                }
+            ).encode()
+
+        records = dashboard.sd_boot_records(line("tool_result"))
 
         self.assertEqual(1, len(records))
         self.assertEqual("/w/one", records[0]["definition_dir"])
         self.assertEqual({"drc-1": "review"}, dashboard.sd_boot_entities(records, "/w/one"))
         self.assertEqual(["/w/one"], dashboard.sd_workflow_dirs(records))
-        self.assertEqual([], dashboard.sd_boot_records('{"content":"no envelope here"}'))
+        # Same bytes, ordinary text block: no provenance, no record.
+        self.assertEqual([], dashboard.sd_boot_records(line("text")))
+        self.assertEqual([], dashboard.sd_boot_records(b'{"not":"jsonl definition_dir"}'))
+
+    def test_boot_scan_is_bounded_against_decoy_candidates(self) -> None:
+        """Every unbalanced candidate used to rescan to the end of the blob."""
+        decoys = '{"command"' * 40_000
+        payload = json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [{"type": "tool_result", "content": decoys + " definition_dir"}]
+                },
+            }
+        ).encode()
+        started = time.monotonic()
+
+        self.assertEqual([], dashboard.sd_boot_records(payload))
+
+        self.assertLess(time.monotonic() - started, 1.0)
 
     def test_workflow_dirs_reject_relative_and_nul_paths(self) -> None:
         records = [
