@@ -651,6 +651,16 @@ def is_fresh(now: float, timestamp: float, window_sec: float) -> bool:
     return seconds is not None and seconds <= window_sec
 
 
+def newest_plausible(now: float, timestamps: Iterable[float]) -> float:
+    """Newest timestamp that is not implausibly ahead of ``now``; 0 if none.
+
+    For display and ordering, where plain ``max()`` picks the clock-skewed
+    value — which renders as "–" in the UI and, worse, beats a perfectly good
+    copy of the same session during de-duplication.
+    """
+    return max((t for t in timestamps if age(now, t) is not None), default=0.0)
+
+
 def any_fresh(now: float, timestamps: Iterable[float], window_sec: float) -> bool:
     """Whether *any* of ``timestamps`` is plausible and inside the window.
 
@@ -1839,7 +1849,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             latest_agent_mtime,
             latest_child_mtime,
         )
-        last_activity = max(activity_sources)
+        last_activity = newest_plausible(now, activity_sources)
         active = any_fresh(now, activity_sources, window_hours * 3600)
         if not (active or show_all):
             continue
@@ -1974,12 +1984,13 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
     for sid, (mtime, fp) in sessions.items():
         data = agent_data.get(sid) or {"agents": [], "rate": 0}
         agents = sorted(data["agents"], key=lambda a: -a[1])
-        last_activity = max(mtime, max((m for _, m in agents), default=0))
+        activity_sources = (mtime, *(m for _, m in agents))
+        last_activity = newest_plausible(now, activity_sources)
         active = any_fresh(now, (mtime, *(m for _, m in agents)), window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_codex_transcript(fp) if active else None
-        last_event_sources = (info["last_event_ts"] if info else 0, last_activity)
+        last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
         if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
@@ -2227,7 +2238,8 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
         try:
             rows = con.execute(query, (SQL_MSG_LIMIT,)).fetchall()
             break
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            record_store_error(path, exc)
             continue
         finally:
             con.close()
@@ -2340,12 +2352,13 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     out: list[dict[str, Any]] = []
     for sid, (mtime, fp) in sessions.items():
         agents = sorted(agents_by_parent.get(alnum(sid), []), key=lambda a: -a[1])
-        last_activity = max(mtime, max((m for _, m in agents), default=0))
+        activity_sources = (mtime, *(m for _, m in agents))
+        last_activity = newest_plausible(now, activity_sources)
         active = any_fresh(now, (mtime, *(m for _, m in agents)), window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_gemini_transcript(fp) if active else None
-        last_event_sources = (info["last_event_ts"] if info else 0, last_activity)
+        last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
         if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
@@ -2486,7 +2499,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
             for r, upd in tops:
                 agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
                 activity_sources = (upd, *(m for _, m in agents))
-                last_activity = max(activity_sources)
+                last_activity = newest_plausible(now, activity_sources)
                 active = any_fresh(now, activity_sources, window_hours * 3600)
                 if not (active or show_all):
                     continue
@@ -2561,10 +2574,12 @@ def _cursor_title(db: str, mtime: float) -> str | None:
     except sqlite3.Error as exc:
         record_store_error(db, exc)
         return None
+    failed = False
     try:
         rows = con.execute("SELECT value FROM meta LIMIT 5").fetchall()
-    except sqlite3.Error:
-        rows = []
+    except sqlite3.Error as exc:
+        record_store_error(db, exc)
+        rows, failed = [], True
     finally:
         con.close()
     for (raw,) in rows:
@@ -2586,6 +2601,8 @@ def _cursor_title(db: str, mtime: float) -> str | None:
                     break
         if title:
             break
+    if failed:
+        return None  # transient: do not cache a title the query never returned
     with _cache_lock:
         hit = _cursor_title_cache.get(db)
         if hit and hit[0] == mtime:
@@ -2698,7 +2715,7 @@ def collect_goose_db(
         for r, upd in tops:
             agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
             activity_sources = (upd, *(m for _, m in agents))
-            last_activity = max(activity_sources)
+            last_activity = newest_plausible(now, activity_sources)
             active = any_fresh(now, activity_sources, window_hours * 3600)
             if not (active or show_all):
                 continue
@@ -3698,9 +3715,12 @@ class Handler(BaseHTTPRequestHandler):
             return False
         listening_port = getattr(self.server, "server_port", None)
         try:
-            return parsed.port is not None and parsed.port == listening_port
+            # Browsers omit the port when it is the scheme default, so
+            # "http://localhost" is a legitimate same-origin value on port 80.
+            origin_port = parsed.port if parsed.port is not None else 80
         except ValueError:
             return False  # unparseable port in the Origin header
+        return origin_port == listening_port
 
     def _is_document_navigation(self) -> bool:
         """Whether this is the browser navigating a tab to us, top level.
@@ -3853,6 +3873,10 @@ def candidate_report(path: str) -> dict[str, Any]:
     try:
         stat_result = os.stat(path)
     except FileNotFoundError:
+        # stat() follows symlinks, so a dangling one lands here. Say so rather
+        # than calling it absent — the target is what the user needs to fix.
+        if os.path.islink(path):
+            entry["kind"] = "broken symlink"
         return entry
     except OSError as exc:
         entry["kind"] = "inaccessible"
@@ -3865,9 +3889,13 @@ def candidate_report(path: str) -> dict[str, Any]:
             entry["readable"] = True
         except OSError as exc:
             entry["error"] = f"{type(exc).__name__}: {exc}"
-    else:
+    elif stat_module.S_ISREG(stat_result.st_mode):
         entry["kind"] = "file"
         entry["readable"] = os.access(path, os.R_OK)
+    else:
+        # A FIFO or socket at a store path is never a usable store; reporting
+        # it as a readable file would send someone looking in the wrong place.
+        entry["kind"] = "special file"
     return entry
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import email.message
 import errno
 import glob
 import http.client
@@ -3181,6 +3182,111 @@ class ReviewFixTest(unittest.TestCase):
         self.assertLess(order.index("setsockopt:65531"), order.index("bind"))
 
 
+class VerificationFixTest(unittest.TestCase):
+    """Regressions found by the adversarial pass that tried to refute the fixes."""
+
+    NOW = 1_700_000_000.0
+    FUTURE = NOW + 86_400
+
+    def test_newest_plausible_ignores_skew(self) -> None:
+        self.assertEqual(self.NOW, dashboard.newest_plausible(self.NOW, (self.FUTURE, self.NOW)))
+        self.assertEqual(0.0, dashboard.newest_plausible(self.NOW, (self.FUTURE,)))
+        self.assertEqual(0.0, dashboard.newest_plausible(self.NOW, ()))
+
+    def test_a_future_main_file_does_not_mask_a_fresh_subagent(self) -> None:
+        # Codex and Gemini collapsed main and subagent mtimes with max() before
+        # the freshness test, so a skewed parent hid a genuinely running child.
+        with tempfile.TemporaryDirectory() as tmp:
+            day = Path(tmp) / "2023" / "11" / "14"
+            day.mkdir(parents=True)
+            main = day / "rollout-main.jsonl"
+            main.write_text(
+                json.dumps({"type": "session_meta", "payload": {"id": "S", "cwd": "/w"}}) + "\n"
+            )
+            os.utime(main, (self.FUTURE, self.FUTURE))
+            child = day / "rollout-child.jsonl"
+            child.write_text(
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "K",
+                            "thread_source": "subagent",
+                            "source": {"subagent": {"thread_spawn": {"parent_thread_id": "S"}}},
+                            "agent_nickname": "reviewer",
+                        },
+                    }
+                )
+                + "\n"
+            )
+            os.utime(child, (self.NOW, self.NOW))
+            with (
+                mock.patch.dict(dashboard.STORE_ROOTS, {"codex.sessions": [str(tmp)]}),
+                mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(tmp)),
+            ):
+                sessions = dashboard.collect_codex(self.NOW, 24, True)
+
+        self.assertEqual("working", sessions[0]["state"])
+        self.assertEqual(["reviewer"], sessions[0]["subagents"])
+        self.assertLessEqual(sessions[0]["last_activity"], self.NOW, "skewed mtime displayed")
+
+    def test_a_skewed_duplicate_does_not_win_deduplication(self) -> None:
+        # Ranking by raw last_activity let a clock-skewed migrated copy beat the
+        # live one — the very problem rejecting future timestamps is for.
+        good = {**dashboard.base_session("opencode", "same", "p"), "state": "working"}
+        good["last_activity"] = dashboard.newest_plausible(self.NOW, (self.NOW,))
+        skewed = {**dashboard.base_session("opencode", "same", "p"), "state": "idle"}
+        skewed["last_activity"] = dashboard.newest_plausible(self.NOW, (self.FUTURE,))
+        for order in ([good, skewed], [skewed, good]):
+            with self.subTest(order=[s["state"] for s in order]):
+                self.assertEqual("working", dashboard.dedupe_sessions(order)[0]["state"])
+
+    def test_origin_with_an_implicit_default_port(self) -> None:
+        # Browsers omit the port when it is the scheme default, so
+        # "http://localhost" is legitimate for a server on port 80.
+        handler = dashboard.Handler.__new__(dashboard.Handler)
+        handler.headers = email.message.Message()
+        handler.headers["Host"] = "localhost"
+        handler.headers["Origin"] = "http://localhost"
+        handler.server = mock.Mock(server_port=80)
+        self.assertTrue(handler._local_ok())
+        handler.server = mock.Mock(server_port=4553)
+        self.assertFalse(handler._local_ok())
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlinks and FIFOs")
+    def test_special_files_are_not_reported_as_readable_stores(self) -> None:
+        # stat() follows symlinks, so a dangling one looked absent, and every
+        # non-directory looked like a readable regular file.
+        with tempfile.TemporaryDirectory() as tmp:
+            dangling = Path(tmp) / "dangling"
+            dangling.symlink_to(Path(tmp) / "nowhere")
+            fifo = Path(tmp) / "pipe"
+            os.mkfifo(fifo)
+            self.assertEqual("broken symlink", dashboard.candidate_report(str(dangling))["kind"])
+            self.assertEqual("special file", dashboard.candidate_report(str(fifo))["kind"])
+
+    def test_query_failures_are_recorded_not_just_connection_failures(self) -> None:
+        # A file that opens as a database but fails every query is the common
+        # corruption shape; only the connect path was being recorded.
+        with tempfile.TemporaryDirectory() as tmp:
+            antigravity = Path(tmp) / "conv.db"
+            antigravity.write_bytes(b"not a database")
+            cursor = Path(tmp) / "store.db"
+            cursor.write_bytes(b"also not a database")
+
+            with dashboard._cache_lock:
+                dashboard._store_errors.clear()
+            dashboard.antigravity_step_activity(str(antigravity), self.NOW)
+            self.assertIn(str(antigravity), dashboard._store_errors)
+
+            with dashboard._cache_lock:
+                dashboard._store_errors.clear()
+            self.assertIsNone(dashboard._cursor_title(str(cursor), 1.0))
+            self.assertIn(str(cursor), dashboard._store_errors)
+            # A title the query never returned must not be cached as "no title".
+            self.assertNotIn(str(cursor), dashboard._cursor_title_cache)
+
+
 class NativeNotifierTest(unittest.TestCase):
     """Pure in platform_name, so both branches run on every runner rather than
     only the host's (design decision D-4)."""
@@ -3383,8 +3489,17 @@ now = 1_700_000_000.0
 for fn in (m.collect_opencode, m.collect_cursor, m.collect_goose):
     assert fn(now, 24, True) == [], fn.__name__
 # Antigravity is discovered from store mtime and CLI logs, so it survives
-# without sqlite3 — only its rate and ETA degrade. It must not raise.
-m.collect_antigravity(now, 24, True)
+# without sqlite3 — only its rate and ETA degrade. Give it a real store so
+# this exercises the database-backed path instead of an empty glob.
+import os, tempfile
+ag = tempfile.mkdtemp()
+open(os.path.join(ag, "conv-1.db"), "wb").write(b"not a database")
+m.ANTIGRAVITY_CONVERSATIONS_DIR = ag
+m.STORE_ROOTS["antigravity.root"] = [ag]
+found_ag = m.collect_antigravity(now, 24, True)
+assert len(found_ag) == 1, found_ag
+assert found_ag[0]["rate_per_min"] == 0, "rate should degrade to zero"
+assert found_ag[0]["turn"] is None, "no ETA without the database"
 data = m.collect(24, True)          # full pass, including discovery predicates
 found = {{h["key"]: h["discovered"] for h in data["harnesses"]}}
 assert found["opencode"] is False and found["goose"] is False and found["cursor"] is False
