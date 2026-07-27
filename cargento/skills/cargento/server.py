@@ -279,6 +279,10 @@ _last_state: dict[str, str] = {}  # session prefix -> state string (popup on tra
 # actionable permission prompt that happened to overlap a clearing one — losing
 # a real "Claude is blocked" signal, which is worse than the stale state this
 # guard exists to prevent.
+#
+# Bounded like the other caches. Evicting a session's entry degrades it to the
+# pre-guard behaviour for that session — a stale row that clears on the next
+# refresh — never to anything worse, so the bound is safe to keep.
 _hook_generation: dict[str, int] = {}
 _cache_lock = threading.Lock()
 
@@ -488,17 +492,26 @@ def extract_text(v: Any, depth: int = 0) -> str:
     return ""
 
 
-def message_dict(record: Any) -> dict[str, Any]:
-    """The ``message`` object of a transcript record, or an empty dict.
+def as_dict(value: Any) -> dict[str, Any]:
+    """``value`` if it is a dict, else an empty dict.
 
-    ``record.get("message") or {}`` looks safe but is not: a record like
-    {"type":"user","message":"a string"} is valid JSON, and the string is
-    truthy, so the following ``.get()`` raises AttributeError and takes the
-    whole collector down for that refresh. Every harness message payload is
-    untyped JSON read off disk.
+    Every harness payload is untyped JSON read off disk, and the idiom
+    ``record.get("x") or {}`` is not safe: any truthy non-dict (a string, a
+    number, a list) passes the ``or`` and the following ``.get()`` raises,
+    taking the whole collector down for that refresh. Same for iteration —
+    see ``as_list``.
     """
-    message = record.get("message") if isinstance(record, dict) else None
-    return message if isinstance(message, dict) else {}
+    return value if isinstance(value, dict) else {}
+
+
+def as_list(value: Any) -> list[Any]:
+    """``value`` if it is a list, else an empty list."""
+    return value if isinstance(value, list) else []
+
+
+def message_dict(record: Any) -> dict[str, Any]:
+    """The ``message`` object of a transcript record, or an empty dict."""
+    return as_dict(as_dict(record).get("message"))
 
 
 def alnum(s: Any) -> str:
@@ -777,9 +790,7 @@ def codex_meta(path: str) -> dict[str, Any]:
         p = d.get("payload")
         if not isinstance(p, dict):
             p = {}
-        source = p.get("source") or {}
-        subagent = source.get("subagent") if isinstance(source, dict) else {}
-        spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else {}
+        spawn = as_dict(as_dict(as_dict(p.get("source")).get("subagent")).get("thread_spawn"))
         nickname = p.get("agent_nickname")
         agent_path = p.get("agent_path")
         label = (
@@ -825,8 +836,8 @@ def copilot_meta(path: str) -> dict[str, Any]:
     data.context.cwd."""
 
     def parse(d: dict[str, Any]) -> dict[str, Any]:
-        data = d.get("data") or {}
-        ctx = data.get("context") or {}
+        data = as_dict(d.get("data"))
+        ctx = as_dict(data.get("context"))
         return (
             {"cwd": ctx.get("cwd") or data.get("cwd")} if d.get("type") == "session.start" else {}
         )
@@ -981,16 +992,16 @@ def analyze_transcript(path: str) -> dict[str, Any]:
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":
             msg = message_dict(d)
-            usage = msg.get("usage") or {}
+            usage = as_dict(msg.get("usage"))
             if ep and usage.get("output_tokens"):
                 info["usage_events"].append((ep, usage["output_tokens"]))
-            for c in msg.get("content") or []:
+            for c in as_list(msg.get("content")):
                 if isinstance(c, dict) and c.get("type") == "tool_use":
                     info["last_tool"] = c.get("name")
                     if c.get("name") in INPUT_TOOLS:
                         pending[c.get("id")] = {"name": c.get("name"), "ts": ep}
         elif t == "user":
-            for c in message_dict(d).get("content") or []:
+            for c in as_list(message_dict(d).get("content")):
                 if isinstance(c, dict) and c.get("type") == "tool_result":
                     pending.pop(c.get("tool_use_id"), None)
     if pending:
@@ -1033,15 +1044,16 @@ def analyze_codex_transcript(path: str) -> dict[str, Any]:
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
         t = d.get("type")
-        p = d.get("payload") or {}
+        p = as_dict(d.get("payload"))
         if t == "event_msg":
             pt = p.get("type")
             if pt == "user_message":
-                msg = (p.get("message") or "").strip()
+                msg = p.get("message")
+                msg = msg.strip() if isinstance(msg, str) else ""
                 info["last_prompt"] = msg
                 info["title"] = msg.split("\n")[0][:80] or None
             elif pt == "token_count":
-                out = (((p.get("info") or {}).get("last_token_usage")) or {}).get("output_tokens")
+                out = as_dict(as_dict(p.get("info")).get("last_token_usage")).get("output_tokens")
                 if ep and out:
                     info["usage_events"].append((ep, out))
         elif t == "response_item" and p.get("type") in ("function_call", "custom_tool_call"):
@@ -1122,7 +1134,7 @@ def analyze_gemini_transcript(path: str) -> dict[str, Any]:
                 toks = message.get("tokens") or {}
                 if ep and isinstance(toks, dict) and toks.get("output"):
                     info["usage_events"].append((ep, toks["output"]))
-                for tc in message.get("toolCalls") or []:
+                for tc in as_list(message.get("toolCalls")):
                     if isinstance(tc, dict) and tc.get("name"):
                         info["last_tool"] = tc.get("name")
     return info
@@ -1152,11 +1164,9 @@ def analyze_copilot_events(path: str) -> dict[str, Any]:
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
         t = d.get("type")
-        data = d.get("data") or {}
-        if not isinstance(data, dict):
-            continue
+        data = as_dict(d.get("data"))
         if t == "session.start":
-            ctx = data.get("context") or {}
+            ctx = as_dict(data.get("context"))
             info["cwd"] = ctx.get("cwd") or data.get("cwd") or info["cwd"]
         elif t == "user.message":
             txt = extract_text(data).strip()
@@ -1244,7 +1254,7 @@ def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
     if harness == "codex":
         if t != "event_msg":
             return None
-        p = d.get("payload") or {}
+        p = as_dict(d.get("payload"))
         pt = p.get("type")
         if pt == "task_started":
             return ("start", p.get("started_at"))
@@ -1641,10 +1651,20 @@ def current_hook(
         return hook
 
 
-def maybe_popup(prefix: str, state: str, detail: str | None) -> None:
-    """Popup when a session transitions into a needs-input state."""
+def maybe_popup(
+    prefix: str, state: str, detail: str | None, *, expect_generation: int | None = None
+) -> None:
+    """Popup when a session transitions into a needs-input state.
+
+    ``expect_generation`` is re-checked under the same lock that guards
+    ``_last_state``. Checking it in the caller leaves a window in which a
+    SessionEnd commits first, and this would then re-create the state it just
+    cleared and fire a popup for a session that has already exited.
+    """
     now = time.time()
     with _lock:
+        if expect_generation is not None and _hook_generation.get(prefix, 0) != expect_generation:
+            return
         prev = _last_state.get(prefix)
         bounded_put(_last_state, prefix, state)
         if state != "needs_input" or prev == "needs_input":
@@ -1879,6 +1899,9 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             if transcript
             else "unknown"
         )
+        # Sampled before analyze_transcript: that scan is the slow part, and a
+        # SessionEnd landing during it must invalidate everything derived here.
+        seen_generation = hook_generation(prefix)
         info = analyze_transcript(transcript) if (transcript and active) else None
 
         state, state_detail = "idle", "awaiting your message"
@@ -1887,7 +1910,6 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         # no parseable timestamp (partial line, untimestamped record)
         parsed_last_event = info["last_event_ts"] if info else 0
         last_event_sources = (parsed_last_event, transcript_mtime)
-        seen_generation = hook_generation(prefix)
         hook = (
             current_hook(prefix, (info or {}).get("last_user_event"), parsed_last_event)
             if active
@@ -1912,17 +1934,22 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 state_detail = (in_prog["activeForm"] or in_prog["subject"]) + "…"
             else:
                 state_detail = working_detail(info, subagents)
-        elif hook and hook_generation(prefix) == seen_generation:
+        elif hook:
             state = "needs_input"
             blocked_since = hook["ts"]
             state_detail = hook["message"] or "waiting for your input"
-        if active and (state != "needs_input" or hook_generation(prefix) == seen_generation):
-            # A SessionEnd can land between reading the hook above and acting
-            # on it here. Re-check before announcing the session as blocked:
-            # otherwise a session that has already exited pops a notification
-            # and burns the global popup cooldown.
+        if state == "needs_input" and hook_generation(prefix) != seen_generation:
+            # The session exited while this snapshot was being built. Applies to
+            # the transcript-detected case too: an unanswered AskUserQuestion in
+            # a session the user has quit is moot, not blocking.
+            state, blocked_since = "idle", None
+            state_detail = "awaiting your message"
+        if active:
             maybe_popup(
-                prefix, state, f"[{project}] {state_detail}" if state == "needs_input" else None
+                prefix,
+                state,
+                f"[{project}] {state_detail}" if state == "needs_input" else None,
+                expect_generation=seen_generation,
             )
 
         total = len(tasks)

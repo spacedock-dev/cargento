@@ -3310,6 +3310,109 @@ class VerificationFixTest(unittest.TestCase):
             self.assertNotIn(str(cursor), dashboard._cursor_title_cache)
 
 
+class MalformedRecordTest(unittest.TestCase):
+    """Every harness payload is untyped JSON read off disk. `x.get("k") or {}`
+    is not a guard: any truthy non-dict passes the `or` and the next .get()
+    raises, killing the collector for that refresh."""
+
+    HOSTILE: ClassVar[list[Any]] = [5, "str", [1, 2], {"k": "v"}, None, True]
+    PLACEHOLDER = "__HOSTILE__"
+
+    def substitute(self, template: Any, value: Any) -> Any:
+        if template == self.PLACEHOLDER:
+            return value
+        if isinstance(template, dict):
+            return {k: self.substitute(v, value) for k, v in template.items()}
+        if isinstance(template, list):
+            return [self.substitute(v, value) for v in template]
+        return template
+
+    def templates(self) -> list[tuple[str, Any, list[dict[str, Any]]]]:
+        hostile = self.PLACEHOLDER
+        return [
+            (
+                "claude",
+                dashboard.analyze_transcript,
+                [
+                    {"type": "assistant", "message": {"usage": hostile, "content": hostile}},
+                    {"type": "user", "message": {"content": hostile}},
+                    {"type": "assistant", "message": hostile},
+                    {"type": "last-prompt", "lastPrompt": hostile},
+                ],
+            ),
+            (
+                "codex",
+                dashboard.analyze_codex_transcript,
+                [
+                    {"type": "event_msg", "payload": hostile},
+                    {"type": "event_msg", "payload": {"type": "token_count", "info": hostile}},
+                    {
+                        "type": "event_msg",
+                        "payload": {"type": "token_count", "info": {"last_token_usage": hostile}},
+                    },
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": hostile}},
+                    {
+                        "type": "response_item",
+                        "payload": {"type": "function_call", "name": hostile},
+                    },
+                ],
+            ),
+            (
+                "gemini",
+                dashboard.analyze_gemini_transcript,
+                [
+                    {"type": "gemini", "toolCalls": hostile, "tokens": hostile},
+                    {"type": "user", "content": hostile},
+                    {"$set": hostile},
+                    {"$set": {"messages": hostile}},
+                ],
+            ),
+            (
+                "copilot",
+                dashboard.analyze_copilot_events,
+                [
+                    {"type": "session.start", "data": hostile},
+                    {"type": "session.start", "data": {"context": hostile}},
+                    {"type": "user.message", "data": hostile},
+                    {"type": "subagent.started", "data": hostile},
+                ],
+            ),
+            (
+                "droid",
+                dashboard.analyze_droid_transcript,
+                [
+                    {"type": "message", "message": hostile},
+                    {"type": "message", "message": {"role": "user", "content": hostile}},
+                    {"type": "message", "message": {"role": "assistant", "content": hostile}},
+                ],
+            ),
+        ]
+
+    def test_no_analyzer_raises_on_a_hostile_nested_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "x.jsonl"
+            for harness, analyzer, templates in self.templates():
+                for template in templates:
+                    for value in self.HOSTILE:
+                        record = self.substitute(template, value)
+                        path.write_text(json.dumps(record) + "\n")
+                        with self.subTest(harness=harness, record=json.dumps(record)[:70]):
+                            analyzer(str(path))  # must not raise
+
+    def test_typed_accessors(self) -> None:
+        not_dicts: list[Any] = [5, "str", [1, 2], None, True]
+        for value in not_dicts:
+            self.assertEqual({}, dashboard.as_dict(value))
+            self.assertEqual({}, dashboard.message_dict({"message": value}))
+        self.assertEqual({"a": 1}, dashboard.as_dict({"a": 1}))
+        self.assertEqual({"a": 1}, dashboard.message_dict({"message": {"a": 1}}))
+        self.assertEqual({}, dashboard.message_dict("not-a-record"))
+        not_lists: list[Any] = [5, "str", {"k": 1}, None, True]
+        for value in not_lists:
+            self.assertEqual([], dashboard.as_list(value))
+        self.assertEqual([1, 2], dashboard.as_list([1, 2]))
+
+
 class HookOrderingTest(unittest.TestCase):
     def setUp(self) -> None:
         # This class does not inherit CargentoServerTest's shared reset, and
@@ -3400,6 +3503,93 @@ class HookOrderingTest(unittest.TestCase):
 
         self.assertEqual("idle", sessions[0]["state"], "exited session shown as blocked")
         self.assertEqual([], popups, "popped for a session that had already ended")
+
+    def _collect_with_session_end_injected(
+        self, *, at: str, records: list[dict[str, Any]], standing_hook: bool
+    ) -> tuple[str, int]:
+        """Run collect_claude with a SessionEnd landing at ``at``."""
+        now = 1_700_000_000.0
+        prefix = "abcdef12"
+        if standing_hook:
+            with dashboard._lock:
+                dashboard._hook_notifs[prefix] = {"ts": now, "message": "permission"}
+        popups: list[Any] = []
+
+        def end_session() -> None:
+            with dashboard._lock:
+                dashboard._hook_notifs.pop(prefix, None)
+                dashboard._last_state.pop(prefix, None)
+                dashboard._hook_generation[prefix] = dashboard._hook_generation.get(prefix, 0) + 1
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / f"{prefix}-0000-0000-0000-000000000000.jsonl"
+            transcript.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+            os.utime(transcript, (now - 300, now - 300))  # quiet, so state is decided above
+
+            patches: dict[str, Any] = {"notify_mac": lambda *a: popups.append(a)}
+            if at == "analyze":
+                real_analyze = dashboard.analyze_transcript
+
+                def analyze(path: str) -> Any:
+                    end_session()
+                    return real_analyze(path)
+
+                patches["analyze_transcript"] = analyze
+            elif at == "popup":
+                real_popup = dashboard.maybe_popup
+
+                def popup(*args: Any, **kwargs: Any) -> None:
+                    end_session()
+                    real_popup(*args, **kwargs)
+
+                patches["maybe_popup"] = popup
+
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                mock.patch.multiple(dashboard, **patches),
+            ):
+                sessions = dashboard.collect_claude(now, 24, True)
+        return sessions[0]["state"], len(popups)
+
+    ASK_USER_QUESTION: ClassVar[list[dict[str, Any]]] = [
+        {
+            "type": "assistant",
+            "timestamp": "2023-11-14T00:00:00+00:00",
+            "message": {"content": [{"type": "tool_use", "id": "t1", "name": "AskUserQuestion"}]},
+        }
+    ]
+    PLAIN_USER: ClassVar[list[dict[str, Any]]] = [{"type": "user", "uuid": "u"}]
+
+    def test_session_end_during_analysis_clears_a_transcript_detected_block(self) -> None:
+        # The guard was sampled after analyze_transcript, which is the slow
+        # part, and did not cover transcript-detected needs-input at all — so
+        # an unanswered AskUserQuestion in a session the user had quit stayed
+        # on screen and popped.
+        state, popups = self._collect_with_session_end_injected(
+            at="analyze", records=self.ASK_USER_QUESTION, standing_hook=False
+        )
+        self.assertEqual("idle", state)
+        self.assertEqual(0, popups)
+
+    def test_session_end_at_popup_time_suppresses_the_popup(self) -> None:
+        # Checking the generation in the caller left a window before
+        # maybe_popup took the lock. The state is a snapshot and may still read
+        # blocked until the next refresh, but the popup is irreversible and
+        # must not fire for a session that has exited.
+        _state, popups = self._collect_with_session_end_injected(
+            at="popup", records=self.PLAIN_USER, standing_hook=True
+        )
+        self.assertEqual(0, popups)
+
+    def test_a_standing_hook_still_blocks_and_pops_when_nothing_races(self) -> None:
+        state, popups = self._collect_with_session_end_injected(
+            at="none", records=self.PLAIN_USER, standing_hook=True
+        )
+        self.assertEqual("needs_input", state)
+        self.assertEqual(1, popups)
 
     def _race_against_slow_notification(self, second: dict[str, Any]) -> dict[str, Any]:
         """Start an actionable Notification, land ``second`` mid-flight."""
