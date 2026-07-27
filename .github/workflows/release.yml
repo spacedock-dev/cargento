@@ -98,8 +98,14 @@ jobs:
           # commit is trusted only if its manifests actually carry VERSION;
           # a PR squash title can't fake that, because version-guard (a
           # required check) blocks version edits in PRs.
+          # No `exit` in the awk program: exiting on the first match closes the
+          # pipe while `git log` is still writing, and under `pipefail` that
+          # SIGPIPE surfaces as exit 141 and aborts the step. It fires exactly
+          # when a release commit IS on main — the resume path this block
+          # exists to detect — so the early exit broke resuming and left a
+          # failed run on every release.
           RELEASE_COMMIT=$(git log --format='%H%x09%s' origin/main \
-            | awk -F'\t' -v s="chore(release): $TAG" '$2 == s {print $1; exit}')
+            | awk -F'\t' -v s="chore(release): $TAG" '$2 == s && !found {print $1; found=1}')
           if [ -n "$RELEASE_COMMIT" ]; then
             RC_VERSION=$(git show "$RELEASE_COMMIT:.claude-plugin/marketplace.json" | jq -r '.metadata.version // empty')
             if [ "$RC_VERSION" != "$VERSION" ]; then

@@ -941,6 +941,41 @@ class CargentoServerTest(unittest.TestCase):
         self.assertIn("latestSettledRefresh", dashboard.PAGE)
         self.assertIn("sequence < latestSettledRefresh", dashboard.PAGE)
 
+    def test_entity_slugs_elide_in_the_middle_not_the_tail(self) -> None:
+        """Entity slugs in one workflow share a long prefix and differ only at
+        the end, so tail truncation rendered two different entities as the same
+        string. The full value stays available as a title attribute."""
+        self.assertIn("function sdSlug(slug)", dashboard.PAGE)
+        self.assertIn('title="${esc(ent.slug)}">${esc(sdSlug(ent.slug))}', dashboard.PAGE)
+
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not installed; CI runs this branch")
+        js = "\n".join(re.findall(r"<script[^>]*>\n?(.*?)</script>", dashboard.PAGE, re.DOTALL))
+        # Just the helper and its constants. Taking the whole prefix would drag
+        # in top-level browser globals (`location`) that node does not have.
+        source = re.search(r"const SD_SLUG_MAX = .*?\n}\n", js, re.DOTALL)
+        assert source is not None, "sdSlug and its constants moved"
+        # Run the real function rather than restating its arithmetic here.
+        probe = (
+            source.group(0) + "\nconst cases = ['drc-3832',"
+            " 'datarecce-recce-cloud-infra-pr-1573',"
+            " 'datarecce-recce-cloud-infra-pr-1587'];\n"
+            "console.log(JSON.stringify(cases.map(sdSlug)));\n"
+        )
+        with tempfile.TemporaryDirectory() as holder:
+            script = Path(holder) / "probe.mjs"
+            script.write_text(probe, encoding="utf-8")
+            proc = subprocess.run([node, str(script)], capture_output=True, text=True, check=True)
+        short, first, second = json.loads(proc.stdout)
+
+        self.assertEqual("drc-3832", short)  # under the cap, untouched
+        self.assertNotEqual(first, second)  # the whole point
+        for rendered, full in ((first, "…-pr-1573"), (second, "…-pr-1587")):
+            self.assertTrue(rendered.endswith(full[1:]), rendered)
+            self.assertIn("…", rendered)
+            self.assertLessEqual(len(rendered), 22)
+
     def test_output_rate_rows_use_hoverable_harness_badges(self) -> None:
         self.assertIn(
             '<span class="rrow-badge">${badge(r.key, true)}</span>',

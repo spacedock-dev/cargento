@@ -4246,6 +4246,19 @@ function sdWindow(stages, idx){
   return out;
 }
 
+const SD_SLUG_MAX = 22;   // matches the .sd-ent column width, in mono ch
+const SD_SLUG_HEAD = 8;   // enough to tell one workflow's entities from another's
+
+// Elide the MIDDLE of an over-long entity slug, never the tail. Entity slugs
+// within a workflow share a long prefix and differ only at the end
+// (`datarecce-recce-cloud-infra-pr-1573` vs `…-pr-1587`), so tail truncation
+// renders two different entities as the same string.
+function sdSlug(slug){
+  if(slug.length <= SD_SLUG_MAX) return slug;
+  const tail = SD_SLUG_MAX - SD_SLUG_HEAD - 1;
+  return slug.slice(0, SD_SLUG_HEAD) + "…" + slug.slice(slug.length - tail);
+}
+
 function sdBlock(sess){
   const sd = sess.spacedock;
   if(!sd) return "";
@@ -4264,7 +4277,8 @@ function sdBlock(sess){
         ? `<span class="sd-gap">…</span>`
         : `<span class="${s === ent.stage && idx >= 0 ? "sd-cur" : "sd-st"}">${esc(s)}</span>`
       ).join(`<span class="sd-arr">→</span>`);
-      rows += `<div class="sd-row"><span class="sd-ent${ent.live ? " sd-live" : ""}">${esc(ent.slug)}</span>` +
+      rows += `<div class="sd-row"><span class="sd-ent${ent.live ? " sd-live" : ""}"` +
+        ` title="${esc(ent.slug)}">${esc(sdSlug(ent.slug))}</span>` +
         (ent.cycle ? `<span class="sd-cyc">${esc(ent.cycle)}</span>` : "") +
         `<span class="sd-spine">${spine}</span></div>`;
     }
