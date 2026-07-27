@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import glob
 import http.client
+import http.server
 import importlib.util
 import io
 import json
@@ -27,6 +29,13 @@ assert SPEC is not None
 assert SPEC.loader is not None
 dashboard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(dashboard)
+
+HOOK_PATH = SERVER_PATH.parent / "notify_hook.py"
+HOOK_SPEC = importlib.util.spec_from_file_location("cargento_notify_hook", HOOK_PATH)
+assert HOOK_SPEC is not None
+assert HOOK_SPEC.loader is not None
+dashboard_hook = importlib.util.module_from_spec(HOOK_SPEC)
+HOOK_SPEC.loader.exec_module(dashboard_hook)
 
 
 class CargentoServerTest(unittest.TestCase):
@@ -2643,6 +2652,198 @@ class DiagnoseTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"CODEX_HOME": "/opt/cx"}):
             report = dashboard.diagnose(24)
         self.assertEqual("/opt/cx", report["env"]["CODEX_HOME"])
+
+
+class HostAndSocketTest(unittest.TestCase):
+    def test_host_header_forms_that_are_all_loopback(self) -> None:
+        # rsplit(":", 1) mangled the bracketed IPv6 form into "[:" and never
+        # folded case, so both were rejected as non-local.
+        for value in (
+            "127.0.0.1",
+            "127.0.0.1:4553",
+            "localhost",
+            "LOCALHOST",
+            "LocalHost:4553",
+            "[::1]",
+            "[::1]:4553",
+            "::1",
+        ):
+            with self.subTest(host=value):
+                self.assertIn(dashboard.normalize_host(value), dashboard.Handler.LOCAL_HOSTS)
+
+    def test_host_header_forms_that_are_not_loopback(self) -> None:
+        for value in (
+            "",
+            "evil.example",
+            "evil.example:4553",
+            "127.0.0.1.evil.example",
+            "[",
+            "[]",
+            "192.168.1.5",
+            # Only a port may follow a bracketed literal. Ignoring the rest
+            # made "[::1]evil.example" reduce to "::1" and pass as loopback.
+            "[::1]evil.example",
+            "[::1]xyz:99",
+            "[::1].",
+            "[::1]:notaport",
+        ):
+            with self.subTest(host=value):
+                self.assertNotIn(dashboard.normalize_host(value), dashboard.Handler.LOCAL_HOSTS)
+
+    def test_reuse_address_is_off_only_on_windows(self) -> None:
+        # POSIX: SO_REUSEADDR just bypasses TIME_WAIT, so restarts work.
+        # Windows: it lets a second process bind an already-bound port.
+        self.assertTrue(dashboard.reuse_address_allowed("posix"))
+        self.assertFalse(dashboard.reuse_address_allowed("nt"))
+
+    def test_bind_errors_explain_themselves(self) -> None:
+        in_use = OSError(errno.EADDRINUSE, "Address already in use")
+        self.assertIn("already in use", dashboard.bind_error_message(in_use, 4553))
+        self.assertIn("4553", dashboard.bind_error_message(in_use, 4553))
+        denied = OSError(errno.EACCES, "Permission denied")
+        self.assertIn("not permitted", dashboard.bind_error_message(denied, 4553))
+        other = OSError(errno.EINVAL, "Invalid argument")
+        self.assertIn("cannot bind", dashboard.bind_error_message(other, 4553))
+
+    def test_windows_error_codes_are_recognized(self) -> None:
+        # winerror, not errno, is what Windows populates. 10013 is also what an
+        # in-use port reports once SO_EXCLUSIVEADDRUSE is set.
+        for winerror, expected in ((10048, "already in use"), (10013, "not permitted")):
+            with self.subTest(winerror=winerror):
+                exc = OSError()
+                exc.winerror = winerror  # type: ignore[attr-defined]
+                self.assertIn(expected, dashboard.bind_error_message(exc, 4553))
+
+    def test_server_binds_and_serves(self) -> None:
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+            conn.request("GET", "/api/data")
+            response = conn.getresponse()
+            self.assertEqual(200, response.status)
+            response.read()
+            conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+
+class NotifyHookTest(unittest.TestCase):
+    """The forwarder replaces a curl one-liner that only worked in POSIX shells."""
+
+    HOOK = str(HOOK_PATH)
+
+    def run_hook(self, payload: bytes, url: str | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, self.HOOK, *([url] if url else [])],
+            input=payload.decode(),
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+
+    def test_payload_reaches_a_running_server(self) -> None:
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        url = f"http://127.0.0.1:{httpd.server_port}/api/notify"
+        try:
+            with mock.patch.object(dashboard, "notify_mac"):
+                result = self.run_hook(
+                    json.dumps(
+                        {
+                            "session_id": "abcd1234-0000-0000-0000-000000000000",
+                            "message": "Claude needs permission",
+                            "notification_type": "permission_prompt",
+                        }
+                    ).encode(),
+                    url,
+                )
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        # The server recorded the hook, which is the whole point of the script.
+        self.assertIn("abcd1234", dashboard._hook_notifs)
+
+    def test_never_fails_the_agent_that_invoked_it(self) -> None:
+        # A hook that exits non-zero disturbs the session it reports on, and
+        # "no dashboard running" is an ordinary state.
+        cases = {
+            "no server listening": (b'{"session_id":"x"}', "http://127.0.0.1:9/api/notify"),
+            "malformed json": (b"{not json", None),
+            "empty stdin": (b"", None),
+            "not an object": (b"[1,2,3]", None),
+        }
+        for why, (payload, url) in cases.items():
+            with self.subTest(why=why):
+                self.assertEqual(0, self.run_hook(payload, url).returncode)
+
+    def test_refuses_to_forward_off_loopback(self) -> None:
+        # The script is wired into lifecycle hooks and sees prompts and session
+        # ids; an edited settings file must not turn it into an exfiltration
+        # path. A prefix check (startswith "http://localhost") accepted several
+        # of these — the host is parsed instead.
+        for url in (
+            "https://evil.example/collect",
+            "http://10.0.0.5:4553/api/notify",
+            "file:///etc/passwd",
+            "http://localhost.evil.com/collect",
+            "http://127.0.0.1.evil.com/collect",
+            "http://localhost@evil.com/collect",
+            "http://[::1]@evil.com/collect",
+            "https://127.0.0.1/collect",  # https is not what the server speaks
+            "",
+        ):
+            with self.subTest(url=url):
+                self.assertFalse(dashboard_hook.is_loopback_url(url))
+                self.assertFalse(dashboard_hook.forward(url, b"{}"))
+
+    def test_accepts_every_loopback_spelling(self) -> None:
+        for url in (
+            "http://127.0.0.1:4553/api/notify",
+            "http://localhost:9999/api/notify",
+            "http://[::1]:4553/api/notify",
+        ):
+            with self.subTest(url=url):
+                self.assertTrue(dashboard_hook.is_loopback_url(url))
+
+    def test_does_not_follow_a_redirect_off_the_machine(self) -> None:
+        # urllib follows redirects by default, and 307/308 preserve method and
+        # body — so a hostile listener on the loopback port could otherwise
+        # bounce the payload off this machine, defeating the check above.
+        received: list[str] = []
+
+        class Redirector(http.server.BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                received.append(self.path)
+                self.send_response(307)
+                self.send_header("Location", "https://evil.example/collect")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *args: Any) -> None:
+                pass
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Redirector)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{httpd.server_port}/api/notify"
+            delivered = dashboard_hook.forward(url, b'{"session_id":"x"}')
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual(["/api/notify"], received, "first request should still be sent")
+        self.assertFalse(delivered, "a refused redirect must not report success")
 
 
 class NativeNotifierTest(unittest.TestCase):

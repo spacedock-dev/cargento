@@ -33,19 +33,35 @@ Data sources (read-only, no external calls; all parsing is defensive — a broke
 
 ## Start
 
-Resolve `server.py` relative to this `SKILL.md` in the installed plugin, then run:
+Stdlib-only, Python 3.11+, no dependencies. Resolve `server.py` relative to this `SKILL.md` in the installed plugin, then start it in the background. Prefer your harness's own background-execution option; otherwise use the form for the shell you are in:
 
 ```bash
-python3 <resolved-skill-directory>/server.py --port 4553
+# macOS, Linux, WSL, Git Bash
+python3 "<skill-dir>/server.py" --port 4553 &
+```
+```powershell
+# Windows PowerShell — `&` is the call operator here, not backgrounding
+Start-Process -WindowStyle Hidden python -ArgumentList "<skill-dir>\server.py","--port","4553"
+```
+```bat
+:: Windows cmd
+start "" /b python "<skill-dir>\server.py" --port 4553
 ```
 
-Stdlib-only, Python 3.11+, no dependencies. Run it in the background using your harness's background-execution option (or append `&` to the command), confirm it responds (`curl -s http://localhost:4553/api/data | head -c 200`), then open the UI:
+`python3` is not a reliable spelling on native Windows — use `python` (or `py -3`) there. Whichever interpreter you start the server with, reuse it for the commands below.
+
+Confirm it responds, then open the UI:
 
 ```bash
-open http://localhost:4553/    # Linux: xdg-open
+curl -s http://127.0.0.1:4553/api/data | head -c 200
+python3 -m webbrowser -t http://127.0.0.1:4553/
 ```
+
+Use `127.0.0.1`, not `localhost`: the server listens on IPv4 only, and on some systems `localhost` resolves to `::1` first.
 
 Tell the user the URL, that the page auto-refreshes every 5 seconds, and that popups require the server to be running. Completed-task ages/estimates degrade where the filesystem exposes no birthtime (Linux, and Windows before Python 3.12).
+
+If the port is busy the server exits with an explanation rather than a traceback. Check whether a dashboard is already there (`curl -s http://127.0.0.1:4553/api/data`) before killing anything.
 
 ## Notifications
 
@@ -59,22 +75,26 @@ Both layers notify on the *transition* into needs-input, not on every refresh a 
 1. **Transcript detection** — an open AskUserQuestion flips the session to Needs input on the next poll (the UI polling `/api/data` drives this; keep a dashboard tab open).
 2. **Lifecycle hooks** — `Notification` and `SessionEnd` hooks in user settings (`~/.claude/settings.json`) POSTing their payloads to `http://127.0.0.1:4553/api/notify`. Notifications cover permission prompts and idle waits, even with no browser tab open. The structured `notification_type` decides whether a notification is actionable. Idle nudges (`idle_prompt`, message "Claude is waiting for your input") pop once but never mark the session blocked; authentication/completion notifications do neither; permission prompts and MCP elicitation dialogs create Needs-input state. `SessionEnd` clears a standing hook when Claude exits cleanly. These hooks are NOT installed by the plugin — if the user wants path 2, offer to add them to their `~/.claude/settings.json`:
 
+Use the bundled `notify_hook.py` (next to `server.py`) rather than a `curl` one-liner. The one-liner is POSIX-only end to end — single-quoting, `/dev/null`, `|| true`, and `--data-binary @-` all fail in `cmd.exe`, and Windows PowerShell 5.1 aliases `curl` to `Invoke-WebRequest` and has no `||`. One interpreter invocation behaves the same in every shell, exits 0 even when the dashboard is not running, and refuses to POST anywhere but loopback.
+
 ```json
 "hooks": {
   "Notification": [
-    {"matcher": "", "hooks": [{"type": "command", "command": "curl -s -m 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:4553/api/notify >/dev/null 2>&1 || true", "async": true}]}
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/notify_hook.py\"", "async": true}]}
   ],
   "SessionEnd": [
-    {"matcher": "", "hooks": [{"type": "command", "command": "curl -s -m 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:4553/api/notify >/dev/null 2>&1 || true"}]}
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/notify_hook.py\""}]}
   ]
 }
 ```
+
+On native Windows use `python` instead of `python3`, and a Windows path. Pass a URL as the first argument for a non-default port: `python3 "<skill-dir>/notify_hook.py" http://127.0.0.1:9999/api/notify`.
 
 After adding it (or after any settings change that breaks it), tell the user to open `/hooks` once or restart Claude Code to reload hook config.
 
 Simulate for testing:
 ```bash
-echo '{"session_id":"<id>","message":"test"}' | curl -s -X POST --data-binary @- http://127.0.0.1:4553/api/notify
+echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook.py"
 ```
 
 ## Options
@@ -99,15 +119,30 @@ echo '{"session_id":"<id>","message":"test"}' | curl -s -X POST --data-binary @-
 ## Stop
 
 ```bash
+# macOS, Linux, WSL (lsof is absent on many minimal images — fuser is the fallback)
 lsof -ti tcp:4553 -sTCP:LISTEN | xargs kill
+fuser -k 4553/tcp
+```
+```powershell
+# Windows PowerShell
+Get-NetTCPConnection -LocalPort 4553 -State Listen |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
+```bat
+:: Windows cmd, typed at the prompt — inside a .bat file write %%a for %a.
+:: Two literal findstr passes; findstr does not take a regex without /R.
+for /f "tokens=5" %a in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":4553"') do taskkill /PID %a /F
 ```
 
-`-sTCP:LISTEN` matters: without it, lsof also matches connected clients (the browser's network process). Substitute the port the server was actually started on.
+Match only *listening* sockets (`-sTCP:LISTEN`, `-State Listen`, `LISTENING`): without that filter these commands also match connected clients — including the browser's network process. Substitute the port the server was actually started on, and note the cmd form matches any port whose digits contain the string (`:4553` also matches `:45530`), so prefer the PowerShell form on Windows.
 
 ## Common mistakes
 
 - The server binds to 127.0.0.1 only — do not "fix" it to 0.0.0.0; it exposes local session data.
 - A harness the user expects is missing: run `--diagnose` before guessing. It distinguishes "no store here", "store present but unreadable", and "store read, no recent sessions" — the collectors cannot, because they skip unreadable stores silently by design.
+- Headless Linux (no graphical session): `python3 -m webbrowser` and `notify-send` both need a desktop. Reach the dashboard over SSH with `ssh -L 4553:127.0.0.1:4553 <host>` and open it locally. If running it under systemd, use a **user** unit — a system unit expands `~` to `/root` and `ProtectHome` hides every harness store.
+- Flatpak- or Snap-installed harnesses write inside their sandbox, and Snap's `home` interface excludes dotfiles like `.claude`. Cargento running outside the sandbox will not see them; `--diagnose` shows where it looked.
+- Very long Windows paths: Claude's encoded project directory names are long by construction, and without `LongPathsEnabled` a store can exceed the 260-character limit. Those transcripts are skipped rather than crashing, so the symptom is missing sessions — `--diagnose` reports the root it scanned.
 - On Windows, Cargento briefly holds a transcript open while reading it, and Python cannot request `FILE_SHARE_DELETE`. If a harness rotates that exact file in that window it may see a sharing violation. Reads are short and bounded, but the window is not zero; there is no way to close it from Python without native calls.
 - A session stuck on "Needs input" after you already answered: the state clears on the next transcript event; `SessionEnd` clears it on a clean Claude exit; a server restart also clears hook-reported notifications (they're in-memory). An abrupt kill cannot be distinguished from a terminal left open at a prompt, so it clears only by a later transcript event or restart.
 - After two missed refreshes, the live header changes to "stalled" and shows the last successful update — restart the server, no need to reload the page.

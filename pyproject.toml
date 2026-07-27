@@ -56,6 +56,7 @@ warn_unreachable = true
 # darwin-only code "unreachable" only on Linux runners.
 platform = "darwin"
 files = [
+  "cargento/skills/cargento/notify_hook.py",
   "cargento/skills/cargento/server.py",
   "cargento/skills/cargento/tests",
   "scripts",

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import errno
 import glob
 import hashlib
 import json
@@ -25,6 +26,7 @@ import ntpath
 import os
 import posixpath
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -452,6 +454,79 @@ def extract_text(v: Any, depth: int = 0) -> str:
 
 def alnum(s: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def normalize_host(value: str) -> str:
+    """Reduce a ``Host`` header to a bare, lowercased hostname.
+
+    Naive ``rsplit(":", 1)`` mishandles two legitimate forms: a bracketed IPv6
+    authority (``[::1]`` with no port becomes ``[:``) and any host whose case
+    differs from the allowlist, even though DNS names are case-insensitive and
+    ``LOCALHOST`` is as valid as ``localhost``. Both were rejected as non-local.
+    """
+    host = (value or "").strip()
+    if host.startswith("["):
+        end = host.find("]")
+        if end < 0:
+            return ""
+        # Only a port may follow the bracketed literal. Without this check
+        # "[::1]evil.example" reduced to "::1" and passed as loopback.
+        rest = host[end + 1 :]
+        if rest and not (rest.startswith(":") and rest[1:].isdigit()):
+            return ""
+        return host[1:end].lower()
+    if host.count(":") > 1:
+        return host.lower()  # bare IPv6 with no port
+    return host.rsplit(":", 1)[0].lower() if ":" in host else host.lower()
+
+
+def reuse_address_allowed(os_name: str) -> bool:
+    """Whether the listening socket should set ``SO_REUSEADDR``.
+
+    On POSIX the option only bypasses ``TIME_WAIT``, which is what lets the
+    dashboard restart immediately after a kill — worth keeping. On Windows the
+    same option means something else entirely: a second process may bind a port
+    that is *already bound*, with undefined delivery between the two sockets. A
+    stray second Cargento would silently steal half the requests, and any local
+    process could hijack the port of a server handing out local session data.
+    """
+    return os_name != "nt"
+
+
+def bind_error_message(exc: OSError, port: int) -> str:
+    """Explain a failed bind instead of dumping a raw traceback."""
+    winerror = getattr(exc, "winerror", None)
+    if exc.errno == errno.EADDRINUSE or winerror == 10048:  # WSAEADDRINUSE
+        return (
+            f"Cargento: port {port} is already in use. If that is a dashboard "
+            f"already running, use it: curl -s http://127.0.0.1:{port}/api/data. "
+            f"Otherwise pick another port with --port."
+        )
+    if exc.errno == errno.EACCES or winerror == 10013:  # WSAEACCES
+        # On Windows this is also what an in-use port reports once
+        # SO_EXCLUSIVEADDRUSE is set, so name both causes.
+        return (
+            f"Cargento: not permitted to bind port {port} — it may already be "
+            f"held by another process, reserved by the system, or blocked by "
+            f"local policy. Try another port with --port."
+        )
+    return f"Cargento: cannot bind 127.0.0.1:{port} — {type(exc).__name__}: {exc}"
+
+
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    """Loopback listener that refuses to share its port on Windows."""
+
+    allow_reuse_address = reuse_address_allowed(os.name)
+
+    def server_bind(self) -> None:
+        # Windows-only socket option. Clearing SO_REUSEADDR above stops *us*
+        # from hijacking someone else's port; this is what stops anyone else
+        # hijacking ours. Absent on POSIX, where getattr returns None.
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if exclusive is not None:
+            with contextlib.suppress(OSError):
+                self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+        super().server_bind()
 
 
 def sqlite_available() -> bool:
@@ -3497,17 +3572,17 @@ class Handler(BaseHTTPRequestHandler):
     # Loopback-origin requests only: the Host check defeats DNS rebinding,
     # the Origin check defeats cross-site fetch()es from web pages (both
     # reach 127.0.0.1-bound servers through the victim's browser).
-    LOCAL_HOSTS: ClassVar[set[str]] = {"127.0.0.1", "localhost", "::1", "[::1]"}
+    LOCAL_HOSTS: ClassVar[set[str]] = {"127.0.0.1", "localhost", "::1"}
 
     def _local_ok(self, *, allow_cross_site_navigation: bool = False) -> bool:
-        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-        if host not in self.LOCAL_HOSTS:
+        if normalize_host(self.headers.get("Host") or "") not in self.LOCAL_HOSTS:
             return False
         if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site" and not (
             allow_cross_site_navigation and self._is_document_navigation()
         ):
             return False
         origin = self.headers.get("Origin")
+        # urlparse().hostname already strips IPv6 brackets and lowercases.
         return not origin or (urlparse(origin).hostname or "") in self.LOCAL_HOSTS
 
     def _is_document_navigation(self) -> bool:
@@ -3778,8 +3853,15 @@ def main() -> None:
             "extension for this interpreter to enable them."
         )
     # Bind to loopback only — this exposes local session data.
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    diag(f"Cargento: http://localhost:{args.port}/")
+    try:
+        server = LoopbackHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError as exc:
+        diag(bind_error_message(exc, args.port))
+        raise SystemExit(1) from exc
+    # 127.0.0.1, not localhost: on some systems "localhost" resolves to ::1
+    # first, and this listener is IPv4-only, so the literal address is the one
+    # that always connects.
+    diag(f"Cargento: http://127.0.0.1:{args.port}/")
     server.serve_forever()
 
 

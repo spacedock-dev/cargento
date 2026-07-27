@@ -13,9 +13,24 @@ The repository keeps one shared skill implementation for all clients. Platform-n
 
 ## Platform-specific behavior
 
-- The dashboard server is stdlib-only Python 3.11+ (it uses `datetime.UTC`); it runs identically regardless of which harness launched it. The floor is also declared in `SKILL.md` and `pyproject.toml` — keep all three in lockstep.
-- Popup notifications use macOS `osascript`; on Linux the dashboard works but popups silently no-op, and completed-task ages/estimates degrade (no file birthtime).
+The dashboard server is stdlib-only Python 3.11+ (it uses `datetime.UTC`); it runs identically regardless of which harness launched it. The floor is also declared in `SKILL.md` and `pyproject.toml` — keep all three in lockstep.
+
+| Capability | macOS | Linux | Windows | WSL2 |
+|---|---|---|---|---|
+| Harness discovery, dashboard, `/api/data` | yes | yes | yes | yes (Linux-side stores) |
+| Turn ETA, token rate | yes | yes | yes | yes |
+| Task age from file birthtime | yes | falls back to mtime | Python 3.12+ only | falls back to mtime |
+| Needs-input popup, browser (tab open) | not needed | yes | yes | yes (host browser) |
+| Needs-input popup, native (no tab) | yes (`osascript`) | not yet | not yet | not yet |
+
+Exactly one layer delivers a given popup: the server where it has a native backend, the page otherwise. `/api/data` reports which as `native_notify`.
+
+Other notes:
+
 - Needs-input detection exists only for Claude Code sessions — other harnesses expose no equivalent signal in their local stores.
+- Store locations resolve per platform, and `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, and `COPILOT_HOME` are honored. Run `server.py --diagnose` to see every path searched and what was found there.
+- Supported WSL topology is server and agents on the same side of the boundary. Reading a Windows-side store from inside WSL works over `/mnt/c` but 9p latency and mtime granularity make state detection unreliable, so it is not supported.
+- `sqlite3` is an optional stdlib module. On a build without it (some musl/Alpine images) the four database-backed harnesses report undiscovered and the rest still work.
 
 ## Validation
 
