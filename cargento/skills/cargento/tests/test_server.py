@@ -2686,6 +2686,11 @@ class HostAndSocketTest(unittest.TestCase):
             "[::1]xyz:99",
             "[::1].",
             "[::1]:notaport",
+            # Unbracketed authorities need the same port validation, or
+            # "localhost:evil.example" reduces to "localhost".
+            "localhost:evil.example",
+            "127.0.0.1:evil.example",
+            "localhost:",
         ):
             with self.subTest(host=value):
                 self.assertNotIn(dashboard.normalize_host(value), dashboard.Handler.LOCAL_HOSTS)
@@ -2813,6 +2818,48 @@ class NotifyHookTest(unittest.TestCase):
         ):
             with self.subTest(url=url):
                 self.assertTrue(dashboard_hook.is_loopback_url(url))
+
+    def test_an_http_proxy_cannot_carry_the_payload_off_the_machine(self) -> None:
+        # urllib's default opener honours http_proxy/HTTP_PROXY, which is
+        # routine in corporate environments. A POST to 127.0.0.1 was handed to
+        # the proxy instead, carrying prompts and session ids off the machine
+        # and defeating the loopback check entirely.
+        proxied: list[bytes] = []
+
+        class Proxy(http.server.BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                length = int(self.headers.get("Content-Length") or 0)
+                proxied.append(self.rfile.read(length))
+                self.send_response(200)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *args: Any) -> None:
+                pass
+
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Proxy)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "http_proxy": f"http://127.0.0.1:{httpd.server_port}",
+                    "HTTP_PROXY": f"http://127.0.0.1:{httpd.server_port}",
+                },
+            ):
+                # Port 9 (discard) is not listening, so anything the proxy
+                # receives can only have come from proxy routing.
+                delivered = dashboard_hook.forward(
+                    "http://127.0.0.1:9/api/notify", b'{"secret":"prompt text"}'
+                )
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+        self.assertEqual([], proxied, "payload was routed through the proxy")
+        self.assertFalse(delivered)
 
     def test_does_not_follow_a_redirect_off_the_machine(self) -> None:
         # urllib follows redirects by default, and 307/308 preserve method and

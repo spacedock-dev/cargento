@@ -40,8 +40,11 @@ Stdlib-only, Python 3.11+, no dependencies. Resolve `server.py` relative to this
 python3 "<skill-dir>/server.py" --port 4553 &
 ```
 ```powershell
-# Windows PowerShell — `&` is the call operator here, not backgrounding
-Start-Process -WindowStyle Hidden python -ArgumentList "<skill-dir>\server.py","--port","4553"
+# Windows PowerShell — `&` is the call operator here, not backgrounding.
+# The inner double quotes are deliberate: -ArgumentList joins the array with
+# spaces without quoting it, so a skill directory containing a space would
+# otherwise reach python as two arguments.
+Start-Process -PassThru -WindowStyle Hidden python -ArgumentList '"<skill-dir>\server.py"','--port','4553'
 ```
 ```bat
 :: Windows cmd

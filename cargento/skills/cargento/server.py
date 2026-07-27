@@ -477,7 +477,12 @@ def normalize_host(value: str) -> str:
         return host[1:end].lower()
     if host.count(":") > 1:
         return host.lower()  # bare IPv6 with no port
-    return host.rsplit(":", 1)[0].lower() if ":" in host else host.lower()
+    if ":" not in host:
+        return host.lower()
+    name, _, port = host.rpartition(":")
+    # Same rule as the bracketed branch: only a numeric port may follow, so
+    # "localhost:evil.example" does not reduce to "localhost".
+    return name.lower() if port.isdigit() else ""
 
 
 def reuse_address_allowed(os_name: str) -> bool:
@@ -524,8 +529,13 @@ class LoopbackHTTPServer(ThreadingHTTPServer):
         # hijacking ours. Absent on POSIX, where getattr returns None.
         exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
         if exclusive is not None:
-            with contextlib.suppress(OSError):
+            try:
                 self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+            except OSError as exc:
+                # Bind anyway, but say so: without this option the port can be
+                # hijacked, and silently dropping the guarantee is worse than
+                # a noisy one-line warning at startup.
+                diag(f"Cargento: could not claim the port exclusively ({exc}); continuing")
         super().server_bind()
 
 

@@ -20,6 +20,8 @@ on, and "the dashboard is not running" is an ordinary state, not an error.
 
 from __future__ import annotations
 
+import contextlib
+import http.client
 import json
 import sys
 import urllib.error
@@ -74,12 +76,20 @@ def forward(url: str, payload: bytes) -> bool:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    opener = urllib.request.build_opener(_NoRedirects)
+    # ProxyHandler({}) disables proxying entirely. Without it the default
+    # opener honours http_proxy/HTTP_PROXY — routine in corporate environments
+    # — and a POST to 127.0.0.1 is handed to the proxy instead, carrying
+    # prompts and session ids off the machine. That defeats the whole point of
+    # the loopback check above.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirects)
     try:
         with opener.open(request, timeout=TIMEOUT_SEC):
             return True
-    except (urllib.error.URLError, OSError, ValueError):
-        return False  # dashboard not running, wrong port, or mid-restart
+    except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException):
+        # Dashboard not running, wrong port, mid-restart, or a malformed
+        # response. HTTPException is not an OSError and urllib does not always
+        # wrap it, so it is listed explicitly.
+        return False
 
 
 def main(argv: list[str]) -> int:
@@ -94,7 +104,11 @@ def main(argv: list[str]) -> int:
         json.loads(payload)
     except ValueError:
         return 0
-    forward(url, payload)
+    # Last-resort guard. forward() already handles every failure it expects;
+    # this catches the ones it does not, because a hook that raises would
+    # surface as an error inside the very agent session it is reporting on.
+    with contextlib.suppress(Exception):
+        forward(url, payload)
     return 0
 
 

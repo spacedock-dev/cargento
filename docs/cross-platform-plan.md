@@ -423,14 +423,35 @@ command says why.
     which Cargento could make a harness's own rotation fail is small, not zero. The chunked reader
     shortens it; only native calls could close it.
 
-### Phase 4 — Lifecycle, launcher, docs — **M, 2-4 days**
-19. `SO_EXCLUSIVEADDRUSE` on Windows (D1); distinguish EADDRINUSE from WinError 10013 (D2).
-20. Per-shell start/background/stop/open commands (D3, D4, D5); stdlib hook-forwarder script (D6).
-21. IPv6: bracketed-authority parse, lowercase DNS names, and either bind both loopbacks or drop
-    the `::1` claim (D8).
-22. `SKILL.md` / `COMPATIBILITY.md` / `README.md` rewritten to §2's matrix. Descriptions changed
-    identically across all five manifests; **no version fields touched** (H6).
-23. systemd user unit, `ssh -L`, Flatpak/Snap, MAX_PATH notes (I2, I3, F5).
+### Phase 4 — Lifecycle, launcher, docs — **DONE**
+19. **Done.** `SO_EXCLUSIVEADDRUSE` plus `allow_reuse_address = False` on Windows, since not asking
+    to share a port is not the same as refusing to. `bind_error_message()` distinguishes
+    EADDRINUSE/EACCES and their Windows codes (10048, and 10013 — which is what an in-use port
+    reports *once* SO_EXCLUSIVEADDRUSE is set).
+20. **Done.** POSIX/PowerShell/cmd forms for start, background, stop, and open;
+    `python3 -m webbrowser` instead of `open`/`xdg-open`; `notify_hook.py` replaces the curl
+    one-liner.
+21. **Partly done, deliberately.** Host parsing fixed (bracketed authority, case folding, numeric
+    port validation). Did **not** bind both loopbacks: that needs two listeners and two threads,
+    with ambiguous behavior when one binds and the other does not. Instead the banner and every
+    doc now say `127.0.0.1`, which removes the `localhost` → `::1` ambiguity outright.
+22. **Done.** `SKILL.md` and `COMPATIBILITY.md` rewritten; `COMPATIBILITY.md` carries the per-OS
+    matrix. No manifest descriptions changed, so no five-way sync was needed, and no version
+    fields were touched.
+23. **Done.** systemd user unit, `ssh -L`, Flatpak/Snap, and Windows long-path notes.
+
+**Adversarial review (Codex) found four more, all fixed.** The serious one: `notify_hook.py` built
+its opener with `urllib.request.build_opener()`, which honours `http_proxy`/`HTTP_PROXY` — routine
+in corporate environments. A POST to `127.0.0.1` was handed to the proxy instead, carrying prompts
+and session ids off the machine and defeating the loopback check completely. Reproduced, then fixed
+with `ProxyHandler({})` and a regression test. Also: `http.client.HTTPException` is not an `OSError`
+and escaped the handler; `normalize_host` validated the port only in the bracketed branch, so
+`localhost:evil.example` reduced to `localhost`; and a failed `SO_EXCLUSIVEADDRUSE` was silently
+suppressed, dropping the guarantee without saying so.
+
+Two defects were caught before the review, by probing the new code directly: the loopback check used
+`str.startswith`, which accepts `http://localhost.evil.com`, and `normalize_host` ignored everything
+after `]`, so `[::1]evil.example` passed as loopback.
 
 ### Phase 5 — Browser notifications — **DONE**
 24. **Done.** Notification API in `PAGE`, owning transcript transitions only (D-3). `/api/data`
