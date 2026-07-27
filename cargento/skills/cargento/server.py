@@ -1833,10 +1833,14 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             default=0,
         )
         latest_child_mtime = max((c["mtime"] for c in children), default=0)
-        last_activity = max(
-            latest_task_mtime, transcript_mtime, latest_agent_mtime, latest_child_mtime
+        activity_sources = (
+            latest_task_mtime,
+            transcript_mtime,
+            latest_agent_mtime,
+            latest_child_mtime,
         )
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        last_activity = max(activity_sources)
+        active = any_fresh(now, activity_sources, window_hours * 3600)
         if not (active or show_all):
             continue
 
@@ -2481,13 +2485,14 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                     tops.append((r, upd))
             for r, upd in tops:
                 agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
-                last_activity = max(upd, max((m for _, m in agents), default=0))
-                active = any_fresh(now, (upd, *(m for _, m in agents)), window_hours * 3600)
+                activity_sources = (upd, *(m for _, m in agents))
+                last_activity = max(activity_sources)
+                active = any_fresh(now, activity_sources, window_hours * 3600)
                 if not (active or show_all):
                     continue
                 subagents = [label for label, _ in agents]
                 state, state_detail = "idle", "awaiting your message"
-                if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
+                if any_fresh(now, activity_sources, WORKING_THRESHOLD_SEC):
                     state = "working"
                     state_detail = working_detail(None, subagents)
 
@@ -2692,13 +2697,14 @@ def collect_goose_db(
         out: list[dict[str, Any]] = []
         for r, upd in tops:
             agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
-            last_activity = max(upd, max((m for _, m in agents), default=0))
-            active = any_fresh(now, (upd, *(m for _, m in agents)), window_hours * 3600)
+            activity_sources = (upd, *(m for _, m in agents))
+            last_activity = max(activity_sources)
+            active = any_fresh(now, activity_sources, window_hours * 3600)
             if not (active or show_all):
                 continue
             subagents = [label for label, _ in agents]
             state, state_detail = "idle", "awaiting your message"
-            if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
+            if any_fresh(now, activity_sources, WORKING_THRESHOLD_SEC):
                 state = "working"
                 state_detail = working_detail(None, subagents)
 

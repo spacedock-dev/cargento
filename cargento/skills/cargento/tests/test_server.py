@@ -10,6 +10,7 @@ import io
 import json
 import ntpath
 import os
+import random
 import re
 import shutil
 import socket
@@ -2426,6 +2427,61 @@ class ReverseLinesTest(unittest.TestCase):
                     ]
                     self.assertEqual(unfiltered, filtered)
                     self.assertEqual(6, len(filtered))
+
+    def test_matches_a_trivial_reference_across_the_input_space(self) -> None:
+        # The strongest guarantee available: compare against slice/split/reverse
+        # over a generated corpus, at every chunk size, end_pos and max_bytes.
+        # This is what caught the list-accumulation rewrite being correct.
+        def reference(data: bytes, stop: int, max_bytes: int | None) -> list[bytes]:
+            floor = 0 if max_bytes is None else max(0, stop - max_bytes)
+            window = data[floor:stop] if floor else data[:stop]
+            out = list(reversed(window.split(b"\n")))
+            if floor:
+                return out[:-1]  # oldest is a fragment when the walk is bounded
+            return [] if stop == 0 else out
+
+        rng = random.Random(11)
+        alphabet = [b"a", b"bb", b"", b"NEEDLE", b"xNEEDLEy", b"c" * 40]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "f"
+            for _ in range(60):
+                data = b"\n".join(rng.choice(alphabet) for _ in range(rng.randint(0, 6)))
+                if rng.random() < 0.5:
+                    data += b"\n"
+                path.write_bytes(data)
+                size = len(data)
+                for stop in {size, max(0, size // 2), max(0, size - 1), 0}:
+                    for max_bytes in (None, 3, 10):
+                        for chunk in (1, 2, 5, 4096):
+                            with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk):
+                                got = list(
+                                    dashboard.reverse_lines(str(path), stop, max_bytes=max_bytes)
+                                )
+                            if got != reference(data, stop, max_bytes):
+                                self.fail(
+                                    f"data={data!r} stop={stop} max_bytes={max_bytes} "
+                                    f"chunk={chunk}: {got} != {reference(data, stop, max_bytes)}"
+                                )
+
+    def test_the_contains_filter_never_hides_a_line(self) -> None:
+        # The filter tests each chunk and the completed line rather than a
+        # joined buffer, so a match spanning chunks is the risk.
+        rng = random.Random(12)
+        alphabet = [b"a", b"bb", b"", b"NEEDLE", b"xNEEDLEy", b"c" * 40]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "f"
+            for _ in range(60):
+                data = b"\n".join(rng.choice(alphabet) for _ in range(rng.randint(0, 8)))
+                path.write_bytes(data + rng.choice([b"\n", b""]))
+                for chunk in (1, 2, 3, 5, 17, 4096):
+                    with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk):
+                        plain = [r for r in dashboard.reverse_lines(str(path)) if b"NEEDLE" in r]
+                        filtered = [
+                            r
+                            for r in dashboard.reverse_lines(str(path), contains=b"NEEDLE")
+                            if b"NEEDLE" in r
+                        ]
+                    self.assertEqual(plain, filtered, f"chunk={chunk} data={data!r}")
 
     def test_crlf_transcripts_still_parse(self) -> None:
         # Harnesses write LF, but a transcript can pick up CRLF by being copied
