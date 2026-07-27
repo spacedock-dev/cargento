@@ -398,13 +398,30 @@ the Windows and macOS runners have not yet executed this suite.*
 **Exit:** every harness present on a box is discovered on all three OSes, and when it isn't, one
 command says why.
 
-### Phase 3 — Live-file safety — **M-L, 4-7 days**
-15. Replace the three reverse-`mmap` scans with bounded chunked reads **on every platform** — this
-    is a latent POSIX `SIGBUS` fix (G2), not Windows-only, and one implementation beats two.
-16. Bounded retry on transient `PermissionError`/WinError 32/33/`SQLITE_BUSY` with a
-    "temporarily inaccessible" state instead of silent absence (I4).
-17. Size/WAL-delta activity signal so NTFS mtime lag doesn't read as Idle (E3).
-18. Short reopen windows; document the `FILE_SHARE_DELETE` limitation honestly (G1).
+### Phase 3 — Live-file safety — **DONE for 15/18, scoped down for 16, deferred for 17**
+15. **Done.** `reverse_lines()` replaces the three reverse-`mmap` scans with bounded chunked reads
+    on every platform — a latent POSIX `SIGBUS` fix (G2), not Windows-only. Measured on a 38 MB
+    transcript with the match at the very start (worst case): title lookup 16 ms → 20 ms, turn
+    context 149 ms → 154 ms. A naive port cost 44 ms; filtering whole chunks before splitting them
+    into lines recovers most of the gap, because the per-line scan rather than the I/O dominates.
+    Chunk size is irrelevant between 64 KiB and 4 MiB.
+16. **Scoped down to the reporting half, deliberately.** The valuable part — distinguishing
+    "no store here" from "store present but unreadable" — already exists in `--diagnose` from
+    Phase 2 and is now pinned by a test. The *retry* half is dropped: the dashboard already
+    re-reads every store every 5 seconds, so an in-request retry loop would duplicate the refresh
+    cycle while blocking the response thread. A transient Defender or OneDrive lock self-heals on
+    the next poll, and `--diagnose` explains it if it does not.
+17. **Deferred, not dropped.** A size/WAL-delta activity signal would replace mtime as the
+    freshness source so NTFS write-time lag cannot read as Idle (E3). The premise is documented by
+    Microsoft but *unverified here*: whether it bites depends on how often each harness flushes and
+    closes its handle. Reshaping state detection for all eight collectors on an unconfirmed premise
+    is exactly what design decision D-6 says not to do. Revisit with evidence — a Windows user
+    reporting a session stuck on Idle while visibly generating, or `--diagnose` output showing a
+    growing store with a stale mtime.
+18. **Done.** `FILE_SHARE_DELETE` limitation documented plainly in `SKILL.md` rather than papered
+    over: Python cannot request that share mode, so reads are short and bounded but the window in
+    which Cargento could make a harness's own rotation fail is small, not zero. The chunked reader
+    shortens it; only native calls could close it.
 
 ### Phase 4 — Lifecycle, launcher, docs — **M, 2-4 days**
 19. `SO_EXCLUSIVEADDRUSE` on Windows (D1); distinguish EADDRINUSE from WinError 10013 (D2).
