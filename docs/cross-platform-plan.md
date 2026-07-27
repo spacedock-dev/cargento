@@ -495,6 +495,38 @@ stays Ubuntu-only; add the platform job as a dependency.
 
 ---
 
+## 5b. Testing strategy
+
+Three layers, in increasing cost:
+
+- **Pure-function tests, everywhere.** `resolve_store_roots`, `sqlite_ro_uri`, `normalize_host`,
+  `native_notifier`, `reuse_address_allowed`, `encoded_home_prefix`, `age`/`newest_plausible` all
+  take the platform (or its inputs) as an argument, so the Linux runner checks the Windows and
+  macOS branches too. This is design decision D-4, and it is also what keeps the coverage ratchet
+  satisfiable as platform branches multiply.
+- **Behavioural contracts, run natively on each runner.** A realistic store fixture for all nine
+  stores, each asserted to: discover when present; read working when fresh and idle when stale;
+  stay undiscovered *without an error* when absent; refuse to read working from a future-dated
+  store; survive a corrupt store without taking the other harnesses down; and collapse to one row
+  when the same session exists in two candidate roots. Every store is additionally built under ten
+  hostile path components legal on all three platforms — glob metacharacters, `%`, non-ASCII,
+  spaces, `#`, quotes. This layer exercises real NTFS, APFS and ext4 semantics; 218 tests now run
+  on each of the three runners.
+- **Documentation-matches-code.** The documented store paths, relocation variables, Python floor
+  and loopback address are asserted against the implementation. Doc drift was found twice by
+  review; this makes it a test failure instead.
+
+**Mutation testing is how the suite is judged, not the test count.** A harness copies the repo,
+breaks one behaviour, and runs the targeted test: 17/17 current mutations are caught. Four were
+missed on the first run and exposed two genuinely weak assertions — de-duplication was tested as a
+function but never as wired into `collect()`, and a discovery assertion could not fail. Any new
+contract should be mutation-checked the same way before it is trusted.
+
+**Still not covered, and honestly so:** nothing validates the *Windows store locations* against a
+real Windows install, because that needs the eight harnesses actually installed there. The
+resolver's Windows output is asserted as strings; whether those strings are where the tools really
+write is what `--diagnose` output from a user settles (§6).
+
 ## 6. What still needs a real machine
 
 Reduced from v1's blocking checklist to a *quality* gate, not a *ship* gate (D-6). Highest value
