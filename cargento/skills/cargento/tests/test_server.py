@@ -23,6 +23,7 @@ import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
@@ -4134,6 +4135,575 @@ class SqliteUriTest(unittest.TestCase):
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("Percent", sessions[0]["title"])
+
+
+# ---------------------------------------------------------------------------
+# Behavioural contract suite.
+#
+# Written from expectation rather than derived from a bug: for every harness,
+# state what the dashboard must do, then assert it. These run natively on each
+# CI runner, so the same contract is checked against real macOS, Linux and
+# Windows filesystem semantics.
+
+STORE_CONSTANTS = (
+    "PROJECTS_DIR",
+    "TASKS_DIR",
+    "CODEX_SESSIONS_DIR",
+    "GEMINI_TMP",
+    "ANTIGRAVITY_CLI_DIR",
+    "ANTIGRAVITY_CONVERSATIONS_DIR",
+    "ANTIGRAVITY_LOG_DIR",
+    "ANTIGRAVITY_LAST_CONVERSATIONS",
+    "COPILOT_DIR",
+    "OPENCODE_DATA",
+    "CURSOR_CHATS",
+    "GOOSE_DB",
+    "FACTORY_PROJECTS",
+)
+
+
+def _iso(when: float) -> str:
+    return datetime.fromtimestamp(when, tz=UTC).isoformat()
+
+
+def _jsonl(path: Path, records: list[dict[str, Any]], when: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+    os.utime(path, (when, when))
+
+
+def _sqlite(path: Path, statements: list[tuple[str, tuple[Any, ...]]], when: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    try:
+        for sql, params in statements:
+            con.execute(sql, params)
+        con.commit()
+    finally:
+        con.close()
+    os.utime(path, (when, when))
+
+
+def build_claude(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    projects = root / "projects"
+    _jsonl(
+        projects / "-w-proj" / f"{sid}.jsonl",
+        [
+            {"type": "user", "uuid": "u1", "timestamp": _iso(when), "message": {"content": title}},
+            {
+                "type": "assistant",
+                "timestamp": _iso(when),
+                "message": {"usage": {"output_tokens": 10}, "content": []},
+            },
+        ],
+        when,
+    )
+    return {"PROJECTS_DIR": str(projects), "TASKS_DIR": str(root / "tasks")}
+
+
+def build_codex(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    _jsonl(
+        root / "2024" / "01" / "02" / "rollout-1.jsonl",
+        [
+            {
+                "type": "session_meta",
+                "timestamp": _iso(when),
+                "payload": {"id": sid, "cwd": "/w/proj"},
+            },
+            {
+                "type": "event_msg",
+                "timestamp": _iso(when),
+                "payload": {"type": "user_message", "message": title},
+            },
+        ],
+        when,
+    )
+    return {"CODEX_SESSIONS_DIR": str(root)}
+
+
+def build_gemini(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    _jsonl(
+        root / "proj" / "chats" / f"session-{sid}.jsonl",
+        [
+            {"sessionId": sid, "kind": "main", "directories": ["/w/proj"]},
+            {"type": "user", "timestamp": _iso(when), "content": title},
+        ],
+        when,
+    )
+    return {"GEMINI_TMP": str(root)}
+
+
+def build_antigravity(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    conversations = root / "conversations"
+    _sqlite(
+        conversations / f"{sid}.db",
+        [("CREATE TABLE steps (idx INTEGER, step_type INTEGER, metadata BLOB)", ())],
+        when,
+    )
+    cache = root / "cache" / "last_conversations.json"
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({f"/w/{title}": sid}), encoding="utf-8")
+    return {
+        "ANTIGRAVITY_CONVERSATIONS_DIR": str(conversations),
+        "ANTIGRAVITY_LOG_DIR": str(root / "log"),
+        "ANTIGRAVITY_LAST_CONVERSATIONS": str(cache),
+    }
+
+
+def build_copilot(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    _jsonl(
+        root / "session-state" / sid / "events.jsonl",
+        [
+            {
+                "type": "session.start",
+                "timestamp": _iso(when),
+                "data": {"context": {"cwd": "/w/proj"}},
+            },
+            {"type": "user.message", "timestamp": _iso(when), "data": {"text": title}},
+        ],
+        when,
+    )
+    return {"COPILOT_DIR": str(root)}
+
+
+def build_opencode(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    _sqlite(
+        root / "opencode.db",
+        [
+            (
+                "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT, title TEXT, time_updated INTEGER, time_archived INTEGER)",
+                (),
+            ),
+            (
+                "INSERT INTO session VALUES (?, NULL, '/w/proj', ?, ?, NULL)",
+                (sid, title, int(when * 1000)),
+            ),
+            (
+                "CREATE TABLE session_message (session_id TEXT, type TEXT, time_created INTEGER, data TEXT)",
+                (),
+            ),
+            (
+                "INSERT INTO session_message VALUES (?, 'user', ?, ?)",
+                (sid, int(when * 1000), json.dumps({"text": title})),
+            ),
+        ],
+        when,
+    )
+    return {"OPENCODE_DATA": str(root)}
+
+
+def build_cursor(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    _sqlite(
+        root / "w" / sid / "store.db",
+        [
+            ("CREATE TABLE meta (value TEXT)", ()),
+            ("INSERT INTO meta VALUES (?)", (json.dumps({"name": title}).encode().hex(),)),
+        ],
+        when,
+    )
+    return {"CURSOR_CHATS": str(root)}
+
+
+def build_goose(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    stamp = datetime.fromtimestamp(when, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
+    database = root / "sessions.db"
+    _sqlite(
+        database,
+        [
+            (
+                "CREATE TABLE sessions (id TEXT, description TEXT, working_dir TEXT, updated_at TEXT, session_type TEXT, parent_session_id TEXT, archived_at TEXT)",
+                (),
+            ),
+            (
+                "INSERT INTO sessions VALUES (?, ?, '/w/proj', ?, NULL, NULL, NULL)",
+                (sid, title, stamp),
+            ),
+            (
+                "CREATE TABLE messages (session_id TEXT, role TEXT, created_timestamp INTEGER, content_json TEXT)",
+                (),
+            ),
+            (
+                "CREATE TABLE usage_ledger (session_id TEXT, created_timestamp INTEGER, output_tokens INTEGER)",
+                (),
+            ),
+        ],
+        when,
+    )
+    return {"GOOSE_DB": str(database)}
+
+
+def build_droid(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    _jsonl(
+        root / "proj" / f"{sid}.jsonl",
+        [
+            {
+                "type": "session_start",
+                "id": sid,
+                "sessionTitle": title,
+                "cwd": "/w/proj",
+                "timestamp": _iso(when),
+            },
+            {
+                "type": "message",
+                "timestamp": _iso(when),
+                "message": {"role": "user", "content": title},
+            },
+        ],
+        when,
+    )
+    return {"FACTORY_PROJECTS": str(root)}
+
+
+# (harness key reported in /api/data, fixture builder, store files to corrupt)
+HARNESSES: tuple[tuple[str, Any], ...] = (
+    ("claude", build_claude),
+    ("codex", build_codex),
+    ("gemini", build_gemini),
+    ("gemini", build_antigravity),
+    ("copilot", build_copilot),
+    ("opencode", build_opencode),
+    ("cursor", build_cursor),
+    ("goose", build_goose),
+    ("droid", build_droid),
+)
+
+
+class HarnessContractTest(unittest.TestCase):
+    """One behavioural contract, asserted against every harness.
+
+    The rest of the suite grew out of specific bugs, so it covers Claude deeply
+    and the other seven thinly. This states what the dashboard must do and
+    checks all of them, on whichever OS the runner is.
+    """
+
+    NOW = 1_700_000_000.0
+    SID = "abcdef12-3456-7890-abcd-ef1234567890"
+    TITLE = "Investigate the failing build"
+
+    def collect(self, build: Any, *, when: float, subdir: str = "store") -> dict[str, Any]:
+        """Build one harness's store in isolation and run a full collection."""
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty"
+            empty.mkdir()
+            # Point every store at an empty directory first, so a harness
+            # installed on the developer's machine cannot leak into the result.
+            patches: dict[str, str] = {name: str(empty / name) for name in STORE_CONSTANTS}
+            patches.update(build(Path(tmp) / subdir, when, self.SID, self.TITLE))
+            with contextlib.ExitStack() as stack:
+                for name, value in patches.items():
+                    stack.enter_context(mock.patch.object(dashboard, name, value))
+                stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                stack.enter_context(mock.patch.object(dashboard.time, "time", lambda: self.NOW))
+                collected: dict[str, Any] = dashboard.collect(24, show_all=True)
+                return collected
+
+    def sessions_for(self, data: dict[str, Any], key: str) -> list[dict[str, Any]]:
+        return [s for s in data["sessions"] if s["harness"] == key]
+
+    def test_a_fresh_store_is_discovered_and_reads_working(self) -> None:
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                data = self.collect(build, when=self.NOW)
+                harness = next(h for h in data["harnesses"] if h["key"] == key)
+                self.assertTrue(harness["discovered"], "store present but not discovered")
+                self.assertIsNone(harness["error"])
+                sessions = self.sessions_for(data, key)
+                self.assertEqual(1, len(sessions), f"expected one session, got {sessions}")
+                self.assertEqual("working", sessions[0]["state"])
+
+    def test_a_stale_store_reads_idle_but_still_appears(self) -> None:
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                data = self.collect(build, when=self.NOW - 7200)
+                sessions = self.sessions_for(data, key)
+                self.assertEqual(1, len(sessions))
+                self.assertEqual("idle", sessions[0]["state"])
+
+    def test_an_absent_store_is_not_discovered_and_is_not_an_error(self) -> None:
+        # "No harness here" and "harness broken" must never look the same.
+        data = self.collect(lambda *_a: {}, when=self.NOW)
+        for harness in data["harnesses"]:
+            with self.subTest(harness=harness["key"]):
+                self.assertFalse(harness["discovered"])
+                self.assertIsNone(harness["error"])
+        self.assertEqual([], data["sessions"])
+
+    def test_a_future_dated_store_does_not_read_working(self) -> None:
+        # A clock-skewed store must not invent activity, on any harness.
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                data = self.collect(build, when=self.NOW + 86_400)
+                for session in self.sessions_for(data, key):
+                    self.assertNotEqual("working", session["state"])
+                    self.assertEqual(0, session["rate_per_min"])
+
+    def test_one_session_in_two_candidate_roots_yields_one_row(self) -> None:
+        # De-duplication has to be wired into collect(), not merely available:
+        # scanning every candidate root is what makes a migrated store appear
+        # twice, and only the full pass can collapse it.
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty"
+            empty.mkdir()
+            first, second = Path(tmp) / "one", Path(tmp) / "two"
+            build_opencode(first, self.NOW, self.SID, self.TITLE)
+            build_opencode(second, self.NOW - 60, self.SID, self.TITLE)
+            patches: dict[str, str] = {n: str(empty / n) for n in STORE_CONSTANTS}
+            patches["OPENCODE_DATA"] = str(first)
+            with contextlib.ExitStack() as stack:
+                for name, value in patches.items():
+                    stack.enter_context(mock.patch.object(dashboard, name, value))
+                # primary == candidates[0], so the whole list is scanned.
+                stack.enter_context(
+                    mock.patch.dict(
+                        dashboard.STORE_ROOTS,
+                        {"opencode.data": [str(first), str(second)]},
+                    )
+                )
+                stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                stack.enter_context(mock.patch.object(dashboard.time, "time", lambda: self.NOW))
+                data = dashboard.collect(24, show_all=True)
+
+        opencode = [s for s in data["sessions"] if s["harness"] == "opencode"]
+        self.assertEqual(1, len(opencode), f"duplicate rows: {opencode}")
+        self.assertEqual(self.NOW, opencode[0]["last_activity"], "kept the staler copy")
+        self.assertEqual(1, data["summary"]["active_sessions"])
+
+    def test_a_corrupt_store_never_breaks_the_collector(self) -> None:
+        # Every store file replaced with junk: the harness may vanish or report
+        # an error, but collection must complete and the others must survive.
+        for key, build in HARNESSES:
+            with (
+                self.subTest(harness=key, fixture=build.__name__),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                empty = Path(tmp) / "empty"
+                empty.mkdir()
+                patches: dict[str, str] = {n: str(empty / n) for n in STORE_CONSTANTS}
+                store = Path(tmp) / "store"
+                patches.update(build(store, self.NOW, self.SID, self.TITLE))
+                for path in store.rglob("*"):
+                    if path.is_file():
+                        path.write_bytes(b"\x00\xff not a valid store at all \xfe")
+                with contextlib.ExitStack() as stack:
+                    for name, value in patches.items():
+                        stack.enter_context(mock.patch.object(dashboard, name, value))
+                    stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                    data = dashboard.collect(24, show_all=True)  # must not raise
+                self.assertIsInstance(data["sessions"], list)
+
+
+class HostilePathContractTest(unittest.TestCase):
+    """Store paths users really have. Every character here is legal on macOS,
+    Linux and Windows; the ones Windows forbids (<>:"/\\|?*) are excluded so the
+    same contract runs on all three."""
+
+    NOW = 1_700_000_000.0
+    SID = "abcdef12-3456-7890-abcd-ef1234567890"
+    HOSTILE = (
+        "A [Contractor]",  # glob character class
+        "100% pure",  # SQLite URI percent-decoding
+        "Ünïcode Café",  # non-ASCII
+        "a#b",  # URI fragment
+        "with space",
+        "it's & more",
+        "plus+equals=sign",
+        "semi;colon,comma",
+        "dollar$at@tilde~",
+        "brace{s}paren(s)",
+    )
+
+    def test_every_harness_survives_a_hostile_store_path(self) -> None:
+        for component in self.HOSTILE:
+            for key, build in HARNESSES:
+                with self.subTest(path=component, harness=key, fixture=build.__name__):
+                    with tempfile.TemporaryDirectory() as tmp:
+                        empty = Path(tmp) / "empty"
+                        empty.mkdir()
+                        patches: dict[str, str] = {n: str(empty / n) for n in STORE_CONSTANTS}
+                        patches.update(
+                            build(Path(tmp) / component / "store", self.NOW, self.SID, "T")
+                        )
+                        with contextlib.ExitStack() as stack:
+                            for name, value in patches.items():
+                                stack.enter_context(mock.patch.object(dashboard, name, value))
+                            stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                            stack.enter_context(
+                                mock.patch.object(dashboard.time, "time", lambda: self.NOW)
+                            )
+                            data = dashboard.collect(24, show_all=True)
+                    found = [s for s in data["sessions"] if s["harness"] == key]
+                    self.assertEqual(1, len(found), f"{key} lost its session under {component!r}")
+
+
+class OperatingSystemExpectationTest(unittest.TestCase):
+    """What Cargento should do per OS, stated as expectations rather than
+    derived from bugs. Every case is exercised on every runner by passing the
+    platform in, so Linux CI checks the Windows behaviour too."""
+
+    def test_project_labels_shorten_on_every_platform(self) -> None:
+        # Claude encodes the working directory into the projects/ directory
+        # name. Replacing only "/" did nothing to a Windows home, so every
+        # Claude row there showed the whole encoded path instead of a project.
+        cases = [
+            ("/Users/jared", "-Users-jared-repos-cargento", "repos-cargento"),
+            ("/home/u", "-home-u-work-my-repo", "work-my-repo"),
+            (r"C:\Users\jared", "C--Users-jared-repos-cargento", "repos-cargento"),
+            (r"C:\Users\jared", "C--Users-jared", "(home)"),
+            # Unknown encoding must degrade to showing the name, never crash.
+            ("/Users/jared", "-somewhere-else", "somewhere-else"),
+        ]
+        for home, encoded, expected in cases:
+            with self.subTest(home=home, encoded=encoded):
+                prefix = dashboard.encoded_home_prefix(home)
+                self.assertEqual(expected, dashboard.project_label(encoded, prefix))
+
+    def test_task_age_degrades_to_mtime_without_birthtime(self) -> None:
+        # Linux, and Windows before Python 3.12, expose no st_birthtime. The
+        # documented consequence is that completed-task ages come from mtime;
+        # it must degrade, not raise.
+        now = 1_700_000_000.0
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Path(tmp) / "abcdef12-0000-0000-0000-000000000000"
+            session.mkdir()
+            (session / "1.json").write_text(
+                json.dumps({"id": "1", "subject": "task", "status": "completed"}),
+                encoding="utf-8",
+            )
+            os.utime(session / "1.json", (now, now))
+
+            real_stat = os.stat
+
+            class NoBirthtime:
+                """A stat result with birthtime removed, as on ext4."""
+
+                def __init__(self, wrapped: Any) -> None:
+                    self._wrapped = wrapped
+
+                def __getattr__(self, name: str) -> Any:
+                    if name == "st_birthtime":
+                        raise AttributeError(name)
+                    return getattr(self._wrapped, name)
+
+            with (
+                mock.patch.object(dashboard, "TASKS_DIR", str(tmp)),
+                mock.patch.object(dashboard.os, "stat", lambda p: NoBirthtime(real_stat(p))),
+            ):
+                tasks = dashboard.load_tasks()
+
+        task = tasks["abcdef12"][0]
+        self.assertEqual(now, task["created"], "created should fall back to mtime")
+        self.assertEqual(now, task["updated"])
+
+    def test_notification_ownership_per_platform(self) -> None:
+        # Exactly one layer notifies. macOS has a native backend, so the page
+        # must stay silent there; the others have none yet, so the page owns it.
+        self.assertEqual("osascript", dashboard.native_notifier("darwin"))
+        for platform_name in ("linux", "win32", "cygwin", "freebsd14"):
+            with self.subTest(platform=platform_name):
+                self.assertEqual("", dashboard.native_notifier(platform_name))
+
+    def test_port_sharing_policy_per_platform(self) -> None:
+        # POSIX: SO_REUSEADDR only bypasses TIME_WAIT, so restarts work.
+        # Windows: it lets another process bind an already-bound port.
+        self.assertTrue(dashboard.reuse_address_allowed("posix"))
+        self.assertFalse(dashboard.reuse_address_allowed("nt"))
+
+    def test_store_locations_per_platform(self) -> None:
+        posix = dashboard.resolve_store_roots(platform_name="darwin", environ={}, home="/Users/u")
+        linux = dashboard.resolve_store_roots(
+            platform_name="linux", environ={"XDG_DATA_HOME": "/xdg"}, home="/home/u"
+        )
+        windows = dashboard.resolve_store_roots(
+            platform_name="win32",
+            environ={
+                "LOCALAPPDATA": r"C:\Users\j\AppData\Local",
+                "APPDATA": r"C:\Users\j\AppData\Roaming",
+            },
+            home=r"C:\Users\j",
+        )
+        # Dot-directories under $HOME on every platform.
+        self.assertEqual(["/Users/u/.claude/projects"], posix["claude.projects"])
+        self.assertEqual([r"C:\Users\j\.claude\projects"], windows["claude.projects"])
+        # XDG only where XDG applies.
+        self.assertEqual(["/xdg/opencode"], linux["opencode.data"])
+        self.assertEqual(["/xdg/goose/sessions/sessions.db"], linux["goose.db"])
+        # Windows searches app-data in addition, never instead.
+        self.assertIn(r"C:\Users\j\AppData\Local\opencode\data", windows["opencode.data"])
+        self.assertIn(
+            r"C:\Users\j\AppData\Roaming\Block\goose\data\sessions\sessions.db",
+            windows["goose.db"],
+        )
+        # Every platform's paths use that platform's separator.
+        for key, roots in windows.items():
+            with self.subTest(key=key):
+                self.assertTrue(all("/" not in r for r in roots), roots)
+        for key, roots in posix.items():
+            with self.subTest(key=key):
+                self.assertTrue(all("\\" not in r for r in roots), roots)
+
+
+class DocumentationMatchesCodeTest(unittest.TestCase):
+    """Reviewers found documentation describing behaviour the code no longer
+    had, twice. These assert the claims against the implementation."""
+
+    SKILL = (SERVER_PATH.parent / "SKILL.md").read_text(encoding="utf-8")
+
+    def posix_roots(self) -> dict[str, list[str]]:
+        roots: dict[str, list[str]] = dashboard.resolve_store_roots(
+            platform_name="darwin", environ={}, home="/HOME"
+        )
+        return roots
+
+    def test_documented_store_paths_are_the_ones_searched(self) -> None:
+        # Every "~/..." path in the data-source list must be a real default.
+        documented = {
+            "~/" + match
+            for match in re.findall(r"`~/([\w./*<>-]+?)[`/]", self.SKILL)
+            if not match.startswith(".claude/settings")
+        }
+        searched = {
+            root.replace("/HOME", "~") for roots in self.posix_roots().values() for root in roots
+        }
+        for path in sorted(documented):
+            with self.subTest(documented=path):
+                self.assertTrue(
+                    any(
+                        root.startswith(path.rstrip("/")) or path.startswith(root)
+                        for root in searched
+                    ),
+                    f"SKILL.md documents {path} but nothing searches it: {sorted(searched)}",
+                )
+
+    def test_documented_env_overrides_are_the_ones_honoured(self) -> None:
+        documented = {
+            name
+            for name in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "COPILOT_HOME")
+            if f"`{name}`" in self.SKILL
+        }
+        self.assertEqual(set(dashboard.STORE_ENV_VARS), documented)
+        # And each one actually redirects its store.
+        for name, key, expected in (
+            ("CLAUDE_CONFIG_DIR", "claude.projects", "/opt/x/projects"),
+            ("CODEX_HOME", "codex.sessions", "/opt/x/sessions"),
+            ("GEMINI_CLI_HOME", "gemini.tmp", "/opt/x/.gemini/tmp"),
+            ("COPILOT_HOME", "copilot.root", "/opt/x"),
+        ):
+            with self.subTest(env=name):
+                roots = dashboard.resolve_store_roots(
+                    platform_name="linux", environ={name: "/opt/x"}, home="/HOME"
+                )
+                self.assertEqual([expected], roots[key])
+
+    def test_the_documented_python_floor_matches_the_tooling(self) -> None:
+        self.assertIn("Python 3.11+", self.SKILL)
+        pyproject = (SERVER_PATH.parents[3] / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('python_version = "3.11"', pyproject)
+        self.assertIn('target-version = "py311"', pyproject)
+
+    def test_documented_urls_use_the_address_the_server_binds(self) -> None:
+        # The listener is IPv4-only, so "localhost" can resolve to ::1 and fail.
+        self.assertNotIn("http://localhost:4553", self.SKILL)
+        self.assertIn("http://127.0.0.1:4553", self.SKILL)
 
 
 if __name__ == "__main__":

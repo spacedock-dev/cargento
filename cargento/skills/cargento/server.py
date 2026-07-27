@@ -237,7 +237,25 @@ SQL_MSG_LIMIT = 400  # newest messages fetched per DB-backed session
 MAX_CACHE_ENTRIES = 8192  # bound process-lifetime caches over long uptime
 GEMINI_SEEN_ENTRIES = 2048  # bound per-transcript snapshot deduplication
 
-HOME_PREFIX = HOME.replace("/", "-")
+
+def encoded_home_prefix(home: str) -> str:
+    """Reproduce how Claude encodes ``home`` into a ``projects/`` directory name.
+
+    Claude turns a working directory into a directory name by replacing path
+    separators with ``-``; stripping that prefix is what leaves a readable
+    project label. Replacing only ``/`` worked on POSIX and did nothing on a
+    Windows home, so every Claude row there showed the whole encoded path
+    instead of the project.
+
+    Backslash and the drive colon are folded too. The exact Windows encoding is
+    not documented, so this is deliberately non-destructive: if it turns out to
+    differ, the prefix simply does not match and project_label() shows the full
+    name — exactly what it does today.
+    """
+    return re.sub(r"[/\\:]", "-", home)
+
+
+HOME_PREFIX = encoded_home_prefix(HOME)
 
 # Tools that mean Claude is blocked on the human, not just running long.
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
@@ -329,8 +347,10 @@ def notification_disposition(notification_type: Any, message: str) -> tuple[bool
     return (not idle_nudge, True)
 
 
-def project_label(dirname: str) -> str:
-    dirname = dirname.removeprefix(HOME_PREFIX)
+def project_label(dirname: str, home_prefix: str | None = None) -> str:
+    """Shorten an encoded project directory name to just the project part."""
+    prefix = HOME_PREFIX if home_prefix is None else home_prefix
+    dirname = dirname.removeprefix(prefix)
     return dirname.lstrip("-") or "(home)"
 
 
