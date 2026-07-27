@@ -511,6 +511,25 @@ first:
 
 ---
 
+## 6b. Measured cost of the cross-platform work
+
+Full `collect()` on a real tree (19 sessions in the default window, 2,546 with `?all=1`),
+median of 9 warm runs, against `main`:
+
+| view | main | this branch | delta |
+|---|---|---|---|
+| default window | 139.8 ms | 146.3 ms | +4.7% |
+| `?all=1` | 159.7 ms | 173.7 ms | +8.8% |
+
+Accepted. The cost buys multi-candidate discovery, clock-skew rejection, and de-duplication, and
+the dashboard memoizes each collection for 2.5 s behind a 5 s refresh — so this is ~7 ms per
+refresh on the default view. An earlier revision measured +8.5%/+12.8%; halving the freshness
+traversal (see Phase 4's review notes) recovered most of it.
+
+The reverse reader is separately *faster* than what it replaced on the case that matters: a 64 MB
+single-record transcript went from 0.876 s to 0.047 s once fragment accumulation stopped being
+quadratic.
+
 ## 7. Risks
 
 - **R1 (highest)** — Silent false-negative discovery. Mitigated by scan-all candidates (D-1),

@@ -482,6 +482,19 @@ def extract_text(v: Any, depth: int = 0) -> str:
     return ""
 
 
+def message_dict(record: Any) -> dict[str, Any]:
+    """The ``message`` object of a transcript record, or an empty dict.
+
+    ``record.get("message") or {}`` looks safe but is not: a record like
+    {"type":"user","message":"a string"} is valid JSON, and the string is
+    truthy, so the following ``.get()`` raises AttributeError and takes the
+    whole collector down for that refresh. Every harness message payload is
+    untyped JSON read off disk.
+    """
+    message = record.get("message") if isinstance(record, dict) else None
+    return message if isinstance(message, dict) else {}
+
+
 def alnum(s: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
 
@@ -888,7 +901,7 @@ def claude_session_title(path: str) -> str | None:
                     signal = _turn_signal(record, "claude")
                     if not signal or signal[0] != "prompt":
                         continue
-                    prompt = extract_text((record.get("message") or {}).get("content")).strip()
+                    prompt = extract_text(message_dict(record).get("content")).strip()
                     title = prompt.split("\n")[0][:80] or None
                     break
         except OSError:
@@ -961,7 +974,7 @@ def analyze_transcript(path: str) -> dict[str, Any]:
         if t == "last-prompt":
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":
-            msg = d.get("message") or {}
+            msg = message_dict(d)
             usage = msg.get("usage") or {}
             if ep and usage.get("output_tokens"):
                 info["usage_events"].append((ep, usage["output_tokens"]))
@@ -971,7 +984,7 @@ def analyze_transcript(path: str) -> dict[str, Any]:
                     if c.get("name") in INPUT_TOOLS:
                         pending[c.get("id")] = {"name": c.get("name"), "ts": ep}
         elif t == "user":
-            for c in (d.get("message") or {}).get("content") or []:
+            for c in message_dict(d).get("content") or []:
                 if isinstance(c, dict) and c.get("type") == "tool_result":
                     pending.pop(c.get("tool_use_id"), None)
     if pending:
@@ -1189,7 +1202,7 @@ def analyze_droid_transcript(path: str) -> dict[str, Any]:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
         if d.get("type") != "message":
             continue
-        msg = d.get("message") or {}
+        msg = message_dict(d)
         content = msg.get("content")
         blocks = content if isinstance(content, list) else []
         if msg.get("role") == "user":
@@ -1250,7 +1263,7 @@ def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
     if harness == "droid":
         if t != "message":
             return None
-        msg = d.get("message") or {}
+        msg = message_dict(d)
         if msg.get("role") != "user":
             return None
         content = msg.get("content")
@@ -1262,13 +1275,7 @@ def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
     # claude
     if t != "user" or d.get("isMeta"):
         return None
-    message = d.get("message")
-    if not isinstance(message, dict):
-        # Untyped JSON from disk: {"type":"user","message":"a string"} is
-        # syntactically valid and used to AttributeError out of the whole
-        # Claude collector on every refresh.
-        return None
-    content = message.get("content")
+    content = message_dict(d).get("content")
     if isinstance(content, list) and any(
         isinstance(c, dict) and c.get("type") == "tool_result" for c in content
     ):
@@ -1598,6 +1605,12 @@ def notify_mac(title: Any, message: Any) -> None:
         diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}")
 
 
+def hook_generation(prefix: str) -> int:
+    """Current generation for a session's hook state (see ``_hook_generation``)."""
+    with _lock:
+        return _hook_generation.get(prefix, 0)
+
+
 def current_hook(
     prefix: str, last_user_event: str | None, last_event_ts: float
 ) -> dict[str, Any] | None:
@@ -1868,6 +1881,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         # no parseable timestamp (partial line, untimestamped record)
         parsed_last_event = info["last_event_ts"] if info else 0
         last_event_sources = (parsed_last_event, transcript_mtime)
+        seen_generation = hook_generation(prefix)
         hook = (
             current_hook(prefix, (info or {}).get("last_user_event"), parsed_last_event)
             if active
@@ -1892,11 +1906,15 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 state_detail = (in_prog["activeForm"] or in_prog["subject"]) + "…"
             else:
                 state_detail = working_detail(info, subagents)
-        elif hook:
+        elif hook and hook_generation(prefix) == seen_generation:
             state = "needs_input"
             blocked_since = hook["ts"]
             state_detail = hook["message"] or "waiting for your input"
-        if active:
+        if active and (state != "needs_input" or hook_generation(prefix) == seen_generation):
+            # A SessionEnd can land between reading the hook above and acting
+            # on it here. Re-check before announcing the session as blocked:
+            # otherwise a session that has already exited pops a notification
+            # and burns the global popup cooldown.
             maybe_popup(
                 prefix, state, f"[{project}] {state_detail}" if state == "needs_input" else None
             )

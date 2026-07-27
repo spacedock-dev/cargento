@@ -3073,13 +3073,40 @@ class ReviewFixTest(unittest.TestCase):
         self.assertIn("PermissionError", report["error"])
 
     def test_a_non_dict_message_does_not_kill_the_claude_collector(self) -> None:
-        # {"type":"user","message":"a string"} is valid JSON and used to
-        # AttributeError out of the collector on every refresh.
+        # {"type":"user","message":"a string"} is valid JSON, and the string is
+        # truthy — so `record.get("message") or {}` returned it and the next
+        # .get() raised, taking the whole collector down for that refresh.
+        # Exercised end to end: the helpers alone missed analyze_transcript,
+        # which is the path every active session goes through.
+        now = 1_700_000_000.0
+        malformed = [
+            {"type": "user", "message": "not-an-object"},
+            {"type": "assistant", "message": 42},
+            {"type": "user", "message": ["a", "list"]},
+            {"type": "message", "message": "droid-shaped"},
+        ]
         with tempfile.TemporaryDirectory() as tmp:
-            transcript = Path(tmp) / "s.jsonl"
-            transcript.write_text(json.dumps({"type": "user", "message": "not-an-object"}) + "\n")
+            project = Path(tmp) / "projects" / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / "abcdef12-0000-0000-0000-000000000000.jsonl"
+            transcript.write_text("\n".join(json.dumps(r) for r in malformed) + "\n")
+            os.utime(transcript, (now, now))
+
             self.assertIsNone(dashboard.claude_session_title(str(transcript)))
-            self.assertIsNone(dashboard._turn_signal({"type": "user", "message": "str"}, "claude"))
+            self.assertEqual({}, dashboard.message_dict({"message": "str"}))
+            self.assertEqual({}, dashboard.message_dict("not-a-record"))
+            self.assertEqual({"a": 1}, dashboard.message_dict({"message": {"a": 1}}))
+
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)  # must not raise
+                everything = dashboard.collect(24, True)
+
+        self.assertEqual(1, len(sessions))
+        claude = next(h for h in everything["harnesses"] if h["key"] == "claude")
+        self.assertIsNone(claude["error"], "collector errored on a malformed record")
 
     def test_reverse_lines_stays_linear_on_one_long_record(self) -> None:
         # chunk + carry per chunk made this quadratic: a 64 MB single-line
@@ -3337,6 +3364,42 @@ class HookOrderingTest(unittest.TestCase):
             thread.join(timeout=5)
 
         self.assertEqual({}, dashboard._hook_notifs, "SessionEnd was undone")
+
+    def test_session_end_during_a_collection_neither_blocks_nor_pops(self) -> None:
+        # The POST-side generation guard does not help a collection that
+        # already read the hook. Without re-checking, an exited session was
+        # still announced as blocked and burned the global popup cooldown.
+        now = 1_700_000_000.0
+        prefix = "abcdef12"
+        with dashboard._lock:
+            dashboard._hook_notifs[prefix] = {"ts": now, "message": "permission"}
+        popups: list[Any] = []
+        original = dashboard.current_hook
+
+        def session_ends_mid_collection(pfx: str, event: str | None, ts: float) -> Any:
+            hook = original(pfx, event, ts)
+            with dashboard._lock:  # SessionEnd lands exactly here
+                dashboard._hook_notifs.pop(pfx, None)
+                dashboard._last_state.pop(pfx, None)
+                dashboard._hook_generation[pfx] = dashboard._hook_generation.get(pfx, 0) + 1
+            return hook
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / f"{prefix}-0000-0000-0000-000000000000.jsonl"
+            transcript.write_text(json.dumps({"type": "user", "uuid": "u"}) + "\n")
+            os.utime(transcript, (now - 200, now - 200))  # quiet, so the hook decides
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                mock.patch.object(dashboard, "current_hook", session_ends_mid_collection),
+                mock.patch.object(dashboard, "notify_mac", lambda *a: popups.append(a)),
+            ):
+                sessions = dashboard.collect_claude(now, 24, True)
+
+        self.assertEqual("idle", sessions[0]["state"], "exited session shown as blocked")
+        self.assertEqual([], popups, "popped for a session that had already ended")
 
     def test_an_unraced_notification_still_records(self) -> None:
         session = "cafebabe-0000-0000-0000-000000000000"
