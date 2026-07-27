@@ -4704,6 +4704,38 @@ class SpacedockParserTest(unittest.TestCase):
             ["intake", "review", "fix-and-harden", "escalated", "posted"],
             dashboard.sd_stage_names(lines),
         )
+        # The initial and terminal flags belong to the item they are nested
+        # under, and `gate:`/`worktree:`/the decision options are not flags.
+        self.assertEqual(
+            [("intake", True, False), ("posted", False, True)],
+            [
+                (entry["name"], entry["initial"], entry["terminal"])
+                for entry in dashboard.sd_stage_entries(lines)
+                if entry["initial"] or entry["terminal"]
+            ],
+        )
+
+    def test_stage_flags_accept_yamls_true_ish_spellings(self) -> None:
+        body = (
+            "---\n"
+            "stages:\n"
+            "  states:\n"
+            "    - name: intake\n"
+            '      initial: "true"\n'
+            "    - name: review\n"
+            "      terminal: false\n"
+            "    - name: posted\n"
+            "      terminal: yes\n"
+            "---\n"
+        )
+
+        self.assertEqual(
+            [("intake", True, False), ("review", False, False), ("posted", False, True)],
+            [
+                (e["name"], e["initial"], e["terminal"])
+                for e in dashboard.sd_stage_entries(self.frontmatter(body))
+            ],
+        )
 
     def test_frontmatter_requires_a_closed_leading_fence(self) -> None:
         for label, body in [
@@ -4844,6 +4876,7 @@ class SpacedockReadContractTest(unittest.TestCase):
             dashboard._sd_workflow_cache.clear()
             dashboard._sd_boot_cache.clear()
             dashboard._sd_role_cache.clear()
+            dashboard._sd_entity_cache.clear()
 
     def workflow(self, body: str | None = None) -> Path:
         holder = tempfile.TemporaryDirectory(prefix="cargento-sd-")
@@ -4854,11 +4887,26 @@ class SpacedockReadContractTest(unittest.TestCase):
             (root / "README.md").write_text(body, encoding="utf-8")
         return root
 
+    def entity(self, state: Path, slug: str, status: str, *, folder: bool = False) -> Path:
+        state.mkdir(exist_ok=True)
+        body = f'---\nid:\ntitle: "a thing"\nstatus: {status}\n---\n\n# report\n'
+        if folder:
+            (state / slug).mkdir()
+            path = state / slug / "index.md"
+        else:
+            path = state / f"{slug}.md"
+        path.write_text(body, encoding="utf-8")
+        return path
+
     def test_commissioned_readme_yields_its_ordered_stages(self) -> None:
         root = self.workflow(self.README)
 
         self.assertEqual(
-            {"name": "wf", "stages": ["intake", "review", "posted"]},
+            {
+                "name": "wf",
+                "stages": ["intake", "review", "posted"],
+                "resting": ["intake", "posted"],
+            },
             dashboard.sd_read_workflow(str(root)),
         )
 
@@ -4907,7 +4955,9 @@ class SpacedockReadContractTest(unittest.TestCase):
             }
         ]
 
-        strips = dashboard.sd_session_workflows(boot, ["spacedock-ensign-drc-1-posted"])
+        strips = dashboard.sd_session_workflows(
+            boot, ["spacedock-ensign-drc-1-posted"], time.time(), 3600
+        )
 
         self.assertEqual(1, len(strips))
         self.assertEqual(["intake", "review", "posted"], strips[0]["stages"])
@@ -4917,6 +4967,147 @@ class SpacedockReadContractTest(unittest.TestCase):
             [("drc-1", "posted", True), ("drc-2", "intake", False)],
             [(e["slug"], e["stage"], e["live"]) for e in strips[0]["entities"]],
         )
+
+    def test_entity_state_anchors_a_first_officer_that_booted_an_empty_queue(self) -> None:
+        """The regression this whole path exists for. A first officer that boots
+        before any entity is intaken reports `dispatchable: []` for the rest of
+        the session; without the state directory there is no slug to anchor the
+        live worker on, and the workflow renders no strip at all."""
+        root = self.workflow(self.README)
+        state = root / ".spacedock-state"
+        self.entity(state, "drc-7", "intake")  # queued, not moving
+        self.entity(state, "drc-8", "review")  # moving, no live worker
+        self.entity(state, "drc-9", "posted")  # finished
+        self.entity(state, "pr-42", "review")  # the live worker's entity
+        boot = [
+            {
+                "command": "boot",
+                "definition_dir": str(root),
+                "entity_dir": str(state),
+                "entity_dir_present": "false",
+                "dispatchable": [],
+            }
+        ]
+
+        strips = dashboard.sd_session_workflows(
+            boot, ["spacedock-ensign-pr-42-posted"], time.time(), 3600
+        )
+
+        self.assertEqual(1, len(strips))
+        # pr-42 is live and at the worker's stage, not the file's; drc-8 is in
+        # flight; drc-7 (initial) and drc-9 (terminal) are resting, not moving.
+        self.assertEqual(
+            [("pr-42", "posted", True), ("drc-8", "review", False)],
+            [(e["slug"], e["stage"], e["live"]) for e in strips[0]["entities"]],
+        )
+
+    def test_entity_state_is_read_newest_first_in_both_file_shapes(self) -> None:
+        root = self.workflow(self.README)
+        state = root / ".spacedock-state"
+        older = self.entity(state, "drc-1", "review")
+        newer = self.entity(state, "drc-2", "review", folder=True)
+        os.utime(older, (1_700_000_000, 1_700_000_000))
+        os.utime(newer, (1_700_000_100, 1_700_000_100))
+
+        self.assertEqual(
+            [("drc-2", "review"), ("drc-1", "review")],
+            dashboard.sd_read_entities(
+                str(state), ["intake", "review", "posted"], 1_700_000_200, 3600
+            ),
+        )
+
+    def test_entity_state_refuses_everything_that_is_not_an_entity(self) -> None:
+        root = self.workflow(self.README)
+        state = root / ".spacedock-state"
+        self.entity(state, "drc-1", "review")
+        # Spacedock retires finished entities into _archive/, operators leave
+        # reports beside the state, and a stage the workflow never declared
+        # cannot be placed on the spine.
+        self.entity(state / "_archive", "drc-0", "review")
+        (state / "REVIEW-REPORT-DRC-1.md").write_text(
+            "---\nstatus: review\n---\n", encoding="utf-8"
+        )
+        (state / "notes.txt").write_text("---\nstatus: review\n---\n", encoding="utf-8")
+        self.entity(state, "drc-2", "not-a-declared-stage")
+        self.entity(state, "drc-3", "")
+
+        self.assertEqual(
+            [("drc-1", "review")],
+            dashboard.sd_read_entities(
+                str(state), ["intake", "review", "posted"], time.time(), 3600
+            ),
+        )
+
+    def test_entity_state_older_than_the_window_is_history_not_work(self) -> None:
+        """A first officer discovers every workflow in the project. One retired
+        months ago still has entities frozen mid-pipeline."""
+        root = self.workflow(self.README)
+        state = root / ".spacedock-state"
+        stale = self.entity(state, "drc-1", "review")
+        os.utime(stale, (1_700_000_000, 1_700_000_000))
+
+        self.assertEqual(
+            [],
+            dashboard.sd_read_entities(
+                str(state), ["intake", "review", "posted"], 1_700_000_000 + 90_000, 86_400
+            ),
+        )
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "platform has no symlink")
+    def test_a_symlinked_entity_file_is_refused_not_followed(self) -> None:
+        root = self.workflow(self.README)
+        state = root / ".spacedock-state"
+        target = self.entity(state, "drc-1", "review")
+        try:
+            (state / "drc-2.md").symlink_to(target)
+        except OSError:  # pragma: no cover - Windows without the privilege
+            self.skipTest("symlink creation not permitted")
+
+        self.assertEqual(
+            [("drc-1", "review")],
+            dashboard.sd_read_entities(
+                str(state), ["intake", "review", "posted"], time.time(), 3600
+            ),
+        )
+
+    def test_entity_frontmatter_is_reread_only_when_the_file_changes(self) -> None:
+        root = self.workflow(self.README)
+        state = root / ".spacedock-state"
+        path = self.entity(state, "drc-1", "review")
+        stages = ["intake", "review", "posted"]
+        now = time.time()
+
+        reads: list[str] = []
+        real = dashboard.sd_read_frontmatter
+
+        def counting(p: str, limit: int, expect: os.stat_result) -> list[str]:
+            reads.append(p)
+            lines: list[str] = real(p, limit, expect)
+            return lines
+
+        with mock.patch.object(dashboard, "sd_read_frontmatter", counting):
+            dashboard.sd_read_entities(str(state), stages, now, 3600)
+            dashboard.sd_read_entities(str(state), stages, now, 3600)
+            self.assertEqual(1, len(reads))
+            self.entity(state, "drc-1", "posted")
+            os.utime(path, (now + 1, now + 1))
+            self.assertEqual(
+                [("drc-1", "posted")],
+                dashboard.sd_read_entities(str(state), stages, now + 2, 3600),
+            )
+        self.assertEqual(2, len(reads))
+
+    def test_the_entity_dir_is_taken_from_boot_and_must_be_absolute(self) -> None:
+        records = [
+            {"command": "boot", "definition_dir": "/w", "entity_dir": "relative/state"},
+            {"command": "boot", "definition_dir": "/other", "entity_dir": "/other/state"},
+            {"command": "boot", "definition_dir": "/w", "entity_dir": "/w/state"},
+            {"command": "boot", "definition_dir": "/w", "entity_dir": 17},
+        ]
+
+        self.assertEqual("/w/state", dashboard.sd_boot_entity_dir(records, "/w"))
+        self.assertEqual("/other/state", dashboard.sd_boot_entity_dir(records, "/other"))
+        self.assertEqual("", dashboard.sd_boot_entity_dir(records, "/absent"))
 
     def test_a_failed_wrap_does_not_leak_the_descriptor(self) -> None:
         """os.fdopen leaves the fd open when it raises, and this runs every
@@ -4941,13 +5132,27 @@ class SpacedockReadContractTest(unittest.TestCase):
             os.fstat(opened[0])
 
     def test_no_workflow_no_strip(self) -> None:
-        self.assertEqual([], dashboard.sd_session_workflows([], []))
+        now = time.time()
+        self.assertEqual([], dashboard.sd_session_workflows([], [], now, 3600))
         self.assertEqual(
             [],
             dashboard.sd_session_workflows(
-                [{"command": "boot", "definition_dir": "/nonexistent/wf"}], []
+                [{"command": "boot", "definition_dir": "/nonexistent/wf"}], [], now, 3600
             ),
         )
+
+    def test_a_workflow_with_no_state_directory_still_costs_no_walk(self) -> None:
+        root = self.workflow(self.README)
+        boot = [
+            {
+                "command": "boot",
+                "definition_dir": str(root),
+                "entity_dir": str(root / ".spacedock-state"),
+                "dispatchable": [],
+            }
+        ]
+
+        self.assertEqual([], dashboard.sd_session_workflows(boot, [], time.time(), 3600))
 
 
 class DocumentationMatchesCodeTest(unittest.TestCase):

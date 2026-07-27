@@ -1773,7 +1773,7 @@ def working_detail(info: dict[str, Any] | None, subagents: list[Any]) -> str:
 # --- Spacedock workflow cartography ---------------------------------------
 #
 # Spacedock drives work items ("entities") through an ordered list of named
-# stages, with a "first officer" session dispatching "ensign" workers. Three
+# stages, with a "first officer" session dispatching "ensign" workers. Four
 # facts make it visible to a passive reader, in decreasing order of authority:
 #
 # 1. The launcher starts the session with `--agent spacedock:first-officer`, so
@@ -1782,12 +1782,22 @@ def working_detail(info: dict[str, Any] | None, subagents: list[Any]) -> str:
 #    subagent classifier already reads.
 # 2. The first officer runs `spacedock status --boot` at startup and the JSON
 #    envelope lands in the transcript as a tool result. It carries the ABSOLUTE
-#    workflow directory, so nothing has to be discovered by scanning, and a
-#    ``dispatchable`` list giving each entity's current and next stage.
-# 3. The ordered stage list is the one fact the envelope omits (it appears only
-#    under `--identify`, which no observed session runs), so it is read from the
-#    workflow README's frontmatter — the only project file Cargento opens. See
-#    SECURITY.md for the contract that read operates under.
+#    workflow directory and the ABSOLUTE entity-state directory, so nothing has
+#    to be discovered by scanning.
+# 3. The ordered stage list is the one fact that envelope's `dispatchable` view
+#    omits, so it is read from the workflow README's frontmatter, along with
+#    which stages are initial and which are terminal. See SECURITY.md for the
+#    contract these reads operate under.
+# 4. The entity-state directory holds one file per entity, whose frontmatter
+#    carries the entity's current ``status`` — the stage it is actually parked
+#    on right now.
+#
+# Fact 4 exists because the boot envelope's ``dispatchable`` list is a snapshot
+# of what was dispatchable AT BOOT, not the entity roster. A long-running first
+# officer that boots an empty queue and intakes work later — the common case —
+# reports `dispatchable: []` forever, so a strip anchored on it alone never
+# renders. The state directory is authoritative and current; boot fills in
+# behind it.
 #
 # Every parser here is pure so the whole matrix is exercisable on any runner
 # (design decision D-4 in docs/design-cross-platform.md).
@@ -1799,10 +1809,15 @@ SPACEDOCK_ENSIGN = "spacedock:ensign"
 # boots later than that renders no strip rather than a guessed one.
 SD_BOOT_SCAN_BYTES = 512_000
 SD_README_BYTES = 65_536  # frontmatter is ~540 bytes behind 32 KB of prose
+SD_ENTITY_BYTES = 8_192  # an entity file's frontmatter, ahead of its report body
 SD_MAX_FRONTMATTER_LINES = 400
 SD_MAX_STAGES = 32
 SD_MAX_WORKFLOWS = 8  # one first officer can drive several workflows
 SD_MAX_ENTITIES = 12  # strips rendered per workflow
+# Entity files whose frontmatter is read per workflow, newest first. A mature
+# queue holds far more than it is running: 31 files in the largest live state
+# directory measured, nearly all parked on the initial stage.
+SD_MAX_ENTITY_FILES = 96
 SD_MAX_BOOT_RECORDS = 16
 # Decode attempts per tool result. A transcript full of `{"command"` lookalikes
 # would otherwise cost one failed decode each while the collection lock is held.
@@ -1815,9 +1830,9 @@ SD_STAGE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
 # every position: before the stage and after it.
 SD_CYCLE_RE = re.compile(r"^(?:cycle|pass|round|c|v|p|r)\d+[a-z]?$|^(?:retry|rerun)$")
 SD_COMMISSIONED_PREFIX = "spacedock@"
-# Reading a workflow README is the one project read Cargento performs. The
-# switch exists so an operator who wants the store-only read surface can have
-# it back; see SECURITY.md.
+# The workflow README and the entity-state frontmatter are the only project
+# reads Cargento performs. The switch exists so an operator who wants the
+# store-only read surface can have it back; see SECURITY.md.
 SPACEDOCK_ENABLED = True
 
 
@@ -1860,19 +1875,27 @@ def sd_scalar(lines: list[str], key: str) -> str:
     return ""
 
 
-def sd_stage_names(lines: list[str]) -> list[str]:
-    """The ordered ``stages.states[].name`` list, or [] if unrecognised.
+def sd_truthy(value: str) -> bool:
+    """YAML's true-ish scalars, quoted or bare. Anything else is false."""
+    return value.strip().strip("\"'").lower() in {"true", "yes", "on"}
 
-    An indentation-scoped scan, not a YAML evaluator: enter ``stages:``, then
-    ``states:``, then take each ``- name:`` until the block dedents to a
-    sibling key (``transitions:``). Document order is the stage order —
-    Spacedock's own advancement indexes this list.
+
+def sd_stage_entries(lines: list[str]) -> list[dict[str, Any]]:
+    """The ordered ``stages.states[]`` list, or [] if unrecognised.
+
+    Each entry is ``{"name", "initial", "terminal"}``. An indentation-scoped
+    scan, not a YAML evaluator: enter ``stages:``, then ``states:``, then take
+    each ``- name:`` until the block dedents to a sibling key
+    (``transitions:``), attributing the ``initial:``/``terminal:`` flags nested
+    under an item to it. Document order is the stage order — Spacedock's own
+    advancement indexes this list.
 
     Anything the scan cannot model yields [] so the dashboard renders no strip
     rather than a wrong one. That deliberately covers flow-style sequences,
     quoted keys, anchors and aliases.
     """
-    names: list[str] = []
+    entries: list[dict[str, Any]] = []
+    names: set[str] = set()
     stages_indent: int | None = None
     states_indent: int | None = None
     item_indent: int | None = None
@@ -1904,14 +1927,26 @@ def sd_stage_names(lines: list[str]) -> list[str]:
                 # are nested values (a stage's `decision.options`), not states.
                 return []
         if not body.startswith("- name:") or indent != item_indent:
+            # A flag nested under the item currently being built. Deeper `- `
+            # items reach here too, but they cannot start with these keys.
+            if entries and item_indent is not None and indent > item_indent:
+                for flag in ("initial", "terminal"):
+                    if body.startswith(flag + ":"):
+                        entries[-1][flag] = sd_truthy(body[len(flag) + 1 :])
             continue
         value = body[len("- name:") :].strip().strip("\"'")
         if not value or not SD_STAGE_RE.match(value) or value in names:
             return []
-        if len(names) >= SD_MAX_STAGES:
+        if len(entries) >= SD_MAX_STAGES:
             return []
-        names.append(value)
-    return names
+        names.add(value)
+        entries.append({"name": value, "initial": False, "terminal": False})
+    return entries
+
+
+def sd_stage_names(lines: list[str]) -> list[str]:
+    """The ordered stage names, or [] if the states block is unrecognised."""
+    return [entry["name"] for entry in sd_stage_entries(lines)]
 
 
 def sd_tool_result_text(record: dict[str, Any]) -> list[str]:
@@ -2028,6 +2063,27 @@ def sd_boot_entities(records: list[dict[str, Any]], workflow_dir: str) -> dict[s
     return out
 
 
+def sd_boot_entity_dir(records: list[dict[str, Any]], workflow_dir: str) -> str:
+    """The absolute entity-state directory one workflow's boot output names.
+
+    Same provenance and same authority as ``definition_dir``: the session's own
+    command output, in a tool result. The newest envelope wins, and the value is
+    kept only if it is absolute — a relative path cannot be resolved without
+    guessing a base, and guessing is what the read contract forbids. A
+    ``split-root`` workflow legitimately stores state outside its definition
+    directory, so containment is NOT required here; the discriminator is applied
+    per file instead (see :func:`sd_read_entities`).
+    """
+    out = ""
+    for record in records:
+        if record.get("definition_dir") != workflow_dir:
+            continue
+        value = record.get("entity_dir")
+        if isinstance(value, str) and value and os.path.isabs(value) and "\x00" not in value:
+            out = value
+    return out
+
+
 # Subagent-transcript classification cache. Whether a top-level transcript
 # belongs to a subagent is immutable for a given file, but young files may
 # not have written their identifying records yet — so negative results are
@@ -2093,6 +2149,7 @@ def claude_agent_identity(path: str) -> tuple[bool, str, str]:
 _sd_role_cache: dict[str, str] = {}
 _sd_boot_cache: dict[tuple[str, int], list[dict[str, Any]]] = {}
 _sd_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = {}
+_sd_entity_cache: dict[tuple[str, int, int], str] = {}
 
 
 def claude_agent_setting(path: str) -> str:
@@ -2190,16 +2247,61 @@ def sd_open_regular(path: str) -> int | None:
     return descriptor
 
 
+class SdMismatchError(Exception):
+    """The opened file is not the one that was stat'd. Distinct from an empty
+    read, which is merely a file with no frontmatter."""
+
+
+def sd_read_frontmatter(path: str, limit: int, expect: os.stat_result) -> list[str]:
+    """The frontmatter lines of a regular, non-symlink file, or [].
+
+    At most ``limit`` bytes are read, and the descriptor must describe the same
+    file ``expect`` does. O_NOFOLLOW guards only the final path component, so a
+    parent-directory swap between the stat and the open would otherwise seed a
+    cache from a different file under a trusted key — that raises
+    :class:`SdMismatchError` so the caller can decline to cache. Only the frontmatter
+    lines leave this function; the body is never returned.
+    """
+    descriptor = sd_open_regular(path)
+    if descriptor is None:
+        return []
+    try:
+        opened = os.fstat(descriptor)
+        same_file = (opened.st_dev, opened.st_ino) == (expect.st_dev, expect.st_ino)
+    except OSError:
+        same_file = False
+    if not same_file:
+        with contextlib.suppress(OSError):
+            os.close(descriptor)
+        raise SdMismatchError(path)
+    raw = b""
+    try:
+        handle = os.fdopen(descriptor, "rb")
+    except OSError:
+        # os.fdopen does not close the descriptor when it fails to wrap it,
+        # and this runs on every refresh — leaking here exhausts the table.
+        with contextlib.suppress(OSError):
+            os.close(descriptor)
+    else:
+        with handle, contextlib.suppress(OSError):
+            raw = handle.read(limit)
+    return sd_frontmatter_lines(raw.decode("utf-8", "replace"))
+
+
 def sd_read_workflow(workflow_dir: str) -> dict[str, Any] | None:
     """The stage taxonomy of one workflow directory, or None.
 
-    This is the only project file Cargento opens. ``workflow_dir`` is an
-    absolute path the session itself recorded in its boot output; it is
-    canonicalised, its README must be a regular non-symlink file, at most
-    ``SD_README_BYTES`` are read, and the result counts only if the frontmatter
-    declares ``commissioned-by: spacedock@`` — Spacedock's own workflow
-    discriminator. Nothing else in the project is read, and no directory is
-    walked. Only derived scalars leave this function; no file text does.
+    ``workflow_dir`` is an absolute path the session itself recorded in its boot
+    output; it is canonicalised, its README must be a regular non-symlink file,
+    at most ``SD_README_BYTES`` are read, and the result counts only if the
+    frontmatter declares ``commissioned-by: spacedock@`` — Spacedock's own
+    workflow discriminator. No other file in the workflow directory is read and
+    no directory is walked; the entity-state directory the boot output names
+    separately is read by :func:`sd_read_entities`. Only derived scalars leave
+    this function; no file text does.
+
+    ``resting`` is the subset of stages an entity is not moving through: the
+    initial stage it is queued on and the terminal stages it has finished at.
     """
     try:
         root = os.path.realpath(workflow_dir)
@@ -2220,40 +2322,117 @@ def sd_read_workflow(workflow_dir: str) -> dict[str, Any] | None:
         if key in _sd_workflow_cache:
             return _sd_workflow_cache[key]
     result: dict[str, Any] | None = None
-    descriptor = sd_open_regular(readme)
-    if descriptor is not None:
-        raw = b""
-        # The descriptor must be the same file the containment check and the
-        # cache key describe. O_NOFOLLOW guards only the final component, so a
-        # parent-directory swap between stat and open would otherwise seed the
-        # cache from a different file under a trusted key.
-        try:
-            opened = os.fstat(descriptor)
-            same_file = (opened.st_dev, opened.st_ino) == (info.st_dev, info.st_ino)
-        except OSError:
-            same_file = False
-        if not same_file:
-            with contextlib.suppress(OSError):
-                os.close(descriptor)
-            return None
-        try:
-            handle = os.fdopen(descriptor, "rb")
-        except OSError:
-            # os.fdopen does not close the descriptor when it fails to wrap it,
-            # and this runs on every refresh — leaking here exhausts the table.
-            with contextlib.suppress(OSError):
-                os.close(descriptor)
-        else:
-            with handle, contextlib.suppress(OSError):
-                raw = handle.read(SD_README_BYTES)
-        lines = sd_frontmatter_lines(raw.decode("utf-8", "replace"))
-        if sd_scalar(lines, "commissioned-by").startswith(SD_COMMISSIONED_PREFIX):
-            stages = sd_stage_names(lines)
-            if stages:
-                result = {"name": os.path.basename(root) or root, "stages": stages}
+    try:
+        lines = sd_read_frontmatter(readme, SD_README_BYTES, info)
+    except SdMismatchError:
+        return None
+    if sd_scalar(lines, "commissioned-by").startswith(SD_COMMISSIONED_PREFIX):
+        entries = sd_stage_entries(lines)
+        if entries:
+            result = {
+                "name": os.path.basename(root) or root,
+                "stages": [entry["name"] for entry in entries],
+                "resting": [
+                    entry["name"] for entry in entries if entry["initial"] or entry["terminal"]
+                ],
+            }
     with _cache_lock:
         bounded_put(_sd_workflow_cache, key, result)
     return result
+
+
+def sd_entity_stage(path: str, info: os.stat_result) -> str:
+    """The ``status`` scalar in one entity file's frontmatter, or "".
+
+    Cached on ``(path, st_mtime_ns, st_size)``, so a state directory in which
+    only one entity is moving costs one read per refresh and a stat per file.
+    """
+    key = (path, info.st_mtime_ns, info.st_size)
+    with _cache_lock:
+        cached = _sd_entity_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        lines = sd_read_frontmatter(path, SD_ENTITY_BYTES, info)
+    except SdMismatchError:
+        return ""
+    stage = sd_scalar(lines, "status")
+    with _cache_lock:
+        bounded_put(_sd_entity_cache, key, stage)
+    return stage
+
+
+def sd_entity_files(entity_dir: str) -> list[tuple[str, str, os.stat_result]]:
+    """``(slug, path, stat)`` for a state directory's entity files, newest first.
+
+    Spacedock writes an entity as either ``<slug>.md`` or ``<slug>/index.md``
+    (the folder form, for entities that accumulate per-stage artifacts). One
+    ``scandir`` of the directory the boot output named; nothing below it is
+    walked, and ``_archive/`` — where Spacedock retires finished entities — is
+    skipped along with every other name that is not a well-formed slug.
+
+    Newest-first because the cap that follows is a budget: a mature queue holds
+    far more entities than it is running, and the ones being written are the
+    ones in flight.
+    """
+    try:
+        with os.scandir(os.path.realpath(entity_dir)) as entries:
+            found = list(entries)
+    except OSError:
+        return []
+    out: list[tuple[str, str, os.stat_result]] = []
+    for entry in found:
+        name = entry.name
+        slug = name.removesuffix(".md")
+        # Spacedock's slug grammar is its stage grammar: lowercase kebab. That
+        # rejects `_archive`, `README.md` and the report files operators leave
+        # beside the state without a second pass over the listing.
+        if not SD_STAGE_RE.match(slug):
+            continue
+        try:
+            if entry.is_dir(follow_symlinks=False):
+                path = os.path.join(entry.path, "index.md")
+                info = os.lstat(path)
+            elif name.endswith(".md") and entry.is_file(follow_symlinks=False):
+                path, info = entry.path, entry.stat(follow_symlinks=False)
+            else:
+                continue
+        except OSError:
+            continue  # entity written or retired between the listing and the stat
+        if not stat_module.S_ISREG(info.st_mode):
+            continue  # a symlinked entity file is refused, not followed
+        out.append((slug, path, info))
+    out.sort(key=lambda item: -item[2].st_mtime_ns)
+    return out[:SD_MAX_ENTITY_FILES]
+
+
+def sd_read_entities(
+    entity_dir: str, stages: list[str], now: float, window_sec: float
+) -> list[tuple[str, str]]:
+    """``[(slug, stage)]`` for one workflow's recent entity state, newest first.
+
+    The authoritative, current answer to "where is each entity", against which
+    the boot envelope's ``dispatchable`` snapshot is only a stale hint. An entity
+    counts only when:
+
+    - its state file was written within ``window_sec`` — the same freshness
+      window every collector applies to a session. A first officer discovers
+      every workflow in the project, and a workflow retired months ago still has
+      entities frozen mid-pipeline; those are history, not work in flight.
+    - its frontmatter ``status`` names a stage this workflow declares — the
+      per-file discriminator that stands in for the containment check
+      :func:`sd_read_workflow` performs, since a ``split-root`` workflow may
+      legitimately keep its state outside the definition directory.
+    """
+    declared = set(stages)
+    out: list[tuple[str, str]] = []
+    for slug, path, info in sd_entity_files(entity_dir):
+        if not is_fresh(now, info.st_mtime, window_sec):
+            continue
+        stage = sd_entity_stage(path, info)
+        if stage in declared:
+            out.append((slug, stage))
+    return out
 
 
 def sd_attribute_worker(
@@ -2289,14 +2468,24 @@ def sd_attribute_worker(
 
 
 def sd_session_workflows(
-    boot: list[dict[str, Any]], worker_names: list[str]
+    boot: list[dict[str, Any]],
+    worker_names: list[str],
+    now: float,
+    window_sec: float,
 ) -> list[dict[str, Any]]:
     """Render-ready workflow strips for one session.
 
     An entity earns a strip when it is *in flight*: named by a live worker, or
-    listed as dispatchable with a stage the workflow actually declares. A
-    dispatchable list can be far longer than the work actually moving, so live
-    workers come first and are marked, and boot entries fill in behind them.
+    parked on a stage it is moving through, or listed as dispatchable at boot.
+    Three sources in decreasing order of freshness — live workers first and
+    marked, then the entity state directory, then the boot snapshot — deduped by
+    slug so the freshest answer for an entity wins.
+
+    Entities resting on the initial or a terminal stage are left out of the
+    middle source. A mature queue is mostly those: reporting thirty entities
+    parked on ``intake`` would push the handful that are actually moving off the
+    end of the strip. They still appear if boot called them dispatchable, which
+    is Spacedock's own statement that they are next to move.
     """
     out: list[dict[str, Any]] = []
     for workflow_dir in sd_workflow_dirs(boot):
@@ -2304,11 +2493,18 @@ def sd_session_workflows(
         if info is None:
             continue
         stages: list[str] = info["stages"]
+        resting: set[str] = set(info["resting"])
         booted = sd_boot_entities(boot, workflow_dir)
+        entity_dir = sd_boot_entity_dir(boot, workflow_dir)
+        roster = sd_read_entities(entity_dir, stages, now, window_sec) if entity_dir else []
+        # Live worker names carry a stage but not a slug boundary, so the slug
+        # has to come from a roster. The state directory is what makes that
+        # roster non-empty for a first officer that booted an empty queue.
+        slugs = list({slug for slug, _ in roster} | set(booted))
         entities: list[dict[str, Any]] = []
         seen: set[str] = set()
         for name in worker_names:
-            attributed = sd_attribute_worker(name, list(booted), stages)
+            attributed = sd_attribute_worker(name, slugs, stages)
             if attributed is None:
                 continue
             slug, stage, cycle = attributed
@@ -2316,6 +2512,11 @@ def sd_session_workflows(
                 continue
             seen.add(slug)
             entities.append({"slug": slug, "stage": stage, "cycle": cycle, "live": True})
+        for slug, stage in roster:
+            if slug in seen or stage in resting:
+                continue
+            seen.add(slug)
+            entities.append({"slug": slug, "stage": stage, "cycle": "", "live": False})
         for slug, stage in booted.items():
             if slug in seen or stage not in stages:
                 continue
@@ -2526,7 +2727,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 ),
                 "subagents": [a["label"] for a in subagents],
                 "tasks": tasks,
-                "spacedock": claude_spacedock(transcript, subagents),
+                "spacedock": claude_spacedock(transcript, subagents, now, window_hours * 3600),
             }
         )
         out.append(s)
@@ -2534,7 +2735,10 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
 
 
 def claude_spacedock(
-    transcript: str | None, subagents: list[dict[str, Any]]
+    transcript: str | None,
+    subagents: list[dict[str, Any]],
+    now: float,
+    window_sec: float,
 ) -> dict[str, Any] | None:
     """Spacedock role and workflow strips for one Claude session, or None.
 
@@ -2551,12 +2755,15 @@ def claude_spacedock(
     if setting != SPACEDOCK_FO:
         return None
     if not SPACEDOCK_ENABLED:
-        # The switch withdraws the project read, not the role: the badge comes
+        # The switch withdraws the project reads, not the role: the badge comes
         # from the transcript head, which is a store path either way.
         return {"role": "first-officer", "workflows": []}
     boot = sd_transcript_boot(transcript)
     names = [str(a.get("label") or "") for a in subagents]
-    return {"role": "first-officer", "workflows": sd_session_workflows(boot, names)}
+    return {
+        "role": "first-officer",
+        "workflows": sd_session_workflows(boot, names, now, window_sec),
+    }
 
 
 def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
