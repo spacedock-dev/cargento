@@ -1091,7 +1091,8 @@ console.log(JSON.stringify(out));
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_browser_notifications_fire_only_on_transitions_the_server_missed(self) -> None:
-        # Exactly one layer may notify per transition (plan decision D-3).
+        # Exactly one layer may notify per transition
+        # (design decision D-3 in docs/design-cross-platform.md).
         checks = """
 __els.app = {innerHTML:""};
 const blocked = {
@@ -3684,11 +3685,12 @@ class HookOrderingTest(unittest.TestCase):
 
 class NativeNotifierTest(unittest.TestCase):
     """Pure in platform_name, so both branches run on every runner rather than
-    only the host's (design decision D-4)."""
+    only the host's (design decision D-4 in docs/design-cross-platform.md)."""
 
     def test_backend_per_platform(self) -> None:
         self.assertEqual("osascript", dashboard.native_notifier("darwin"))
-        # No native backend yet on these — that is Phase 6. Until then the
+        # No native backend yet on these (tracked in
+        # docs/plans/native-notifications.md). Until then the
         # empty string tells the page to raise the notification itself.
         for platform_name in ("linux", "win32", "freebsd14", "cygwin"):
             with self.subTest(platform=platform_name):

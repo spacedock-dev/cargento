@@ -25,6 +25,26 @@ PORTABILITY_MARKERS = {
 }
 SHARED_FRONTMATTER_FIELDS = {"name", "description", "license"}
 MAX_CATALOG_TOKEN_ESTIMATE = 4_000
+# Prose documentation outside the plugin tree. validate_skills() covers bundled
+# skill Markdown; without this list the repository's own docs get no link check
+# at all, which is how two of them kept pointing at a dashboard URL the server
+# does not serve. CODE_OF_CONDUCT.md is verbatim upstream text and LICENSE and
+# NOTICE are not Markdown, so none of them are listed.
+ROOT_DOCS = (
+    "README.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "COMPATIBILITY.md",
+    "SECURITY.md",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+)
+# The server binds IPv4 loopback only, and on some systems `localhost` resolves
+# to ::1 first. Every document says 127.0.0.1; test_server.py pins this for the
+# shipped SKILL.md, and this pins it for the rest.
+BANNED_DOC_LITERALS = {
+    "http://localhost:4553": "the server is IPv4-only; write http://127.0.0.1:4553",
+}
 
 
 class UniqueKeyLoader(yaml.SafeLoader):  # type: ignore[misc]  # PyYAML ships no stubs, so SafeLoader is Any
@@ -238,11 +258,29 @@ def approx_token_count(text: str) -> int:
     return max(1, (len(text.encode("utf-8")) + 3) // 4)
 
 
+def heading_slugs(path: Path) -> set[str]:
+    """Render every ATX heading in a Markdown file the way GitHub anchors them."""
+    slugs: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"#{1,6}\s+(.*?)\s*#*$", line)
+        if not match:
+            continue
+        text = re.sub(r"[!\[\]`*_]", "", match.group(1)).strip().lower()
+        slugs.add(re.sub(r"[^0-9a-z \-]", "", text).replace(" ", "-"))
+    return slugs
+
+
 def validate_markdown_links(path: Path, validation: Validation) -> None:
     prose = re.sub(r"```.*?```", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
     for raw_target in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", prose):
-        target = raw_target.strip().strip("<>").split("#", 1)[0]
-        if not target or target.startswith(("#", "http://", "https://", "mailto:")):
+        stripped = raw_target.strip().strip("<>")
+        if stripped.startswith(("http://", "https://", "mailto:")):
+            continue
+        target, _, fragment = stripped.partition("#")
+        if not target:
+            # Same-file anchor: resolve it against this file's own headings.
+            if fragment and fragment not in heading_slugs(path):
+                validation.error(path, f"Markdown anchor does not exist: {raw_target}")
             continue
         # Bare prose placeholders such as `(url)` are not filesystem links.
         if "/" not in target and not Path(target).suffix:
@@ -255,6 +293,11 @@ def validate_markdown_links(path: Path, validation: Validation) -> None:
             continue
         if not resolved.exists():
             validation.error(path, f"Markdown link target does not exist: {raw_target}")
+            continue
+        # A fragment that points at a heading which no longer exists is a
+        # dangling link the reader only discovers by clicking it.
+        if fragment and resolved.suffix == ".md" and fragment not in heading_slugs(resolved):
+            validation.error(path, f"Markdown anchor does not exist: {raw_target}")
 
 
 def resolve_contract_path(
@@ -650,6 +693,31 @@ def validate_marketplaces(
         )
 
 
+def validate_repo_docs(validation: Validation) -> None:
+    """Resolve Markdown inline links and anchors in the repository's prose docs.
+
+    Bundled skill Markdown is covered by validate_skills(); this covers
+    everything a documentation-sync pass is allowed to edit outside it. It
+    catches inline `[text](target)` links only — a backticked path in a table,
+    a reference-style link definition, or a path named in a Python comment is
+    not checked here.
+    """
+    paths = [ROOT / name for name in ROOT_DOCS]
+    paths.extend(sorted((ROOT / "docs").rglob("*.md")))
+    # Repository development skills. Not shipped, so the portability markers
+    # they document are legal there — but their links still have to resolve.
+    paths.extend(sorted(ROOT.glob(".claude/skills/*/SKILL.md")))
+    for path in paths:
+        if not path.is_file():
+            validation.error(path, "documented repository file is missing")
+            continue
+        validate_markdown_links(path, validation)
+        body = path.read_text(encoding="utf-8")
+        for literal, guidance in BANNED_DOC_LITERALS.items():
+            if literal in body:
+                validation.error(path, f"contains {literal!r}; {guidance}")
+
+
 def validate_readme(skill_names: dict[str, set[str]], validation: Validation) -> None:
     path = ROOT / "README.md"
     body = path.read_text(encoding="utf-8")
@@ -688,6 +756,7 @@ def main() -> int:
 
     validate_marketplaces(manifests, gemini_manifests, antigravity_manifests, validation)
     validate_readme(skill_names, validation)
+    validate_repo_docs(validation)
 
     catalog_text = "\n".join(catalog_lines) + "\n"
     catalog_token_estimate = approx_token_count(catalog_text)

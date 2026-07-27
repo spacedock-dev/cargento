@@ -1,6 +1,7 @@
 # Cargento
 
 [![Validate](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml/badge.svg)](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml)
+[![Quality Gate](https://github.com/spacedock-dev/cargento/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/spacedock-dev/cargento/actions/workflows/quality-gate.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
@@ -18,8 +19,15 @@ This repo contains **one plugin**:
 
 ### Prerequisites
 
-- Codex, Claude Code, Antigravity/AGY, or Gemini CLI installed
-- Python 3.11+ (the dashboard server is stdlib-only, no dependencies)
+- Python 3.11+ — the dashboard server is stdlib-only, no dependencies
+- To install it as a plugin: Codex, Claude Code, Antigravity/AGY, or Gemini CLI
+
+You do not need all four. The dashboard maps every harness it finds on the machine regardless of
+which one launched it, and it runs standalone with no client installed at all:
+
+```bash
+python3 cargento/skills/cargento/server.py --port 4553
+```
 
 ### Claude Code Installation
 
@@ -67,27 +75,21 @@ Restart Codex after installation.
 
 | Skill | What it does | Standalone invocation |
 |-------|--------------|------------------------|
-| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across eight coding-agent harnesses, with macOS input-wait notifications for Claude | `/cargento:cargento` |
+| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across eight coding-agent harnesses, with input-wait notifications for Claude (native on macOS, browser notifications elsewhere) | `/cargento:cargento` |
 
 In Codex, invoke it as `$cargento`. In any harness you can also just ask: "open cargento" or "monitor my agents".
 
 ## 3. How It Works
 
-The skill starts a stdlib-only Python server (`cargento/skills/cargento/server.py`) that reads local harness session stores read-only — transcripts, task files, and SQLite databases — and serves a self-refreshing dashboard at `http://localhost:4553/`. No data leaves your machine; the server binds to 127.0.0.1 only.
+The skill starts a stdlib-only Python server (`cargento/skills/cargento/server.py`) that reads local harness session stores read-only — transcripts, task files, and SQLite databases — and serves a self-refreshing dashboard at `http://127.0.0.1:4553/`. No data leaves your machine; the server binds to 127.0.0.1 only.
 
 See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.
 
 ## 4. Validation
 
-```bash
-python3 -m pip install -r requirements-validation.txt
-python3 scripts/validate_plugins.py
-python3 -m unittest scripts/tests/test_validate_plugins.py
-python3 -m unittest scripts/tests/test_bump_version.py
-python3 -m unittest cargento/skills/cargento/tests/test_server.py
-claude plugin validate . --strict
-claude plugin validate ./cargento --strict
-```
+The canonical pre-PR suite — lint, types, embedded-asset lint, contract validator, tests under
+coverage, and the native plugin validators — is in [AGENTS.md](AGENTS.md#pre-pr-checks). Contributors
+should start from [CONTRIBUTING.md](CONTRIBUTING.md), which walks through setting it up.
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract.
 

@@ -1605,12 +1605,13 @@ def native_notifier(platform_name: str) -> str:
 
     Pure in ``platform_name`` so both branches run on every CI runner and mypy
     checks them all, rather than treating the non-host branch as unreachable
-    (design decision D-4).
+    (design decision D-4 in docs/design-cross-platform.md).
 
     The page reads this through ``/api/data`` to decide whether to raise its
     own browser notification. Exactly one layer notifies for a given
     transition: the server when it has a backend here, the browser when it does
-    not. Linux and Windows have no backend yet — that is Phase 6 — so today the
+    not. Linux and Windows have no backend yet (tracked in
+    docs/plans/native-notifications.md) — so today the
     browser covers them and macOS behavior is unchanged.
     """
     return "osascript" if platform_name == "darwin" else ""

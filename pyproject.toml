@@ -45,15 +45,17 @@ max-args = 8
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]
 
 [tool.mypy]
-# Python 3.11 is the supported runtime floor (documented in SKILL.md and
-# README); ruff's target-version above must stay in lockstep.
+# Python 3.11 is the supported runtime floor. COMPATIBILITY.md owns the list
+# of every place it is declared; ruff's target-version above must stay in
+# lockstep with this one.
 python_version = "3.11"
 strict = true
 warn_unreachable = true
-# Pin the analysis platform so local (macOS) and CI (Linux) agree: the
-# dashboard is macOS-first (osascript notifications) and degrades gracefully
-# elsewhere at runtime; without this, sys.platform narrowing makes the
-# darwin-only code "unreachable" only on Linux runners.
+# Analysis platform pin, kept for now but no longer load-bearing: the last
+# darwin-only branch goes through native_notifier(sys.platform), which mypy
+# does not narrow, so `mypy --platform linux` passes clean without this.
+# Deleting it or writing a true justification is an open decision tracked in
+# docs/plans/native-notifications.md.
 platform = "darwin"
 files = [
   "cargento/skills/cargento/notify_hook.py",
@@ -83,14 +85,14 @@ source = [
 omit = ["*/tests/*"]
 show_missing = false
 precision = 1
-# Measured baseline at gate introduction: 71.0% (branch coverage), raised to
-# 74.0% on the Ubuntu gate runner by the cross-platform regression tests. This
-# number only ratchets UP — never lower it in a PR. Use the
-# `coverage-exception` PR label for a deliberate, visible bypass.
+# Branch-coverage floor. This number only ratchets UP — never lower it in a
+# PR. Use the `coverage-exception` PR label for a deliberate, visible bypass.
 #
-# Held a point below the measured figure for margin. Note the gate runs on
-# Linux, where the darwin-only notify_mac() body is unreachable and therefore
-# uncovered — the same suite measures ~1pp higher on macOS. Reworking the
-# platform branches into pure functions (so every branch is exercisable on any
-# runner) is tracked in docs/cross-platform-plan.md as design decision D-4.
+# 73 was set when the measured figure was 74.0%; the cross-platform regression
+# suite has since raised real coverage well above that, so the floor is stale
+# and slack. Re-reading the number off an Ubuntu gate run and ratcheting this
+# in a dedicated PR is tracked in docs/plans/native-notifications.md.
+#
+# Platform branches are written as pure functions (design decision D-4 in
+# docs/design-cross-platform.md) so every branch is exercisable on any runner.
 fail_under = 73

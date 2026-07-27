@@ -473,6 +473,117 @@ class ValidatorTests(unittest.TestCase):
 
             self.assertTrue(any("Skill(skill=" in error for error in validation.errors))
 
+    def build_repo_docs(self, root: Path) -> None:
+        """Write a minimal but complete stand-in for the repository's prose docs."""
+        (root / ".github").mkdir(parents=True, exist_ok=True)
+        (root / "docs").mkdir(parents=True, exist_ok=True)
+        for name in validator.ROOT_DOCS:
+            (root / name).write_text("Placeholder.\n", encoding="utf-8")
+
+    def test_repo_docs_reject_dangling_relative_link(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+            # Resolve as the real ROOT is: on macOS a temp path is under
+            # /var, a symlink to /private/var, and link containment is
+            # checked against a resolved target.
+            root = Path(directory).resolve()
+            self.build_repo_docs(root)
+            (root / "README.md").write_text("See [the guide](docs/absent.md).\n", encoding="utf-8")
+            validation = validator.Validation()
+
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_repo_docs(validation)
+
+            self.assertTrue(
+                any("docs/absent.md" in error for error in validation.errors), validation.errors
+            )
+
+    def test_repo_docs_reject_banned_loopback_spelling(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+            # Resolve as the real ROOT is: on macOS a temp path is under
+            # /var, a symlink to /private/var, and link containment is
+            # checked against a resolved target.
+            root = Path(directory).resolve()
+            self.build_repo_docs(root)
+            (root / "docs/design-example.md").write_text(
+                "Open http://localhost:4553 to see it.\n", encoding="utf-8"
+            )
+            validation = validator.Validation()
+
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_repo_docs(validation)
+
+            self.assertTrue(
+                any("127.0.0.1:4553" in error for error in validation.errors), validation.errors
+            )
+
+    def test_repo_docs_reject_a_missing_owned_document(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+            # Resolve as the real ROOT is: on macOS a temp path is under
+            # /var, a symlink to /private/var, and link containment is
+            # checked against a resolved target.
+            root = Path(directory).resolve()
+            self.build_repo_docs(root)
+            (root / "SECURITY.md").unlink()
+            validation = validator.Validation()
+
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_repo_docs(validation)
+
+            self.assertTrue(
+                any("SECURITY.md" in error for error in validation.errors), validation.errors
+            )
+
+    def test_root_docs_lists_every_prose_doc_in_the_repository(self) -> None:
+        """ROOT_DOCS is what decides coverage; a silent drop must fail here.
+
+        CODE_OF_CONDUCT.md is excluded deliberately — it is verbatim upstream
+        text that no sync pass may edit.
+        """
+        expected = {path.name for path in validator.ROOT.glob("*.md")} - {"CODE_OF_CONDUCT.md"}
+        expected.add(".github/PULL_REQUEST_TEMPLATE.md")
+
+        self.assertEqual(expected, set(validator.ROOT_DOCS))
+
+    def test_repo_docs_reject_a_dangling_heading_anchor(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+            root = Path(directory).resolve()
+            self.build_repo_docs(root)
+            (root / "AGENTS.md").write_text("## Pre-PR Checks\n", encoding="utf-8")
+            (root / "README.md").write_text(
+                "[gone](AGENTS.md#removed-heading) and [here](#nowhere)\n", encoding="utf-8"
+            )
+            validation = validator.Validation()
+
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_repo_docs(validation)
+
+            self.assertEqual(2, sum("anchor does not exist" in e for e in validation.errors))
+
+    def test_repo_docs_accept_resolving_links_and_anchors(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+            # Resolve as the real ROOT is: on macOS a temp path is under
+            # /var, a symlink to /private/var, and link containment is
+            # checked against a resolved target.
+            root = Path(directory).resolve()
+            self.build_repo_docs(root)
+            (root / "docs/design-example.md").write_text("Rationale.\n", encoding="utf-8")
+            (root / "AGENTS.md").write_text("## Pre-PR Checks\n", encoding="utf-8")
+            (root / "README.md").write_text(
+                "# Top\n"
+                "See [design](docs/design-example.md) and [checks](AGENTS.md#pre-pr-checks)\n"
+                "and [upstream](https://example.invalid/x.md) and [anchor](#top).\n",
+                encoding="utf-8",
+            )
+            (root / ".github/PULL_REQUEST_TEMPLATE.md").write_text(
+                "Run the suite in [AGENTS.md](../AGENTS.md#pre-pr-checks).\n", encoding="utf-8"
+            )
+            validation = validator.Validation()
+
+            with mock.patch.object(validator, "ROOT", root):
+                validator.validate_repo_docs(validation)
+
+            self.assertEqual([], validation.errors)
+
 
 if __name__ == "__main__":
     unittest.main()
