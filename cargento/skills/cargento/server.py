@@ -1383,8 +1383,24 @@ def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, 
 # Notifications
 
 
+def native_notifier(platform_name: str) -> str:
+    """Name of the OS-level notification backend for a platform, "" if none.
+
+    Pure in ``platform_name`` so both branches run on every CI runner and mypy
+    checks them all, rather than treating the non-host branch as unreachable
+    (design decision D-4).
+
+    The page reads this through ``/api/data`` to decide whether to raise its
+    own browser notification. Exactly one layer notifies for a given
+    transition: the server when it has a backend here, the browser when it does
+    not. Linux and Windows have no backend yet — that is Phase 6 — so today the
+    browser covers them and macOS behavior is unchanged.
+    """
+    return "osascript" if platform_name == "darwin" else ""
+
+
 def notify_mac(title: Any, message: Any) -> None:
-    if sys.platform != "darwin":
+    if not native_notifier(sys.platform):
         return
 
     def esc(s: str) -> str:
@@ -2716,6 +2732,9 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
         "generated": now,
         "window_hours": window_hours,
         "show_all": show_all,
+        # Which layer owns needs-input popups. Empty means the page should
+        # raise its own; a backend name means the server already did.
+        "native_notify": native_notifier(sys.platform),
         "harnesses": harnesses,
         "summary": {
             "needs_input": sum(1 for x in active_sessions if x["state"] == "needs_input"),
@@ -2763,6 +2782,10 @@ PAGE = r"""<!doctype html>
   .sub{font-family:var(--mono);font-size:12px;color:var(--ink3);margin-top:10px;display:flex;align-items:center;gap:8px}
   .live{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.6s infinite}
   .live.stalled{background:var(--alert);animation:none}
+  .notify-btn{font-family:var(--mono);font-size:11px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin-left:4px;cursor:pointer;transition:background .15s}
+  .notify-btn:hover{background:var(--line)}
+  .notify-btn:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .notify-note{font-family:var(--mono);font-size:11px;color:var(--ink3);margin-left:4px;cursor:help;border-bottom:1px dotted var(--line)}
   .hstrip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:440px}
   .hstrip-k{font-family:var(--mono);font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;margin-right:3px}
 
@@ -3267,8 +3290,69 @@ function idleRow(d, sess){
 
 function toggleIdle(){ idleExpanded = !idleExpanded; if(lastData) render(lastData); }
 
+/* Desktop notifications.
+   Exactly one layer notifies for a given transition. The server fires an
+   OS-level popup where it has a backend and reports that as `native_notify`;
+   the page raises its own only when the server cannot. Without that split,
+   macOS would pop twice for every blocked session. */
+let notifyState = new Map();  /* harness:sid -> last state seen */
+let notifyPrimed = false;     /* first payload only records: nothing is "new" yet */
+
+function notifySupported(){ return typeof Notification !== "undefined"; }
+
+function notifyPermission(){
+  return notifySupported() ? (Notification.permission || "default") : "unsupported";
+}
+
+function browserNotifyOwns(d){ return !(d && d.native_notify) && notifySupported(); }
+
+function requestNotifyPermission(){
+  if(!notifySupported() || !Notification.requestPermission) return;
+  /* Re-render so the control reflects the new permission. Both the callback
+     and promise forms are handled; Safari still uses the callback. */
+  const done = () => { if(lastData) render(lastData); };
+  let result;
+  try{ result = Notification.requestPermission(done); }catch(e){ return; }
+  if(result && typeof result.then === "function") result.then(done, done);
+}
+
+function syncNotifications(d){
+  const seen = new Map();
+  const fire = browserNotifyOwns(d) && notifyPermission() === "granted";
+  for(const s of d.sessions){
+    const key = s.harness + ":" + s.sid;
+    seen.set(key, s.state);
+    if(!fire || !notifyPrimed) continue;
+    /* Same rule the server uses: notify on the transition into needs_input,
+       not for every refresh a session spends blocked. */
+    if(!s.active || s.state !== "needs_input") continue;
+    if(notifyState.get(key) === "needs_input") continue;
+    try{
+      new Notification("Claude is waiting on you",
+        {body: "[" + s.project + "] " + (s.state_detail || "needs your input"),
+         tag: key});  /* tag replaces a stale popup instead of stacking */
+    }catch(e){ /* permission revoked mid-session, or a headless browser */ }
+  }
+  notifyState = seen;  /* sessions that disappeared stop being tracked */
+  notifyPrimed = true;
+}
+
+function notifyControl(d){
+  if(!browserNotifyOwns(d)) return "";
+  const p = notifyPermission();
+  if(p === "granted" || p === "unsupported") return "";
+  if(p === "denied"){
+    return ` · <span class="notify-note" title="Re-enable notifications for this ` +
+      `site in your browser's settings to be alerted when a session needs you.">` +
+      `notifications blocked</span>`;
+  }
+  return ` · <button type="button" class="notify-btn" onclick="requestNotifyPermission()">` +
+    `Enable notifications</button>`;
+}
+
 function render(d){
   lastData = d;
+  syncNotifications(d);
   const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
   // Capture pointer position before render so we can restore it afterward, even if
   // pointermove fires during the render operation.
@@ -3339,7 +3423,7 @@ function render(d){
     `<div class="top"><div><div class="brand">Cargento</div>` +
     `<div class="sub"><span class="live" id="live-dot"></span>` +
     `<span id="live-status">live · updated ${new Date(d.generated*1000).toLocaleTimeString()} · auto-refresh 5s</span>` +
-    (d.show_all ? " · showing all" : "") + `</div></div>` +
+    (d.show_all ? " · showing all" : "") + notifyControl(d) + `</div></div>` +
     `<div class="hstrip">${harnessStrip(d.harnesses)}</div></div>` + body;
   renderInProgress = false;
 
@@ -3415,14 +3499,36 @@ class Handler(BaseHTTPRequestHandler):
     # reach 127.0.0.1-bound servers through the victim's browser).
     LOCAL_HOSTS: ClassVar[set[str]] = {"127.0.0.1", "localhost", "::1", "[::1]"}
 
-    def _local_ok(self) -> bool:
+    def _local_ok(self, *, allow_cross_site_navigation: bool = False) -> bool:
         host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
         if host not in self.LOCAL_HOSTS:
             return False
-        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site" and not (
+            allow_cross_site_navigation and self._is_document_navigation()
+        ):
             return False
         origin = self.headers.get("Origin")
         return not origin or (urlparse(origin).hostname or "") in self.LOCAL_HOSTS
+
+    def _is_document_navigation(self) -> bool:
+        """Whether this is the browser navigating a tab to us, top level.
+
+        Chrome labels *any* navigation whose initiator was another origin
+        ``Sec-Fetch-Site: cross-site`` — including one the user started by
+        clicking a link to the dashboard. Rejecting those returned 403 for a
+        perfectly ordinary way to open the page.
+
+        Serving them is safe: the initiating page cannot read a cross-origin
+        document, so there is nothing to exfiltrate, and the Host check above
+        still blocks DNS rebinding. Everything else cross-site — ``fetch``,
+        XHR, an iframe, a subresource — *can* be read by its initiator and
+        stays blocked, which is what ``Sec-Fetch-Dest: document`` distinguishes
+        (an iframe reports ``iframe``). GET only: a cross-site form submission
+        is also a "navigation", so POST never takes this path.
+        """
+        return (self.headers.get("Sec-Fetch-Mode") or "").lower() == "navigate" and (
+            self.headers.get("Sec-Fetch-Dest") or ""
+        ).lower() == "document"
 
     def _send(self, body: bytes, ctype: str, code: int = 200) -> None:
         self.send_response(code)
@@ -3433,7 +3539,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:
-        if not self._local_ok():
+        if not self._local_ok(allow_cross_site_navigation=True):
             self.send_error(403)
             return
         url = urlparse(self.path)

@@ -395,6 +395,85 @@ class CargentoServerTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
+    def test_cross_site_request_boundary(self) -> None:
+        # Chrome labels *any* navigation whose initiator was another origin
+        # "cross-site" — including a user clicking a link to the dashboard.
+        # Rejecting those returned 403 for an ordinary way to open the page
+        # (found by loading it in a real browser). Serving a top-level
+        # document navigation is safe: the initiator cannot read a
+        # cross-origin document. Everything that *can* read stays blocked.
+        navigation = {"Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+        cases = [
+            # (method, path, headers, expected status, why)
+            ("GET", "/", {"Sec-Fetch-Site": "cross-site", **navigation}, 200, "link to page"),
+            (
+                "GET",
+                "/api/data",
+                {"Sec-Fetch-Site": "cross-site", **navigation},
+                200,
+                "link to api",
+            ),
+            ("GET", "/", {"Sec-Fetch-Site": "none", **navigation}, 200, "typed/bookmarked"),
+            ("GET", "/api/data", {"Sec-Fetch-Site": "same-origin"}, 200, "the page's own poll"),
+            # Readable by the initiator — must stay blocked.
+            (
+                "GET",
+                "/api/data",
+                {
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "cors",
+                    "Sec-Fetch-Dest": "empty",
+                },
+                403,
+                "cross-site fetch",
+            ),
+            (
+                "GET",
+                "/",
+                {
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "iframe",
+                },
+                403,
+                "framed by another site",
+            ),
+            (
+                "GET",
+                "/api/data",
+                {"Sec-Fetch-Site": "cross-site", "Origin": "https://evil.example", **navigation},
+                403,
+                "cross-origin Origin header",
+            ),
+            # A cross-site form submission is also a "navigation", so POST
+            # must never take the relaxed path.
+            (
+                "POST",
+                "/api/notify",
+                {"Sec-Fetch-Site": "cross-site", **navigation},
+                403,
+                "cross-site form POST",
+            ),
+            ("GET", "/", {"Host": "evil.example"}, 403, "DNS rebinding"),
+        ]
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for method, path, headers, expected, why in cases:
+                with self.subTest(why=why):
+                    conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+                    body = b'{"session_id":"x"}' if method == "POST" else None
+                    conn.request(method, path, body=body, headers=headers)
+                    response = conn.getresponse()
+                    self.assertEqual(expected, response.status)
+                    response.read()
+                    conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
     def test_popup_caches_are_bounded_and_globally_rate_limited(self) -> None:
         with (
             mock.patch.object(dashboard, "MAX_CACHE_ENTRIES", 2),
@@ -895,6 +974,18 @@ const window = {addEventListener(type, fn){
   (__listeners["window:" + type] = __listeners["window:" + type] || []).push(fn); }};
 const fetch = () => new Promise(() => {});
 const setInterval = () => 0;
+// Notification stub: records what the page would have raised, with a
+// permission value tests can set. Defined here so every page test runs with a
+// browser-notification-capable environment, as a real browser would.
+let __notifications = [];
+let __notifyPermission = "default";
+function Notification(title, opts){ __notifications.push(Object.assign({title}, opts)); }
+Object.defineProperty(Notification, "permission", {get: () => __notifyPermission});
+Notification.requestPermission = cb => {
+  __notifyPermission = "granted";
+  if(cb) cb("granted");
+  return Promise.resolve("granted");
+};
 """
 
     def _run_page_js(self, checks: str) -> Any:
@@ -975,6 +1066,139 @@ console.log(JSON.stringify(out));
         # Viewer-clock stamping: server said 999111, viewer clock said 1010.
         self.assertEqual({"t": 1010, "v": 3, "replayDropped": True}, out["clock"])
         self.assertEqual({"hasLine": True, "finite": True, "single": True}, out["svg"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_browser_notifications_fire_only_on_transitions_the_server_missed(self) -> None:
+        # Exactly one layer may notify per transition (plan decision D-3).
+        checks = """
+__els.app = {innerHTML:""};
+const blocked = {
+  harness:"claude", session:"12345678", sid:"12345678", project:"proj",
+  title:null, last_prompt:"", state:"needs_input", state_detail:"open question",
+  active:true, last_activity:100, blocked_since:970, rate_per_min:0,
+  total:0, done:0, open:0, progress_pct:0, eta_h:null, turn:null,
+  subagents:[], tasks:[]
+};
+const idle = {...blocked, state:"idle", state_detail:"awaiting your message"};
+const payload = (sessions, native) => ({
+  generated:1000, window_hours:24, show_all:false, native_notify:native,
+  harnesses:[], sessions,
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:1,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+});
+const reset = perm => {
+  __notifications = []; __notifyPermission = perm;
+  notifyState = new Map(); notifyPrimed = false;
+};
+const out = {};
+
+// The server already popped natively: the page must stay silent.
+reset("granted");
+render(payload([idle], "osascript"));
+render(payload([blocked], "osascript"));
+out.nativeOwnsIt = __notifications.length;
+
+// No native backend (Linux/Windows today): the page notifies.
+reset("granted");
+render(payload([idle], ""));
+render(payload([blocked], ""));
+out.browserFired = __notifications.length;
+out.body = __notifications[0] && __notifications[0].body;
+out.tag = __notifications[0] && __notifications[0].tag;
+
+// Still blocked on later refreshes: notify on the transition, not repeatedly.
+render(payload([blocked], ""));
+render(payload([blocked], ""));
+out.noRepeat = __notifications.length;
+
+// Cleared, then blocked again: that is a new transition.
+render(payload([idle], ""));
+render(payload([blocked], ""));
+out.refired = __notifications.length;
+
+// A session already blocked when the page opens must not pop on first paint.
+reset("granted");
+render(payload([blocked], ""));
+out.primed = __notifications.length;
+
+// Permission not granted: record state, raise nothing.
+reset("default");
+render(payload([idle], ""));
+render(payload([blocked], ""));
+out.ungranted = __notifications.length;
+
+// Inactive sessions are outside the window and never notify.
+reset("granted");
+render(payload([{...idle, active:false}], ""));
+render(payload([{...blocked, active:false}], ""));
+out.inactive = __notifications.length;
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(0, out["nativeOwnsIt"], "would double-notify on macOS")
+        self.assertEqual(1, out["browserFired"])
+        self.assertEqual("[proj] open question", out["body"])
+        self.assertEqual("claude:12345678", out["tag"])
+        self.assertEqual(1, out["noRepeat"], "notified again while already blocked")
+        self.assertEqual(2, out["refired"])
+        self.assertEqual(0, out["primed"], "popped for a pre-existing block on first paint")
+        self.assertEqual(0, out["ungranted"])
+        self.assertEqual(0, out["inactive"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_notification_permission_control_reflects_state(self) -> None:
+        checks = """
+__els.app = {innerHTML:""};
+const payload = native => ({
+  generated:1000, window_hours:24, show_all:false, native_notify:native,
+  harnesses:[], sessions:[],
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:0,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+});
+const out = {};
+__notifyPermission = "default"; out.prompt = notifyControl(payload(""));
+__notifyPermission = "denied";  out.denied = notifyControl(payload(""));
+__notifyPermission = "granted"; out.granted = notifyControl(payload(""));
+__notifyPermission = "default"; out.native  = notifyControl(payload("osascript"));
+
+// Granting re-renders so the button disappears without a reload.
+__notifyPermission = "default";
+render(payload(""));
+out.buttonBefore = __els.app.innerHTML.includes("Enable notifications");
+requestNotifyPermission();
+out.buttonAfter = __els.app.innerHTML.includes("Enable notifications");
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertIn("Enable notifications", out["prompt"])
+        self.assertIn("notifications blocked", out["denied"])
+        self.assertEqual("", out["granted"], "no control once permission is granted")
+        self.assertEqual("", out["native"], "server owns popups; no control needed")
+        self.assertTrue(out["buttonBefore"])
+        self.assertFalse(out["buttonAfter"], "control should clear after granting")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_page_works_without_the_notification_api(self) -> None:
+        # Older or locked-down browsers expose no Notification constructor.
+        checks = """
+__els.app = {innerHTML:""};
+Notification = undefined;
+const d = {
+  generated:1000, window_hours:24, show_all:false, native_notify:"",
+  harnesses:[], sessions:[],
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:0,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+};
+render(d);
+requestNotifyPermission();
+console.log(JSON.stringify({
+  permission: notifyPermission(), control: notifyControl(d), rendered: !!__els.app.innerHTML
+}));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual("unsupported", out["permission"])
+        self.assertEqual("", out["control"])
+        self.assertTrue(out["rendered"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_needs_input_ui_uses_block_anchor_and_displayed_count(self) -> None:
@@ -2419,6 +2643,35 @@ class DiagnoseTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"CODEX_HOME": "/opt/cx"}):
             report = dashboard.diagnose(24)
         self.assertEqual("/opt/cx", report["env"]["CODEX_HOME"])
+
+
+class NativeNotifierTest(unittest.TestCase):
+    """Pure in platform_name, so both branches run on every runner rather than
+    only the host's (design decision D-4)."""
+
+    def test_backend_per_platform(self) -> None:
+        self.assertEqual("osascript", dashboard.native_notifier("darwin"))
+        # No native backend yet on these — that is Phase 6. Until then the
+        # empty string tells the page to raise the notification itself.
+        for platform_name in ("linux", "win32", "freebsd14", "cygwin"):
+            with self.subTest(platform=platform_name):
+                self.assertEqual("", dashboard.native_notifier(platform_name))
+
+    def test_notify_mac_is_a_no_op_without_a_backend(self) -> None:
+        with (
+            mock.patch.object(dashboard.sys, "platform", "linux"),
+            mock.patch.object(dashboard.subprocess, "run") as run,
+        ):
+            dashboard.notify_mac("title", "message")
+        run.assert_not_called()
+
+    def test_api_data_reports_who_owns_popups(self) -> None:
+        # The page reads this to decide whether to notify; if it went missing,
+        # macOS would double-notify and Linux would notify not at all.
+        with mock.patch.object(dashboard.sys, "platform", "darwin"):
+            self.assertEqual("osascript", dashboard.collect(24, False)["native_notify"])
+        with mock.patch.object(dashboard.sys, "platform", "win32"):
+            self.assertEqual("", dashboard.collect(24, False)["native_notify"])
 
 
 class TextIoTest(unittest.TestCase):

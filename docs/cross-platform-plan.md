@@ -432,10 +432,24 @@ command says why.
     identically across all five manifests; **no version fields touched** (H6).
 23. systemd user unit, `ssh -L`, Flatpak/Snap, MAX_PATH notes (I2, I3, F5).
 
-### Phase 5 — Browser notifications — **M, 3-5 days**
-24. Notification API in `PAGE` with permission affordance, owning transcript transitions only
-    (D-3). Update the Node DOM stubs — they have no `Notification` today — plus the embedded-asset
-    DOM-id linter.
+### Phase 5 — Browser notifications — **DONE**
+24. **Done.** Notification API in `PAGE`, owning transcript transitions only (D-3). `/api/data`
+    carries `native_notify`, the name of the server's OS backend, and the page raises its own
+    notification only when that is empty — so macOS keeps its `osascript` popups unchanged, Linux
+    and Windows gain notifications immediately, and nothing double-fires. `native_notifier()` is
+    pure in `platform_name` (D-4), so both branches run on every CI runner. Permission affordance in
+    the header: an "Enable notifications" button when permission is unset, a "notifications blocked"
+    note when the browser has refused, nothing once granted or when the server owns delivery. Node
+    DOM stubs gained a `Notification` recorder.
+
+**Found while verifying in a real browser:** loading the dashboard returned **403**. Chrome labels
+any navigation whose initiator was another origin `Sec-Fetch-Site: cross-site` — including a user
+clicking a link to the dashboard — and `_local_ok()` rejected all of them. Pre-existing, unrelated
+to notifications, and invisible to `curl` (which sends no Sec-Fetch headers) and to the Node page
+tests (no HTTP layer). Top-level document navigations are now served: the initiating page cannot
+read a cross-origin document, and the Host check still blocks DNS rebinding. Cross-site `fetch`,
+XHR, iframes, subresources, and *all* POSTs stay blocked — a cross-site form submission is also a
+"navigation", so POST never takes the relaxed path.
 
 ### Phase 6 — Native Linux/Windows/WSL notifications (experimental) — **L-XL, 1-2 weeks**
 25. `notify-send` / `wsl-notify-send.exe` / PowerShell toast backends behind `--notify`, argv-only,
