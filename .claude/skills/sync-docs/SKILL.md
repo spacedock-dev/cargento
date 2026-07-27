@@ -240,8 +240,16 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    # d. If you touched the skill body, the documentation-matches-code assertions.
    python3 -m unittest cargento/skills/cargento/tests/test_server.py
    ```
-   Do **not** run the rest of the Python suite for a docs-only pass unless a doc claims a command
-   you changed.
+   **Then decide whether you owe the full gate, by who authors the PR:**
+   - **Pre-PR-gate run** — checks a–d are enough. The suite in `AGENTS.md` § Pre-PR Checks ran on
+     this same tree minutes ago and the human author owns the result.
+   - **Standalone/periodic run** — you are the PR author, so run the **whole** pre-PR suite from
+     `AGENTS.md` before opening anything. `quality-gate` is a required check covering ruff, format,
+     `mypy --strict`, `lint_embedded.py`, coverage against `fail_under`, and `platform-tests` on
+     three OSes; none of that is implied by a–d. Opening a PR you have not gated pushes your own
+     verification onto the reviewer.
+
+   Never open or update a PR on the strength of a–d alone.
 9. **Stage, commit in the right place, then report.** Never commit to `main`. Stage explicitly —
    new docs are untracked, so `git commit -a` would silently skip them:
    ```bash
@@ -252,7 +260,13 @@ minutes, a Python version. Stale counts are this repository's most common drift.
      commit onto **that same branch** with `git commit -s` — do not create a new branch or a second
      PR; the doc updates ride in the PR you are about to open.
    - **Standalone/periodic run** (started from `main`, no feature work in flight): create a
-     `docs/…` branch, commit, and open its own PR.
+     `docs/…` branch, commit, and open its own PR — having run the full suite per step 8.
+
+   **A standalone run is not finished when the PR opens; it is finished when the required checks are
+   green.** Watch them. If one goes red, either it is your doing — fix it — or it is unrelated to a
+   docs-only diff, in which case *prove* that before dismissing it: show the diff touches no code the
+   failing test exercises, name the failure mode, and re-run the job. "Probably flaky" without
+   evidence is how a real regression ships.
 
    End with a one-line report:
    `Added: … | Corrected: … | Retired (deleted): … | Unresolved: …`, plus the new sync marker.

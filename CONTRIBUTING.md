@@ -75,6 +75,11 @@ touches more than one:
 Before trusting a new contract, mutation-check it: break the behaviour deliberately and confirm the
 targeted test actually fails.
 
+**Known flake.** The page tests shell out to `node` with a 30-second timeout. On the Windows runner
+that occasionally expires on process start, surfacing as
+`subprocess.TimeoutExpired: … page_test.js`. It is a runner-speed artifact, not a page bug — re-run
+the job before investigating, and check the traceback is a timeout rather than an assertion.
+
 ### Rules the validator enforces
 
 - The plugin **version** must be identical everywhere it appears (marketplace metadata + entry, and the Claude, Codex, and Gemini manifests); the **description** in five places (marketplace entry, those three manifests, plus the Antigravity `plugin.json`). **Never bump versions in a PR** — the `version-guard` check will fail it; see [Releases](#releases).
