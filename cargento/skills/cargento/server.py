@@ -1729,6 +1729,7 @@ def base_session(harness: str, sid: Any, project: str) -> dict[str, Any]:
         "turn": None,
         "subagents": [],
         "tasks": [],
+        "spacedock": None,
     }
 
 
@@ -1767,6 +1768,257 @@ def working_detail(info: dict[str, Any] | None, subagents: list[Any]) -> str:
 
 # ---------------------------------------------------------------------------
 # Harness collectors — each returns a list of session dicts
+
+
+# --- Spacedock workflow cartography ---------------------------------------
+#
+# Spacedock drives work items ("entities") through an ordered list of named
+# stages, with a "first officer" session dispatching "ensign" workers. Three
+# facts make it visible to a passive reader, in decreasing order of authority:
+#
+# 1. The launcher starts the session with `--agent spacedock:first-officer`, so
+#    the transcript's first records carry an ``agentSetting``. That alone proves
+#    the session is Spacedock, and costs nothing — it is in the head bytes the
+#    subagent classifier already reads.
+# 2. The first officer runs `spacedock status --boot` at startup and the JSON
+#    envelope lands in the transcript as a tool result. It carries the ABSOLUTE
+#    workflow directory, so nothing has to be discovered by scanning, and a
+#    ``dispatchable`` list giving each entity's current and next stage.
+# 3. The ordered stage list is the one fact the envelope omits (it appears only
+#    under `--identify`, which no observed session runs), so it is read from the
+#    workflow README's frontmatter — the only project file Cargento opens. See
+#    SECURITY.md for the contract that read operates under.
+#
+# Every parser here is pure so the whole matrix is exercisable on any runner
+# (design decision D-4 in docs/design-cross-platform.md).
+SPACEDOCK_FO = "spacedock:first-officer"
+SPACEDOCK_ENSIGN = "spacedock:ensign"
+# Boot output sits near the session start, not the tail: measured across the
+# transcripts on one machine it lands 97 KB-405 KB in, so the tail window the
+# turn scanner uses never contains it. 512 KiB caught 25 of 27; a session that
+# boots later than that renders no strip rather than a guessed one.
+SD_BOOT_SCAN_BYTES = 512_000
+SD_README_BYTES = 65_536  # frontmatter is ~540 bytes behind 32 KB of prose
+SD_MAX_FRONTMATTER_LINES = 400
+SD_MAX_STAGES = 32
+SD_MAX_WORKFLOWS = 8  # one first officer can drive several workflows
+SD_MAX_ENTITIES = 12  # strips rendered per workflow
+SD_MAX_BOOT_RECORDS = 16
+# Spacedock's own stage-name grammar (internal/status/stages.go): lowercase
+# kebab, at least two characters, interior hyphens legal. Hyphens inside stage
+# names are why worker names cannot be parsed positionally.
+SD_STAGE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+# Cycle/retry markers a first officer appends to a worker name. Observed live in
+# every position: before the stage and after it.
+SD_CYCLE_RE = re.compile(r"^(?:cycle|pass|round|c|v|p|r)\d+[a-z]?$|^(?:retry|rerun)$")
+SD_COMMISSIONED_PREFIX = "spacedock@"
+# Reading a workflow README is the one project read Cargento performs. The
+# switch exists so an operator who wants the store-only read surface can have
+# it back; see SECURITY.md.
+SPACEDOCK_ENABLED = True
+
+
+def sd_frontmatter_lines(text: str) -> list[str]:
+    """The lines between a leading ``---`` fence and its closer, else [].
+
+    Mirrors Spacedock's own fence finder: a leading BOM is stripped, truly
+    empty leading lines are skipped, and the first content line must be exactly
+    ``---``. CRLF is normalized so a ``---\\r`` fence still matches.
+    """
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    start = None
+    for index, raw in enumerate(lines):
+        line = raw.removeprefix("﻿") if index == 0 else raw
+        if line == "":
+            continue
+        if line.strip() != "---":
+            return []
+        start = index + 1
+        break
+    if start is None:
+        return []
+    out: list[str] = []
+    for raw in lines[start:]:
+        if raw.strip() == "---":
+            return out
+        if len(out) >= SD_MAX_FRONTMATTER_LINES:
+            return []
+        out.append(raw)
+    return []  # unterminated frontmatter is not frontmatter
+
+
+def sd_scalar(lines: list[str], key: str) -> str:
+    """A column-0 scalar from frontmatter lines, unquoted."""
+    prefix = key + ":"
+    for raw in lines:
+        if raw.startswith(prefix):
+            return raw[len(prefix) :].strip().strip("\"'")
+    return ""
+
+
+def sd_stage_names(lines: list[str]) -> list[str]:
+    """The ordered ``stages.states[].name`` list, or [] if unrecognised.
+
+    An indentation-scoped scan, not a YAML evaluator: enter ``stages:``, then
+    ``states:``, then take each ``- name:`` until the block dedents to a
+    sibling key (``transitions:``). Document order is the stage order —
+    Spacedock's own advancement indexes this list.
+
+    Anything the scan cannot model yields [] so the dashboard renders no strip
+    rather than a wrong one. That deliberately covers flow-style sequences,
+    quoted keys, anchors and aliases.
+    """
+    names: list[str] = []
+    stages_indent: int | None = None
+    states_indent: int | None = None
+    for raw in lines:
+        body = raw.strip()
+        if not body or body.startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        if stages_indent is None:
+            if body == "stages:":
+                stages_indent = indent
+            continue
+        if states_indent is None:
+            if indent <= stages_indent:
+                return []  # left the stages block without finding states
+            if body == "states:":
+                states_indent = indent
+            continue
+        if indent <= states_indent and not body.startswith("- "):
+            break  # dedented to a sibling of states:
+        if not body.startswith("- name:"):
+            continue
+        value = body[len("- name:") :].strip().strip("\"'")
+        if not value or not SD_STAGE_RE.match(value) or value in names:
+            return []
+        if len(names) >= SD_MAX_STAGES:
+            return []
+        names.append(value)
+    return names
+
+
+def sd_parse_worker(name: str, stages: list[str]) -> tuple[str, str, str] | None:
+    """``(slug, stage, cycle)`` from an ensign worker name, or None.
+
+    Spacedock composes the name as ``spacedock-ensign-{slug}-{stage}``, but a
+    first officer appends its own cycle markers and observed names carry them on
+    either side of the stage — so positional parsing is wrong. Instead find the
+    known stage whose token run sits closest to the end, then require every
+    leftover token after it to be cycle-shaped. A leftover token that is not
+    means this stage vocabulary belongs to a different workflow, and the name is
+    rejected rather than mis-attributed.
+    """
+    body = name.removeprefix("spacedock-ensign-")
+    if body == name:
+        return None
+    tokens = body.split("-")
+    best: tuple[int, int, str] | None = None
+    for stage in stages:
+        stage_tokens = stage.split("-")
+        width = len(stage_tokens)
+        for start in range(len(tokens) - width, -1, -1):
+            if tokens[start : start + width] != stage_tokens:
+                continue
+            if best is None or (start, start + width) > (best[0], best[1]):
+                best = (start, start + width, stage)
+            break
+    if best is None:
+        return None
+    start, end, stage = best
+    head, tail = tokens[:start], tokens[end:]
+    if any(not SD_CYCLE_RE.match(token) for token in tail):
+        return None
+    slug = "-".join(token for token in head if not SD_CYCLE_RE.match(token))
+    if not slug:
+        return None
+    cycle = "-".join(token for token in head + tail if SD_CYCLE_RE.match(token))
+    return (slug, stage, cycle)
+
+
+def sd_boot_records(blob: str) -> list[dict[str, Any]]:
+    """Every ``spacedock status --boot`` envelope in a transcript head blob.
+
+    The envelope reaches the transcript inside a JSON-encoded tool result, so
+    its braces and quotes are escaped. Each ``"command":"boot"`` marker is
+    walked back to the opening brace and forward to the balancing one, then
+    unescaped and decoded. A record that does not decode is skipped, never
+    fatal.
+    """
+    out: list[dict[str, Any]] = []
+    for match in re.finditer(r'\\"command\\":\\"boot\\"', blob):
+        opening = blob.rfind("{", 0, match.start())
+        if opening < 0:
+            continue
+        depth = 0
+        closing = -1
+        for index in range(opening, len(blob)):
+            char = blob[index]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    closing = index + 1
+                    break
+        if closing < 0:
+            continue
+        raw = blob[opening:closing].replace('\\"', '"').replace("\\\\", "\\")
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and record.get("command") == "boot":
+            out.append(record)
+        if len(out) >= SD_MAX_BOOT_RECORDS:
+            break
+    return out
+
+
+def sd_workflow_dirs(records: list[dict[str, Any]]) -> list[str]:
+    """Distinct absolute workflow directories named by boot envelopes.
+
+    Order is first-seen so the display order matches the boot order. Only
+    absolute paths are kept: a relative value cannot be resolved without
+    guessing a base, and guessing is what the read contract forbids.
+    """
+    out: list[str] = []
+    for record in records:
+        value = record.get("definition_dir")
+        if not isinstance(value, str) or not value:
+            continue
+        if not os.path.isabs(value) or "\x00" in value:
+            continue
+        if value not in out:
+            out.append(value)
+        if len(out) >= SD_MAX_WORKFLOWS:
+            break
+    return out
+
+
+def sd_boot_entities(records: list[dict[str, Any]], workflow_dir: str) -> dict[str, str]:
+    """``{slug: current_stage}`` for one workflow, newest envelope winning.
+
+    A first officer boots once per workflow and may re-boot; later envelopes
+    carry fresher stages, so they overwrite earlier ones.
+    """
+    out: dict[str, str] = {}
+    for record in records:
+        if record.get("definition_dir") != workflow_dir:
+            continue
+        items = record.get("dispatchable")
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            slug = item.get("slug")
+            current = item.get("current")
+            if isinstance(slug, str) and slug and isinstance(current, str) and current:
+                out[slug] = current
+    return out
 
 
 # Subagent-transcript classification cache. Whether a top-level transcript
@@ -1829,6 +2081,197 @@ def claude_agent_identity(path: str) -> tuple[bool, str, str]:
         with _cache_lock:
             bounded_put(_agent_class_cache, path, result)
     return result
+
+
+_sd_role_cache: dict[str, str] = {}
+_sd_boot_cache: dict[tuple[str, int], list[dict[str, Any]]] = {}
+_sd_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = {}
+
+
+def claude_agent_setting(path: str) -> str:
+    """The ``agentSetting`` a transcript declares in its head, else "".
+
+    The launcher passes ``--agent spacedock:first-officer``, so the value is
+    written at record index 0 or 1 — inside the same head bytes the subagent
+    classifier already reads. Immutable per file once present.
+    """
+    with _cache_lock:
+        cached = _sd_role_cache.get(path)
+    if cached is not None:
+        return cached
+    setting = ""
+    size = 0
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as handle:
+            data = handle.read(_AGENT_SCAN_BYTES)
+        lines = data.split(b"\n")
+        if size > len(data) and data and not data.endswith(b"\n"):
+            lines.pop()
+        for line in lines[:_AGENT_SCAN_LINES]:
+            if not line or b"agentSetting" not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            value = record.get("agentSetting")
+            if isinstance(value, str) and value:
+                setting = value
+                break
+    except OSError:
+        return ""
+    if setting or size >= _AGENT_CACHE_NEGATIVE_MIN_BYTES:
+        with _cache_lock:
+            bounded_put(_sd_role_cache, path, setting)
+    return setting
+
+
+def sd_transcript_boot(path: str) -> list[dict[str, Any]]:
+    """Boot envelopes from a transcript's head, cached per (path, size).
+
+    Boot output is written once at session start and never rewritten, so the
+    scan is amortised: keying on size lets a still-growing session pick the
+    envelope up on a later refresh without rescanning an unchanged prefix.
+    """
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return []
+    key = (path, min(size, SD_BOOT_SCAN_BYTES))
+    with _cache_lock:
+        cached = _sd_boot_cache.get(key)
+    if cached is not None:
+        return cached
+    records: list[dict[str, Any]] = []
+    try:
+        with open(path, "rb") as handle:
+            blob = handle.read(SD_BOOT_SCAN_BYTES)
+        if b"definition_dir" in blob:
+            records = sd_boot_records(blob.decode("utf-8", "replace"))
+    except OSError:
+        return []
+    with _cache_lock:
+        bounded_put(_sd_boot_cache, key, records)
+    return records
+
+
+def sd_open_regular(path: str) -> int | None:
+    """Open ``path`` read-only, refusing symlinks and non-regular files.
+
+    ``O_NOFOLLOW`` is absent on Windows, so there the refusal rests on the
+    ``lstat`` classification alone and a racing reparse-point swap could still
+    be followed — the same unclosable class as the FILE_SHARE_DELETE window
+    documented in SKILL.md.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        if stat_module.S_ISLNK(os.lstat(path).st_mode):
+            return None
+        descriptor = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        if not stat_module.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            return None
+    except OSError:
+        os.close(descriptor)
+        return None
+    return descriptor
+
+
+def sd_read_workflow(workflow_dir: str) -> dict[str, Any] | None:
+    """The stage taxonomy of one workflow directory, or None.
+
+    This is the only project file Cargento opens. ``workflow_dir`` is an
+    absolute path the session itself recorded in its boot output; it is
+    canonicalised, its README must be a regular non-symlink file, at most
+    ``SD_README_BYTES`` are read, and the result counts only if the frontmatter
+    declares ``commissioned-by: spacedock@`` — Spacedock's own workflow
+    discriminator. Nothing else in the project is read, and no directory is
+    walked. Only derived scalars leave this function; no file text does.
+    """
+    try:
+        root = os.path.realpath(workflow_dir)
+        readme = os.path.join(root, "README.md")
+        info = os.stat(readme)
+    except OSError:
+        return None
+    # Containment: the README must resolve inside the directory it was found in,
+    # so a symlinked or swapped entry cannot redirect the read elsewhere.
+    try:
+        resolved = os.path.realpath(readme)
+        if os.path.commonpath((root, resolved)) != root:
+            return None
+    except (OSError, ValueError):
+        return None
+    key = (root, info.st_mtime_ns, info.st_size)
+    with _cache_lock:
+        if key in _sd_workflow_cache:
+            return _sd_workflow_cache[key]
+    result: dict[str, Any] | None = None
+    descriptor = sd_open_regular(readme)
+    if descriptor is not None:
+        try:
+            with os.fdopen(descriptor, "rb") as handle:
+                raw = handle.read(SD_README_BYTES)
+        except OSError:
+            raw = b""
+        lines = sd_frontmatter_lines(raw.decode("utf-8", "replace"))
+        if sd_scalar(lines, "commissioned-by").startswith(SD_COMMISSIONED_PREFIX):
+            stages = sd_stage_names(lines)
+            if stages:
+                result = {"name": os.path.basename(root) or root, "stages": stages}
+    with _cache_lock:
+        bounded_put(_sd_workflow_cache, key, result)
+    return result
+
+
+def sd_session_workflows(
+    boot: list[dict[str, Any]], worker_names: list[str]
+) -> list[dict[str, Any]]:
+    """Render-ready workflow strips for one session.
+
+    An entity earns a strip when it is *in flight*: named by a live worker, or
+    listed as dispatchable with a stage the workflow actually declares. A
+    dispatchable list can be far longer than the work actually moving, so live
+    workers come first and are marked, and boot entries fill in behind them.
+    """
+    out: list[dict[str, Any]] = []
+    for workflow_dir in sd_workflow_dirs(boot):
+        info = sd_read_workflow(workflow_dir)
+        if info is None:
+            continue
+        stages: list[str] = info["stages"]
+        entities: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for name in worker_names:
+            parsed = sd_parse_worker(name, stages)
+            if parsed is None:
+                continue
+            slug, stage, cycle = parsed
+            if slug in seen:
+                continue
+            seen.add(slug)
+            entities.append({"slug": slug, "stage": stage, "cycle": cycle, "live": True})
+        for slug, stage in sd_boot_entities(boot, workflow_dir).items():
+            if slug in seen or stage not in stages:
+                continue
+            seen.add(slug)
+            entities.append({"slug": slug, "stage": stage, "cycle": "", "live": False})
+        if not entities:
+            continue
+        out.append(
+            {
+                "workflow": info["name"],
+                "stages": stages,
+                "entities": entities[:SD_MAX_ENTITIES],
+            }
+        )
+    return out
 
 
 def claude_prefix_is_agent(prefix: str) -> bool:
@@ -2024,10 +2467,33 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 ),
                 "subagents": [a["label"] for a in subagents],
                 "tasks": tasks,
+                "spacedock": claude_spacedock(transcript, subagents),
             }
         )
         out.append(s)
     return out
+
+
+def claude_spacedock(
+    transcript: str | None, subagents: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Spacedock role and workflow strips for one Claude session, or None.
+
+    Gated on the session declaring a Spacedock ``agentSetting``, so a session
+    that has nothing to do with Spacedock costs one cached lookup and opens no
+    project file. Only a first officer gets strips: an ensign is a single worker
+    whose own stage is already the parent's strip.
+    """
+    if not transcript or not SPACEDOCK_ENABLED:
+        return None
+    setting = claude_agent_setting(transcript)
+    if setting == SPACEDOCK_ENSIGN:
+        return {"role": "ensign", "workflows": []}
+    if setting != SPACEDOCK_FO:
+        return None
+    boot = sd_transcript_boot(transcript)
+    names = [str(a.get("label") or "") for a in subagents]
+    return {"role": "first-officer", "workflows": sd_session_workflows(boot, names)}
 
 
 def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
@@ -3151,6 +3617,18 @@ PAGE = r"""<!doctype html>
   .subs-k{font-family:var(--mono);font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em}
   .subpill{display:inline-flex;align-items:center;gap:7px;padding:4px 12px;border-radius:999px;background:color-mix(in oklab,var(--accent) 13%,transparent);border:1px solid color-mix(in oklab,var(--accent) 30%,transparent);font-size:12px;color:var(--ink)}
   .subdot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 1.6s infinite}
+  .sd{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:11px}
+  .sd-k{font-family:var(--mono);font-size:10.5px;color:var(--ink3);text-transform:uppercase;letter-spacing:.08em}
+  .sd-role{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-left:8px}
+  .sd-row{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;min-width:0}
+  .sd-ent{font-family:var(--mono);font-size:11.5px;color:var(--ink2);max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sd-live{color:var(--ink);font-weight:600}
+  .sd-cyc{font-family:var(--mono);font-size:10px;color:var(--ink3);padding:1px 6px;border-radius:999px;border:1px solid var(--line)}
+  .sd-spine{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11.5px;min-width:0}
+  .sd-st{color:var(--ink3)}
+  .sd-cur{color:var(--ink);font-weight:600;padding:1px 8px;border-radius:999px;background:color-mix(in oklab,var(--accent) 16%,transparent);border:1px solid color-mix(in oklab,var(--accent) 34%,transparent)}
+  .sd-arr{color:var(--ink3);font-size:10px}
+  .sd-gap{color:var(--ink3)}
   .no-tasks{font-family:var(--mono);font-size:11.5px;color:var(--ink3);border-top:1px solid var(--line);padding-top:13px}
   .tasks{display:flex;flex-direction:column;border-top:1px solid var(--line)}
   .task{display:flex;align-items:flex-start;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
@@ -3480,6 +3958,44 @@ function rateTile(d){
     `<div class="tile-val">${total}</div>${heroSpark()}${rows}</div>`;
 }
 
+function sdWindow(stages, idx){
+  if(stages.length <= 6 || idx < 0) return stages.slice(0, 6);
+  const lo = Math.max(0, idx - 2), hi = Math.min(stages.length, idx + 3);
+  const out = [];
+  if(lo > 0){ out.push(stages[0]); if(lo > 1) out.push(null); }
+  for(let k = lo; k < hi; k++) out.push(stages[k]);
+  if(hi < stages.length){ if(hi < stages.length - 1) out.push(null); out.push(stages[stages.length - 1]); }
+  return out;
+}
+
+function sdBlock(sess){
+  const sd = sess.spacedock;
+  if(!sd) return "";
+  const wfs = sd.workflows || [];
+  const role = sd.role === "first-officer" ? "first officer" : sd.role;
+  if(!wfs.length){
+    return `<div class="sd"><div><span class="sd-k">spacedock</span>` +
+      `<span class="sd-role">${esc(role)}</span></div></div>`;
+  }
+  let rows = "";
+  for(const wf of wfs.slice(0, 4)){
+    const stages = wf.stages || [];
+    for(const ent of (wf.entities || [])){
+      const idx = stages.indexOf(ent.stage);
+      const spine = sdWindow(stages, idx).map(s => s === null
+        ? `<span class="sd-gap">…</span>`
+        : `<span class="${s === ent.stage && idx >= 0 ? "sd-cur" : "sd-st"}">${esc(s)}</span>`
+      ).join(`<span class="sd-arr">→</span>`);
+      rows += `<div class="sd-row"><span class="sd-ent${ent.live ? " sd-live" : ""}">${esc(ent.slug)}</span>` +
+        (ent.cycle ? `<span class="sd-cyc">${esc(ent.cycle)}</span>` : "") +
+        `<span class="sd-spine">${spine}</span></div>`;
+    }
+  }
+  const names = wfs.map(w => w.workflow).join(" · ");
+  return `<div class="sd"><div><span class="sd-k">spacedock ${esc(names)}</span>` +
+    `<span class="sd-role">${esc(role)}</span></div>${rows}</div>`;
+}
+
 function turnBlock(t){
   if(!t) return "";
   const warn = t.long ? `<span class="lwarn" tabindex="0" role="note"` +
@@ -3538,7 +4054,7 @@ function workingCard(d, sess){
     `<div class="card-meta">${esc(sess.project)} · ${esc(sess.session)}</div>${bitsLine}` +
     `</div>${rateMeter}</div>` +
     `<div class="now"><span class="now-k">now</span>${esc(sess.state_detail)}</div>` +
-    turnBlock(sess.turn) + subs + taskBlock(sess) + `</div>`;
+    turnBlock(sess.turn) + subs + sdBlock(sess) + taskBlock(sess) + `</div>`;
 }
 
 function needRow(d, sess){
@@ -4088,12 +4604,20 @@ def main() -> None:
     )
     ap.add_argument("--json", action="store_true", help="machine-readable --diagnose output")
     ap.add_argument(
+        "--no-spacedock",
+        action="store_true",
+        help="do not read Spacedock workflow definitions (drops the stage strips)",
+    )
+    ap.add_argument(
         "--window-hours",
         type=float,
         default=24,
         help="sessions with no activity in this window are hidden (default 24)",
     )
     args = ap.parse_args()
+    if args.no_spacedock:
+        global SPACEDOCK_ENABLED  # noqa: PLW0603 — one process-wide switch
+        SPACEDOCK_ENABLED = False
     Handler.window_hours = args.window_hours
     if args.diagnose:
         report = diagnose(args.window_hours)

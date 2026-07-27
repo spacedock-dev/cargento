@@ -4644,6 +4644,249 @@ class OperatingSystemExpectationTest(unittest.TestCase):
                 self.assertTrue(all("\\" not in r for r in roots), roots)
 
 
+class SpacedockParserTest(unittest.TestCase):
+    """Pure parsers, so every branch runs on every OS runner (decision D-4)."""
+
+    DEBUG_FLYWHEEL: ClassVar[list[str]] = [
+        "intake",
+        "reproduce",
+        "discover",
+        "hypothesize",
+        "verify",
+        "fix-and-harden",
+        "uat",
+        "closed",
+    ]
+
+    def frontmatter(self, body: str) -> list[str]:
+        lines: list[str] = dashboard.sd_frontmatter_lines(body)
+        return lines
+
+    def test_stage_names_read_document_order_past_sibling_blocks(self) -> None:
+        """`transitions:` and a nested `decision:` must not leak into the spine."""
+        body = (
+            "---\n"
+            "commissioned-by: spacedock@0.22.0\n"
+            "state: .spacedock-state\n"
+            "stages:\n"
+            "  defaults:\n"
+            "    worktree: false\n"
+            "  states:\n"
+            "    - name: intake\n"
+            "      initial: true\n"
+            "    - name: review\n"
+            "    - name: fix-and-harden\n"
+            "      worktree: true\n"
+            "    - name: escalated\n"
+            "      gate: true\n"
+            "      decision:\n"
+            "        field: verdict\n"
+            "        options:\n"
+            "          - {label: Close, value: CLOSED, handoff: fo}\n"
+            "    - name: posted\n"
+            "      terminal: true\n"
+            "  transitions:\n"
+            "    - from: review\n"
+            "      to: intake\n"
+            "      label: needs rework\n"
+            "---\n"
+            "# Prose\n"
+        )
+        lines = self.frontmatter(body)
+
+        self.assertEqual("spacedock@0.22.0", dashboard.sd_scalar(lines, "commissioned-by"))
+        self.assertEqual(
+            ["intake", "review", "fix-and-harden", "escalated", "posted"],
+            dashboard.sd_stage_names(lines),
+        )
+
+    def test_frontmatter_requires_a_closed_leading_fence(self) -> None:
+        for label, body in [
+            ("no fence", "# Just prose\n"),
+            ("unterminated", "---\nstages:\n"),
+            ("prose first", "intro\n---\nstages:\n---\n"),
+        ]:
+            with self.subTest(case=label):
+                self.assertEqual([], self.frontmatter(body))
+
+    def test_stage_names_refuse_shapes_the_scanner_cannot_model(self) -> None:
+        """An unmodellable construct must render no strip, never a wrong one."""
+        cases = {
+            "flow sequence": "stages:\n  states: [intake, review]\n",
+            "no states block": "stages:\n  defaults:\n    worktree: false\n",
+            "stages absent": "state: .spacedock-state\n",
+            "illegal name": "stages:\n  states:\n    - name: Intake_Bad\n",
+            "single char name": "stages:\n  states:\n    - name: x\n",
+            "duplicate name": "stages:\n  states:\n    - name: review\n    - name: review\n",
+        }
+        for label, block in cases.items():
+            with self.subTest(case=label):
+                lines = ("---\n" + block + "---\n").split("\n")[1:-2]
+                self.assertEqual([], dashboard.sd_stage_names(lines))
+
+    def test_worker_names_parse_against_the_declared_stage_list(self) -> None:
+        """Real names carry cycle markers on either side of the stage."""
+        cases = [
+            ("spacedock-ensign-case-7-uat", ("case-7", "uat", "")),
+            (
+                "spacedock-ensign-case-7-fix-and-harden",
+                ("case-7", "fix-and-harden", ""),
+            ),
+            ("spacedock-ensign-case-7-cycle2-verify", ("case-7", "verify", "cycle2")),
+            ("spacedock-ensign-case-7-verify-c2", ("case-7", "verify", "c2")),
+            ("spacedock-ensign-case-7-r3-verify", ("case-7", "verify", "r3")),
+            ("spacedock-ensign-case-7-verify-pass2b", ("case-7", "verify", "pass2b")),
+            # A slug that itself contains a stage name: the match closest to the
+            # end wins, so the slug survives intact.
+            ("spacedock-ensign-verify-the-thing-uat", ("verify-the-thing", "uat", "")),
+        ]
+        for name, expected in cases:
+            with self.subTest(name=name):
+                self.assertEqual(expected, dashboard.sd_parse_worker(name, self.DEBUG_FLYWHEEL))
+
+    def test_worker_names_are_rejected_rather_than_mis_attributed(self) -> None:
+        for label, name in [
+            ("not an ensign", "some-other-agent-uat"),
+            ("no known stage", "spacedock-ensign-case-7-shipit"),
+            ("real content after the stage", "spacedock-ensign-case-7-uat-extra"),
+            ("no slug left", "spacedock-ensign-uat"),
+        ]:
+            with self.subTest(case=label):
+                self.assertIsNone(dashboard.sd_parse_worker(name, self.DEBUG_FLYWHEEL))
+
+    def test_boot_records_decode_escaped_envelopes_and_skip_junk(self) -> None:
+        envelope = (
+            '{\\"command\\":\\"boot\\",\\"id_style\\":\\"slug\\",'
+            '\\"dispatchable\\":[{\\"slug\\":\\"drc-1\\",\\"current\\":\\"review\\",'
+            '\\"next\\":\\"disposition\\"}],'
+            '\\"definition_dir\\":\\"/w/one\\",\\"entity_dir\\":\\"/w/one\\"}'
+        )
+        blob = '{"type":"tool_result","content":"=== BOOT ===\n' + envelope + '"}'
+        records = dashboard.sd_boot_records(blob)
+
+        self.assertEqual(1, len(records))
+        self.assertEqual("/w/one", records[0]["definition_dir"])
+        self.assertEqual({"drc-1": "review"}, dashboard.sd_boot_entities(records, "/w/one"))
+        self.assertEqual(["/w/one"], dashboard.sd_workflow_dirs(records))
+        self.assertEqual([], dashboard.sd_boot_records('{"content":"no envelope here"}'))
+
+    def test_workflow_dirs_reject_relative_and_nul_paths(self) -> None:
+        records = [
+            {"command": "boot", "definition_dir": "docs/spacedock/rel"},
+            {"command": "boot", "definition_dir": "/abs/ok"},
+            {"command": "boot", "definition_dir": "/abs/ok"},
+            {"command": "boot", "definition_dir": ""},
+        ]
+
+        self.assertEqual(["/abs/ok"], dashboard.sd_workflow_dirs(records))
+
+
+class SpacedockReadContractTest(unittest.TestCase):
+    """The one project read Cargento performs, and its refusals."""
+
+    README = (
+        "---\n"
+        "commissioned-by: spacedock@0.22.0\n"
+        "state: .spacedock-state\n"
+        "stages:\n"
+        "  states:\n"
+        "    - name: intake\n"
+        "      initial: true\n"
+        "    - name: review\n"
+        "    - name: posted\n"
+        "      terminal: true\n"
+        "---\n"
+    )
+
+    def setUp(self) -> None:
+        with dashboard._cache_lock:
+            dashboard._sd_workflow_cache.clear()
+            dashboard._sd_boot_cache.clear()
+            dashboard._sd_role_cache.clear()
+
+    def workflow(self, body: str | None = None) -> Path:
+        holder = tempfile.TemporaryDirectory(prefix="cargento-sd-")
+        self.addCleanup(holder.cleanup)
+        root = Path(holder.name).resolve() / "wf"
+        root.mkdir()
+        if body is not None:
+            (root / "README.md").write_text(body, encoding="utf-8")
+        return root
+
+    def test_commissioned_readme_yields_its_ordered_stages(self) -> None:
+        root = self.workflow(self.README)
+
+        self.assertEqual(
+            {"name": "wf", "stages": ["intake", "review", "posted"]},
+            dashboard.sd_read_workflow(str(root)),
+        )
+
+    def test_uncommissioned_or_absent_readme_yields_nothing(self) -> None:
+        cases = [
+            ("absent", None),
+            ("not commissioned", "---\nstages:\n  states:\n    - name: intake\n---\n"),
+            ("commissioned but no stages", "---\ncommissioned-by: spacedock@1.0.0\n---\n"),
+        ]
+        for label, body in cases:
+            with self.subTest(case=label):
+                self.assertIsNone(dashboard.sd_read_workflow(str(self.workflow(body))))
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "platform has no symlink")
+    def test_a_symlinked_readme_is_refused_not_followed(self) -> None:
+        root = self.workflow(None)
+        target = root.parent / "elsewhere.md"
+        target.write_text(self.README, encoding="utf-8")
+        try:
+            (root / "README.md").symlink_to(target)
+        except OSError:  # pragma: no cover - Windows without the privilege
+            self.skipTest("symlink creation not permitted")
+
+        self.assertIsNone(dashboard.sd_read_workflow(str(root)))
+
+    def test_only_frontmatter_is_read_however_long_the_body(self) -> None:
+        root = self.workflow(self.README + ("prose line\n" * 40_000))
+
+        result = dashboard.sd_read_workflow(str(root))
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(["intake", "review", "posted"], result["stages"])
+
+    def test_session_workflows_prefer_live_workers_then_boot_entities(self) -> None:
+        root = self.workflow(self.README)
+        boot = [
+            {
+                "command": "boot",
+                "definition_dir": str(root),
+                "dispatchable": [
+                    {"slug": "drc-1", "current": "review"},
+                    {"slug": "drc-2", "current": "intake"},
+                    {"slug": "drc-3", "current": "not-a-stage"},
+                ],
+            }
+        ]
+
+        strips = dashboard.sd_session_workflows(boot, ["spacedock-ensign-drc-1-posted"])
+
+        self.assertEqual(1, len(strips))
+        self.assertEqual(["intake", "review", "posted"], strips[0]["stages"])
+        # The live worker wins for drc-1 (posted, not the booted review) and is
+        # marked live; drc-3 is dropped because its stage is not declared.
+        self.assertEqual(
+            [("drc-1", "posted", True), ("drc-2", "intake", False)],
+            [(e["slug"], e["stage"], e["live"]) for e in strips[0]["entities"]],
+        )
+
+    def test_no_workflow_no_strip(self) -> None:
+        self.assertEqual([], dashboard.sd_session_workflows([], []))
+        self.assertEqual(
+            [],
+            dashboard.sd_session_workflows(
+                [{"command": "boot", "definition_dir": "/nonexistent/wf"}], []
+            ),
+        )
+
+
 class DocumentationMatchesCodeTest(unittest.TestCase):
     """Reviewers found documentation describing behaviour the code no longer
     had, twice. These assert the claims against the implementation."""

@@ -30,6 +30,7 @@ Notification delivery is best-effort by design, on every platform. The exit crit
 Other notes:
 
 - Needs-input detection exists only for Claude Code sessions — other harnesses expose no equivalent signal in their local stores.
+- Spacedock workflow detection likewise exists only for Claude Code sessions. The signals it rests on — an `agentSetting` in the first transcript records and the first officer's boot output — are written by the Claude launch path; the Codex and Pi hosts record neither in a form a passive reader can use, so their sessions render exactly as before. The collector is shaped so a host can be added without touching the parsers.
 - Store locations resolve per platform, and `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, and `COPILOT_HOME` are honored. Run `server.py --diagnose` to see every path searched and what was found there.
 - WSL2's `localhostForwarding` defaults on but can be switched off, and mirrored/NAT networking modes or corporate policy can also break host-browser access to `127.0.0.1:4553`. Probe before assuming; the fallback is `ssh -L` or a browser inside WSL.
 - Supported WSL topology is server and agents on the same side of the boundary. Reading a Windows-side store from inside WSL works over `/mnt/c` but 9p latency and mtime granularity make state detection unreliable, so it is not supported.
@@ -46,4 +47,4 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 5ba3317 (2026-07-27) -->
+<!-- docs-synced-through: 2b8178f (2026-07-27) -->

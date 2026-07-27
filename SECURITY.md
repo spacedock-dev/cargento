@@ -16,9 +16,40 @@ The posture rests on two invariants:
    mutating endpoint is `POST /api/notify`, which updates in-memory needs-input state only; it
    writes nothing to disk.
 
-Anything that weakens either invariant — a bind-address escape, request-driven file reads outside
-the documented store paths, writes to harness stores, or the hook client reaching a non-loopback
-destination — is a security bug.
+Anything that weakens either invariant — a bind-address escape, file reads outside the documented
+store paths and the project-read contract below (however the path was derived), writes to harness
+stores, or the hook client reaching a non-loopback destination — is a security bug.
+
+## Project reads (Spacedock stage strips)
+
+One feature reads a path that is not under a store root. When a session declares itself a Spacedock
+first officer, Cargento reads the **YAML frontmatter of one workflow `README.md`** so it can show
+the workflow's ordered stages. That is the whole of it — no other project file is opened, and no
+directory is ever walked.
+
+The path is not guessed. The first officer's own `spacedock status --boot` output, already recorded
+in its transcript, names the workflow directory as an absolute path; Cargento uses that value and
+nothing else. Before the file is opened, all of the following must hold, and a path failing any one
+is skipped silently:
+
+- the directory value is **absolute** and contains no NUL;
+- the path is canonicalised with `realpath`, and the README must still resolve **inside** that
+  directory (`commonpath` containment), so a swapped entry cannot redirect the read;
+- the README is a **regular file and not a symlink** — checked with `lstat`, and opened with
+  `O_NOFOLLOW` where the platform has it. Windows has no `O_NOFOLLOW`, so there the guarantee rests
+  on the `lstat` classification alone and a racing reparse-point swap could still be followed. That
+  is the same unclosable class as the `FILE_SHARE_DELETE` window described in the skill body;
+- the frontmatter declares `commissioned-by: spacedock@` — Spacedock's own workflow discriminator.
+
+Hard caps: at most 64 KiB read from the file, 400 frontmatter lines scanned, 32 stage names taken,
+and 8 workflows per session. Results are cached on `(realpath, st_mtime_ns, st_size)`, so an
+unchanged README costs one `stat` per refresh.
+
+**Only derived scalars reach `/api/data`** — stage names (each validated against Spacedock's
+`^[a-z0-9][a-z0-9-]*[a-z0-9]$` grammar), entity slugs, and cycle markers. No file text, no
+frontmatter body and no filesystem path is ever published, and the page HTML-escapes every value.
+Pass `--no-spacedock` to switch the feature off; the read surface is then exactly the documented
+store paths.
 
 ## Known and accepted
 
