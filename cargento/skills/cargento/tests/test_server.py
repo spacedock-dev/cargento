@@ -1014,13 +1014,18 @@ const __settle = () => new Promise(r => setImmediate(r));
             js = Path(tmp) / "page_test.js"
             # Checks run inside an async IIFE so they can await the async
             # stubs (permission settles on a microtask, as in a browser).
+            # Explicit UTF-8 both ways: the page carries glyphs outside Latin-1,
+            # and on Windows the default is the locale codec (cp1252), which
+            # raises instead of running the check. node speaks UTF-8.
             js.write_text(
-                self.PAGE_JS_STUBS + script + "\n;(async () => {\n" + checks + "\n})();\n"
+                self.PAGE_JS_STUBS + script + "\n;(async () => {\n" + checks + "\n})();\n",
+                encoding="utf-8",
             )
             proc = subprocess.run(
                 [shutil.which("node") or "node", str(js)],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=30,
                 check=False,
             )
