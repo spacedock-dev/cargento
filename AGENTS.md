@@ -79,6 +79,10 @@ mypy
 python3 scripts/lint_embedded.py   # needs node; add --allow-missing-node to degrade
 python3 scripts/validate_plugins.py
 python3 scripts/bump_version.py --current   # version-field parity across all owned locations
+# `--current` proves the five fields AGREE; `version-guard` additionally proves they have not
+# MOVED since the merge base. Check that half yourself — nothing local does:
+git diff "$(git merge-base origin/main HEAD)"..HEAD \
+  -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 coverage run -m unittest cargento.skills.cargento.tests.test_server \
   scripts.tests.test_validate_plugins scripts.tests.test_bump_version \
   scripts.tests.test_lint_embedded

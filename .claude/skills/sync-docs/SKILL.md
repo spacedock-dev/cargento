@@ -178,10 +178,18 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 
 ## Procedure
 
-1. **Scope the diff.** Find what landed since the last sync:
-   `git log --oneline "$(git log -1 --format=%H -- COMPATIBILITY.md)"..HEAD`, and read the
-   `docs-synced-through` marker at the bottom of `COMPATIBILITY.md`. Read those commits' `--stat`
-   to see which subsystems moved. That tells you where to look; the extraction above is the truth.
+1. **Scope the diff.** Find what landed since the last sync. Drive this off the
+   `docs-synced-through` marker at the bottom of `COMPATIBILITY.md`, **not** off the last commit
+   that touched the file — once any commit on this branch edits `COMPATIBILITY.md`, that commit
+   *is* the last one to touch it and the range collapses to empty exactly when you need it:
+   ```bash
+   MARKER=$(grep -oE 'docs-synced-through: [0-9a-f]+' COMPATIBILITY.md | awk '{print $2}')
+   git log --oneline "${MARKER:-origin/main}..HEAD"
+   git log --stat "${MARKER:-origin/main}..HEAD" -- '*.py' '*.toml' '*.yml'
+   ```
+   The `--stat` output tells you which subsystems moved, so you know where to look; the extraction
+   above is the ground truth. If the marker is missing or unresolvable, fall back to
+   `origin/main..HEAD` and say so in the report.
 2. **Reconcile each doc against the code truth.** Every real item must appear correctly wherever it
    is documented, and every doc claim must still match the code. Build the full checklist of edits
    before making any. **Prune as you go:** tighten entries that bloated into specs, collapse an
@@ -218,8 +226,11 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    # a. Nothing but docs changed (comment-only repoints from step 5 are the allowed exception).
    git status --porcelain -uall | awk '{print $NF}' | grep -vE '\.md$'
 
-   # b. No version field moved — version-guard would fail the PR.
-   git diff HEAD -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*version'
+   # b. No version field moved anywhere on this branch. `version-guard` compares the PR head
+   #    against the MERGE BASE, so an already-committed bump is invisible to `git diff HEAD` and
+   #    passes `bump_version.py --current` (which only checks five-way parity, not immutability).
+   git diff "$(git merge-base origin/main HEAD)"..HEAD \
+     -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 
    # c. The validator: link and anchor resolution across prose docs and bundled skill Markdown,
    #    the banned literals, description length, and the portability markers.

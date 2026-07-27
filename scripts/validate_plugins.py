@@ -258,21 +258,88 @@ def approx_token_count(text: str) -> int:
     return max(1, (len(text.encode("utf-8")) + 3) // 4)
 
 
+def markdown_prose(text: str) -> str:
+    """Blank out YAML frontmatter and fenced code, preserving line positions.
+
+    Both fence styles count. Anything inside them is code, not prose: a link
+    there must not be resolved and a `#` there is a comment, not a heading.
+    Known gap: four-space indented code blocks are still treated as prose.
+    """
+    lines = text.splitlines()
+    start = 0
+    if lines and lines[0].strip() == "---":
+        for index in range(1, len(lines)):
+            if lines[index].strip() == "---":
+                start = index + 1
+                break
+    out = [""] * min(start, len(lines))
+    fence: str | None = None
+    for line in lines[start:]:
+        marker = re.match(r"\s{0,3}(`{3,}|~{3,})", line)
+        if fence is None and marker:
+            fence = marker.group(1)[0]
+            out.append("")
+        elif fence is not None:
+            if marker and marker.group(1)[0] == fence:
+                fence = None
+            out.append("")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def slugify_heading(text: str) -> str:
+    """Anchor a heading's rendered text the way GitHub does.
+
+    GitHub slugs what the heading *renders* to, so inline links collapse to
+    their label and markup characters vanish. Word characters survive —
+    including underscores and non-ASCII letters, which a naive `[a-z0-9]`
+    filter would silently drop.
+    """
+    text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"<[^>]*>", "", text)
+    text = re.sub(r"[^\w\- ]", "", text.strip().lower(), flags=re.UNICODE)
+    return text.replace(" ", "-")
+
+
 def heading_slugs(path: Path) -> set[str]:
-    """Render every ATX heading in a Markdown file the way GitHub anchors them."""
+    """Every anchor a Markdown file exposes: ATX, Setext, and explicit HTML."""
+    body = markdown_prose(path.read_text(encoding="utf-8"))
+    lines = body.splitlines()
     slugs: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"#{1,6}\s+(.*?)\s*#*$", line)
-        if not match:
+    seen: dict[str, int] = {}
+    for index, line in enumerate(lines):
+        atx = re.match(r"\s{0,3}#{1,6}\s+(.*?)\s*#*$", line)
+        if atx:
+            title = atx.group(1)
+        elif (
+            line.strip()
+            and index + 1 < len(lines)
+            and re.fullmatch(r"\s{0,3}(=+|-{2,})\s*", lines[index + 1])
+        ):
+            title = line.strip()
+        else:
             continue
-        text = re.sub(r"[!\[\]`*_]", "", match.group(1)).strip().lower()
-        slugs.add(re.sub(r"[^0-9a-z \-]", "", text).replace(" ", "-"))
+        base = slugify_heading(title)
+        # GitHub disambiguates repeated headings with -1, -2, …
+        count = seen.get(base, 0)
+        seen[base] = count + 1
+        slugs.add(base if count == 0 else f"{base}-{count}")
+    slugs.update(re.findall(r"<a\s[^>]*(?:name|id)=[\"']([^\"']+)", body))
     return slugs
 
 
+# Inline link, with the optional CommonMark title consumed rather than
+# swallowed into the destination. Known gap: parentheses inside a bare
+# destination are not balanced — wrap such a target in <>.
+MARKDOWN_LINK_RE = re.compile(
+    r"!?\[[^\]]*\]\(\s*(<[^>]*>|[^\s)]*)(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)"
+)
+
+
 def validate_markdown_links(path: Path, validation: Validation) -> None:
-    prose = re.sub(r"```.*?```", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
-    for raw_target in re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", prose):
+    prose = markdown_prose(path.read_text(encoding="utf-8"))
+    for raw_target in MARKDOWN_LINK_RE.findall(prose):
         stripped = raw_target.strip().strip("<>")
         if stripped.startswith(("http://", "https://", "mailto:")):
             continue

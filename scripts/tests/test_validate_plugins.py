@@ -533,6 +533,88 @@ class ValidatorTests(unittest.TestCase):
                 any("SECURITY.md" in error for error in validation.errors), validation.errors
             )
 
+    def slugs_for(self, body: str) -> set[str]:
+        holder = tempfile.TemporaryDirectory(prefix="cargento-validator-slug-")
+        self.addCleanup(holder.cleanup)
+        path = Path(holder.name).resolve() / "doc.md"
+        path.write_text(body, encoding="utf-8")
+        return validator.heading_slugs(path)
+
+    def test_heading_slugs_match_github_anchoring(self) -> None:
+        """Each case is an anchor GitHub accepts; rejecting one is a false failure."""
+        cases: list[tuple[str, str, set[str]]] = [
+            ("plain ATX", "## Pre-PR Checks\n", {"pre-pr-checks"}),
+            ("repeated heading", "# Same\n# Same\n# Same\n", {"same", "same-1", "same-2"}),
+            ("non-ASCII letters", "# Café résumé\n", {"café-résumé"}),
+            ("underscores survive", "# server_py notes\n", {"server_py-notes"}),
+            ("Setext", "Title Here\n==========\n", {"title-here"}),
+            ("indented up to three spaces", "   # Indented\n", {"indented"}),
+            ("inline link collapses", "# [Install](README.md)\n", {"install"}),
+            ("explicit HTML anchor", '<a name="manual"></a>\n', {"manual"}),
+            (
+                "punctuation dropped, spacing kept",
+                "## D-1 — Scan every root; never pick one\n",
+                {"d-1--scan-every-root-never-pick-one"},
+            ),
+        ]
+        for label, body, expected in cases:
+            with self.subTest(case=label):
+                self.assertEqual(expected, self.slugs_for(body))
+
+    def test_heading_slugs_ignore_code_and_frontmatter(self) -> None:
+        """A `#` inside a fence is a shell comment; treating it as a heading
+        invents an anchor that silently satisfies a dangling link."""
+        for label, body in [
+            ("backtick fence", "```bash\n# not a heading\n```\n"),
+            ("tilde fence", "~~~\n# not a heading\n~~~\n"),
+            ("frontmatter", "---\nname: x\ndescription: y\n---\n"),
+        ]:
+            with self.subTest(case=label):
+                self.assertEqual(set(), self.slugs_for(body))
+
+    def test_markdown_links_accept_valid_commonmark(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-links-") as directory:
+            root = Path(directory).resolve()
+            (root / "real.md").write_text("# Heading\n", encoding="utf-8")
+            for label, body in [
+                ("quoted title", '[x](real.md "the title")\n'),
+                ("parenthesised title", "[x](real.md (the title))\n"),
+                ("angle-bracket destination", "[x](<real.md>)\n"),
+                ("image", "![alt](real.md)\n"),
+                ("link inside a tilde fence", "~~~\n[x](absent.md)\n~~~\n"),
+                ("fragment on a resolving target", "[x](real.md#heading)\n"),
+            ]:
+                with self.subTest(case=label):
+                    (root / "doc.md").write_text(body, encoding="utf-8")
+                    validation = validator.Validation()
+
+                    with mock.patch.object(validator, "ROOT", root):
+                        validator.validate_markdown_links(root / "doc.md", validation)
+
+                    self.assertEqual([], validation.errors)
+
+    def test_markdown_links_still_reject_real_breakage(self) -> None:
+        """The permissiveness above must not blunt the checks that matter."""
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-links-") as directory:
+            root = Path(directory).resolve()
+            (root / "real.md").write_text("# Heading\n", encoding="utf-8")
+            for label, body, fragment in [
+                ("missing target", "[x](gone.md)\n", "does not exist"),
+                ("escapes the repository", "[x](../../outside.md)\n", "escapes the repository"),
+                ("dangling fragment", "[x](real.md#absent)\n", "anchor does not exist"),
+                ("title does not excuse a miss", '[x](gone.md "t")\n', "does not exist"),
+            ]:
+                with self.subTest(case=label):
+                    (root / "doc.md").write_text(body, encoding="utf-8")
+                    validation = validator.Validation()
+
+                    with mock.patch.object(validator, "ROOT", root):
+                        validator.validate_markdown_links(root / "doc.md", validation)
+
+                    self.assertTrue(
+                        any(fragment in error for error in validation.errors), validation.errors
+                    )
+
     def test_root_docs_lists_every_prose_doc_in_the_repository(self) -> None:
         """ROOT_DOCS is what decides coverage; a silent drop must fail here.
 
