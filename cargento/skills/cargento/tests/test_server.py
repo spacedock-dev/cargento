@@ -4877,6 +4877,28 @@ class SpacedockReadContractTest(unittest.TestCase):
             [(e["slug"], e["stage"], e["live"]) for e in strips[0]["entities"]],
         )
 
+    def test_a_failed_wrap_does_not_leak_the_descriptor(self) -> None:
+        """os.fdopen leaves the fd open when it raises, and this runs every
+        refresh — a leak here exhausts the descriptor table."""
+        root = self.workflow(self.README)
+        opened: list[int] = []
+        real_open = os.open
+
+        def counting_open(*args: object, **kwargs: object) -> int:
+            descriptor = real_open(*args, **kwargs)  # type: ignore[arg-type]
+            opened.append(descriptor)
+            return descriptor
+
+        with (
+            mock.patch.object(os, "open", counting_open),
+            mock.patch.object(os, "fdopen", side_effect=OSError("boom")),
+        ):
+            self.assertIsNone(dashboard.sd_read_workflow(str(root)))
+
+        self.assertEqual(1, len(opened))
+        with self.assertRaises(OSError):
+            os.fstat(opened[0])
+
     def test_no_workflow_no_strip(self) -> None:
         self.assertEqual([], dashboard.sd_session_workflows([], []))
         self.assertEqual(

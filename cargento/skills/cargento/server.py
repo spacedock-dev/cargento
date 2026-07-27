@@ -2215,11 +2215,17 @@ def sd_read_workflow(workflow_dir: str) -> dict[str, Any] | None:
     result: dict[str, Any] | None = None
     descriptor = sd_open_regular(readme)
     if descriptor is not None:
+        raw = b""
         try:
-            with os.fdopen(descriptor, "rb") as handle:
-                raw = handle.read(SD_README_BYTES)
+            handle = os.fdopen(descriptor, "rb")
         except OSError:
-            raw = b""
+            # os.fdopen does not close the descriptor when it fails to wrap it,
+            # and this runs on every refresh — leaking here exhausts the table.
+            with contextlib.suppress(OSError):
+                os.close(descriptor)
+        else:
+            with handle, contextlib.suppress(OSError):
+                raw = handle.read(SD_README_BYTES)
         lines = sd_frontmatter_lines(raw.decode("utf-8", "replace"))
         if sd_scalar(lines, "commissioned-by").startswith(SD_COMMISSIONED_PREFIX):
             stages = sd_stage_names(lines)
