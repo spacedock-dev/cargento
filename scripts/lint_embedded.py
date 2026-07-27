@@ -62,7 +62,10 @@ def check_js(js: str, *, allow_missing_node: bool) -> list[str]:
             print(f"warning: {message}")
             return []
         return [message + " (install node or pass --allow-missing-node)"]
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
+    # Explicit UTF-8: without it Windows writes through the locale codec (cp1252),
+    # and any non-Latin-1 character in the page — an arrow, a box-drawing glyph —
+    # raises UnicodeEncodeError instead of being linted. node reads UTF-8.
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
         handle.write(js)
         temp_path = Path(handle.name)
     try:

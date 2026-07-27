@@ -80,6 +80,19 @@ class CheckJsWithoutNodeTest(unittest.TestCase):
             self.assertEqual([], lint_embedded.check_js("const x = 1;", allow_missing_node=True))
 
 
+class NonLatin1PageTest(unittest.TestCase):
+    """The page carries an arrow glyph. Writing the extracted JS through a
+    locale codec (cp1252 on Windows) raises instead of linting it."""
+
+    def test_check_js_handles_characters_outside_latin_1(self) -> None:
+        findings = lint_embedded.check_js(
+            'const arrow = "\u2192"; const box = "\u2500";\n',
+            allow_missing_node=True,
+        )
+
+        self.assertEqual([], findings)
+
+
 class MainAgainstRealPageTest(unittest.TestCase):
     def test_real_page_is_clean(self) -> None:
         argv = ["lint_embedded.py"]
