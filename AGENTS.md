@@ -44,6 +44,11 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `cargento/skills/cargento/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
+| `.claude/skills/*/SKILL.md` | Repository development skills (`sync-docs`). Not shipped with the plugin, so the portability rules below do not apply to them. |
+
+`scripts/validate_plugins.py` gates the docs as well as the plugin: across the files above it
+resolves every relative Markdown link **and heading anchor**, and rejects the `localhost` spelling of
+the dashboard URL (the server is IPv4-only). Deleting or renaming any of them fails the build.
 
 Run `/sync-docs` before opening a PR (see Pre-PR Checks) so doc updates ride in the PR that changes
 the code. Claude Code discovers it as a skill; on other harnesses, read
@@ -129,7 +134,7 @@ Shared skill bodies must work in every harness:
 - No `${CLAUDE_PLUGIN_ROOT}` in skill bodies — resolve resources relative to `SKILL.md`.
 - No `.claude/skills/` paths in skill bodies — reference the bundled skill path, not a user cache.
 - No host-specific tool names (`mcp__claude_ai_*`, `ToolSearch(`, `Skill(skill=`, `subagent_type`) — describe capabilities semantically.
-- The validator (`scripts/validate_plugins.py`) rejects all six of these markers in any bundled Markdown, and resolves every relative Markdown link in the repository's prose docs and bundled skill resources.
+- The validator (`scripts/validate_plugins.py`) rejects all six of these markers in any bundled Markdown.
 
 These rules apply to Markdown **under `cargento/skills/`**. In `AGENTS.md` and `CLAUDE.md` the same
 strings are the documentation of the rule and must stay.

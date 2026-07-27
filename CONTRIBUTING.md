@@ -80,7 +80,14 @@ targeted test actually fails.
 - The plugin **version** must be identical everywhere it appears (marketplace metadata + entry, and the Claude, Codex, and Gemini manifests); the **description** in five places (marketplace entry, those three manifests, plus the Antigravity `plugin.json`). **Never bump versions in a PR** — the `version-guard` check will fail it; see [Releases](#releases).
 - Skill bodies must stay **host-neutral**: no `${CLAUDE_PLUGIN_ROOT}`, no host-specific tool names. Describe capabilities, not tool APIs.
 - The skill description is at most 300 characters, and `agents/openai.yaml` keeps its 25–64 character short description.
-- Every relative Markdown link — in the skill and in the repository's prose docs — must resolve within the repository.
+- Every relative Markdown link — in the skill and in the repository's prose docs — must resolve
+  within the repository, **and so must every `#heading-anchor`**. Anchors are slugged the way GitHub
+  does it, so a link to a heading you renamed fails the build.
+- No prose doc may spell the dashboard URL with `localhost`; the server binds IPv4 loopback only, so
+  it is always `127.0.0.1:4553`.
+- Two link forms the checker cannot parse, both avoidable: unbalanced parentheses in a bare
+  destination (wrap the target in `<>`), and links inside a four-space-indented code block (use a
+  fence instead).
 
 ### Design constraints for `server.py`
 

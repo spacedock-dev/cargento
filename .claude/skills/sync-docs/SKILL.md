@@ -72,8 +72,9 @@ diff-and-reconcile pass, not a rewrite.
   `${CLAUDE_PLUGIN_ROOT}`, the user-cache skills path, `mcp__claude_ai_`, `ToolSearch(`,
   `Skill(skill=`, `subagent_type`. *(That second one is why this skill's own path must never be
   pasted into the skill body — write it out in prose instead.)*
-- Every relative Markdown link must resolve inside the repository. In practice: **do not add links
-  to repo files at all**, because the plugin is installed without the repository around it.
+- Every relative Markdown link and `#heading-anchor` must resolve inside the repository. In
+  practice: **do not add links to repo files at all**, because the plugin is installed without the
+  repository around it.
 - The documentation-matches-code test additionally requires: every backticked `~/…` path must
   prefix-match (in either direction) a real `resolve_store_roots` output, except `~/.claude/settings*`
   which is carved out; the set of backticked store environment variables must **equal**
