@@ -104,8 +104,9 @@ the job before investigating, and check the traceback is a timeout rather than a
 - **Build every SQLite URI with `sqlite_ro_uri()`**, never an f-string — SQLite percent-decodes the path, and a Windows path needs separator and drive-letter conversion. Never generalize `immutable=1` beyond the one documented Antigravity call site: on a live agent database it can return incorrect results or `SQLITE_CORRUPT`.
 - **Never `mmap` a file a live harness is writing.** Truncation mid-read is an uncatchable `SIGBUS` on POSIX. Tail transcripts through `reverse_lines()`.
 - **Compute freshness only through `age()` / `is_fresh()` / `newest_plausible()`**, which reject implausibly future timestamps rather than clamping them — a clamped zero reads as "just now", which is the bug.
+- **Read nothing inside a project except what `SECURITY.md` § Project reads permits.** Today that is Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded. Never derive a project path by guessing, scanning or walking.
 
-The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md).
+The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md) and, for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md).
 
 ## Commits
 

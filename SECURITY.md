@@ -22,28 +22,46 @@ stores, or the hook client reaching a non-loopback destination — is a security
 
 ## Project reads (Spacedock stage strips)
 
-One feature reads a path that is not under a store root. When a session declares itself a Spacedock
-first officer, Cargento reads the **YAML frontmatter of one workflow `README.md`** so it can show
-the workflow's ordered stages. That is the whole of it — no other project file is opened, and no
-directory is ever walked.
+One feature reads paths that are not under a store root. When a session declares itself a Spacedock
+first officer, Cargento reads **YAML frontmatter only**, from two kinds of file, so it can show
+where each entity sits on its workflow's stage spine:
 
-The path is not guessed. The first officer's own `spacedock status --boot` output, already recorded
-in its transcript, names the workflow directory as an absolute path; Cargento uses that value and
-nothing else. Before the file is opened, all of the following must hold, and a path failing any one
-is skipped silently:
+1. one workflow `README.md`, for the ordered stage list and which stages are initial or terminal;
+2. the entity files in that workflow's **entity-state directory**, for each entity's current
+   `status`.
+
+That is the whole of it. No other project file is opened, and the only directory listed is the
+entity-state directory itself — one non-recursive `scandir`, never a walk.
+
+Neither path is guessed. The first officer's own `spacedock status --boot` output, already recorded
+in its transcript, names the workflow directory **and** the entity-state directory as absolute
+paths; Cargento uses those values and nothing else. Before any file is opened, all of the following
+must hold, and a path failing any one is skipped silently:
 
 - the directory value is **absolute** and contains no NUL;
-- the path is canonicalised with `realpath`, and the README must still resolve **inside** that
-  directory (`commonpath` containment), so a swapped entry cannot redirect the read;
-- the README is a **regular file and not a symlink** — checked with `lstat`, and opened with
-  `O_NOFOLLOW` where the platform has it. Windows has no `O_NOFOLLOW`, so there the guarantee rests
+- the path is canonicalised with `realpath`, and the README must still resolve **inside** the
+  workflow directory (`commonpath` containment), so a swapped entry cannot redirect the read;
+- every file opened is a **regular file and not a symlink** — checked with `lstat`, opened with
+  `O_NOFOLLOW` where the platform has it, and confirmed with an `fstat` `(st_dev, st_ino)` match
+  against the `stat` the cache key was built from, so a parent-directory swap between the two cannot
+  seed the cache from a different file. Windows has no `O_NOFOLLOW`, so there the guarantee rests
   on the `lstat` classification alone and a racing reparse-point swap could still be followed. That
   is the same unclosable class as the `FILE_SHARE_DELETE` window described in the skill body;
-- the frontmatter declares `commissioned-by: spacedock@` — Spacedock's own workflow discriminator.
+- the README frontmatter declares `commissioned-by: spacedock@` — Spacedock's own workflow
+  discriminator.
 
-Hard caps: at most 64 KiB read from the file, 400 frontmatter lines scanned, 32 stage names taken,
-and 8 workflows per session. Results are cached on `(realpath, st_mtime_ns, st_size)`, so an
-unchanged README costs one `stat` per refresh.
+The entity-state directory is deliberately **not** required to sit inside the workflow directory: a
+`split-root` workflow legitimately keeps its state elsewhere, and it carries the same authority as
+the workflow path, having come from the same tool result. The per-file discriminator stands in for
+containment there — an entity file counts only if its name is a well-formed slug
+(`^[a-z0-9][a-z0-9-]*[a-z0-9]$`, which also excludes `_archive/` and any report left beside the
+state) and its `status` names a stage the README declared.
+
+Hard caps: at most 64 KiB read from a README and 8 KiB from an entity file, 400 frontmatter lines
+scanned, 32 stage names taken, 96 entity files read per workflow (newest first), 12 entities
+rendered per workflow, and 8 workflows per session. Both reads are cached on
+`(realpath, st_mtime_ns, st_size)`, so an unchanged file costs one `stat` per refresh. Entity files
+older than the dashboard's freshness window are not opened at all.
 
 **Only derived scalars reach `/api/data`** — stage names (each validated against Spacedock's
 `^[a-z0-9][a-z0-9-]*[a-z0-9]$` grammar), entity slugs, and cycle markers. No file text, no
