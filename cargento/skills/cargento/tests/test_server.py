@@ -2106,7 +2106,10 @@ class ReverseLinesTest(unittest.TestCase):
 
     def write(self, tmp: str, text: str) -> str:
         path = Path(tmp) / "t.jsonl"
-        path.write_text(text)
+        # write_bytes, not write_text: Windows text mode translates "\n" to
+        # "\r\n", and these tests assert on exact byte boundaries. Harnesses
+        # write LF transcripts, which is what this reproduces.
+        path.write_bytes(text.encode())
         return str(path)
 
     def read_back(self, path: str, **kwargs: Any) -> list[str]:
@@ -2179,6 +2182,24 @@ class ReverseLinesTest(unittest.TestCase):
                     self.assertEqual(unfiltered, filtered)
                     self.assertEqual(6, len(filtered))
 
+    def test_crlf_transcripts_still_parse(self) -> None:
+        # Harnesses write LF, but a transcript can pick up CRLF by being copied
+        # through a Windows tool. Lines split on "\n" keep a trailing "\r";
+        # that must not change what the readers extract.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "crlf.jsonl"
+            path.write_bytes(
+                b"\r\n".join(
+                    [
+                        json.dumps({"type": "ai-title", "aiTitle": "CRLF title"}).encode(),
+                        json.dumps({"type": "user", "uuid": "u-crlf"}).encode(),
+                    ]
+                )
+                + b"\r\n"
+            )
+            self.assertEqual("CRLF title", dashboard.claude_session_title(str(path)))
+            self.assertEqual("u-crlf", dashboard.claude_last_user_event(str(path)))
+
     def test_end_pos_limits_the_scan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write(tmp, "aaa\nbbb\nccc\n")
@@ -2197,7 +2218,7 @@ class ReverseLinesTest(unittest.TestCase):
             with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", 16):
                 walker = dashboard.reverse_lines(path)
                 next(walker)
-                Path(path).write_text("")  # writer rotates the transcript
+                Path(path).write_bytes(b"")  # writer rotates the transcript
                 remaining = list(walker)  # must not raise
         self.assertIsInstance(remaining, list)
 
@@ -2363,6 +2384,25 @@ class DiagnoseTest(unittest.TestCase):
         self.assertEqual("missing", report["stores"]["claude.tasks"]["candidates"][0]["kind"])
         self.assertEqual(sys.platform, report["platform"])
         self.assertIn("available", report["sqlite"])
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission bits; Windows uses ACLs")
+    def test_an_unreadable_store_is_distinguished_from_a_missing_one(self) -> None:
+        # The distinction that matters on Windows, where Defender, EDR, and
+        # OneDrive hydration all produce transient permission failures: a store
+        # that exists but cannot be read must not look like an absent harness.
+        with tempfile.TemporaryDirectory() as tmp:
+            locked = Path(tmp) / "locked"
+            locked.mkdir()
+            locked.chmod(0o000)
+            try:
+                report = dashboard.candidate_report(str(locked))
+            finally:
+                locked.chmod(0o700)  # or TemporaryDirectory cannot clean up
+
+        self.assertEqual("directory", report["kind"])
+        self.assertFalse(report["readable"])
+        self.assertIn("PermissionError", report["error"])
+        self.assertNotEqual("missing", report["kind"])
 
     def test_rendering_is_ascii_only(self) -> None:
         # This output gets pasted into issues from consoles whose encoding we

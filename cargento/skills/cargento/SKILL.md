@@ -102,5 +102,7 @@ lsof -ti tcp:4553 -sTCP:LISTEN | xargs kill
 ## Common mistakes
 
 - The server binds to 127.0.0.1 only — do not "fix" it to 0.0.0.0; it exposes local session data.
+- A harness the user expects is missing: run `--diagnose` before guessing. It distinguishes "no store here", "store present but unreadable", and "store read, no recent sessions" — the collectors cannot, because they skip unreadable stores silently by design.
+- On Windows, Cargento briefly holds a transcript open while reading it, and Python cannot request `FILE_SHARE_DELETE`. If a harness rotates that exact file in that window it may see a sharing violation. Reads are short and bounded, but the window is not zero; there is no way to close it from Python without native calls.
 - A session stuck on "Needs input" after you already answered: the state clears on the next transcript event; `SessionEnd` clears it on a clean Claude exit; a server restart also clears hook-reported notifications (they're in-memory). An abrupt kill cannot be distinguished from a terminal left open at a prompt, so it clears only by a later transcript event or restart.
 - After two missed refreshes, the live header changes to "stalled" and shows the last successful update — restart the server, no need to reload the page.
