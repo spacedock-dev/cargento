@@ -966,7 +966,19 @@ class CargentoServerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as holder:
             script = Path(holder) / "probe.mjs"
             script.write_text(probe, encoding="utf-8")
-            proc = subprocess.run([node, str(script)], capture_output=True, text=True, check=True)
+            # Explicit UTF-8 both ways. node reads and writes UTF-8; `text=True`
+            # alone decodes through the locale codec, so on Windows (cp1252) the
+            # ellipsis comes back as "â€¦" — three characters, which fails both
+            # the "elided" and the width assertion below for a reason that has
+            # nothing to do with the code under test.
+            proc = subprocess.run(
+                [node, str(script)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+                check=True,
+            )
         short, first, second = json.loads(proc.stdout)
 
         self.assertEqual("drc-3832", short)  # under the cap, untouched
