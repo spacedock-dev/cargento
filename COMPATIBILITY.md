@@ -30,7 +30,7 @@ Other notes:
 - Needs-input detection exists only for Claude Code sessions — other harnesses expose no equivalent signal in their local stores.
 - Store locations resolve per platform, and `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, and `COPILOT_HOME` are honored. Run `server.py --diagnose` to see every path searched and what was found there.
 - Supported WSL topology is server and agents on the same side of the boundary. Reading a Windows-side store from inside WSL works over `/mnt/c` but 9p latency and mtime granularity make state detection unreliable, so it is not supported.
-- `sqlite3` is an optional stdlib module. On a build without it (some musl/Alpine images) the four database-backed harnesses report undiscovered and the rest still work.
+- `sqlite3` is an optional stdlib module. On a build without it (some musl/Alpine images) OpenCode, Cursor and Goose report undiscovered; Antigravity still appears, since its discovery and state come from store mtime and CLI logs, but without a token rate or turn ETA.
 
 ## Validation
 

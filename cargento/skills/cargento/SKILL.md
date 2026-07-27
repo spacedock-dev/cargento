@@ -75,6 +75,8 @@ Two paths manage needs-input state, and two layers can deliver the popup. **Exac
 
 Both layers notify on the *transition* into needs-input, not on every refresh a session spends blocked.
 
+**Known gap:** idle nudges (`idle_prompt`) pop without marking the session blocked. The server delivers those on macOS, but the page only notifies on a needs-input transition — so on Linux and Windows an idle nudge produces no popup today. Closing it needs a one-shot event channel in `/api/data`; it is tracked for Phase 6 alongside the native backends rather than bolted on here.
+
 1. **Transcript detection** — an open AskUserQuestion flips the session to Needs input on the next poll (the UI polling `/api/data` drives this; keep a dashboard tab open).
 2. **Lifecycle hooks** — `Notification` and `SessionEnd` hooks in user settings (`~/.claude/settings.json`) POSTing their payloads to `http://127.0.0.1:4553/api/notify`. Notifications cover permission prompts and idle waits, even with no browser tab open. The structured `notification_type` decides whether a notification is actionable. Idle nudges (`idle_prompt`, message "Claude is waiting for your input") pop once but never mark the session blocked; authentication/completion notifications do neither; permission prompts and MCP elicitation dialogs create Needs-input state. `SessionEnd` clears a standing hook when Claude exits cleanly. These hooks are NOT installed by the plugin — if the user wants path 2, offer to add them to their `~/.claude/settings.json`:
 
@@ -104,10 +106,10 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 
 | Flag / URL | Effect |
 |---|---|
-| `--port N` | Change port (default 4553). If the port is busy, check `curl -s localhost:4553/api/data` first — a running dashboard may already be there; don't kill it blindly. |
+| `--port N` | Change port (default 4553). If the port is busy, check `curl -s http://127.0.0.1:4553/api/data` first — a running dashboard may already be there; don't kill it blindly. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
-| `http://localhost:4553/?all=1` | Show all sessions ever, including idle ones |
+| `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 
 ## Interpretation notes (share with the user if asked)

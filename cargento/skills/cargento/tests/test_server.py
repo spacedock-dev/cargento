@@ -49,6 +49,7 @@ class CargentoServerTest(unittest.TestCase):
             dashboard._last_popup.clear()
             dashboard._last_popup_message.clear()
             dashboard._last_state.clear()
+            dashboard._hook_generation.clear()
         with dashboard._cache_lock:
             dashboard._meta_cache.clear()
             dashboard._cursor_title_cache.clear()
@@ -3013,11 +3014,6 @@ class ReviewFixTest(unittest.TestCase):
         self.assertEqual("working", fresh[0]["state"], "fresh mtime was masked")
         self.assertEqual("idle", stale[0]["state"], "future record invented activity")
 
-    def test_any_fresh_ignores_one_implausible_source(self) -> None:
-        self.assertTrue(dashboard.any_fresh(self.NOW, (self.NOW + 86_400, self.NOW), 90))
-        self.assertFalse(dashboard.any_fresh(self.NOW, (self.NOW + 86_400, self.NOW - 500), 90))
-        self.assertFalse(dashboard.any_fresh(self.NOW, (), 90))
-
     def test_the_same_session_in_two_stores_yields_one_row(self) -> None:
         # Scanning every candidate root can find a session left behind by a
         # migration twice; the DB-backed collectors append per store.
@@ -3069,7 +3065,7 @@ class ReviewFixTest(unittest.TestCase):
         # Defender lock, which surfaces as listdir raising, not as a mode bit.
         with (
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(dashboard.os, "listdir", side_effect=PermissionError("locked")),
+            mock.patch.object(dashboard.os, "scandir", side_effect=PermissionError("locked")),
         ):
             report = dashboard.candidate_report(tmp)
         self.assertEqual("directory", report["kind"])
@@ -3285,6 +3281,85 @@ class VerificationFixTest(unittest.TestCase):
             self.assertIn(str(cursor), dashboard._store_errors)
             # A title the query never returned must not be cached as "no title".
             self.assertNotIn(str(cursor), dashboard._cursor_title_cache)
+
+
+class HookOrderingTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # This class does not inherit CargentoServerTest's shared reset, and
+        # these tests mutate process-wide hook state.
+        with dashboard._lock:
+            dashboard._hook_notifs.clear()
+            dashboard._last_state.clear()
+            dashboard._hook_generation.clear()
+            dashboard._last_popup.clear()
+            dashboard._last_popup_message.clear()
+
+    def test_session_end_is_not_undone_by_a_slow_notification(self) -> None:
+        # Notification handling does transcript lookups outside the lock. A
+        # SessionEnd arriving during one used to be silently overwritten when
+        # the notification committed its now-stale state.
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_lookup(_prefix: str) -> bool:
+            started.set()
+            release.wait(timeout=5)
+            return False
+
+        def request(payload: dict[str, Any]) -> Any:
+            handler = dashboard.Handler.__new__(dashboard.Handler)
+            body = json.dumps(payload).encode()
+            handler.headers = {"Content-Length": str(len(body))}
+            handler.path = "/api/notify"
+            handler.rfile = io.BytesIO(body)
+            handler._local_ok = lambda **_kw: True
+            handler._send = lambda *_a, **_k: None
+            return handler
+
+        session = "deadbeef-0000-0000-0000-000000000000"
+        with (
+            mock.patch.object(dashboard, "claude_prefix_is_agent", slow_lookup),
+            mock.patch.object(dashboard, "notify_mac"),
+        ):
+            notification = request(
+                {
+                    "session_id": session,
+                    "hook_event_name": "Notification",
+                    "notification_type": "permission_prompt",
+                    "message": "permission",
+                }
+            )
+            thread = threading.Thread(target=notification.do_POST)
+            thread.start()
+            self.assertTrue(started.wait(timeout=5))
+            request({"session_id": session, "hook_event_name": "SessionEnd"}).do_POST()
+            release.set()
+            thread.join(timeout=5)
+
+        self.assertEqual({}, dashboard._hook_notifs, "SessionEnd was undone")
+
+    def test_an_unraced_notification_still_records(self) -> None:
+        session = "cafebabe-0000-0000-0000-000000000000"
+        handler = dashboard.Handler.__new__(dashboard.Handler)
+        body = json.dumps(
+            {
+                "session_id": session,
+                "hook_event_name": "Notification",
+                "notification_type": "permission_prompt",
+                "message": "permission",
+            }
+        ).encode()
+        handler.headers = {"Content-Length": str(len(body))}
+        handler.path = "/api/notify"
+        handler.rfile = io.BytesIO(body)
+        handler._local_ok = lambda **_kw: True
+        handler._send = lambda *_a, **_k: None
+        with (
+            mock.patch.object(dashboard, "claude_prefix_is_agent", lambda _: False),
+            mock.patch.object(dashboard, "notify_mac"),
+        ):
+            handler.do_POST()
+        self.assertIn("cafebabe", dashboard._hook_notifs)
 
 
 class NativeNotifierTest(unittest.TestCase):

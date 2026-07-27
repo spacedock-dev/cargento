@@ -269,6 +269,11 @@ _hook_notifs: dict[str, dict[str, Any]] = {}
 _last_popup: dict[str, float] = {}  # session prefix -> epoch
 _last_popup_message: dict[str, tuple[str, float]] = {}  # prefix -> (message, epoch)
 _last_state: dict[str, str] = {}  # session prefix -> state string (popup on transition)
+# Bumped whenever a session's hook state is cleared. A Notification handler
+# samples it before its slow transcript lookup and refuses to commit if the
+# value moved — otherwise a SessionEnd arriving mid-lookup is undone by the
+# notification it was meant to supersede.
+_hook_generation: dict[str, int] = {}
 _cache_lock = threading.Lock()
 
 
@@ -654,23 +659,19 @@ def is_fresh(now: float, timestamp: float, window_sec: float) -> bool:
 def newest_plausible(now: float, timestamps: Iterable[float]) -> float:
     """Newest timestamp that is not implausibly ahead of ``now``; 0 if none.
 
-    For display and ordering, where plain ``max()`` picks the clock-skewed
-    value — which renders as "–" in the UI and, worse, beats a perfectly good
-    copy of the same session during de-duplication.
+    Every activity decision goes through this rather than ``max()``. ``max()``
+    picks the *implausible* value — a future timestamp is by definition the
+    largest — so rejecting it afterwards throws away the good evidence too, and
+    a transcript being written right now but holding one clock-skewed record
+    reads Idle. That is the opposite of what rejecting future timestamps is
+    for. It also matters for display (a skewed value renders as "–") and for
+    de-duplication, where it would beat a perfectly good copy of the session.
+
+    Callers then test the result with ``is_fresh()``: freshness is monotonic in
+    the timestamp, so checking the newest plausible source is equivalent to
+    checking them all, at half the work on every five-second refresh.
     """
     return max((t for t in timestamps if age(now, t) is not None), default=0.0)
-
-
-def any_fresh(now: float, timestamps: Iterable[float], window_sec: float) -> bool:
-    """Whether *any* of ``timestamps`` is plausible and inside the window.
-
-    Deliberately not ``is_fresh(now, max(timestamps), …)``. ``max()`` picks the
-    implausible one — a future timestamp is by definition the largest — and
-    rejecting it then discards the good evidence alongside it. A transcript
-    being written right now but holding one clock-skewed record would read
-    Idle, which is the opposite of what rejecting future timestamps is for.
-    """
-    return any(is_fresh(now, timestamp, window_sec) for timestamp in timestamps)
 
 
 def glob_under(root: str, *pattern: str) -> list[str]:
@@ -1850,7 +1851,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             latest_child_mtime,
         )
         last_activity = newest_plausible(now, activity_sources)
-        active = any_fresh(now, activity_sources, window_hours * 3600)
+        active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
 
@@ -1882,7 +1883,9 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         # tasks and will resume on their own. A hook only surfaces as
         # needs-input once the session actually goes quiet; permission-prompt
         # popups are unaffected (they fire on the POST itself).
-        elif subagents or any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
+        elif subagents or is_fresh(
+            now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC
+        ):
             state = "working"
             in_prog = next((t for t in tasks if t["status"] == "in_progress"), None)
             if in_prog:
@@ -1986,14 +1989,14 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         agents = sorted(data["agents"], key=lambda a: -a[1])
         activity_sources = (mtime, *(m for _, m in agents))
         last_activity = newest_plausible(now, activity_sources)
-        active = any_fresh(now, (mtime, *(m for _, m in agents)), window_hours * 3600)
+        active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_codex_transcript(fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
+        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, subagents)
 
@@ -2354,14 +2357,14 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
         agents = sorted(agents_by_parent.get(alnum(sid), []), key=lambda a: -a[1])
         activity_sources = (mtime, *(m for _, m in agents))
         last_activity = newest_plausible(now, activity_sources)
-        active = any_fresh(now, (mtime, *(m for _, m in agents)), window_hours * 3600)
+        active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_gemini_transcript(fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
+        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, subagents)
 
@@ -2414,7 +2417,7 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
         subagents: list[str] = []
-        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
+        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
             state = "working"
             subagents = list((info or {}).get("pending_agents", {}).values())
             state_detail = working_detail(info, subagents)
@@ -2500,12 +2503,12 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                 agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
                 activity_sources = (upd, *(m for _, m in agents))
                 last_activity = newest_plausible(now, activity_sources)
-                active = any_fresh(now, activity_sources, window_hours * 3600)
+                active = is_fresh(now, last_activity, window_hours * 3600)
                 if not (active or show_all):
                     continue
                 subagents = [label for label, _ in agents]
                 state, state_detail = "idle", "awaiting your message"
-                if any_fresh(now, activity_sources, WORKING_THRESHOLD_SEC):
+                if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
                     state = "working"
                     state_detail = working_detail(None, subagents)
 
@@ -2716,12 +2719,12 @@ def collect_goose_db(
             agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
             activity_sources = (upd, *(m for _, m in agents))
             last_activity = newest_plausible(now, activity_sources)
-            active = any_fresh(now, activity_sources, window_hours * 3600)
+            active = is_fresh(now, last_activity, window_hours * 3600)
             if not (active or show_all):
                 continue
             subagents = [label for label, _ in agents]
             state, state_detail = "idle", "awaiting your message"
-            if any_fresh(now, activity_sources, WORKING_THRESHOLD_SEC):
+            if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
                 state = "working"
                 state_detail = working_detail(None, subagents)
 
@@ -2805,7 +2808,7 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
         info = analyze_droid_transcript(fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
-        if any_fresh(now, last_event_sources, WORKING_THRESHOLD_SEC):
+        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = working_detail(info, [])
 
@@ -3793,6 +3796,7 @@ class Handler(BaseHTTPRequestHandler):
                 with _lock:
                     _hook_notifs.pop(prefix, None)
                     _last_state.pop(prefix, None)
+                    bounded_put(_hook_generation, prefix, _hook_generation.get(prefix, 0) + 1)
             self._send(b'{"ok":true,"cleared":"session_end"}', "application/json")
             return
         raw_message = payload.get("message")
@@ -3804,6 +3808,10 @@ class Handler(BaseHTTPRequestHandler):
         )
         kind = normalized_notification_type(payload.get("notification_type"))
         needs_input, popup = notification_disposition(kind, message)
+        # Sampled before the transcript lookups below, which are slow enough
+        # for a SessionEnd to land in between and be silently undone.
+        with _lock:
+            generation = _hook_generation.get(prefix, 0)
         # Subagent sessions also emit Notification-hook events (permission
         # prompts inside agents). They are not user-facing sessions — a popup
         # about them is noise the human cannot act on from the dashboard.
@@ -3818,11 +3826,16 @@ class Handler(BaseHTTPRequestHandler):
             if found:
                 hook["user_event"] = user_event
         with _lock:
+            if prefix and _hook_generation.get(prefix, 0) != generation:
+                # The session ended while this notification was being processed.
+                self._send(b'{"ok":true,"superseded":true}', "application/json")
+                return
             if prefix:
                 clears_input = kind in CLEARING_NOTIFICATION_TYPES or (not kind and not needs_input)
                 if clears_input:
                     _hook_notifs.pop(prefix, None)
                     _last_state.pop(prefix, None)
+                    bounded_put(_hook_generation, prefix, generation + 1)
                 elif needs_input:
                     bounded_put(_hook_notifs, prefix, hook)
             popup_key = prefix or "_anonymous"
@@ -3885,7 +3898,8 @@ def candidate_report(path: str) -> dict[str, Any]:
     if stat_module.S_ISDIR(stat_result.st_mode):
         entry["kind"] = "directory"
         try:
-            entry["entries"] = len(os.listdir(path))
+            with os.scandir(path) as scan:
+                entry["entries"] = sum(1 for _ in scan)  # streamed, not materialised
             entry["readable"] = True
         except OSError as exc:
             entry["error"] = f"{type(exc).__name__}: {exc}"
@@ -4016,8 +4030,9 @@ def main() -> None:
         return
     if not sqlite_available():
         diag(
-            f"Cargento: sqlite3 unavailable ({SQLITE_IMPORT_ERROR}) — OpenCode, Cursor, "
-            "Goose, and Antigravity sessions cannot be read. Install the sqlite3 "
+            f"Cargento: sqlite3 unavailable ({SQLITE_IMPORT_ERROR}) — OpenCode, "
+            "Cursor and Goose sessions cannot be read; Antigravity still appears "
+            "but without its token rate or turn ETA. Install the sqlite3 "
             "extension for this interpreter to enable them."
         )
     # Bind to loopback only — this exposes local session data.
