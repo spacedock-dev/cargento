@@ -269,10 +269,16 @@ _hook_notifs: dict[str, dict[str, Any]] = {}
 _last_popup: dict[str, float] = {}  # session prefix -> epoch
 _last_popup_message: dict[str, tuple[str, float]] = {}  # prefix -> (message, epoch)
 _last_state: dict[str, str] = {}  # session prefix -> state string (popup on transition)
-# Bumped whenever a session's hook state is cleared. A Notification handler
-# samples it before its slow transcript lookup and refuses to commit if the
-# value moved — otherwise a SessionEnd arriving mid-lookup is undone by the
-# notification it was meant to supersede.
+# Bumped only by SessionEnd — the one event meaning "this session is gone".
+# Notification handling and collection both sample it before their slow
+# transcript lookups and refuse to act if it moved, so a SessionEnd arriving
+# mid-lookup is not undone by the notification it supersedes.
+#
+# Deliberately NOT bumped by clearing notifications (agent_completed,
+# idle_prompt): those end one alert, not the session. Bumping there dropped an
+# actionable permission prompt that happened to overlap a clearing one — losing
+# a real "Claude is blocked" signal, which is worse than the stale state this
+# guard exists to prevent.
 _hook_generation: dict[str, int] = {}
 _cache_lock = threading.Lock()
 
@@ -3853,7 +3859,6 @@ class Handler(BaseHTTPRequestHandler):
                 if clears_input:
                     _hook_notifs.pop(prefix, None)
                     _last_state.pop(prefix, None)
-                    bounded_put(_hook_generation, prefix, generation + 1)
                 elif needs_input:
                     bounded_put(_hook_notifs, prefix, hook)
             popup_key = prefix or "_anonymous"

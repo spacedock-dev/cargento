@@ -3401,6 +3401,72 @@ class HookOrderingTest(unittest.TestCase):
         self.assertEqual("idle", sessions[0]["state"], "exited session shown as blocked")
         self.assertEqual([], popups, "popped for a session that had already ended")
 
+    def _race_against_slow_notification(self, second: dict[str, Any]) -> dict[str, Any]:
+        """Start an actionable Notification, land ``second`` mid-flight."""
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_lookup(_prefix: str) -> bool:
+            started.set()
+            release.wait(timeout=5)
+            return False
+
+        def request(payload: dict[str, Any]) -> Any:
+            handler = dashboard.Handler.__new__(dashboard.Handler)
+            body = json.dumps(payload).encode()
+            handler.headers = {"Content-Length": str(len(body))}
+            handler.path = "/api/notify"
+            handler.rfile = io.BytesIO(body)
+            handler._local_ok = lambda **_kw: True
+            handler._send = lambda *_a, **_k: None
+            return handler
+
+        session = "deadbeef-0000-0000-0000-000000000000"
+        first = request(
+            {
+                "session_id": session,
+                "hook_event_name": "Notification",
+                "notification_type": "permission_prompt",
+                "message": "NEEDS PERMISSION",
+            }
+        )
+        with (
+            mock.patch.object(dashboard, "claude_prefix_is_agent", slow_lookup),
+            mock.patch.object(dashboard, "notify_mac"),
+        ):
+            thread = threading.Thread(target=first.do_POST)
+            thread.start()
+            self.assertTrue(started.wait(timeout=5))
+            with mock.patch.object(dashboard, "claude_prefix_is_agent", lambda _: False):
+                request(second).do_POST()
+            release.set()
+            thread.join(timeout=5)
+        return dict(dashboard._hook_notifs)
+
+    def test_a_clearing_notification_does_not_drop_a_racing_permission_prompt(self) -> None:
+        # Only SessionEnd means "this session is gone". agent_completed and
+        # idle_prompt end one alert, not the session — invalidating on those
+        # dropped an actionable prompt that merely overlapped a clearing one,
+        # losing a real "Claude is blocked" signal.
+        for kind in ("agent_completed", "idle_prompt", "elicitation_complete"):
+            with self.subTest(kind=kind):
+                self.setUp()
+                survived = self._race_against_slow_notification(
+                    {
+                        "session_id": "deadbeef-0000-0000-0000-000000000000",
+                        "hook_event_name": "Notification",
+                        "notification_type": kind,
+                        "message": "done",
+                    }
+                )
+                self.assertIn("deadbeef", survived, f"{kind} dropped a permission prompt")
+
+    def test_session_end_still_supersedes_a_racing_notification(self) -> None:
+        survived = self._race_against_slow_notification(
+            {"session_id": "deadbeef-0000-0000-0000-000000000000", "hook_event_name": "SessionEnd"}
+        )
+        self.assertEqual({}, survived, "SessionEnd was undone")
+
     def test_an_unraced_notification_still_records(self) -> None:
         session = "cafebabe-0000-0000-0000-000000000000"
         handler = dashboard.Handler.__new__(dashboard.Handler)
