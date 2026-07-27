@@ -8,6 +8,8 @@ license: Apache-2.0
 
 Cargento is an agnostic agent cartography and visualization tool: a local web dashboard mapping live coding-agent activity across **eight harnesses** on this machine — Claude Code, Codex, Gemini CLI / Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid — each row badged with its harness. A "Discovered harnesses" strip at the top shows all supported harnesses; ones with local session data are green/enabled, others gray/disabled. A harness's sessions only appear if its data is discovered. Transcript-backed sessions appear even if they never called TaskCreate; Claude task files may also surface a task-only session when its transcript is unavailable. Per session: a live state badge, what it's doing right now, running subagents (named pills), a current-turn elapsed/ETA estimate with progress bar, a ⚠️ warning (with tooltip) when a request runs or is estimated ≥15 min, one row per tracked task, and the recent token output rate. Fires macOS popup notifications when a Claude session is blocked waiting on the human.
 
+Store locations are resolved per platform, and the documented relocation variables are honored: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME` (the CLI creates `.gemini` inside it), and `COPILOT_HOME`. When one is set it is authoritative — no fallback to the default location. Run `--diagnose` to see every path searched.
+
 Data sources (read-only, no external calls; all parsing is defensive — a broken harness store is skipped, never fatal):
 - `~/.claude/projects/*/<session>.jsonl` — Claude transcript tails: session discovery, titles, token usage, pending AskUserQuestion detection
 - Claude subagents, two generations: modern harnesses write each subagent as a top-level `~/.claude/projects/*/<uuid>.jsonl` whose records carry `agentName` + `teamName: "session-<parent prefix>"` — these fold into the parent session (named pill, freshness, output rate) and never appear as standalone sessions; legacy `<session-uuid>/subagents/agent-*.jsonl` + `.meta.json` files are still recognized (fresh mtime = running)
@@ -76,6 +78,7 @@ echo '{"session_id":"<id>","message":"test"}' | curl -s -X POST --data-binary @-
 |---|---|
 | `--port N` | Change port (default 4553). If the port is busy, check `curl -s localhost:4553/api/data` first — a running dashboard may already be there; don't kill it blindly. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
+| `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
 | `http://localhost:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 

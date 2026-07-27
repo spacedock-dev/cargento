@@ -6,17 +6,19 @@ import http.client
 import importlib.util
 import io
 import json
+import ntpath
 import os
 import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from unittest import mock
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
@@ -2095,6 +2097,162 @@ console.log(JSON.stringify(out));
         self.assertEqual("droidproj", s["project"])
         self.assertEqual("Ship feature", s["title"])
         self.assertEqual("ship it", s["last_prompt"])
+
+
+class StoreRootsTest(unittest.TestCase):
+    """resolve_store_roots is pure, so every platform's layout is checked here
+    regardless of which runner is executing."""
+
+    POSIX_HOME = "/home/u"
+    WIN_HOME = r"C:\Users\j"
+    WIN_ENV: ClassVar[dict[str, str]] = {
+        "LOCALAPPDATA": r"C:\Users\j\AppData\Local",
+        "APPDATA": r"C:\Users\j\AppData\Roaming",
+    }
+
+    def resolve(
+        self, platform_name: str, environ: dict[str, str], home: str
+    ) -> dict[str, list[str]]:
+        roots: dict[str, list[str]] = dashboard.resolve_store_roots(
+            platform_name=platform_name, environ=environ, home=home
+        )
+        return roots
+
+    def test_posix_defaults_are_unchanged(self) -> None:
+        # These are the paths that work today; a regression here silently
+        # blinds the dashboard on the platform it was built for.
+        roots = self.resolve("darwin", {}, self.POSIX_HOME)
+        self.assertEqual(["/home/u/.claude/projects"], roots["claude.projects"])
+        self.assertEqual(["/home/u/.claude/tasks"], roots["claude.tasks"])
+        self.assertEqual(["/home/u/.codex/sessions"], roots["codex.sessions"])
+        self.assertEqual(["/home/u/.gemini/tmp"], roots["gemini.tmp"])
+        self.assertEqual(["/home/u/.copilot"], roots["copilot.root"])
+        self.assertEqual(["/home/u/.cursor/chats"], roots["cursor.chats"])
+        self.assertEqual(["/home/u/.factory/projects"], roots["droid.projects"])
+        self.assertEqual(["/home/u/.local/share/opencode"], roots["opencode.data"])
+        self.assertEqual(["/home/u/.local/share/goose/sessions/sessions.db"], roots["goose.db"])
+
+    def test_xdg_data_home_is_honored(self) -> None:
+        roots = self.resolve("linux", {"XDG_DATA_HOME": "/xdg"}, self.POSIX_HOME)
+        self.assertEqual(["/xdg/opencode"], roots["opencode.data"])
+        self.assertEqual(["/xdg/goose/sessions/sessions.db"], roots["goose.db"])
+
+    def test_windows_uses_native_separators_and_app_data(self) -> None:
+        roots = self.resolve("win32", dict(self.WIN_ENV), self.WIN_HOME)
+        self.assertEqual([r"C:\Users\j\.claude\projects"], roots["claude.projects"])
+        # App-data locations are searched in addition to the XDG-style one.
+        self.assertIn(r"C:\Users\j\AppData\Local\opencode\data", roots["opencode.data"])
+        self.assertIn(
+            r"C:\Users\j\AppData\Roaming\Block\goose\data\sessions\sessions.db",
+            roots["goose.db"],
+        )
+
+    def test_candidates_are_deduplicated(self) -> None:
+        # On Windows the XDG-style default and the explicit ~/.local/share
+        # entry are the same path; it must not be scanned twice.
+        roots = self.resolve("win32", dict(self.WIN_ENV), self.WIN_HOME)
+        for key, candidates in roots.items():
+            with self.subTest(key=key):
+                folded = [ntpath.normcase(c) for c in candidates]
+                self.assertEqual(len(folded), len(set(folded)))
+
+    def test_documented_env_overrides_are_authoritative(self) -> None:
+        roots = self.resolve(
+            "linux",
+            {
+                "CLAUDE_CONFIG_DIR": "/opt/cc",
+                "CODEX_HOME": "/opt/cx",
+                "COPILOT_HOME": "/opt/cp",
+            },
+            self.POSIX_HOME,
+        )
+        # Only the override is searched — a relocated store must never fall
+        # back to a stale default.
+        self.assertEqual(["/opt/cc/projects"], roots["claude.projects"])
+        self.assertEqual(["/opt/cc/tasks"], roots["claude.tasks"])
+        self.assertEqual(["/opt/cx/sessions"], roots["codex.sessions"])
+        self.assertEqual(["/opt/cp"], roots["copilot.root"])
+
+    def test_gemini_cli_home_names_a_parent_directory(self) -> None:
+        # Documented behavior: the CLI creates ".gemini" *inside* the value.
+        roots = self.resolve("linux", {"GEMINI_CLI_HOME": "/opt/g"}, self.POSIX_HOME)
+        self.assertEqual(["/opt/g/.gemini/tmp"], roots["gemini.tmp"])
+        self.assertEqual(["/opt/g/.gemini/antigravity-cli"], roots["antigravity.root"])
+
+    def test_blank_env_values_fall_back_to_defaults(self) -> None:
+        roots = self.resolve("linux", {"CLAUDE_CONFIG_DIR": "   "}, self.POSIX_HOME)
+        self.assertEqual(["/home/u/.claude/projects"], roots["claude.projects"])
+
+    def test_a_patched_constant_suppresses_the_other_candidates(self) -> None:
+        # The override seam: pointing a constant at a fixture must scan that
+        # and nothing else, or a test could pick up a real store on the box.
+        with mock.patch.object(dashboard, "OPENCODE_DATA", "/fixture"):
+            self.assertEqual(
+                ["/fixture"], dashboard.store_roots("opencode.data", dashboard.OPENCODE_DATA)
+            )
+        # Unpatched, the full candidate list is used.
+        self.assertEqual(
+            dashboard.STORE_ROOTS["opencode.data"],
+            dashboard.store_roots("opencode.data", dashboard.OPENCODE_DATA),
+        )
+
+    def test_sessions_from_two_candidate_roots_are_merged(self) -> None:
+        now = 1_700_000_000.0
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = Path(tmp) / "a", Path(tmp) / "b"
+            for root, sid in ((first, "11111111"), (second, "22222222")):
+                (root / "proj").mkdir(parents=True)
+                transcript = root / "proj" / f"{sid}-0000-0000-0000-000000000000.jsonl"
+                transcript.write_text(json.dumps({"type": "user", "uuid": "u"}) + "\n")
+                os.utime(transcript, (now, now))
+            with (
+                mock.patch.dict(
+                    dashboard.STORE_ROOTS,
+                    {"claude.projects": [str(first), str(second)]},
+                ),
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(first)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+
+        self.assertEqual({"11111111", "22222222"}, {s["session"] for s in sessions})
+
+
+class DiagnoseTest(unittest.TestCase):
+    def test_report_names_every_candidate_and_what_was_found(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            (projects / "proj").mkdir(parents=True)
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "absent")),
+            ):
+                report = dashboard.diagnose(24)
+
+        claude = report["stores"]["claude.projects"]["candidates"]
+        self.assertEqual("directory", claude[0]["kind"])
+        self.assertTrue(claude[0]["readable"])
+        # A missing store is reported as missing, not omitted — the whole point
+        # is distinguishing "looked and found nothing" from "never looked".
+        self.assertEqual("missing", report["stores"]["claude.tasks"]["candidates"][0]["kind"])
+        self.assertEqual(sys.platform, report["platform"])
+        self.assertIn("available", report["sqlite"])
+
+    def test_rendering_is_ascii_only(self) -> None:
+        # This output gets pasted into issues from consoles whose encoding we
+        # do not control.
+        text = dashboard.render_diagnosis(dashboard.diagnose(24))
+        text.encode("ascii")  # must not raise
+        self.assertIn("Stores searched", text)
+        self.assertIn("Harnesses", text)
+
+    def test_json_report_is_serializable(self) -> None:
+        json.dumps(dashboard.diagnose(24))  # must not raise
+
+    def test_env_overrides_are_surfaced(self) -> None:
+        with mock.patch.dict(os.environ, {"CODEX_HOME": "/opt/cx"}):
+            report = dashboard.diagnose(24)
+        self.assertEqual("/opt/cx", report["env"]["CODEX_HOME"])
 
 
 class TextIoTest(unittest.TestCase):

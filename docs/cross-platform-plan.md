@@ -387,7 +387,7 @@ ratcheted to 74.
 **Exit:** `platform-tests` green on all three OSes and required. *Pending first CI run on the PR —
 the Windows and macOS runners have not yet executed this suite.*
 
-### Phase 2 — Resolver + diagnostics — **L, 1-2 weeks**
+### Phase 2 — Resolver + diagnostics — **IN PROGRESS** (items 10-14 landed)
 10. Per-harness candidate **sets**, scan-all-and-dedupe (D-1), pure-function resolution (D-4).
 11. Verified env overrides: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `COPILOT_HOME`, `GEMINI_CLI_HOME`
     (append `.gemini`), `GOOSE_PATH_ROOT`.

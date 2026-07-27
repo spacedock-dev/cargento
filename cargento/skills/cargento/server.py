@@ -181,6 +181,16 @@ def glob_stores(key: str, primary: str, *pattern: str) -> list[str]:
     return [path for root in store_roots(key, primary) for path in glob_under(root, *pattern)]
 
 
+def any_store_dir(key: str, primary: str, *parts: str) -> bool:
+    """Whether any candidate root for a store contains ``parts`` as a directory."""
+    return any(os.path.isdir(os.path.join(root, *parts)) for root in store_roots(key, primary))
+
+
+def existing_stores(key: str, primary: str) -> list[str]:
+    """Candidate paths for a store that actually exist as files."""
+    return [path for path in store_roots(key, primary) if os.path.isfile(path)]
+
+
 # Per-harness data roots. Each is the best candidate for its store and stays a
 # module-level constant: it is the documented override seam (see store_roots).
 TASKS_DIR = STORE_ROOTS["claude.tasks"][0]
@@ -1268,7 +1278,7 @@ def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[s
 def load_tasks() -> dict[str, list[dict[str, Any]]]:
     """session prefix -> list of task dicts."""
     by_session: dict[str, list[dict[str, Any]]] = {}
-    for fp in glob_under(TASKS_DIR, "*", "*.json"):
+    for fp in glob_stores("claude.tasks", TASKS_DIR, "*", "*.json"):
         if os.path.basename(fp).startswith("."):
             continue
         try:
@@ -1549,7 +1559,7 @@ def claude_prefix_is_agent(prefix: str) -> bool:
     """True when the newest transcript for this 8-char prefix belongs to a
     subagent. Used to suppress popups for agent sessions."""
     newest, newest_mtime = None, 0.0
-    for fp in glob_under(PROJECTS_DIR, "*", glob.escape(prefix) + "*.jsonl"):
+    for fp in glob_stores("claude.projects", PROJECTS_DIR, "*", glob.escape(prefix) + "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -1565,7 +1575,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
     tasks_by_session = load_tasks()
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
     agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
-    for fp in glob_under(PROJECTS_DIR, "*", "*.jsonl"):
+    for fp in glob_stores("claude.projects", PROJECTS_DIR, "*", "*.jsonl"):
         base = os.path.basename(fp)
         if "-agent-" in base or base.startswith("agent-"):
             continue  # legacy subagent transcripts aren't top-level sessions
@@ -1733,7 +1743,7 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
     sessions: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
     # parent session_id -> {"agents": [(label, mtime)], "rate": int}
     agent_data: dict[str, dict[str, Any]] = {}
-    for fp in glob_under(CODEX_SESSIONS_DIR, "*", "*", "*", "rollout-*.jsonl"):
+    for fp in glob_stores("codex.sessions", CODEX_SESSIONS_DIR, "*", "*", "*", "rollout-*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -2091,7 +2101,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     # appended from its per-conversation SQLite stores below.
     # sanitized parent session id -> [(label, mtime)]
     agents_by_parent: dict[str, list[tuple[str, float]]] = {}
-    for fp in glob_under(GEMINI_TMP, "*", "chats", "*", "*.jsonl"):
+    for fp in glob_stores("gemini.tmp", GEMINI_TMP, "*", "chats", "*", "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -2105,7 +2115,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     sessions: dict[
         str, tuple[float, str]
     ] = {}  # session id (or filename fallback) -> (mtime, path)
-    for fp in glob_under(GEMINI_TMP, "*", "chats", "session-*.jsonl"):
+    for fp in glob_stores("gemini.tmp", GEMINI_TMP, "*", "chats", "session-*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -2163,7 +2173,7 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
     # layout — unverified legacy format; a mismatch just means those old
     # sessions stay invisible.
     for base in ("session-state", "history-session-state"):
-        for fp in glob_under(os.path.join(COPILOT_DIR, base), "*", "events.jsonl"):
+        for fp in glob_stores("copilot.root", COPILOT_DIR, base, "*", "events.jsonl"):
             sid = os.path.basename(os.path.dirname(fp))
             try:
                 mtime = os.path.getmtime(fp)
@@ -2221,7 +2231,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
     if not sqlite_available():
         return []
     out: list[dict[str, Any]] = []
-    for db in glob_under(OPENCODE_DATA, "opencode*.db"):
+    for db in glob_stores("opencode.data", OPENCODE_DATA, "opencode*.db"):
         try:
             con = _sql_ro(db)
         except sqlite3.Error:
@@ -2376,7 +2386,7 @@ def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict
     # One store.db per chat; content is opaque-ish (hex JSON blobs), so
     # Cursor rows are discovery + state + title only — no turn ETA.
     out: list[dict[str, Any]] = []
-    for db in glob_under(CURSOR_CHATS, "*", "*", "store.db"):
+    for db in glob_stores("cursor.chats", CURSOR_CHATS, "*", "*", "store.db"):
         sid = os.path.basename(os.path.dirname(db))
         try:
             mtime = os.path.getmtime(db)
@@ -2421,11 +2431,22 @@ def goose_user_prompt(content: Any) -> bool:
 def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     if not sqlite_available():
         return []
+    # Goose keeps its store in a different place per platform, so scan every
+    # candidate that exists rather than betting on one.
+    out: list[dict[str, Any]] = []
+    for db in existing_stores("goose.db", GOOSE_DB):
+        out.extend(collect_goose_db(db, now, window_hours, show_all))
+    return out
+
+
+def collect_goose_db(
+    goose_db: str, now: float, window_hours: float, show_all: bool
+) -> list[dict[str, Any]]:
     # Single shared sessions.db (v1.10.0+): per-session activity comes from
     # the updated_at column, NOT file mtime (the DB is shared by all
     # sessions). Legacy per-session .jsonl files are not supported.
     try:
-        con = _sql_ro(GOOSE_DB)
+        con = _sql_ro(goose_db)
     except sqlite3.Error:
         return []
     try:
@@ -2537,7 +2558,7 @@ def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[
 
 def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for fp in glob_under(FACTORY_PROJECTS, "*", "*.jsonl"):
+    for fp in glob_stores("droid.projects", FACTORY_PROJECTS, "*", "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -2580,15 +2601,15 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
 HARNESSES: list[
     tuple[str, str, Callable[[], bool], Callable[[float, float, bool], list[dict[str, Any]]]]
 ] = [
-    ("claude", "Claude", lambda: os.path.isdir(PROJECTS_DIR), collect_claude),
-    ("codex", "Codex", lambda: os.path.isdir(CODEX_SESSIONS_DIR), collect_codex),
+    ("claude", "Claude", lambda: any_store_dir("claude.projects", PROJECTS_DIR), collect_claude),
+    ("codex", "Codex", lambda: any_store_dir("codex.sessions", CODEX_SESSIONS_DIR), collect_codex),
     # Predicate matches both supported Gemini stores: legacy Gemini CLI
     # JSONL and current Antigravity CLI per-conversation SQLite databases.
     (
         "gemini",
         "Gemini",
         lambda: bool(
-            glob_under(GEMINI_TMP, "*", "chats", "session-*.jsonl")
+            glob_stores("gemini.tmp", GEMINI_TMP, "*", "chats", "session-*.jsonl")
             or (sqlite_available() and glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"))
         ),
         collect_gemini,
@@ -2597,28 +2618,38 @@ HARNESSES: list[
         "copilot",
         "Copilot",
         lambda: (
-            os.path.isdir(os.path.join(COPILOT_DIR, "session-state"))
-            or os.path.isdir(os.path.join(COPILOT_DIR, "history-session-state"))
+            any_store_dir("copilot.root", COPILOT_DIR, "session-state")
+            or any_store_dir("copilot.root", COPILOT_DIR, "history-session-state")
         ),
         collect_copilot,
     ),
     (
         "opencode",
         "OpenCode",
-        lambda: sqlite_available() and bool(glob_under(OPENCODE_DATA, "opencode*.db")),
+        lambda: (
+            sqlite_available() and bool(glob_stores("opencode.data", OPENCODE_DATA, "opencode*.db"))
+        ),
         collect_opencode,
     ),
     (
         "cursor",
         "Cursor",
-        lambda: sqlite_available() and bool(glob_under(CURSOR_CHATS, "*", "*", "store.db")),
+        lambda: (
+            sqlite_available()
+            and bool(glob_stores("cursor.chats", CURSOR_CHATS, "*", "*", "store.db"))
+        ),
         collect_cursor,
     ),
-    ("goose", "Goose", lambda: sqlite_available() and os.path.isfile(GOOSE_DB), collect_goose),
+    (
+        "goose",
+        "Goose",
+        lambda: sqlite_available() and bool(existing_stores("goose.db", GOOSE_DB)),
+        collect_goose,
+    ),
     (
         "droid",
         "Droid",
-        lambda: bool(glob_under(FACTORY_PROJECTS, "*", "*.jsonl")),
+        lambda: bool(glob_stores("droid.projects", FACTORY_PROJECTS, "*", "*.jsonl")),
         collect_droid,
     ),
 ]
@@ -3472,9 +3503,130 @@ class Handler(BaseHTTPRequestHandler):
         pass  # keep stdout quiet
 
 
+def store_primaries() -> dict[str, str]:
+    """Current primary root per store, read from the module constants so a
+    patched constant is reflected here too."""
+    return {
+        "claude.projects": PROJECTS_DIR,
+        "claude.tasks": TASKS_DIR,
+        "codex.sessions": CODEX_SESSIONS_DIR,
+        "gemini.tmp": GEMINI_TMP,
+        "antigravity.root": ANTIGRAVITY_CLI_DIR,
+        "copilot.root": COPILOT_DIR,
+        "opencode.data": OPENCODE_DATA,
+        "cursor.chats": CURSOR_CHATS,
+        "goose.db": GOOSE_DB,
+        "droid.projects": FACTORY_PROJECTS,
+    }
+
+
+def candidate_report(path: str) -> dict[str, Any]:
+    """What a single candidate store path actually is on disk."""
+    entry: dict[str, Any] = {"path": path, "kind": "missing", "readable": False, "entries": None}
+    try:
+        if os.path.isdir(path):
+            entry["kind"] = "directory"
+            entry["entries"] = len(os.listdir(path))
+            entry["readable"] = True
+        elif os.path.isfile(path):
+            entry["kind"] = "file"
+            entry["readable"] = os.access(path, os.R_OK)
+    except OSError as exc:
+        # Permission denied, a disconnected network mount, an antivirus lock:
+        # the distinction between "absent" and "unreadable" is the whole point.
+        entry["error"] = f"{type(exc).__name__}: {exc}"
+    return entry
+
+
+def diagnose(window_hours: float) -> dict[str, Any]:
+    """Everything needed to explain a harness that is not showing up.
+
+    Collectors swallow their errors so one broken store cannot take down the
+    dashboard, which means a wrong path looks exactly like an idle machine.
+    This is the counterweight: it names every location searched and what was
+    found there. Local only — nothing is transmitted anywhere.
+    """
+    data = collect(window_hours, show_all=True)
+    sessions_by_harness: dict[str, int] = {}
+    for session in data["sessions"]:
+        key = str(session["harness"])
+        sessions_by_harness[key] = sessions_by_harness.get(key, 0) + 1
+    return {
+        "platform": sys.platform,
+        "python": sys.version.split()[0],
+        "executable": sys.executable,
+        "home": HOME,
+        "sqlite": {
+            "available": sqlite_available(),
+            "error": SQLITE_IMPORT_ERROR,
+            "version": sqlite3.sqlite_version if sqlite_available() else None,
+        },
+        "env": {name: os.environ[name] for name in STORE_ENV_VARS if os.environ.get(name)},
+        "stores": {
+            key: {
+                "primary": primary,
+                "candidates": [candidate_report(root) for root in store_roots(key, primary)],
+            }
+            for key, primary in store_primaries().items()
+        },
+        "harnesses": [
+            {**harness, "sessions": sessions_by_harness.get(str(harness["key"]), 0)}
+            for harness in data["harnesses"]
+        ],
+    }
+
+
+def render_diagnosis(report: dict[str, Any]) -> str:
+    """ASCII-only rendering — this output gets pasted into bug reports from
+    consoles whose encoding we do not control."""
+    sqlite_info = report["sqlite"]
+    lines = [
+        "Cargento diagnostics",
+        f"  platform   {report['platform']} (python {report['python']})",
+        f"  python at  {report['executable']}",
+        f"  home       {report['home']}",
+        f"  sqlite3    {sqlite_info['version'] or 'UNAVAILABLE: ' + str(sqlite_info['error'])}",
+    ]
+    env = report["env"]
+    lines.append(
+        "  overrides  " + (", ".join(f"{k}={v}" for k, v in env.items()) if env else "none")
+    )
+
+    lines.append("")
+    lines.append("Harnesses")
+    for harness in report["harnesses"]:
+        mark = "ok  " if harness["discovered"] else "  --"
+        detail = f"{harness['sessions']} session(s)" if harness["discovered"] else "not discovered"
+        lines.append(f"  [{mark}] {harness['label']!s:<10} {detail}")
+        if harness["error"]:
+            lines.append(f"           error: {harness['error']}")
+
+    lines.append("")
+    lines.append("Stores searched (in order)")
+    for key, store in report["stores"].items():
+        lines.append(f"  {key}")
+        for candidate in store["candidates"]:
+            mark = "ok  " if candidate["kind"] != "missing" else "  --"
+            detail = candidate["kind"]
+            if candidate["entries"] is not None:
+                detail += f", {candidate['entries']} entries"
+            if not candidate["readable"] and candidate["kind"] != "missing":
+                detail += ", NOT READABLE"
+            if candidate.get("error"):
+                detail += f", {candidate['error']}"
+            lines.append(f"    [{mark}] {candidate['path']}  ({detail})")
+    return "\n".join(lines)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, default=4553)
+    ap.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="report where each harness's data is searched for, and exit",
+    )
+    ap.add_argument("--json", action="store_true", help="machine-readable --diagnose output")
     ap.add_argument(
         "--window-hours",
         type=float,
@@ -3483,6 +3635,10 @@ def main() -> None:
     )
     args = ap.parse_args()
     Handler.window_hours = args.window_hours
+    if args.diagnose:
+        report = diagnose(args.window_hours)
+        diag(json.dumps(report, indent=2) if args.json else render_diagnosis(report))
+        return
     if not sqlite_available():
         diag(
             f"Cargento: sqlite3 unavailable ({SQLITE_IMPORT_ERROR}) — OpenCode, Cursor, "
