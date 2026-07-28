@@ -887,6 +887,70 @@ def droid_meta(path: str) -> dict[str, Any]:
 _claude_title_cache: dict[str, tuple[int, int, str | None]] = {}
 _claude_user_event_cache: dict[str, tuple[int, int, str | None]] = {}
 
+# Harness-injected wrappers around a user prompt. A slash command arrives as
+# `<command-name>/plugin</command-name>` and a dispatched worker's instructions
+# as `<teammate-message teammate_id="...">`, so the naive "first line of the
+# first prompt" title renders raw markup. Measured over 248 real transcripts,
+# 138 titles began with one of these.
+_PROMPT_TAG_RE = re.compile(r"</?[a-z][a-z0-9-]*(?:\s[^>]*?)?/?>", re.IGNORECASE)
+_COMMAND_NAME_RE = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.DOTALL)
+_COMMAND_ARGS_RE = re.compile(r"<command-args>\s*(.*?)\s*</command-args>", re.DOTALL)
+# A filesystem path, not a URL: `://` is excluded so a GitHub link survives
+# whole, since the repo and PR number in it are the informative part. Absolute
+# paths otherwise eat the entire title budget and say nothing a basename does
+# not, and a dispatch prompt naming a UUID temp file is the worst of them.
+_PROMPT_PATH_RE = re.compile(r"(?<!:)(?<![\w/])(?:~|/[^\s/]+)(?:/[^\s/]+)+/?")
+
+
+def shorten_paths(text: str) -> str:
+    """Collapse absolute filesystem paths in a title to their last segment."""
+
+    def basename(match: re.Match[str]) -> str:
+        return match.group(0).rstrip("/").rpartition("/")[2] or match.group(0)
+
+    return _PROMPT_PATH_RE.sub(basename, text)
+
+
+def clip(text: str, limit: int) -> str:
+    """Trim to ``limit`` on a word boundary where one is close enough.
+
+    Cutting mid-word reads as damage rather than as truncation: "tell all
+    subagents and tea" looks like a bug. Falling back to a hard cut keeps the
+    bound absolute for a single long token such as a URL.
+    """
+    if len(text) <= limit:
+        return text
+    head = text[:limit].rstrip()
+    space = head.rfind(" ")
+    # Only honour a boundary in the last third, so one long token cannot
+    # shrink the title to a couple of words.
+    kept = head[:space] if space > limit * 2 // 3 else head
+    # A hard cut can land on punctuation, and ".…" reads as a typo.
+    return kept.rstrip(" .,;:-_/(") + "…"
+
+
+def prompt_title(text: str, limit: int = 80) -> str | None:
+    """A readable one-line title from a raw user prompt, or None.
+
+    Slash commands keep their name and any arguments, so `/plugin` reads as
+    `/plugin` rather than as the markup it arrived in. Everything else has its
+    wrapper tags removed and falls back to the first line with real content in
+    it, which is what makes a `<teammate-message>` show the instruction instead
+    of the envelope.
+    """
+    name = _COMMAND_NAME_RE.search(text)
+    if name and name.group(1):
+        args = _COMMAND_ARGS_RE.search(text)
+        command = name.group(1).strip()
+        argument = _PROMPT_TAG_RE.sub(" ", args.group(1)).strip() if args else ""
+        joined = f"{command} {argument}".strip() if argument else command
+        return clip(" ".join(shorten_paths(joined).split()), limit) or None
+    for line in _PROMPT_TAG_RE.sub("", text).split("\n"):
+        collapsed = " ".join(shorten_paths(line).split())
+        if collapsed:
+            return clip(collapsed, limit)
+    return None
+
 
 def claude_session_title(path: str) -> str | None:
     """Newest generated Claude title, falling back to the first user prompt.
@@ -939,7 +1003,7 @@ def claude_session_title(path: str) -> str | None:
                     if not signal or signal[0] != "prompt":
                         continue
                     prompt = extract_text(message_dict(record).get("content")).strip()
-                    title = prompt.split("\n")[0][:80] or None
+                    title = prompt_title(prompt)
                     break
         except OSError:
             pass

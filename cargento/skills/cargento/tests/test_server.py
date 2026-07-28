@@ -2624,6 +2624,93 @@ class ReverseLinesTest(unittest.TestCase):
                 self.assertEqual("u-new", dashboard.claude_last_user_event(path))
 
 
+class PromptTitleTest(unittest.TestCase):
+    """A session with no generated title falls back to its first prompt, and
+    the harness wraps some prompts in markup. Measured over 248 real
+    transcripts, 138 titles rendered as raw tags before this."""
+
+    def test_a_slash_command_reads_as_the_command(self) -> None:
+        prompt = (
+            "<command-name>/plugin</command-name>\n"
+            "            <command-message>plugin</command-message>\n"
+            "            <command-args></command-args>"
+        )
+
+        self.assertEqual("/plugin", dashboard.prompt_title(prompt))
+
+    def test_a_command_keeps_its_arguments(self) -> None:
+        prompt = (
+            "<command-message>recce-dev:claude-code-review</command-message>\n"
+            "<command-name>/recce-dev:claude-code-review</command-name>\n"
+            "<command-args>https://example.test/pr/1 and fix the findings</command-args>"
+        )
+
+        self.assertEqual(
+            "/recce-dev:claude-code-review https://example.test/pr/1 and fix the findings",
+            dashboard.prompt_title(prompt),
+        )
+
+    def test_a_wrapped_payload_shows_its_content_not_the_envelope(self) -> None:
+        """The single most common case in the wild: 113 of the 138."""
+        prompt = (
+            '<teammate-message teammate_id="team-lead">\n'
+            "Read the dispatch file and start the review\n"
+            "</teammate-message>"
+        )
+
+        self.assertEqual(
+            "Read the dispatch file and start the review", dashboard.prompt_title(prompt)
+        )
+
+    def test_an_ordinary_prompt_is_left_alone(self) -> None:
+        self.assertEqual(
+            "Fix the flaky Windows test",
+            dashboard.prompt_title("Fix the flaky Windows test\nsecond line ignored"),
+        )
+
+    def test_markup_with_no_content_yields_nothing(self) -> None:
+        # Better to fall through to another signal than to title a card "<>".
+        for empty in ("<local-command-stdout></local-command-stdout>", "<a></a>", "   ", ""):
+            with self.subTest(prompt=empty):
+                self.assertIsNone(dashboard.prompt_title(empty))
+
+    def test_the_title_is_bounded(self) -> None:
+        self.assertLessEqual(len(dashboard.prompt_title("x " * 400, limit=10) or ""), 11)
+
+    def test_absolute_paths_collapse_to_their_basename(self) -> None:
+        self.assertEqual(
+            "Round 3 review of PR #268 (repo pendulum-of-despair)",
+            dashboard.prompt_title(
+                "Round 3 review of PR #268 (repo /Users/jane/repos/pendulum-of-despair)"
+            ),
+        )
+
+    def test_urls_and_relative_paths_survive_whole(self) -> None:
+        """The repo and PR number in a link are the informative part, and a
+        relative path names a file the reader can actually find."""
+        for text in (
+            "Review https://github.com/spacedock-dev/bridge/pull/77 fully",
+            "In bridge, read internal/server/server.go and its siblings",
+            "Research how Goose works (github.com/block/goose)",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(text, dashboard.prompt_title(text))
+
+    def test_truncation_lands_on_a_word_boundary(self) -> None:
+        title = dashboard.prompt_title("Take your time and tell all subagents the same", limit=30)
+
+        assert title is not None
+        self.assertTrue(title.endswith("…"), title)
+        self.assertFalse(title.rstrip("…").endswith(" "), title)
+        # A word was not cut in half.
+        self.assertIn(title.rstrip("…").split()[-1], "Take your time and tell all subagents")
+
+    def test_a_hard_cut_does_not_leave_dangling_punctuation(self) -> None:
+        # One long token has no boundary to fall back to, and ".…" reads as a
+        # typo rather than as truncation.
+        self.assertEqual("aaaa…", dashboard.clip("aaaa.bbbbbbbbbbbb", limit=5))
+
+
 class StoreRootsTest(unittest.TestCase):
     """resolve_store_roots is pure, so every platform's layout is checked here
     regardless of which runner is executing."""
