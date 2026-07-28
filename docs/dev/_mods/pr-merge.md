@@ -12,7 +12,17 @@ Manages the PR lifecycle for workflow entities processed in worktree stages. Pus
 
 Scan all entity files (in the workflow directory only, not `_archive/`) for entities with a non-empty `pr` field and a non-terminal status. For each, extract the PR number (strip any `#`, `owner/repo#` prefix) and check: `gh pr view {number} --json state --jq '.state'`.
 
-If `MERGED`, advance the entity to its terminal stage. Because a `mod-block` may be set while the PR is pending, the clear and the terminalization are two separate `--set` calls (the mechanism refuses combining `mod-block=` with terminal fields):
+If `MERGED`, run the exact-one-row check in the workflow's Measurement Ledger
+against the product checkout's tracked `docs/dev/ledger.csv`, using the entity
+`task_id`. A missing, duplicate, or incomplete row is a measurement defect:
+report it and block terminalization and archive. Do not reconstruct metrics at
+merge. Repair the ledger through a normal product-branch PR, never by writing
+directly to protected `main`.
+
+When exactly one complete row is present, advance the entity to its terminal
+stage. Because a `mod-block` may be set while the PR is pending, the clear and
+the terminalization are two separate `--set` calls (the mechanism refuses
+combining `mod-block=` with terminal fields):
 1. `spacedock status --workflow-dir {dir} --set {slug} mod-block=` when a `mod-block` is set (skip when empty);
 2. `spacedock status --workflow-dir {dir} --set {slug} status={terminal} completed verdict=PASSED worktree=`, then `spacedock status --workflow-dir {dir} --archive {slug}`.
 
@@ -33,6 +43,13 @@ Check PR-pending entities using the same logic as the startup hook: scan entity 
 Resolve the PR base once: `BASE=$(spacedock dispatch trunk --workflow-dir {dir})` — the workflow's configured integration trunk (default `main` when no `trunk:` key is set). `dispatch trunk` emits exactly a **bare branch name** (e.g. `main`), so `$( )` yields `$BASE` clean (command substitution strips the single trailing newline). Always quote `"$BASE"` at use sites — the push, the rebase, the draft, and the `gh pr create --base` below.
 
 **PR APPROVAL GUARDRAIL — Do NOT push or create a PR without explicit captain approval.** Before presenting the draft, construct the full PR body so the captain reviews the actual prose that will land on GitHub.
+
+Before drafting or presenting the PR, upsert the entity's unique `task_id` row
+in the product checkout's tracked `docs/dev/ledger.csv` from the accepted
+validation evidence, commit it on the product branch, and run the exact-one-row
+check in the workflow's Measurement Ledger. A validation retry updates the
+same row. If the check fails, stop before any PR push, creation, or update and
+report the measurement defect.
 
 Compute the product short SHA first with `git rev-parse --short HEAD` in the worktree directory. If it exits non-zero, substitute the literal string `main` and report the fallback to the captain.
 
@@ -124,4 +141,8 @@ Set the entity's `pr` field to the PR number (e.g., `#57`). Report the PR to the
 
 **On decline:** Do NOT automatically fall back to local merge. Ask the captain how to proceed — options include local merge or leaving the branch unmerged. Only act on the captain's explicit choice.
 
-Do NOT archive yet. The entity stays at its current stage with `pr` set until the PR is merged. The FO handles advancement to the terminal stage and archival when it detects the merge (via this idle hook, the startup hook, or the reconcile sweep's un-advanced-pr class).
+Do NOT archive yet. The entity stays at its current stage with `pr` set until
+the PR is merged. The FO handles advancement to the terminal stage and
+archival when it detects the merge and the exact-one-row ledger check passes
+(via this idle hook, the startup hook, or the reconcile sweep's
+un-advanced-pr class).

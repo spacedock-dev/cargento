@@ -84,7 +84,7 @@ path.
 | `title` | string | Human-readable task name |
 | `status` | enum | backlog, ideation, implementation, validation, done |
 | `source` | string | Where the task came from (captain note, issue, defect, audit) |
-| `started` / `completed` | ISO 8601 | `started` at the first transition out of `backlog`, `completed` at the `done` transition — `wallclock_hours` is their difference, so a task that sits in the queue for a week does not bill that week |
+| `started` / `completed` | ISO 8601 | `started` at the first transition out of `backlog`; `completed` at the `done` transition. Ledger `wallclock_hours` is measured separately, from `started` to the accepted validation evidence boundary. |
 | `verdict` | enum | PASSED or REJECTED — set at final stage |
 | `score` | number | Optional priority score from 0.0 to 1.0 |
 | `worktree` | string | Set on first worktree dispatch, cleared at terminal merge |
@@ -496,10 +496,21 @@ same bar the ideation stage's design determination is held to.
   review rounds have compounded on it. A round spent reviewing machinery nobody
   wants is paid twice: once to find its defects, once to fix them.
 
+An accepted validation boundary upserts the task's unique Measurement Ledger
+row before any new or updated PR is pushed. Re-entry after rework updates that
+same `task_id` row; it never adds a duplicate. The accepted evidence boundary,
+not a later merge, supplies the coverage and wall-clock endpoint. The
+pre-publication exact-one-row check below is part of the validation gate.
+
 ### `done` — terminal
 
-Merge after a passed validation gate (merge policy: PR to `main`), set `completed` and `verdict`, archive the task. Record the
-measurement ledger row (below) in the same transition.
+Merge after a passed validation gate (merge policy: PR to `main`). Before
+setting `completed` and `verdict` or archiving the task, run the exact-one-row
+ledger check below for its `task_id`. A missing, duplicate, or incomplete row
+is a measurement defect: report it and block terminalization and archive until
+a normal product-branch PR repairs the tracked ledger. Never reconstruct or
+edit metrics during merge, and never write them directly to protected `main`.
+Once exactly one complete row is present, terminalize and archive the task.
 
 - **Merge only on observed green CI for the exact HEAD.** A passing local
   suite, a static PR approval, or "CI was green earlier" never substitutes
@@ -614,19 +625,42 @@ rules; disagreement between seats goes to the captain, not to a vote.
 
 ## Measurement Ledger
 
-Every task that reaches `done` (or is abandoned after implementation started)
-appends one row to `docs/dev/ledger.csv`:
+Every accepted validation boundary upserts one row in the tracked
+`docs/dev/ledger.csv`, uniquely keyed by `task_id`:
 
 ```
 task_id,slug,dispatches,rework_rounds,wallclock_hours,tokens_if_known,coverage,escaped_defects_7d
 ```
 
-Record measurements at their natural boundary instead of reconstructing them:
-the FO increments `dispatches` before handing control to a worker and appends
-token usage when the harness exposes it. A worker that returns no usage records
-`n/a`; it is not silently converted into a measured zero.
+The upsert is a product change on the task branch and must be committed before
+that branch is pushed for a new or updated PR. Rework that returns to
+validation updates the existing row; it never appends another row for the same
+`task_id`. Protected `main` changes only through the normal product PR.
 
-`escaped_defects_7d` starts as `pending` and is back-filled after the seven-day
+Record measurements at their natural boundary instead of reconstructing them.
+The FO keeps live dispatch and token evidence in the entity's
+`## Measurement` section: increment `dispatches` before every worker launch,
+and append exposed token usage when the worker returns. A task adopted after
+those boundaries may record an explicit `n/a`; unknown values are never
+written as zero. `rework_rounds` is the number of validation route-backs,
+`coverage` comes from the accepted validation evidence, and
+`wallclock_hours` runs from `started` to that accepted evidence boundary.
+Merge wait is not included.
+
+Before any PR push, creation, or update after accepted validation, and again
+before terminalization and archive, run this deterministic check from the
+product checkout with `TASK_ID` set to the entity task ID:
+
+```bash
+python3 -c 'import csv,sys; rows=list(csv.DictReader(open("docs/dev/ledger.csv", encoding="utf-8", newline=""))); matches=[row for row in rows if row["task_id"] == sys.argv[1]]; raise SystemExit(0 if len(matches) == 1 and all(matches[0].values()) else 1)' "$TASK_ID"
+```
+
+Failure means the required row is missing, duplicated, or incomplete. Stop the
+PR or archive transition, report the measurement defect, and repair the same
+row before retrying. The `done`/MERGED boundary only verifies this evidence;
+it does not recreate it.
+
+`escaped_defects_7d` starts as `pending` and is backfilled after the seven-day
 window. The first ten complete rows form a prospective baseline for this
 workflow. Until that cohort exists, the ledger supports observation only, not a
 claim that this flow is cheaper or more effective than another workflow.
@@ -668,6 +702,12 @@ Verified by: <reproducible check outside this file>. Falsified by: <the edit tha
 ## Doc diff
 
 <before/after wording for the owning Cargento document, or "none — no described behavior changes">
+
+## Measurement
+
+dispatches:
+tokens_if_known:
+accepted_validation_at:
 
 ## Out of scope
 ```
