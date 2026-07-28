@@ -2739,6 +2739,115 @@ class PromptTitleTest(unittest.TestCase):
         # typo rather than as truncation.
         self.assertEqual("aaaa…", dashboard.clip("aaaa.bbbbbbbbbbbb", limit=5))
 
+    def test_the_path_floor_is_a_boundary_not_a_vibe(self) -> None:
+        # Mutation-checked: `<` vs `<=` on SD_MIN_COLLAPSED_PATH survived the
+        # suite, so the exact cutover is pinned here.
+        def path_of_length(total: int) -> str:
+            return "/" + "a" * (total - 4) + "/bc"  # 1 + (total - 4) + 3
+
+        floor = dashboard.SD_MIN_COLLAPSED_PATH
+        just_under, just_over = path_of_length(floor - 1), path_of_length(floor)
+
+        self.assertEqual((floor - 1, floor), (len(just_under), len(just_over)))
+        self.assertEqual(just_under, dashboard.shorten_paths(just_under), "collapsed below floor")
+        self.assertEqual("bc", dashboard.shorten_paths(just_over), "not collapsed at floor")
+
+
+class DurationAndEpochTest(unittest.TestCase):
+    """`fmt_duration` and `norm_epoch` render on every card and had no tests at
+    all. Mutation-checked: each boundary below fails a real off-by-one that the
+    suite previously missed."""
+
+    def test_each_unit_changes_at_its_own_boundary(self) -> None:
+        # The second either side of every cutover, because `<` vs `<=` here is
+        # the difference between a card reading "60m" and "1h 0m".
+        for seconds, expected in (
+            (0, "0s"),
+            (59, "59s"),
+            (60, "1m"),
+            (3599, "59m"),
+            (3600, "1h 0m"),
+            (3661, "1h 1m"),
+            (86399, "23h 59m"),
+            (86400, "1d 0h"),
+            (90061, "1d 1h"),
+        ):
+            with self.subTest(seconds=seconds):
+                self.assertEqual(expected, dashboard.fmt_duration(seconds))
+
+    def test_an_unknown_or_impossible_duration_renders_a_dash(self) -> None:
+        # A negative duration means the clock moved, not that work took
+        # negative time, so the card must decline to state one.
+        for bad in (None, -1, -0.5, -86400):
+            with self.subTest(seconds=bad):
+                self.assertEqual("–", dashboard.fmt_duration(bad))
+
+    def test_millisecond_timestamps_are_detected_by_magnitude(self) -> None:
+        """Harness stores mix seconds and milliseconds. Guessing wrong puts a
+        session in 1970 or 55000 AD, and it silently reads as never-active."""
+        self.assertEqual(1_700_000_000, dashboard.norm_epoch(1_700_000_000))
+        self.assertEqual(1_700_000_000.0, dashboard.norm_epoch(1_700_000_000_000))
+        # The cutover itself: 1e12 is seconds, one above it is milliseconds.
+        self.assertEqual(1e12, dashboard.norm_epoch(1e12))
+        self.assertAlmostEqual(1e9, dashboard.norm_epoch(1e12 + 1), places=0)
+
+    def test_a_task_shorter_than_the_floor_does_not_licence_an_estimate(self) -> None:
+        """The skill body promises "no estimate" until a session has a completed
+        task that took at least 30s, so a burst of instant tasks cannot imply a
+        confident ETA. Mutation-checked: `>=` vs `>` on that floor survived.
+
+        The rule is exercised through `load_tasks` rather than through real
+        files because `created` comes from `st_birthtime`, which Linux does not
+        have. On that runner it degrades to mtime, every task looks
+        zero-length, and a file-based fixture would assert nothing.
+        """
+        now = 1_700_000_000.0
+
+        def tasks(took: float) -> dict[str, list[dict[str, Any]]]:
+            return {
+                "abcd1234": [
+                    {
+                        "id": "1",
+                        "subject": "done",
+                        "activeForm": "",
+                        "status": "completed",
+                        "created": now - took,
+                        "updated": now,
+                    },
+                    {
+                        "id": "2",
+                        "subject": "still open",
+                        "activeForm": "",
+                        "status": "pending",
+                        "created": now - 10,
+                        "updated": now,
+                    },
+                ]
+            }
+
+        with tempfile.TemporaryDirectory() as empty:
+            observed = {}
+            for took in (29, 30, 60):
+                with (
+                    mock.patch.object(dashboard, "load_tasks", lambda t=took: tasks(t)),
+                    mock.patch.object(dashboard, "PROJECTS_DIR", empty),
+                ):
+                    observed[took] = dashboard.collect_claude(now, 24, True)[0]["eta_h"]
+
+        self.assertIsNone(observed[29], "29s of evidence is not enough for an ETA")
+        # One open task times the 30s average.
+        self.assertEqual("30s", observed[30])
+        self.assertEqual("1m", observed[60])
+
+    def test_a_missing_or_nonsense_timestamp_is_not_activity(self) -> None:
+        # 0 is the "no timestamp" sentinel every freshness check treats as
+        # ancient. Returning the raw value instead would date a session to 1970
+        # and, for a negative, to before it.
+        nonsense: list[Any] = [0, -5, "1700000000", None, [], {}]
+        for bad in nonsense:
+            with self.subTest(value=bad):
+                self.assertEqual(0, dashboard.norm_epoch(bad))
+
 
 class StoreRootsTest(unittest.TestCase):
     """resolve_store_roots is pure, so every platform's layout is checked here
@@ -2831,11 +2940,15 @@ class StoreRootsTest(unittest.TestCase):
             self.assertEqual(
                 ["/fixture"], dashboard.store_roots("opencode.data", dashboard.OPENCODE_DATA)
             )
-        # Unpatched, the full candidate list is used.
-        self.assertEqual(
-            dashboard.STORE_ROOTS["opencode.data"],
-            dashboard.store_roots("opencode.data", dashboard.OPENCODE_DATA),
-        )
+        # Matching primary means "no override", so every candidate is searched.
+        # Asserting against STORE_ROOTS itself would be circular, since
+        # `store_roots` returns that list and both sides would move together.
+        # The candidates are patched to literals instead, which also makes the
+        # multi-root case run on every platform: on macOS the real table holds
+        # exactly one candidate per key, so the distinction is invisible there.
+        with mock.patch.dict(dashboard.STORE_ROOTS, {"opencode.data": ["/head", "/legacy"]}):
+            self.assertEqual(["/head", "/legacy"], dashboard.store_roots("opencode.data", "/head"))
+            self.assertEqual(["/fixture"], dashboard.store_roots("opencode.data", "/fixture"))
 
     def test_sessions_from_two_candidate_roots_are_merged(self) -> None:
         now = 1_700_000_000.0
@@ -2906,8 +3019,26 @@ class DiagnoseTest(unittest.TestCase):
         self.assertIn("Stores searched", text)
         self.assertIn("Harnesses", text)
 
-    def test_json_report_is_serializable(self) -> None:
-        json.dumps(dashboard.diagnose(24))  # must not raise
+    def test_json_report_survives_a_round_trip_intact(self) -> None:
+        """`--diagnose --json` is what a user pastes into an issue, so the
+        contract is that it round-trips and still carries the fields that make
+        it diagnostic. "Did not raise" would also be satisfied by `{}`."""
+        report = dashboard.diagnose(24)
+
+        self.assertEqual(report, json.loads(json.dumps(report)))
+        self.assertLessEqual(
+            {"platform", "python", "executable", "home", "env", "stores", "harnesses"},
+            set(report),
+        )
+        # Every registered harness is accounted for, present or not: a missing
+        # row is indistinguishable from a harness that was never checked.
+        self.assertEqual(
+            {key for key, *_ in dashboard.HARNESSES},
+            {h["key"] for h in report["harnesses"]},
+        )
+        for harness in report["harnesses"]:
+            with self.subTest(harness=harness["key"]):
+                self.assertLessEqual({"key", "label", "discovered", "error"}, set(harness))
 
     def test_env_overrides_are_surfaced(self) -> None:
         with mock.patch.dict(os.environ, {"CODEX_HOME": "/opt/cx"}):
@@ -3506,6 +3637,20 @@ class MalformedRecordTest(unittest.TestCase):
 
     HOSTILE: ClassVar[list[Any]] = [5, "str", [1, 2], {"k": "v"}, None, True]
     PLACEHOLDER = "__HOSTILE__"
+    # One record per harness that the analyzer really does parse, used to prove
+    # a hostile neighbour did not leave it unable to read anything else.
+    WELL_FORMED: ClassVar[dict[str, dict[str, Any]]] = {
+        "claude": {
+            "type": "user",
+            "uuid": "u1",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {"content": [{"type": "text", "text": "hello"}]},
+        },
+        "codex": {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+        "gemini": {"type": "user", "content": "hello"},
+        "copilot": {"type": "user.message", "data": {"content": "hello"}},
+        "droid": {"type": "user", "message": {"content": "hello"}},
+    }
 
     def substitute(self, template: Any, value: Any) -> Any:
         if template == self.PLACEHOLDER:
@@ -3577,16 +3722,32 @@ class MalformedRecordTest(unittest.TestCase):
             ),
         ]
 
-    def test_no_analyzer_raises_on_a_hostile_nested_value(self) -> None:
+    def test_a_hostile_record_neither_raises_nor_poisons_the_analyzer(self) -> None:
+        """The contract is that one bad record does not take a collector
+        offline, so surviving the record is only half of it: the analyzer must
+        still parse the good records around it. "Did not raise" would also pass
+        an analyzer that bailed out and returned nothing from then on.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "x.jsonl"
             for harness, analyzer, templates in self.templates():
                 for template in templates:
                     for value in self.HOSTILE:
                         record = self.substitute(template, value)
-                        path.write_text(json.dumps(record) + "\n")
                         with self.subTest(harness=harness, record=json.dumps(record)[:70]):
-                            analyzer(str(path))  # must not raise
+                            path.write_text(json.dumps(record) + "\n")
+                            result = analyzer(str(path))
+
+                            self.assertIsInstance(
+                                result, dict, "a collector cannot use a non-dict result"
+                            )
+                            # The same analyzer, on the same file, with the bad
+                            # record followed by a well-formed one.
+                            path.write_text(
+                                json.dumps(record) + "\n" + json.dumps(self.WELL_FORMED[harness])
+                            )
+
+                            self.assertIsInstance(analyzer(str(path)), dict)
 
     def test_typed_accessors(self) -> None:
         not_dicts: list[Any] = [5, "str", [1, 2], None, True]
@@ -3948,11 +4109,20 @@ class TextIoTest(unittest.TestCase):
             dashboard.diag("collector error: café ☕")
         self.assertIn("caf\\xe9", "".join(stream.written))
 
-    def test_diag_never_raises_on_a_closed_stream(self) -> None:
+    def test_a_closed_stream_costs_one_line_not_the_diagnostics(self) -> None:
+        """Losing stdout mid-run must not raise, and must not leave the writer
+        broken either. "Did not raise" alone would pass an implementation that
+        silently stopped writing for the rest of the process."""
         closed = io.StringIO()
         closed.close()
         with contextlib.redirect_stdout(closed):
-            dashboard.diag("anything")  # must not raise
+            dashboard.diag("swallowed")
+
+        recovered = io.StringIO()
+        with contextlib.redirect_stdout(recovered):
+            dashboard.diag("written after the failure")
+
+        self.assertEqual("written after the failure\n", recovered.getvalue())
 
     def test_codex_agent_label_uses_the_basename_on_either_separator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

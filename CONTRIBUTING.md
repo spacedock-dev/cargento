@@ -73,7 +73,18 @@ usually touches more than one:
   build. Documenting a path the code does not support is therefore a test failure.
 
 Before trusting a new contract, mutation-check it: break the behaviour deliberately and confirm the
-targeted test actually fails.
+targeted test actually fails. This is the only way to tell a test from a decoration, and skipping it
+has shipped hollow tests here more than once. Two failure modes worth knowing:
+
+- An assertion that cannot fail. `assertIn(word, "some string")` matches substrings, so a test
+  meant to prove a word survived truncation passed on a fragment of it.
+- An assertion that restates the implementation. Comparing a function's output to the very table it
+  reads from moves both sides together, so the check holds no matter how wrong the table is. Assert
+  literals, or patch the input to values the test chose.
+
+A flipped comparison is the cheapest mutation to try, and the most revealing: change one `<` to
+`<=`, or one `and` to `or`, and run the suite. Anything that still passes is a boundary nothing
+pins.
 
 Known flake: the page tests shell out to `node` with a 30-second timeout. On the Windows runner that
 occasionally expires on process start, surfacing as
