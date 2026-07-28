@@ -5,8 +5,9 @@ description: >-
   HTTP routes, CLI flags, harness registry, relocation env vars, tunable constants, validator rules
   and CI gate against README.md, AGENTS.md, CONTRIBUTING.md, COMPATIBILITY.md, SECURITY.md and the
   shipped `cargento` skill body; applies the updates; retires implemented plan docs under
-  `docs/plans/` by folding their durable content into `docs/design-*.md`; and keeps the AGENTS.md /
-  CLAUDE.md pointers accurate. **Run it as part of the pre-PR gate** — after the validation suite
+  `docs/plans/` by folding their durable content into `docs/design-*.md`; runs the humanizer over
+  the human-facing prose it touched so the tone does not drift back to model-default; and keeps the
+  AGENTS.md / CLAUDE.md pointers accurate. **Run it as part of the pre-PR gate** — after the validation suite
   and before `gh pr create`, so every PR carries the doc updates for the code it changes — and also
   periodically, before a release or whenever the docs feel stale. Invoke with /sync-docs.
 ---
@@ -85,6 +86,43 @@ diff-and-reconcile pass, not a rewrite.
 
 After any edit under `cargento/skills/`, run `python3 scripts/validate_plugins.py` and
 `python3 -m unittest cargento/skills/cargento/tests/test_server.py` before committing.
+
+## Voice and tone
+
+The prose docs are written for people, and they were humanized in one deliberate pass. An agent
+topping them up in model-default voice, one sync at a time, is how that gets undone. Step 7 of the
+Procedure exists to stop it, and check (e) in step 9 is the mechanical backstop, since nothing in CI
+enforces tone.
+
+In scope, and the exact set check (e) greps:
+
+```
+README.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY.md  docs/design-*.md  docs/plans/*.md
+```
+
+Out of scope, deliberately: `AGENTS.md` and `CLAUDE.md` (agent contracts loaded verbatim as
+instructions), `cargento/skills/cargento/SKILL.md` (a validated artifact with test-asserted
+literals, shipped to other harnesses as agent instructions), and this file. Leave their voice alone.
+
+The standard, in order of how often it is violated:
+
+- No em dashes, en dashes, or curly quotes. This is the hard one, and the one check (e) catches.
+  Use a period, a comma, a colon, or parentheses instead.
+- No mechanical boldface, and no inline-header lists (`- **Thing:** the thing is...`). A list is
+  fine; bolding the first two words of every item is the tell.
+- Sentence case in headings, not Title Case.
+- Prefer `is`/`are`/`has` over "serves as", "stands as", "boasts", "features".
+- Cut the AI-vocabulary words: crucial, pivotal, seamless, robust, leverage, delve, showcase,
+  underscore, testament, landscape (figurative), tapestry.
+- No participle tails bolted on for depth ("..., ensuring reliability", "..., highlighting its
+  importance").
+- No generic upbeat closers. End on the last concrete fact.
+
+Two things not to do in the name of tone. Never drop a fact to make a sentence flow, and never add
+one to make it land: the humanizer keeps the information and changes only the shape. And do not
+flatten the specifics that make these docs worth reading. The measured numbers, the named failure
+modes, and above all the rejected-alternatives lists in `docs/design-*.md` are the human signal, not
+the noise.
 
 ## Markdown that is not documentation — never reconcile these
 
@@ -218,9 +256,23 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 6. **Update the pointers.** Keep the `AGENTS.md` architecture tree and doc map, and `README.md`'s
    links, current. `CLAUDE.md` imports `AGENTS.md`, so those edits propagate — but check that no
    Claude-only bullet has become universally true (move it up) or obsolete (delete it).
-7. **Stamp the sync.** Update the marker at the bottom of `COMPATIBILITY.md` to the current `HEAD`:
-   `<!-- docs-synced-through: <short-sha> (<YYYY-MM-DD>) -->`.
-8. **Verify.** All four checks, every run. Use `git status`/`git diff HEAD`, **not** plain
+7. **Run the humanizer over what you touched.** The prose docs are written for humans, and the
+   fastest way for that to rot is an agent topping them up in model-default voice one sync at a
+   time. Invoke the `humanizer` skill in file mode on every human-facing doc this pass edited, then
+   read the result: it should keep every fact and lose the tells. The Voice and tone section gives
+   the scope and the standard. Do not run it on `AGENTS.md`, `CLAUDE.md`, the shipped skill body, or
+   this file.
+8. **Stamp the sync.** Update the marker at the bottom of `COMPATIBILITY.md`:
+   `<!-- docs-synced-through: <short-sha> (<YYYY-MM-DD>) -->`. Stamp the `origin/main` tip this
+   branch is based on, **not** your branch `HEAD`:
+   ```bash
+   git rev-parse --short "$(git merge-base origin/main HEAD)"
+   ```
+   `main` is squash-merged, so a branch commit stops existing the moment the PR lands, and step 1
+   then cannot resolve the marker it is supposed to read. A merge-base sha is already on `main` and
+   stays there. (This was learned twice the hard way: markers pointing at `a4eb54c` and `ef480af`
+   were both orphaned by the squash that shipped them.)
+9. **Verify.** All five checks, every run. Use `git status`/`git diff HEAD`, **not** plain
    `git diff` — a bare `git diff` shows neither your new untracked docs nor a staged deletion, so it
    reports "clean" for exactly the changes this pass makes:
    ```bash
@@ -239,17 +291,22 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 
    # d. If you touched the skill body, the documentation-matches-code assertions.
    python3 -m unittest cargento/skills/cargento/tests/test_server.py
+
+   # e. Tone: no em/en dashes or curly quotes in the human-facing prose docs. Nothing in CI
+   #    enforces this, so it is the one anti-drift check that only exists here.
+   grep -n '—\|–\|[“”‘’]' README.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
+     docs/design-*.md docs/plans/*.md && echo "TONE DRIFT: rerun the humanizer on the above"
    ```
    **Then decide whether you owe the full gate, by who authors the PR:**
-   - **Pre-PR-gate run** — checks a–d are enough. The suite in `AGENTS.md` § Pre-PR Checks ran on
+   - **Pre-PR-gate run** — checks a to e are enough. The suite in `AGENTS.md` § Pre-PR Checks ran on
      this same tree minutes ago and the human author owns the result.
    - **Standalone/periodic run** — you are the PR author, so run the **whole** pre-PR suite from
      `AGENTS.md` before opening anything. `quality-gate` is a required check covering ruff, format,
      `mypy --strict`, `lint_embedded.py`, coverage against `fail_under`, and `platform-tests` on
-     three OSes; none of that is implied by a–d. Opening a PR you have not gated pushes your own
+     three OSes; none of that is implied by a to e. Opening a PR you have not gated pushes your own
      verification onto the reviewer.
 
-   Never open or update a PR on the strength of a–d alone.
+   Never open or update a PR on the strength of a to e alone.
 9. **Stage, commit in the right place, then report.** Never commit to `main`. Stage explicitly —
    new docs are untracked, so `git commit -a` would silently skip them:
    ```bash
@@ -260,7 +317,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
      commit onto **that same branch** with `git commit -s` — do not create a new branch or a second
      PR; the doc updates ride in the PR you are about to open.
    - **Standalone/periodic run** (started from `main`, no feature work in flight): create a
-     `docs/…` branch, commit, and open its own PR — having run the full suite per step 8.
+     `docs/…` branch, commit, and open its own PR — having run the full suite per step 9.
 
    **A standalone run is not finished when the PR opens; it is finished when the required checks are
    green.** Watch them. If one goes red, either it is your doing — fix it — or it is unrelated to a

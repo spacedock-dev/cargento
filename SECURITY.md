@@ -2,58 +2,57 @@
 
 ## Scope
 
-Cargento ships two components that touch the network: the dashboard server
-(`cargento/skills/cargento/server.py`), which reads local coding-agent session stores (transcripts,
-task files, SQLite databases) and serves them over HTTP; and `notify_hook.py`, the small forwarder a
-user wires into their own Claude Code hook settings, which POSTs hook payloads to the dashboard.
+Cargento ships two components that touch the network. The dashboard server
+(`cargento/skills/cargento/server.py`) reads local coding-agent session stores (transcripts, task
+files, SQLite databases) and serves them over HTTP. `notify_hook.py` is the small forwarder a user
+wires into their own Claude Code hook settings, and it POSTs hook payloads to the dashboard.
 
 The posture rests on two invariants:
 
-1. **Localhost only** — the server binds `127.0.0.1` exclusively, and `notify_hook.py` refuses to
-   POST anywhere but loopback, ignores proxy environment variables, and does not follow redirects.
+1. Localhost only. The server binds `127.0.0.1` exclusively, and `notify_hook.py` refuses to POST
+   anywhere but loopback, ignores proxy environment variables, and does not follow redirects.
    Session data never leaves the machine.
-2. **Read-only against harness stores** — they are opened read-only and never written. The one
-   mutating endpoint is `POST /api/notify`, which updates in-memory needs-input state only; it
-   writes nothing to disk.
+2. Read-only against harness stores. They are opened read-only and never written. The one mutating
+   endpoint is `POST /api/notify`, which updates in-memory needs-input state only. It writes nothing
+   to disk.
 
-Anything that weakens either invariant — a bind-address escape, file reads outside the documented
-store paths and the project-read contract below (however the path was derived), writes to harness
-stores, or the hook client reaching a non-loopback destination — is a security bug.
+Anything that weakens either invariant is a security bug: a bind-address escape, file reads outside
+the documented store paths and the project-read contract below (however the path was derived),
+writes to harness stores, or the hook client reaching a non-loopback destination.
 
 ## Project reads (Spacedock stage strips)
 
 One feature reads paths that are not under a store root. When a session declares itself a Spacedock
-first officer, Cargento reads **YAML frontmatter only**, from two kinds of file, so it can show
-where each entity sits on its workflow's stage spine:
+first officer, Cargento reads YAML frontmatter, and only frontmatter, from two kinds of file, so it
+can show where each entity sits on its workflow's stage spine:
 
 1. one workflow `README.md`, for the ordered stage list and which stages are initial or terminal;
-2. the entity files in that workflow's **entity-state directory**, for each entity's current
-   `status`.
+2. the entity files in that workflow's entity-state directory, for each entity's current `status`.
 
 That is the whole of it. No other project file is opened, and the only directory listed is the
-entity-state directory itself — one non-recursive `scandir`, never a walk.
+entity-state directory itself, through one non-recursive `scandir`. Nothing is ever walked.
 
 Neither path is guessed. The first officer's own `spacedock status --boot` output, already recorded
-in its transcript, names the workflow directory **and** the entity-state directory as absolute
-paths; Cargento uses those values and nothing else. Before any file is opened, all of the following
-must hold, and a path failing any one is skipped silently:
+in its transcript, names the workflow directory and the entity-state directory as absolute paths.
+Cargento uses those values and nothing else. Before any file is opened, all of the following must
+hold, and a path failing any one is skipped silently:
 
-- the directory value is **absolute** and contains no NUL;
-- the path is canonicalised with `realpath`, and the README must still resolve **inside** the
-  workflow directory (`commonpath` containment), so a swapped entry cannot redirect the read;
-- every file opened is a **regular file and not a symlink** — checked with `lstat`, opened with
+- the directory value is absolute and contains no NUL;
+- the path is canonicalised with `realpath`, and the README must still resolve inside the workflow
+  directory (`commonpath` containment), so a swapped entry cannot redirect the read;
+- every file opened is a regular file and not a symlink. This is checked with `lstat`, opened with
   `O_NOFOLLOW` where the platform has it, and confirmed with an `fstat` `(st_dev, st_ino)` match
   against the `stat` the cache key was built from, so a parent-directory swap between the two cannot
-  seed the cache from a different file. Windows has no `O_NOFOLLOW`, so there the guarantee rests
-  on the `lstat` classification alone and a racing reparse-point swap could still be followed. That
-  is the same unclosable class as the `FILE_SHARE_DELETE` window described in the skill body;
-- the README frontmatter declares `commissioned-by: spacedock@` — Spacedock's own workflow
+  seed the cache from a different file. Windows has no `O_NOFOLLOW`, so there the guarantee rests on
+  the `lstat` classification alone and a racing reparse-point swap could still be followed. That is
+  the same unclosable class as the `FILE_SHARE_DELETE` window described in the skill body;
+- the README frontmatter declares `commissioned-by: spacedock@`, which is Spacedock's own workflow
   discriminator.
 
-The entity-state directory is deliberately **not** required to sit inside the workflow directory: a
-`split-root` workflow legitimately keeps its state elsewhere, and it carries the same authority as
-the workflow path, having come from the same tool result. The per-file discriminator stands in for
-containment there — an entity file counts only if its name is a well-formed slug
+The entity-state directory is deliberately not required to sit inside the workflow directory. A
+`split-root` workflow legitimately keeps its state elsewhere, and that path carries the same
+authority as the workflow path, having come from the same tool result. A per-file discriminator
+stands in for containment instead: an entity file counts only if its name is a well-formed slug
 (`^[a-z0-9][a-z0-9-]*[a-z0-9]$`, which also excludes `_archive/` and any report left beside the
 state) and its `status` names a stage the README declared.
 
@@ -63,28 +62,28 @@ rendered per workflow, and 8 workflows per session. Both reads are cached on
 `(realpath, st_mtime_ns, st_size)`, so an unchanged file costs one `stat` per refresh. Entity files
 older than the dashboard's freshness window are not opened at all.
 
-**Only derived scalars reach `/api/data`** — stage names (each validated against Spacedock's
+Only derived scalars reach `/api/data`: stage names (each validated against Spacedock's
 `^[a-z0-9][a-z0-9-]*[a-z0-9]$` grammar), entity slugs, and cycle markers. No file text, no
 frontmatter body and no filesystem path is ever published, and the page HTML-escapes every value.
-Pass `--no-spacedock` to switch the feature off; the read surface is then exactly the documented
+Pass `--no-spacedock` to switch the feature off. The read surface is then exactly the documented
 store paths.
 
 ## Known and accepted
 
-**Loopback is not a per-user boundary.** Any other account on the same machine can `GET /api/data`
-and read every session's titles and prompts, or forge a `POST /api/notify`. The Host, `Sec-Fetch`
-and Origin checks defeat browser-based DNS rebinding; they do not defeat a local process. This is
-more acute on a shared Linux host than on a personal laptop. The known fix — a per-run bearer token
-in a `0600` file plus a random port — is not implemented. Report a *bypass* of the checks that do
-exist; the absence of per-user isolation is documented here rather than treated as a new finding.
+Loopback is not a per-user boundary. Any other account on the same machine can `GET /api/data` and
+read every session's titles and prompts, or forge a `POST /api/notify`. The Host, `Sec-Fetch` and
+Origin checks defeat browser-based DNS rebinding, but they do not defeat a local process. This
+matters more on a shared Linux host than on a personal laptop. The known fix, a per-run bearer token
+in a `0600` file plus a random port, is not implemented. Please report a *bypass* of the checks that
+do exist. The absence of per-user isolation is documented here rather than treated as a new finding.
 
-**`--diagnose` output is sensitive.** It prints the home directory, the interpreter path, the
-*values* of the store relocation variables, every candidate store path, and per-path read errors.
-Nothing is transmitted — but redact it before pasting it into a public issue.
+`--diagnose` output is sensitive. It prints the home directory, the interpreter path, the *values* of
+the store relocation variables, every candidate store path, and per-path read errors. Nothing is
+transmitted, but redact it before pasting it into a public issue.
 
 ## Reporting a vulnerability
 
-Please **do not open a public issue** for security problems. Instead:
+Please do not open a public issue for security problems. Instead:
 
 - Use [GitHub private vulnerability reporting](https://github.com/spacedock-dev/cargento/security/advisories/new), or
 - Email dev@reccehq.com with a description and reproduction steps.
