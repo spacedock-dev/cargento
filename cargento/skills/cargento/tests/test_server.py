@@ -2248,6 +2248,112 @@ console.log(JSON.stringify(out));
         # Both agents survive with the fallback label instead of TypeError.
         self.assertEqual(["subagent", "subagent"], [a["label"] for a in agents])
 
+    def test_workflow_subagents_count_as_running_subagents(self) -> None:
+        # Workflow fan-outs write one directory deeper than a plain Task
+        # subagent: subagents/workflows/<run-id>/agent-*.jsonl. Both layouts
+        # are the same thing to the dashboard — work the session is doing.
+        with tempfile.TemporaryDirectory() as tmp:
+            sess = Path(tmp) / "abc.jsonl"
+            sess.write_text("{}\n")
+            plain = Path(tmp) / "abc" / "subagents"
+            plain.mkdir(parents=True)
+            (plain / "agent-1.jsonl").write_text("{}\n")
+            (plain / "agent-1.meta.json").write_text('{"name":"plain-task"}')
+            run = plain / "workflows" / "wf_506d8d41-ba5"
+            run.mkdir(parents=True)
+            (run / "agent-2.jsonl").write_text("{}\n")
+            (run / "agent-2.meta.json").write_text('{"name":"review:bugs"}')
+            # The run's bookkeeping file sits beside its agents and is not one.
+            (run / "journal.jsonl").write_text("{}\n")
+
+            agents = dashboard.load_claude_subagents(str(sess), dashboard.time.time())
+
+        self.assertEqual({"plain-task", "review:bugs"}, {a["label"] for a in agents})
+
+    def test_workflow_agents_keep_a_quiet_parent_working(self) -> None:
+        # The live 5cb7c95e case: the main loop is parked awaiting a background
+        # workflow, so its transcript goes quiet while ten workflow agents burn
+        # tokens. The session read Idle with its task list hidden.
+        now = dashboard.time.time()
+        session_id = "5cb7c95e-0000-0000-0000-000000000000"
+        stale = now - 400  # well past WORKING_THRESHOLD_SEC
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "sample"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "timestamp": dashboard.datetime.fromtimestamp(
+                            stale, dashboard.UTC
+                        ).isoformat(),
+                        "message": {"role": "user", "content": "fan the detectors out"},
+                    }
+                )
+                + "\n"
+            )
+            dashboard.os.utime(transcript, (stale, stale))
+            run = project / session_id / "subagents" / "workflows" / "wf_506d8d41-ba5"
+            run.mkdir(parents=True)
+            agent = run / "agent-a88a43dd9.jsonl"
+            agent.write_text(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "timestamp": dashboard.datetime.fromtimestamp(
+                            now - 5, dashboard.UTC
+                        ).isoformat(),
+                        "message": {
+                            "role": "assistant",
+                            "content": [],
+                            "usage": {"output_tokens": 3000},
+                        },
+                    }
+                )
+                + "\n"
+            )
+            (run / "agent-a88a43dd9.meta.json").write_text('{"name":"detect:backend"}')
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            ):
+                session = dashboard.collect_claude(now, 24, False)[0]
+
+        self.assertEqual("working", session["state"])
+        self.assertEqual(["detect:backend"], session["subagents"])
+        # The agent's output is the session's output — a parent that reads
+        # Working at 0 tok/min is the same blind spot in the rate panel.
+        self.assertGreater(session["rate_per_min"], 0)
+
+    def test_workflow_agent_activity_holds_a_session_in_the_window(self) -> None:
+        # last_activity drives both the freshness window and the "idle 23h"
+        # age. A stale parent whose workflow agents wrote a minute ago has to
+        # count as a minute old, or a long run ages out of the dashboard.
+        now = dashboard.time.time()
+        session_id = "d0d0d0d0-0000-0000-0000-000000000000"
+        ancient = now - 30 * 3600  # older than the 24h window
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "sample"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text("{}\n")
+            dashboard.os.utime(transcript, (ancient, ancient))
+            run = project / session_id / "subagents" / "workflows" / "wf_1"
+            run.mkdir(parents=True)
+            agent = run / "agent-1.jsonl"
+            agent.write_text("{}\n")
+            recent = now - 300  # quiet enough not to read Working
+            dashboard.os.utime(agent, (recent, recent))
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        self.assertAlmostEqual(recent, sessions[0]["last_activity"], delta=2)
+
     def test_copilot_sessions_are_discovered_and_analyzed(self) -> None:
         now = dashboard.time.time()
         iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()

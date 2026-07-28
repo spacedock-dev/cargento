@@ -1639,20 +1639,38 @@ def load_tasks() -> dict[str, list[dict[str, Any]]]:
     return by_session
 
 
-def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, Any]]:
-    """Running Claude subagents: <project>/<session-uuid>/subagents/
-    agent-*.jsonl next to the session transcript; fresh mtime = running."""
+# Subagent transcripts sit beneath the session directory in two layouts. A
+# plain Task subagent lands directly in subagents/; a workflow fan-out nests
+# one level deeper, under the run that owns it. Missing the second layout hid
+# every workflow agent, which is how a session driving ten of them read Idle.
+CLAUDE_SUBAGENT_GLOBS = (
+    ("subagents", "agent-*.jsonl"),
+    ("subagents", "workflows", "*", "agent-*.jsonl"),
+)
+
+
+def claude_agent_transcripts(transcript: str | None) -> list[tuple[str, float]]:
+    """(path, mtime) for every subagent transcript belonging to a session."""
     if not transcript:
         return []
     sess_dir = os.path.join(
         os.path.dirname(transcript), os.path.basename(transcript)[: -len(".jsonl")]
     )
+    found: list[tuple[str, float]] = []
+    for pattern in CLAUDE_SUBAGENT_GLOBS:
+        for fp in glob_under(sess_dir, *pattern):
+            try:
+                found.append((fp, os.path.getmtime(fp)))
+            except OSError:
+                continue  # transcript rotated/deleted between glob and stat
+    return found
+
+
+def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, Any]]:
+    """Running Claude subagents beneath the session directory; fresh mtime =
+    running. Covers both layouts in ``CLAUDE_SUBAGENT_GLOBS``."""
     agents: list[dict[str, Any]] = []
-    for fp in glob_under(sess_dir, "subagents", "agent-*.jsonl"):
-        try:
-            mtime = os.path.getmtime(fp)
-        except OSError:
-            continue
+    for fp, mtime in claude_agent_transcripts(transcript):
         if not is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
             continue
         label = None
@@ -2681,6 +2699,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         except OSError:
             transcript_mtime = 0
         latest_task_mtime = max((t["updated"] for t in tasks), default=0)
+        agent_files = claude_agent_transcripts(transcript)
         subagents = load_claude_subagents(transcript, now)
         children = agent_children.get(prefix, [])
         subagents += [
@@ -2693,10 +2712,15 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             default=0,
         )
         latest_child_mtime = max((c["mtime"] for c in children), default=0)
+        # Every subagent write, not just the ones fresh enough to read as
+        # running: a workflow that has been going for hours parks its parent
+        # transcript, and without this the session ages out of the window.
+        latest_agent_file_mtime = max((m for _, m in agent_files), default=0)
         activity_sources = (
             latest_task_mtime,
             transcript_mtime,
             latest_agent_mtime,
+            latest_agent_file_mtime,
             latest_child_mtime,
         )
         last_activity = newest_plausible(now, activity_sources)
@@ -2796,6 +2820,11 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 # Subagent output now lives in the children's own transcripts;
                 # fold it in so the session's rate reflects all its work.
                 "rate_per_min": rate_from(info, now)
+                + sum(
+                    rate_from(analyze_transcript(path), now)
+                    for path, mtime in agent_files
+                    if is_fresh(now, mtime, RATE_WINDOW_SEC)
+                )
                 + sum(
                     rate_from(analyze_transcript(c["path"]), now)
                     for c in children
