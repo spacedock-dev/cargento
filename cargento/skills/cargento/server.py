@@ -4843,7 +4843,8 @@ const HARNESS = {
 for(const k in HARNESS){ if(ICON_PATH[k]) HARNESS[k].icon = iconURI(ICON_PATH[k]); }
 
 function badge(key, active, name, tipSuffix){
-  const h = HARNESS[key] || {code:(key||"?").slice(0,2).toUpperCase(), name:key};
+  const h = own(HARNESS, key, null) ||
+    {code:String(key||"?").slice(0,2).toUpperCase(), name:key};
   const label = name || h.name;
   const tileStyle = active ? "background:var(--ink)" : "border:1px solid var(--line)";
   const on = active ? "var(--bg)" : "var(--ink2)";
@@ -5039,9 +5040,12 @@ try{
 let calmSort = "attention";   /* attention | recent | repo */
 let calmStateOnly = null;     /* needs | work | idle */
 let calmFlagOnly = false;
-let calmOpenSid = null;       /* the one expanded row */
-let calmFocusSid = null;      /* keyboard cursor */
-let calmCopyNote = null;      /* {sid, text} — transient label after copy id */
+/* Rows are identified by sessKey(), the same (harness, sid) pair the rate
+   buffers and the notification map use — dedupe_sessions keys on that pair, so
+   a bare sid is not unique across harnesses. */
+let calmOpenKey = null;       /* the one expanded row */
+let calmCursorKey = null;     /* keyboard cursor */
+let calmCopyNote = null;      /* {key, text} — transient label after copy id */
 let calmScrollTop = 0;        /* ledger scroll survives the 5s re-render */
 let calmRevealFocus = false;  /* scroll the cursor into view after this render */
 let calmResetScroll = false;  /* re-filtered: the next render starts at the top */
@@ -5083,6 +5087,14 @@ const CALM_TASK = {
 };
 const CALM_TASK_ORDER = {in_progress:0, pending:1, completed:2};
 
+/* These tables are indexed by strings that come out of the payload, and every
+   plain object inherits truthy `constructor`, `toString` and friends from
+   Object.prototype — enough to sail straight past an `||` or `??` fallback and
+   render `undefined` as a glyph and as a colour. Ask for own properties only. */
+function own(table, key, fallback){
+  return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
+}
+
 /* One ledger row per session. Every session lands in exactly one of the three
    buckets — a ledger that silently drops a row is worse than useless. */
 function calmRow(d, x){
@@ -5105,11 +5117,12 @@ function calmRow(d, x){
   const title = x.title || x.last_prompt || x.project;
   const prompt = String(x.last_prompt || "").trim();
   const tasks = (x.tasks || []).slice().sort(
-    (a, b) => (CALM_TASK_ORDER[a.status] ?? 3) - (CALM_TASK_ORDER[b.status] ?? 3));
+    (a, b) => own(CALM_TASK_ORDER, a.status, 3) - own(CALM_TASK_ORDER, b.status, 3));
   const taskDone = tasks.filter(t => t.status === "completed").length;
   const rate = x.rate_per_min || 0;
   return {
-    sid: x.sid, harness: x.harness, project: x.project, session: x.session,
+    key: sessKey(x), sid: x.sid,
+    harness: x.harness, project: x.project, session: x.session,
     st, title, doing: x.state_detail, ageSec, waitSec, turn, flag, tone, why,
     sortAge: st === "work" ? 0 : ageSec,   /* see byAge — a working row's age is noise */
     rail: CALM_RAIL[st] || CALM_RAIL.idle,
@@ -5173,10 +5186,10 @@ function calmEntries(shown){
 }
 
 /* The cursor falls back to the first row rather than being written back into
-   calmFocusSid, so a re-sort moves the highlight without stranding state. */
+   calmCursorKey, so a re-sort moves the highlight without stranding state. */
 function calmEffectiveFocus(order){
-  if(calmFocusSid && order.some(r => r.sid === calmFocusSid)) return calmFocusSid;
-  return order.length ? order[0].sid : null;
+  if(calmCursorKey && order.some(r => r.key === calmCursorKey)) return calmCursorKey;
+  return order.length ? order[0].key : null;
 }
 
 function calmOrder(d){
@@ -5188,18 +5201,23 @@ function calmMove(step){
   if(!lastData) return;
   const order = calmOrder(lastData);
   if(!order.length) return;
-  const i = order.findIndex(r => r.sid === calmEffectiveFocus(order));
-  calmFocusSid = order[Math.max(0, Math.min(order.length - 1, (i < 0 ? 0 : i + step)))].sid;
+  const i = order.findIndex(r => r.key === calmEffectiveFocus(order));
+  calmCursorKey = order[Math.max(0, Math.min(order.length - 1, (i < 0 ? 0 : i + step)))].key;
   calmRevealFocus = true;
   render(lastData);
 }
 
-function calmCopyId(sid){
+function calmCopyId(key){
+  /* The row key identifies the row; the session id is what goes on the
+     clipboard. Resolve one to the other rather than carrying both around. */
+  const row = lastData ? lastData.sessions.find(x => sessKey(x) === key) : null;
+  const sid = row ? row.sid : null;
+  if(!sid) return;
   const note = text => {
-    calmCopyNote = {sid, text};
+    calmCopyNote = {key, text};
     if(lastData) render(lastData);
     setTimeout(() => {
-      if(!calmCopyNote || calmCopyNote.sid !== sid) return;
+      if(!calmCopyNote || calmCopyNote.key !== key) return;
       calmCopyNote = null;
       if(lastData) render(lastData);
     }, 1400);
@@ -5220,15 +5238,15 @@ function calmAction(act, arg){
     calmSort = arg; calmResetScroll = true;
   } else if(act === "state"){
     calmStateOnly = calmStateOnly === arg ? null : arg;
-    calmOpenSid = null; calmFocusSid = null; calmResetScroll = true;
+    calmOpenKey = null; calmCursorKey = null; calmResetScroll = true;
   } else if(act === "flag"){
     calmFlagOnly = !calmFlagOnly;
-    calmOpenSid = null; calmFocusSid = null; calmResetScroll = true;
+    calmOpenKey = null; calmCursorKey = null; calmResetScroll = true;
   } else if(act === "clear"){
     calmFlagOnly = false; calmStateOnly = null; calmResetScroll = true;
   } else if(act === "open"){
-    calmOpenSid = calmOpenSid === arg ? null : arg;
-    calmFocusSid = arg;
+    calmOpenKey = calmOpenKey === arg ? null : arg;
+    calmCursorKey = arg;
   } else return;
   if(lastData) render(lastData);
 }
@@ -5261,15 +5279,15 @@ document.addEventListener("keydown", e => {
   else if(k === "f"){ stop(); calmAction("flag", null); }
   else if(k === "Escape"){
     stop();
-    calmOpenSid = null; calmFlagOnly = false; calmStateOnly = null;
+    calmOpenKey = null; calmFlagOnly = false; calmStateOnly = null;
     calmResetScroll = true;
     render(lastData);
   }
 });
 
 function calmHarnessCell(r){
-  const h = HARNESS[r.harness] ||
-    {code:(r.harness || "?").slice(0, 2).toUpperCase(), name:r.harness};
+  const h = own(HARNESS, r.harness, null) ||
+    {code:String(r.harness || "?").slice(0, 2).toUpperCase(), name:r.harness};
   const inner = h.icon
     ? `<span class="cm-ico" style="-webkit-mask:url('${h.icon}') center/contain no-repeat;` +
       `mask:url('${h.icon}') center/contain no-repeat"></span>`
@@ -5291,7 +5309,7 @@ function calmExpansion(r){
   const tasks = r.tasks.length
     ? `<div class="cm-tasks"><span class="cm-subk">tasks · ${esc(r.taskNote)}</span>` +
       r.tasks.map(t => {
-        const s = CALM_TASK[t.status] || CALM_TASK.pending;
+        const s = own(CALM_TASK, t.status, CALM_TASK.pending);
         const line = (t.status === "in_progress" && t.activeForm)
           ? t.activeForm + "…" : t.subject;
         return `<div class="cm-task"><span class="cm-task-g" style="color:${s.ink}">` +
@@ -5300,7 +5318,7 @@ function calmExpansion(r){
       }).join("") + `</div>`
     : "";
   const meta = `<div class="cm-meta">` +
-    `<span>${esc((HARNESS[r.harness] || {}).name || r.harness)}</span>` +
+    `<span>${esc(own(HARNESS, r.harness, {}).name || r.harness)}</span>` +
     `<span>${esc(r.project)}</span><span>session ${esc(r.session)}</span>` +
     `<span>${esc(r.detailAge)}</span>` +
     (r.tasks.length ? `<span>${esc(r.taskNote)}</span>` : "") + `</div>`;
@@ -5320,19 +5338,19 @@ function calmExpansion(r){
         ? `<div class="cm-sub"><span class="cm-sub-n">+${r.subagents.length - 8} more</span></div>`
         : "") + `</div>`
     : "";
-  const copied = calmCopyNote && calmCopyNote.sid === r.sid;
+  const copied = calmCopyNote && calmCopyNote.key === r.key;
   const acts = `<div class="cm-acts"><button type="button" class="cm-act" data-calm="copy"` +
-    ` data-arg="${esc(r.sid)}">${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
+    ` data-arg="${esc(r.key)}">${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
     `<button type="button" class="cm-act" data-calm="open"` +
-    ` data-arg="${esc(r.sid)}">collapse</button></div>`;
+    ` data-arg="${esc(r.key)}">collapse</button></div>`;
   return `<div class="cm-exp"><div class="cm-exp-main">${why}${quote}${tasks}` +
     sdBlock({spacedock: r.spacedock}) + meta + `</div>` +
     `<div class="cm-exp-side">${turn}${subs}${acts}</div></div>`;
 }
 
 function calmRowHTML(r, focusSid){
-  const open = calmOpenSid === r.sid;
-  const focus = r.sid === focusSid;
+  const open = calmOpenKey === r.key;
+  const focus = r.key === focusSid;
   const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
   const pct = (r.turn && r.turn.pct != null) ? r.turn.pct : null;
   const signal = (r.st === "work" && pct != null)
@@ -5343,9 +5361,9 @@ function calmRowHTML(r, focusSid){
     ? `<span class="cm-flag" style="background:${tone.bg};color:${tone.ink};` +
       `border-color:${tone.bd}">${esc(r.flag)}</span>`
     : "";
-  const copied = calmCopyNote && calmCopyNote.sid === r.sid;
+  const copied = calmCopyNote && calmCopyNote.key === r.key;
   return `<div class="cm-item"><div class="cm-row${focus ? " focus" : ""}${open ? " open" : ""}"` +
-    ` data-calm="open" data-arg="${esc(r.sid)}" role="button" aria-expanded="${open}">` +
+    ` data-calm="open" data-arg="${esc(r.key)}" role="button" aria-expanded="${open}">` +
     (focus ? `<span class="cm-cursor"></span>` : "") +
     `<span class="cm-rail" style="background:${r.rail}"></span>` +
     calmHarnessCell(r) +
@@ -5360,7 +5378,7 @@ function calmRowHTML(r, focusSid){
     `<span>${flag}</span><span>${signal}</span>` +
     `<span class="cm-metric" style="color:${r.metricInk}">${esc(r.metric)}</span>` +
     `<span class="cm-q"><button type="button" class="cm-qb" data-calm="copy"` +
-    ` data-arg="${esc(r.sid)}" title="copy this session's id">` +
+    ` data-arg="${esc(r.key)}" title="copy this session's id">` +
     `${copied ? esc(calmCopyNote.text) : "id"}</button></span>` +
     `<span class="cm-caret">${open ? "–" : "+"}</span></div>` +
     (open ? calmExpansion(r) : "") + `</div>`;

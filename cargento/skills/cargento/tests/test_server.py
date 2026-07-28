@@ -6882,6 +6882,8 @@ const busy = mk({sid: "bbb2", session: "bbb2", harness: "codex", project: "repo/
 const quiet = mk({sid: "ccc3", session: "ccc3", title: "Old thing", last_activity: 90000});
 const board = () => payload([blocked, busy, quiet]);
 const rows = () => (__els.app.innerHTML.match(/class="cm-row/g) || []).length;
+// A row is identified by (harness, sid) — the same pair sessKey() builds.
+const K = (harness, sid) => harness + ":" + sid;
 """
 
     def run_calm(self, checks: str, *, saved: str = "calm", clipboard: str = "none") -> Any:
@@ -6961,8 +6963,8 @@ const out = {};
 render(board());
 const h = __els.app.innerHTML;
 out.rows = rows();
-out.perSession = ["aaa1", "bbb2", "ccc3"]
-  .map(sid => (h.match(new RegExp('data-arg="' + sid + '"', "g")) || []).length);
+out.perSession = [K("claude", "aaa1"), K("codex", "bbb2"), K("claude", "ccc3")]
+  .map(k => (h.match(new RegExp('data-arg="' + k + '"', "g")) || []).length);
 out.note = h.includes("showing all 3");
 out.footer = h.includes("3 sessions · 1 harnesses · 1,234 tok/min");
 out.legend = [h.includes("1 needs you"), h.includes("1 working"), h.includes("1 idle")];
@@ -7002,12 +7004,13 @@ console.log(JSON.stringify(out));
         checks = """
 const out = {};
 render(board());
-calmAction("open", "aaa1");
-calmAction("open", "bbb2");
-calmAction("open", "ccc3");
-const each = sid => { calmAction("open", sid); const h = __els.app.innerHTML;
-  calmAction("open", sid); return h; };
-const hb = each("aaa1"), hw = each("bbb2"), hq = each("ccc3");
+calmAction("open", "claude:aaa1");
+calmAction("open", "codex:bbb2");
+calmAction("open", "claude:ccc3");
+const each = k => { calmAction("open", k); const h = __els.app.innerHTML;
+  calmAction("open", k); return h; };
+const hb = each(K("claude", "aaa1")), hw = each(K("codex", "bbb2")),
+      hq = each(K("claude", "ccc3"));
 out.blockedFlag = hb.includes(">your call<");
 out.blockedWhy = hb.includes("Blocked on you for 5m");
 out.longFlag = hw.includes(">long turn<");
@@ -7053,8 +7056,8 @@ console.log(JSON.stringify(out));
 const out = {};
 render(board());
 // Attention order puts the blocker first, then the warning, then the quiet row.
-const order = h => (h.match(/data-arg="(aaa1|bbb2|ccc3)" role="button"/g) || [])
-  .map(m => m.slice(10, 14));
+const order = h => [...h.matchAll(/data-arg="[a-z]+:(aaa1|bbb2|ccc3)" role="button"/g)]
+  .map(m => m[1]);
 out.attention = order(__els.app.innerHTML);
 calmAction("sort", "recent");
 out.recent = order(__els.app.innerHTML);
@@ -7067,19 +7070,19 @@ out.repoRows = rows();
 calmAction("sort", "attention");
 
 // A legend chip filters to its own bucket and reports the narrowing.
-calmAction("open", "bbb2");
-calmFocusSid = "bbb2";
+calmAction("open", "codex:bbb2");
+calmCursorKey = "codex:bbb2";
 calmAction("state", "needs");
-out.filterResetsRow = [calmOpenSid, calmFocusSid];
+out.filterResetsRow = [calmOpenKey, calmCursorKey];
 out.needsOnly = [rows(), __els.app.innerHTML.includes("showing 1 of 3")];
 out.clearOffered = __els.app.innerHTML.includes('data-calm="clear"');
 calmAction("state", "needs");
 out.chipIsAToggle = [calmStateOnly, rows()];
 
 // The flagged chip narrows to flagged rows; every board row is flagged here.
-calmAction("open", "bbb2");
+calmAction("open", "codex:bbb2");
 calmAction("flag", null);
-out.flagFilterResetsRow = [calmOpenSid, calmFocusSid];
+out.flagFilterResetsRow = [calmOpenKey, calmCursorKey];
 out.flagged = [calmFlagOnly, rows()];
 calmAction("clear", null);
 out.cleared = [calmFlagOnly, calmStateOnly, rows()];
@@ -7149,8 +7152,8 @@ const at = (t, k) => {
   // Reverse on alternate polls: payload order must not decide row order.
   return {...payload(k % 2 ? sessions.slice().reverse() : sessions), generated: t};
 };
-const snap = () => [...__els.app.innerHTML.matchAll(/data-arg="([a-z]+-\\d)" role/g)]
-  .map(m => m[1]);
+const snap = () => [...__els.app.innerHTML.matchAll(
+    /data-arg="[a-z]+:([a-z]+-\\d)" role/g)].map(m => m[1]);
 
 for(const sort of ["attention", "recent", "repo"]){
   calmAction("sort", sort);
@@ -7200,7 +7203,7 @@ const sd = {role: "first-officer", workflows: [{workflow: "wf", stages: ["a", "b
   entities: [{slug: "ent", stage: "b", live: true, cycle: "c1"}]}]};
 render(payload([Object.assign({}, busy, {spacedock: sd})]));
 out.collapsedFirst = !__els.app.innerHTML.includes("cm-exp");
-calmAction("open", "bbb2");
+calmAction("open", "codex:bbb2");
 const h = __els.app.innerHTML;
 out.expanded = h.includes("cm-exp");
 out.caret = h.includes('class="cm-caret">–<');
@@ -7215,21 +7218,21 @@ out.taskOrder = ["Converting chain…", "Re-run suite", "Map every call site"]
 out.spacedock = h.includes("spacedock wf") && h.includes("first officer");
 out.meta = h.includes("session bbb2") && h.includes("Claude");
 // Collapsing again, and only one row open at a time.
-calmAction("open", "bbb2");
+calmAction("open", "codex:bbb2");
 out.collapsed = !__els.app.innerHTML.includes("cm-exp");
 render(board());
-calmAction("open", "aaa1");
-calmAction("open", "bbb2");
+calmAction("open", "claude:aaa1");
+calmAction("open", "codex:bbb2");
 out.onlyOneOpen = (__els.app.innerHTML.match(/class="cm-exp"/g) || []).length;
 // A turn with no percentage draws no bar and says so in words.
 render(payload([mk({sid: "n", session: "n", state: "working", active: true,
   last_activity: 99999, turn: {elapsed_h: "9m", eta_h: null, pct: null, long: false}})]));
-calmAction("open", "n");
+calmAction("open", "claude:n");
 out.noPct = !__els.app.innerHTML.includes("cm-turn-pct")
   && __els.app.innerHTML.includes("9m elapsed · running longer than recent turns");
 // A session with nothing extra expands to just its identity line.
 render(payload([quiet]));
-calmAction("open", "ccc3");
+calmAction("open", "claude:ccc3");
 const bare = __els.app.innerHTML;
 out.bare = [bare.includes("cm-exp"), bare.includes("cm-tasks"),
             bare.includes("cm-subs"), bare.includes("session ccc3")];
@@ -7268,7 +7271,7 @@ render(payload([mk({sid: bad, session: bad, project: bad, title: bad,
   last_activity: 99999, subagents: [bad], harness: bad,
   turn: {elapsed_h: bad, eta_h: bad, pct: 50, long: true},
   tasks: [{status: "pending", subject: bad, activeForm: bad}]})]));
-calmAction("open", bad);
+calmAction("open", "claude:" + bad);
 const h = __els.app.innerHTML;
 console.log(JSON.stringify({
   noTag: !h.includes("<img") && !h.includes("<b>"),
@@ -7293,23 +7296,23 @@ const key = (k, target) => { const before = __prevented;
   return __prevented - before; };
 render(board());
 out.cursorStartsAtTop = __els.app.innerHTML.includes('class="cm-row focus"');
-key("j"); out.down1 = calmFocusSid;
-key("j"); out.down2 = calmFocusSid;
-key("j"); out.clampsAtBottom = calmFocusSid;
-key("k"); out.up = calmFocusSid;
-key("ArrowUp"); out.arrowUp = calmFocusSid;
-key("ArrowUp"); out.clampsAtTop = calmFocusSid;
-key("Enter"); out.enterOpens = calmOpenSid;
-key(" "); out.spaceCloses = calmOpenSid;
+key("j"); out.down1 = calmCursorKey;
+key("j"); out.down2 = calmCursorKey;
+key("j"); out.clampsAtBottom = calmCursorKey;
+key("k"); out.up = calmCursorKey;
+key("ArrowUp"); out.arrowUp = calmCursorKey;
+key("ArrowUp"); out.clampsAtTop = calmCursorKey;
+key("Enter"); out.enterOpens = calmOpenKey;
+key(" "); out.spaceCloses = calmOpenKey;
 key("f"); out.fFilters = calmFlagOnly;
-key("Escape"); out.escapeClears = [calmFlagOnly, calmStateOnly, calmOpenSid];
+key("Escape"); out.escapeClears = [calmFlagOnly, calmStateOnly, calmOpenKey];
 // Moving the cursor brings it into view; a plain poll does not yank the list.
 __revealed = 0;
 key("j"); out.revealedOnMove = __revealed;
 render(lastData); out.revealedOnPoll = __revealed;
 // Keys the ledger does not own are left alone.
-key("j", {tagName: "TEXTAREA"}); out.textareaSafe = calmFocusSid;
-key("q"); out.unknownKeySafe = calmFocusSid;
+key("j", {tagName: "TEXTAREA"}); out.textareaSafe = calmCursorKey;
+key("q"); out.unknownKeySafe = calmCursorKey;
 // The browser scrolls on Space and the arrows unless the page says otherwise.
 out.prevented = [key(" "), key("ArrowDown"), key("ArrowUp"), key("q")];
 key(" ");  // leave nothing expanded for the checks below
@@ -7328,30 +7331,30 @@ render(board());
 // Nothing to move to is not an error, and nothing opens.
 render(payload([]));
 key("j"); key("Enter");
-out.emptySafe = [calmOpenSid, __els.app.innerHTML.includes("cm-empty")];
+out.emptySafe = [calmOpenKey, __els.app.innerHTML.includes("cm-empty")];
 // Ledger keys stay in the ledger: `j` in regular mode must not move a cursor.
 setDisplayMode("regular");
 render(board());
-calmFocusSid = null;
-key("j"); out.regularIgnoresJ = calmFocusSid;
+calmCursorKey = null;
+key("j"); out.regularIgnoresJ = calmCursorKey;
 console.log(JSON.stringify(out));
 """
         out = self.run_calm(checks)
         self.assertTrue(out["cursorStartsAtTop"], "no keyboard cursor on first paint")
-        self.assertEqual("bbb2", out["down1"])
-        self.assertEqual("ccc3", out["down2"])
-        self.assertEqual("ccc3", out["clampsAtBottom"], "cursor ran off the end")
-        self.assertEqual("bbb2", out["up"])
-        self.assertEqual("aaa1", out["arrowUp"])
-        self.assertEqual("aaa1", out["clampsAtTop"], "cursor ran off the start")
-        self.assertEqual("aaa1", out["enterOpens"])
+        self.assertEqual("codex:bbb2", out["down1"])
+        self.assertEqual("claude:ccc3", out["down2"])
+        self.assertEqual("claude:ccc3", out["clampsAtBottom"], "cursor ran off the end")
+        self.assertEqual("codex:bbb2", out["up"])
+        self.assertEqual("claude:aaa1", out["arrowUp"])
+        self.assertEqual("claude:aaa1", out["clampsAtTop"], "cursor ran off the start")
+        self.assertEqual("claude:aaa1", out["enterOpens"])
         self.assertIsNone(out["spaceCloses"])
         self.assertTrue(out["fFilters"])
         self.assertEqual([False, None, None], out["escapeClears"])
         self.assertEqual(1, out["revealedOnMove"])
         self.assertEqual(1, out["revealedOnPoll"], "a poll scrolled the list on its own")
-        self.assertEqual("bbb2", out["textareaSafe"], "stole a key from a text field")
-        self.assertEqual("bbb2", out["unknownKeySafe"])
+        self.assertEqual("codex:bbb2", out["textareaSafe"], "stole a key from a text field")
+        self.assertEqual("codex:bbb2", out["unknownKeySafe"])
         self.assertEqual(
             [1, 1, 1, 0], out["prevented"], "the browser would scroll as well as the ledger"
         )
@@ -7373,8 +7376,8 @@ const out = {};
 render(board());
 calmAction("sort", "recent");
 calmAction("state", "work");
-calmAction("open", "bbb2");
-calmFocusSid = "bbb2";
+calmAction("open", "codex:bbb2");
+calmCursorKey = "codex:bbb2";
 __scrollTop = 137;
 render(board());
 const h = __els.app.innerHTML;
@@ -7393,7 +7396,7 @@ calmAction("sort", "repo");
 out.scrollResetOnSort = __scrollTop;
 // A session that disappears must not leave the cursor stranded.
 calmAction("sort", "attention");
-calmFocusSid = "gone";
+calmCursorKey = "nope:gone";
 render(board());
 out.strandedCursor = (__els.app.innerHTML.match(/class="cm-row focus/g) || []).length;
 // The stall indicator the refresh loop writes into exists in calm mode too.
@@ -7416,6 +7419,69 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["notifyControlPlaced"], "no way to grant notifications in calm mode")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_two_harnesses_sharing_a_session_id_stay_two_rows(self) -> None:
+        # dedupe_sessions keys on (harness, sid), so the same sid CAN reach the
+        # page twice on different harnesses. The rest of the page already
+        # treats that pair as identity (sessKey, the notification map); keying
+        # the ledger on a bare sid would expand both rows at once and leave the
+        # cursor unable to tell them apart.
+        checks = """
+const out = {};
+const clash = "019fa752";
+render(payload([
+  mk({sid: clash, session: clash, harness: "claude", project: "repo/a", title: "Claude one"}),
+  mk({sid: clash, session: clash, harness: "codex", project: "repo/b", title: "Codex one"})]));
+out.bothRows = rows();
+calmAction("open", K("claude", clash));
+const h = __els.app.innerHTML;
+out.onlyOneExpanded = (h.match(/class="cm-exp"/g) || []).length;
+out.expandedTheRightOne = h.indexOf("Claude one") < h.indexOf("cm-exp")
+  && h.indexOf("cm-exp") < h.indexOf("Codex one");
+out.cursorIsScoped = calmCursorKey;
+// j must step from one to the other, not sit still.
+__fire("keydown", {key: "j", target: {}, preventDefault(){}});
+out.moved = calmCursorKey;
+// And the clipboard still gets the bare session id, not the row key.
+calmAction("copy", K("codex", clash));
+await __settle();
+out.copied = __wrote;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks, clipboard="ok")
+        self.assertEqual(2, out["bothRows"], "two harnesses collapsed into one row")
+        self.assertEqual(1, out["onlyOneExpanded"], "one click expanded both rows")
+        self.assertTrue(out["expandedTheRightOne"])
+        self.assertEqual("claude:019fa752", out["cursorIsScoped"])
+        self.assertEqual("codex:019fa752", out["moved"], "the cursor could not tell them apart")
+        self.assertEqual(["019fa752"], out["copied"], "copied the row key instead of the id")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_an_unexpected_status_or_harness_cannot_render_undefined(self) -> None:
+        # Every plain object inherits truthy `constructor` and `toString` from
+        # Object.prototype, so a lookup like TABLE[x.status] || FALLBACK skips
+        # its own fallback for those keys and paints `undefined` as both the
+        # glyph and the CSS colour.
+        checks = """
+render(payload([mk({sid: "p", session: "p", harness: "constructor",
+  state: "working", active: true, last_activity: 99999, rate_per_min: 5,
+  tasks: [{status: "constructor", subject: "poisoned", activeForm: null},
+          {status: "toString", subject: "also poisoned", activeForm: null},
+          {status: "in_progress", subject: "real one", activeForm: "Working"}]})]));
+calmAction("open", K("constructor", "p"));
+const h = __els.app.innerHTML;
+console.log(JSON.stringify({
+  noUndefined: !h.includes("undefined"),
+  rows: rows(),
+  tasksRendered: (h.match(/class="cm-task"/g) || []).length,
+  realTaskFirst: h.indexOf("Working…") < h.indexOf("poisoned")}));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["noUndefined"], "an inherited key rendered as undefined")
+        self.assertEqual(1, out["rows"])
+        self.assertEqual(3, out["tasksRendered"], "a poisoned status dropped a task row")
+        self.assertTrue(out["realTaskFirst"], "inherited keys broke the task ordering")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_keyboard_focus_survives_the_poll(self) -> None:
         # The ledger's controls are real focusable buttons, and render() throws
         # the focused one away every five seconds. Without this, tabbing to a
@@ -7426,7 +7492,8 @@ render(board());
 const find = act => __controls().find(c => c.getAttribute("data-calm") === act);
 // Focus a control that carries an argument, and one that does not.
 document.activeElement = __controls().find(c =>
-  c.getAttribute("data-calm") === "copy" && c.getAttribute("data-arg") === "aaa1");
+  c.getAttribute("data-calm") === "copy" &&
+  c.getAttribute("data-arg") === K("claude", "aaa1"));
 __focused = null;
 render(board());
 out.withArg = __focused;
@@ -7435,7 +7502,8 @@ __focused = null;
 render(board());
 out.withoutArg = __focused;
 // A control that is gone after the payload changed must not steal focus.
-document.activeElement = __controls().find(c => c.getAttribute("data-arg") === "ccc3");
+document.activeElement = __controls().find(c =>
+  c.getAttribute("data-arg") === K("claude", "ccc3"));
 __focused = null;
 render(payload([blocked]));
 out.departed = __focused;
@@ -7451,7 +7519,7 @@ out.noFocus = __focused;
 console.log(JSON.stringify(out));
 """
         out = self.run_calm(checks)
-        self.assertEqual("copy:aaa1", out["withArg"], "focus was lost across the poll")
+        self.assertEqual("copy:claude:aaa1", out["withArg"], "focus was lost across the poll")
         self.assertEqual("flag:", out["withoutArg"])
         self.assertIsNone(out["departed"], "focus jumped to an unrelated control")
         self.assertIsNone(out["untracked"], "stole focus from outside the ledger")
@@ -7482,7 +7550,7 @@ console.log(JSON.stringify({
         checks = """
 const out = {};
 render(board());
-calmAction("copy", "aaa1");
+calmAction("copy", "claude:aaa1");
 await __settle();
 out.wrote = __wrote;
 out.label = __els.app.innerHTML.includes(">copied<");
@@ -7503,7 +7571,7 @@ console.log(JSON.stringify(out));
         # confident "copied" there costs the reader the id they wanted.
         checks = """
 render(board());
-calmAction("copy", "aaa1");
+calmAction("copy", "claude:aaa1");
 await __settle(); await __settle();
 const h = __els.app.innerHTML;
 console.log(JSON.stringify({lied: h.includes(">copied<"), told: h.includes(">blocked<")}));
