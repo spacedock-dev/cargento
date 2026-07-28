@@ -21,16 +21,42 @@ This repo contains one plugin, `cargento`, the agent cartography dashboard skill
 ### Prerequisites
 
 - Python 3.11+. The server is stdlib-only, so there is nothing to install alongside it.
-- To install it as a plugin: Codex, Claude Code, Antigravity/AGY, or Gemini CLI.
+- For the supported installer: Claude Code, `curl`, `tar`, and either `sha256sum` or `shasum`.
+- For manual plugin setup: Codex, Claude Code, Antigravity/AGY, or Gemini CLI.
 
-You do not need all four. The dashboard maps every harness it finds on the machine regardless of
-which one launched it, and it runs standalone with no client installed at all:
+### Install the CLI and Claude plugin
+
+Choose the release tag you want, then run its installer:
+
+```bash
+CARGENTO_TAG=vX.Y.Z # replace with the release tag you want
+curl -fsSL "https://github.com/spacedock-dev/cargento/releases/download/$CARGENTO_TAG/install.sh" \
+  | sh -s -- --plugin claude
+```
+
+The installer verifies the release checksum, installs a user-local `cargento` command, and sets up
+the exact `cargento@spacedock` Claude plugin. A complete run ends with:
+
+```text
+CLI: verified
+Plugin (claude): verified
+```
+
+If `~/.local/bin` is not already on `PATH`, the result includes an `export PATH=...` line you can
+copy. The installer does not edit shell startup files. Run `cargento --diagnose` to check the CLI.
+A plugin failure after CLI activation is reported as a partial installation; rerun the same
+installer command to repair it.
+
+### Manual and plugin-only setup
+
+You do not need every harness. The dashboard maps every harness it finds on the machine regardless
+of which one launched it. From a checkout, it also runs without plugin installation:
 
 ```bash
 python3 cargento/skills/cargento/server.py --port 4553
 ```
 
-### Claude Code installation
+#### Claude Code
 
 Cargento is listed in the shared Spacedock marketplace, so if you already have that marketplace you
 only need the second line.
@@ -45,7 +71,7 @@ claude plugin install cargento@spacedock
 
 Restart Claude Code after installation.
 
-### Antigravity / AGY installation
+#### Antigravity / AGY
 
 ```bash
 # From a local checkout, install the native AGY plugin
@@ -54,7 +80,7 @@ agy plugin install "$PWD/cargento"
 
 Restart AGY after installation.
 
-### Gemini CLI installation
+#### Gemini CLI
 
 ```bash
 # From a local checkout, install the native Gemini CLI extension
@@ -63,7 +89,7 @@ gemini extensions install "$PWD/cargento"
 
 Restart Gemini CLI after installation.
 
-### Codex installation
+#### Codex
 
 ```bash
 # Add the marketplace from a local checkout, then install the plugin

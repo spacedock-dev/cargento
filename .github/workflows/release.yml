@@ -155,6 +155,8 @@ jobs:
           python3 scripts/validate_plugins.py
           python3 -m unittest scripts/tests/test_validate_plugins.py
           python3 -m unittest scripts/tests/test_bump_version.py
+          python3 -m unittest scripts/tests/test_build_release_assets.py
+          python3 -m unittest scripts/tests/test_installer.py
           python3 -m unittest cargento/skills/cargento/tests/test_server.py
 
       - name: Bump version fields, re-validate, and push the release commit
@@ -206,16 +208,31 @@ jobs:
           TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
           git push --force origin "$TARGET:refs/heads/stable"
 
-      - name: Publish the GitHub Release
+      - name: Build release assets from the released commit
+        run: |
+          set -euo pipefail
+          TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
+          git checkout --detach "$TARGET"
+          python3 scripts/build_release_assets.py --tag "$TAG" --output-dir dist
+
+      - name: Publish the GitHub Release and assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "Release $TAG already exists — nothing to publish."
+            gh release upload "$TAG" \
+              "dist/install.sh" \
+              "dist/cargento-runtime-$VERSION.tar.gz" \
+              "dist/cargento-runtime-$VERSION.tar.gz.sha256" \
+              --clobber
+            echo "Release $TAG already exists — assets refreshed."
             exit 0
           fi
           gh release create "$TAG" \
             --title "Cargento $VERSION" \
             --generate-notes \
-            --verify-tag
+            --verify-tag \
+            "dist/install.sh" \
+            "dist/cargento-runtime-$VERSION.tar.gz" \
+            "dist/cargento-runtime-$VERSION.tar.gz.sha256"
