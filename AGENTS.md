@@ -29,6 +29,10 @@ scripts/
 └── tests/
     ├── test_build_release_assets.py
     └── test_installer.py
+docs/dev/                            # tracked Spacedock development workflow
+├── README.md                        # workflow schema and evidence discipline
+├── ledger.csv                       # measurement ledger
+└── _mods/                           # workflow-specific lifecycle behavior
 ```
 
 The Codex/AGY marketplace lives at `.agents/plugins/marketplace.json`. There is no Claude
@@ -51,6 +55,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
 | `SECURITY.md` | Security invariants, accepted exposures, and private reporting. |
 | `cargento/skills/cargento/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |
+| `docs/dev/README.md` | The tracked Spacedock development workflow; its split-root entity state remains local and ignored. |
 | `docs/design-installation.md` | Installer ownership, trust boundary, and rejected distribution alternatives. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |

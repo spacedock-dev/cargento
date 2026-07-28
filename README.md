@@ -148,9 +148,11 @@ See [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract.
 ## 5. Contributing
 
 Contributions are welcome, and new harness support is especially useful. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and PR conventions. This project follows
-the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues
-privately, as described in [SECURITY.md](SECURITY.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and PR conventions. Maintainers using
+Spacedock can follow the tracked [development workflow](docs/dev/README.md) without publishing its
+per-workspace entity state. This project follows the
+[Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues privately,
+as described in [SECURITY.md](SECURITY.md).
 
 ## 6. License
 
