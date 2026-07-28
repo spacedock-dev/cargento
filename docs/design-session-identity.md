@@ -21,15 +21,38 @@ working directory. Claude took its encoded `projects/` directory name with the h
 stripped, so one worktree read `subspace` on a Codex row and
 `git-spacedock-research-spacedock-subspace` on a Claude row.
 
-`project_from_cwd` is now the single rule. It returns the last two path segments, splitting
-on both separators regardless of host, dropping a bare drive letter, and returning `(home)`
-for the home directory itself. Collectors apply their own fallback when it returns empty.
+`project_from_cwd` is now the single rule. It returns the last two path segments, using the
+host's own path module, and returns `(home)` for the home directory itself. Collectors apply
+their own fallback when it returns empty.
 
 Two segments rather than one because sibling worktrees are routinely all named the same
 thing. `recce/cargento` and `agy-subagents/cargento` are different work; `cargento` twice is
 a dashboard that lies. This matters more after the normalization, not less: making labels
 agree across harnesses also makes them agree across directories that merely share a
 basename.
+
+A path under the home directory is labelled relative to it. Without that, `~/foo` reads
+`<username>/foo`, which puts the account name in a UI column and disagrees with the
+`project_label` fallback that strips exactly that prefix. The two derivations have to land
+on the same string or the unification is only skin deep.
+
+The comparison against home goes through `normcase`, which folds Windows case and separator
+spelling and preserves length. `C:\Users\jared` and `C:/Users/jared` and `c:\users\JARED`
+are one directory, and a store may record any of them.
+
+### Rejected
+
+- **Splitting on both separators by hand.** Tempting, because a Windows path read on POSIX
+  keeps its backslashes. `docs/design-cross-platform.md` already rejected the generic version
+  of this helper and the same reasoning applies here: `\` is a legal POSIX filename
+  character, so the split turns one directory named `my\proj` into two. Cargento only reads
+  stores written on the machine it runs on, so `ntpath` on Windows and `posixpath` elsewhere
+  are the correct semantics, and `windows` is injectable so one runner covers both.
+- **Comparing against home with string equality.** Passes on POSIX and silently mislabels on
+  Windows, where the same directory has several legal spellings.
+- **Accepting a relative or unresolved cwd.** `..` and `relative/path` produced labels like
+  `cargento/..`. Returning empty and letting the collector fall back to the harness name is
+  the honest answer.
 
 ## D-2: read Claude's working directory from the transcript, not the directory name
 
@@ -64,9 +87,14 @@ over. That is the whole of the reported "sessions collapse together": nothing wa
 dropped, the rows were just indistinguishable. Fixing the project label alone would have
 made it worse, since the project column started matching too.
 
-`assign_display_ids` widens the shown prefix until it is unique within each harness, with a
-floor of 8, the way git shortens a commit sha. Per harness, so one colliding Codex pair does
-not churn every Claude row. `sid` stays whole; only the display string grows.
+`assign_display_ids` widens the shown prefix until it is unique, with a floor of 8, the way
+git shortens a commit sha. `sid` stays whole; only the display string grows.
+
+The group is `(harness, project)`, because that is exactly what the row prints beside the id,
+so those are the rows a reader has to tell apart. Grouping by harness alone looks equivalent
+and is not: four UUIDv7 agents started in the same millisecond need 16 to 18 characters to
+separate, and every other Codex row would inherit that width for nothing. That is the same
+objection this document raises against a fixed longer width, arriving by a different route.
 
 ### Rejected
 
@@ -95,7 +123,22 @@ presentation:
 ## Cursor
 
 Cursor rows were hardcoded to the literal `cursor`, so every Cursor session in every
-repository shared one label. Its store records a workspace path in the same undocumented
-`meta` payload the session name comes from, so `_cursor_meta` now reads both and accepts a
-value only when it looks like an absolute path. The harness name remains the fallback,
-which is what every Cursor row showed before.
+repository shared one label.
+
+Its `meta` table is the only place a workspace path could live, but the payload is
+undocumented and no Cursor store was available to read while this was written. The key
+spellings `_CURSOR_CWD_KEYS` tries are therefore inferred from the VS Code lineage, not
+observed, and the ranking is a guess at which is most trustworthy.
+
+A shape check alone would not be safe under that uncertainty. In the same family
+`workspace` routinely holds a `.code-workspace` *file*, and `workspaceStorage/<hash>` paths
+are everywhere in chat storage; either passes an "is it an absolute path" test and yields a
+confident wrong label, which is worse than no label. So a candidate is accepted only when it
+resolves to a directory that exists on this machine. That makes the guess validate itself:
+a wrong key almost never points at a real local directory, and when every key misses, the
+row keeps the `cursor` fallback it had before. The `file://` spelling is accepted too, since
+it is the canonical serialization in that family and rejecting it would make the whole read
+a silent no-op indistinguishable from "Cursor records no workspace".
+
+This is the one part of the change that is inference rather than observation. It is written
+to fail closed, but a real store should be read before trusting the key list.

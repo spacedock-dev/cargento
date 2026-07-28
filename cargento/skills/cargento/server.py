@@ -36,7 +36,7 @@ import unicodedata
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 try:
     import sqlite3
@@ -696,27 +696,34 @@ DISPLAY_ID_LEN = 8  # floor; widened per harness only where 8 chars collide
 
 
 def assign_display_ids(sessions: list[dict[str, Any]]) -> None:
-    """Widen each session's display id until it is unique within its harness.
+    """Widen each session's display id until it is unique among the rows it
+    could be confused with.
 
     Codex hands out UUIDv7, whose leading 48 bits are a millisecond timestamp.
     A fan-out launched in one directory therefore shares its leading hex, and
     an 8-char display id rendered several distinct sessions as the same
-    harness, project and id — one session, apparently. Claude's uuid4 prefixes
-    do not collide in practice, so the widening is per harness and stops at the
-    first length that separates that harness's rows.
+    harness, project and id — one session, apparently.
+
+    The group is ``(harness, project)`` because that is exactly what a row
+    prints beside the id, so those are the rows a reader has to tell apart.
+    Widening per harness instead would drag every unrelated row in that harness
+    out to the width one colliding fan-out needed: four agents started in the
+    same millisecond need 16 to 18 characters, and a lone session in another
+    worktree would inherit that for nothing.
 
     Mutates ``session["session"]`` only. ``sid`` is what every caller keys on
     and is left whole.
     """
-    by_harness: dict[str, list[dict[str, Any]]] = {}
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for session in sessions:
-        by_harness.setdefault(str(session["harness"]), []).append(session)
-    for group in by_harness.values():
+        groups.setdefault((str(session["harness"]), str(session["project"])), []).append(session)
+    for group in groups.values():
         sids = [str(s["sid"]) for s in group]
         width = DISPLAY_ID_LEN
         longest = max((len(sid) for sid in sids), default=DISPLAY_ID_LEN)
-        # Two rows can legitimately share an sid (see dedupe_sessions); stop at
-        # the full id rather than widening forever.
+        # Terminates: width strictly increases and is bounded by the longest
+        # sid, where every prefix is the whole id. Comparing distinct prefixes
+        # against distinct sids also means repeated sids cannot drive it.
         while width < longest and len({sid[:width] for sid in sids}) != len(set(sids)):
             width += 1
         for session in group:
@@ -1934,10 +1941,10 @@ def base_session(harness: str, sid: Any, project: str) -> dict[str, Any]:
     # "session" is the display id and starts at the DISPLAY_ID_LEN floor;
     # assign_display_ids() widens it per harness where that floor collides.
     # "sid" keeps the full identity so the client can key per-session state
-    # without truncation collisions (e.g. Gemini "session-*" fallback ids all
-    # display as "session-"). Claude passes its 8-char prefix, so sid ==
-    # session there — that whole collector is already keyed on the prefix
-    # upstream, and widening is a no-op for it.
+    # without truncation collisions (e.g. two Gemini "session-*" fallback ids
+    # are one string apart at the floor). Claude passes its 8-char prefix, so
+    # sid == session there — that whole collector is already keyed on the
+    # prefix upstream, and widening is a no-op for it.
     return {
         "session": str(sid)[:8],
         "sid": str(sid),
@@ -3624,11 +3631,44 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
 _cursor_meta_cache: dict[str, tuple[float, str | None, str]] = {}
 
 # Cursor does not document its meta payload, so the workspace path is read by
-# trying the plausible spellings and accepting only a value that looks like an
-# absolute path. A miss leaves the row on the harness-name fallback, which is
-# what every Cursor row showed before.
+# trying the plausible spellings, in this order of trust. A miss leaves the row
+# on the harness-name fallback, which is what every Cursor row showed before.
+#
+# The spellings are inferred from the VS Code lineage, not observed in a store,
+# so a shape check is not enough on its own: "workspace" in that family often
+# holds a .code-workspace *file*, and workspaceStorage/<hash> paths are
+# everywhere in its chat storage. Either would produce a confident wrong label,
+# which is worse than the fallback. So a candidate is accepted only if it
+# resolves to a directory that exists here — a guess that validates itself.
 _CURSOR_CWD_KEYS = ("workspacePath", "workspace", "rootPath", "projectPath", "folder", "cwd")
 _ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
+_CURSOR_META_ROWS = 50  # a key/value table; the workspace need not be in row 1-5
+
+
+def _cursor_workspace(value: Any) -> str:
+    """A meta value promoted to a workspace path, or ``""``.
+
+    Accepts the ``file://`` URI form as well as a bare path: that is the
+    canonical serialization in the VS Code family, and rejecting it would make
+    the whole read a silent no-op that looks identical to "Cursor records no
+    workspace".
+    """
+    if not isinstance(value, str) or not value:
+        return ""
+    if value.startswith("file://"):
+        parsed = urlparse(value)
+        if parsed.netloc:  # file://server/share is a UNC path, not a local dir
+            return ""
+        value = unquote(parsed.path)
+        # file:///C:/x parses to /C:/x; ntpath cannot read that spelling.
+        if os.name == "nt" and re.match(r"^/[A-Za-z]:", value):
+            value = value[1:]
+    if not _ABS_PATH_RE.match(value):
+        return ""
+    try:
+        return value if os.path.isdir(value) else ""
+    except OSError:
+        return ""
 
 
 def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
@@ -3641,7 +3681,7 @@ def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
     if hit and hit[0] == mtime:
         return hit[1], hit[2]
     title = None
-    cwd = ""
+    cwd_by_key: dict[str, str] = {}
     try:
         con = sqlite3.connect(sqlite_ro_uri(db), uri=True, timeout=0.2)
     except sqlite3.Error as exc:
@@ -3649,7 +3689,7 @@ def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
         return None, ""
     failed = False
     try:
-        rows = con.execute("SELECT value FROM meta LIMIT 5").fetchall()
+        rows = con.execute("SELECT value FROM meta LIMIT ?", (_CURSOR_META_ROWS,)).fetchall()
     except sqlite3.Error as exc:
         record_store_error(db, exc)
         rows, failed = [], True
@@ -3671,19 +3711,31 @@ def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
                 continue
             if not title:
                 # Untyped JSON from disk: a non-string name must not
-                # AttributeError the whole Cursor collector.
-                raw_name = d.get("name") or d.get("title")
-                name = raw_name.strip() if isinstance(raw_name, str) else ""
+                # AttributeError the whole Cursor collector. Take the first
+                # value that is actually a string rather than the first that
+                # is merely truthy, or a numeric "name" shadows a good "title".
+                name = next(
+                    (
+                        v.strip()
+                        for v in (d.get("name"), d.get("title"))
+                        if isinstance(v, str) and v.strip()
+                    ),
+                    "",
+                )
                 if name:
                     title = name[:80]
-            if not cwd:
-                for key in _CURSOR_CWD_KEYS:
-                    value = d.get(key)
-                    if isinstance(value, str) and _ABS_PATH_RE.match(value):
-                        cwd = value
-                        break
-        if title and cwd:
-            break
+            # Keyed by spelling, not by first-seen: the keys are ranked by
+            # trust, and a payload may spread them across rows, so a later row
+            # holding a better-trusted key must still win.
+            for key in _CURSOR_CWD_KEYS:
+                if key in cwd_by_key:
+                    continue
+                workspace = _cursor_workspace(d.get(key))
+                if workspace:
+                    cwd_by_key[key] = workspace
+        if title and _CURSOR_CWD_KEYS[0] in cwd_by_key:
+            break  # best-trusted key already found; nothing later can beat it
+    cwd = next((cwd_by_key[k] for k in _CURSOR_CWD_KEYS if k in cwd_by_key), "")
     if failed:
         # Transient: do not cache values the query never returned.
         return None, ""
@@ -4002,8 +4054,6 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
             diag(f"[{key}] collector error: {harness['error']}")
 
     out_sessions = dedupe_sessions(out_sessions)
-    # After dedupe, so a session found in two stores does not widen every
-    # display id in its harness to tell itself apart.
     assign_display_ids(out_sessions)
     state_rank = {"needs_input": 0, "working": 1, "idle": 2}
     # Session id as tiebreaker (not last_activity) so rows don't reshuffle

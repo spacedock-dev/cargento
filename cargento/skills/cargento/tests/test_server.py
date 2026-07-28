@@ -2392,6 +2392,24 @@ console.log(JSON.stringify(out));
         self.assertEqual(len(codex), len(set(codex)))
         self.assertTrue(all(len(c) > 8 for c in codex))
 
+    def test_a_colliding_fan_out_does_not_widen_unrelated_projects(self) -> None:
+        # A four-agent fan-out started in the same millisecond needs 16 to 18
+        # characters to separate. Grouping by harness alone would hand that
+        # width to every other Codex row, including a lone session in an
+        # unrelated worktree that was never ambiguous.
+        sessions = [
+            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "recce/infra"),
+            dashboard.base_session("codex", "019fa752-a889-73a3-88ba-d362c54a1ae6", "recce/infra"),
+            dashboard.base_session("codex", "019fa752-a88d-7d23-978a-a8d2d2584c3b", "recce/infra"),
+            dashboard.base_session("codex", "019fa752-a8a7-71f1-ac29-fd97c876c5e3", "recce/other"),
+        ]
+        dashboard.assign_display_ids(sessions)
+
+        # The lone row in the other worktree keeps the floor.
+        self.assertEqual("019fa752", sessions[3]["session"])
+        colliding = [s["session"] for s in sessions[:3]]
+        self.assertEqual(len(colliding), len(set(colliding)))
+
     def test_display_ids_ignore_collisions_across_different_harnesses(self) -> None:
         # Two harnesses can hand out the same id without either row being
         # ambiguous: the harness badge already separates them.
@@ -2557,36 +2575,138 @@ console.log(JSON.stringify(out));
 
         self.assertEqual("git-spacedock-subspace", sessions[0]["project"])
 
+    def _cursor_store(self, tmp: Path, sid: str, rows: list[Any]) -> None:
+        db = tmp / "chats" / "hash1" / sid / "store.db"
+        db.parent.mkdir(parents=True)
+        con = sqlite3.connect(str(db))
+        try:
+            con.execute("CREATE TABLE meta (value BLOB)")
+            for row in rows:
+                payload = json.dumps(row)
+                # Cursor hex-encodes the JSON in some versions; cover that one.
+                con.execute("INSERT INTO meta VALUES (?)", (payload.encode().hex(),))
+            con.commit()
+        finally:
+            con.close()
+
+    def _collect_cursor(self, tmp: Path) -> list[dict[str, Any]]:
+        with (
+            mock.patch.object(dashboard, "CURSOR_CHATS", str(tmp / "chats")),
+            mock.patch.dict(dashboard.STORE_ROOTS, {"cursor.chats": [str(tmp / "chats")]}),
+        ):
+            sessions: list[dict[str, Any]] = dashboard.collect_cursor(
+                dashboard.time.time(), 24, True
+            )
+            return sessions
+
     def test_cursor_reports_its_workspace_instead_of_the_harness_name(self) -> None:
         # DRC-3963. Cursor rows were hardcoded to "cursor", so every Cursor
         # session in every repository shared one label.
-        now = dashboard.time.time()
         if not dashboard.sqlite_available():
             self.skipTest("sqlite3 unavailable")
-        cwd = "/Users/cl/git/spacedock/subspace"
         with tempfile.TemporaryDirectory() as tmp:
-            db = Path(tmp) / "chats" / "hash1" / "sess-1" / "store.db"
-            db.parent.mkdir(parents=True)
-            con = sqlite3.connect(str(db))
-            try:
-                con.execute("CREATE TABLE meta (value BLOB)")
-                payload = json.dumps({"name": "refactor the parser", "workspacePath": cwd})
-                # Cursor hex-encodes the JSON in some versions; cover that one.
-                con.execute("INSERT INTO meta VALUES (?)", (payload.encode().hex(),))
-                con.commit()
-            finally:
-                con.close()
-            with (
-                mock.patch.object(dashboard, "CURSOR_CHATS", str(Path(tmp) / "chats")),
-                mock.patch.dict(
-                    dashboard.STORE_ROOTS, {"cursor.chats": [str(Path(tmp) / "chats")]}
-                ),
-            ):
-                sessions = dashboard.collect_cursor(now, 24, True)
+            root = Path(tmp)
+            workspace = root / "git" / "spacedock" / "subspace"
+            workspace.mkdir(parents=True)
+            self._cursor_store(
+                root,
+                "sess-1",
+                [{"name": "refactor the parser", "workspacePath": str(workspace)}],
+            )
+            sessions = self._collect_cursor(root)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("spacedock/subspace", sessions[0]["project"])
         self.assertEqual("refactor the parser", sessions[0]["title"])
+
+    def test_cursor_rejects_a_meta_value_that_is_not_a_real_directory(self) -> None:
+        # The key spellings are inferred from the VS Code lineage, not observed,
+        # and in that family "workspace" routinely holds a .code-workspace FILE
+        # while workspaceStorage/<hash> paths are everywhere. Either would give
+        # a confident wrong label, which is worse than the harness name.
+        if not dashboard.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            a_file = root / "mono.code-workspace"
+            a_file.write_text("{}")
+            self._cursor_store(root, "sess-file", [{"workspace": str(a_file)}])
+            file_rows = self._collect_cursor(root)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_store(
+                root, "sess-gone", [{"workspacePath": str(root / "workspaceStorage" / "9f2a3b")}]
+            )
+            missing_rows = self._collect_cursor(root)
+
+        self.assertEqual("cursor", file_rows[0]["project"])
+        self.assertEqual("cursor", missing_rows[0]["project"])
+
+    def test_cursor_accepts_the_file_uri_spelling(self) -> None:
+        # file:// is the canonical serialization in the VS Code family.
+        # Rejecting it makes the whole read a silent no-op that looks exactly
+        # like "Cursor records no workspace".
+        if not dashboard.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "git" / "spacedock" / "subspace"
+            workspace.mkdir(parents=True)
+            self._cursor_store(
+                root, "sess-uri", [{"workspacePath": workspace.as_uri(), "name": "n"}]
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("spacedock/subspace", sessions[0]["project"])
+
+    def test_cursor_prefers_the_best_trusted_key_across_rows(self) -> None:
+        # The payload may spread keys across meta rows. First-row-wins would
+        # let a low-trust "folder" in row 1 beat "workspacePath" in row 2, so
+        # the ranking in _CURSOR_CWD_KEYS has to survive the row order.
+        if not dashboard.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            decoy = root / "exports" / "nightly-dump"
+            decoy.mkdir(parents=True)
+            real = root / "git" / "recce" / "cargento"
+            real.mkdir(parents=True)
+            self._cursor_store(
+                root,
+                "sess-order",
+                [{"folder": str(decoy)}, {"workspacePath": str(real), "name": "real chat"}],
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("recce/cargento", sessions[0]["project"])
+
+    def test_cursor_finds_a_workspace_past_the_first_few_meta_rows(self) -> None:
+        # A key/value table has no guaranteed order, and the old LIMIT was
+        # tuned when only the title was being looked for.
+        if not dashboard.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "git" / "spacedock" / "subspace"
+            workspace.mkdir(parents=True)
+            filler: list[Any] = [{"unrelated": i} for i in range(8)]
+            self._cursor_store(root, "sess-late", [*filler, {"workspacePath": str(workspace)}])
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("spacedock/subspace", sessions[0]["project"])
+
+    def test_cursor_title_survives_a_non_string_name(self) -> None:
+        # A numeric "name" is truthy, so an `or` chain picks it and then the
+        # isinstance guard discards a perfectly good "title" alongside it.
+        if not dashboard.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_store(root, "sess-num", [{"name": 42, "title": "Fix the login bug"}])
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("Fix the login bug", sessions[0]["title"])
 
     def test_cursor_without_a_workspace_path_keeps_the_harness_name(self) -> None:
         now = dashboard.time.time()
@@ -5365,7 +5485,9 @@ class OperatingSystemExpectationTest(unittest.TestCase):
                 # keeps its hyphens; what must agree is that neither leaks the
                 # account name.
                 self.assertNotIn("cl", from_cwd.split("/")[0])
-                self.assertEqual(from_name.replace("-", "/").split("/")[-1], from_cwd.split("/")[-1])
+                self.assertEqual(
+                    from_name.replace("-", "/").split("/")[-1], from_cwd.split("/")[-1]
+                )
 
     def test_task_age_degrades_to_mtime_without_birthtime(self) -> None:
         # Linux, and Windows before Python 3.12, expose no st_birthtime. The
