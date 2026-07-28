@@ -91,6 +91,8 @@ jobs:
             cargento.skills.cargento.tests.test_server \
             scripts.tests.test_validate_plugins \
             scripts.tests.test_bump_version \
+            scripts.tests.test_build_release_assets \
+            scripts.tests.test_installer \
             scripts.tests.test_lint_embedded
 
       # The threshold lives in pyproject.toml ([tool.coverage.report]
@@ -215,7 +217,7 @@ jobs:
       - name: Confirm sqlite3 is present on this runner
         run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
       - name: Run unittest suite
-        run: python -m unittest cargento.skills.cargento.tests.test_server scripts.tests.test_validate_plugins scripts.tests.test_bump_version scripts.tests.test_lint_embedded
+        run: python -m unittest cargento.skills.cargento.tests.test_server scripts.tests.test_validate_plugins scripts.tests.test_bump_version scripts.tests.test_build_release_assets scripts.tests.test_installer scripts.tests.test_lint_embedded
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

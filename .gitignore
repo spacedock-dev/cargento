@@ -5,3 +5,6 @@
 __pycache__/
 *.py[cod]
 .coverage
+
+# Per-workspace Spacedock entity state stays in its independent local checkout.
+docs/dev/.spacedock-state/

@@ -86,6 +86,12 @@ A flipped comparison is the cheapest mutation to try, and the most revealing: ch
 `<=`, or one `and` to `or`, and run the suite. Anything that still passes is a boundary nothing
 pins.
 
+Installer changes belong in `scripts/tests/test_installer.py`; release-asset changes belong in
+`scripts/tests/test_build_release_assets.py`. Installer tests use isolated homes, real locally built
+runtime archives, and a stateful Claude command fixture. Keep the lagging marketplace-version case:
+the plugin version is selected by the marketplace and is not required to equal the runtime archive
+version.
+
 Known flake: the page tests shell out to `node` with a 30-second timeout. On the Windows runner that
 occasionally expires on process start, surfacing as
 `subprocess.TimeoutExpired: … page_test.js`. It is a runner-speed artifact rather than a page bug,
@@ -184,11 +190,19 @@ git push origin v0.2.0
 
 The [Release workflow](.github/workflows/release.yml) refuses the tag unless it is on main, is
 strict semver, and is strictly greater than every existing release tag. Semver only moves forward,
-and back-tagging is impossible. It then runs the contract validator plus the validator, bump-version
-and server test modules on the main tip, rather than the whole quality gate, which already ran on
-every commit that reached main. From there it writes one bump commit updating all owned version
-fields, moves the tag onto the released commit, advances the `stable` branch to it, and publishes a
-GitHub Release with generated notes. `stable` is what the shared
+and back-tagging is impossible. It then runs the contract validator and the focused release test
+modules on the main tip, rather than the whole quality gate, which already ran on every commit that
+reached main. From there it writes one bump commit updating all owned version fields, moves the tag
+onto the released commit, advances the `stable` branch to it, and builds three assets from that exact
+commit:
+
+- `install.sh`, rendered with the release tag and asset names;
+- `cargento-runtime-<version>.tar.gz`, built from the authored `cargento/` tree;
+- the archive's `.sha256` checksum.
+
+The workflow publishes those assets with generated notes. If a run stops after the release exists,
+a rerun rebuilds the same deterministic assets and uploads them with replacement enabled. It does
+not make a second release or another version bump. `stable` is what the shared
 [spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace) listing tracks, so a
 release that did not move it would leave the marketplace serving an older Cargento.
 The bump is skipped when the manifests already carry the tagged version, which is also how you

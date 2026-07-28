@@ -1,0 +1,2 @@
+task_id,slug,dispatches,rework_rounds,wallclock_hours,tokens_if_known,coverage,escaped_defects_7d
+whc6e089t7p9heztsfcrzbp6,one-command-cargento-installer,n/a,4,4.41,n/a,83.9,pending

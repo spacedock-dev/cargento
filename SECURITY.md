@@ -2,10 +2,12 @@
 
 ## Scope
 
-Cargento ships two components that touch the network. The dashboard server
+Cargento ships three components that touch the network. The dashboard server
 (`cargento/skills/cargento/server.py`) reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. `notify_hook.py` is the small forwarder a user
-wires into their own Claude Code hook settings, and it POSTs hook payloads to the dashboard.
+wires into their own Claude Code hook settings, and it POSTs hook payloads to the dashboard. The
+release `install.sh` downloads the runtime archive and checksum from the same versioned GitHub
+Release, then invokes the Claude CLI to configure Claude-managed plugin state.
 
 The posture rests on two invariants:
 
@@ -19,6 +21,27 @@ The posture rests on two invariants:
 Anything that weakens either invariant is a security bug: a bind-address escape, file reads outside
 the documented store paths and the project-read contract below (however the path was derived),
 writes to harness stores, or the hook client reaching a non-loopback destination.
+
+## Installer trust and writes
+
+The installer checks SHA-256 before an archive enters the Cargento data root. It also rejects
+absolute paths, parent traversal, links, special archive members, and an unexpected archive layout
+before extraction; every member must be a regular file or directory under the expected root.
+Extraction uses the preflighted `tar` and `gzip` commands. The checksum catches corruption and
+mismatched assets. It is not an independent signature: GitHub HTTPS, repository release controls,
+the archive, and its checksum share one distribution boundary.
+
+Direct installer writes are user-local and need no `sudo`. Runtime versions live under
+`${XDG_DATA_HOME:-$HOME/.local/share}/cargento/releases/`, `current` is the stable activation link,
+and the launcher defaults to `~/.local/bin/cargento`. `CARGENTO_DATA_ROOT` and `CARGENTO_BIN_DIR`
+are explicit configuration and test overrides. The installer does not edit shell startup files.
+Claude plugin and marketplace writes belong to the invoked Claude CLI, not to Cargento's filesystem
+writer.
+
+The runtime archive and Claude plugin come from the same authored `cargento/` tree, but they have
+separate version selection. The runtime is pinned to the release tag. Claude selects the plugin
+version through `cargento@spacedock`; the installer verifies that exact identity and its enabled
+state, not version equality. No launcher path depends on Claude's plugin cache.
 
 ## Project reads (Spacedock stage strips)
 

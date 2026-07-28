@@ -1,0 +1,302 @@
+#!/bin/sh
+set -eu
+
+CARGENTO_TAG='@CARGENTO_TAG@'
+CARGENTO_VERSION='@CARGENTO_VERSION@'
+CARGENTO_ARCHIVE='@CARGENTO_ARCHIVE@'
+CARGENTO_RELEASE_BASE='@CARGENTO_RELEASE_BASE@'
+MARKETPLACE_NAME='spacedock'
+MARKETPLACE_REPOSITORY='spacedock-dev/marketplace'
+PLUGIN_ID='cargento@spacedock'
+
+usage() {
+  printf '%s\n' 'Usage: cargento-install --plugin claude' >&2
+  exit 64
+}
+
+fail() {
+  printf 'cargento-install: %s\n' "$1" >&2
+  exit 1
+}
+
+partial_failure() {
+  printf '%s\n' 'Plugin (claude): failed'
+  printf '%s\n' \
+    'cargento-install: partial installation; the CLI is verified but the Claude plugin is not' \
+    'Recovery:' >&2
+  printf '  curl -fsSL "%s/install.sh" | sh -s -- --plugin claude\n' \
+    "$CARGENTO_RELEASE_BASE" >&2
+  exit 1
+}
+
+if [ "$#" -ne 2 ] || [ "$1" != '--plugin' ] || [ "$2" != 'claude' ]; then
+  usage
+fi
+
+for command_name in python3 curl gzip tar claude mktemp mkdir rm ln mv chmod; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    fail "required command not found: $command_name"
+  fi
+done
+
+PYTHON=$(command -v python3)
+PYTHON_VERSION=$(
+  "$PYTHON" -c 'import sys; print(f"{sys.version_info.major} {sys.version_info.minor}")' 2>/dev/null
+) || fail 'Python 3.11+ is required'
+# The interpreter emits exactly two numeric fields; splitting them is intentional.
+# shellcheck disable=SC2086
+set -- $PYTHON_VERSION
+if [ "$#" -ne 2 ] || [ "$1" -lt 3 ] 2>/dev/null || {
+  [ "$1" -eq 3 ] 2>/dev/null && [ "$2" -lt 11 ] 2>/dev/null
+}; then
+  fail 'Python 3.11+ is required'
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+  HASH_TOOL='sha256sum'
+elif command -v shasum >/dev/null 2>&1; then
+  HASH_TOOL='shasum'
+else
+  fail 'required SHA-256 tool not found: install sha256sum or shasum'
+fi
+
+if [ -n "${CARGENTO_DATA_ROOT:-}" ]; then
+  DATA_ROOT=$CARGENTO_DATA_ROOT
+elif [ -n "${XDG_DATA_HOME:-}" ]; then
+  DATA_ROOT=$XDG_DATA_HOME/cargento
+else
+  DATA_ROOT=$HOME/.local/share/cargento
+fi
+BIN_DIR=${CARGENTO_BIN_DIR:-"$HOME/.local/bin"}
+case "$DATA_ROOT:$BIN_DIR" in
+  *'
+'*) fail 'install paths must not contain newlines' ;;
+esac
+
+TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/cargento-install.XXXXXX")
+cleanup() {
+  rm -rf "$TEMP_ROOT"
+}
+trap cleanup EXIT HUP INT TERM
+
+ARCHIVE_PATH=$TEMP_ROOT/$CARGENTO_ARCHIVE
+CHECKSUM_PATH=$TEMP_ROOT/$CARGENTO_ARCHIVE.sha256
+if ! curl -fsSL "$CARGENTO_RELEASE_BASE/$CARGENTO_ARCHIVE" -o "$ARCHIVE_PATH"; then
+  fail "could not download $CARGENTO_ARCHIVE"
+fi
+if ! curl -fsSL "$CARGENTO_RELEASE_BASE/$CARGENTO_ARCHIVE.sha256" -o "$CHECKSUM_PATH"; then
+  fail "could not download $CARGENTO_ARCHIVE.sha256"
+fi
+if [ "$HASH_TOOL" = 'sha256sum' ]; then
+  if ! (cd "$TEMP_ROOT" && sha256sum -c "$CARGENTO_ARCHIVE.sha256" >/dev/null 2>&1); then
+    fail 'checksum verification failed'
+  fi
+elif ! (cd "$TEMP_ROOT" && shasum -a 256 -c "$CARGENTO_ARCHIVE.sha256" >/dev/null 2>&1); then
+  fail 'checksum verification failed'
+fi
+
+if ! "$PYTHON" - "$ARCHIVE_PATH" <<'PY'
+import sys
+import tarfile
+
+with tarfile.open(sys.argv[1], "r:gz") as bundle:
+    members = bundle.getmembers()
+names = {member.name.rstrip("/") for member in members}
+required = {
+    "cargento/skills/cargento/server.py",
+    "cargento/.claude-plugin/plugin.json",
+}
+safe = all(
+    (member.isdir() or member.isfile())
+    and (
+        member.name == "cargento"
+        or (
+            member.name.startswith("cargento/")
+            and ".." not in member.name.split("/")
+        )
+    )
+    for member in members
+)
+if not safe or not required.issubset(names):
+    raise SystemExit(1)
+PY
+then
+  fail 'unexpected runtime archive layout'
+fi
+
+mkdir "$TEMP_ROOT/runtime"
+if ! tar -xzf "$ARCHIVE_PATH" -C "$TEMP_ROOT/runtime"; then
+  fail 'could not extract verified runtime archive'
+fi
+
+RELEASES_DIR=$DATA_ROOT/releases
+RELEASE_DIR=$RELEASES_DIR/$CARGENTO_VERSION
+mkdir -p "$RELEASES_DIR" "$BIN_DIR"
+if [ ! -e "$RELEASE_DIR" ]; then
+  mv "$TEMP_ROOT/runtime/cargento" "$RELEASE_DIR"
+elif [ ! -f "$RELEASE_DIR/skills/cargento/server.py" ]; then
+  fail "existing release directory is incomplete: $RELEASE_DIR"
+fi
+
+CURRENT_LINK=$DATA_ROOT/current
+NEXT_LINK=$DATA_ROOT/.current.$$
+rm -f "$NEXT_LINK"
+ln -s "releases/$CARGENTO_VERSION" "$NEXT_LINK"
+if ! "$PYTHON" - "$NEXT_LINK" "$CURRENT_LINK" <<'PY'
+import os
+import sys
+
+os.replace(sys.argv[1], sys.argv[2])
+PY
+then
+  fail "could not activate release $CARGENTO_VERSION"
+fi
+
+LAUNCHER=$BIN_DIR/cargento
+NEXT_LAUNCHER=$BIN_DIR/.cargento.$$
+"$PYTHON" - "$NEXT_LAUNCHER" "$PYTHON" "$CURRENT_LINK/skills/cargento/server.py" <<'PY'
+import pathlib
+import shlex
+import sys
+
+launcher = pathlib.Path(sys.argv[1])
+interpreter = shlex.quote(sys.argv[2])
+server = shlex.quote(sys.argv[3])
+launcher.write_text(f'#!/bin/sh\nexec {interpreter} {server} "$@"\n')
+PY
+chmod 755 "$NEXT_LAUNCHER"
+mv -f "$NEXT_LAUNCHER" "$LAUNCHER"
+
+if ! "$LAUNCHER" --diagnose --json >/dev/null 2>&1; then
+  fail 'installed CLI smoke test failed'
+fi
+printf 'Cargento %s installed\n' "$CARGENTO_TAG"
+printf '%s\n' 'CLI: verified'
+
+MARKETPLACES_JSON=$TEMP_ROOT/marketplaces.json
+if ! claude plugin marketplace list --json >"$MARKETPLACES_JSON"; then
+  partial_failure
+fi
+marketplace_status=0
+"$PYTHON" - "$MARKETPLACES_JSON" "$MARKETPLACE_NAME" "$MARKETPLACE_REPOSITORY" <<'PY' || marketplace_status=$?
+import json
+import sys
+
+entries = json.loads(open(sys.argv[1], encoding="utf-8").read())
+if not isinstance(entries, list):
+    raise SystemExit(12)
+matches = [entry for entry in entries if entry.get("name") == sys.argv[2]]
+if not matches:
+    raise SystemExit(10)
+if len(matches) != 1 or matches[0].get("source") != "github" or matches[0].get("repo") != sys.argv[3]:
+    raise SystemExit(11)
+PY
+case "$marketplace_status" in
+  0) ;;
+  10)
+    if ! claude plugin marketplace add "$MARKETPLACE_REPOSITORY"; then
+      partial_failure
+    fi
+    ;;
+  11)
+    printf 'cargento-install: marketplace name collision for %s\n' "$MARKETPLACE_NAME" >&2
+    partial_failure
+    ;;
+  *)
+    printf '%s\n' 'cargento-install: invalid Claude marketplace JSON' >&2
+    partial_failure
+    ;;
+esac
+
+if ! claude plugin marketplace list --json >"$MARKETPLACES_JSON"; then
+  partial_failure
+fi
+if ! "$PYTHON" - "$MARKETPLACES_JSON" "$MARKETPLACE_NAME" "$MARKETPLACE_REPOSITORY" <<'PY'
+import json
+import sys
+
+entries = json.loads(open(sys.argv[1], encoding="utf-8").read())
+matches = [entry for entry in entries if entry.get("name") == sys.argv[2]]
+valid = (
+    len(matches) == 1
+    and matches[0].get("source") == "github"
+    and matches[0].get("repo") == sys.argv[3]
+)
+raise SystemExit(0 if valid else 1)
+PY
+then
+  printf '%s\n' 'cargento-install: Claude marketplace verification failed' >&2
+  partial_failure
+fi
+
+PLUGINS_JSON=$TEMP_ROOT/plugins.json
+if ! claude plugin list --json >"$PLUGINS_JSON"; then
+  partial_failure
+fi
+plugin_status=0
+"$PYTHON" - "$PLUGINS_JSON" "$PLUGIN_ID" <<'PY' || plugin_status=$?
+import json
+import sys
+
+entries = json.loads(open(sys.argv[1], encoding="utf-8").read())
+if not isinstance(entries, list):
+    raise SystemExit(12)
+matches = [
+    entry
+    for entry in entries
+    if entry.get("id") == sys.argv[2] and entry.get("scope") == "user"
+]
+if not matches:
+    raise SystemExit(10)
+if len(matches) != 1:
+    raise SystemExit(12)
+raise SystemExit(0 if matches[0].get("enabled") is True else 11)
+PY
+case "$plugin_status" in
+  0) ;;
+  10)
+    if ! claude plugin install --scope user "$PLUGIN_ID"; then
+      partial_failure
+    fi
+    ;;
+  11)
+    if ! claude plugin enable --scope user "$PLUGIN_ID"; then
+      partial_failure
+    fi
+    ;;
+  *)
+    printf '%s\n' 'cargento-install: invalid Claude plugin JSON' >&2
+    partial_failure
+    ;;
+esac
+
+if ! claude plugin list --json >"$PLUGINS_JSON"; then
+  partial_failure
+fi
+if ! "$PYTHON" - "$PLUGINS_JSON" "$PLUGIN_ID" <<'PY'
+import json
+import sys
+
+entries = json.loads(open(sys.argv[1], encoding="utf-8").read())
+matches = [
+    entry
+    for entry in entries
+    if entry.get("id") == sys.argv[2] and entry.get("scope") == "user"
+]
+valid = len(matches) == 1 and matches[0].get("enabled") is True
+raise SystemExit(0 if valid else 1)
+PY
+then
+  printf '%s\n' 'cargento-install: Claude plugin verification failed' >&2
+  partial_failure
+fi
+
+printf '%s\n' 'Plugin (claude): verified'
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *)
+    # The printed $PATH is a copyable shell expression, not an installer expansion.
+    # shellcheck disable=SC2016
+    printf '\nAdd Cargento to PATH:\n  export PATH="%s:$PATH"\n' "$BIN_DIR"
+    ;;
+esac

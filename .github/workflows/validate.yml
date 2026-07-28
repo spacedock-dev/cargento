@@ -32,6 +32,10 @@ jobs:
         run: python3 -m unittest scripts/tests/test_validate_plugins.py
       - name: Run release bump-script unit tests
         run: python3 -m unittest scripts/tests/test_bump_version.py
+      - name: Run release-asset construction tests
+        run: python3 -m unittest scripts/tests/test_build_release_assets.py
+      - name: Run POSIX installer tests
+        run: python3 -m unittest scripts/tests/test_installer.py
       - name: Check version-field parity across all owned locations
         run: python3 scripts/bump_version.py --current
       - name: Run dashboard server tests

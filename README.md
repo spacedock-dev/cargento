@@ -21,16 +21,56 @@ This repo contains one plugin, `cargento`, the agent cartography dashboard skill
 ### Prerequisites
 
 - Python 3.11+. The server is stdlib-only, so there is nothing to install alongside it.
-- To install it as a plugin: Codex, Claude Code, Antigravity/AGY, or Gemini CLI.
+- For the supported installer: Claude Code, `curl`, `gzip`, `tar`, and either `sha256sum` or
+  `shasum`.
+- For manual plugin setup: Codex, Claude Code, Antigravity/AGY, or Gemini CLI.
 
-You do not need all four. The dashboard maps every harness it finds on the machine regardless of
-which one launched it, and it runs standalone with no client installed at all:
+### Install the CLI and Claude plugin
+
+Install the latest release:
+
+```bash
+curl -fsSL https://github.com/spacedock-dev/cargento/releases/latest/download/install.sh \
+  | sh -s -- --plugin claude
+```
+
+The latest URL selects only the rendered bootstrap. The bootstrap's archive, checksum, recovery,
+and runtime downloads stay pinned to that release's exact tag. For a reproducible install or
+rollback, choose the exact tag yourself:
+
+```bash
+CARGENTO_TAG=vX.Y.Z # replace with the exact release tag you want
+curl -fsSL "https://github.com/spacedock-dev/cargento/releases/download/$CARGENTO_TAG/install.sh" \
+  | sh -s -- --plugin claude
+```
+
+The installer verifies the release checksum, installs a user-local `cargento` command, and sets up
+the exact `cargento@spacedock` Claude plugin. A complete run ends with:
+
+```text
+CLI: verified
+Plugin (claude): verified
+```
+
+If `~/.local/bin` is not already on `PATH`, the result includes an `export PATH=...` line you can
+copy. The installer does not edit shell startup files. A plugin failure after CLI activation is
+reported as a partial installation; rerun the same installer command to repair it.
+
+`cargento` starts the server in the foreground on `127.0.0.1:4553`; then open
+`http://127.0.0.1:4553/`. Use `cargento --port 4553` to choose the port explicitly, and press
+Ctrl-C in that terminal to stop the server. `cargento --diagnose` reports the paths and stores
+Cargento sees, then exits without starting the server.
+
+### Manual and plugin-only setup
+
+You do not need every harness. The dashboard maps every harness it finds on the machine regardless
+of which one launched it. From a checkout, it also runs without plugin installation:
 
 ```bash
 python3 cargento/skills/cargento/server.py --port 4553
 ```
 
-### Claude Code installation
+#### Claude Code
 
 Cargento is listed in the shared Spacedock marketplace, so if you already have that marketplace you
 only need the second line.
@@ -45,7 +85,7 @@ claude plugin install cargento@spacedock
 
 Restart Claude Code after installation.
 
-### Antigravity / AGY installation
+#### Antigravity / AGY
 
 ```bash
 # From a local checkout, install the native AGY plugin
@@ -54,7 +94,7 @@ agy plugin install "$PWD/cargento"
 
 Restart AGY after installation.
 
-### Gemini CLI installation
+#### Gemini CLI
 
 ```bash
 # From a local checkout, install the native Gemini CLI extension
@@ -63,7 +103,7 @@ gemini extensions install "$PWD/cargento"
 
 Restart Gemini CLI after installation.
 
-### Codex installation
+#### Codex
 
 ```bash
 # Add the marketplace from a local checkout, then install the plugin
@@ -108,9 +148,11 @@ See [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract.
 ## 5. Contributing
 
 Contributions are welcome, and new harness support is especially useful. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and PR conventions. This project follows
-the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues
-privately, as described in [SECURITY.md](SECURITY.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and PR conventions. Maintainers using
+Spacedock can follow the tracked [development workflow](docs/dev/README.md) without publishing its
+per-workspace entity state. This project follows the
+[Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues privately,
+as described in [SECURITY.md](SECURITY.md).
 
 ## 6. License
 

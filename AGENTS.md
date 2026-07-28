@@ -23,6 +23,16 @@ cargento/                           # plugin root
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/test_server.py    # server unit tests
+scripts/
+├── build_release_assets.py         # deterministic runtime/checksum/installer builder
+├── install.sh.in                   # rendered POSIX installer
+└── tests/
+    ├── test_build_release_assets.py
+    └── test_installer.py
+docs/dev/                            # tracked Spacedock development workflow
+├── README.md                        # workflow schema and evidence discipline
+├── ledger.csv                       # measurement ledger
+└── _mods/                           # workflow-specific lifecycle behavior
 ```
 
 The Codex/AGY marketplace lives at `.agents/plugins/marketplace.json`. There is no Claude
@@ -45,6 +55,8 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
 | `SECURITY.md` | Security invariants, accepted exposures, and private reporting. |
 | `cargento/skills/cargento/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |
+| `docs/dev/README.md` | The tracked Spacedock development workflow; its split-root entity state remains local and ignored. |
+| `docs/design-installation.md` | Installer ownership, trust boundary, and rejected distribution alternatives. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `.claude/skills/*/SKILL.md` | Repository development skills (`sync-docs`). Not shipped with the plugin, so the portability rules below do not apply to them. |
@@ -93,6 +105,7 @@ git diff "$(git merge-base origin/main HEAD)"..HEAD \
   -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 coverage run -m unittest cargento.skills.cargento.tests.test_server \
   scripts.tests.test_validate_plugins scripts.tests.test_bump_version \
+  scripts.tests.test_build_release_assets scripts.tests.test_installer \
   scripts.tests.test_lint_embedded
 coverage report   # enforces the fail_under threshold from pyproject.toml
 # Native validators, if the CLIs are installed (they are not available on stock runners):
@@ -135,7 +148,7 @@ git tag v0.2.0        # v-prefixed is canonical (bare 0.2.0 also works — pick 
 git push origin v0.2.0
 ```
 
-The Release workflow validates the tag (must be on main, strict semver, strictly greater than every existing release tag — back-tagging is impossible), runs the contract validator plus the validator, bump-version and server test modules on the main tip — not the whole quality gate, which already ran on every commit that reached main — writes one `chore(release)` bump commit via `scripts/bump_version.py`, moves the tag onto that commit, and publishes a GitHub Release. Every step is idempotent: a re-run after a partial failure resumes cleanly, and tagging the version the manifests already carry releases it as-is (that is how the initial 0.1.0 ships). If main advances between tag push and the run, the release includes those extra commits. Release tags are immutable — a tag ruleset blocks deleting or moving them.
+The Release workflow validates the tag (must be on main, strict semver, strictly greater than every existing release tag — back-tagging is impossible), runs the contract validator plus the validator, bump-version, release-asset, installer, and server test modules on the main tip — not the whole quality gate, which already ran on every commit that reached main — writes one `chore(release)` bump commit via `scripts/bump_version.py`, and moves the tag onto that commit. It then builds `install.sh`, the runtime archive, and its SHA-256 checksum from that released commit and uploads all three to the GitHub Release. Every step is idempotent: a re-run after a partial failure resumes cleanly and refreshes the assets, and tagging the version the manifests already carry releases it as-is (that is how the initial 0.1.0 ships). If main advances between tag push and the run, the release includes those extra commits. Release tags are immutable — a tag ruleset blocks deleting or moving them.
 
 ## Portability Rules
 
