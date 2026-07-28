@@ -355,6 +355,34 @@ def project_label(dirname: str, home_prefix: str | None = None) -> str:
     return dirname.lstrip("-") or "(home)"
 
 
+_DRIVE_RE = re.compile(r"^[A-Za-z]:$")
+
+
+def project_from_cwd(cwd: str) -> str:
+    """``<parent>/<basename>`` for a working directory, ``""`` when unusable.
+
+    One directory has to read the same on every harness row, so this is the
+    single rule they all share. Bare basename was the old per-collector rule
+    and it collapses every checkout named ``subspace`` into one label; two
+    segments keep sibling worktrees apart without pasting a whole path into
+    the row.
+
+    Both separators are split on whatever the host is: a harness store written
+    on Windows records backslash paths, and ``os.path`` on POSIX would keep the
+    entire string as one segment. A bare drive letter is dropped because
+    ``C:`` names no project.
+
+    Callers apply their own fallback to ``""`` — the harness name, or the
+    encoded-directory label for the two collectors that have one.
+    """
+    if not cwd:
+        return ""
+    if cwd.rstrip("/\\") == HOME.rstrip("/\\"):
+        return "(home)"
+    parts = [p for p in re.split(r"[/\\]", cwd) if p and p != "." and not _DRIVE_RE.match(p)]
+    return "/".join(parts[-2:])
+
+
 def parse_ts(ts: Any) -> float | None:
     try:
         return datetime.fromisoformat(ts).timestamp()
@@ -638,6 +666,37 @@ def dedupe_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if current is None or session["last_activity"] > current["last_activity"]:
             best[key] = session
     return list(best.values())
+
+
+DISPLAY_ID_LEN = 8  # floor; widened per harness only where 8 chars collide
+
+
+def assign_display_ids(sessions: list[dict[str, Any]]) -> None:
+    """Widen each session's display id until it is unique within its harness.
+
+    Codex hands out UUIDv7, whose leading 48 bits are a millisecond timestamp.
+    A fan-out launched in one directory therefore shares its leading hex, and
+    an 8-char display id rendered several distinct sessions as the same
+    harness, project and id — one session, apparently. Claude's uuid4 prefixes
+    do not collide in practice, so the widening is per harness and stops at the
+    first length that separates that harness's rows.
+
+    Mutates ``session["session"]`` only. ``sid`` is what every caller keys on
+    and is left whole.
+    """
+    by_harness: dict[str, list[dict[str, Any]]] = {}
+    for session in sessions:
+        by_harness.setdefault(str(session["harness"]), []).append(session)
+    for group in by_harness.values():
+        sids = [str(s["sid"]) for s in group]
+        width = DISPLAY_ID_LEN
+        longest = max((len(sid) for sid in sids), default=DISPLAY_ID_LEN)
+        # Two rows can legitimately share an sid (see dedupe_sessions); stop at
+        # the full id rather than widening forever.
+        while width < longest and len({sid[:width] for sid in sids}) != len(set(sids)):
+            width += 1
+        for session in group:
+            session["session"] = str(session["sid"])[:width]
 
 
 _store_errors: dict[str, str] = {}
@@ -1105,6 +1164,51 @@ def analyze_transcript(path: str) -> dict[str, Any]:
     if pending:
         info["pending_input_tool"] = max(pending.values(), key=lambda p: p["ts"] or 0)
     return info
+
+
+_CWD_SCAN_LINES = 50
+_cwd_cache: dict[str, str] = {}
+
+
+def claude_session_cwd(path: str) -> str:
+    """Working directory recorded on the transcript head, ``""`` if absent.
+
+    Claude is the one harness whose store does not hand a collector a cwd: the
+    ``projects/`` directory name encodes the path with every separator replaced
+    by ``-``, and that cannot be split back apart because a directory may
+    legitimately contain ``-``. The records themselves carry the real path, so
+    read it rather than guessing at the encoding.
+
+    An absent cwd is not cached: a transcript head can be written before any
+    record carries one, and the answer changes as soon as one does.
+    """
+    with _cache_lock:
+        hit = _cwd_cache.get(path)
+    if hit is not None:
+        return hit
+    cwd = ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for _ in range(_CWD_SCAN_LINES):
+                line = f.readline()
+                if not line:
+                    break
+                if '"cwd"' not in line:
+                    continue  # cheap reject before paying for a JSON parse
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                value = d.get("cwd") if isinstance(d, dict) else None
+                if isinstance(value, str) and value:
+                    cwd = value
+                    break
+    except OSError:
+        return ""
+    if cwd:
+        with _cache_lock:
+            bounded_put(_cwd_cache, path, cwd)
+    return cwd
 
 
 def claude_hook_user_event(path: str, prefix: str) -> tuple[bool, str | None]:
@@ -2729,7 +2833,12 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             continue
 
         project = (
-            project_label(os.path.basename(os.path.dirname(transcript)))
+            (
+                project_from_cwd(claude_session_cwd(transcript))
+                # Lossy fallback: the encoded name cannot be split back into
+                # segments, so it stays whole rather than guessing at a split.
+                or project_label(os.path.basename(os.path.dirname(transcript)))
+            )
             if transcript
             else "unknown"
         )
@@ -2923,7 +3032,7 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
             state = "working"
             state_detail = working_detail(info, subagents)
 
-        s = base_session("codex", sid, os.path.basename(codex_meta(fp).get("cwd") or "") or "codex")
+        s = base_session("codex", sid, project_from_cwd(codex_meta(fp).get("cwd") or "") or "codex")
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -3223,7 +3332,7 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
         meta = metadata.get(sid) or {}
         prompt = str(meta.get("last_prompt") or "").strip()
         cwd = str(meta.get("cwd") or "").strip()
-        project = os.path.basename(cwd.rstrip(os.sep)) or "antigravity"
+        project = project_from_cwd(cwd) or "antigravity"
         session = base_session("gemini", sid, project)
         session.update(
             {
@@ -3292,7 +3401,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
             state_detail = working_detail(info, subagents)
 
         cwd = gemini_meta(fp).get("cwd")
-        project = os.path.basename(cwd or "") or project_label(
+        project = project_from_cwd(cwd or "") or project_label(
             os.path.basename(os.path.dirname(os.path.dirname(fp)))
         )
         s = base_session("gemini", sid, project)
@@ -3346,7 +3455,7 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
             state_detail = working_detail(info, subagents)
 
         cwd = (info or {}).get("cwd") or copilot_meta(fp).get("cwd")
-        s = base_session("copilot", sid, os.path.basename(cwd or "") or "copilot")
+        s = base_session("copilot", sid, project_from_cwd(cwd or "") or "copilot")
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -3462,7 +3571,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                     turn = turn_progress(turns_from_events(events), state, now)
 
                 s = base_session(
-                    "opencode", r["id"], os.path.basename(r["directory"] or "") or "opencode"
+                    "opencode", r["id"], project_from_cwd(r["directory"] or "") or "opencode"
                 )
                 s.update(
                     {
@@ -3482,24 +3591,33 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
     return out
 
 
-_cursor_title_cache: dict[str, tuple[float, str | None]] = {}  # db path -> (mtime, title)
+# db path -> (mtime, title, cwd)
+_cursor_meta_cache: dict[str, tuple[float, str | None, str]] = {}
+
+# Cursor does not document its meta payload, so the workspace path is read by
+# trying the plausible spellings and accepting only a value that looks like an
+# absolute path. A miss leaves the row on the harness-name fallback, which is
+# what every Cursor row showed before.
+_CURSOR_CWD_KEYS = ("workspacePath", "workspace", "rootPath", "projectPath", "folder", "cwd")
+_ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
 
 
-def _cursor_title(db: str, mtime: float) -> str | None:
-    """Session name from the meta table: hex-encoded UTF-8 JSON (some
-    versions store plain JSON; value may be NULL or non-text). mode=ro (not
-    immutable) so names still in the WAL are visible. Memoized by mtime —
-    titles are stable, so no per-refresh reopen."""
+def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
+    """(session name, workspace path) from the meta table: hex-encoded UTF-8
+    JSON (some versions store plain JSON; value may be NULL or non-text).
+    mode=ro (not immutable) so names still in the WAL are visible. Memoized by
+    mtime — both are stable, so no per-refresh reopen."""
     with _cache_lock:
-        hit = _cursor_title_cache.get(db)
+        hit = _cursor_meta_cache.get(db)
     if hit and hit[0] == mtime:
-        return hit[1]
+        return hit[1], hit[2]
     title = None
+    cwd = ""
     try:
         con = sqlite3.connect(sqlite_ro_uri(db), uri=True, timeout=0.2)
     except sqlite3.Error as exc:
         record_store_error(db, exc)
-        return None
+        return None, ""
     failed = False
     try:
         rows = con.execute("SELECT value FROM meta LIMIT 5").fetchall()
@@ -3520,21 +3638,32 @@ def _cursor_title(db: str, mtime: float) -> str | None:
                 d = json.loads(decoded)
             except (ValueError, TypeError):
                 continue
-            if isinstance(d, dict):
-                name = (d.get("name") or d.get("title") or "").strip()
+            if not isinstance(d, dict):
+                continue
+            if not title:
+                # Untyped JSON from disk: a non-string name must not
+                # AttributeError the whole Cursor collector.
+                raw_name = d.get("name") or d.get("title")
+                name = raw_name.strip() if isinstance(raw_name, str) else ""
                 if name:
                     title = name[:80]
-                    break
-        if title:
+            if not cwd:
+                for key in _CURSOR_CWD_KEYS:
+                    value = d.get(key)
+                    if isinstance(value, str) and _ABS_PATH_RE.match(value):
+                        cwd = value
+                        break
+        if title and cwd:
             break
     if failed:
-        return None  # transient: do not cache a title the query never returned
+        # Transient: do not cache values the query never returned.
+        return None, ""
     with _cache_lock:
-        hit = _cursor_title_cache.get(db)
+        hit = _cursor_meta_cache.get(db)
         if hit and hit[0] == mtime:
-            return hit[1]
-        bounded_put(_cursor_title_cache, db, (mtime, title))
-        return title
+            return hit[1], hit[2]
+        bounded_put(_cursor_meta_cache, db, (mtime, title, cwd))
+        return title, cwd
 
 
 def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
@@ -3558,10 +3687,11 @@ def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict
         state, state_detail = "idle", "awaiting your message"
         if is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
             state, state_detail = "working", "generating…"
-        s = base_session("cursor", sid, "cursor")
+        title, cwd = _cursor_meta(db, mtime)
+        s = base_session("cursor", sid, project_from_cwd(cwd) or "cursor")
         s.update(
             {
-                "title": _cursor_title(db, mtime) if active else None,
+                "title": title if active else None,
                 "state": state,
                 "state_detail": state_detail,
                 "active": active,
@@ -3692,7 +3822,7 @@ def collect_goose_db(
                     pass
                 turn = turn_progress(turns_from_events(events), state, now)
 
-            s = base_session("goose", r["id"], os.path.basename(r["working_dir"] or "") or "goose")
+            s = base_session("goose", r["id"], project_from_cwd(r["working_dir"] or "") or "goose")
             s.update(
                 {
                     "title": (r["description"] or "").strip()[:80] or None,
@@ -3735,7 +3865,7 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
             state = "working"
             state_detail = working_detail(info, [])
 
-        project = os.path.basename(meta.get("cwd") or "") or project_label(
+        project = project_from_cwd(meta.get("cwd") or "") or project_label(
             os.path.basename(os.path.dirname(fp))
         )
         s = base_session("droid", sid, project)
@@ -3843,6 +3973,9 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
             diag(f"[{key}] collector error: {harness['error']}")
 
     out_sessions = dedupe_sessions(out_sessions)
+    # After dedupe, so a session found in two stores does not widen every
+    # display id in its harness to tell itself apart.
+    assign_display_ids(out_sessions)
     state_rank = {"needs_input": 0, "working": 1, "idle": 2}
     # Session id as tiebreaker (not last_activity) so rows don't reshuffle
     # on every refresh while sessions are generating.

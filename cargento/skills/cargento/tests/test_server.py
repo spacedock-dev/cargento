@@ -57,7 +57,7 @@ class CargentoServerTest(unittest.TestCase):
             dashboard._hook_generation.clear()
         with dashboard._cache_lock:
             dashboard._meta_cache.clear()
-            dashboard._cursor_title_cache.clear()
+            dashboard._cursor_meta_cache.clear()
             dashboard._agent_class_cache.clear()
             dashboard._claude_title_cache.clear()
             dashboard._claude_user_event_cache.clear()
@@ -229,7 +229,7 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual(1, len(sessions))
         self.assertEqual("gemini", sessions[0]["harness"])
         self.assertEqual(session_id[:8], sessions[0]["session"])
-        self.assertEqual("bridge", sessions[0]["project"])
+        self.assertEqual("recce/bridge", sessions[0]["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("show my assigned issues", sessions[0]["title"])
         self.assertEqual("working", sessions[0]["state"])
 
@@ -2354,6 +2354,189 @@ console.log(JSON.stringify(out));
         self.assertEqual(1, len(sessions))
         self.assertAlmostEqual(recent, sessions[0]["last_activity"], delta=2)
 
+    def test_uuidv7_sessions_started_together_get_distinct_display_ids(self) -> None:
+        # DRC-3962. Codex ids are UUIDv7: the first 48 bits are a millisecond
+        # timestamp, so a fan-out launched in one directory shares its leading
+        # hex. Truncating the display id to 8 chars rendered four distinct
+        # sessions as the same harness, project and id — one session, seen
+        # four times. Observed live: 019fa752-a888…, -a889…, -a88d…, -a8a7….
+        sessions = [
+            dashboard.base_session("codex", f"019fa752-a88{tail}-7fe3-a529-ebd8042771c{i}", "p")
+            for i, tail in enumerate(("8", "9", "d"))
+        ]
+        dashboard.assign_display_ids(sessions)
+        shown = [s["session"] for s in sessions]
+
+        self.assertEqual(len(shown), len(set(shown)))
+        # The full id stays intact for keying; only the display id grows.
+        self.assertEqual("019fa752-a888-7fe3-a529-ebd8042771c0", sessions[0]["sid"])
+
+    def test_display_ids_stay_short_when_they_already_distinguish(self) -> None:
+        # Expanding every id because one pair collides would churn the whole
+        # UI, so the widening is per harness and stops at the first unique
+        # length.
+        sessions = [
+            dashboard.base_session("claude", "aaaa1111", "p"),
+            dashboard.base_session("claude", "bbbb2222", "p"),
+            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
+            dashboard.base_session("codex", "019fa752-a889-73a3-88ba-d362c54a1ae6", "p"),
+        ]
+        dashboard.assign_display_ids(sessions)
+
+        self.assertEqual(["aaaa1111", "bbbb2222"], [s["session"] for s in sessions[:2]])
+        codex = [s["session"] for s in sessions[2:]]
+        self.assertEqual(len(codex), len(set(codex)))
+        self.assertTrue(all(len(c) > 8 for c in codex))
+
+    def test_identical_sids_do_not_widen_display_ids_forever(self) -> None:
+        # Two rows with the same sid cannot be told apart by widening, so the
+        # widening must not fire at all: it terminates, and it leaves the id
+        # short rather than pointlessly expanding both to the full uuid.
+        sessions = [
+            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
+            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
+        ]
+        dashboard.assign_display_ids(sessions)
+
+        self.assertEqual(["019fa752"] * 2, [s["session"] for s in sessions])
+
+    def test_claude_and_codex_agree_on_one_directory(self) -> None:
+        # DRC-3963. The reported case: one worktree, two harnesses, two
+        # different project strings — Claude showed the whole encoded path
+        # ("git-spacedock-research-spacedock-subspace") while Codex showed a
+        # bare basename. Same directory has to read the same on every row.
+        now = dashboard.time.time()
+        home = "/Users/cl"
+        cwd = f"{home}/git/spacedock-research/spacedock/subspace"
+        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        encoded = dashboard.encoded_home_prefix(cwd)  # Claude's projects/ dir name
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "projects" / encoded
+            project_dir.mkdir(parents=True)
+            (project_dir / "aaaa1111-0000-0000-0000-000000000000.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "timestamp": iso,
+                        "cwd": cwd,
+                        "message": {"role": "user", "content": "hi"},
+                    }
+                )
+                + "\n"
+            )
+            rollout = Path(tmp) / "codex" / "2026" / "07" / "28"
+            rollout.mkdir(parents=True)
+            sid = "019f855d-aaaa-7000-8000-000000000001"
+            (rollout / f"rollout-2026-07-28T09-36-23-{sid}.jsonl").write_text(
+                json.dumps(
+                    {
+                        "timestamp": iso,
+                        "type": "session_meta",
+                        "payload": {"id": sid, "cwd": cwd, "source": "exec"},
+                    }
+                )
+                + "\n"
+            )
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(Path(tmp) / "codex")),
+                mock.patch.dict(
+                    dashboard.STORE_ROOTS,
+                    {
+                        "claude.projects": [str(Path(tmp) / "projects")],
+                        "claude.tasks": [str(Path(tmp) / "no-tasks")],
+                        "codex.sessions": [str(Path(tmp) / "codex")],
+                    },
+                ),
+                mock.patch.object(dashboard, "HOME", home),
+                mock.patch.object(dashboard, "HOME_PREFIX", dashboard.encoded_home_prefix(home)),
+            ):
+                claude = dashboard.collect_claude(now, 24, False)
+                codex = dashboard.collect_codex(now, 24, False)
+
+        self.assertEqual(1, len(claude))
+        self.assertEqual(1, len(codex))
+        self.assertEqual("spacedock/subspace", claude[0]["project"])
+        self.assertEqual(claude[0]["project"], codex[0]["project"])
+
+    def test_claude_project_falls_back_when_transcript_has_no_cwd(self) -> None:
+        # A transcript head can be written before any record carries cwd. The
+        # encoded directory name is lossy (Claude replaces every separator
+        # with "-", so it cannot be split back apart), so the documented
+        # fallback stays whole rather than guessing at a split.
+        now = dashboard.time.time()
+        home = "/Users/cl"
+        encoded = f"{dashboard.encoded_home_prefix(home)}-git-spacedock-subspace"
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp) / "projects" / encoded
+            project_dir.mkdir(parents=True)
+            (project_dir / "bbbb2222-0000-0000-0000-000000000000.jsonl").write_text("{}\n")
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                mock.patch.object(dashboard, "HOME", home),
+                mock.patch.object(dashboard, "HOME_PREFIX", dashboard.encoded_home_prefix(home)),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+
+        self.assertEqual("git-spacedock-subspace", sessions[0]["project"])
+
+    def test_cursor_reports_its_workspace_instead_of_the_harness_name(self) -> None:
+        # DRC-3963. Cursor rows were hardcoded to "cursor", so every Cursor
+        # session in every repository shared one label.
+        now = dashboard.time.time()
+        if not dashboard.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        cwd = "/Users/cl/git/spacedock/subspace"
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "chats" / "hash1" / "sess-1" / "store.db"
+            db.parent.mkdir(parents=True)
+            con = sqlite3.connect(str(db))
+            try:
+                con.execute("CREATE TABLE meta (value BLOB)")
+                payload = json.dumps({"name": "refactor the parser", "workspacePath": cwd})
+                # Cursor hex-encodes the JSON in some versions; cover that one.
+                con.execute("INSERT INTO meta VALUES (?)", (payload.encode().hex(),))
+                con.commit()
+            finally:
+                con.close()
+            with (
+                mock.patch.object(dashboard, "CURSOR_CHATS", str(Path(tmp) / "chats")),
+                mock.patch.dict(
+                    dashboard.STORE_ROOTS, {"cursor.chats": [str(Path(tmp) / "chats")]}
+                ),
+            ):
+                sessions = dashboard.collect_cursor(now, 24, True)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("spacedock/subspace", sessions[0]["project"])
+        self.assertEqual("refactor the parser", sessions[0]["title"])
+
+    def test_cursor_without_a_workspace_path_keeps_the_harness_name(self) -> None:
+        now = dashboard.time.time()
+        if not dashboard.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "chats" / "hash1" / "sess-2" / "store.db"
+            db.parent.mkdir(parents=True)
+            con = sqlite3.connect(str(db))
+            try:
+                con.execute("CREATE TABLE meta (value BLOB)")
+                con.execute("INSERT INTO meta VALUES (?)", (json.dumps({"name": "n"}),))
+                con.commit()
+            finally:
+                con.close()
+            with (
+                mock.patch.object(dashboard, "CURSOR_CHATS", str(Path(tmp) / "chats")),
+                mock.patch.dict(
+                    dashboard.STORE_ROOTS, {"cursor.chats": [str(Path(tmp) / "chats")]}
+                ),
+            ):
+                sessions = dashboard.collect_cursor(now, 24, True)
+
+        self.assertEqual("cursor", sessions[0]["project"])
+
     def test_copilot_sessions_are_discovered_and_analyzed(self) -> None:
         now = dashboard.time.time()
         iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
@@ -2395,7 +2578,7 @@ console.log(JSON.stringify(out));
         self.assertEqual(1, len(sessions))
         s = sessions[0]
         self.assertEqual("working", s["state"])
-        self.assertEqual("myproj", s["project"])
+        self.assertEqual("w/myproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("fix the login bug", s["last_prompt"])
         self.assertEqual(["researcher"], s["subagents"])
 
@@ -2462,7 +2645,7 @@ console.log(JSON.stringify(out));
         self.assertEqual(1, len(sessions))  # subagent/infra/archived filtered
         s = sessions[0]
         self.assertEqual("working", s["state"])
-        self.assertEqual("gooseproj", s["project"])
+        self.assertEqual("w/gooseproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("Fix flaky tests", s["title"])
         self.assertEqual("add retries", s["last_prompt"])
         self.assertEqual(["helper"], s["subagents"])
@@ -2506,7 +2689,7 @@ console.log(JSON.stringify(out));
         self.assertEqual(1, len(sessions))
         s = sessions[0]
         self.assertEqual("working", s["state"])
-        self.assertEqual("droidproj", s["project"])
+        self.assertEqual("w/droidproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("Ship feature", s["title"])
         self.assertEqual("ship it", s["last_prompt"])
 
@@ -3730,10 +3913,10 @@ class VerificationFixTest(unittest.TestCase):
 
             with dashboard._cache_lock:
                 dashboard._store_errors.clear()
-            self.assertIsNone(dashboard._cursor_title(str(cursor), 1.0))
+            self.assertEqual((None, ""), dashboard._cursor_meta(str(cursor), 1.0))
             self.assertIn(str(cursor), dashboard._store_errors)
             # A title the query never returned must not be cached as "no title".
-            self.assertNotIn(str(cursor), dashboard._cursor_title_cache)
+            self.assertNotIn(str(cursor), dashboard._cursor_meta_cache)
 
 
 class MalformedRecordTest(unittest.TestCase):
@@ -5021,6 +5204,35 @@ class OperatingSystemExpectationTest(unittest.TestCase):
             with self.subTest(home=home, encoded=encoded):
                 prefix = dashboard.encoded_home_prefix(home)
                 self.assertEqual(expected, dashboard.project_label(encoded, prefix))
+
+    def test_project_from_cwd_is_parent_over_basename(self) -> None:
+        # DRC-3963. Bare basename collapses every checkout named "subspace"
+        # into one label, so the contract is the last two path segments.
+        cases = [
+            ("/Users/cl/git/spacedock-research/spacedock/subspace", "spacedock/subspace"),
+            ("/Users/cl/repos/recce/cargento", "recce/cargento"),
+            # Trailing separators are noise, not a segment.
+            ("/Users/cl/repos/recce/cargento/", "recce/cargento"),
+            # One segment below root has no parent to show.
+            ("/srv", "srv"),
+            # Windows paths arrive verbatim from the harness store.
+            (r"C:\Users\cl\git\spacedock\subspace", "spacedock/subspace"),
+            (r"C:\proj", "proj"),
+            # Unusable input must degrade to "" so each collector can apply
+            # its own harness-name fallback.
+            ("", ""),
+            ("/", ""),
+        ]
+        for cwd, expected in cases:
+            with self.subTest(cwd=cwd):
+                self.assertEqual(expected, dashboard.project_from_cwd(cwd))
+
+    def test_project_from_cwd_names_the_home_directory(self) -> None:
+        # project_label() renders a session started in $HOME as "(home)".
+        # The cwd path must agree rather than showing two path segments of
+        # somebody's home directory.
+        self.assertEqual("(home)", dashboard.project_from_cwd(dashboard.HOME))
+        self.assertEqual("(home)", dashboard.project_from_cwd(dashboard.HOME + os.sep))
 
     def test_task_age_degrades_to_mtime_without_birthtime(self) -> None:
         # Linux, and Windows before Python 3.12, expose no st_birthtime. The
