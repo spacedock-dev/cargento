@@ -47,6 +47,30 @@ dashboard_hook = importlib.util.module_from_spec(HOOK_SPEC)
 HOOK_SPEC.loader.exec_module(dashboard_hook)
 
 
+def protobuf_varint(value: int) -> bytes:
+    encoded = bytearray()
+    while value > 0x7F:
+        encoded.append((value & 0x7F) | 0x80)
+        value >>= 7
+    encoded.append(value)
+    return bytes(encoded)
+
+
+def protobuf_bytes_field(number: int, value: bytes) -> bytes:
+    return protobuf_varint((number << 3) | 2) + protobuf_varint(len(value)) + value
+
+
+def protobuf_int_field(number: int, value: int) -> bytes:
+    return protobuf_varint(number << 3) + protobuf_varint(value)
+
+
+def write_antigravity_metadata(path: Path, blob: bytes) -> None:
+    with contextlib.closing(sqlite3.connect(path)) as connection:
+        connection.execute("CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB)")
+        connection.execute("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)", (blob,))
+        connection.commit()
+
+
 class CargentoServerTest(unittest.TestCase):
     def setUp(self) -> None:
         with dashboard._lock:
@@ -347,20 +371,9 @@ class CargentoServerTest(unittest.TestCase):
         parent_sid = "11111111-1111-1111-1111-111111111111"
         sub_sid = "22222222-2222-2222-2222-222222222222"
 
-        def varint(value: int) -> bytes:
-            encoded = bytearray()
-            while value > 0x7F:
-                encoded.append((value & 0x7F) | 0x80)
-                value >>= 7
-            encoded.append(value)
-            return bytes(encoded)
-
-        def bytes_field(number: int, value: bytes) -> bytes:
-            return varint((number << 3) | 2) + varint(len(value)) + value
-
-        parent_blob = bytes_field(6, parent_sid.encode())
-        sub_blob = bytes_field(5, parent_sid.encode()) + bytes_field(
-            8, bytes_field(2, b"Research Auditor")
+        parent_blob = protobuf_bytes_field(6, parent_sid.encode())
+        sub_blob = protobuf_bytes_field(5, parent_sid.encode()) + protobuf_bytes_field(
+            8, protobuf_bytes_field(2, b"Research Auditor")
         )
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -371,12 +384,7 @@ class CargentoServerTest(unittest.TestCase):
             logs.mkdir(parents=True)
 
             for sid, blob in [(parent_sid, parent_blob), (sub_sid, sub_blob)]:
-                path = conversations / f"{sid}.db"
-                with sqlite3.connect(path) as con:
-                    con.execute(
-                        "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB)"
-                    )
-                    con.execute("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)", (blob,))
+                write_antigravity_metadata(conversations / f"{sid}.db", blob)
 
             (logs / "cli-1.log").write_text(
                 f"workspaceDirs=[/tmp/test-project] appDataDir=/tmp\n"
@@ -399,6 +407,191 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual(1, len(sessions))
         self.assertEqual(parent_sid, sessions[0]["sid"])
         self.assertEqual(["Research Auditor"], sessions[0]["subagents"])
+
+    def test_antigravity_stale_subagents_do_not_get_running_pills(self) -> None:
+        now = dashboard.time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        fresh_sid = "22222222-2222-2222-2222-222222222222"
+        stale_sid = "33333333-3333-3333-3333-333333333333"
+        parent_blob = protobuf_bytes_field(6, parent_sid.encode())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conversations = Path(tmp)
+            write_antigravity_metadata(conversations / f"{parent_sid}.db", parent_blob)
+            for sid, label in (
+                (fresh_sid, b"Fresh Auditor"),
+                (stale_sid, b"Finished Auditor"),
+            ):
+                blob = protobuf_bytes_field(5, parent_sid.encode()) + protobuf_bytes_field(
+                    8, protobuf_bytes_field(2, label)
+                )
+                write_antigravity_metadata(conversations / f"{sid}.db", blob)
+            stale = now - dashboard.WORKING_THRESHOLD_SEC - 1
+            os.utime(conversations / f"{stale_sid}.db", (stale, stale))
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(conversations / "logs")),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(conversations / "last_conversations.json"),
+                ),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual(["Fresh Auditor"], sessions[0]["subagents"])
+        self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
+
+    def test_antigravity_skips_unrelated_stale_metadata_stores(self) -> None:
+        now = dashboard.time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        unrelated_sid = "33333333-3333-3333-3333-333333333333"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conversations = Path(tmp)
+            write_antigravity_metadata(
+                conversations / f"{parent_sid}.db",
+                protobuf_bytes_field(6, parent_sid.encode()),
+            )
+            write_antigravity_metadata(
+                conversations / f"{sub_sid}.db",
+                protobuf_bytes_field(5, parent_sid.encode()),
+            )
+            write_antigravity_metadata(
+                conversations / f"{unrelated_sid}.db",
+                protobuf_bytes_field(6, unrelated_sid.encode()),
+            )
+            stale = now - (25 * 3600)
+            for sid in (parent_sid, unrelated_sid):
+                os.utime(conversations / f"{sid}.db", (stale, stale))
+
+            inspected: list[str] = []
+            real_session_info = dashboard.antigravity_session_info
+
+            def inspect(path: str, sid: str) -> dict[str, Any]:
+                inspected.append(sid)
+                result: dict[str, Any] = real_session_info(path, sid)
+                return result
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(conversations / "logs")),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(conversations / "last_conversations.json"),
+                ),
+                mock.patch.object(dashboard, "antigravity_session_info", side_effect=inspect),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual({parent_sid, sub_sid}, set(inspected))
+        self.assertEqual([parent_sid], [session["sid"] for session in sessions])
+
+    def test_antigravity_running_subagent_precedes_parent_tool_action(self) -> None:
+        now = dashboard.time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conversations = Path(tmp)
+            parent_path = conversations / f"{parent_sid}.db"
+            write_antigravity_metadata(parent_path, protobuf_bytes_field(6, parent_sid.encode()))
+            step = protobuf_bytes_field(1, protobuf_int_field(1, int(now))) + protobuf_bytes_field(
+                31, b"Parent tool action"
+            )
+            with contextlib.closing(sqlite3.connect(parent_path)) as connection:
+                connection.execute(
+                    "CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, metadata BLOB)"
+                )
+                connection.execute(
+                    "INSERT INTO steps VALUES (1, 21, ?)",
+                    (step,),
+                )
+                connection.commit()
+            write_antigravity_metadata(
+                conversations / f"{sub_sid}.db",
+                protobuf_bytes_field(5, parent_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Research Auditor")),
+            )
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(conversations / "logs")),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(conversations / "last_conversations.json"),
+                ),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
+
+    def test_antigravity_blank_subagent_label_uses_session_prefix(self) -> None:
+        now = dashboard.time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conversations = Path(tmp)
+            write_antigravity_metadata(
+                conversations / f"{parent_sid}.db",
+                protobuf_bytes_field(6, parent_sid.encode()),
+            )
+            write_antigravity_metadata(
+                conversations / f"{sub_sid}.db",
+                protobuf_bytes_field(5, parent_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"\x00\n")),
+            )
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(conversations / "logs")),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(conversations / "last_conversations.json"),
+                ),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual(["subagent 22222222"], sessions[0]["subagents"])
+
+    def test_antigravity_session_info_uses_decodable_fallback_fields(self) -> None:
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        blob = (
+            protobuf_bytes_field(5, b"\xff")
+            + protobuf_bytes_field(6, parent_sid.encode())
+            + protobuf_bytes_field(
+                8,
+                protobuf_bytes_field(2, b"\xff") + protobuf_bytes_field(1, b"reviewer"),
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sub_sid}.db"
+            write_antigravity_metadata(path, blob)
+            info = dashboard.antigravity_session_info(str(path), sub_sid)
+
+        self.assertEqual(parent_sid, info["parent_id"])
+        self.assertEqual("reviewer", info["subagent_label"])
+
+    def test_antigravity_session_info_does_not_use_immutable_fallback(self) -> None:
+        connection = mock.MagicMock(spec=sqlite3.Connection)
+        connection.execute.side_effect = sqlite3.OperationalError("database is locked")
+        with mock.patch.object(dashboard.sqlite3, "connect", return_value=connection) as connect:
+            info = dashboard.antigravity_session_info("/tmp/session.db", "session")
+
+        self.assertEqual({"parent_id": None, "subagent_label": None}, info)
+        self.assertEqual(1, connect.call_count)
+        connection.close.assert_called_once_with()
+
+    def test_protobuf_fields_rejects_non_blob_payloads_before_conversion(self) -> None:
+        with self.assertRaisesRegex(TypeError, "bytes-like"):
+            next(dashboard.protobuf_fields(8))
 
     def test_notify_endpoint_accepts_valid_non_object_and_deep_json(self) -> None:
         httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
