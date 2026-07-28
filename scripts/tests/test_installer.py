@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import http.client
+import io
 import json
 import os
 import shutil
+import signal
+import socket
 import subprocess
 import sys
 import tarfile
 import tempfile
 import textwrap
+import time
 import unittest
 from hashlib import sha256
 from pathlib import Path
@@ -72,7 +77,7 @@ class InstallerTests(unittest.TestCase):
         (self.tools / name).symlink_to(target)
 
     def _make_tools(self) -> None:
-        for name in ("tar", "mktemp", "mkdir", "rm", "ln", "mv", "chmod"):
+        for name in ("gzip", "tar", "mktemp", "mkdir", "rm", "ln", "mv", "chmod"):
             self._link_tool(name)
         hash_tool = "sha256sum" if shutil.which("sha256sum") else "shasum"
         self._link_tool(hash_tool)
@@ -241,6 +246,12 @@ class InstallerTests(unittest.TestCase):
         result = self.run_installer("--plugin", "claude")
         self.assert_preflight_failure(result, "required command not found: curl")
 
+    def test_preflight_rejects_missing_gzip_without_mutation(self) -> None:
+        (self.tools / "gzip").unlink()
+
+        result = self.run_installer("--plugin", "claude")
+        self.assert_preflight_failure(result, "required command not found: gzip")
+
     def test_preflight_rejects_missing_hash_tool_without_mutation(self) -> None:
         for name in ("sha256sum", "shasum"):
             (self.tools / name).unlink(missing_ok=True)
@@ -266,6 +277,51 @@ class InstallerTests(unittest.TestCase):
 
         result = self.run_installer("--plugin", "claude")
         self.assert_preflight_failure(result, "unexpected runtime archive layout")
+
+    def test_rejects_unsafe_archive_members_before_activation(self) -> None:
+        cases = (
+            ("traversal", "../escape", tarfile.REGTYPE, ""),
+            ("symlink", "cargento/link", tarfile.SYMTYPE, "skills/cargento/server.py"),
+            ("hardlink", "cargento/hard", tarfile.LNKTYPE, "cargento/skills/cargento/server.py"),
+            ("fifo", "cargento/pipe", tarfile.FIFOTYPE, ""),
+        )
+        for label, name, member_type, linkname in cases:
+            with self.subTest(label=label):
+                archive = self.assets / "cargento-runtime-1.2.3.tar.gz"
+                with tarfile.open(archive, "w:gz") as bundle:
+                    root = tarfile.TarInfo("cargento")
+                    root.type = tarfile.DIRTYPE
+                    bundle.addfile(root)
+                    for required in (
+                        "cargento/skills/cargento/server.py",
+                        "cargento/.claude-plugin/plugin.json",
+                    ):
+                        body = b"{}\n"
+                        member = tarfile.TarInfo(required)
+                        member.size = len(body)
+                        bundle.addfile(member, io.BytesIO(body))
+                    hostile = tarfile.TarInfo(name)
+                    hostile.type = member_type
+                    hostile.linkname = linkname
+                    if member_type == tarfile.REGTYPE:
+                        hostile.size = 0
+                    bundle.addfile(hostile, io.BytesIO(b""))
+                checksum = sha256(archive.read_bytes()).hexdigest()
+                (self.assets / f"{archive.name}.sha256").write_text(f"{checksum}  {archive.name}\n")
+
+                result = self.run_installer("--plugin", "claude")
+
+                self.assertEqual(
+                    (
+                        result.returncode != 0,
+                        "unexpected runtime archive layout" in result.stderr,
+                        self.data_root.exists(),
+                        self.bin_dir.exists(),
+                        self.claude_state.exists(),
+                        (self.root / "escape").exists(),
+                    ),
+                    (True, True, False, False, False, False),
+                )
 
     def test_installs_cli_and_lagging_marketplace_plugin_idempotently(self) -> None:
         shell_profile = self.home / ".zshrc"
@@ -341,6 +397,48 @@ class InstallerTests(unittest.TestCase):
                 1,
             ),
             first.stderr or second.stderr or diagnose.stderr,
+        )
+
+    def test_installed_launcher_serves_until_sigint(self) -> None:
+        install = self.run_installer("--plugin", "claude")
+        launcher = self.bin_dir / "cargento"
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        process = subprocess.Popen(
+            [str(launcher), "--port", str(port)],
+            env=self.environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        def stop_process() -> None:
+            if process.poll() is None:
+                process.kill()
+
+        self.addCleanup(stop_process)
+        payload: dict[str, object] | None = None
+        for _ in range(100):
+            try:
+                connection = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+                connection.request("GET", "/api/data")
+                response = connection.getresponse()
+                payload = json.loads(response.read())
+                connection.close()
+                break
+            except OSError:
+                time.sleep(0.05)
+        process.send_signal(signal.SIGINT)
+        process.wait(timeout=5)
+
+        self.assertEqual(
+            (
+                install.returncode,
+                isinstance(payload, dict),
+                process.poll() is not None,
+            ),
+            (0, True, True),
+            install.stderr,
         )
 
     def test_rejects_same_name_different_source_collision(self) -> None:

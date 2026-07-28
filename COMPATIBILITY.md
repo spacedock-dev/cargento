@@ -43,8 +43,8 @@ Other notes:
 - WSL2's `localhostForwarding` defaults on but can be switched off, and mirrored/NAT networking modes or corporate policy can also break host-browser access to `127.0.0.1:4553`. Probe before assuming; the fallback is `ssh -L` or a browser inside WSL.
 - Supported WSL topology is server and agents on the same side of the boundary. Reading a Windows-side store from inside WSL works over `/mnt/c`, but 9p latency and mtime granularity make state detection unreliable, so it is not supported.
 - The release installer is POSIX-only. It supports macOS, Linux, and WSL with Python 3.11+, `curl`,
-  `tar`, a SHA-256 tool, and Claude Code. Native Windows and all non-Claude plugin selectors are
-  deferred. WSL needs a release smoke before shipping because hosted CI has no WSL runner.
+  `gzip`, `tar`, a SHA-256 tool, and Claude Code. Native Windows and all non-Claude plugin selectors
+  are deferred. WSL needs a release smoke before shipping because hosted CI has no WSL runner.
 - `sqlite3` is an optional stdlib module. On a build without it (some musl/Alpine images) OpenCode, Cursor and Goose report undiscovered. Antigravity still appears, since its discovery and state come from store mtime and CLI logs, but without a token rate or turn ETA.
 
 ## Validation

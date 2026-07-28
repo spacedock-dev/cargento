@@ -25,9 +25,11 @@ writes to harness stores, or the hook client reaching a non-loopback destination
 ## Installer trust and writes
 
 The installer checks SHA-256 before an archive enters the Cargento data root. It also rejects
-absolute paths, parent traversal, links, and an unexpected archive layout before extraction. The
-checksum catches corruption and mismatched assets. It is not an independent signature: GitHub HTTPS,
-repository release controls, the archive, and its checksum share one distribution boundary.
+absolute paths, parent traversal, links, special archive members, and an unexpected archive layout
+before extraction; every member must be a regular file or directory under the expected root.
+Extraction uses the preflighted `tar` and `gzip` commands. The checksum catches corruption and
+mismatched assets. It is not an independent signature: GitHub HTTPS, repository release controls,
+the archive, and its checksum share one distribution boundary.
 
 Direct installer writes are user-local and need no `sudo`. Runtime versions live under
 `${XDG_DATA_HOME:-$HOME/.local/share}/cargento/releases/`, `current` is the stable activation link,

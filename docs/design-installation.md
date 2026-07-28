@@ -19,10 +19,11 @@ archive from the released commit, normalizes archive metadata for deterministic 
 tag and filenames into `install.sh`, and uploads a SHA-256 checksum beside it. A resumed workflow
 rebuilds and replaces the same three assets.
 
-The installer downloads both files from the exact tag, checks the digest, validates archive members,
-and extracts only into a temporary directory before activating the release. SHA-256 detects
-corruption or an asset mismatch. It does not provide an independent signature because the archive
-and checksum are controlled by the same GitHub release boundary.
+The installer downloads both files from the exact tag, checks the digest, and requires every archive
+member to be a regular file or directory beneath the expected root. It then extracts with the
+preflighted `tar` and `gzip` commands, only into a temporary directory, before activating the
+release. SHA-256 detects corruption or an asset mismatch. It does not provide an independent
+signature because the archive and checksum are controlled by the same GitHub release boundary.
 
 ## Claude state is an external contract
 

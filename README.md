@@ -21,15 +21,25 @@ This repo contains one plugin, `cargento`, the agent cartography dashboard skill
 ### Prerequisites
 
 - Python 3.11+. The server is stdlib-only, so there is nothing to install alongside it.
-- For the supported installer: Claude Code, `curl`, `tar`, and either `sha256sum` or `shasum`.
+- For the supported installer: Claude Code, `curl`, `gzip`, `tar`, and either `sha256sum` or
+  `shasum`.
 - For manual plugin setup: Codex, Claude Code, Antigravity/AGY, or Gemini CLI.
 
 ### Install the CLI and Claude plugin
 
-Choose the release tag you want, then run its installer:
+Install the latest release:
 
 ```bash
-CARGENTO_TAG=vX.Y.Z # replace with the release tag you want
+curl -fsSL https://github.com/spacedock-dev/cargento/releases/latest/download/install.sh \
+  | sh -s -- --plugin claude
+```
+
+The latest URL selects only the rendered bootstrap. The bootstrap's archive, checksum, recovery,
+and runtime downloads stay pinned to that release's exact tag. For a reproducible install or
+rollback, choose the exact tag yourself:
+
+```bash
+CARGENTO_TAG=vX.Y.Z # replace with the exact release tag you want
 curl -fsSL "https://github.com/spacedock-dev/cargento/releases/download/$CARGENTO_TAG/install.sh" \
   | sh -s -- --plugin claude
 ```
@@ -43,9 +53,13 @@ Plugin (claude): verified
 ```
 
 If `~/.local/bin` is not already on `PATH`, the result includes an `export PATH=...` line you can
-copy. The installer does not edit shell startup files. Run `cargento --diagnose` to check the CLI.
-A plugin failure after CLI activation is reported as a partial installation; rerun the same
-installer command to repair it.
+copy. The installer does not edit shell startup files. A plugin failure after CLI activation is
+reported as a partial installation; rerun the same installer command to repair it.
+
+`cargento` starts the server in the foreground on `127.0.0.1:4553`; then open
+`http://127.0.0.1:4553/`. Use `cargento --port 4553` to choose the port explicitly, and press
+Ctrl-C in that terminal to stop the server. `cargento --diagnose` reports the paths and stores
+Cargento sees, then exits without starting the server.
 
 ### Manual and plugin-only setup
 

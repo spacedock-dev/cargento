@@ -33,7 +33,7 @@ if [ "$#" -ne 2 ] || [ "$1" != '--plugin' ] || [ "$2" != 'claude' ]; then
   usage
 fi
 
-for command_name in python3 curl tar claude mktemp mkdir rm ln mv chmod; do
+for command_name in python3 curl gzip tar claude mktemp mkdir rm ln mv chmod; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
     fail "required command not found: $command_name"
   fi
@@ -107,12 +107,13 @@ required = {
     "cargento/.claude-plugin/plugin.json",
 }
 safe = all(
-    member.name == "cargento"
-    or (
-        member.name.startswith("cargento/")
-        and ".." not in member.name.split("/")
-        and not member.issym()
-        and not member.islnk()
+    (member.isdir() or member.isfile())
+    and (
+        member.name == "cargento"
+        or (
+            member.name.startswith("cargento/")
+            and ".." not in member.name.split("/")
+        )
     )
     for member in members
 )

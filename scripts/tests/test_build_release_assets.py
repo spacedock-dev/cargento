@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import runpy
 import subprocess
 import sys
@@ -75,7 +76,8 @@ class BuildReleaseAssetsTests(unittest.TestCase):
                     second_assets,
                     first_bytes == second_bytes,
                     checksum.read_text(),
-                    bool(installer.stat().st_mode & 0o111),
+                    os.name != "posix" or bool(installer.stat().st_mode & 0o111),
+                    installer_body.startswith("#!/bin/sh\n"),
                     "v1.2.3" in installer_body,
                     archive_name in installer_body,
                     (
@@ -100,8 +102,26 @@ class BuildReleaseAssetsTests(unittest.TestCase):
                     True,
                     True,
                     True,
+                    True,
                 ),
             )
+
+    def test_readme_documents_latest_exact_and_cli_runtime_contracts(self) -> None:
+        readme = (ROOT / "README.md").read_text()
+
+        self.assertEqual(
+            (
+                "releases/latest/download/install.sh" in readme,
+                "releases/download/$CARGENTO_TAG/install.sh" in readme,
+                "pinned to that release's exact tag" in readme,
+                "`cargento` starts the server in the foreground" in readme,
+                "`cargento --port 4553`" in readme,
+                "http://127.0.0.1:4553/" in readme,
+                "Ctrl-C" in readme,
+                "`cargento --diagnose` reports" in readme,
+            ),
+            (True, True, True, True, True, True, True, True),
+        )
 
     def test_rejects_non_semver_tag_without_writing_assets(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-assets-invalid-") as directory:
