@@ -3168,17 +3168,33 @@ class ReviewFixTest(unittest.TestCase):
     def test_reverse_lines_stays_linear_on_one_long_record(self) -> None:
         # chunk + carry per chunk made this quadratic: a 64 MB single-line
         # transcript took 0.9s, and large tool results do produce such records.
+        #
+        # Best-of-three per size, because a single sample is what made this
+        # flaky on the Windows runner: one slow read reported a 9.0x ratio for
+        # 4x the bytes on code that really scales at ~4x. The minimum is the
+        # least contaminated estimate, and a quadratic regression cannot hide
+        # in it.
+        #
+        # 16/64 MB rather than 4/16 so the measured time clears the floor below
+        # on every runner. The floor stops a fast machine's near-zero baseline
+        # from collapsing the budget into the noise, but it also caps
+        # sensitivity: the comparison only fails a quadratic regression while
+        # timings[0] > floor / 2, so the floor has to stay well under a real
+        # measurement rather than replace it.
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "long.jsonl"
             timings = []
-            for megabytes in (4, 16):
+            for megabytes in (16, 64):
                 path.write_bytes(b"x" * (megabytes * 1024 * 1024))
-                start = time.perf_counter()
-                list(dashboard.reverse_lines(str(path)))
-                timings.append(time.perf_counter() - start)
+                samples = []
+                for _ in range(3):
+                    start = time.perf_counter()
+                    list(dashboard.reverse_lines(str(path)))
+                    samples.append(time.perf_counter() - start)
+                timings.append(min(samples))
         # Quadratic would be ~16x for 4x the bytes. Linear is ~4x; allow 8x for
         # a loaded CI runner while still failing a quadratic regression.
-        self.assertLess(timings[1], max(timings[0], 0.005) * 8, f"non-linear: {timings}")
+        self.assertLess(timings[1], max(timings[0], 0.01) * 8, f"non-linear: {timings}")
 
     def test_env_paths_are_not_stripped(self) -> None:
         # Trailing whitespace is legal in a POSIX path, and XDG_DATA_HOME was
