@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import runpy
 import subprocess
 import sys
 import tarfile
@@ -11,12 +12,23 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
-from scripts.build_release_assets import build_assets, main
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILDER = ROOT / "scripts/build_release_assets.py"
+BUILDER_GLOBALS = runpy.run_path(
+    str(BUILDER),
+    run_name="cargento_release_asset_builder_test",
+)
+build_assets = cast(
+    "Callable[[str, Path], tuple[Path, Path, Path]]",
+    BUILDER_GLOBALS["build_assets"],
+)
+main = cast("Callable[[], int]", BUILDER_GLOBALS["main"])
 
 
 class BuildReleaseAssetsTests(unittest.TestCase):
