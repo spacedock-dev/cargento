@@ -90,6 +90,11 @@ local harness session stores read-only, meaning transcripts, task files, and SQL
 serves a self-refreshing dashboard at `http://127.0.0.1:4553/`. No data leaves your machine; the
 server binds to 127.0.0.1 only.
 
+The dashboard renders the same data two ways, switched by the `display` control at the top right or
+by pressing `c`. Regular mode is a stack of cards, one per working session. Calm mode is a single
+dense ledger, one row per session, for boards with more sessions than fit as cards. Your choice is
+remembered in the browser.
+
 See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.
 
 ## 4. Validation

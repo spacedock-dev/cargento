@@ -6,7 +6,7 @@ license: Apache-2.0
 
 # Cargento
 
-Cargento is an agnostic agent cartography and visualization tool: a local web dashboard mapping live coding-agent activity across **eight harnesses** on this machine — Claude Code, Codex, Gemini CLI / Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid — each row badged with its harness. A "Discovered harnesses" strip at the top shows all supported harnesses; ones with local session data are green/enabled, others gray/disabled. A harness's sessions only appear if its data is discovered. Transcript-backed sessions appear even if they never called TaskCreate; Claude task files may also surface a task-only session when its transcript is unavailable. Per session: a live state badge, what it's doing right now, running subagents (named pills), a current-turn elapsed/ETA estimate with progress bar, a ⚠️ warning (with tooltip) when a request runs or is estimated ≥15 min, one row per tracked task, and the recent token output rate. Fires desktop notifications when a Claude session is blocked waiting on the human.
+Cargento is an agnostic agent cartography and visualization tool: a local web dashboard mapping live coding-agent activity across **eight harnesses** on this machine — Claude Code, Codex, Gemini CLI / Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid — each row badged with its harness. A "Discovered harnesses" strip at the top shows all supported harnesses; ones with local session data are green/enabled, others gray/disabled. A harness's sessions only appear if its data is discovered. Transcript-backed sessions appear even if they never called TaskCreate; Claude task files may also surface a task-only session when its transcript is unavailable. Per session: a live state badge, what it's doing right now, running subagents (named pills), a current-turn elapsed/ETA estimate with progress bar, a ⚠️ warning (with tooltip) when a request runs or is estimated ≥15 min, one row per tracked task, and the recent token output rate. Fires desktop notifications when a Claude session is blocked waiting on the human. Two display modes render the same data — see Display modes below.
 
 Store locations are resolved per platform, and the documented relocation variables are honored: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME` (the CLI creates `.gemini` inside it), and `COPILOT_HOME`. When one is set it is authoritative — no fallback to the default location. Run `--diagnose` to see every path searched.
 
@@ -31,6 +31,23 @@ Data sources (read-only, no external calls; all parsing is defensive — a broke
 | **Needs input** (red, popup fired) | Claude is blocked on the human | pending `AskUserQuestion`/`ExitPlanMode` in transcript, or an actionable Notification-hook POST (permission prompt / MCP elicitation). Claude only — other harnesses have no needs-input detection |
 | **Working** (blue) | Actively generating | transcript/subagent/DB activity within the last 90s; detail = in-progress task's activeForm, else running subagents, else last tool |
 | **Idle** (gray) | Turn ended | anything else — "awaiting your message" |
+
+## Display modes
+
+A `display` switch at the top right toggles between two renderings of the same `/api/data` payload. The choice is remembered per browser (`localStorage`, key `cargento.displayMode`) and `c` toggles it from the keyboard. Nothing is filtered out of one mode and present in the other; the two never disagree about a session.
+
+- **regular** (default) — the card stack: hero tiles, the needs-input band, one card per working session, a collapsed idle list.
+- **calm** — one dense ledger row per session in a fixed frame that scrolls internally, for boards with more sessions than fit as cards. Columns: state rail, harness, session title, `project · session id`, what it's doing, flag, current-turn bar, and the state's headline number (wait / tok-per-min / idle age). Clicking a row expands it in place with the flag's explanation, the last prompt, tracked tasks, any Spacedock stage strips, the turn estimate, subagents, and `copy id`. When the project name is too long for its column the project is truncated, never the session id.
+
+Calm mode's own controls: the three state counts in the header filter by state, `order` sorts by `attention` (most-blocking first), `recent`, or `repo` (grouped, with a heading per project), and the `◆ N flagged` pill narrows to flagged rows. Keys: `j`/`k` or arrows move the cursor, `⏎` expands, `f` toggles the flagged filter, `c` switches mode, `esc` clears filters. Row order is stable across the 5-second refresh, so rows do not move under the cursor while you read.
+
+Three flags appear in the `flag` column, and only these three — each is a signal the server actually detects, so no flag means nothing is known to be wrong:
+
+| Flag | Meaning |
+|---|---|
+| **your call** (red) | Needs input. You are the blocker. |
+| **long turn** (amber) | Working, and this request has run or is estimated to run ≥15 min (`LONG_TURN_WARN_SEC`) — the same signal as the regular view's ⚠️. |
+| **stale** (gray) | Idle with no activity for ≥2h. Either it finished quietly and nobody read the result, or it is waiting on a reply that never came. |
 
 ## Start
 
@@ -126,6 +143,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 - **Project** = the last two segments of the session's working directory (`spacedock/subspace`), the same rule on every harness so one directory reads identically whichever agent opened it. Bare basename is not enough: sibling worktrees are routinely all named the same thing. Claude is the only harness whose store does not hand over a path — its `projects/` directory name encodes one with every separator replaced by `-`, which cannot be split back apart — so the real working directory is read from the transcript records, and a transcript too young to carry one falls back to that encoded name whole. Cursor reports its workspace when its store records one and the harness name otherwise.
 - **Session id** = enough leading characters of the session's id to be unique among the rows it sits beside, at least 8. Codex hands out time-ordered ids, so agents launched together share a long prefix, and a fixed 8 characters showed several distinct sessions as one repeated row. The width grows only within the harness and project that actually collided, so a fan-out in one worktree does not lengthen the id of an unrelated session elsewhere.
 - Task rows only exist for sessions where Claude used TaskCreate — the session state line is always live regardless. Summary tiles show "–" when no session has tracked tasks.
+- **Calm-mode row order** is deliberately a function of nothing that changes on its own: state, then age, then the session id. A *working* session's last activity is by definition seconds old, so ordering working rows by age would sort them on which one happened to write last and reshuffle them every refresh — they sit level instead, ordered by id. A row therefore moves when its state changes, not because time passed. Same reason `/api/data` orders sessions by id rather than by last activity.
 
 ## Stop
 

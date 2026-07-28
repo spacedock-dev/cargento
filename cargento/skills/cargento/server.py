@@ -4297,11 +4297,17 @@ PAGE = r"""<!doctype html>
     --bg:#f6f3ec; --panel:#fffdf8; --ink:#26241d; --ink2:#57534a; --ink3:#8f897c;
     --line:#e6e0d3; --accent:oklch(0.80 0.16 122); --alert:oklch(0.55 0.19 27);
     --sans:'Space Grotesk',system-ui,-apple-system,sans-serif; --mono:'Space Mono',ui-monospace,monospace;
+    /* calm mode: a sunk surface below --bg, a heavier rule than --line, and a
+       second flag tone for "worth a look" as distinct from --alert's "act now" */
+    --sunk:#f0ece2; --line2:#cfc7b5; --accent-ink:oklch(0.34 0.07 130);
+    --warn:oklch(0.74 0.11 78); --warnink:oklch(0.50 0.09 70);
   }
   @media (prefers-color-scheme:dark){
     :root{
       --bg:#1a1916; --panel:#222019; --ink:#efece3; --ink2:#b3ad9f; --ink3:#7c7669;
       --line:#302d25; --accent:oklch(0.84 0.17 122); --alert:oklch(0.72 0.17 27);
+      --sunk:#161512; --line2:#463f33; --accent-ink:oklch(0.86 0.10 128);
+      --warn:oklch(0.78 0.11 78); --warnink:oklch(0.80 0.10 76);
     }
   }
   *{box-sizing:border-box}
@@ -4460,6 +4466,126 @@ PAGE = r"""<!doctype html>
 
   .empty{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:36px;text-align:center;color:var(--ink2);font-size:14px}
   .empty a{font-weight:600}
+
+  /* display-mode switch — present in both modes, top right */
+  .modebar{display:flex;align-items:center;justify-content:flex-end;gap:12px}
+  .wrap:not(.calm) .modebar{margin-bottom:-20px}
+  .modebar-k{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+  .modeseg{display:flex;align-items:center;gap:2px;padding:2px;border-radius:9px;border:1px solid var(--line);background:var(--bg)}
+  .modebtn{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:5px 13px;border:0;border-radius:7px;cursor:pointer;color:var(--ink3);background:transparent;transition:color .12s,background .12s}
+  .modebtn:hover{color:var(--ink2)}
+  .modebtn.on{color:var(--ink);background:var(--panel);box-shadow:0 1px 3px -1px rgba(0,0,0,.22)}
+  .modebtn:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+
+  /* calm mode — one dense ledger row per session, in a fixed frame that
+     scrolls internally so the chrome never leaves the screen */
+  .wrap.calm{max-width:1332px;padding:24px 26px 30px;gap:12px}
+  .cm-frame{--cmcols:3px 22px minmax(0,1fr) 176px 156px 100px 46px 92px 56px 12px;display:flex;flex-direction:column;height:calc(100vh - 116px);min-height:460px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 22px 56px -30px rgba(0,0,0,.45)}
+  @media (max-width:1060px){
+    .cm-frame{--cmcols:3px 22px minmax(0,1fr) 118px 104px 84px 40px 74px 0 12px}
+    .cm-q{display:none}
+  }
+  .cm-sp{flex:1}
+  .cm-bar{flex:none;display:flex;align-items:center;gap:22px;padding:0 22px;height:46px;border-bottom:1px solid var(--line)}
+  .cm-brand{font-size:14.5px;font-weight:700;letter-spacing:-.012em}
+  .cm-legend{display:flex;align-items:center;gap:4px}
+  .cm-chip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;color:var(--ink2);padding:4px 9px;border:0;border-radius:7px;cursor:pointer;background:transparent;transition:background .12s}
+  .cm-chip:hover{background:var(--sunk)}
+  .cm-chip.on{background:var(--panel)}
+  .cm-chip:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .cm-dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .cm-dot.hollow{border:1.5px solid var(--line2)}
+  .cm-live{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+  .cm-ctl{flex:none;display:flex;align-items:center;gap:16px;padding:0 22px;height:38px;border-bottom:1px solid var(--line);background:var(--sunk)}
+  .cm-k{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+  .cm-seg{display:flex;align-items:center;gap:2px;padding:2px;border-radius:8px;border:1px solid var(--line)}
+  .cm-segb{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:4px 11px;border:0;border-radius:6px;cursor:pointer;color:var(--ink3);background:transparent}
+  .cm-segb.on{color:var(--ink);background:var(--panel)}
+  .cm-segb:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .cm-vr{width:1px;height:15px;background:var(--line)}
+  .cm-flagchip{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;font-weight:700;padding:4px 11px;border-radius:999px;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--ink2);transition:border-color .12s}
+  .cm-flagchip:hover{border-color:var(--line2)}
+  .cm-flagchip.on{border-color:color-mix(in oklab,var(--warn) 42%,transparent);background:color-mix(in oklab,var(--warn) 26%,transparent);color:var(--warnink)}
+  .cm-flagchip:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .cm-clear{font-family:var(--mono);font-size:10.5px;color:var(--ink3);cursor:pointer;background:transparent;border:0;border-bottom:1px solid var(--line2);padding:0}
+  .cm-clear:hover{color:var(--ink2)}
+  .cm-note{font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+  .cm-head{flex:none;display:grid;grid-template-columns:var(--cmcols);align-items:center;gap:12px;padding:0 22px;height:24px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3)}
+  .cm-head .r{text-align:right}
+  .cm-body{flex:1;overflow:auto;min-height:0}
+  .cm-div{display:flex;align-items:center;gap:10px;padding:0 22px;height:28px;background:var(--sunk);border-bottom:1px solid var(--line)}
+  .cm-div-k{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cm-div-n{font-family:var(--mono);font-size:9.5px;color:var(--ink3);flex:none}
+  .cm-div-rule{flex:1;height:1px;background:var(--line)}
+  .cm-div-f{font-family:var(--mono);font-size:9.5px;color:var(--warnink);flex:none}
+  .cm-item{border-bottom:1px solid var(--line)}
+  .cm-row{position:relative;display:grid;grid-template-columns:var(--cmcols);align-items:center;gap:12px;padding:0 22px;height:34px;cursor:pointer;background:transparent;transition:background .12s}
+  .cm-row.focus{background:color-mix(in oklab,var(--ink) 4%,transparent)}
+  .cm-row:hover{background:var(--panel)}
+  .cm-row.open{background:var(--panel)}
+  .cm-cursor{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent-ink)}
+  .cm-rail{width:3px;height:15px;border-radius:2px}
+  .cm-hcell{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center}
+  .cm-ico{width:15px;height:15px;background:var(--ink2)}
+  .cm-icot{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--ink3)}
+  .cm-title{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cm-where{display:flex;align-items:center;min-width:0;font-family:var(--mono);font-size:11px;color:var(--ink3);white-space:nowrap}
+  .cm-proj{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .cm-sess{flex:none;margin-left:.55ch}
+  .cm-doing{font-family:var(--mono);font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cm-flag{display:inline-block;max-width:100%;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.02em;padding:2.5px 7px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line)}
+  .cm-track{display:block;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+  .cm-fill{display:block;height:100%;border-radius:2px}
+  .cm-metric{font-family:var(--mono);font-size:11px;text-align:right;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cm-q{display:flex;justify-content:flex-end;gap:9px;opacity:0;transition:opacity .12s ease}
+  .cm-row:hover .cm-q,.cm-row.focus .cm-q,.cm-row.open .cm-q{opacity:1}
+  .cm-qb{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--ink3);background:transparent;border:0;padding:0;cursor:pointer;transition:color .12s}
+  .cm-qb:hover{color:var(--ink)}
+  .cm-qb:focus-visible{outline:none;color:var(--ink);opacity:1}
+  .cm-caret{font-family:var(--mono);font-size:12px;color:var(--ink3);text-align:center}
+
+  /* calm mode — expanded row */
+  .cm-exp{background:var(--panel);border-top:1px solid var(--line);padding:18px 22px 20px 60px;display:flex;gap:34px;align-items:flex-start;flex-wrap:wrap}
+  .cm-exp-main{flex:1;min-width:300px;display:flex;flex-direction:column;gap:14px}
+  .cm-exp-side{flex:none;width:300px;display:flex;flex-direction:column;gap:16px}
+  .cm-why{display:flex;gap:11px;align-items:flex-start;max-width:660px}
+  .cm-why-g{font-family:var(--mono);font-size:12px;line-height:1.35}
+  .cm-why-t{font-size:13px;line-height:1.55;color:var(--ink2);text-wrap:pretty}
+  .cm-why-t b{font-weight:700}
+  .cm-quote{max-width:660px;padding:11px 14px;border-left:2px solid var(--line2);background:var(--bg);border-radius:0 8px 8px 0}
+  .cm-subk{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3)}
+  .cm-quote .cm-subk{display:block;margin-bottom:6px}
+  .cm-quote-t{font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--ink2);text-wrap:pretty;overflow-wrap:anywhere}
+  .cm-tasks{display:flex;flex-direction:column;gap:5px;max-width:660px}
+  .cm-task{display:flex;align-items:center;gap:10px}
+  .cm-task-g{font-family:var(--mono);font-size:11px;width:10px;flex:none}
+  .cm-task-t{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cm-meta{display:flex;align-items:center;gap:20px;font-family:var(--mono);font-size:10.5px;color:var(--ink3);flex-wrap:wrap;padding-top:2px}
+  .cm-turn{display:flex;flex-direction:column;gap:8px}
+  .cm-turn-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .cm-turn-pct{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--ink)}
+  .cm-turn-track{height:7px;border-radius:4px;background:var(--line);overflow:hidden}
+  .cm-turn-line{font-family:var(--mono);font-size:11px;color:var(--ink2)}
+  .cm-subs{display:flex;flex-direction:column;gap:7px}
+  .cm-sub{display:flex;align-items:center;gap:9px}
+  .cm-sub-dot{width:5px;height:5px;flex:none;border-radius:50%;background:var(--accent);animation:pulse 1.7s infinite}
+  .cm-sub-n{font-size:12.5px;color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cm-acts{display:flex;gap:8px;flex-wrap:wrap}
+  .cm-act{font-family:var(--mono);font-size:11px;color:var(--ink2);background:transparent;border:1px solid var(--line);border-radius:7px;padding:7px 13px;cursor:pointer;transition:background .12s}
+  .cm-act:hover{background:var(--bg)}
+  .cm-act:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+
+  /* calm mode — empty state and footer */
+  .cm-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:110px 20px;text-align:center}
+  .cm-empty-t{font-size:14px;color:var(--ink3)}
+  .cm-link{font-family:inherit;font-size:inherit;color:var(--accent-ink);background:transparent;border:0;border-bottom:1px solid currentColor;padding:0;cursor:pointer}
+  .cm-foot{flex:none;display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap;padding:7px 22px;min-height:32px;border-top:1px solid var(--line);background:var(--sunk);font-family:var(--mono);font-size:10px;color:var(--ink3)}
+  .cm-keys{display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .cm-keys span{display:inline-flex;align-items:center;gap:5px}
+  .cm-fstrip{display:inline-flex;align-items:center;gap:4px}
+  .cm-foot .btile{width:18px;height:18px;border-radius:6px}
+  .cm-foot .bico{width:11px;height:11px}
+  .cm-foot .bmono{font-size:8px}
 </style>
 </head>
 <body>
@@ -4485,6 +4611,11 @@ function fmtDur(sec){
   if(sec < 86400) return Math.floor(sec/3600) + "h " + Math.floor((sec%3600)/60) + "m";
   return Math.floor(sec/86400) + "d " + Math.floor((sec%86400)/3600) + "h";
 }
+
+// One wording for the long-turn signal: the regular view's ⚠️ tooltip and the
+// calm ledger's flag explanation must not drift apart.
+const LONG_TURN_NOTE = "This request is running long (or estimated to). " +
+  "Double-check what the agent is doing matches your expectations.";
 
 // Trailing output-rate sparklines: client-side ring buffers that start when
 // the page opens and drop points once they age out of the visual window.
@@ -4812,8 +4943,8 @@ function sdBlock(sess){
 function turnBlock(t){
   if(!t) return "";
   const warn = t.long ? `<span class="lwarn" tabindex="0" role="note"` +
-    ` aria-label="This request is running long (or estimated to). Double-check what the agent is doing matches your expectations.">!` +
-    `<span class="ltip">This request is running long (or estimated to). Double-check what the agent is doing matches your expectations.</span></span>` : "";
+    ` aria-label="${LONG_TURN_NOTE}">!` +
+    `<span class="ltip">${LONG_TURN_NOTE}</span></span>` : "";
   const pct = (t.pct != null) ? `<span class="pct">${t.pct}%</span>` : "";
   const bar = (t.pct != null) ? `<div class="turnbar"><span class="turnfill" style="width:${t.pct}%"></span></div>` : "";
   const eta = t.eta_h ? `~${esc(t.eta_h)} left (est)` : "running longer than recent turns";
@@ -4890,6 +5021,435 @@ function idleRow(d, sess){
 
 function toggleIdle(){ idleExpanded = !idleExpanded; if(lastData) render(lastData); }
 
+/* ── calm mode ─────────────────────────────────────────────────────────────
+   A second display of the same payload: one dense ledger row per session
+   instead of a stack of cards. Every value it shows is derived from
+   /api/data, so the two modes cannot disagree about what a session is
+   doing. The switch is remembered in localStorage and bound to `c`. */
+const DISPLAY_MODE_KEY = "cargento.displayMode";
+const CALM_STALE_SEC = 7200;   // an idle session quiet this long is flagged "stale"
+
+let displayMode = "regular";
+try{
+  const saved = localStorage.getItem(DISPLAY_MODE_KEY);
+  if(saved === "calm" || saved === "regular") displayMode = saved;
+}catch(e){ /* private mode, or a context with no storage — regular it is */ }
+
+let calmSort = "attention";   /* attention | recent | repo */
+let calmStateOnly = null;     /* needs | work | idle */
+let calmFlagOnly = false;
+let calmOpenSid = null;       /* the one expanded row */
+let calmFocusSid = null;      /* keyboard cursor */
+let calmCopyNote = null;      /* {sid, text} — transient label after copy id */
+let calmScrollTop = 0;        /* ledger scroll survives the 5s re-render */
+let calmRevealFocus = false;  /* scroll the cursor into view after this render */
+let calmResetScroll = false;  /* re-filtered: the next render starts at the top */
+
+function setDisplayMode(mode){
+  if(mode !== "calm" && mode !== "regular" || mode === displayMode) return;
+  displayMode = mode;
+  try{ localStorage.setItem(DISPLAY_MODE_KEY, mode); }catch(e){ /* nothing to persist to */ }
+  calmResetScroll = true;
+  if(lastData) render(lastData);
+}
+
+function modeBar(){
+  const btn = k => `<button type="button" class="modebtn${displayMode === k ? " on" : ""}"` +
+    ` data-calm="mode" data-arg="${k}" aria-pressed="${displayMode === k}">${k}</button>`;
+  return `<div class="modebar"><span class="modebar-k">display</span>` +
+    `<div class="modeseg" role="group" aria-label="display mode">` +
+    btn("regular") + btn("calm") + `</div></div>`;
+}
+
+/* Two flag tones, and only signals the payload actually carries: --alert for
+   "you are the blocker", --warn for "worth a look", neither for "gone quiet".
+   The fixture's stalled/failed flags have no server-side detector, so calm
+   mode does not invent them. */
+const CALM_TONE = {
+  attn: {rank:0, ink:"var(--alert)",
+         bg:"color-mix(in oklab,var(--alert) 13%,transparent)",
+         bd:"color-mix(in oklab,var(--alert) 34%,transparent)"},
+  warn: {rank:1, ink:"var(--warnink)",
+         bg:"color-mix(in oklab,var(--warn) 26%,transparent)",
+         bd:"color-mix(in oklab,var(--warn) 42%,transparent)"},
+  quiet:{rank:3, ink:"var(--ink3)", bg:"transparent", bd:"var(--line)"}
+};
+const CALM_RAIL = {needs:"var(--alert)", work:"var(--accent)", idle:"var(--line2)"};
+const CALM_TASK = {
+  in_progress:{glyph:"▸", ink:"var(--accent-ink)", text:"var(--ink)"},
+  pending:    {glyph:"·", ink:"var(--ink3)",       text:"var(--ink3)"},
+  completed:  {glyph:"✓", ink:"var(--accent-ink)", text:"var(--ink3)"}
+};
+const CALM_TASK_ORDER = {in_progress:0, pending:1, completed:2};
+
+/* One ledger row per session. Every session lands in exactly one of the three
+   buckets — a ledger that silently drops a row is worse than useless. */
+function calmRow(d, x){
+  const st = x.state === "needs_input" ? "needs" : (x.state === "working" ? "work" : "idle");
+  const ageSec = Math.max(0, d.generated - (x.last_activity || 0));
+  const waitSec = Math.max(0, d.generated - (x.blocked_since || x.last_activity || 0));
+  const turn = x.turn || null;
+  let flag = null, tone = "quiet", why = "";
+  if(st === "needs"){
+    flag = "your call"; tone = "attn";
+    why = "Blocked on you for " + fmtDur(waitSec) +
+      " — nothing in this session moves until you answer.";
+  } else if(st === "work" && turn && turn.long){
+    flag = "long turn"; tone = "warn"; why = LONG_TURN_NOTE;
+  } else if(st === "idle" && ageSec >= CALM_STALE_SEC){
+    flag = "stale"; tone = "quiet";
+    why = "No activity for " + fmtDur(ageSec) + ". Either it finished quietly and " +
+      "nobody read the result, or it is waiting on a reply that never came.";
+  }
+  const title = x.title || x.last_prompt || x.project;
+  const prompt = String(x.last_prompt || "").trim();
+  const tasks = (x.tasks || []).slice().sort(
+    (a, b) => (CALM_TASK_ORDER[a.status] ?? 3) - (CALM_TASK_ORDER[b.status] ?? 3));
+  const taskDone = tasks.filter(t => t.status === "completed").length;
+  const rate = x.rate_per_min || 0;
+  return {
+    sid: x.sid, harness: x.harness, project: x.project, session: x.session,
+    st, title, doing: x.state_detail, ageSec, waitSec, turn, flag, tone, why,
+    sortAge: st === "work" ? 0 : ageSec,   /* see byAge — a working row's age is noise */
+    rail: CALM_RAIL[st] || CALM_RAIL.idle,
+    /* The prompt is only worth quoting when the title is not already it. */
+    excerpt: (prompt && prompt !== String(title).trim()) ? prompt : "",
+    tasks, taskNote: tasks.length ? taskDone + " of " + tasks.length + " done" : "",
+    subagents: x.subagents || [], spacedock: x.spacedock || null,
+    rank: flag ? CALM_TONE[tone].rank : (st === "work" ? 2 : 4),
+    metric: st === "needs" ? fmtDur(waitSec) + " wait"
+      : (st === "work" ? rate.toLocaleString() + " /m" : fmtDur(ageSec) + " idle"),
+    metricInk: st === "needs" ? "var(--alert)" : (st === "idle" ? "var(--ink3)" : "var(--ink2)"),
+    titleInk: st === "idle" ? "var(--ink2)" : "var(--ink)",
+    detailAge: st === "needs" ? "blocked " + fmtDur(waitSec)
+      : (st === "work" ? "last event " + fmtDur(ageSec) + " ago" : "idle " + fmtDur(ageSec)),
+    turnLine: turn ? turn.elapsed_h + " elapsed · " +
+      (turn.eta_h ? "~" + turn.eta_h + " left (est)" : "running longer than recent turns") : ""
+  };
+}
+
+function calmFilter(all){
+  return all.filter(r => (!calmFlagOnly || !!r.flag) &&
+                         (!calmStateOnly || r.st === calmStateOnly));
+}
+
+/* Ordering has to be STABLE across the 5s poll — a row that swaps places under
+   the reader's cursor is worse than a row in the wrong place. Age is stable by
+   construction everywhere it means something: it is a fixed per-session
+   timestamp subtracted from one clock shared by the whole payload, so two idle
+   rows keep their relative order forever. The exception is a WORKING row,
+   whose last activity is always within WORKING_THRESHOLD_SEC of now — ordering
+   those by age sorts on nothing but which one wrote most recently, which flips
+   every poll. `sortAge` pins them level (see calmRow) and the session id, which
+   never changes, breaks every remaining tie. This is the same call collect()
+   makes server-side for the same reason. */
+const bySid = (a, b) => (a.sid < b.sid ? -1 : (a.sid > b.sid ? 1 : 0));
+const byAge = (a, b) => a.sortAge - b.sortAge || bySid(a, b);
+const byRank = (a, b) => a.rank - b.rank || byAge(a, b);
+
+/* Returns display entries: {row} for a session, {divider} for a repo heading. */
+function calmEntries(shown){
+  if(calmSort === "recent"){
+    return shown.slice().sort(byAge).map(r => ({row: r}));
+  }
+  if(calmSort === "repo"){
+    const by = new Map();
+    for(const r of shown){
+      if(!by.has(r.project)) by.set(r.project, []);
+      by.get(r.project).push(r);
+    }
+    const out = [];
+    for(const key of Array.from(by.keys()).sort()){
+      const g = by.get(key).sort(byRank);
+      out.push({divider: {label: key, count: g.length,
+                          flagged: g.filter(r => r.flag).length}});
+      for(const r of g) out.push({row: r});
+    }
+    return out;
+  }
+  return shown.slice().sort(byRank).map(r => ({row: r}));
+}
+
+/* The cursor falls back to the first row rather than being written back into
+   calmFocusSid, so a re-sort moves the highlight without stranding state. */
+function calmEffectiveFocus(order){
+  if(calmFocusSid && order.some(r => r.sid === calmFocusSid)) return calmFocusSid;
+  return order.length ? order[0].sid : null;
+}
+
+function calmOrder(d){
+  return calmEntries(calmFilter(d.sessions.map(x => calmRow(d, x))))
+    .filter(e => e.row).map(e => e.row);
+}
+
+function calmMove(step){
+  if(!lastData) return;
+  const order = calmOrder(lastData);
+  if(!order.length) return;
+  const i = order.findIndex(r => r.sid === calmEffectiveFocus(order));
+  calmFocusSid = order[Math.max(0, Math.min(order.length - 1, (i < 0 ? 0 : i + step)))].sid;
+  calmRevealFocus = true;
+  render(lastData);
+}
+
+function calmCopyId(sid){
+  const note = text => {
+    calmCopyNote = {sid, text};
+    if(lastData) render(lastData);
+    setTimeout(() => {
+      if(!calmCopyNote || calmCopyNote.sid !== sid) return;
+      calmCopyNote = null;
+      if(lastData) render(lastData);
+    }, 1400);
+  };
+  const clip = (typeof navigator !== "undefined" && navigator.clipboard &&
+                navigator.clipboard.writeText) ? navigator.clipboard.writeText(sid) : null;
+  /* Never claim "copied" for a write the browser refused — an unfocused or
+     non-secure context rejects, and a silent lie here costs a lost session id. */
+  if(clip && typeof clip.then === "function") clip.then(() => note("copied"), () => note("blocked"));
+  else note("blocked");
+}
+
+function calmAction(act, arg){
+  if(act === "mode"){ setDisplayMode(arg); return; }
+  if(act === "copy"){ calmCopyId(arg); return; }
+  if(act === "sort"){
+    if(calmSort === arg) return;
+    calmSort = arg; calmResetScroll = true;
+  } else if(act === "state"){
+    calmStateOnly = calmStateOnly === arg ? null : arg;
+    calmOpenSid = null; calmFocusSid = null; calmResetScroll = true;
+  } else if(act === "flag"){
+    calmFlagOnly = !calmFlagOnly;
+    calmOpenSid = null; calmFocusSid = null; calmResetScroll = true;
+  } else if(act === "clear"){
+    calmFlagOnly = false; calmStateOnly = null; calmResetScroll = true;
+  } else if(act === "open"){
+    calmOpenSid = calmOpenSid === arg ? null : arg;
+    calmFocusSid = arg;
+  } else return;
+  if(lastData) render(lastData);
+}
+
+document.addEventListener("click", e => {
+  const el = (e.target && e.target.closest) ? e.target.closest("[data-calm]") : null;
+  if(!el) return;
+  calmAction(el.getAttribute("data-calm"), el.getAttribute("data-arg"));
+});
+
+document.addEventListener("keydown", e => {
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = e.target && e.target.tagName;
+  if(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  const k = e.key;
+  const stop = () => { if(e.preventDefault) e.preventDefault(); };
+  /* `c` works in both modes — it is the way back out of calm. */
+  if(k === "c"){ stop(); setDisplayMode(displayMode === "calm" ? "regular" : "calm"); return; }
+  if(displayMode !== "calm" || !lastData) return;
+  /* A focused button already answers Enter and Space itself. */
+  if(tag === "BUTTON" && (k === "Enter" || k === " ")) return;
+  if(k === "j" || k === "ArrowDown"){ stop(); calmMove(1); }
+  else if(k === "k" || k === "ArrowUp"){ stop(); calmMove(-1); }
+  else if(k === "Enter" || k === " "){
+    stop();
+    const sid = calmEffectiveFocus(calmOrder(lastData));
+    if(sid) calmAction("open", sid);
+  }
+  else if(k === "f"){ stop(); calmAction("flag", null); }
+  else if(k === "Escape"){
+    stop();
+    calmOpenSid = null; calmFlagOnly = false; calmStateOnly = null;
+    calmResetScroll = true;
+    render(lastData);
+  }
+});
+
+function calmHarnessCell(r){
+  const h = HARNESS[r.harness] ||
+    {code:(r.harness || "?").slice(0, 2).toUpperCase(), name:r.harness};
+  const inner = h.icon
+    ? `<span class="cm-ico" style="-webkit-mask:url('${h.icon}') center/contain no-repeat;` +
+      `mask:url('${h.icon}') center/contain no-repeat"></span>`
+    : `<span class="cm-icot">${esc(h.code)}</span>`;
+  return `<span class="cm-hcell" title="${esc(h.name || r.harness)}">${inner}</span>`;
+}
+
+function calmExpansion(r){
+  const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
+  const why = r.flag
+    ? `<div class="cm-why"><span class="cm-why-g" style="color:${tone.ink}">◆</span>` +
+      `<span class="cm-why-t"><b style="color:${tone.ink}">${esc(r.flag)}</b>` +
+      ` — ${esc(r.why)}</span></div>`
+    : "";
+  const quote = r.excerpt
+    ? `<div class="cm-quote"><span class="cm-subk">last prompt</span>` +
+      `<div class="cm-quote-t">${esc(r.excerpt)}</div></div>`
+    : "";
+  const tasks = r.tasks.length
+    ? `<div class="cm-tasks"><span class="cm-subk">tasks · ${esc(r.taskNote)}</span>` +
+      r.tasks.map(t => {
+        const s = CALM_TASK[t.status] || CALM_TASK.pending;
+        const line = (t.status === "in_progress" && t.activeForm)
+          ? t.activeForm + "…" : t.subject;
+        return `<div class="cm-task"><span class="cm-task-g" style="color:${s.ink}">` +
+          `${s.glyph}</span><span class="cm-task-t" style="color:${s.text}"` +
+          ` title="${esc(t.subject)}">${esc(line)}</span></div>`;
+      }).join("") + `</div>`
+    : "";
+  const meta = `<div class="cm-meta">` +
+    `<span>${esc((HARNESS[r.harness] || {}).name || r.harness)}</span>` +
+    `<span>${esc(r.project)}</span><span>session ${esc(r.session)}</span>` +
+    `<span>${esc(r.detailAge)}</span>` +
+    (r.tasks.length ? `<span>${esc(r.taskNote)}</span>` : "") + `</div>`;
+  const hasPct = !!(r.turn && r.turn.pct != null);
+  const turn = r.turn
+    ? `<div class="cm-turn"><div class="cm-turn-top"><span class="cm-k">this request</span>` +
+      (hasPct ? `<span class="cm-turn-pct">${r.turn.pct}%</span>` : "") + `</div>` +
+      (hasPct ? `<div class="cm-turn-track"><span class="cm-fill"` +
+        ` style="width:${r.turn.pct}%;background:${r.rail}"></span></div>` : "") +
+      `<div class="cm-turn-line">${esc(r.turnLine)}</div></div>`
+    : "";
+  const subs = r.subagents.length
+    ? `<div class="cm-subs"><span class="cm-subk">subagents</span>` +
+      r.subagents.slice(0, 8).map(a => `<div class="cm-sub"><span class="cm-sub-dot"></span>` +
+        `<span class="cm-sub-n" title="${esc(a)}">${esc(a)}</span></div>`).join("") +
+      (r.subagents.length > 8
+        ? `<div class="cm-sub"><span class="cm-sub-n">+${r.subagents.length - 8} more</span></div>`
+        : "") + `</div>`
+    : "";
+  const copied = calmCopyNote && calmCopyNote.sid === r.sid;
+  const acts = `<div class="cm-acts"><button type="button" class="cm-act" data-calm="copy"` +
+    ` data-arg="${esc(r.sid)}">${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
+    `<button type="button" class="cm-act" data-calm="open"` +
+    ` data-arg="${esc(r.sid)}">collapse</button></div>`;
+  return `<div class="cm-exp"><div class="cm-exp-main">${why}${quote}${tasks}` +
+    sdBlock({spacedock: r.spacedock}) + meta + `</div>` +
+    `<div class="cm-exp-side">${turn}${subs}${acts}</div></div>`;
+}
+
+function calmRowHTML(r, focusSid){
+  const open = calmOpenSid === r.sid;
+  const focus = r.sid === focusSid;
+  const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
+  const pct = (r.turn && r.turn.pct != null) ? r.turn.pct : null;
+  const signal = (r.st === "work" && pct != null)
+    ? `<span class="cm-track" role="img" aria-label="request ${pct} percent complete">` +
+      `<span class="cm-fill" style="width:${pct}%;background:${r.rail}"></span></span>`
+    : "";
+  const flag = r.flag
+    ? `<span class="cm-flag" style="background:${tone.bg};color:${tone.ink};` +
+      `border-color:${tone.bd}">${esc(r.flag)}</span>`
+    : "";
+  const copied = calmCopyNote && calmCopyNote.sid === r.sid;
+  return `<div class="cm-item"><div class="cm-row${focus ? " focus" : ""}${open ? " open" : ""}"` +
+    ` data-calm="open" data-arg="${esc(r.sid)}" role="button" aria-expanded="${open}">` +
+    (focus ? `<span class="cm-cursor"></span>` : "") +
+    `<span class="cm-rail" style="background:${r.rail}"></span>` +
+    calmHarnessCell(r) +
+    `<span class="cm-title" style="color:${r.titleInk}"` +
+    ` title="${esc(r.title)}">${esc(r.title)}</span>` +
+    /* Real project names fill the whole cell, and tail truncation would eat the
+       session id — the part that identifies the row. Only the project gives way. */
+    `<span class="cm-where" title="${esc(r.project + " · " + r.session)}">` +
+    `<span class="cm-proj">${esc(r.project)}</span>` +
+    `<span class="cm-sess">· ${esc(r.session)}</span></span>` +
+    `<span class="cm-doing" title="${esc(r.doing)}">${esc(r.doing)}</span>` +
+    `<span>${flag}</span><span>${signal}</span>` +
+    `<span class="cm-metric" style="color:${r.metricInk}">${esc(r.metric)}</span>` +
+    `<span class="cm-q"><button type="button" class="cm-qb" data-calm="copy"` +
+    ` data-arg="${esc(r.sid)}" title="copy the full session id">` +
+    `${copied ? esc(calmCopyNote.text) : "id"}</button></span>` +
+    `<span class="cm-caret">${open ? "–" : "+"}</span></div>` +
+    (open ? calmExpansion(r) : "") + `</div>`;
+}
+
+function calmLedger(d){
+  const all = d.sessions.map(x => calmRow(d, x));
+  const shown = calmFilter(all);
+  const entries = calmEntries(shown);
+  const focusSid = calmEffectiveFocus(entries.filter(e => e.row).map(e => e.row));
+  const count = st => all.filter(r => r.st === st).length;
+  const chip = (st, label, dot) =>
+    `<button type="button" class="cm-chip${calmStateOnly === st ? " on" : ""}"` +
+    ` data-calm="state" data-arg="${st}" aria-pressed="${calmStateOnly === st}">` +
+    dot + count(st) + " " + label + `</button>`;
+  const legend =
+    chip("needs", "needs you", `<span class="cm-dot" style="background:var(--alert)"></span>`) +
+    chip("work", "working", `<span class="cm-dot" style="background:var(--accent)"></span>`) +
+    chip("idle", "idle", `<span class="cm-dot hollow"></span>`);
+  const sorts = ["attention", "recent", "repo"].map(k =>
+    `<button type="button" class="cm-segb${calmSort === k ? " on" : ""}" data-calm="sort"` +
+    ` data-arg="${k}" aria-pressed="${calmSort === k}">${k}</button>`).join("");
+  const flagged = all.filter(r => r.flag).length;
+  const clear = (calmFlagOnly || calmStateOnly)
+    ? `<button type="button" class="cm-clear" data-calm="clear">clear</button>` : "";
+  const note = shown.length === all.length
+    ? "showing all " + all.length
+    : "showing " + shown.length + " of " + all.length;
+
+  let body;
+  if(!shown.length && !all.length){
+    body = `<div class="cm-empty"><span class="cm-subk">all quiet</span>` +
+      `<div class="cm-empty-t">No session activity in the last ${esc(d.window_hours)}h.` +
+      (d.show_all ? "" : ` <a href="?all=1">Show all sessions</a>`) + `</div></div>`;
+  } else if(!shown.length){
+    body = `<div class="cm-empty"><span class="cm-subk">all quiet</span>` +
+      `<div class="cm-empty-t">Nothing matches this filter. ` +
+      `<button type="button" class="cm-link" data-calm="clear">Show all ${all.length}` +
+      `</button></div></div>`;
+  } else {
+    body = entries.map(e => e.row ? calmRowHTML(e.row, focusSid)
+      : `<div class="cm-div"><span class="cm-div-k">${esc(e.divider.label)}</span>` +
+        `<span class="cm-div-n">${e.divider.count}</span>` +
+        `<span class="cm-div-rule"></span>` +
+        (e.divider.flagged ? `<span class="cm-div-f">◆ ${e.divider.flagged}</span>` : "") +
+        `</div>`).join("");
+  }
+
+  const found = (d.harnesses || []).filter(h => h.discovered);
+  const strip = (d.harnesses || []).map(h => badge(h.key, h.discovered && !h.error, h.label,
+    h.error ? " — collector error" : (h.discovered ? "" : " — no data"))).join("");
+  return `<div class="cm-frame">` +
+    `<div class="cm-bar"><span class="cm-brand">Cargento</span>` +
+    `<div class="cm-legend">${legend}</div><span class="cm-sp"></span>` +
+    `<span class="cm-live"><span class="live" id="live-dot"></span>` +
+    `<span id="live-status">auto-refresh 5s · ` +
+    `${new Date(d.generated*1000).toLocaleTimeString()}</span>` +
+    (d.show_all ? `<span>· showing all</span>` : "") + notifyControl(d) + `</span></div>` +
+    `<div class="cm-ctl"><span class="cm-k">order</span><div class="cm-seg">${sorts}</div>` +
+    `<span class="cm-vr"></span>` +
+    `<button type="button" class="cm-flagchip${calmFlagOnly ? " on" : ""}" data-calm="flag"` +
+    ` aria-pressed="${calmFlagOnly}">◆ ${flagged} flagged</button>${clear}` +
+    `<span class="cm-sp"></span><span class="cm-note">${esc(note)}</span></div>` +
+    `<div class="cm-head"><span></span><span></span><span>session</span><span>where</span>` +
+    `<span>doing</span><span>flag</span><span>turn</span><span class="r">signal</span>` +
+    `<span></span><span></span></div>` +
+    `<div class="cm-body" id="cm-body">${body}</div>` +
+    `<div class="cm-foot"><span>${all.length} sessions · ${found.length} harnesses · ` +
+    `${(d.summary.rate_per_min || 0).toLocaleString()} tok/min</span>` +
+    `<span class="cm-fstrip">${strip}</span><span class="cm-sp"></span>` +
+    `<span class="cm-keys"><span><span style="color:var(--alert)">◆</span>you are the blocker` +
+    `</span><span><span style="color:var(--warnink)">◆</span>running long</span>` +
+    `<span><span>◇</span>gone quiet</span></span><span class="cm-sp"></span>` +
+    `<span class="cm-keys"><span>j k move</span><span>⏎ expand</span><span>f flagged</span>` +
+    `<span>c mode</span><span>esc clear</span></span></div></div>`;
+}
+
+/* render() replaces #app wholesale every poll, which resets the ledger's own
+   scroll offset. Put it back, then bring the keyboard cursor into view if the
+   last action moved it. */
+function calmRestoreScroll(){
+  const body = document.getElementById("cm-body");
+  if(!body) return;
+  body.scrollTop = calmScrollTop;
+  if(calmRevealFocus){
+    calmRevealFocus = false;
+    const row = body.querySelector ? body.querySelector(".cm-row.focus") : null;
+    if(row && row.scrollIntoView) row.scrollIntoView({block: "nearest"});
+  }
+  calmScrollTop = body.scrollTop;
+}
+
 /* Desktop notifications.
    Exactly one layer notifies for a given transition. The server fires an
    OS-level popup where it has a backend and reports that as `native_notify`;
@@ -4953,12 +5513,31 @@ function notifyControl(d){
 function render(d){
   lastData = d;
   syncNotifications(d);
+  const app = document.getElementById("app");
+  const needs = d.sessions.filter(x => x.active && x.state === "needs_input");
+  if(!app){
+    document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
+    return;
+  }
+  if(displayMode === "calm"){
+    // Carry the outgoing ledger's scroll offset across the DOM swap — unless
+    // the last action re-filtered the list, where the old offset is meaningless.
+    const outgoing = document.getElementById("cm-body");
+    if(calmResetScroll){ calmScrollTop = 0; calmResetScroll = false; }
+    else if(outgoing) calmScrollTop = outgoing.scrollTop;
+    renderInProgress = true;
+    app.className = "wrap calm";
+    app.innerHTML = modeBar() + calmLedger(d);
+    renderInProgress = false;
+    calmRestoreScroll();
+    document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
+    return;
+  }
   const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
   // Capture pointer position before render so we can restore it afterward, even if
   // pointermove fires during the render operation.
   const savedPointer = sparkPointer ? {x: sparkPointer.x, y: sparkPointer.y} : null;
   const s = d.summary;
-  const needs = d.sessions.filter(x => x.active && x.state === "needs_input");
   const working = d.sessions.filter(x => x.state === "working");
   const idle = d.sessions.filter(x => x.state === "idle");
 
@@ -5019,7 +5598,8 @@ function render(d){
   }
 
   renderInProgress = true;
-  document.getElementById("app").innerHTML =
+  app.className = "wrap";
+  app.innerHTML = modeBar() +
     `<div class="top"><div><div class="brand">Cargento</div>` +
     `<div class="sub"><span class="live" id="live-dot"></span>` +
     `<span id="live-status">live · updated ${new Date(d.generated*1000).toLocaleTimeString()} · auto-refresh 5s</span>` +

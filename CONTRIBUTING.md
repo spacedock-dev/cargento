@@ -133,6 +133,16 @@ so re-run the job before investigating, and check the traceback is a timeout and
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
+- The embedded page rebuilds `#app` from scratch every five seconds. Anything the reader set has to
+  live in a module variable and be reapplied after the swap: the expanded row, the keyboard cursor,
+  the filters, the scroll offset. Two rules follow. Escape every payload-derived string through
+  `esc()`, because the page builds HTML by concatenation and session titles come from files a
+  project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
+  timestamp, then on the session id, or rows move under the reader between refreshes.
+- Test the page by running it, not by matching strings against `PAGE`. `PageJsHarness` in
+  `test_server.py` executes the real script under node against a stub DOM, so a test can fire a
+  click or a keystroke and assert on what the page did. A `assertIn("some-class", PAGE)` passes
+  forever after the behavior behind it breaks.
 
 The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md); for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md); and for how a row is labelled and identified, [docs/design-session-identity.md](docs/design-session-identity.md).
 

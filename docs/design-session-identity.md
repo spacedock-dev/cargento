@@ -141,6 +141,44 @@ objection this document raises against a fixed longer width, arriving by a diffe
 - **Disambiguating with the session title.** Fan-out agents in one workflow are frequently
   dispatched with identical prompts, so the titles collide exactly when the ids do.
 
+## D-4: the calm ledger orders rows on nothing that ticks
+
+Calm mode gives each session one row in a table that repaints every five seconds. The first
+version sorted each rank group by age, which is what the design source did. On the fixture that
+looked right, because a fixture's ages are frozen. Against a live board it shuffled: two
+generating sessions swapped places between refreshes, and the row a reader had their cursor on
+moved out from under them.
+
+Age itself is not the problem. Age is `generated - last_activity`, one clock shared by the whole
+payload minus a per-session timestamp, so two idle rows hold their relative order forever. The
+problem is a *working* row, whose last activity is always inside `WORKING_THRESHOLD_SEC` by
+definition. Ordering those by age sorts them on which one wrote most recently, which is noise at
+the resolution the column even prints.
+
+So each row carries a `sortAge` that is its real age everywhere it means something and zero for a
+working row, and the session id, which never changes, breaks every remaining tie. A row now moves
+when its state changes and not otherwise. This is the same call `collect()` already makes
+server-side when it sorts on `sid` rather than `last_activity`, arrived at independently on the
+client, which is a reasonable sign it is the right one.
+
+### Rejected
+
+- **Bucketing age to whole minutes, then falling back to the id.** The first attempt at a fix, and
+  it was worse than no fix. Ages advance together but cross their minute boundaries at different
+  moments, so a row that ticked over fell behind its bucket-mates by id and then jumped back ahead
+  a minute later. Measured on a 28-row board: one row crossing a boundary reordered 26 of them.
+  Coarsening a key does not make a sort stable, it just makes the instability periodic.
+- **Freezing the order and only re-sorting when the set of sessions changes.** Hides real state
+  changes, which is the one thing the reader is watching for. A session going from working to
+  needs-input has to move to the top immediately.
+- **Sorting on the payload's own array order.** `collect()` does sort deterministically, but on
+  `(state_rank, sid)`, which is not the order calm mode wants, and it reorders whenever any
+  session's state changes. Depending on it would couple the two silently.
+
+The row's `where` column follows D-3 to its conclusion. `project · session id` rarely fits in one
+column of a dense table, and truncating the tail eats the id, which is the part D-3 widened
+precisely so the row could be told apart. Only the project gives way; the id is never cut.
+
 ## What was ruled out along the way
 
 Worth recording, because the issue as filed pointed at collection and the cause was
