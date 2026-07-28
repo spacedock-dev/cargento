@@ -32,6 +32,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -900,13 +901,21 @@ _COMMAND_ARGS_RE = re.compile(r"<command-args>\s*(.*?)\s*</command-args>", re.DO
 # paths otherwise eat the entire title budget and say nothing a basename does
 # not, and a dispatch prompt naming a UUID temp file is the worst of them.
 _PROMPT_PATH_RE = re.compile(r"(?<!:)(?<![\w/])(?:~|/[^\s/]+)(?:/[^\s/]+)+/?")
+# Only collapse a path long enough to be the problem this solves. Across the
+# transcripts sampled the median slash-run is 11 characters and the 90th
+# percentile is 140: the short ones are mostly not paths at all, and collapsing
+# them corrupts real content. `^/api/v1/users$` became `^users$` before this.
+SD_MIN_COLLAPSED_PATH = 25
 
 
 def shorten_paths(text: str) -> str:
-    """Collapse absolute filesystem paths in a title to their last segment."""
+    """Collapse long absolute filesystem paths in a title to their last segment."""
 
     def basename(match: re.Match[str]) -> str:
-        return match.group(0).rstrip("/").rpartition("/")[2] or match.group(0)
+        path = match.group(0)
+        if len(path) < SD_MIN_COLLAPSED_PATH:
+            return path
+        return path.rstrip("/").rpartition("/")[2] or path
 
     return _PROMPT_PATH_RE.sub(basename, text)
 
@@ -926,7 +935,12 @@ def clip(text: str, limit: int) -> str:
     # shrink the title to a couple of words.
     kept = head[:space] if space > limit * 2 // 3 else head
     # A hard cut can land on punctuation, and ".…" reads as a typo.
-    return kept.rstrip(" .,;:-_/(") + "…"
+    kept = kept.rstrip(" .,;:-_/(")
+    # It can also land inside a decomposed grapheme, leaving accent marks whose
+    # base character was cut away to combine with the ellipsis instead.
+    while kept and unicodedata.combining(kept[-1]):
+        kept = kept[:-1]
+    return kept + "…"
 
 
 def prompt_title(text: str, limit: int = 80) -> str | None:

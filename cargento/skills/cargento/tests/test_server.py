@@ -21,6 +21,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -2697,13 +2698,41 @@ class PromptTitleTest(unittest.TestCase):
                 self.assertEqual(text, dashboard.prompt_title(text))
 
     def test_truncation_lands_on_a_word_boundary(self) -> None:
-        title = dashboard.prompt_title("Take your time and tell all subagents the same", limit=30)
+        prompt = "Take your time and tell all subagents the same"
+        title = dashboard.prompt_title(prompt, limit=30)
 
         assert title is not None
         self.assertTrue(title.endswith("…"), title)
         self.assertFalse(title.rstrip("…").endswith(" "), title)
-        # A word was not cut in half.
-        self.assertIn(title.rstrip("…").split()[-1], "Take your time and tell all subagents")
+        # A word was not cut in half. Compare against the prompt's WORDS: against
+        # the bare string this passes on "su", a substring of "subagents", so it
+        # could not fail for the mistake it exists to catch.
+        self.assertIn(title.rstrip("…").split()[-1], prompt.split())
+
+    def test_short_slashy_text_is_not_treated_as_a_path(self) -> None:
+        """Only long paths eat the title budget, and short slash-runs are
+        usually not paths at all. `^/api/v1/users$` collapsed to `^users$`
+        before the length floor existed."""
+        for text in (
+            "Match the regex ^/api/v1/users$ in the router",
+            "cd ~/repos/cargento && make test",
+            "Serve /a/b from the CDN",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(text, dashboard.prompt_title(text))
+
+    def test_a_clip_does_not_end_on_an_orphaned_combining_mark(self) -> None:
+        # The base character it belongs to was cut away, so it would render
+        # against the ellipsis instead.
+        decomposed = unicodedata.normalize("NFD", "é") * 60
+        orphaned = [
+            limit
+            for limit in range(3, 60)
+            if (kept := dashboard.clip(decomposed, limit).rstrip("…"))
+            and unicodedata.combining(kept[-1])
+        ]
+
+        self.assertEqual([], orphaned)
 
     def test_a_hard_cut_does_not_leave_dangling_punctuation(self) -> None:
         # One long token has no boundary to fall back to, and ".…" reads as a
