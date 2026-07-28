@@ -408,6 +408,123 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual(parent_sid, sessions[0]["sid"])
         self.assertEqual(["Research Auditor"], sessions[0]["subagents"])
 
+    def test_antigravity_folded_subagent_rate_reaches_parent(self) -> None:
+        now = dashboard.time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conversations = Path(tmp)
+            write_antigravity_metadata(
+                conversations / f"{parent_sid}.db",
+                protobuf_bytes_field(6, parent_sid.encode()),
+            )
+            sub_path = conversations / f"{sub_sid}.db"
+            write_antigravity_metadata(
+                sub_path,
+                protobuf_bytes_field(5, parent_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Research Auditor")),
+            )
+            timestamp = protobuf_int_field(1, int(now - 30))
+            usage = protobuf_int_field(3, 600)
+            step = protobuf_bytes_field(1, timestamp) + protobuf_bytes_field(9, usage)
+            with contextlib.closing(sqlite3.connect(sub_path)) as connection:
+                connection.execute(
+                    "CREATE TABLE steps ("
+                    "idx INTEGER PRIMARY KEY, step_type INTEGER, status INTEGER, metadata BLOB)"
+                )
+                connection.execute("INSERT INTO steps VALUES (1, 15, 3, ?)", (step,))
+                connection.commit()
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(conversations / "logs")),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(conversations / "last_conversations.json"),
+                ),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual([parent_sid], [session["sid"] for session in sessions])
+        self.assertEqual(60, sessions[0]["rate_per_min"])
+
+    def test_antigravity_nested_subagent_activity_reaches_root(self) -> None:
+        now = dashboard.time.time()
+        root_sid = "11111111-1111-1111-1111-111111111111"
+        child_sid = "22222222-2222-2222-2222-222222222222"
+        grandchild_sid = "33333333-3333-3333-3333-333333333333"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conversations = Path(tmp)
+            write_antigravity_metadata(
+                conversations / f"{root_sid}.db",
+                protobuf_bytes_field(6, root_sid.encode()),
+            )
+            write_antigravity_metadata(
+                conversations / f"{child_sid}.db",
+                protobuf_bytes_field(5, root_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Parent Worker")),
+            )
+            grandchild_path = conversations / f"{grandchild_sid}.db"
+            write_antigravity_metadata(
+                grandchild_path,
+                protobuf_bytes_field(5, child_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Nested Auditor")),
+            )
+            grandchild_mtime = os.path.getmtime(grandchild_path)
+            stale = now - (25 * 3600)
+            for sid in (root_sid, child_sid):
+                os.utime(conversations / f"{sid}.db", (stale, stale))
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(conversations / "logs")),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(conversations / "last_conversations.json"),
+                ),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual([root_sid], [session["sid"] for session in sessions])
+        self.assertEqual(["Nested Auditor"], sessions[0]["subagents"])
+        self.assertEqual("working", sessions[0]["state"])
+        self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
+        self.assertEqual(grandchild_mtime, sessions[0]["last_activity"])
+
+    def test_antigravity_future_wal_does_not_hide_fresh_store(self) -> None:
+        now = dashboard.time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            database = Path(tmp) / "conversation.db"
+            database.touch()
+            os.utime(database, (now, now))
+            wal = Path(f"{database}-wal")
+            wal.write_bytes(b"\0" * 33)
+            future = now + dashboard.FUTURE_SKEW_TOLERANCE_SEC + 60
+            os.utime(wal, (future, future))
+
+            mtime = dashboard.antigravity_store_mtime(str(database), now)
+
+        self.assertEqual(now, mtime)
+
+    def test_antigravity_empty_wal_does_not_invent_activity(self) -> None:
+        now = dashboard.time.time()
+        database_mtime = now - dashboard.WORKING_THRESHOLD_SEC - 1
+        with tempfile.TemporaryDirectory() as tmp:
+            database = Path(tmp) / "conversation.db"
+            database.touch()
+            os.utime(database, (database_mtime, database_mtime))
+            wal = Path(f"{database}-wal")
+            wal.touch()
+            os.utime(wal, (now, now))
+
+            mtime = dashboard.antigravity_store_mtime(str(database), now)
+
+        self.assertEqual(database_mtime, mtime)
+
     def test_antigravity_stale_subagents_do_not_get_running_pills(self) -> None:
         now = dashboard.time.time()
         parent_sid = "11111111-1111-1111-1111-111111111111"
@@ -579,15 +696,108 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual(parent_sid, info["parent_id"])
         self.assertEqual("reviewer", info["subagent_label"])
 
-    def test_antigravity_session_info_does_not_use_immutable_fallback(self) -> None:
+    def test_antigravity_session_info_skips_blank_role_for_type_name(self) -> None:
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        blob = protobuf_bytes_field(5, parent_sid.encode()) + protobuf_bytes_field(
+            8,
+            protobuf_bytes_field(2, b" \t") + protobuf_bytes_field(1, b"reviewer"),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sub_sid}.db"
+            write_antigravity_metadata(path, blob)
+            info = dashboard.antigravity_session_info(str(path), sub_sid)
+
+        self.assertEqual(parent_sid, info["parent_id"])
+        self.assertEqual("reviewer", info["subagent_label"])
+
+    def test_antigravity_session_info_falls_back_for_clean_wal_store(self) -> None:
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        blob = protobuf_bytes_field(5, parent_sid.encode()) + protobuf_bytes_field(
+            8, protobuf_bytes_field(2, b"Research Auditor")
+        )
+        plain = mock.MagicMock(spec=sqlite3.Connection)
+        plain.execute.side_effect = sqlite3.OperationalError("unable to open database file")
+        immutable = mock.MagicMock(spec=sqlite3.Connection)
+        immutable.execute.return_value.fetchone.return_value = (blob,)
+        with mock.patch.object(
+            dashboard.sqlite3,
+            "connect",
+            side_effect=(plain, immutable),
+        ) as connect:
+            with dashboard._cache_lock:
+                dashboard._store_errors.clear()
+            info = dashboard.antigravity_session_info("/tmp/session.db", sub_sid)
+
+        self.assertEqual(parent_sid, info["parent_id"])
+        self.assertEqual("Research Auditor", info["subagent_label"])
+        self.assertEqual(2, connect.call_count)
+        self.assertIn("immutable=1", connect.call_args_list[1].args[0])
+        self.assertNotIn("/tmp/session.db", dashboard._store_errors)
+        plain.close.assert_called_once_with()
+        immutable.close.assert_called_once_with()
+
+    def test_antigravity_session_info_does_not_bypass_live_wal(self) -> None:
         connection = mock.MagicMock(spec=sqlite3.Connection)
         connection.execute.side_effect = sqlite3.OperationalError("database is locked")
-        with mock.patch.object(dashboard.sqlite3, "connect", return_value=connection) as connect:
-            info = dashboard.antigravity_session_info("/tmp/session.db", "session")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(dashboard.sqlite3, "connect", return_value=connection) as connect,
+        ):
+            database = Path(tmp) / "session.db"
+            Path(f"{database}-wal").write_bytes(b"\0" * 33)
+            info = dashboard.antigravity_session_info(str(database), "session")
 
         self.assertEqual({"parent_id": None, "subagent_label": None}, info)
         self.assertEqual(1, connect.call_count)
         connection.close.assert_called_once_with()
+
+    def test_antigravity_session_info_reads_closed_wal_store(self) -> None:
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        blob = protobuf_bytes_field(5, parent_sid.encode()) + protobuf_bytes_field(
+            8, protobuf_bytes_field(2, b"Research Auditor")
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            database = Path(tmp) / "session.db"
+            with contextlib.closing(sqlite3.connect(database)) as connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute(
+                    "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB)"
+                )
+                connection.execute(
+                    "INSERT INTO trajectory_metadata_blob VALUES ('main', ?)",
+                    (blob,),
+                )
+                connection.commit()
+                connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            for sidecar in (Path(f"{database}-wal"), Path(f"{database}-shm")):
+                with contextlib.suppress(FileNotFoundError):
+                    sidecar.unlink()
+
+            info = dashboard.antigravity_session_info(str(database), sub_sid)
+
+        self.assertEqual(parent_sid, info["parent_id"])
+        self.assertEqual("Research Auditor", info["subagent_label"])
+
+    def test_antigravity_session_info_returns_empty_after_both_readers_fail(self) -> None:
+        plain = mock.MagicMock(spec=sqlite3.Connection)
+        plain.execute.side_effect = sqlite3.OperationalError("database is locked")
+        immutable = mock.MagicMock(spec=sqlite3.Connection)
+        immutable.execute.side_effect = sqlite3.OperationalError("database is malformed")
+        with mock.patch.object(
+            dashboard.sqlite3,
+            "connect",
+            side_effect=(plain, immutable),
+        ) as connect:
+            info = dashboard.antigravity_session_info("/tmp/session.db", "session")
+
+        self.assertEqual({"parent_id": None, "subagent_label": None}, info)
+        self.assertEqual(2, connect.call_count)
+        plain.close.assert_called_once_with()
+        immutable.close.assert_called_once_with()
 
     def test_protobuf_fields_rejects_non_blob_payloads_before_conversion(self) -> None:
         with self.assertRaisesRegex(TypeError, "bytes-like"):
@@ -4604,7 +4814,9 @@ for fn in (m.collect_opencode, m.collect_cursor, m.collect_goose):
 # this exercises the database-backed path instead of an empty glob.
 import os, tempfile
 ag = tempfile.mkdtemp()
-open(os.path.join(ag, "conv-1.db"), "wb").write(b"not a database")
+store = os.path.join(ag, "conv-1.db")
+open(store, "wb").write(b"not a database")
+os.utime(store, (now, now))
 m.ANTIGRAVITY_CONVERSATIONS_DIR = ag
 m.STORE_ROOTS["antigravity.root"] = [ag]
 found_ag = m.collect_antigravity(now, 24, True)

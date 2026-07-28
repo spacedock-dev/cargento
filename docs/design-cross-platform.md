@@ -115,8 +115,11 @@ These have no other home. Each one looks obviously correct until you read the re
   would actively corrupt valid POSIX paths. Rejected as a regression, not deferred.
 - Generalizing SQLite `immutable=1`. It makes an unreadable store readable, and on a database that
   is in fact changing, which every live agent store is, it can return incorrect results or
-  `SQLITE_CORRUPT`. The one Antigravity call site accepts that trade deliberately and says so.
-  Everywhere else, diagnose why `mode=ro` failed and report it; do not silently downgrade.
+  `SQLITE_CORRUPT`. The Antigravity metadata reader makes one narrow exception for the cleanly
+  closed WAL-mode stores AGY leaves behind: it tries `mode=ro` first and falls back only while the
+  WAL is absent or empty, then rejects the fallback result if WAL data appears. A zero-byte WAL is
+  not activity. Everywhere else, diagnose why `mode=ro` failed and report it; do not silently
+  downgrade.
 - `mmap` for reverse transcript scans. Truncation by the writing harness while a region is mapped is
   an uncatchable `SIGBUS` on POSIX, so this was a latent macOS and Linux bug rather than Windows
   hardening. Replaced everywhere by bounded chunked reverse reads. Chunk size is irrelevant anywhere

@@ -3035,13 +3035,22 @@ def antigravity_session_metadata(
     return sessions
 
 
-def antigravity_store_mtime(path: str) -> float:
-    """Newest durable activity marker for a live conversation store."""
+def antigravity_wal_has_data(path: str) -> bool:
+    """Whether an Antigravity WAL has content beyond an empty sidecar."""
+    with contextlib.suppress(OSError):
+        return os.path.getsize(path + "-wal") > 0
+    return False
+
+
+def antigravity_store_mtime(path: str, now: float) -> float:
+    """Newest plausible durable activity marker for a conversation store."""
     mtimes: list[float] = []
-    for candidate in (path, path + "-wal"):
+    with contextlib.suppress(OSError):
+        mtimes.append(os.path.getmtime(path))
+    if antigravity_wal_has_data(path):
         with contextlib.suppress(OSError):
-            mtimes.append(os.path.getmtime(candidate))
-    return max(mtimes, default=0)
+            mtimes.append(os.path.getmtime(path + "-wal"))
+    return newest_plausible(now, mtimes)
 
 
 def protobuf_fields(payload: Any) -> Iterator[tuple[int, int, Any]]:
@@ -3208,19 +3217,35 @@ def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
     if not sqlite_available():
         return info
     query = "SELECT data FROM trajectory_metadata_blob WHERE id='main'"
-    try:
-        con = sqlite3.connect(sqlite_ro_uri(path), uri=True, timeout=0.2)
-    except sqlite3.Error as exc:
-        record_store_error(path, exc)
+
+    def read_row(uri: str) -> tuple[bool, Any, BaseException | None]:
+        try:
+            con = sqlite3.connect(uri, uri=True, timeout=0.2)
+        except sqlite3.Error as exc:
+            return False, None, exc
+        try:
+            return True, con.execute(query).fetchone(), None
+        except sqlite3.Error as exc:
+            return False, None, exc
+        finally:
+            con.close()
+
+    readable, row, read_error = read_row(sqlite_ro_uri(path))
+    if not readable and antigravity_wal_has_data(path):
+        if read_error:
+            record_store_error(path, read_error)
         return info
-    try:
-        row = con.execute(query).fetchone()
-    except sqlite3.Error as exc:
-        record_store_error(path, exc)
-        return info
-    finally:
-        con.close()
-    if not row or not row[0]:
+    if not readable:
+        readable, row, fallback_error = read_row(sqlite_ro_uri(path, immutable=True))
+        if antigravity_wal_has_data(path):
+            if read_error:
+                record_store_error(path, read_error)
+            return info
+        if not readable:
+            if fallback_error:
+                record_store_error(path, fallback_error)
+            return info
+    if not readable or not row or not row[0]:
         return info
     data = row[0]
 
@@ -3237,11 +3262,20 @@ def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
     if parent_id:
         info["parent_id"] = parent_id
         f8 = protobuf_first(data, 8, 2)
-        role = text(protobuf_first(f8, 2, 2))
-        agent_type = text(protobuf_first(f8, 1, 2))
-        label = role or agent_type
-        if label:
-            info["subagent_label"] = notification_text(label, 70).strip() or None
+        labels = (
+            text(protobuf_first(f8, 2, 2)),
+            text(protobuf_first(f8, 1, 2)),
+        )
+        info["subagent_label"] = next(
+            (
+                cleaned
+                for label in labels
+                if label
+                for cleaned in (notification_text(label, 70).strip(),)
+                if cleaned
+            ),
+            None,
+        )
     return info
 
 
@@ -3249,14 +3283,14 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
     metadata = antigravity_session_metadata(now, window_hours, show_all)
     dbs = glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
 
-    agents_by_parent: dict[str, list[tuple[str, float]]] = {}
+    agents_by_parent: dict[str, list[tuple[str, str, float]]] = {}
     subagent_sids: set[str] = set()
     db_mtimes: dict[str, float] = {}
     db_paths: dict[str, str] = {}
 
     for db in dbs:
         sid = os.path.basename(db)[: -len(".db")]
-        mtime = antigravity_store_mtime(db)
+        mtime = antigravity_store_mtime(db, now)
         if not mtime:
             continue
         db_mtimes[sid] = mtime
@@ -3278,9 +3312,22 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
         if parent and parent != sid:
             subagent_sids.add(sid)
             label = info.get("subagent_label") or ("subagent " + sid[:8])
-            agents_by_parent.setdefault(parent, []).append((label, db_mtimes[sid]))
+            agents_by_parent.setdefault(parent, []).append((sid, label, db_mtimes[sid]))
             if parent in db_paths:
                 pending.append(parent)
+
+    def descendants(parent_sid: str) -> list[tuple[str, str, float]]:
+        agents: list[tuple[str, str, float]] = []
+        pending_agents = list(agents_by_parent.get(parent_sid, []))
+        seen: set[str] = set()
+        while pending_agents:
+            agent_sid, label, mtime = pending_agents.pop()
+            if agent_sid in seen or agent_sid == parent_sid:
+                continue
+            seen.add(agent_sid)
+            agents.append((agent_sid, label, mtime))
+            pending_agents.extend(agents_by_parent.get(agent_sid, []))
+        return agents
 
     out: list[dict[str, Any]] = []
     for db in dbs:
@@ -3290,8 +3337,8 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
         session_mtime = db_mtimes.get(sid)
         if not session_mtime:
             continue
-        agents = sorted(agents_by_parent.get(sid, []), key=lambda a: -a[1])
-        activity_sources = (session_mtime, *(m for _, m in agents))
+        agents = sorted(descendants(sid), key=lambda a: -a[2])
+        activity_sources = (session_mtime, *(mtime for _, _, mtime in agents))
         last_activity = newest_plausible(now, activity_sources)
         active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
@@ -3301,9 +3348,15 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
             if active
             else {"rate_per_min": 0, "turns": None, "last_tool_action": ""}
         )
+        if active:
+            activity["rate_per_min"] += sum(
+                antigravity_step_activity(db_paths[agent_sid], now)["rate_per_min"]
+                for agent_sid, _, agent_mtime in agents
+                if is_fresh(now, agent_mtime, RATE_WINDOW_SEC)
+            )
         subagents = [
             label
-            for label, agent_mtime in agents
+            for _, label, agent_mtime in agents
             if is_fresh(now, agent_mtime, WORKING_THRESHOLD_SEC)
         ]
         state, state_detail = "idle", "awaiting your message"
