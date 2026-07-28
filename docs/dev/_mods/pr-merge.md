@@ -36,13 +36,28 @@ Resolve the PR base once: `BASE=$(spacedock dispatch trunk --workflow-dir {dir})
 
 Compute the product short SHA first with `git rev-parse --short HEAD` in the worktree directory. If it exits non-zero, substitute the literal string `main` and report the fallback to the captain.
 
-Then resolve the audit receipt from the entity file's own Git repository, not from the product worktree. A link is valid only when all of these checks succeed: `git -C {entity directory} rev-parse --show-toplevel`, `git -C {state root} ls-files --error-unmatch {entity-relative-path}`, `git -C {state root} remote get-url origin`, parsing that origin as a GitHub `owner/repo`, and `gh repo view {owner/repo}`. Accept only `https://github.com/{owner}/{repo}[.git]` and `git@github.com:{owner}/{repo}[.git]` origin forms; every other form takes the plaintext fallback. For a valid surface, use the state repository's `git rev-parse --short HEAD`, the shortest entity id from `spacedock status --short-id {entity ref}`, and the entity-relative path to emit the existing link:
+Resolve the audit receipt from the entity file's own Git repository, never by assumption:
+
+1. From the product worktree, resolve `PRODUCT_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')`.
+2. Resolve the entity's state root with `git -C {entity directory} rev-parse --show-toplevel`; require `git -C {state root} ls-files --error-unmatch {entity-relative-path}`.
+3. Read `git -C {state root} remote get-url origin`. Accept only `https://github.com/{owner}/{repo}[.git]` and `git@github.com:{owner}/{repo}[.git]`, strip the optional `.git`, and call the result `STATE_REPO`.
+4. Require `STATE_REPO` to differ from `PRODUCT_REPO`. Equality is the product-repository prohibition and always takes the plaintext fallback.
+5. Resolve the full state commit with `STATE_SHA=$(git -C {state root} rev-parse HEAD)`.
+6. Prove that exact commit is remote with `gh api "repos/$STATE_REPO/commits/$STATE_SHA" --silent`.
+7. Prove that exact entity path exists at that commit with `gh api --method GET "repos/$STATE_REPO/contents/{entity-relative-path}" -f "ref=$STATE_SHA" --silent`.
+
+Only after every command above succeeds may the receipt link. Use the full
+`STATE_SHA`, the shortest entity id from
+`spacedock status --short-id {entity ref}`, and the entity-relative path:
 
 Concatenate `[{short-id}]` and
-`(/{owner}/{repo}/blob/{state-short-sha}/{entity-relative-path})` with no
+`(/{state-owner}/{state-repo}/blob/{state-full-sha}/{entity-relative-path})` with no
 separator.
 
-If any check fails, including a split-root state checkout with no `origin`, emit this plaintext receipt instead:
+Any failure takes the plaintext fallback: missing `gh`, auth, or network;
+unparseable or absent origin; same product and state repository; untracked
+entity; missing remote commit; or missing path at that exact commit. A
+split-root state checkout with no `origin` therefore always falls back:
 
 `Audit: local-only workflow receipt; product head {product-short-sha}.`
 
@@ -80,7 +95,7 @@ Lead with motivation + end-user value; audit metadata goes at the bottom. The go
 | `## What changed` | **yes** | Action-verb bullets, 3–5 total, each ≤ 15 words. One change per bullet. No rationale inside the bullet — if a change needs justification, it belongs in the task body, not the PR. |
 | `## Evidence` | **yes when validation ran** | Test suites with `N/N passed` format, 1–2 bullets. Do not include per-test-class breakdowns or enumerated suite lists — one pass ratio per suite, plus at most one line confirming live-probe verification. |
 | `## Review guidance` | optional | 1 line pointing reviewer at the critical file or risky change — include only when a stage report explicitly flagged it |
-| `---` separator + audit receipt | **yes** | Use the entity-state link only for a valid remote/repo surface; otherwise use `Audit: local-only workflow receipt; product head {product-short-sha}.` |
+| `---` separator + audit receipt | **yes** | Link only for a distinct state repository whose exact full commit and entity path are proven through GitHub; every failed check uses `Audit: local-only workflow receipt; product head {product-short-sha}.` |
 | `Closes {issue}` | **yes when issue set** | Under the audit receipt, using the value exactly as it appears in frontmatter, e.g., `#48` or `owner/repo#48` |
 | `Related: {siblings}` | optional | Under Closes, only when stage reports flagged follow-ups |
 
@@ -92,7 +107,7 @@ Lead with motivation + end-user value; audit metadata goes at the bottom. The go
 | What changed | Implementation stage report's `[x]` DONE items | One action-verb bullet per meaningful unit. Collapse sibling bullets that describe the same thing. Drop `[x]` markers. Do NOT include "what we deliberately did NOT change" bullets — scope boundaries belong in the task body, not the PR, unless a validation stage report flagged them as risk. |
 | Evidence | Validation stage report items that assert AC verification (typically rerun-test items) | One bullet per suite with `N/N passed` format. Include any quantitative result the stage report explicitly called out (wallclock delta, size %, perf). Fallback to implementation report's self-test items if no validation stage exists. |
 | Review guidance | Explicit "focus on X" / "risk here" notes in either stage report | 1 line. **Omit if no such note exists.** |
-| Audit receipt | Entity file's Git root, tracked relative path, `origin`, and GitHub repository lookup; product short SHA from the worktree | When all entity-state remote checks succeed, concatenate `[{short-id}]` and `(/{owner}/{repo}/blob/{state-short-sha}/{entity-relative-path})` with no separator; otherwise emit `Audit: local-only workflow receipt; product head {product-short-sha}.` |
+| Audit receipt | Product `owner/repo`; entity file's Git root, tracked relative path, parsed state `owner/repo`, full state HEAD SHA, remote commit proof, and exact path-at-ref proof | Link only when product and state repositories differ and both GitHub API checks succeed. Concatenate `[{short-id}]` and `(/{state-owner}/{state-repo}/blob/{state-full-sha}/{entity-relative-path})` with no separator; every failure emits `Audit: local-only workflow receipt; product head {product-short-sha}.` |
 | Closes | Entity frontmatter `issue` field (exactly as written) | Prefix `Closes ` |
 | Related | Explicit "related task" / "follow-up" mentions in stage reports | 1 line. **Omit if none.** |
 
