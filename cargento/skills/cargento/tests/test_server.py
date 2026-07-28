@@ -258,6 +258,158 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual("show my assigned issues", sessions[0]["title"])
         self.assertEqual("working", sessions[0]["state"])
 
+    def test_antigravity_cache_primary_workspace_beats_added_directories(self) -> None:
+        now = dashboard.time.time()
+        session_ids = (
+            "deadbeef-a01e-46f8-9286-60493c4c0e7e",
+            "deadbeef-b01e-46f8-9286-60493c4c0e7e",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "antigravity-cli"
+            conversations = root / "conversations"
+            logs = root / "log"
+            cache = root / "cache" / "last_conversations.json"
+            conversations.mkdir(parents=True)
+            logs.mkdir()
+            cache.parent.mkdir()
+            for session_id in session_ids:
+                write_antigravity_metadata(
+                    conversations / f"{session_id}.db",
+                    protobuf_bytes_field(6, session_id.encode()),
+                )
+            cache.write_text(json.dumps({"/work/acme/proj": session_ids[1]}))
+            (logs / "cli-1.log").write_text(
+                "workspaceDirs=[/work/acme/proj /work/shared/lib] "
+                f"appDataDir={root} cascadeManager=true\n"
+                f"Created conversation {session_ids[0]}\n"
+                f"Created conversation {session_ids[1]}\n"
+            )
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(logs)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LAST_CONVERSATIONS", str(cache)),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual(2, len(sessions))
+        self.assertEqual({"acme/proj"}, {session["project"] for session in sessions})
+        dashboard.assign_display_ids(sessions)
+        self.assertEqual(2, len({session["session"] for session in sessions}))
+        self.assertTrue(all(len(session["session"]) > 8 for session in sessions))
+
+    def test_antigravity_unusable_cache_workspace_does_not_block_log_fallback(self) -> None:
+        now = dashboard.time.time()
+        session_id = "c38d2d70-a01e-46f8-9286-60493c4c0e7e"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "antigravity-cli"
+            conversations = root / "conversations"
+            logs = root / "log"
+            cache = root / "cache" / "last_conversations.json"
+            conversations.mkdir(parents=True)
+            logs.mkdir()
+            cache.parent.mkdir()
+            write_antigravity_metadata(
+                conversations / f"{session_id}.db",
+                protobuf_bytes_field(6, session_id.encode()),
+            )
+            cache.write_text(json.dumps({"relative/path": session_id}))
+            (logs / "cli-1.log").write_text(
+                "workspaceDirs=[/work/fallback/solo] "
+                f"appDataDir={root} cascadeManager=true\n"
+                f"Created conversation {session_id}\n"
+            )
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(logs)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LAST_CONVERSATIONS", str(cache)),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("fallback/solo", sessions[0]["project"])
+
+    def test_antigravity_stale_log_can_anchor_active_workspace_context(self) -> None:
+        now = dashboard.time.time()
+        active_sid = "11111111-a01e-46f8-9286-60493c4c0e7e"
+        cached_sid = "22222222-b01e-46f8-9286-60493c4c0e7e"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "antigravity-cli"
+            conversations = root / "conversations"
+            logs = root / "log"
+            cache = root / "cache" / "last_conversations.json"
+            conversations.mkdir(parents=True)
+            logs.mkdir()
+            cache.parent.mkdir()
+            for session_id in (active_sid, cached_sid):
+                write_antigravity_metadata(
+                    conversations / f"{session_id}.db",
+                    protobuf_bytes_field(6, session_id.encode()),
+                )
+            cache.write_text(json.dumps({"/work/acme/proj": cached_sid}))
+            workspace = (
+                "workspaceDirs=[/work/acme/proj /work/shared/lib] "
+                f"appDataDir={root} cascadeManager=true\n"
+            )
+            stale_log = logs / "cli-old.log"
+            stale_log.write_text(workspace + f"Created conversation {cached_sid}\n")
+            (logs / "cli-current.log").write_text(
+                workspace + f"Created conversation {active_sid}\n"
+            )
+            stale = now - (25 * 3600)
+            os.utime(stale_log, (stale, stale))
+            os.utime(conversations / f"{cached_sid}.db", (stale, stale))
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(logs)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LAST_CONVERSATIONS", str(cache)),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual([active_sid], [session["sid"] for session in sessions])
+        self.assertEqual("acme/proj", sessions[0]["project"])
+
+    def test_antigravity_stale_log_can_anchor_an_additional_context(self) -> None:
+        now = dashboard.time.time()
+        active_sid = "33333333-a01e-46f8-9286-60493c4c0e7e"
+        cached_sid = "44444444-b01e-46f8-9286-60493c4c0e7e"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "antigravity-cli"
+            logs = root / "log"
+            cache = root / "cache" / "last_conversations.json"
+            logs.mkdir(parents=True)
+            cache.parent.mkdir()
+            cache.write_text(json.dumps({"/work/acme/proj": cached_sid}))
+            stale_context = (
+                "workspaceDirs=[/work/acme/proj /work/shared/lib] "
+                f"appDataDir={root} cascadeManager=true\n"
+            )
+            other_context = (
+                "workspaceDirs=[/work/acme/proj /work/other/lib] "
+                f"appDataDir={root} cascadeManager=true\n"
+            )
+            stale_log = logs / "cli-old.log"
+            stale_log.write_text(stale_context + f"Created conversation {cached_sid}\n")
+            (logs / "cli-current.log").write_text(
+                stale_context
+                + f"Created conversation {active_sid}\n"
+                + other_context
+                + f"Created conversation {cached_sid}\n"
+            )
+            stale = now - (25 * 3600)
+            os.utime(stale_log, (stale, stale))
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(logs)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LAST_CONVERSATIONS", str(cache)),
+            ):
+                metadata = dashboard.antigravity_session_metadata(now, 24, False)
+
+        self.assertEqual("/work/acme/proj", metadata[active_sid]["cwd"])
+        self.assertEqual("/work/acme/proj", metadata[cached_sid]["cwd"])
+
     def test_antigravity_steps_supply_rate_action_and_turn_progress(self) -> None:
         now = dashboard.time.time()
         session_id = "c38d2d70-a01e-46f8-9286-60493c4c0e7e"
@@ -2665,6 +2817,30 @@ console.log(JSON.stringify(out));
 
         # An immutable=1-only reader misses these frames (rate stays 0).
         self.assertEqual(50, activity["rate_per_min"])
+
+    def test_antigravity_activity_does_not_report_recovered_reader_error(self) -> None:
+        now = dashboard.time.time()
+        timestamp = protobuf_int_field(1, int(now - 30))
+        usage = protobuf_int_field(3, 500)
+        metadata = protobuf_bytes_field(1, timestamp) + protobuf_bytes_field(9, usage)
+        plain = mock.MagicMock(spec=sqlite3.Connection)
+        plain.execute.side_effect = sqlite3.OperationalError("unable to open database file")
+        immutable = mock.MagicMock(spec=sqlite3.Connection)
+        immutable.execute.return_value.fetchall.return_value = [(15, metadata)]
+
+        with dashboard._cache_lock:
+            dashboard._store_errors.clear()
+        with mock.patch.object(
+            dashboard.sqlite3,
+            "connect",
+            side_effect=(plain, immutable),
+        ):
+            activity = dashboard.antigravity_step_activity("/tmp/clean-wal.db", now)
+
+        self.assertEqual(50, activity["rate_per_min"])
+        self.assertNotIn("/tmp/clean-wal.db", dashboard._store_errors)
+        plain.close.assert_called_once_with()
+        immutable.close.assert_called_once_with()
 
     def test_codex_meta_tolerates_malformed_payload_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

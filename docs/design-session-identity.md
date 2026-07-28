@@ -75,6 +75,38 @@ written one. That fallback stays whole rather than guessing at a split.
 - **Leaving Claude on the encoded label and changing the other eight to match.** Would make
   every harness display a full path, which is what the report was complaining about.
 
+## Antigravity multi-folder workspaces
+
+Antigravity supports adding directories to an active workspace with `/add-dir`. Its CLI log
+then writes the plural `workspaceDirs=[...]`, while `cache/last_conversations.json` still maps
+the conversation to its primary workspace. Treating the whole log value as one cwd makes
+`project_from_cwd` label the card from the last added directory.
+
+The cache keeps only the most recent conversation id for a workspace. That id anchors the
+primary path to the raw `workspaceDirs` context, and every conversation observed in that same
+context inherits it. Metadata events are then replayed in log order, so logs still supply a
+workspace for contexts missing from the cache and newer log-only values replace older ones.
+Anchor discovery reads the bounded identity-bearing heads of older logs too: the cached
+conversation can be quiet while a sibling in the same context remains active. Only logs inside
+the requested activity window contribute sessions and prompts, so recovering an old anchor does
+not put stale work back on the dashboard.
+
+### Rejected
+
+- **Using the whole `workspaceDirs` value as a cwd.** It combines several paths and labels the
+  session from the final one.
+- **Protecting only the cached conversation id.** Older sibling conversations share the same
+  workspace context but no longer appear in the one-entry-per-workspace cache. They would keep
+  the combined log value and split one project into two labels.
+- **Filtering logs before discovering anchors.** The one cached conversation can fall outside the
+  activity window before another terminal in the same workspace does. Filtering first loses the
+  only unambiguous primary path even though the older log head is still safe to consult for
+  identity.
+- **Splitting the value on spaces.** Paths can contain spaces, and the log field carries no
+  escaping that would make such a split reversible.
+- **Always keeping the first log value.** Rotated logs are read oldest to newest. A session
+  absent from the cache should retain the newest workspace the CLI reported.
+
 ## D-3: display ids widen per harness until unique
 
 Session rows showed the first 8 characters of the session id. That is safe for Claude, whose

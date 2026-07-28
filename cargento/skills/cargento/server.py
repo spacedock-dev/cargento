@@ -3086,6 +3086,15 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
     return out
 
 
+def antigravity_log_head_lines(path: str) -> list[str]:
+    """Read the bounded identity-bearing beginning of an Antigravity CLI log."""
+    try:
+        with open(path, "rb") as source:
+            return source.read(80_000).decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+
+
 def antigravity_log_lines(path: str) -> list[str]:
     """Read the beginning and bounded tail of an Antigravity CLI log.
 
@@ -3093,15 +3102,7 @@ def antigravity_log_lines(path: str) -> list[str]:
     while the latest user prompt is near the tail. Long-running sessions can
     exceed ``TAIL_BYTES``, so reading only one side loses one of those.
     """
-    head = []
-    try:
-        with open(path, "rb") as source:
-            data = source.read(80_000).decode("utf-8", "replace")
-        head = data.splitlines()
-    except OSError:
-        pass
-    tail = read_tail(path)
-    return head + tail
+    return antigravity_log_head_lines(path) + read_tail(path)
 
 
 def antigravity_session_metadata(
@@ -3116,17 +3117,28 @@ def antigravity_session_metadata(
     skipped so one incomplete Antigravity run cannot break the dashboard.
     """
     sessions: dict[str, dict[str, Any]] = {}
+    cached_cwds: dict[str, str] = {}
     try:
         with open(ANTIGRAVITY_LAST_CONVERSATIONS, encoding="utf-8") as source:
             recent = json.load(source)
         if isinstance(recent, dict):
             for workspace, sid in recent.items():
-                if isinstance(workspace, str) and isinstance(sid, str):
+                if (
+                    isinstance(workspace, str)
+                    and isinstance(sid, str)
+                    and project_from_cwd(workspace)
+                ):
                     sessions.setdefault(sid, {})["cwd"] = workspace
+                    cached_cwds[sid] = workspace
     except (OSError, ValueError, TypeError, RecursionError):
         pass
 
-    logs = glob_under(ANTIGRAVITY_LOG_DIR, "cli-*.log")
+    all_logs = glob_under(ANTIGRAVITY_LOG_DIR, "cli-*.log")
+    try:
+        all_logs.sort(key=os.path.getmtime)
+    except OSError:
+        all_logs.sort()
+    logs = all_logs
     if not show_all:
         recent_logs: list[str] = []
         for path in logs:
@@ -3136,15 +3148,13 @@ def antigravity_session_metadata(
             except OSError:
                 continue
         logs = recent_logs
-    try:
-        logs.sort(key=os.path.getmtime)
-    except OSError:
-        logs.sort()
 
     workspace_re = re.compile(r"workspaceDirs=\[(.*?)\]\s+appDataDir=")
     session_re = re.compile(r"(?:Created|Streaming) conversation ([0-9a-fA-F-]{36})")
     forward_re = re.compile(r"Forwarding user message to conversation ([0-9a-fA-F-]{36})")
     prompt_marker = "HandleUserInput called with text: "
+    workspace_primaries: dict[str, str] = {}
+    events: list[tuple[str, str | None, str | None]] = []
 
     for path in logs:
         workspace = None
@@ -3156,9 +3166,10 @@ def antigravity_session_metadata(
                 continue
             match = session_re.search(line)
             if match:
-                session = sessions.setdefault(match.group(1), {})
-                if workspace:
-                    session["cwd"] = workspace
+                sid = match.group(1)
+                if workspace and sid in cached_cwds:
+                    workspace_primaries[workspace] = cached_cwds[sid]
+                events.append((sid, workspace, None))
                 continue
             if prompt_marker in line:
                 raw = line.split(prompt_marker, 1)[1].strip()
@@ -3171,12 +3182,51 @@ def antigravity_session_metadata(
                 continue
             match = forward_re.search(line)
             if match:
-                session = sessions.setdefault(match.group(1), {})
-                if workspace:
-                    session["cwd"] = workspace
+                sid = match.group(1)
+                if workspace and sid in cached_cwds:
+                    workspace_primaries[workspace] = cached_cwds[sid]
+                prompt = None
                 if pending_prompt:
-                    session["last_prompt"] = pending_prompt
+                    prompt = pending_prompt
                     pending_prompt = None
+                events.append((sid, workspace, prompt))
+
+    # last_conversations.json names only the newest session for a workspace.
+    # That anchor session can be quiet while a sibling using the same
+    # multi-folder context remains active. Recover only its identity from
+    # bounded stale-log heads; stale prompts and session events stay excluded.
+    missing_contexts = {
+        workspace
+        for _, workspace, _ in events
+        if workspace and workspace not in workspace_primaries
+    }
+    if missing_contexts and cached_cwds and not show_all:
+        recent_paths = set(logs)
+        for path in reversed(all_logs):
+            if path in recent_paths:
+                continue
+            workspace = None
+            for line in antigravity_log_head_lines(path):
+                match = workspace_re.search(line)
+                if match:
+                    workspace = match.group(1).strip() or None
+                    continue
+                match = session_re.search(line) or forward_re.search(line)
+                if not match:
+                    continue
+                sid = match.group(1)
+                if workspace in missing_contexts and sid in cached_cwds:
+                    workspace_primaries[workspace] = cached_cwds[sid]
+                    missing_contexts.remove(workspace)
+            if not missing_contexts:
+                break
+
+    for sid, workspace, prompt in events:
+        session = sessions.setdefault(sid, {})
+        if workspace:
+            session["cwd"] = workspace_primaries.get(workspace, workspace)
+        if prompt:
+            session["last_prompt"] = prompt
     return sessions
 
 
@@ -3312,21 +3362,24 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
         return result
     query = "SELECT step_type, metadata FROM steps ORDER BY idx DESC LIMIT ?"
     rows = None
+    read_error: BaseException | None = None
     for uri in (sqlite_ro_uri(path), sqlite_ro_uri(path, immutable=True)):
         try:
             con = sqlite3.connect(uri, uri=True, timeout=0.2)
         except sqlite3.Error as exc:
-            record_store_error(path, exc)
+            read_error = exc
             continue
         try:
             rows = con.execute(query, (SQL_MSG_LIMIT,)).fetchall()
             break
         except sqlite3.Error as exc:
-            record_store_error(path, exc)
+            read_error = exc
             continue
         finally:
             con.close()
     if rows is None:
+        if read_error:
+            record_store_error(path, read_error)
         return result
 
     events = []
