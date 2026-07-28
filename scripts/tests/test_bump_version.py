@@ -15,20 +15,8 @@ import bump_version
 
 
 def make_repo(root: Path, version: str = "0.1.0", drift: str | None = None) -> None:
-    (root / ".claude-plugin").mkdir(parents=True)
     (root / "cargento/.claude-plugin").mkdir(parents=True)
     (root / "cargento/.codex-plugin").mkdir(parents=True)
-    (root / ".claude-plugin/marketplace.json").write_text(
-        json.dumps(
-            {
-                "name": "cargento-marketplace",
-                "metadata": {"description": "d", "version": version},
-                "plugins": [{"name": "cargento", "source": "./cargento", "version": version}],
-            },
-            indent=2,
-        )
-        + "\n"
-    )
     for rel in (
         "cargento/.claude-plugin/plugin.json",
         "cargento/.codex-plugin/plugin.json",
@@ -48,9 +36,7 @@ class BumpVersionTests(unittest.TestCase):
         make_repo(root, **kwargs)
         patches: list[Any] = [
             mock.patch.object(bump_version, "ROOT", root),
-            mock.patch.object(
-                bump_version, "MARKETPLACE", root / ".claude-plugin/marketplace.json"
-            ),
+            mock.patch.object(bump_version, "TRUTH", root / "cargento/.claude-plugin/plugin.json"),
             mock.patch.object(
                 bump_version,
                 "MANIFESTS",
@@ -66,14 +52,11 @@ class BumpVersionTests(unittest.TestCase):
             self.addCleanup(p.stop)
         return root
 
-    def test_bump_updates_all_five_fields(self) -> None:
+    def test_bump_updates_every_owned_field(self) -> None:
         root = self.with_repo(version="0.1.0")
 
         bump_version.bump("0.2.0")
 
-        marketplace = json.loads((root / ".claude-plugin/marketplace.json").read_text())
-        self.assertEqual("0.2.0", marketplace["metadata"]["version"])
-        self.assertEqual("0.2.0", marketplace["plugins"][0]["version"])
         for rel in (
             "cargento/.claude-plugin/plugin.json",
             "cargento/.codex-plugin/plugin.json",

@@ -10,8 +10,7 @@ script is its bump mechanism and refuses anything that is not a strict
 semver increase, so a re-run or a stale tag can never move versions
 backwards. Fields updated together:
 
-    .claude-plugin/marketplace.json   .metadata.version, .plugins[].version
-    cargento/.claude-plugin/plugin.json  .version
+    cargento/.claude-plugin/plugin.json  .version   <- source of truth
     cargento/.codex-plugin/plugin.json   .version
     cargento/gemini-extension.json       .version
 """
@@ -25,9 +24,13 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-MARKETPLACE = ROOT / ".claude-plugin/marketplace.json"
+# The Claude plugin manifest is the source of truth. It used to be the
+# repository's own marketplace metadata, but that marketplace was retired when
+# cargento moved into spacedock-dev/marketplace, so the truth moved to the
+# manifest the plugin actually ships with.
+TRUTH = ROOT / "cargento/.claude-plugin/plugin.json"
 MANIFESTS = (
-    ROOT / "cargento/.claude-plugin/plugin.json",
+    TRUTH,
     ROOT / "cargento/.codex-plugin/plugin.json",
     ROOT / "cargento/gemini-extension.json",
 )
@@ -57,16 +60,13 @@ def save(path: Path, data: dict[str, Any]) -> None:
 
 
 def current_version() -> str:
-    """The single source of truth is marketplace metadata.version; every
-    other field must already agree (validate_plugins.py enforces parity)."""
-    marketplace = load(MARKETPLACE)
-    version = (marketplace.get("metadata") or {}).get("version")
+    """The single source of truth is the Claude plugin manifest's version;
+    every other field must already agree (validate_plugins.py enforces
+    parity)."""
+    version = load(TRUTH).get("version")
     if not isinstance(version, str):
-        raise SystemExit("error: marketplace metadata.version missing")
+        raise SystemExit(f"error: {TRUTH.name} version missing")
     versions: set[Any] = {version}
-    for entry in marketplace.get("plugins") or []:
-        if isinstance(entry, dict):
-            versions.add(entry.get("version"))
     for path in MANIFESTS:
         versions.add(load(path).get("version"))
     if len(versions) != 1:
@@ -78,11 +78,6 @@ def bump(target: str) -> None:
     current = current_version()
     if parse_semver(target) <= parse_semver(current):
         raise SystemExit(f"error: target {target} must be strictly greater than current {current}")
-    marketplace = load(MARKETPLACE)
-    marketplace["metadata"]["version"] = target
-    for entry in marketplace["plugins"]:
-        entry["version"] = target
-    save(MARKETPLACE, marketplace)
     for path in MANIFESTS:
         manifest = load(path)
         manifest["version"] = target

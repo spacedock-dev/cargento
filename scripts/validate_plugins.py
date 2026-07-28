@@ -696,53 +696,32 @@ def validate_marketplaces(
             if names != set(PLUGIN_NAMES):
                 validation.error(codex_path, f"plugin names must be {sorted(PLUGIN_NAMES)}")
 
-    claude_path = ROOT / ".claude-plugin/marketplace.json"
-    claude_marketplace = load_json(claude_path, validation)
-    if claude_marketplace is None:
-        return
-    entries = claude_marketplace.get("plugins")
-    if not isinstance(entries, list):
-        validation.error(claude_path, "plugins must be an array")
-        return
-    marketplace_names = [entry.get("name") for entry in entries if isinstance(entry, dict)]
-    sources = [entry.get("source") for entry in entries if isinstance(entry, dict)]
-    if len(marketplace_names) != len(set(marketplace_names)):
-        validation.error(claude_path, "duplicate plugin names in marketplace")
-    if len(sources) != len(set(sources)):
-        validation.error(claude_path, "duplicate plugin sources in marketplace")
-    metadata_version = (claude_marketplace.get("metadata") or {}).get("version")
-    by_name = {entry.get("name"): entry for entry in entries if isinstance(entry, dict)}
+    # cargento is listed in spacedock-dev/marketplace, not in a marketplace of
+    # its own, so there is no repository-level Claude marketplace to check.
+    # Version and description parity is asserted directly across the manifests
+    # the plugin ships with; cargento/.claude-plugin/plugin.json is the source
+    # of truth that bump_version.py writes from.
     for name in PLUGIN_NAMES:
-        entry = by_name.get(name)
-        if entry is None:
-            validation.error(claude_path, f"missing plugin entry {name}")
-            continue
-        resolve_contract_path(ROOT, entry.get("source"), f"{name} source", claude_path, validation)
-        codex_manifest = codex_manifests.get(name)
-        claude_manifest = load_json(ROOT / name / ".claude-plugin/plugin.json", validation)
+        claude_manifest_path = ROOT / name / ".claude-plugin/plugin.json"
+        claude_manifest = load_json(claude_manifest_path, validation)
         if claude_manifest is not None and claude_manifest.get("name") != name:
-            validation.error(
-                ROOT / name / ".claude-plugin/plugin.json",
-                "name must match the plugin directory",
-            )
+            validation.error(claude_manifest_path, "name must match the plugin directory")
+        codex_manifest = codex_manifests.get(name)
         gemini_manifest = gemini_manifests.get(name)
         versions = {
-            metadata_version,
-            entry.get("version"),
             claude_manifest.get("version") if claude_manifest else None,
             codex_manifest.get("version") if codex_manifest else None,
             gemini_manifest.get("version") if gemini_manifest else None,
         }
         if len(versions) != 1:
             validation.error(
-                claude_path,
+                claude_manifest_path,
                 f"{name} version fields are not in parity: {sorted(map(str, versions))}",
             )
         antigravity_manifest = antigravity_manifests.get(name)
         validate_description_parity(
             name,
             {
-                "marketplace entry": entry.get("description"),
                 ".claude-plugin/plugin.json": (
                     claude_manifest.get("description") if claude_manifest else None
                 ),

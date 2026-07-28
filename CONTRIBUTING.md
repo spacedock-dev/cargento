@@ -82,10 +82,9 @@ so re-run the job before investigating, and check the traceback is a timeout and
 
 ### Rules the validator enforces
 
-- The plugin version must be identical everywhere it appears (marketplace metadata and entry, plus
-  the Claude, Codex, and Gemini manifests). The description must be identical in five places: the
-  marketplace entry, those three manifests, and the Antigravity `plugin.json`. Never bump versions
-  in a PR, because the `version-guard` check will fail it. See [Releases](#releases).
+- The plugin version must be identical in the Claude, Codex and Gemini manifests, and the
+  description in those three plus the Antigravity `plugin.json`. Never bump versions in a PR,
+  because the `version-guard` check will fail it. See [Releases](#releases).
 - Skill bodies must stay host-neutral: no `${CLAUDE_PLUGIN_ROOT}`, no host-specific tool names.
   Describe capabilities, not tool APIs.
 - The skill description is at most 300 characters, and `agents/openai.yaml` keeps its 25 to 64
@@ -167,7 +166,10 @@ strict semver, and is strictly greater than every existing release tag. Semver o
 and back-tagging is impossible. It then runs the contract validator plus the validator, bump-version
 and server test modules on the main tip, rather than the whole quality gate, which already ran on
 every commit that reached main. From there it writes one bump commit updating all owned version
-fields, moves the tag onto the released commit, and publishes a GitHub Release with generated notes.
+fields, moves the tag onto the released commit, advances the `stable` branch to it, and publishes a
+GitHub Release with generated notes. `stable` is what the shared
+[spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace) listing tracks, so a
+release that did not move it would leave the marketplace serving an older Cargento.
 The bump is skipped when the manifests already carry the tagged version, which is also how you
 release the current version as-is. Every step is idempotent, so re-running a partially failed
 release finishes it. Release tags are immutable (a tag ruleset blocks deleting or moving them), and

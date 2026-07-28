@@ -32,12 +32,15 @@ python3 cargento/skills/cargento/server.py --port 4553
 
 ### Claude Code installation
 
+Cargento is listed in the shared Spacedock marketplace, so if you already have that marketplace you
+only need the second line.
+
 ```bash
-# Add the marketplace (one-time setup)
-claude plugin marketplace add spacedock-dev/cargento
+# Add the Spacedock marketplace (one-time setup, shared with the other Spacedock plugins)
+claude plugin marketplace add spacedock-dev/marketplace
 
 # Install the cargento plugin
-claude plugin install cargento@cargento-marketplace
+claude plugin install cargento@spacedock
 ```
 
 Restart Claude Code after installation.

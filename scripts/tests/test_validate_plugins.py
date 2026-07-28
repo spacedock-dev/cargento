@@ -330,11 +330,6 @@ class ValidatorTests(unittest.TestCase):
                 '{"plugins":[{"name":"cargento",'
                 '"source":{"source":"local","path":"./cargento"}}]}\n'
             )
-            (root / ".claude-plugin").mkdir()
-            (root / ".claude-plugin/marketplace.json").write_text(
-                '{"plugins":[{"name":"cargento","source":"./cargento",'
-                '"version":"0.1.0","description":"Desc"}]}\n'
-            )
             (root / "cargento/.claude-plugin").mkdir(parents=True)
             (root / "cargento/.claude-plugin/plugin.json").write_text(
                 '{"name":"wrong-plugin-name","version":"0.1.0","description":"Desc"}\n'
@@ -381,7 +376,10 @@ class ValidatorTests(unittest.TestCase):
         self.assertNotIn("\\", outside.errors[0])
         self.assertIn("cargento/.claude-plugin/plugin.json", outside.errors[0])
 
-    def test_marketplace_rejects_duplicates_and_metadata_version_drift(self) -> None:
+    def test_manifest_version_drift_is_rejected(self) -> None:
+        """cargento has no marketplace of its own any more (it is listed in
+        spacedock-dev/marketplace), so parity is asserted straight across the
+        three shipped manifests."""
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
             root = Path(directory)
             (root / ".agents/plugins").mkdir(parents=True)
@@ -389,32 +387,20 @@ class ValidatorTests(unittest.TestCase):
                 '{"plugins":[{"name":"cargento",'
                 '"source":{"source":"local","path":"./cargento"}}]}\n'
             )
-            (root / ".claude-plugin").mkdir()
-            (root / ".claude-plugin/marketplace.json").write_text(
-                '{"metadata":{"version":"9.9.9"},'
-                '"plugins":['
-                '{"name":"cargento","source":"./cargento","version":"0.1.0","description":"Desc"},'
-                '{"name":"cargento","source":"./cargento","version":"0.1.0","description":"Desc"}'
-                "]}\n"
-            )
             (root / "cargento/.claude-plugin").mkdir(parents=True)
             (root / "cargento/.claude-plugin/plugin.json").write_text(
                 '{"name":"cargento","version":"0.1.0","description":"Desc"}\n'
             )
-            manifest = {"version": "0.1.0", "description": "Desc"}
             validation = validator.Validation()
 
             with mock.patch.object(validator, "ROOT", root):
                 validator.validate_marketplaces(
-                    {"cargento": dict(manifest)},
-                    {"cargento": dict(manifest)},
+                    {"cargento": {"version": "9.9.9", "description": "Desc"}},
+                    {"cargento": {"version": "0.1.0", "description": "Desc"}},
                     {"cargento": {"description": "Desc"}},
                     validation,
                 )
 
-            self.assertTrue(any("duplicate plugin names" in error for error in validation.errors))
-            self.assertTrue(any("duplicate plugin sources" in error for error in validation.errors))
-            # metadata.version 9.9.9 vs everything else 0.1.0 must be drift.
             self.assertTrue(
                 any("version fields are not in parity" in error for error in validation.errors)
             )

@@ -20,9 +20,9 @@ diff-and-reconcile pass, not a rewrite.
 
 ## Hard boundaries — this repository will reject you otherwise
 
-- **Never touch a version field.** The plugin version appears in `.claude-plugin/marketplace.json`
-  (twice), `cargento/.claude-plugin/plugin.json`, `cargento/.codex-plugin/plugin.json` and
-  `cargento/gemini-extension.json`, and is owned by the tag-driven Release workflow. The
+- **Never touch a version field.** The plugin version appears in
+  `cargento/.claude-plugin/plugin.json` (the source of truth), `cargento/.codex-plugin/plugin.json`
+  and `cargento/gemini-extension.json`, and is owned by the tag-driven Release workflow. The
   `version-guard` check fails any PR that changes one. Never write a version literal into Markdown
   either — it would drift permanently and unwatched. Illustrative tags (`git tag v0.2.0`) are fine.
 - **Never change the plugin description casually.** It must stay byte-identical across five

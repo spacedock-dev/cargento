@@ -107,7 +107,7 @@ jobs:
           RELEASE_COMMIT=$(git log --format='%H%x09%s' origin/main \
             | awk -F'\t' -v s="chore(release): $TAG" '$2 == s && !found {print $1; found=1}')
           if [ -n "$RELEASE_COMMIT" ]; then
-            RC_VERSION=$(git show "$RELEASE_COMMIT:.claude-plugin/marketplace.json" | jq -r '.metadata.version // empty')
+            RC_VERSION=$(git show "$RELEASE_COMMIT:cargento/.claude-plugin/plugin.json" | jq -r '.version // empty')
             if [ "$RC_VERSION" != "$VERSION" ]; then
               echo "::error::commit $RELEASE_COMMIT is titled 'chore(release): $TAG' but its manifests carry '$RC_VERSION' — refusing to resume onto it"
               exit 1
@@ -174,8 +174,7 @@ jobs:
           python3 scripts/validate_plugins.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .claude-plugin/marketplace.json \
-                  cargento/.claude-plugin/plugin.json \
+          git add cargento/.claude-plugin/plugin.json \
                   cargento/.codex-plugin/plugin.json \
                   cargento/gemini-extension.json
           # -s: DCO sign-off (as github-actions[bot]) per repo convention.
@@ -195,6 +194,17 @@ jobs:
           TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
           git tag -f "$TAG" "$TARGET"
           git push --force origin "refs/tags/$TAG"
+
+      - name: Advance the stable branch
+        run: |
+          set -euo pipefail
+          # spacedock-dev/marketplace lists cargento with `"ref": "stable"`, the
+          # same moving-channel idiom the spacedock entry uses. This is what
+          # makes the listing self-updating: without it the marketplace would
+          # serve whatever stable pointed at when it was written, forever.
+          # Idempotent, so a resumed release re-points it to the same commit.
+          TARGET="${RELEASE_COMMIT:-$(git rev-parse HEAD)}"
+          git push --force origin "$TARGET:refs/heads/stable"
 
       - name: Publish the GitHub Release
         env:

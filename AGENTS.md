@@ -25,7 +25,10 @@ cargento/                           # plugin root
         └── tests/test_server.py    # server unit tests
 ```
 
-Repository marketplaces live at `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`.
+The Codex/AGY marketplace lives at `.agents/plugins/marketplace.json`. There is no Claude
+marketplace in this repository: cargento is listed in the shared
+[spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace), which tracks the
+`stable` branch that the Release workflow advances on every release.
 
 ## Documentation
 
@@ -93,7 +96,6 @@ coverage run -m unittest cargento.skills.cargento.tests.test_server \
   scripts.tests.test_lint_embedded
 coverage report   # enforces the fail_under threshold from pyproject.toml
 # Native validators, if the CLIs are installed (they are not available on stock runners):
-claude plugin validate . --strict
 claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
@@ -119,7 +121,11 @@ Every PR must pass the `quality-gate` required check (`.github/workflows/quality
 
 ## Versioning and Releases
 
-The plugin version must be identical in five places: `.claude-plugin/marketplace.json` (`metadata.version` and the plugin entry), `cargento/.claude-plugin/plugin.json`, `cargento/.codex-plugin/plugin.json`, and `cargento/gemini-extension.json`. The plugin description must be identical in five (the marketplace entry, those three manifests, plus the Antigravity `cargento/plugin.json`). `scripts/validate_plugins.py` enforces both.
+The plugin version must be identical in three places: `cargento/.claude-plugin/plugin.json` (the
+source of truth `bump_version.py` reads and writes from), `cargento/.codex-plugin/plugin.json`,
+and `cargento/gemini-extension.json`. The plugin description must be identical in four: those
+three manifests plus the Antigravity `cargento/plugin.json`. `scripts/validate_plugins.py`
+enforces both.
 
 Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does). To release:
 

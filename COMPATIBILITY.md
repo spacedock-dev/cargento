@@ -49,7 +49,6 @@ native per-runtime validators. They run locally, because the CLIs are not availa
 runners:
 
 ```bash
-claude plugin validate . --strict
 claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```

@@ -75,10 +75,12 @@ jobs:
           gemini --version
           agy --version
 
-      - name: Strictly validate Claude Code packages
+      - name: Strictly validate the Claude Code package
         run: |
           set -euo pipefail
-          claude plugin validate . --strict
+          # Only the plugin. The repository root is no longer a Claude
+          # marketplace — cargento is listed in spacedock-dev/marketplace — so
+          # `validate .` here would fail on a missing manifest.
           claude plugin validate ./cargento --strict
 
       - name: Install and inspect the plugin with Codex
