@@ -134,7 +134,7 @@ so re-run the job before investigating, and check the traceback is a timeout and
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
 
-The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md) and, for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md).
+The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md); for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md); and for how a row is labelled and identified, [docs/design-session-identity.md](docs/design-session-identity.md).
 
 ## Commits
 
