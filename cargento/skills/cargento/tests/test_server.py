@@ -6831,12 +6831,28 @@ const __tick = () => {{ const t = __timers; __timers = []; t.forEach(f => f()); 
     # A payload builder shared by the checks below. `mk` fills in every field
     # base_session() ships so a test only states what it is exercising.
     FIXTURE = """
-__els.app = {innerHTML: "", className: ""};
+let __focused = null;
+// Every [data-calm] control in the rendered markup, as something that answers
+// getAttribute() and focus() the way a real element would.
+const __controls = () => [...__els.app.innerHTML.matchAll(
+    /data-calm="([^"]*)"(?: data-arg="([^"]*)")?/g)].map(m => ({
+  getAttribute: a => a === "data-calm" ? m[1]
+    : (a === "data-arg" ? (m[2] === undefined ? null : m[2]) : null),
+  focus(){ __focused = m[1] + ":" + (m[2] === undefined ? "" : m[2]); }
+}));
+__els.app = {innerHTML: "", className: "", querySelectorAll: () => __controls()};
 let __scrollTop = 0;
 let __revealed = 0;
+// Selector-aware on purpose: a stub that answers every selector makes
+// "the cursor was scrolled into view" pass even when the page asked for the
+// wrong element, or for nothing at all.
 __els["cm-body"] = {
   get scrollTop(){ return __scrollTop; }, set scrollTop(v){ __scrollTop = v; },
-  querySelector(sel){ return {scrollIntoView(){ __revealed++; }}; }
+  querySelector(sel){
+    if(sel !== ".cm-row.focus") return null;
+    if(!__els.app.innerHTML.includes('class="cm-row focus')) return null;
+    return {scrollIntoView(){ __revealed++; }};
+  }
 };
 const mk = o => Object.assign({
   harness: "claude", session: "1234abcd", sid: "1234abcd", project: "repo/proj",
@@ -6952,7 +6968,8 @@ out.footer = h.includes("3 sessions · 1 harnesses · 1,234 tok/min");
 out.legend = [h.includes("1 needs you"), h.includes("1 working"), h.includes("1 idle")];
 // Column values come straight from the payload.
 out.doing = h.includes("open question (AskUserQuestion), waiting 5m");
-out.where = h.includes("repo/other · bbb2");
+// Only the project may be truncated; the session id identifies the row.
+out.where = h.includes('class="cm-proj">repo/other</span><span class="cm-sess">· bbb2<');
 out.metrics = ["5m wait", "2,010 /m", "2h 46m idle"].map(m => h.includes(m));
 // Signal bar only for a working session with a turn percentage.
 out.bars = (h.match(/class="cm-track"/g) || []).length;
@@ -7050,14 +7067,19 @@ out.repoRows = rows();
 calmAction("sort", "attention");
 
 // A legend chip filters to its own bucket and reports the narrowing.
+calmAction("open", "bbb2");
+calmFocusSid = "bbb2";
 calmAction("state", "needs");
+out.filterResetsRow = [calmOpenSid, calmFocusSid];
 out.needsOnly = [rows(), __els.app.innerHTML.includes("showing 1 of 3")];
 out.clearOffered = __els.app.innerHTML.includes('data-calm="clear"');
 calmAction("state", "needs");
 out.chipIsAToggle = [calmStateOnly, rows()];
 
 // The flagged chip narrows to flagged rows; every board row is flagged here.
+calmAction("open", "bbb2");
 calmAction("flag", null);
+out.flagFilterResetsRow = [calmOpenSid, calmFocusSid];
 out.flagged = [calmFlagOnly, rows()];
 calmAction("clear", null);
 out.cleared = [calmFlagOnly, calmStateOnly, rows()];
@@ -7085,6 +7107,8 @@ console.log(JSON.stringify(out));
         self.assertEqual(2, out["repoDividers"])
         self.assertLess(out["repoLabels"][0], out["repoLabels"][1], "repo groups not sorted")
         self.assertEqual(3, out["repoRows"], "grouping lost a row")
+        self.assertEqual([None, None], out["filterResetsRow"], "a filter left a row expanded")
+        self.assertEqual([None, None], out["flagFilterResetsRow"])
         self.assertEqual([1, True], out["needsOnly"])
         self.assertTrue(out["clearOffered"])
         self.assertEqual([None, 3], out["chipIsAToggle"])
@@ -7263,8 +7287,10 @@ console.log(JSON.stringify({
     def test_the_keyboard_drives_the_ledger(self) -> None:
         checks = """
 const out = {};
-const key = (k, target) => __fire("keydown",
-  {key: k, target: target || {}, preventDefault(){}});
+let __prevented = 0;
+const key = (k, target) => { const before = __prevented;
+  __fire("keydown", {key: k, target: target || {}, preventDefault(){ __prevented++; }});
+  return __prevented - before; };
 render(board());
 out.cursorStartsAtTop = __els.app.innerHTML.includes('class="cm-row focus"');
 key("j"); out.down1 = calmFocusSid;
@@ -7284,6 +7310,21 @@ render(lastData); out.revealedOnPoll = __revealed;
 // Keys the ledger does not own are left alone.
 key("j", {tagName: "TEXTAREA"}); out.textareaSafe = calmFocusSid;
 key("q"); out.unknownKeySafe = calmFocusSid;
+// The browser scrolls on Space and the arrows unless the page says otherwise.
+out.prevented = [key(" "), key("ArrowDown"), key("ArrowUp"), key("q")];
+key(" ");  // leave nothing expanded for the checks below
+// A modifier means the chord belongs to the browser or the OS, not to us.
+const mode0 = displayMode;
+out.modifiersIgnored = ["metaKey", "ctrlKey", "altKey"].map(mod => {
+  __fire("keydown", {key: "c", [mod]: true, target: {}, preventDefault(){}});
+  return displayMode === mode0;   // checked per modifier: two toggles cancel out
+});
+// Enter belongs to whatever focusable thing has focus, such as the empty
+// state's "Show all sessions" link.
+render(payload([]));
+const link = {tagName: "A", closest: () => ({})};
+out.linkKeepsEnter = key("Enter", link) === 0;
+render(board());
 // Nothing to move to is not an error, and nothing opens.
 render(payload([]));
 key("j"); key("Enter");
@@ -7311,6 +7352,15 @@ console.log(JSON.stringify(out));
         self.assertEqual(1, out["revealedOnPoll"], "a poll scrolled the list on its own")
         self.assertEqual("bbb2", out["textareaSafe"], "stole a key from a text field")
         self.assertEqual("bbb2", out["unknownKeySafe"])
+        self.assertEqual(
+            [1, 1, 1, 0], out["prevented"], "the browser would scroll as well as the ledger"
+        )
+        self.assertEqual(
+            [True, True, True],
+            out["modifiersIgnored"],
+            "a modifier chord (cmd/ctrl/alt + c) toggled the display mode",
+        )
+        self.assertTrue(out["linkKeepsEnter"], "swallowed Enter from a focused link")
         self.assertEqual([None, True], out["emptySafe"])
         self.assertIsNone(out["regularIgnoresJ"])
 
@@ -7366,6 +7416,68 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["notifyControlPlaced"], "no way to grant notifications in calm mode")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_keyboard_focus_survives_the_poll(self) -> None:
+        # The ledger's controls are real focusable buttons, and render() throws
+        # the focused one away every five seconds. Without this, tabbing to a
+        # control and pressing it is a race against the refresh.
+        checks = """
+const out = {};
+render(board());
+const find = act => __controls().find(c => c.getAttribute("data-calm") === act);
+// Focus a control that carries an argument, and one that does not.
+document.activeElement = __controls().find(c =>
+  c.getAttribute("data-calm") === "copy" && c.getAttribute("data-arg") === "aaa1");
+__focused = null;
+render(board());
+out.withArg = __focused;
+document.activeElement = find("flag");
+__focused = null;
+render(board());
+out.withoutArg = __focused;
+// A control that is gone after the payload changed must not steal focus.
+document.activeElement = __controls().find(c => c.getAttribute("data-arg") === "ccc3");
+__focused = null;
+render(payload([blocked]));
+out.departed = __focused;
+// Focus outside the ledger is left alone.
+document.activeElement = {getAttribute: () => null};
+__focused = null;
+render(board());
+out.untracked = __focused;
+document.activeElement = null;
+__focused = null;
+render(board());
+out.noFocus = __focused;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual("copy:aaa1", out["withArg"], "focus was lost across the poll")
+        self.assertEqual("flag:", out["withoutArg"])
+        self.assertIsNone(out["departed"], "focus jumped to an unrelated control")
+        self.assertIsNone(out["untracked"], "stole focus from outside the ledger")
+        self.assertIsNone(out["noFocus"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_harness_that_reports_no_rate_does_not_read_as_zero(self) -> None:
+        # Copilot, OpenCode, Cursor and Droid never populate rate_per_min, and
+        # the regular view omits the meter rather than printing a zero. Calm
+        # mode printing "0 /m" would make the two modes disagree.
+        checks = """
+render(payload([
+  mk({sid: "cp", session: "cp", harness: "copilot", state: "working", active: true,
+      last_activity: 99999, rate_per_min: 0}),
+  mk({sid: "cl", session: "cl", state: "working", active: true,
+      last_activity: 99999, rate_per_min: 1200})]));
+const h = __els.app.innerHTML;
+console.log(JSON.stringify({
+  zero: h.includes(">0 /m<"), dash: h.includes(">—<"), real: h.includes(">1,200 /m<")}));
+"""
+        out = self.run_calm(checks)
+        self.assertFalse(out["zero"], 'printed a fabricated "0 /m" for a rate-less harness')
+        self.assertTrue(out["dash"])
+        self.assertTrue(out["real"], "lost the rate for a harness that does report one")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_copy_id_reports_what_the_clipboard_actually_did(self) -> None:
         checks = """
 const out = {};
@@ -7411,6 +7523,47 @@ console.log(JSON.stringify({lied: h.includes(">copied<"), told: h.includes(">blo
         declared = set(re.findall(r"(--[\w-]+)\s*:", style.group(1)))
         used = set(re.findall(r"var\((--[\w-]+)", dashboard.PAGE))
         self.assertEqual(set(), used - declared, "page uses CSS variables nothing declares")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_column_headers_share_the_scrollers_width(self) -> None:
+        # Headers and rows lay out on the same grid. As a SIBLING of the
+        # scrolling body the header keeps the full frame width while the rows
+        # lose the scrollbar's, and the whole delta lands in the one flexible
+        # track, so every label from `where` rightward sits off its data. Only
+        # invisible where scrollbars are overlays, which is to say only on the
+        # machine this was built on.
+        checks = """
+render(board());
+const h = __els.app.innerHTML;
+console.log(JSON.stringify({
+  nested: h.includes('<div class="cm-body" id="cm-body"><div class="cm-head">'),
+  headings: h.includes("<span>where</span>")}));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["nested"], "the column headers are outside the scroll container")
+        self.assertTrue(out["headings"])
+        self.assertIn(".cm-head{position:sticky;top:0;", dashboard.PAGE)
+
+    def test_a_focused_quick_action_can_actually_be_seen(self) -> None:
+        # The row's quick action lives in a container held at opacity:0 until
+        # hover. Ancestor opacity composites the whole subtree as a group, so a
+        # focused child cannot make itself visible — the row has to. Without
+        # this the ledger has one invisible tab stop per row.
+        self.assertIn(".cm-row:focus-within .cm-q{opacity:1}", dashboard.PAGE)
+
+    def test_no_control_drops_its_focus_ring_without_replacing_it(self) -> None:
+        style = re.search(r"<style>(.*?)</style>", dashboard.PAGE, re.DOTALL)
+        assert style is not None
+        rules = re.findall(r"\n\s*([^\n{]*:focus-visible[^\n{]*)\{([^}]*)\}", style.group(1))
+        self.assertGreater(len(rules), 4, "focus-visible rules disappeared; is the regex stale?")
+        for selector, body in rules:
+            with self.subTest(selector=selector.strip()):
+                if "outline:none" in body:
+                    self.assertIn(
+                        "box-shadow",
+                        body,
+                        "removes the browser focus ring and puts nothing in its place",
+                    )
 
     def test_the_calm_palette_has_a_dark_counterpart(self) -> None:
         # Calm mode adds surfaces and a second flag tone. Declaring them only

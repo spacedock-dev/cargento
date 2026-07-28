@@ -4510,7 +4510,7 @@ PAGE = r"""<!doctype html>
   .cm-clear{font-family:var(--mono);font-size:10.5px;color:var(--ink3);cursor:pointer;background:transparent;border:0;border-bottom:1px solid var(--line2);padding:0}
   .cm-clear:hover{color:var(--ink2)}
   .cm-note{font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
-  .cm-head{flex:none;display:grid;grid-template-columns:var(--cmcols);align-items:center;gap:12px;padding:0 22px;height:24px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3)}
+  .cm-head{position:sticky;top:0;z-index:1;background:var(--bg);display:grid;grid-template-columns:var(--cmcols);align-items:center;gap:12px;padding:0 22px;height:24px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3)}
   .cm-head .r{text-align:right}
   .cm-body{flex:1;overflow:auto;min-height:0}
   .cm-div{display:flex;align-items:center;gap:10px;padding:0 22px;height:28px;background:var(--sunk);border-bottom:1px solid var(--line)}
@@ -4538,10 +4538,11 @@ PAGE = r"""<!doctype html>
   .cm-fill{display:block;height:100%;border-radius:2px}
   .cm-metric{font-family:var(--mono);font-size:11px;text-align:right;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cm-q{display:flex;justify-content:flex-end;gap:9px;opacity:0;transition:opacity .12s ease}
-  .cm-row:hover .cm-q,.cm-row.focus .cm-q,.cm-row.open .cm-q{opacity:1}
+  .cm-row:hover .cm-q,.cm-row.focus .cm-q,.cm-row.open .cm-q,
+  .cm-row:focus-within .cm-q{opacity:1}
   .cm-qb{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--ink3);background:transparent;border:0;padding:0;cursor:pointer;transition:color .12s}
   .cm-qb:hover{color:var(--ink)}
-  .cm-qb:focus-visible{outline:none;color:var(--ink);opacity:1}
+  .cm-qb:focus-visible{outline:none;color:var(--ink);box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent);border-radius:4px}
   .cm-caret{font-family:var(--mono);font-size:12px;color:var(--ink3);text-align:center}
 
   /* calm mode — expanded row */
@@ -5118,7 +5119,8 @@ function calmRow(d, x){
     subagents: x.subagents || [], spacedock: x.spacedock || null,
     rank: flag ? CALM_TONE[tone].rank : (st === "work" ? 2 : 4),
     metric: st === "needs" ? fmtDur(waitSec) + " wait"
-      : (st === "work" ? rate.toLocaleString() + " /m" : fmtDur(ageSec) + " idle"),
+      : (st === "work" ? (rate ? rate.toLocaleString() + " /m" : "—")
+                       : fmtDur(ageSec) + " idle"),
     metricInk: st === "needs" ? "var(--alert)" : (st === "idle" ? "var(--ink3)" : "var(--ink2)"),
     titleInk: st === "idle" ? "var(--ink2)" : "var(--ink)",
     detailAge: st === "needs" ? "blocked " + fmtDur(waitSec)
@@ -5247,7 +5249,8 @@ document.addEventListener("keydown", e => {
   if(k === "c"){ stop(); setDisplayMode(displayMode === "calm" ? "regular" : "calm"); return; }
   if(displayMode !== "calm" || !lastData) return;
   /* A focused button already answers Enter and Space itself. */
-  if(tag === "BUTTON" && (k === "Enter" || k === " ")) return;
+  if((k === "Enter" || k === " ") && e.target && e.target.closest &&
+     e.target.closest("a[href],button,select,textarea,input,[tabindex]")) return;
   if(k === "j" || k === "ArrowDown"){ stop(); calmMove(1); }
   else if(k === "k" || k === "ArrowUp"){ stop(); calmMove(-1); }
   else if(k === "Enter" || k === " "){
@@ -5357,7 +5360,7 @@ function calmRowHTML(r, focusSid){
     `<span>${flag}</span><span>${signal}</span>` +
     `<span class="cm-metric" style="color:${r.metricInk}">${esc(r.metric)}</span>` +
     `<span class="cm-q"><button type="button" class="cm-qb" data-calm="copy"` +
-    ` data-arg="${esc(r.sid)}" title="copy the full session id">` +
+    ` data-arg="${esc(r.sid)}" title="copy this session's id">` +
     `${copied ? esc(calmCopyNote.text) : "id"}</button></span>` +
     `<span class="cm-caret">${open ? "–" : "+"}</span></div>` +
     (open ? calmExpansion(r) : "") + `</div>`;
@@ -5421,10 +5424,10 @@ function calmLedger(d){
     `<button type="button" class="cm-flagchip${calmFlagOnly ? " on" : ""}" data-calm="flag"` +
     ` aria-pressed="${calmFlagOnly}">◆ ${flagged} flagged</button>${clear}` +
     `<span class="cm-sp"></span><span class="cm-note">${esc(note)}</span></div>` +
+    `<div class="cm-body" id="cm-body">` +
     `<div class="cm-head"><span></span><span></span><span>session</span><span>where</span>` +
     `<span>doing</span><span>flag</span><span>turn</span><span class="r">signal</span>` +
-    `<span></span><span></span></div>` +
-    `<div class="cm-body" id="cm-body">${body}</div>` +
+    `<span></span><span></span></div>${body}</div>` +
     `<div class="cm-foot"><span>${all.length} sessions · ${found.length} harnesses · ` +
     `${(d.summary.rate_per_min || 0).toLocaleString()} tok/min</span>` +
     `<span class="cm-fstrip">${strip}</span><span class="cm-sp"></span>` +
@@ -5433,6 +5436,32 @@ function calmLedger(d){
     `<span><span>◇</span>gone quiet</span></span><span class="cm-sp"></span>` +
     `<span class="cm-keys"><span>j k move</span><span>⏎ expand</span><span>f flagged</span>` +
     `<span>c mode</span><span>esc clear</span></span></div></div>`;
+}
+
+/* Every control the ledger emits is identified by its (data-calm, data-arg)
+   pair, which survives the DOM swap even though the element does not. Capture
+   the focused one before the swap and hand focus back to its replacement, the
+   way restoreSparkState does for the sparkline — otherwise tabbing into the
+   ledger is undone by the next poll, five seconds later at most. */
+function calmFocusKey(){
+  const el = document.activeElement;
+  if(!el || !el.getAttribute) return null;
+  const act = el.getAttribute("data-calm");
+  return act ? {act, arg: el.getAttribute("data-arg")} : null;
+}
+
+function calmRestoreFocus(key){
+  if(!key) return;
+  const root = document.getElementById("app");
+  /* Matched by attribute in JS rather than through a built selector: `arg` is a
+     session id, and a selector string would need escaping the DOM does not. */
+  if(!root || !root.querySelectorAll) return;
+  for(const el of root.querySelectorAll("[data-calm]")){
+    if(el.getAttribute("data-calm") !== key.act) continue;
+    if(el.getAttribute("data-arg") !== key.arg) continue;
+    if(el.focus) el.focus({preventScroll: true});
+    return;
+  }
 }
 
 /* render() replaces #app wholesale every poll, which resets the ledger's own
@@ -5525,11 +5554,13 @@ function render(d){
     const outgoing = document.getElementById("cm-body");
     if(calmResetScroll){ calmScrollTop = 0; calmResetScroll = false; }
     else if(outgoing) calmScrollTop = outgoing.scrollTop;
+    const focusKey = calmFocusKey();
     renderInProgress = true;
     app.className = "wrap calm";
     app.innerHTML = modeBar() + calmLedger(d);
     renderInProgress = false;
     calmRestoreScroll();
+    calmRestoreFocus(focusKey);
     document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
     return;
   }
