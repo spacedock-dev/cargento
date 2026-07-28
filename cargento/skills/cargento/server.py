@@ -355,10 +355,7 @@ def project_label(dirname: str, home_prefix: str | None = None) -> str:
     return dirname.lstrip("-") or "(home)"
 
 
-_DRIVE_RE = re.compile(r"^[A-Za-z]:$")
-
-
-def project_from_cwd(cwd: str) -> str:
+def project_from_cwd(cwd: str, home: str | None = None, windows: bool | None = None) -> str:
     """``<parent>/<basename>`` for a working directory, ``""`` when unusable.
 
     One directory has to read the same on every harness row, so this is the
@@ -367,19 +364,46 @@ def project_from_cwd(cwd: str) -> str:
     segments keep sibling worktrees apart without pasting a whole path into
     the row.
 
-    Both separators are split on whatever the host is: a harness store written
-    on Windows records backslash paths, and ``os.path`` on POSIX would keep the
-    entire string as one segment. A bare drive letter is dropped because
-    ``C:`` names no project.
+    Separators are the host's, via ``ntpath``/``posixpath``, never a hand-rolled
+    split on both. ``docs/design-cross-platform.md`` rejects that helper outright:
+    ``\\`` is a legal POSIX filename character, so splitting on it turns one
+    directory named ``my\\proj`` into two. Cargento only ever reads stores written
+    on the machine it runs on, so the host's own rules are the correct ones.
+
+    A path under ``home`` is labelled relative to it, because ``project_label``
+    strips the home prefix and the two have to agree: ``~/foo`` reads ``foo``
+    from either, never ``<username>/foo``.
+
+    ``home`` and ``windows`` are injectable so one runner exercises both
+    platforms (design decision D-4).
 
     Callers apply their own fallback to ``""`` — the harness name, or the
     encoded-directory label for the two collectors that have one.
     """
-    if not cwd:
-        return ""
-    if cwd.rstrip("/\\") == HOME.rstrip("/\\"):
+    path = ntpath if (os.name == "nt" if windows is None else windows) else posixpath
+    if not cwd or not path.isabs(cwd):
+        return ""  # a relative cwd names no project; fall through to the caller
+    home_dir = HOME if home is None else home
+
+    def trim(value: str) -> str:
+        seps = path.sep + (path.altsep or "")
+        return value.rstrip(seps) or value
+
+    # normcase folds Windows case *and* separators, and preserves length, so
+    # the comparison is spelling-independent and the slice below stays valid.
+    cwd_cmp, home_cmp = path.normcase(trim(cwd)), path.normcase(trim(home_dir))
+    if cwd_cmp == home_cmp:
         return "(home)"
-    parts = [p for p in re.split(r"[/\\]", cwd) if p and p != "." and not _DRIVE_RE.match(p)]
+    rest = trim(cwd)
+    if home_cmp and cwd_cmp.startswith(home_cmp + path.sep):
+        rest = rest[len(trim(home_dir)) :]
+    else:
+        rest = path.splitdrive(rest)[1]  # "C:" names no project
+    if path.altsep:  # Windows accepts either spelling; POSIX has no altsep
+        rest = rest.replace(path.altsep, path.sep)
+    parts = [p for p in rest.split(path.sep) if p and p != "."]
+    if any(p == ".." for p in parts):
+        return ""  # an unresolved cwd would render as an absurd label
     return "/".join(parts[-2:])
 
 
@@ -1190,7 +1214,10 @@ def claude_session_cwd(path: str) -> str:
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             for _ in range(_CWD_SCAN_LINES):
-                line = f.readline()
+                # Bounded like codex_meta's head read: one pasted prompt is
+                # enough to make an unbounded readline pull megabytes into
+                # memory before the substring test can reject the line.
+                line = f.readline(200_000)
                 if not line:
                     break
                 if '"cwd"' not in line:
@@ -1904,11 +1931,13 @@ def maybe_popup(
 
 
 def base_session(harness: str, sid: Any, project: str) -> dict[str, Any]:
-    # "session" is the 8-char display id; "sid" keeps the full identity so
-    # the client can key per-session state without truncation collisions
-    # (e.g. Gemini "session-*" fallback ids all display as "session-").
-    # Claude passes its 8-char prefix, so sid == session there — that whole
-    # collector is already keyed on the prefix upstream.
+    # "session" is the display id and starts at the DISPLAY_ID_LEN floor;
+    # assign_display_ids() widens it per harness where that floor collides.
+    # "sid" keeps the full identity so the client can key per-session state
+    # without truncation collisions (e.g. Gemini "session-*" fallback ids all
+    # display as "session-"). Claude passes its 8-char prefix, so sid ==
+    # session there — that whole collector is already keyed on the prefix
+    # upstream, and widening is a no-op for it.
     return {
         "session": str(sid)[:8],
         "sid": str(sid),
