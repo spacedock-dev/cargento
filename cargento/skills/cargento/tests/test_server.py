@@ -342,6 +342,64 @@ class CargentoServerTest(unittest.TestCase):
         self.assertEqual("Running project report", sessions[0]["state_detail"])
         self.assertEqual("1m", sessions[0]["turn"]["elapsed_h"])
 
+    def test_antigravity_subagents_are_folded_under_parent(self) -> None:
+        now = dashboard.time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+
+        def varint(value: int) -> bytes:
+            encoded = bytearray()
+            while value > 0x7F:
+                encoded.append((value & 0x7F) | 0x80)
+                value >>= 7
+            encoded.append(value)
+            return bytes(encoded)
+
+        def bytes_field(number: int, value: bytes) -> bytes:
+            return varint((number << 3) | 2) + varint(len(value)) + value
+
+        parent_blob = bytes_field(6, parent_sid.encode())
+        sub_blob = bytes_field(5, parent_sid.encode()) + bytes_field(
+            8, bytes_field(2, b"Research Auditor")
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "antigravity-cli"
+            conversations = root / "conversations"
+            logs = root / "log"
+            conversations.mkdir(parents=True)
+            logs.mkdir(parents=True)
+
+            for sid, blob in [(parent_sid, parent_blob), (sub_sid, sub_blob)]:
+                path = conversations / f"{sid}.db"
+                with sqlite3.connect(path) as con:
+                    con.execute(
+                        "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB)"
+                    )
+                    con.execute("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)", (blob,))
+
+            (logs / "cli-1.log").write_text(
+                f"workspaceDirs=[/tmp/test-project] appDataDir=/tmp\n"
+                f"Streaming conversation {parent_sid}\n"
+                'HandleUserInput called with text: "Inspect codebase"\n'
+                f"Forwarding user message to conversation {parent_sid}\n"
+            )
+
+            with (
+                mock.patch.object(dashboard, "ANTIGRAVITY_CONVERSATIONS_DIR", str(conversations)),
+                mock.patch.object(dashboard, "ANTIGRAVITY_LOG_DIR", str(logs)),
+                mock.patch.object(
+                    dashboard,
+                    "ANTIGRAVITY_LAST_CONVERSATIONS",
+                    str(root / "cache" / "last_conversations.json"),
+                ),
+            ):
+                sessions = dashboard.collect_antigravity(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual(parent_sid, sessions[0]["sid"])
+        self.assertEqual(["Research Auditor"], sessions[0]["subagents"])
+
     def test_notify_endpoint_accepts_valid_non_object_and_deep_json(self) -> None:
         httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)

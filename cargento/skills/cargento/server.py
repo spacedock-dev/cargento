@@ -3199,15 +3199,92 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
     return result
 
 
+def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
+    """Extract parent conversation ID and subagent label from an Antigravity store."""
+    info: dict[str, Any] = {"parent_id": None, "subagent_label": None}
+    if not sqlite_available():
+        return info
+    query = "SELECT data FROM trajectory_metadata_blob WHERE id='main'"
+    row = None
+    for uri in (sqlite_ro_uri(path), sqlite_ro_uri(path, immutable=True)):
+        try:
+            con = sqlite3.connect(uri, uri=True, timeout=0.2)
+        except sqlite3.Error as exc:
+            record_store_error(path, exc)
+            continue
+        try:
+            row = con.execute(query).fetchone()
+            break
+        except sqlite3.Error as exc:
+            record_store_error(path, exc)
+            continue
+        finally:
+            con.close()
+    if not row or not row[0]:
+        return info
+    data = row[0]
+    p5 = protobuf_first(data, 5, 2)
+    p6 = protobuf_first(data, 6, 2)
+    parent_id = None
+    if p5:
+        with contextlib.suppress(UnicodeDecodeError):
+            parent_id = p5.decode("utf-8")
+    elif p6:
+        with contextlib.suppress(UnicodeDecodeError):
+            p6_str = p6.decode("utf-8")
+            if p6_str != sid:
+                parent_id = p6_str
+    if parent_id:
+        info["parent_id"] = parent_id
+        f8 = protobuf_first(data, 8, 2)
+        label = None
+        if f8:
+            role_raw = protobuf_first(f8, 2, 2)
+            type_raw = protobuf_first(f8, 1, 2)
+            if role_raw:
+                with contextlib.suppress(UnicodeDecodeError):
+                    label = role_raw.decode("utf-8")
+            elif type_raw:
+                with contextlib.suppress(UnicodeDecodeError):
+                    label = type_raw.decode("utf-8")
+        info["subagent_label"] = notification_text(label or "subagent", 70)
+    return info
+
+
 def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     metadata = antigravity_session_metadata(now, window_hours, show_all)
-    out: list[dict[str, Any]] = []
-    for db in glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db"):
+    dbs = glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
+
+    agents_by_parent: dict[str, list[tuple[str, float]]] = {}
+    subagent_sids: set[str] = set()
+    db_info_map: dict[str, dict[str, Any]] = {}
+
+    for db in dbs:
         sid = os.path.basename(db)[: -len(".db")]
         mtime = antigravity_store_mtime(db)
         if not mtime:
             continue
-        active = is_fresh(now, mtime, window_hours * 3600)
+        info = antigravity_session_info(db, sid)
+        db_info_map[sid] = {"mtime": mtime, "info": info}
+        parent = info.get("parent_id")
+        if parent and parent != sid:
+            subagent_sids.add(sid)
+            label = info.get("subagent_label") or ("subagent " + sid[:8])
+            agents_by_parent.setdefault(parent, []).append((label, mtime))
+
+    out: list[dict[str, Any]] = []
+    for db in dbs:
+        sid = os.path.basename(db)[: -len(".db")]
+        if sid in subagent_sids:
+            continue
+        entry = db_info_map.get(sid)
+        if not entry:
+            continue
+        mtime = entry["mtime"]
+        agents = sorted(agents_by_parent.get(sid, []), key=lambda a: -a[1])
+        activity_sources = (mtime, *(m for _, m in agents))
+        last_activity = newest_plausible(now, activity_sources)
+        active = is_fresh(now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         activity: dict[str, Any] = (
@@ -3215,10 +3292,19 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
             if active
             else {"rate_per_min": 0, "turns": None, "last_tool_action": ""}
         )
+        subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
+        if is_fresh(now, newest_plausible(now, activity_sources), WORKING_THRESHOLD_SEC):
             state = "working"
-            state_detail = activity["last_tool_action"] or "generating response…"
+            state_detail = (
+                working_detail(None, subagents)
+                if subagents and not activity["last_tool_action"]
+                else (
+                    activity["last_tool_action"]
+                    or working_detail(None, subagents)
+                    or "generating response…"
+                )
+            )
 
         meta = metadata.get(sid) or {}
         prompt = str(meta.get("last_prompt") or "").strip()
@@ -3232,9 +3318,10 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
                 "state": state,
                 "state_detail": state_detail,
                 "active": active,
-                "last_activity": mtime,
+                "last_activity": last_activity,
                 "rate_per_min": activity["rate_per_min"],
                 "turn": turn_progress(activity["turns"], state, now),
+                "subagents": subagents,
             }
         )
         out.append(session)
