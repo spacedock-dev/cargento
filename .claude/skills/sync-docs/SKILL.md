@@ -5,9 +5,9 @@ description: >-
   HTTP routes, CLI flags, harness registry, relocation env vars, tunable constants, validator rules
   and CI gate against README.md, AGENTS.md, CONTRIBUTING.md, COMPATIBILITY.md, SECURITY.md and the
   shipped `cargento` skill body; applies the updates; retires implemented plan docs under
-  `docs/plans/` by folding their durable content into `docs/design-*.md`; runs the humanizer over
-  the human-facing prose it touched so the tone does not drift back to model-default; and keeps the
-  AGENTS.md / CLAUDE.md pointers accurate. **Run it as part of the pre-PR gate** — after the validation suite
+  `docs/plans/` by folding their durable content into `docs/design-*.md`; holds the human-facing
+  prose it touched to the documented voice standard so the tone does not drift back to
+  model-default; and keeps the AGENTS.md / CLAUDE.md pointers accurate. **Run it as part of the pre-PR gate** — after the validation suite
   and before `gh pr create`, so every PR carries the doc updates for the code it changes — and also
   periodically, before a release or whenever the docs feel stale. Invoke with /sync-docs.
 ---
@@ -94,6 +94,11 @@ topping them up in model-default voice, one sync at a time, is how that gets und
 Procedure exists to stop it, and check (e) in step 9 is the mechanical backstop, since nothing in CI
 enforces tone.
 
+**This section is the contract, not the `humanizer` skill.** That skill automates the pass and is
+worth using where a harness has it, but this repository does not vendor it and a clean checkout will
+not have it. Everything needed to apply the standard by hand is written out below, deliberately, so
+the rule survives the tool going missing.
+
 In scope, and the exact set check (e) greps:
 
 ```
@@ -119,7 +124,7 @@ The standard, in order of how often it is violated:
 - No generic upbeat closers. End on the last concrete fact.
 
 Two things not to do in the name of tone. Never drop a fact to make a sentence flow, and never add
-one to make it land: the humanizer keeps the information and changes only the shape. And do not
+one to make it land: the pass keeps the information and changes only the shape. And do not
 flatten the specifics that make these docs worth reading. The measured numbers, the named failure
 modes, and above all the rejected-alternatives lists in `docs/design-*.md` are the human signal, not
 the noise.
@@ -256,12 +261,16 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 6. **Update the pointers.** Keep the `AGENTS.md` architecture tree and doc map, and `README.md`'s
    links, current. `CLAUDE.md` imports `AGENTS.md`, so those edits propagate — but check that no
    Claude-only bullet has become universally true (move it up) or obsolete (delete it).
-7. **Run the humanizer over what you touched.** The prose docs are written for humans, and the
-   fastest way for that to rot is an agent topping them up in model-default voice one sync at a
-   time. Invoke the `humanizer` skill in file mode on every human-facing doc this pass edited, then
-   read the result: it should keep every fact and lose the tells. The Voice and tone section gives
-   the scope and the standard. Do not run it on `AGENTS.md`, `CLAUDE.md`, the shipped skill body, or
-   this file.
+7. **Bring the tone back to the standard.** The prose docs are written for humans, and the fastest
+   way for that to rot is an agent topping them up in model-default voice one sync at a time. Apply
+   the Voice and tone section to every human-facing doc this pass edited, and re-read the result: it
+   must keep every fact and lose only the tells. Do not touch `AGENTS.md`, `CLAUDE.md`, the shipped
+   skill body, or this file.
+
+   The `humanizer` skill automates this and is worth using **if your harness has it**, in file mode,
+   one doc at a time. It is a third-party skill that this repository does not vendor, so treat it as
+   an accelerant and never as a prerequisite. Voice and tone is the contract; a contributor with no
+   humanizer installed applies it by hand and is equally done.
 8. **Stamp the sync.** Update the marker at the bottom of `COMPATIBILITY.md`:
    `<!-- docs-synced-through: <short-sha> (<YYYY-MM-DD>) -->`. Stamp the `origin/main` tip this
    branch is based on, **not** your branch `HEAD`:
@@ -294,8 +303,16 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 
    # e. Tone: no em/en dashes or curly quotes in the human-facing prose docs. Nothing in CI
    #    enforces this, so it is the one anti-drift check that only exists here.
-   grep -n '—\|–\|[“”‘’]' README.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
-     docs/design-*.md docs/plans/*.md && echo "TONE DRIFT: rerun the humanizer on the above"
+   #    `ls` builds the list because step 4 deletes plan docs: a bare `docs/plans/*.md` that
+   #    matches nothing stays literal and makes grep exit 2 on a "No such file" error.
+   #    The explicit if/else is here because a bare `grep && echo` exits 1 when the docs are
+   #    CLEAN, which reads as failure to anyone (or anything) checking the status.
+   if grep -n '—\|–\|[“”‘’]' $(ls README.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
+        docs/design-*.md docs/plans/*.md 2>/dev/null); then
+     echo "TONE DRIFT: reapply Voice and tone to the files listed above"
+   else
+     echo "tone clean"
+   fi
    ```
    **Then decide whether you owe the full gate, by who authors the PR:**
    - **Pre-PR-gate run** — checks a to e are enough. The suite in `AGENTS.md` § Pre-PR Checks ran on
@@ -307,26 +324,26 @@ minutes, a Python version. Stale counts are this repository's most common drift.
      verification onto the reviewer.
 
    Never open or update a PR on the strength of a to e alone.
-9. **Stage, commit in the right place, then report.** Never commit to `main`. Stage explicitly —
-   new docs are untracked, so `git commit -a` would silently skip them:
-   ```bash
-   git add -A -- '*.md'          # plus any comment-only repoints from step 5, named individually
-   git status --short            # confirm the staged set is what you expect
-   ```
-   - **Pre-PR-gate run** (invoked on an existing `feat/…`/`fix/…` branch before `gh pr create`):
-     commit onto **that same branch** with `git commit -s` — do not create a new branch or a second
-     PR; the doc updates ride in the PR you are about to open.
-   - **Standalone/periodic run** (started from `main`, no feature work in flight): create a
-     `docs/…` branch, commit, and open its own PR — having run the full suite per step 9.
+10. **Stage, commit in the right place, then report.** Never commit to `main`. Stage explicitly —
+    new docs are untracked, so `git commit -a` would silently skip them:
+    ```bash
+    git add -A -- '*.md'          # plus any comment-only repoints from step 5, named individually
+    git status --short            # confirm the staged set is what you expect
+    ```
+    - **Pre-PR-gate run** (invoked on an existing `feat/…`/`fix/…` branch before `gh pr create`):
+      commit onto **that same branch** with `git commit -s` — do not create a new branch or a second
+      PR; the doc updates ride in the PR you are about to open.
+    - **Standalone/periodic run** (started from `main`, no feature work in flight): create a
+      `docs/…` branch, commit, and open its own PR — having run the full suite per step 9.
 
-   **A standalone run is not finished when the PR opens; it is finished when the required checks are
-   green.** Watch them. If one goes red, either it is your doing — fix it — or it is unrelated to a
-   docs-only diff, in which case *prove* that before dismissing it: show the diff touches no code the
-   failing test exercises, name the failure mode, and re-run the job. "Probably flaky" without
-   evidence is how a real regression ships.
+    **A standalone run is not finished when the PR opens; it is finished when the required checks are
+    green.** Watch them. If one goes red, either it is your doing — fix it — or it is unrelated to a
+    docs-only diff, in which case *prove* that before dismissing it: show the diff touches no code the
+    failing test exercises, name the failure mode, and re-run the job. "Probably flaky" without
+    evidence is how a real regression ships.
 
-   End with a one-line report:
-   `Added: … | Corrected: … | Retired (deleted): … | Unresolved: …`, plus the new sync marker.
+    End with a one-line report:
+    `Added: … | Corrected: … | Retired (deleted): … | Unresolved: …`, plus the new sync marker.
 
 ## When NOT to change something
 

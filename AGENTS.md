@@ -106,11 +106,12 @@ git push -u origin HEAD && gh pr create
 ```
 
 `/sync-docs` is a docs-only pass that diffs the docs against the code and fixes the drift the change
-introduced. It also runs the humanizer over the human-facing prose docs it touched — those are
-written for people, and an agent topping them up in model-default voice is how that erodes — and
-greps them for the tone tells, since nothing in CI checks that. It lives at
-`.claude/skills/sync-docs/SKILL.md`; harnesses without skill discovery should read that file and
-follow it.
+introduced. It also holds the human-facing prose docs it touched to the voice standard written out
+in its own "Voice and tone" section — those docs are written for people, and an agent topping them
+up in model-default voice is how that erodes — and greps them for the tone tells, since nothing in
+CI checks that. The optional third-party `humanizer` skill automates that pass but is not required
+and is not vendored here. `/sync-docs` lives at `.claude/skills/sync-docs/SKILL.md`; harnesses
+without skill discovery should read that file and follow it.
 
 ## Quality Gate
 
