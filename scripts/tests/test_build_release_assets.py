@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import subprocess
 import sys
 import tarfile
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
+
+from scripts.build_release_assets import build_assets, main
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILDER = ROOT / "scripts/build_release_assets.py"
 
 
 class BuildReleaseAssetsTests(unittest.TestCase):
-    def build(self, output: Path) -> subprocess.CompletedProcess[str]:
+    def build_with_cli(self, output: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 sys.executable,
@@ -39,30 +44,26 @@ class BuildReleaseAssetsTests(unittest.TestCase):
             first = Path(first_dir)
             second = Path(second_dir)
 
-            first_result = self.build(first)
-            second_result = self.build(second)
+            first_assets = build_assets("v1.2.3", first)
+            second_assets = build_assets("v1.2.3", second)
 
             archive_name = "cargento-runtime-1.2.3.tar.gz"
             archive = first / archive_name
             checksum = first / f"{archive_name}.sha256"
             installer = first / "install.sh"
-            built = first_result.returncode == 0 and second_result.returncode == 0
-            first_bytes = archive.read_bytes() if built else b""
-            second_bytes = (second / archive_name).read_bytes() if built else b"missing"
+            first_bytes = archive.read_bytes()
+            second_bytes = (second / archive_name).read_bytes()
             digest = hashlib.sha256(first_bytes).hexdigest()
-            installer_body = installer.read_text() if built else ""
-            if built:
-                with tarfile.open(archive, "r:gz") as bundle:
-                    names = bundle.getnames()
-            else:
-                names = []
+            installer_body = installer.read_text()
+            with tarfile.open(archive, "r:gz") as bundle:
+                names = bundle.getnames()
             self.assertEqual(
                 (
-                    first_result.returncode,
-                    second_result.returncode,
+                    first_assets,
+                    second_assets,
                     first_bytes == second_bytes,
-                    checksum.read_text() if built else "",
-                    bool(installer.stat().st_mode & 0o111) if built else False,
+                    checksum.read_text(),
+                    bool(installer.stat().st_mode & 0o111),
                     "v1.2.3" in installer_body,
                     archive_name in installer_body,
                     (
@@ -73,8 +74,12 @@ class BuildReleaseAssetsTests(unittest.TestCase):
                     "cargento/.claude-plugin/plugin.json" in names,
                 ),
                 (
-                    0,
-                    0,
+                    (installer, archive, checksum),
+                    (
+                        second / "install.sh",
+                        second / archive_name,
+                        second / f"{archive_name}.sha256",
+                    ),
                     True,
                     f"{digest}  {archive_name}\n",
                     True,
@@ -84,35 +89,79 @@ class BuildReleaseAssetsTests(unittest.TestCase):
                     True,
                     True,
                 ),
-                first_result.stderr or second_result.stderr,
             )
 
     def test_rejects_non_semver_tag_without_writing_assets(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-assets-invalid-") as directory:
             output = Path(directory)
 
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(BUILDER),
-                    "--tag",
-                    "latest",
-                    "--output-dir",
-                    str(output),
-                ],
-                cwd=ROOT,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+            try:
+                build_assets("latest", output)
+            except ValueError as error:
+                message = str(error)
+            else:
+                message = "no error"
 
             self.assertEqual(
                 (
-                    result.returncode != 0,
-                    "strict semver" in result.stderr,
+                    "strict semver" in message,
                     list(output.iterdir()),
                 ),
-                (True, True, []),
+                (True, []),
+            )
+
+    def test_cli_builds_release_assets(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-assets-cli-") as directory:
+            output = Path(directory)
+
+            result = self.build_with_cli(output)
+
+            self.assertEqual(
+                (
+                    result.returncode,
+                    [path.name for path in sorted(output.iterdir())],
+                    len(result.stdout.splitlines()),
+                ),
+                (
+                    0,
+                    [
+                        "cargento-runtime-1.2.3.tar.gz",
+                        "cargento-runtime-1.2.3.tar.gz.sha256",
+                        "install.sh",
+                    ],
+                    3,
+                ),
+                result.stderr,
+            )
+
+    def test_main_builds_and_prints_release_assets_in_process(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-assets-main-") as directory:
+            output = Path(directory)
+            stdout = io.StringIO()
+
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    ["build_release_assets.py", "--tag", "v1.2.3", "--output-dir", str(output)],
+                ),
+                redirect_stdout(stdout),
+            ):
+                result = main()
+
+            self.assertEqual(
+                (
+                    result,
+                    stdout.getvalue().splitlines(),
+                ),
+                (
+                    0,
+                    [
+                        str(output / "install.sh"),
+                        str(output / "cargento-runtime-1.2.3.tar.gz"),
+                        str(output / "cargento-runtime-1.2.3.tar.gz.sha256"),
+                    ],
+                ),
             )
 
     def test_ci_builds_and_tests_installer_assets_without_renaming_gates(self) -> None:
