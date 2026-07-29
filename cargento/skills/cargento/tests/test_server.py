@@ -8159,5 +8159,93 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
         self.assertIn("http://127.0.0.1:4553", self.SKILL)
 
 
+class DaemonLifecycleTest(unittest.TestCase):
+    """The real thing: detach, outlive the caller, answer --status, stop.
+
+    Everything else in this file tests a piece. This tests the promise.
+    """
+
+    SERVER = str(SERVER_PATH)
+
+    @staticmethod
+    def _free_port() -> int:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            return int(probe.getsockname()[1])
+
+    def _run(self, *flags: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, self.SERVER, *flags],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    def test_daemon_outlives_its_caller_and_stops_on_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {**os.environ, "CARGENTO_HOME": tmp}
+            port = self._free_port()
+            flags = ("--port", str(port))
+            try:
+                start = self._run(*flags, "--daemon", env=env)
+                self.assertEqual(0, start.returncode, start.stdout + start.stderr)
+                # The starting process has exited by now. Everything below runs
+                # against a server whose parent is gone.
+                self.assertIn(f"http://127.0.0.1:{port}/", start.stdout)
+                self.assertIn("pid ", start.stdout)
+
+                kind, health = dashboard.probe_port(port, timeout=10)
+                self.assertEqual("cargento", kind, start.stdout)
+                assert health is not None
+                self.assertNotEqual(os.getpid(), health["pid"])
+
+                state = json.loads(Path(tmp, f"cargento-{port}.json").read_text(encoding="utf-8"))
+                self.assertEqual(health["pid"], state["pid"])
+
+                status = self._run(*flags, "--status", env=env)
+                self.assertEqual(0, status.returncode, status.stdout + status.stderr)
+                self.assertIn("running", status.stdout)
+
+                stopped = self._run(*flags, "--stop", env=env)
+                self.assertEqual(0, stopped.returncode, stopped.stdout + stopped.stderr)
+                self.assertIn("stopped", stopped.stdout)
+
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    if dashboard.probe_port(port, timeout=1)[0] == "closed":
+                        break
+                    time.sleep(0.2)
+                self.assertEqual("closed", dashboard.probe_port(port, timeout=1)[0])
+                self.assertFalse(Path(tmp, f"cargento-{port}.json").exists())
+
+                after = self._run(*flags, "--status", env=env)
+                self.assertEqual(1, after.returncode)
+                self.assertIn("not running", after.stdout)
+            finally:
+                # Never leave a detached server behind, however this test ended.
+                self._run(*flags, "--stop", env=env)
+
+    def test_a_busy_port_still_explains_itself_under_daemon(self) -> None:
+        """D-1's promise: binding happens before detaching, so this message
+        reaches the terminal that asked for it and not just a log file."""
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        port = httpd.server_port
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                result = self._run(
+                    "--port", str(port), "--daemon", env={**os.environ, "CARGENTO_HOME": tmp}
+                )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn(f"port {port}", result.stdout + result.stderr)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+
 if __name__ == "__main__":
     unittest.main()
