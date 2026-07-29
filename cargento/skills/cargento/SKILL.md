@@ -37,7 +37,8 @@ Data sources (read-only, no external calls; all parsing is defensive — a broke
 A `display` switch at the top right toggles between two renderings of the same `/api/data` payload. The choice is remembered per browser (`localStorage`, key `cargento.displayMode`) and `c` toggles it from the keyboard. Nothing is filtered out of one mode and present in the other; the two never disagree about a session.
 
 A `stop` button sits beside the switch in both modes: the first click arms it, the second stops the
-server, and `esc` or a click elsewhere disarms it. After it fires the page stops polling and says
+server, and anything else you do first — `esc`, a click elsewhere, any other control, any
+keystroke — disarms it. After it fires the page stops polling and says
 Cargento was stopped, rather than showing the "stalled" banner that means the server went away on
 its own.
 

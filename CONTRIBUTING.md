@@ -143,9 +143,11 @@ so re-run the job before investigating, and check the traceback is a timeout and
   `test_server.py` executes the real script under node against a stub DOM, so a test can fire a
   click or a keystroke and assert on what the page did. A `assertIn("some-class", PAGE)` passes
   forever after the behavior behind it breaks.
-- Bind the listener before forking (or, on Windows, before waiting on the re-spawned child), so a
-  failed bind is still reported to the terminal that asked for it, not to a log file nobody has been
-  told about yet.
+- Acquire everything that can fail before forking (or, on Windows, before waiting on the re-spawned
+  child): the listening socket, and the log file the detached process will write to. After the fork
+  there is nowhere for a failure to go — reporting one means pointing the user at the very log that
+  could not be opened. Note that `os.makedirs(exist_ok=True)` is not this check: it succeeds for a
+  directory that already exists whatever its mode, which is the likeliest bad state of all.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.
@@ -159,8 +161,11 @@ so re-run the job before investigating, and check the traceback is a timeout and
   binding the port, not by connecting to it: a connect to a bound socket that nothing is accepting
   from still succeeds, and repeated connects fill the backlog and then report the port gone while it
   is still bound.
-- Any guard against work landing after teardown has to be re-checked after every `await`, not only on
-  entry. An entry check skips the next poll; it does nothing about the one already in flight.
+- Guard the sink, not the caller. A check against work landing after teardown belongs in the function
+  that actually writes the DOM, the file or the socket — `render()`, not `refresh()`. Guarding a
+  caller was wrong twice for the same stop button: first it missed the request already in flight,
+  then it missed the other fourteen callers, one of which was a keystroke. If you do also guard a
+  caller, it must be for something the sink cannot see, and say so.
 
 The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md); for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md); for how a row is labelled and identified, [docs/design-session-identity.md](docs/design-session-identity.md); and for `--daemon`/`--status`/`--stop`, [docs/design-daemon.md](docs/design-daemon.md).
 
