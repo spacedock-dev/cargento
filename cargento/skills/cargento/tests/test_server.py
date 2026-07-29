@@ -3847,6 +3847,14 @@ console.log(JSON.stringify(out));
         self.assertEqual([0], exited)
         self.assertEqual("daemon", role)
 
+    # await_daemon is POSIX-only by construction: it waits on the pipe with
+    # select(), which on Windows accepts sockets and nothing else, so a pipe fd
+    # raises there. main() never reaches it on Windows — that platform takes the
+    # re-spawn path and await_spawned — so the function is unreachable rather
+    # than broken. Skipped rather than rewritten rather than pretending: without
+    # the skip the second of these two passed on Windows for the wrong reason,
+    # because select() raising produced the same exit code it asserts.
+    @unittest.skipIf(os.name == "nt", "select() cannot watch a pipe on Windows; POSIX-only path")
     def test_await_daemon_reports_the_pid_the_daemon_announced(self) -> None:
         read_fd, write_fd = os.pipe()
         try:
@@ -3859,6 +3867,7 @@ console.log(JSON.stringify(out));
         self.assertIn("http://127.0.0.1:4553/", message)
         self.assertIn("/tmp/c.log", message)
 
+    @unittest.skipIf(os.name == "nt", "select() cannot watch a pipe on Windows; POSIX-only path")
     def test_await_daemon_reports_failure_when_the_daemon_says_nothing(self) -> None:
         read_fd, write_fd = os.pipe()
         os.close(write_fd)  # daemon died before announcing
@@ -3908,13 +3917,43 @@ console.log(JSON.stringify(out));
 
     def test_await_spawned_reports_the_child_that_answered(self) -> None:
         health = {"ok": True, "pid": 777, "port": 4553, "started": 1.0}
-        proc = mock.Mock(returncode=None)
+        proc = mock.Mock(returncode=None, pid=777)
         proc.poll.return_value = None
         with mock.patch.object(dashboard, "probe_port", return_value=("cargento", health)):
             message, code = dashboard.await_spawned(proc, 4553, "/tmp/c.log", timeout=2)
         self.assertEqual(0, code)
         self.assertIn("pid 777", message)
         self.assertIn("http://127.0.0.1:4553/", message)
+
+    def test_await_spawned_does_not_mistake_another_cargento_for_its_own_child(self) -> None:
+        # The Windows failure this exists to prevent: the child loses the bind
+        # to a dashboard already on that port, and the parent's readiness poll
+        # gets a perfectly valid /api/health answer — from the *other*
+        # instance. Reporting success there tells the user their daemon
+        # started when it did not, and hands back a pid they do not own.
+        health = {"ok": True, "pid": 999, "port": 4553, "started": 1.0}
+        with tempfile.TemporaryDirectory() as tmp:
+            log_file = os.path.join(tmp, "c.log")
+            Path(log_file).write_text("Cargento: port 4553 is already in use.", encoding="utf-8")
+            proc = mock.Mock(returncode=1, pid=777)
+            proc.poll.return_value = 1
+            with mock.patch.object(dashboard, "probe_port", return_value=("cargento", health)):
+                message, code = dashboard.await_spawned(proc, 4553, log_file, timeout=2)
+        self.assertEqual(1, code)
+        self.assertNotIn("pid 999", message)
+        self.assertIn("already in use", message)
+
+    def test_await_spawned_keeps_waiting_while_a_foreign_answer_and_a_live_child(self) -> None:
+        # Same mismatch, but the child is still running: the answer is not
+        # evidence about our child either way, so this must time out rather
+        # than claim success.
+        health = {"ok": True, "pid": 999, "port": 4553, "started": 1.0}
+        proc = mock.Mock(returncode=None, pid=777)
+        proc.poll.return_value = None
+        with mock.patch.object(dashboard, "probe_port", return_value=("cargento", health)):
+            message, code = dashboard.await_spawned(proc, 4553, "/tmp/c.log", timeout=0.3)
+        self.assertEqual(1, code)
+        self.assertNotIn("pid 999", message)
 
     def test_await_spawned_surfaces_the_log_when_the_child_exits_at_once(self) -> None:
         # This is the case that keeps D-1's promise on Windows: the parent

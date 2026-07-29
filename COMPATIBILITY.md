@@ -44,7 +44,8 @@ suppress on-screen display independently of whether the process is detached. See
 
 `--daemon` detaches so the dashboard outlives the session that started it: a double-fork on POSIX,
 a detached re-spawn on Windows (there is no `fork` there). Both bind the listening socket (or, on
-Windows, wait for the re-spawned child to prove it bound, over `/api/health`) before reporting
+Windows, wait for the re-spawned child to prove it bound, over `/api/health`, matching the answering
+pid against the child's own so a dashboard already on that port cannot be mistaken for it) before reporting
 success, so a busy port still fails loudly on every platform instead of silently in a log nobody was
 told about.
 

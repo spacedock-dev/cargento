@@ -6075,7 +6075,12 @@ def daemon_announce(write_fd: int) -> None:
 def await_daemon(
     read_fd: int, port: int, log_file: str, timeout: float = DAEMON_READY_TIMEOUT_SEC
 ) -> tuple[str, int]:
-    """Wait for the forked daemon's pid. Returns (message, exit code)."""
+    """Wait for the forked daemon's pid. Returns (message, exit code).
+
+    POSIX only, and unreachable elsewhere: select() on Windows accepts sockets
+    and nothing else, so watching a pipe fd raises there. main() gives Windows
+    the re-spawn path and await_spawned instead.
+    """
     deadline = time.monotonic() + timeout
     seen = b""
     try:
@@ -6161,12 +6166,24 @@ def await_spawned(
     Windows cannot report the child's bind() to the parent, so the parent
     observes the consequence instead. That is what keeps the POSIX promise that
     a busy port explains itself on the terminal rather than only in a log.
+
+    Which is why the answer has to be matched against the child's own pid. A
+    dashboard already on that port answers /api/health perfectly well, and
+    treating that as proof told the user their daemon had started when it had
+    in fact lost the bind, handing back a pid belonging to someone else's
+    process. The pid is in the health payload for exactly this reason.
     """
     deadline = time.monotonic() + timeout
+    foreign = False
     while time.monotonic() < deadline:
         kind, health = probe_port(port, timeout=0.5)
         if kind == "cargento" and health is not None:
-            return (f"Cargento: http://127.0.0.1:{port}/ (pid {health['pid']}, log {log_file})", 0)
+            if health.get("pid") == proc.pid:
+                return (
+                    f"Cargento: http://127.0.0.1:{port}/ (pid {health['pid']}, log {log_file})",
+                    0,
+                )
+            foreign = True  # someone else's dashboard; our child lost the bind
         if proc.poll() is not None:
             return (
                 (
@@ -6176,6 +6193,15 @@ def await_spawned(
                 1,
             )
         time.sleep(0.2)
+    if foreign:
+        return (
+            (
+                f"Cargento: port {port} is already served by a different Cargento, so "
+                f"the one just started could not bind it. Look at that instance with "
+                f"--status, or pick another port with --port."
+            ),
+            1,
+        )
     return (
         (
             f"Cargento: started in the background, but nothing answered on port "

@@ -60,6 +60,14 @@ That wait is how Windows keeps D-1's promise. The parent cannot observe the chil
 directly, so it observes the consequence, and a port conflict remains a message on the terminal
 rather than a silent failure.
 
+The answer has to be matched against the child's own pid, and the first version of this did not do
+that. A dashboard already on the port answers `/api/health` perfectly well, so the parent accepted
+that as proof, reported success, and handed back a pid belonging to a process it had not started,
+while the child it spawned was dying on the bind. The `platform-tests` job on Windows caught it; the
+POSIX path was never affected, because there the bind happens in the parent before any fork. This is
+what the pid in the health payload is for, the same reason `--status` needs it (D-4). A foreign
+answer now reports that the port is already served by a different Cargento and points at `--status`.
+
 The child needs no private flag: it is an ordinary foreground run that happens to own no console. One
 fewer argument, and one fewer way for the two paths to diverge.
 
