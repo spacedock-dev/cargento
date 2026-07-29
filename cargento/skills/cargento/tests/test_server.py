@@ -182,6 +182,230 @@ const __settle = () => new Promise(r => setImmediate(r));
         return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
+class PiTranscriptTest(unittest.TestCase):
+    """Pi v3 transcripts: only the leaf's parent chain is the live branch."""
+
+    NOW = "2026-07-29T12:00:00Z"
+
+    @staticmethod
+    def _write(path: Path, records: list[dict[str, Any]]) -> None:
+        path.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+
+    @staticmethod
+    def _message(
+        entry_id: str,
+        parent_id: str | None,
+        timestamp: str,
+        role: str,
+        content: Any,
+        **extra: Any,
+    ) -> dict[str, Any]:
+        return {
+            "type": "message",
+            "id": entry_id,
+            "parentId": parent_id,
+            "timestamp": timestamp,
+            "message": {"role": role, "content": content, **extra},
+        }
+
+    def test_metadata_and_global_name_survive_a_long_transcript(self) -> None:
+        # Removing the global name pass, or reading only TAIL_BYTES, would make
+        # this live session fall back to its prompt despite Pi's named selector.
+        sid = "pi-session-id"
+        header = {"type": "session", "version": 3, "id": sid, "cwd": "/w/proj"}
+        named = {
+            "type": "session_info",
+            "id": "info-named",
+            "parentId": None,
+            "timestamp": "2026-07-29T11:59:00Z",
+            "name": "Named session",
+        }
+        root = self._message(
+            "root",
+            None,
+            "2026-07-29T11:59:10Z",
+            "user",
+            [{"type": "text", "text": "Implement the fix"}],
+        )
+        assistant = self._message(
+            "assistant",
+            "root",
+            self.NOW,
+            "assistant",
+            [{"type": "toolCall", "id": "call-1", "name": "bash", "arguments": {}}],
+            usage={"output": 40},
+        )
+        leaf = self._message(
+            "leaf",
+            "assistant",
+            "2026-07-29T12:00:01Z",
+            "toolResult",
+            [{"type": "text", "text": "done"}],
+        )
+        filler = self._message(
+            "discarded-filler",
+            "root",
+            "2026-07-29T11:59:20Z",
+            "assistant",
+            "x" * (dashboard.TAIL_BYTES + 10),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-session.jsonl"
+            self._write(path, [header, named, root, filler, assistant, leaf])
+
+            self.assertEqual(
+                {"session_id": sid, "cwd": "/w/proj", "parent_session": None},
+                dashboard.pi_meta(str(path)),
+            )
+            scan = dashboard.scan_pi_session(str(path))
+            assert scan is not None
+            self.assertEqual("Named session", scan["title"])
+            self.assertEqual("Implement the fix", scan["last_prompt"])
+            self.assertEqual("bash", scan["last_tool"])
+            self.assertEqual([(dashboard.parse_ts(self.NOW), 40)], scan["usage_events"])
+            self.assertIn("turn", scan)
+
+            with path.open("a") as output:
+                output.write(
+                    json.dumps(
+                        {
+                            "type": "session_info",
+                            "id": "info-cleared",
+                            "parentId": "leaf",
+                            "timestamp": "2026-07-29T12:00:02Z",
+                            "name": None,
+                        }
+                    )
+                    + "\n"
+                )
+            cleared = dashboard.scan_pi_session(str(path))
+            assert cleared is not None
+
+        self.assertEqual("Implement the fix", cleared["title"])
+
+    def test_active_branch_ignores_abandoned_usage_and_tools(self) -> None:
+        # Following file order instead of parentId would surface this abandoned
+        # branch's 900-token shell call as the active Pi session.
+        records = [
+            {"type": "session", "version": 3, "id": "tree", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Start work"),
+            self._message("abandoned", "root", "2026-07-29T11:00:01Z", "user", "Abandoned prompt"),
+            self._message(
+                "bad-tool",
+                "abandoned",
+                "2026-07-29T11:00:02Z",
+                "assistant",
+                [{"type": "toolCall", "name": "wrong-tool"}],
+                usage={"output": 900},
+            ),
+            self._message("shared", "root", "2026-07-29T11:00:30Z", "assistant", "thinking"),
+            self._message("winning", "shared", "2026-07-29T11:01:00Z", "user", "Winning prompt"),
+            self._message(
+                "output-10",
+                "winning",
+                "2026-07-29T11:01:01Z",
+                "assistant",
+                [{"type": "toolCall", "name": "bash"}],
+                usage={"output": 10},
+            ),
+            self._message(
+                "output-3",
+                "output-10",
+                "2026-07-29T11:01:02Z",
+                "toolResult",
+                [],
+                usage={"output": 3},
+            ),
+            {
+                "type": "compaction",
+                "id": "output-4",
+                "parentId": "output-3",
+                "timestamp": "2026-07-29T11:01:03Z",
+                "usage": {"output": 4},
+            },
+            {
+                "type": "branch_summary",
+                "id": "output-5",
+                "parentId": "output-4",
+                "timestamp": "2026-07-29T11:01:04Z",
+                "usage": {"output": 5},
+            },
+            self._message("leaf", "output-5", "2026-07-29T11:01:05Z", "assistant", "complete"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-tree.jsonl"
+            self._write(path, records)
+            scan = dashboard.scan_pi_session(str(path))
+            assert scan is not None
+
+        self.assertEqual("Winning prompt", scan["last_prompt"])
+        self.assertEqual("bash", scan["last_tool"])
+        self.assertEqual(
+            [
+                (dashboard.parse_ts("2026-07-29T11:01:01Z"), 10),
+                (dashboard.parse_ts("2026-07-29T11:01:02Z"), 3),
+                (dashboard.parse_ts("2026-07-29T11:01:03Z"), 4),
+                (dashboard.parse_ts("2026-07-29T11:01:04Z"), 5),
+            ],
+            scan["usage_events"],
+        )
+        self.assertEqual([30.0], scan["turn"]["durations"])
+        self.assertEqual(dashboard.parse_ts("2026-07-29T11:01:00Z"), scan["turn"]["turn_start"])
+
+    def test_partial_writes_and_rebranching_preserve_the_last_complete_branch(self) -> None:
+        # Treating an incomplete append as EOF, or retaining children after a
+        # rebranch to root, would respectively erase useful state or show it.
+        records = [
+            {"type": "session", "version": 3, "id": "append", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "First prompt"),
+            self._message("old-leaf", "root", "2026-07-29T11:00:01Z", "assistant", "old"),
+        ]
+        rebranch = self._message(
+            "new-leaf", "root", "2026-07-29T11:02:00Z", "user", "Rebranched prompt"
+        )
+        encoded = json.dumps(rebranch)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-append.jsonl"
+            self._write(path, records)
+            first = dashboard.scan_pi_session(str(path))
+            assert first is not None
+            with path.open("a") as output:
+                output.write("not json\n" + encoded[:-1])
+            partial = dashboard.scan_pi_session(str(path))
+            assert partial is not None
+            with path.open("a") as output:
+                output.write(encoded[-1:] + "\n")
+            rebased = dashboard.scan_pi_session(str(path))
+            assert rebased is not None
+
+        self.assertEqual("First prompt", partial["last_prompt"])
+        self.assertEqual("Rebranched prompt", rebased["last_prompt"])
+        self.assertEqual("First prompt", rebased["title"])
+
+
+class TurnTrackingTest(unittest.TestCase):
+    def test_pi_turns_apply_the_quiet_gap_rule(self) -> None:
+        # Omitting the quiet-gap reset would count the inactive wait as work.
+        records = [
+            {"type": "session", "version": 3, "id": "turns", "cwd": "/w/proj"},
+            PiTranscriptTest._message("prompt", None, "2026-07-29T11:00:00Z", "user", "Work"),
+            PiTranscriptTest._message(
+                "event", "prompt", "2026-07-29T11:00:05Z", "assistant", "working"
+            ),
+            PiTranscriptTest._message(
+                "resumed", "event", "2026-07-29T11:11:00Z", "assistant", "resumed"
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-turns.jsonl"
+            PiTranscriptTest._write(path, records)
+            scan = dashboard.scan_pi_session(str(path))
+            assert scan is not None
+
+        self.assertEqual([5.0], scan["turn"]["durations"])
+        self.assertEqual(dashboard.parse_ts("2026-07-29T11:11:00Z"), scan["turn"]["turn_start"])
+
+
 class CargentoServerTest(PageJsHarness):
     def setUp(self) -> None:
         with dashboard._lock:
