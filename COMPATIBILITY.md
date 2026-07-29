@@ -24,6 +24,7 @@ The rest are on you.
 | Capability | macOS | Linux | Windows | WSL2 |
 |---|---|---|---|---|
 | Harness discovery, dashboard, `/api/data` | yes | yes | yes | yes (Linux-side stores) |
+| Pi nested and flat session stores | yes | yes | yes | yes (Linux-side stores) |
 | Turn ETA, token rate | yes | yes | yes | yes |
 | Task age from file birthtime | yes | falls back to mtime | Python 3.12+ only | falls back to mtime |
 | Needs-input popup, browser (tab open) | not needed | yes | yes | yes (host browser) |
@@ -57,8 +58,9 @@ indefinitely. See [`SECURITY.md`](SECURITY.md) for the written-paths contract.
 Other notes:
 
 - Needs-input detection exists only for Claude Code sessions. Other harnesses expose no equivalent signal in their local stores.
-- Spacedock workflow detection likewise exists only for Claude Code sessions. It rests on an `agentSetting` in the first transcript records and on the first officer's boot output, both written by the Claude launch path. The Codex and Pi hosts record neither in a form a passive reader can use, so their sessions render exactly as before. The collector is shaped so a host can be added without touching the parsers.
-- Store locations resolve per platform, and `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, and `COPILOT_HOME` are honored. Run `server.py --diagnose` to see every path searched and what was found there.
+- Spacedock workflow detection likewise exists only for Claude Code sessions. It rests on an `agentSetting` in the first transcript records and on the first officer's boot output, both written by the Claude launch path. Codex and Pi record neither in a form a passive reader can use. Pi forks and clones remain independent rows, not subagents.
+- Pi scans the nested default store under `~/.pi/agent/sessions` and a flat custom store. `PI_CODING_AGENT_SESSION_DIR` is the authoritative direct-store override and wins over `PI_CODING_AGENT_DIR`, the global `sessionDir` setting, and the default. `PI_CODING_AGENT_DIR` relocates the configuration root, including its global `settings.json`; a relative global `sessionDir` resolves there. A separate process cannot infer a one-off Pi `--session-dir` or a project-local `.pi/settings.json`, so expose the effective store with `PI_CODING_AGENT_SESSION_DIR` when either is in use.
+- Store locations resolve per platform, and `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, `COPILOT_HOME`, `PI_CODING_AGENT_DIR`, and `PI_CODING_AGENT_SESSION_DIR` are honored. Run `server.py --diagnose` to see every path searched and what was found there.
 - WSL2's `localhostForwarding` defaults on but can be switched off, and mirrored/NAT networking modes or corporate policy can also break host-browser access to `127.0.0.1:4553`. Probe before assuming; the fallback is `ssh -L` or a browser inside WSL.
 - Supported WSL topology is server and agents on the same side of the boundary. Reading a Windows-side store from inside WSL works over `/mnt/c`, but 9p latency and mtime granularity make state detection unreliable, so it is not supported.
 - `sqlite3` is an optional stdlib module. On a build without it (some musl/Alpine images) OpenCode, Cursor and Goose report undiscovered. Antigravity still appears, since its discovery and state come from store mtime and CLI logs, but without a token rate or turn ETA.
@@ -74,4 +76,4 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: ddff2fb (2026-07-29) -->
+<!-- docs-synced-through: 4cd38ca (2026-07-29) -->

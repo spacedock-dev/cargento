@@ -37,13 +37,18 @@ in two roots emits it twice.
 An explicit environment override is *authoritative*. If it is set but missing or unreadable, say so
 loudly rather than falling through to a default that happens to work. Some harnesses need more than
 one unrelated root (Claude needs `projects/` and `tasks/`; Gemini needs the Gemini CLI tree and the
-Antigravity CLI tree), so the unit is a per-harness root set, not a single root.
+Antigravity CLI tree), so the unit is a per-harness root set, not a single root. Pi makes the same
+case in a different shape: its default store is nested below its configuration root, while a custom
+session directory is flat. `PI_CODING_AGENT_SESSION_DIR` therefore wins over the configuration-root
+override, global setting, and default. The global `sessionDir` setting is readable, but a separate
+process cannot discover a per-invocation CLI directory or project-local settings file. Those users
+must expose the effective directory through the session-store override.
 
 ## D-2: `--diagnose` is a first-class deliverable, not a debug flag
 
 `--diagnose [--json]` prints the platform, the interpreter, every candidate root considered, which
 existed, which were readable, and every collector error the refresh path swallowed. It is the only
-realistic way to validate a platform's path table without owning an install of all eight harnesses,
+realistic way to validate a platform's path table without owning an install of all nine harnesses,
 and it is what turns "no sessions" into an answer.
 
 Two standing constraints:
@@ -100,6 +105,23 @@ The asymmetry is the whole argument. A wrong default silently breaks a setup tha
 a missing one costs the user one line of `--diagnose` output and an environment variable. This is
 why `GOOSE_PATH_ROOT` is not implemented, since its upstream semantics are undocumented, and why
 reshaping state detection on an unverified platform premise is deferred rather than attempted.
+
+## D-7: Pi follows persisted branches, never inferred relationships
+
+Pi records a session as a tree. The current conversation is the ancestor path of its most recently
+persisted leaf, not every record in the JSONL file. The scanner keeps only that active persisted
+branch for prompts, tools, output usage, and turns. Navigation that has not appended a record is not
+observable, so the dashboard deliberately reports the last persisted branch instead of guessing.
+The most recent global `session_info` name still wins as the session title, including a later clear.
+
+Pi's `parentSession` identifies a fork or clone, not a core subagent. Each file remains an
+independent row. Treating it as a parent-child relationship would hide a valid session and attach
+activity to the wrong row.
+
+Rejected: parsing Pi as a linear JSONL transcript. A sibling branch can contain a newer-looking
+prompt, tool, or token total that Pi has abandoned. Also rejected: invoking Pi to discover its live
+selector. That would add a runtime dependency, execute user-installed extension code, and turn an
+absent Pi installation into an error instead of an undiscovered harness.
 
 ## Rejected alternatives worth keeping rejected
 
@@ -176,6 +198,6 @@ de-duplication was tested as a function but never as wired into `collect()`, and
 assertion was vacuous.
 
 Honest gap: nothing validates the *Windows store locations* against a real Windows install. That
-needs the eight harnesses actually installed there. The resolver's Windows output is asserted as
+needs the nine harnesses actually installed there. The resolver's Windows output is asserted as
 strings; whether those strings are where the tools really write is what a user's `--diagnose` output
 settles.

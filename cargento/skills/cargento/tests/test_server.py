@@ -9677,7 +9677,14 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
     def test_documented_env_overrides_are_the_ones_honoured(self) -> None:
         documented = {
             name
-            for name in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "COPILOT_HOME")
+            for name in (
+                "CLAUDE_CONFIG_DIR",
+                "CODEX_HOME",
+                "GEMINI_CLI_HOME",
+                "COPILOT_HOME",
+                "PI_CODING_AGENT_DIR",
+                "PI_CODING_AGENT_SESSION_DIR",
+            )
             if f"`{name}`" in self.SKILL
         }
         self.assertEqual(set(dashboard.STORE_ENV_VARS), documented)
@@ -9687,6 +9694,8 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
             ("CODEX_HOME", "codex.sessions", "/opt/x/sessions"),
             ("GEMINI_CLI_HOME", "gemini.tmp", "/opt/x/.gemini/tmp"),
             ("COPILOT_HOME", "copilot.root", "/opt/x"),
+            ("PI_CODING_AGENT_DIR", "pi.sessions", "/opt/x/sessions"),
+            ("PI_CODING_AGENT_SESSION_DIR", "pi.sessions", "/opt/x"),
         ):
             with self.subTest(env=name):
                 roots = dashboard.resolve_store_roots(

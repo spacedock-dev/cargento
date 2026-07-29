@@ -1,7 +1,7 @@
 {
   "name": "cargento",
   "version": "0.5.0",
-  "description": "Agnostic agent cartography and visualization — a live local dashboard mapping coding-agent sessions across Claude Code, Codex, Gemini, Antigravity, Copilot, OpenCode, Cursor, Goose, and Droid",
+  "description": "Agnostic agent cartography and visualization — a live local dashboard mapping coding-agent sessions across Claude Code, Codex, Pi, Gemini, Antigravity, Copilot, OpenCode, Cursor, Goose, and Droid",
   "author": {
     "name": "DataRecce",
     "email": "dev@reccehq.com",
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Cargento",
     "shortDescription": "Agent cartography and visualization",
-    "longDescription": "Cargento maps live coding-agent activity on this machine into a single local dashboard — sessions, subagents, task progress, turn ETAs, and token output rate across Claude Code, Codex, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, and Factory Droid.",
+    "longDescription": "Cargento maps live coding-agent activity on this machine into a single local dashboard — sessions, subagents, task progress, turn ETAs, and token output rate across Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, and Factory Droid.",
     "developerName": "DataRecce",
     "category": "Development",
     "capabilities": [
