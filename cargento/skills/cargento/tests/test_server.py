@@ -3584,6 +3584,58 @@ console.log(JSON.stringify(out));
             httpd.server_close()
             thread.join(timeout=2)
 
+    def test_cargento_home_honours_the_override_and_defaults_under_home(self) -> None:
+        with mock.patch.dict(os.environ, {"CARGENTO_HOME": "/tmp/elsewhere"}):
+            self.assertEqual("/tmp/elsewhere", dashboard.cargento_home())
+            self.assertEqual("/tmp/elsewhere", os.path.dirname(dashboard.state_path(4553)))
+        environ = {k: v for k, v in os.environ.items() if k != "CARGENTO_HOME"}
+        with mock.patch.dict(os.environ, environ, clear=True):
+            self.assertEqual(os.path.join(dashboard.HOME, ".cargento"), dashboard.cargento_home())
+
+    def test_state_file_roundtrips_and_names_itself_per_port(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+        ):
+            dashboard.write_state(4553)
+            dashboard.write_state(9999)
+            self.assertTrue(os.path.exists(os.path.join(tmp, "cargento-4553.json")))
+            state = dashboard.read_state(4553)
+            assert state is not None
+            self.assertEqual(os.getpid(), state["pid"])
+            self.assertEqual(4553, state["port"])
+            self.assertEqual(dashboard.log_path(4553), state["log"])
+            self.assertEqual(sys.executable, state["python"])
+            # Two instances on two ports do not overwrite each other.
+            other = dashboard.read_state(9999)
+            assert other is not None
+            self.assertEqual(9999, other["port"])
+            dashboard.remove_state(4553)
+            self.assertIsNone(dashboard.read_state(4553))
+            dashboard.remove_state(4553)  # removing twice is not an error
+
+    def test_read_state_returns_none_for_absent_corrupt_and_non_object_files(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+        ):
+            self.assertIsNone(dashboard.read_state(4553))
+            Path(dashboard.state_path(4553)).write_text("{not json", encoding="utf-8")
+            self.assertIsNone(dashboard.read_state(4553))
+            Path(dashboard.state_path(4553)).write_text("[1,2]", encoding="utf-8")
+            self.assertIsNone(dashboard.read_state(4553))
+
+    def test_write_state_reports_and_survives_an_unwritable_home(self) -> None:
+        # A dashboard that cannot write its state file still serves; --status
+        # just cannot see it. This must never be fatal.
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = os.path.join(tmp, "home")
+            Path(blocker).write_text("not a directory", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"CARGENTO_HOME": blocker}):
+                with mock.patch.object(dashboard, "diag") as diag:
+                    dashboard.write_state(4553)
+                self.assertTrue(diag.called)
+
 
 class ReverseLinesTest(unittest.TestCase):
     """Replaces the reverse mmap scans. A mapped region whose file is truncated

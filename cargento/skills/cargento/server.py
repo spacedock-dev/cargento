@@ -5724,6 +5724,93 @@ def collect_json(window_hours: float, show_all: bool) -> bytes:
         return body
 
 
+# ── process lifecycle: state file, health probe, detaching, stopping ────────
+# Cargento is started by an agent and outlives the session that started it, so
+# it needs the three things a supervised process gets for free: a way to be
+# found, a way to be asked whether it is alive, and a way to be stopped. See
+# docs/design-daemon.md.
+
+CARGENTO_HOME_ENV = "CARGENTO_HOME"
+DAEMON_READY_TIMEOUT_SEC = 10.0
+
+
+def cargento_home() -> str:
+    """Where the state file and the daemon log live.
+
+    One layout on every platform. Platform-correct runtime directories
+    (XDG_RUNTIME_DIR, %LOCALAPPDATA%) would be three code paths and three ways
+    for --status to look somewhere the server never wrote. CARGENTO_HOME is
+    authoritative when set, which is the rule the harness store variables in
+    STORE_ENV_VARS already follow.
+    """
+    return os.environ.get(CARGENTO_HOME_ENV) or os.path.join(HOME, ".cargento")
+
+
+def state_path(port: int) -> str:
+    return os.path.join(cargento_home(), f"cargento-{port}.json")
+
+
+def log_path(port: int) -> str:
+    return os.path.join(cargento_home(), f"cargento-{port}.log")
+
+
+def ensure_cargento_home() -> str:
+    """Create the state directory, owner-only, and return it.
+
+    0o700 because the log carries tracebacks with local paths in them. The mode
+    is advisory: it does not apply to a directory that already exists, and
+    Windows ignores it.
+    """
+    home = cargento_home()
+    os.makedirs(home, mode=0o700, exist_ok=True)
+    return home
+
+
+def write_state(port: int) -> None:
+    """Record this process as the instance serving `port`.
+
+    Written by every instance that binds, daemon or foreground: --status and
+    --stop are worth having either way, and a file that exists only sometimes
+    is a file whose absence tells you nothing.
+
+    Written through a temp file and os.replace so a reader mid-write sees the
+    old file or the new one, never half of one.
+    """
+    payload = {
+        "pid": os.getpid(),
+        "port": port,
+        "started": SERVER_STARTED,
+        "log": log_path(port),
+        "python": sys.executable,
+    }
+    target = state_path(port)
+    tmp = f"{target}.{os.getpid()}.tmp"
+    try:
+        ensure_cargento_home()
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+        os.replace(tmp, target)
+    except OSError as exc:
+        diag(f"Cargento: could not write {target} ({exc}); --status will not see this instance")
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+
+
+def read_state(port: int) -> dict[str, Any] | None:
+    """The recorded state for `port`, or None if there is none to trust."""
+    try:
+        with open(state_path(port), encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def remove_state(port: int) -> None:
+    with contextlib.suppress(OSError):
+        os.unlink(state_path(port))
+
+
 class Handler(BaseHTTPRequestHandler):
     window_hours = 24
 
