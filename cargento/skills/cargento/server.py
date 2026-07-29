@@ -6032,6 +6032,85 @@ def await_daemon(
     )
 
 
+def forwarded_args(args: argparse.Namespace) -> list[str]:
+    """The flags a re-spawned child needs — built from parsed values, not sys.argv.
+
+    --daemon is deliberately absent: the child is an ordinary foreground run
+    that happens to own no console, and forwarding the flag would re-spawn
+    forever. Rebuilding from the namespace rather than filtering argv means a
+    future flag has to be added here consciously.
+    """
+    forwarded = ["--port", str(args.port), "--window-hours", str(args.window_hours)]
+    if args.no_spacedock:
+        forwarded.append("--no-spacedock")
+    return forwarded
+
+
+def spawn_detached(args: argparse.Namespace, log_file: str) -> subprocess.Popen[bytes]:
+    """Re-spawn this script with no console attached (Windows has no fork)."""
+    creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+        subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+    )
+    with open(log_file, "ab", buffering=0) as handle:
+        return subprocess.Popen(  # noqa: S603 — fixed argv from parsed flags, no shell
+            [sys.executable, os.path.abspath(__file__), *forwarded_args(args)],
+            stdin=subprocess.DEVNULL,
+            stdout=handle,
+            stderr=handle,
+            creationflags=creationflags,
+            close_fds=True,
+        )
+
+
+def log_tail(log_file: str, limit: int = 2000) -> str:
+    """The end of the daemon log — the only account of a failure the parent
+    could not watch happen."""
+    try:
+        with open(log_file, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - limit))
+            data = handle.read()
+    except OSError:
+        return f"(could not read {log_file})"
+    return data.decode("utf-8", "replace").strip() or f"({log_file} is empty)"
+
+
+def await_spawned(
+    proc: subprocess.Popen[bytes],
+    port: int,
+    log_file: str,
+    timeout: float = DAEMON_READY_TIMEOUT_SEC,
+) -> tuple[str, int]:
+    """Wait for the re-spawned child to answer. Returns (message, exit code).
+
+    Windows cannot report the child's bind() to the parent, so the parent
+    observes the consequence instead. That is what keeps the POSIX promise that
+    a busy port explains itself on the terminal rather than only in a log.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        kind, health = probe_port(port, timeout=0.5)
+        if kind == "cargento" and health is not None:
+            return (f"Cargento: http://127.0.0.1:{port}/ (pid {health['pid']}, log {log_file})", 0)
+        if proc.poll() is not None:
+            return (
+                (
+                    f"Cargento: the background server exited immediately "
+                    f"(code {proc.returncode}). Its output was:\n{log_tail(log_file)}"
+                ),
+                1,
+            )
+        time.sleep(0.2)
+    return (
+        (
+            f"Cargento: started in the background, but nothing answered on port "
+            f"{port} within {timeout:.0f}s — check {log_file}."
+        ),
+        1,
+    )
+
+
 class Handler(BaseHTTPRequestHandler):
     window_hours = 24
 
@@ -6461,6 +6540,12 @@ def main() -> None:
     log_file = log_path(args.port)
     if args.daemon:
         ensure_cargento_home()
+    if args.daemon and os.name == "nt":
+        # No fork on Windows: re-spawn, then wait to be sure (D-2). Returns
+        # before binding, so the parent never holds the port it handed over.
+        message, code = await_spawned(spawn_detached(args, log_file), args.port, log_file)
+        diag(message)
+        raise SystemExit(code)
     # Bind to loopback only — this exposes local session data.
     #
     # Bind before detaching. bind_error_message() exists so a busy port gets an
@@ -6474,7 +6559,7 @@ def main() -> None:
         diag(bind_error_message(exc, args.port))
         raise SystemExit(1) from exc
     announce_fd: int | None = None
-    if args.daemon:
+    if args.daemon and os.name != "nt":
         role, fd = fork_daemon()
         if role == "parent":
             # The daemon holds its own dup of the listening socket; closing
