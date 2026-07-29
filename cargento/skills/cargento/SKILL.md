@@ -94,9 +94,9 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and uptime), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-Cargento writes two files, both in a `.cargento` directory under your home directory (relocatable
-with `CARGENTO_HOME`): `cargento-<port>.json`, which records the running instance, and
-`cargento-<port>.log`, where a detached server's output goes.
+Cargento writes two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+`cargento-<port>.json`, which records the running instance, and `cargento-<port>.log`, where a
+detached server's output goes.
 
 ## Notifications
 

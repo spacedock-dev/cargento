@@ -8226,10 +8226,14 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
 
     def test_documented_store_paths_are_the_ones_searched(self) -> None:
         # Every "~/..." path in the data-source list must be a real default.
+        # ".claude/settings" (the user's own hook config) and ".cargento" (Cargento's
+        # own state and log directory) are not harness stores, so the store-root
+        # assertion below does not apply to them.
+        excluded_prefixes = (".claude/settings", ".cargento")
         documented = {
             "~/" + match
             for match in re.findall(r"`~/([\w./*<>-]+?)[`/]", self.SKILL)
-            if not match.startswith(".claude/settings")
+            if not match.startswith(excluded_prefixes)
         }
         searched = {
             root.replace("/HOME", "~") for roots in self.posix_roots().values() for root in roots
