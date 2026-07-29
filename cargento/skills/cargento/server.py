@@ -63,6 +63,10 @@ DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "sha
 # missing one only costs an entry in --diagnose.
 STORE_ENV_VARS = ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "COPILOT_HOME")
 
+# Wall-clock start of the serving process, reported by /api/health so a caller
+# can tell uptime without a second request. Set once by main().
+SERVER_STARTED = 0.0
+
 
 def resolve_store_roots(
     *, platform_name: str, environ: Mapping[str, str], home: str
@@ -5783,6 +5787,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _health(self) -> None:
+        """Liveness and identity, with no filesystem access.
+
+        `/api/data` can answer "is a dashboard here?" only by scanning every
+        harness store on the machine. The daemon readiness wait and --status ask
+        that question in a loop, so they need an answer that costs nothing. The
+        pid is part of it because "something is listening on the port" is not
+        the same claim as "Cargento is running on the port".
+        """
+        self._send(
+            json.dumps(
+                {
+                    "ok": True,
+                    "pid": os.getpid(),
+                    "port": getattr(self.server, "server_port", 0),
+                    "started": SERVER_STARTED,
+                }
+            ).encode(),
+            "application/json",
+        )
+
     def do_GET(self) -> None:
         if not self._local_ok(allow_cross_site_navigation=True):
             self.send_error(403)
@@ -5791,6 +5816,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/data":
             show_all = parse_qs(url.query).get("all", ["0"])[0] == "1"
             self._send(collect_json(self.window_hours, show_all), "application/json")
+        elif url.path == "/api/health":
+            self._health()
         elif url.path == "/":
             self._send(PAGE.encode(), "text/html; charset=utf-8")
         else:

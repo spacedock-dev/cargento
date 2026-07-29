@@ -3540,6 +3540,50 @@ console.log(JSON.stringify(out));
         self.assertEqual("Ship feature", s["title"])
         self.assertEqual("ship it", s["last_prompt"])
 
+    def test_health_reports_identity_without_scanning_any_store(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            # The readiness wait and --status poll this in a loop. If it ever
+            # reaches collect(), a liveness check costs a full multi-harness
+            # filesystem scan.
+            with mock.patch.object(dashboard, "collect") as collect:
+                conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
+                conn.request("GET", "/api/health")
+                response = conn.getresponse()
+                status = response.status
+                payload = json.loads(response.read())
+                conn.close()
+            collect.assert_not_called()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+        self.assertEqual(200, status)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(os.getpid(), payload["pid"])
+        self.assertEqual(httpd.server_port, payload["port"])
+        self.assertIsInstance(payload["started"], (int, float))
+
+    def test_health_is_refused_from_a_non_local_host_header(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
+            conn.putrequest("GET", "/api/health", skip_host=True)
+            conn.putheader("Host", "evil.example")
+            conn.endheaders()
+            response = conn.getresponse()
+            self.assertEqual(403, response.status)
+            response.read()
+            conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
 
 class ReverseLinesTest(unittest.TestCase):
     """Replaces the reverse mmap scans. A mapped region whose file is truncated
