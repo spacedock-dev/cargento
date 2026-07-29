@@ -145,7 +145,7 @@ so re-run the job before investigating, and check the traceback is a timeout and
   forever after the behavior behind it breaks.
 - Acquire everything that can fail before forking (or, on Windows, before waiting on the re-spawned
   child): the listening socket, and the log file the detached process will write to. After the fork
-  there is nowhere for a failure to go — reporting one means pointing the user at the very log that
+  there is nowhere for a failure to go. Reporting one means pointing the user at the very log that
   could not be opened. Note that `os.makedirs(exist_ok=True)` is not this check: it succeeds for a
   directory that already exists whatever its mode, which is the likeliest bad state of all.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
@@ -162,7 +162,7 @@ so re-run the job before investigating, and check the traceback is a timeout and
   from still succeeds, and repeated connects fill the backlog and then report the port gone while it
   is still bound.
 - Guard the sink, not the caller. A check against work landing after teardown belongs in the function
-  that actually writes the DOM, the file or the socket — `render()`, not `refresh()`. Guarding a
+  that actually writes the DOM, the file or the socket: `render()`, not `refresh()`. Guarding a
   caller was wrong twice for the same stop button: first it missed the request already in flight,
   then it missed the other fourteen callers, one of which was a keystroke. If you do also guard a
   caller, it must be for something the sink cannot see, and say so.

@@ -128,8 +128,9 @@ const window = {addEventListener(type, fn){
 let __fetchCalls = [];
 let __fetchImpl = () => new Promise(() => {});
 const fetch = (...args) => { __fetchCalls.push(args); return __fetchImpl(...args); };
-const clearInterval = () => {};
-const setInterval = () => 0;
+let __clearedIntervals = [];
+const clearInterval = id => { __clearedIntervals.push(id); };
+const setInterval = () => 73;
 // Notification stub: records what the page would have raised, with a
 // permission value tests can set. Defined here so every page test runs with a
 // browser-notification-capable environment, as a real browser would.
@@ -3617,6 +3618,32 @@ console.log(JSON.stringify(out));
         environ = {k: v for k, v in os.environ.items() if k != "CARGENTO_HOME"}
         with mock.patch.dict(os.environ, environ, clear=True):
             self.assertEqual(os.path.join(dashboard.HOME, ".cargento"), dashboard.cargento_home())
+        for blank in ("", " ", "\t\r\n"):
+            with (
+                self.subTest(blank=repr(blank)),
+                mock.patch.dict(os.environ, {"CARGENTO_HOME": blank}),
+            ):
+                self.assertEqual(
+                    os.path.join(dashboard.HOME, ".cargento"),
+                    dashboard.cargento_home(),
+                )
+
+    def test_cli_port_type_rejects_values_outside_the_tcp_range(self) -> None:
+        for value in ("-1", "0", "65536", "not-a-port"):
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                dashboard.tcp_port(value)
+        for value in ("1", "4553", "65535"):
+            with self.subTest(value=value):
+                self.assertEqual(int(value), dashboard.tcp_port(value))
+        with (
+            mock.patch.object(sys, "argv", ["server.py", "--port", "0"]),
+            mock.patch.object(sys, "stderr", io.StringIO()),
+            mock.patch.object(dashboard, "LoopbackHTTPServer") as bind,
+            self.assertRaises(SystemExit) as caught,
+        ):
+            dashboard.main()
+        self.assertEqual(2, caught.exception.code)
+        bind.assert_not_called()
 
     def test_state_file_roundtrips_and_names_itself_per_port(self) -> None:
         with (
@@ -3703,6 +3730,26 @@ console.log(JSON.stringify(out));
             httpd.server_close()
             thread.join(timeout=2)
 
+    def test_probe_port_rejects_recursive_and_lookalike_health_payloads(self) -> None:
+        invalid = (
+            ("recursive JSON", b"[" * 2000 + b"]" * 2000),
+            ("truthy ok", b'{"ok":"yes","pid":7,"port":4553,"started":1}'),
+            ("boolean pid", b'{"ok":true,"pid":true,"port":4553,"started":1}'),
+            ("zero pid", b'{"ok":true,"pid":0,"port":4553,"started":1}'),
+            ("wrong port", b'{"ok":true,"pid":7,"port":9999,"started":1}'),
+            ("missing start time", b'{"ok":true,"pid":7,"port":4553}'),
+        )
+        for label, body in invalid:
+            with (
+                self.subTest(payload=label),
+                mock.patch.object(http.client, "HTTPConnection") as connection,
+            ):
+                response = connection.return_value.getresponse.return_value
+                response.status = 200
+                response.read.return_value = body
+                self.assertEqual(("foreign", None), dashboard.probe_port(4553))
+                connection.return_value.close.assert_called_once_with()
+
     def test_instance_status_covers_running_stale_foreign_and_absent(self) -> None:
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -3739,10 +3786,10 @@ console.log(JSON.stringify(out));
         self.assertIn("not running", dashboard.render_status({"state": "absent", "port": 4553}))
 
     def test_render_status_survives_a_started_value_it_cannot_convert(self) -> None:
-        # `started` arrives from whatever answered /api/health — the process
-        # probe_port has just declined to trust — and probe_port type-checks
-        # `ok` and `pid` but not this. Out of range for time_t, or NaN, and
-        # datetime.fromtimestamp raises instead of printing a status line.
+        # Keep render_status defensive even though probe_port now rejects
+        # non-finite values. Tests and callers can still construct a status
+        # directly, and a value outside time_t must not replace a line with a
+        # traceback.
         for started in (1e19, -1e19, float("inf"), float("nan")):
             with self.subTest(started=started):
                 line = dashboard.render_status(
@@ -3787,6 +3834,31 @@ console.log(JSON.stringify(out));
         self.assertNotIn("stopped (pid", message)
         self.assertGreater(released.call_count, 1, "it never waited")
 
+    def test_await_release_sleeps_between_failed_probes(self) -> None:
+        with (
+            mock.patch.object(dashboard, "port_released", side_effect=(False, True)) as released,
+            mock.patch.object(dashboard.time, "sleep") as sleep,
+        ):
+            self.assertTrue(dashboard.await_release(4553, timeout=1))
+        self.assertEqual(2, released.call_count)
+        sleep.assert_called_once_with(0.05)
+
+    def test_stop_instance_reports_a_refused_shutdown_response(self) -> None:
+        running = {"state": "running", "port": 4553, "pid": 7, "started": 1000.0, "log": "/l"}
+        with (
+            mock.patch.object(dashboard, "instance_status", return_value=running),
+            mock.patch.object(dashboard, "await_release") as released,
+            mock.patch.object(http.client, "HTTPConnection") as connection,
+        ):
+            response = connection.return_value.getresponse.return_value
+            response.status = 503
+            message, code = dashboard.stop_instance(4553)
+        self.assertEqual(1, code)
+        self.assertIn("refused to stop", message)
+        self.assertIn("503", message)
+        released.assert_not_called()
+        connection.return_value.close.assert_called_once_with()
+
     def test_status_flag_exits_zero_only_when_running(self) -> None:
         for state, expected in (("running", 0), ("stale", 1), ("foreign", 1), ("absent", 1)):
             with (
@@ -3805,22 +3877,77 @@ console.log(JSON.stringify(out));
     def test_stop_instance_stops_a_running_server_over_http(self) -> None:
         httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         port = httpd.server_port
-        thread = serve_until_closed(httpd)
+        loop_exited = threading.Event()
+        allow_close = threading.Event()
+        result: list[tuple[str, int]] = []
+
+        def serve_with_delayed_close() -> None:
+            try:
+                httpd.serve_forever()
+            finally:
+                loop_exited.set()
+                allow_close.wait(timeout=10)
+                httpd.server_close()
+
+        thread = threading.Thread(target=serve_with_delayed_close, daemon=True)
+        thread.start()
+        stop_thread = threading.Thread(
+            target=lambda: result.append(dashboard.stop_instance(port)),
+            daemon=True,
+        )
         try:
-            message, code = dashboard.stop_instance(port)
+            stop_thread.start()
+            self.assertTrue(loop_exited.wait(timeout=5), "serve_forever did not stop")
+            self.assertFalse(dashboard.port_released(port), "the delayed close lost its bind")
+            self.assertTrue(
+                stop_thread.is_alive(),
+                "stop_instance returned before the listener released its port",
+            )
+            allow_close.set()
+            stop_thread.join(timeout=10)
+            self.assertFalse(stop_thread.is_alive(), "stop_instance did not notice the release")
+            self.assertEqual(1, len(result))
+            message, code = result[0]
             self.assertEqual(0, code, message)
             self.assertIn("stopped", message)
-            # Asserted BEFORE the join, which is what would free the port itself
-            # via serve_until_closed's finally. After it, this passes even if
-            # stop_instance returns the instant it gets its 200.
             self.assertTrue(dashboard.port_released(port), "the port is still bound")
             thread.join(timeout=10)
             self.assertFalse(thread.is_alive())
         finally:
-            httpd.shutdown()
+            allow_close.set()
+            with contextlib.suppress(OSError):
+                httpd.shutdown()
+            stop_thread.join(timeout=2)
             thread.join(timeout=2)
             with contextlib.suppress(OSError):
                 httpd.server_close()
+
+    @unittest.skipIf(os.name == "nt", "POSIX SO_REUSEADDR/TIME_WAIT semantics")
+    def test_port_release_probe_matches_the_listener_during_time_wait(self) -> None:
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        listener.listen()
+        client = socket.create_connection(("127.0.0.1", port), timeout=2)
+        accepted, _ = listener.accept()
+        try:
+            # The server endpoint closes first, putting this local address in
+            # TIME_WAIT after the client observes EOF and closes. Cargento's
+            # listener can rebind here because it uses SO_REUSEADDR, so its
+            # release probe must use the same option or report a false hold.
+            accepted.close()
+            self.assertEqual(b"", client.recv(1))
+            client.close()
+            listener.close()
+            self.assertTrue(dashboard.port_released(port))
+        finally:
+            with contextlib.suppress(OSError):
+                accepted.close()
+            with contextlib.suppress(OSError):
+                client.close()
+            with contextlib.suppress(OSError):
+                listener.close()
 
     def test_stop_instance_removes_a_stale_state_file_and_succeeds(self) -> None:
         with (
@@ -3929,6 +4056,17 @@ console.log(JSON.stringify(out));
                 ("not an object", "[1, 2, 3]"),
                 ("empty", ""),
                 ("oversized", "0" * (dashboard.STATE_READ_CAP_BYTES + 1024)),
+                (
+                    "oversized valid object",
+                    '{"pid": 1}' + " " * dashboard.STATE_READ_CAP_BYTES,
+                ),
+                (
+                    "oversized UTF-8 object",
+                    json.dumps(
+                        {"note": "é" * 40000},
+                        ensure_ascii=False,
+                    ),
+                ),
             ):
                 with self.subTest(body=label):
                     path.write_text(body, encoding="utf-8")
@@ -4089,6 +4227,21 @@ console.log(JSON.stringify(out));
         message, code = dashboard.await_daemon(read_fd, 4553, "/tmp/c.log", timeout=1)
         self.assertEqual(1, code)
         self.assertIn("/tmp/c.log", message)
+
+    @unittest.skipIf(os.name == "nt", "select() cannot watch a pipe on Windows; POSIX-only path")
+    def test_await_daemon_does_not_report_a_pipe_error_as_a_timeout(self) -> None:
+        read_fd, write_fd = os.pipe()
+        os.close(write_fd)
+        with mock.patch.object(
+            dashboard.select,
+            "select",
+            side_effect=OSError(errno.EBADF, os.strerror(errno.EBADF)),
+        ):
+            message, code = dashboard.await_daemon(read_fd, 4553, "/tmp/c.log", timeout=10)
+        self.assertEqual(1, code)
+        self.assertIn("readiness pipe", message)
+        self.assertIn("/tmp/c.log", message)
+        self.assertNotIn("within 10s", message)
 
     def test_daemon_rejects_the_flags_it_cannot_combine_with(self) -> None:
         for other in ("--diagnose", "--stop", "--status"):
@@ -5369,6 +5522,17 @@ class ReviewFixTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
+    def test_shutdown_still_runs_when_the_client_drops_during_the_reply(self) -> None:
+        handler = object.__new__(dashboard.Handler)
+        handler.server = mock.Mock()
+        handler.wfile = mock.Mock()
+        stopped = threading.Event()
+        handler.server.shutdown.side_effect = stopped.set
+        with mock.patch.object(handler, "_send", side_effect=BrokenPipeError):
+            handler._shutdown()
+        self.assertTrue(stopped.wait(timeout=2), "the failed reply cancelled the shutdown")
+        handler.server.shutdown.assert_called_once_with()
+
     def test_shutdown_endpoint_refuses_a_cross_site_post(self) -> None:
         httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -6611,6 +6775,17 @@ class HarnessContractTest(unittest.TestCase):
     NOW = 1_700_000_000.0
     SID = "abcdef12-3456-7890-abcd-ef1234567890"
     TITLE = "Investigate the failing build"
+
+    def setUp(self) -> None:
+        # collect() updates transition/cooldown state. Without clearing it here,
+        # a shuffled run can inherit a prior test's _last_state and suppress or
+        # invent the transition this contract is meant to observe.
+        with dashboard._lock:
+            dashboard._hook_notifs.clear()
+            dashboard._last_popup.clear()
+            dashboard._last_popup_message.clear()
+            dashboard._last_state.clear()
+            dashboard._hook_generation.clear()
 
     def collect(self, build: Any, *, when: float, subdir: str = "store") -> dict[str, Any]:
         """Build one harness's store in isolation and run a full collection."""
@@ -8408,6 +8583,8 @@ out.method = posted.length ? posted[0][1].method : null;
 out.stoppedPanel = __els.app.innerHTML.includes("Cargento stopped");
 out.buttonGone = __els.app.innerHTML.includes('data-calm="stop"');
 out.title = document.title;
+out.refreshTimer = refreshTimer;
+out.clearedIntervals = __clearedIntervals;
 console.log(JSON.stringify(out));
 """
         out = self.run_calm(checks)
@@ -8421,6 +8598,58 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["stoppedPanel"])
         self.assertFalse(out["buttonGone"])
         self.assertIn("stopped", out["title"])
+        self.assertIsNone(out["refreshTimer"])
+        self.assertEqual([73], out["clearedIntervals"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_armed_stop_button_keeps_focus_and_accepts_keyboard_activation(self) -> None:
+        checks = """
+const out = {trials: []};
+const stopButton = {
+  tagName: "BUTTON",
+  getAttribute: a => a === "data-calm" ? "stop" : null,
+  closest(sel){
+    return sel === "[data-calm]" || sel === '[data-calm="stop"]' ||
+      sel === "a[href],button,select,textarea,input,[tabindex]" ? this : null;
+  },
+  focus(){ document.activeElement = this; }
+};
+__els["stop-control"] = stopButton;
+const clickStop = () => __fire("click", {target: stopButton});
+__fetchImpl = () => Promise.resolve({ok: true});
+
+for(const key of [" ", "Enter"]){
+  stopArmed = false; stopError = ""; serverStopped = false; stopFocusPending = false;
+  refreshTimer = 73; document.activeElement = null; __fetchCalls = [];
+  render(board());
+  clickStop();
+  const armed = __els.app.innerHTML.includes("sure?");
+  const focusKept = document.activeElement === stopButton;
+  __fire("keydown", {key, target: stopButton, preventDefault(){}});
+  const armedAfterKey = __els.app.innerHTML.includes("sure?");
+  clickStop();  // the native click generated by Space or Enter
+  await __settle(); await __settle();
+  out.trials.push({key, armed, focusKept, armedAfterKey,
+    posts: __fetchCalls.filter(c => c[0] === "/api/shutdown").length,
+    stopped: __els.app.innerHTML.includes("Cargento stopped")});
+}
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual(2, len(out["trials"]))
+        for trial in out["trials"]:
+            with self.subTest(key=repr(trial["key"])):
+                self.assertTrue(trial["armed"])
+                self.assertTrue(
+                    trial["focusKept"],
+                    "arming re-rendered the focused button away",
+                )
+                self.assertTrue(
+                    trial["armedAfterKey"],
+                    "the activation key disarmed before the button could click",
+                )
+                self.assertEqual(1, trial["posts"])
+                self.assertTrue(trial["stopped"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_stop_disarms_on_escape_and_on_a_click_elsewhere(self) -> None:

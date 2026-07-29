@@ -36,9 +36,10 @@ Data sources (read-only, no external calls; all parsing is defensive — a broke
 
 A `display` switch at the top right toggles between two renderings of the same `/api/data` payload. The choice is remembered per browser (`localStorage`, key `cargento.displayMode`) and `c` toggles it from the keyboard. Nothing is filtered out of one mode and present in the other; the two never disagree about a session.
 
-A `stop` button sits beside the switch in both modes: the first click arms it, the second stops the
-server, and anything else you do first — `esc`, a click elsewhere, any other control, any
-keystroke — disarms it. After it fires the page stops polling and says
+A `stop` button sits beside the switch in both modes: the first activation arms it and keeps focus
+there, and the second stops the server. `Enter` or `Space` on the focused button works like a click.
+Anything unrelated you do first — `esc`, a click elsewhere, another control, another key —
+disarms it. After it fires the page stops polling and says
 Cargento was stopped, rather than showing the "stalled" banner that means the server went away on
 its own.
 
@@ -92,7 +93,7 @@ under `--daemon` too. Check whether a dashboard is already there before killing 
 python3 "<skill-dir>/server.py" --port 4553 --status
 ```
 
-`--status` reports one of three things, and never guesses: running (with pid and uptime), not
+`--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
 Cargento writes two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`):
@@ -139,7 +140,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 
 | Flag / URL | Effect |
 |---|---|
-| `--port N` | Change port (default 4553). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
+| `--port N` | Change port (default 4553; valid range 1–65535). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--daemon` | Detach and keep running after the starting session exits. Prints the URL, pid and log path. |
 | `--stop` | Stop the instance on `--port`, over `/api/shutdown` — the same path the UI's `stop` button uses. Returns once the port is free, so a restart on the same port works. |
 | `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
@@ -148,7 +149,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
-| `/api/health` | Liveness and identity (pid, port, uptime). Scans nothing, unlike `/api/data`. |
+| `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
 | `POST /api/shutdown` | Stop the server. Loopback-only, with the same origin checks as `/api/notify`. |
 
 ## Interpretation notes (share with the user if asked)
@@ -171,10 +172,11 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 python3 "<skill-dir>/server.py" --port 4553 --stop
 ```
 
-Or click `stop` in the dashboard header — two clicks, since the page cannot undo it, and anything
-else you click in between counts as "no". Both do the same thing: `POST /api/shutdown`. `--stop`
-waits for the port to come free before reporting success, so you can start a fresh instance on the
-same port straight afterwards. It also clears a state file left behind by a server that was killed,
+Or activate `stop` twice in the dashboard header — click it, or use `Enter` or `Space` while it has
+focus. The page cannot undo the stop, and an unrelated action in between counts as "no". Both the
+button and the command use `POST /api/shutdown`. `--stop` waits for the port to come free before
+reporting success, so you can start a fresh instance on the same port straight afterwards. It also
+clears a state file left behind by a server that was killed,
 and exits non-zero without touching anything if the port turns out to belong to another process.
 
 **Last resort**, for a server wedged badly enough that it no longer answers HTTP. Match only

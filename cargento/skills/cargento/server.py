@@ -23,6 +23,7 @@ import glob
 import hashlib
 import http.client
 import json
+import math
 import ntpath
 import os
 import posixpath
@@ -66,7 +67,7 @@ DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "sha
 STORE_ENV_VARS = ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "COPILOT_HOME")
 
 # Wall-clock start of the serving process, reported by /api/health so a caller
-# can tell uptime without a second request. Set once by main().
+# can compute uptime without a second request. Set once by main().
 SERVER_STARTED = 0.0
 
 
@@ -5081,24 +5082,32 @@ function setDisplayMode(mode){
 let stopArmed = false;
 let stopError = "";
 let serverStopped = false;
+let stopFocusPending = false;
 
 function stopControl(){
-  if(serverStopped) return "";
   const note = stopError ? `<span class="stopnote">${esc(stopError)}</span>` : "";
-  return `<button type="button" class="stopbtn${stopArmed ? " armed" : ""}"` +
+  return `<button type="button" id="stop-control"` +
+    ` class="stopbtn${stopArmed ? " armed" : ""}"` +
     ` data-calm="stop" aria-pressed="${stopArmed}"` +
     ` title="Stop the Cargento server. Two clicks — this cannot be undone from the page.">` +
     (stopArmed ? "stop — sure?" : "stop") + `</button>` + note;
 }
 
+function restoreStopFocus(){
+  if(!stopFocusPending) return;
+  stopFocusPending = false;
+  const button = document.getElementById("stop-control");
+  if(button && button.focus) button.focus();
+}
+
 function disarmStop(){
   if(!stopArmed && !stopError) return false;
-  stopArmed = false; stopError = "";
+  stopArmed = false; stopError = ""; stopFocusPending = false;
   return true;
 }
 
 async function requestStop(){
-  stopArmed = false;
+  stopArmed = false; stopFocusPending = false;
   try{
     const r = await fetch("/api/shutdown", {method: "POST"});
     if(!r.ok) throw new Error("status " + r.status);
@@ -5304,7 +5313,11 @@ function calmCopyId(key){
 function calmAction(act, arg){
   if(act === "mode"){ setDisplayMode(arg); return; }
   if(act === "stop"){
-    if(!stopArmed){ stopArmed = true; stopError = ""; if(lastData) render(lastData); return; }
+    if(!stopArmed){
+      stopArmed = true; stopError = ""; stopFocusPending = true;
+      if(lastData) render(lastData);
+      return;
+    }
     requestStop();
     return;
   }
@@ -5355,6 +5368,11 @@ document.addEventListener("keydown", e => {
   if(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   const k = e.key;
   const stop = () => { if(e.preventDefault) e.preventDefault(); };
+  /* The first activation rebuilds #app to show the armed label. Keep focus on
+     its replacement and let Enter/Space reach the button's native click;
+     disarming on keydown makes that generated click arm it all over again. */
+  if(stopArmed && (k === "Enter" || k === " ") && e.target && e.target.closest &&
+     e.target.closest('[data-calm="stop"]')) return;
   if(k === "Escape" && (stopArmed || stopError)){
     /* While armed, Escape answers the stop and does nothing else. */
     stop(); disarmStop(); if(lastData) render(lastData); return;
@@ -5692,6 +5710,7 @@ function render(d){
     renderInProgress = false;
     calmRestoreScroll();
     calmRestoreFocus(focusKey);
+    restoreStopFocus();
     document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
     return;
   }
@@ -5770,6 +5789,7 @@ function render(d){
   renderInProgress = false;
 
   restoreSparkState(sparkFocused, savedPointer);
+  restoreStopFocus();
   document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
 }
 
@@ -5866,16 +5886,28 @@ _FORK: Callable[[], int] | None = getattr(os, "fork", None)
 _SETSID: Callable[[], int] | None = getattr(os, "setsid", None)
 
 
+def tcp_port(value: str) -> int:
+    """An argparse type for a real TCP port, rather than any Python integer."""
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer from 1 to 65535") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("must be from 1 to 65535")
+    return port
+
+
 def cargento_home() -> str:
     """Where the state file and the daemon log live.
 
     One layout on every platform. Platform-correct runtime directories
     (XDG_RUNTIME_DIR, %LOCALAPPDATA%) would be three code paths and three ways
-    for --status to look somewhere the server never wrote. CARGENTO_HOME is
-    authoritative when set, which is the rule the harness store variables in
-    STORE_ENV_VARS already follow.
+    for --status to look somewhere the server never wrote. A nonblank
+    CARGENTO_HOME is authoritative, which is the rule the harness store
+    variables in STORE_ENV_VARS already follow.
     """
-    return os.environ.get(CARGENTO_HOME_ENV) or os.path.join(HOME, ".cargento")
+    override = os.environ.get(CARGENTO_HOME_ENV)
+    return override if override and override.strip() else os.path.join(HOME, ".cargento")
 
 
 def state_path(port: int) -> str:
@@ -5939,8 +5971,11 @@ def read_state(port: int) -> dict[str, Any] | None:
     reason on the same parser.
     """
     try:
-        with open(state_path(port), encoding="utf-8") as handle:
-            data = json.loads(handle.read(STATE_READ_CAP_BYTES) or "null")
+        with open(state_path(port), "rb") as handle:
+            raw = handle.read(STATE_READ_CAP_BYTES + 1)
+        if len(raw) > STATE_READ_CAP_BYTES:
+            return None
+        data = json.loads(raw or b"null")
     except (OSError, ValueError, RecursionError):
         return None
     return data if isinstance(data, dict) else None
@@ -5970,11 +6005,27 @@ def probe_port(port: int, timeout: float = 1.0) -> tuple[str, dict[str, Any] | N
         data = json.loads(body)
     except (OSError, http.client.HTTPException):
         return ("closed", None)
-    except ValueError:
+    except (ValueError, RecursionError):
         return ("foreign", None)  # answered 200 with something that is not JSON
     finally:
         conn.close()
-    if not isinstance(data, dict) or not data.get("ok") or not isinstance(data.get("pid"), int):
+    if not isinstance(data, dict):
+        return ("foreign", None)
+    pid = data.get("pid")
+    reported_port = data.get("port")
+    started = data.get("started")
+    if (
+        data.get("ok") is not True
+        or not isinstance(pid, int)
+        or isinstance(pid, bool)
+        or pid <= 0
+        or not isinstance(reported_port, int)
+        or isinstance(reported_port, bool)
+        or reported_port != port
+        or not isinstance(started, int | float)
+        or isinstance(started, bool)
+        or not math.isfinite(started)
+    ):
         return ("foreign", None)
     return ("cargento", data)
 
@@ -6241,6 +6292,7 @@ def await_daemon(
     deadline = time.monotonic() + timeout
     seen = b""
     died = False
+    pipe_error: OSError | None = None
     try:
         while time.monotonic() < deadline:
             ready, _, _ = select.select([read_fd], [], [], 0.1)
@@ -6253,14 +6305,23 @@ def await_daemon(
             seen += chunk
             if b"\n" in seen:
                 break
-    except OSError:
+    except OSError as exc:
         seen = b""
+        pipe_error = exc
     finally:
         with contextlib.suppress(OSError):
             os.close(read_fd)
     pid = seen.strip().decode("ascii", "replace")
     if pid.isdigit():
         return (f"Cargento: http://127.0.0.1:{port}/ (pid {pid}, log {log_file})", 0)
+    if pipe_error is not None:
+        return (
+            (
+                f"Cargento: could not read the background server's readiness pipe "
+                f"({type(pipe_error).__name__}: {pipe_error}) — check {log_file}."
+            ),
+            1,
+        )
     if died:
         # Distinguished from the timeout because it is a different thing to go
         # and look at, and reporting a 10s wait that in fact took a moment sent
@@ -6478,10 +6539,16 @@ class Handler(BaseHTTPRequestHandler):
         `shutdown()` inline would then deadlock, exactly as `BaseServer.
         shutdown`'s docstring warns.
         """
-        self._send(b'{"ok":true,"stopping":true}', "application/json")
-        with contextlib.suppress(OSError, ValueError):
-            self.wfile.flush()
-        threading.Thread(target=self.server.shutdown, daemon=True).start()
+        try:
+            self._send(b'{"ok":true,"stopping":true}', "application/json")
+            with contextlib.suppress(OSError, ValueError):
+                self.wfile.flush()
+        except (OSError, ValueError):
+            # The request was accepted even if the peer vanished before it
+            # could read the reply. Do not let that disconnect cancel the stop.
+            pass
+        finally:
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def do_GET(self) -> None:
         if not self._local_ok(allow_cross_site_navigation=True):
@@ -6744,7 +6811,7 @@ def render_diagnosis(report: dict[str, Any]) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--port", type=int, default=4553)
+    ap.add_argument("--port", type=tcp_port, default=4553)
     ap.add_argument(
         "--diagnose",
         action="store_true",

@@ -50,7 +50,7 @@ success, so a busy port still fails loudly on every platform instead of silently
 told about.
 
 The per-port state file and log live under `~/.cargento`, one layout on every platform;
-`CARGENTO_HOME` is authoritative when set, the same rule the harness store relocation variables
+`CARGENTO_HOME` is authoritative when nonblank, the same rule the harness store relocation variables
 follow. Nothing ever removes or rotates the log, so `~/.cargento` accumulates one log file per port
 indefinitely. See [`SECURITY.md`](SECURITY.md) for the written-paths contract.
 

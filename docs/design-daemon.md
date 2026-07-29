@@ -108,7 +108,7 @@ So `--status` requests `/api/health` and reads the state file, in that order of 
 
 | Observation | Report |
 |---|---|
-| answered `/api/health` as Cargento | running, with the pid *it* reported, uptime and URL |
+| answered `/api/health` as Cargento | running, with the pid *it* reported, start time and URL |
 | answered, but not as Cargento | the port belongs to another process, so touch nothing |
 | nothing answered, state file present | stale; `--stop` deletes the file and says so |
 | nothing answered, no state file | absent: nothing recorded and nothing listening |
@@ -117,8 +117,8 @@ Row two is why the pid is in the health response at all. Without it, "something 
 as "Cargento is running", and the next step is a kill aimed at an innocent process.
 
 The pid the state file records is deliberately *not* compared against the pid health reports, and
-`--status` believes health when they differ. A state file is a claim about the past — a killed
-instance leaves one behind, and the next instance on that port writes its own — so treating a
+`--status` believes health when they differ. A state file is a claim about the past. A killed
+instance leaves one behind, and the next instance on that port writes its own, so treating a
 mismatch as "foreign" would refuse to stop a live, legitimately restarted dashboard on the strength
 of a stale file. The live answer is the evidence; the file only supplies the log path and the
 stale-versus-absent distinction. The one place a pid comparison *is* the point is `await_spawned`,
@@ -132,14 +132,14 @@ fresh instance.
 
 Which is exactly why it does not return on the 200 alone. The handler answers before it stops, and
 `server.shutdown()` takes up to one poll interval to be noticed, after which the listening socket
-closes only once `serve_forever()` has returned — so returning on the 200 asserted a completed stop
+closes only once `serve_forever()` has returned. Returning on the 200 asserted a completed stop
 while the port was still bound, and the obvious restart (`--stop`, then start again) failed on a busy
 port and was told to go look at a dashboard that was in the middle of shutting down. `--stop` now
 waits for the port and exits 1, saying so, if it never comes free.
 
 Waiting means asking the right question, and the right question is not "is anything listening". A TCP
 connect to a bound socket that nothing is accepting from still completes, so a connect probe cannot
-see the window between `serve_forever()` returning and `server_close()` running — and each probe
+see the window between `serve_forever()` returning and `server_close()` running. Each probe
 leaves an unaccepted connection in the backlog, so after `request_queue_size` of them the probe
 starts reporting the port gone while it is still bound. `port_released()` therefore *binds*, with the
 same options as the real listener down to `SO_EXCLUSIVEADDRUSE`, because what the caller wants to
@@ -147,20 +147,20 @@ know is whether a new listener could take the port, and a probe more permissive 
 answers a question nobody asked.
 
 Only `EADDRINUSE` counts as "still held". A bind refused for privilege says nothing about whether the
-port is in use — a dashboard started as root on port 80 and stopped over HTTP by an ordinary user,
+port is in use. A dashboard started as root on port 80 and stopped over HTTP by an ordinary user,
 which needs no privilege, made `--stop` sit out its whole timeout and then report an instance still
 listening after it had gone. Where a bind cannot answer, `port_released()` answers "not held",
 because the caller is deciding whether to keep waiting rather than whether to trust the port.
 Windows is the exception written into the code: an in-use port reports `EACCES` there once
 `SO_EXCLUSIVEADDRUSE` is in play, the same ambiguity `bind_error_message` already names.
 
-Two things this deliberately accepts. The probe really binds, so for the ~20µs it holds a free port it
-can lose a genuinely concurrent restart the coin toss — measured at roughly a 0.04% duty cycle against
-one bind per 50ms of waiting, and the loser gets the ordinary busy-port explanation rather than
-anything silent. And exit 0 has to mean the port is takeable, which is why the branches where nothing
-answered `/api/health` wait too: `main()` removes the state file *before* it closes the listener, so a
-stop already in progress arrives at "nothing running" with the port still bound, and reporting success
-there is what made the unconditional stop-then-start unsafe in the first place.
+Two things this deliberately accepts. The probe really binds, so for the ~20µs it holds a free port
+it can lose a genuinely concurrent restart the coin toss. With one bind per 50ms of waiting, its
+measured duty cycle was roughly 0.04%, and the loser gets the ordinary busy-port explanation rather
+than anything silent. And exit 0 has to mean the port is takeable, which is why the branches where
+nothing answered `/api/health` wait too: `main()` removes the state file *before* it closes the
+listener, so a stop already in progress arrives at "nothing running" with the port still bound, and
+reporting success there is what made the unconditional stop-then-start unsafe in the first place.
 
 ## D-5: Stopping is one code path, over HTTP, shared by the button and the CLI
 
@@ -209,17 +209,20 @@ the same `_local_ok()` checks. `SECURITY.md` says so rather than leaving a reade
 
 ## D-7: The button arms before it fires, and the stopped page is not the stalled page
 
-A `stop` button sits beside the display toggle, in both display modes. The first click arms it in
-place, asking for confirmation; the second POSTs. Anything else the reader does first disarms it:
-`esc`, a click anywhere else, a click on another control, or any keystroke. Arming survives a render
-on purpose, so whatever is not made to disarm it, it outlives — sort the ledger, toggle a mode, come
-back later, and a single click would stop the server having never been confirmed at all. The second
-click only means something while it is still answering for the first.
+A `stop` button sits beside the display toggle, in both display modes. The first activation arms it
+in place, asks for confirmation, and restores focus after the header re-render; the second POSTs.
+`Enter` and `Space` on that focused button are activations, not unrelated keystrokes, so their
+keydown must reach the native button click without disarming first. Anything else the reader does
+first disarms it: `esc`, a click anywhere else, another control, or another key. Arming survives a
+render on purpose, so whatever is not made to disarm it, it outlives. Sort the ledger, toggle a
+mode, come back later, and a single click would stop the server having never been confirmed at all.
+The second activation only means something while it is still answering for the first.
 
-Disarming on a click and not on a keystroke was the same mistake in miniature. The keyboard drives the
-same controls the mouse does — `c` is the mode button, `f` the flag, `Enter` opens a row — so the
-scenario above stayed reachable with one hand on the keyboard, and the button sat there reading
-"stop — sure?" for an interaction that had long since finished. Both input paths disarm now.
+Disarming on a click and not on a keystroke was the same mistake in miniature. The keyboard drives
+the same controls the mouse does (`c` is the mode button, `f` the flag, and `Enter` opens a row), so
+the scenario above stayed reachable with one hand on the keyboard, and the button kept its armed
+label for an interaction that had long since finished. Both input paths disarm now, except
+for `Enter` or `Space` while the armed stop button itself still has focus.
 
 The terminal panel takes no keystrokes at all, which is a separate guard from the one in `render()`
 and needs to be: `setDisplayMode` writes `localStorage` *before* it paints, so a `c` pressed on the
@@ -246,7 +249,7 @@ the sink: every `innerHTML` and `document.title` write on the page is either ins
 `renderStopped()`.
 
 Guarding the *caller* was tried twice and was wrong twice. First only at the top of `refresh()`,
-which skips a poll yet to start but does nothing about one already in flight — and `/api/data` is the
+which skips a poll yet to start but does nothing about one already in flight. `/api/data` is the
 slow request here while the shutdown POST is a loopback round trip, so a reply landing after the stop
 is the common ordering rather than a narrow race. Then also after each `await` in `refresh()`, which
 fixed the poll and missed that `refresh()` is one of fifteen callers: `setDisplayMode`, `toggleIdle`,
@@ -258,8 +261,8 @@ so not even the stalled banner was left to contradict it.
 
 The rule that generalises, and that `CONTRIBUTING.md` now carries: guard the sink, not the caller you
 happened to be looking at. The `refresh()` checks stay anyway, because they also skip `recordRates()`
-on stale data and the `latestSettledRefresh` bookkeeping, neither of which runs through `render()` —
-and the one in the failure arm carries its own point, that a stop the reader asked for is not a
+on stale data and the `latestSettledRefresh` bookkeeping, neither of which runs through `render()`.
+The one in the failure arm carries its own point: a stop the reader asked for is not a
 refresh failure and must not drive the stalled bookkeeping.
 
 ## Verified: the macOS notification path survives detaching
