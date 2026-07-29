@@ -352,6 +352,131 @@ class PiTranscriptTest(unittest.TestCase):
         self.assertEqual([30.0], scan["turn"]["durations"])
         self.assertEqual(dashboard.parse_ts("2026-07-29T11:01:00Z"), scan["turn"]["turn_start"])
 
+    def test_initial_rebuild_follows_messages_through_session_info(self) -> None:
+        records = [
+            {"type": "session", "version": 3, "id": "named-tree", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Old prompt"),
+            {
+                "type": "session_info",
+                "id": "named",
+                "parentId": "root",
+                "timestamp": "2026-07-29T11:00:01Z",
+                "name": "Renamed work",
+            },
+            self._message(
+                "new-prompt",
+                "named",
+                "2026-07-29T11:00:02Z",
+                "user",
+                "Continue after rename",
+            ),
+            self._message(
+                "tool",
+                "new-prompt",
+                "2026-07-29T11:00:03Z",
+                "assistant",
+                [{"type": "toolCall", "name": "bash"}],
+                usage={"output": 12},
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-named-tree.jsonl"
+            self._write(path, records)
+            scan = dashboard.scan_pi_session(str(path))
+            assert scan is not None
+
+        self.assertEqual("Renamed work", scan["title"])
+        self.assertEqual("Continue after rename", scan["last_prompt"])
+        self.assertEqual("bash", scan["last_tool"])
+        self.assertEqual(
+            [(dashboard.parse_ts("2026-07-29T11:00:03Z"), 12)],
+            scan["usage_events"],
+        )
+        self.assertEqual(
+            dashboard.parse_ts("2026-07-29T11:00:02Z"),
+            scan["turn"]["turn_start"],
+        )
+        self.assertEqual(
+            dashboard.parse_ts("2026-07-29T11:00:03Z"),
+            scan["last_event_ts"],
+        )
+
+    def test_incremental_append_follows_messages_through_session_info(self) -> None:
+        records = [
+            {"type": "session", "version": 3, "id": "append-name", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Old prompt"),
+        ]
+        appended = [
+            {
+                "type": "session_info",
+                "id": "named",
+                "parentId": "root",
+                "timestamp": "2026-07-29T11:00:01Z",
+                "name": "Renamed work",
+            },
+            self._message(
+                "new-prompt",
+                "named",
+                "2026-07-29T11:00:02Z",
+                "user",
+                "Continue after rename",
+            ),
+            self._message(
+                "tool",
+                "new-prompt",
+                "2026-07-29T11:00:03Z",
+                "assistant",
+                [{"type": "toolCall", "name": "bash"}],
+                usage={"output": 12},
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-append-name.jsonl"
+            self._write(path, records)
+            before = dashboard.scan_pi_session(str(path))
+            assert before is not None
+            with path.open("a") as output:
+                for record in appended:
+                    output.write(json.dumps(record) + "\n")
+            scan = dashboard.scan_pi_session(str(path))
+            assert scan is not None
+
+        self.assertEqual("Old prompt", before["last_prompt"])
+        self.assertEqual("Renamed work", scan["title"])
+        self.assertEqual("Continue after rename", scan["last_prompt"])
+        self.assertEqual("bash", scan["last_tool"])
+        self.assertEqual(
+            [(dashboard.parse_ts("2026-07-29T11:00:03Z"), 12)],
+            scan["usage_events"],
+        )
+        self.assertEqual(
+            dashboard.parse_ts("2026-07-29T11:00:02Z"),
+            scan["turn"]["turn_start"],
+        )
+        self.assertEqual(
+            dashboard.parse_ts("2026-07-29T11:00:03Z"),
+            scan["last_event_ts"],
+        )
+
+    def test_disconnected_first_append_does_not_seed_an_empty_branch(self) -> None:
+        header = {"type": "session", "version": 3, "id": "empty", "cwd": "/w/proj"}
+        child = self._message(
+            "child",
+            "missing-parent",
+            "2026-07-29T11:00:00Z",
+            "user",
+            "Disconnected prompt",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-empty.jsonl"
+            self._write(path, [header])
+            self.assertIsNone(dashboard.scan_pi_session(str(path)))
+            with path.open("a") as output:
+                output.write(json.dumps(child) + "\n")
+            scan = dashboard.scan_pi_session(str(path))
+
+        self.assertIsNone(scan)
+
     def test_partial_writes_and_rebranching_preserve_the_last_complete_branch(self) -> None:
         # Treating an incomplete append as EOF, or retaining children after a
         # rebranch to root, would respectively erase useful state or show it.

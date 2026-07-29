@@ -1649,7 +1649,7 @@ def _pi_last_complete_branch(path: str, end_pos: int) -> list[dict[str, Any]]:
             projection = _pi_projection(json.loads(raw))
         except ValueError:
             continue
-        if projection is None or projection["kind"] in ("session", "session_info"):
+        if projection is None or projection["kind"] == "session":
             continue
         entry_id = projection["id"]
         if entry_id is None or entry_id in entries:
@@ -1684,7 +1684,7 @@ def _pi_rebuild(path: str, end_pos: int) -> dict[str, Any]:
             projection = _pi_projection(json.loads(raw))
         except ValueError:
             continue
-        if projection is None or projection["kind"] in ("session", "session_info"):
+        if projection is None or projection["kind"] == "session":
             continue
         entry_id = projection["id"]
         if entry_id is None:
@@ -1705,10 +1705,12 @@ def _pi_extend(state: dict[str, Any], entry: dict[str, Any]) -> bool:
     """Add one complete Pi entry; false asks the caller to rebuild from disk."""
     if entry["name"] is not _PI_NO_NAME:
         state["name"] = entry["name"]
-    if entry["kind"] in ("session", "session_info") or entry["id"] is None:
+    if entry["kind"] == "session" or entry["id"] is None:
         return True
     path_entries = state["path"]
     if not path_entries:
+        if entry["parent_id"] is not None:
+            return False
         state["path"] = [entry]
         state["ids"] = {entry["id"]: 0}
         return True
