@@ -1490,6 +1490,41 @@ class CargentoServerTest(PageJsHarness):
                 dashboard.claude_agent_identity(str(transcript)),
             )
 
+    def test_young_agent_identity_can_gain_a_name_after_parent_relation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "young-agent.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "teamName": "session-12345678",
+                    }
+                )
+                + "\n"
+            )
+
+            self.assertEqual(
+                (True, "", "12345678"),
+                dashboard.claude_agent_identity(str(transcript)),
+            )
+            self.assertNotIn(str(transcript), dashboard._agent_class_cache)
+
+            with transcript.open("a") as stream:
+                stream.write(
+                    json.dumps(
+                        {
+                            "type": "agent-name",
+                            "agentName": "reviewer",
+                        }
+                    )
+                    + "\n"
+                )
+
+            self.assertEqual(
+                (True, "reviewer", "12345678"),
+                dashboard.claude_agent_identity(str(transcript)),
+            )
+
     def test_parent_relation_without_agent_name_is_still_a_subagent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "unnamed-agent.jsonl"

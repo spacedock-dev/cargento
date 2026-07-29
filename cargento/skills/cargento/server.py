@@ -2328,9 +2328,9 @@ def sd_boot_entity_dir(records: list[dict[str, Any]], workflow_dir: str) -> str:
 
 
 # Subagent-transcript classification cache. Whether a top-level transcript
-# belongs to a subagent is immutable for a given file, but young files may
-# not have written their identifying records yet — so negative results are
-# only cached once the file is big enough to be conclusive.
+# belongs to a subagent and its eventual label are immutable for a given file,
+# but young files may not have written both identifying records yet — so
+# incomplete results are cached only once the file is big enough to be conclusive.
 _agent_class_cache: dict[str, tuple[bool, str, str]] = {}
 _AGENT_SCAN_LINES = 50
 _AGENT_CACHE_NEGATIVE_MIN_BYTES = 16384
@@ -2381,9 +2381,13 @@ def claude_agent_identity(path: str) -> tuple[bool, str, str]:
     except OSError:
         return (False, "", "")
     result = (bool(parent), name, parent)
-    # A parent relation is conclusive; a top-level result is only trusted once
-    # the file has enough content that a later teamName record cannot change it.
-    if parent or lines_seen >= _AGENT_SCAN_LINES or size >= _AGENT_CACHE_NEGATIVE_MIN_BYTES:
+    # A complete subagent identity is conclusive; an incomplete result is only
+    # trusted once the file has enough content that later records cannot change it.
+    if (
+        (parent and name)
+        or lines_seen >= _AGENT_SCAN_LINES
+        or size >= _AGENT_CACHE_NEGATIVE_MIN_BYTES
+    ):
         with _cache_lock:
             bounded_put(_agent_class_cache, path, result)
     return result
