@@ -5891,6 +5891,41 @@ def render_status(status: dict[str, Any]) -> str:
     return f"Cargento: not running on port {port}."
 
 
+def stop_instance(port: int) -> tuple[str, int]:
+    """Ask the instance on `port` to stop. Returns (message, exit code).
+
+    Over HTTP, the same route the page's stop button uses — one implementation
+    of stopping, and no per-platform signal semantics to reconcile. A server
+    wedged badly enough not to serve cannot be stopped this way; SKILL.md keeps
+    the platform kill commands for that.
+    """
+    status = instance_status(port)
+    state = status["state"]
+    if state == "running":
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("POST", "/api/shutdown", body=b"", headers={"Content-Length": "0"})
+            response = conn.getresponse()
+            response.read(1024)
+            answered = response.status
+        except (OSError, http.client.HTTPException) as exc:
+            return (f"Cargento: could not stop port {port} — {type(exc).__name__}: {exc}", 1)
+        finally:
+            conn.close()
+        if answered != 200:
+            return (f"Cargento: the instance on port {port} refused to stop ({answered}).", 1)
+        return (f"Cargento: stopped (pid {status['pid']}) on port {port}.", 0)
+    if state == "stale":
+        remove_state(port)
+        return (f"Cargento: nothing running on port {port}; removed the stale state file.", 0)
+    if state == "foreign":
+        # The state file is evidence about a port we do not own. Leave it.
+        return (render_status(status), 1)
+    # Nothing there and nothing recorded. Stopping is idempotent on purpose:
+    # a script that calls --stop unconditionally should not fail for it.
+    return (f"Cargento: nothing running on port {port}.", 0)
+
+
 class Handler(BaseHTTPRequestHandler):
     window_hours = 24
 
@@ -6272,6 +6307,11 @@ def main() -> None:
         help="report whether a Cargento is running on --port, and exit",
     )
     ap.add_argument(
+        "--stop",
+        action="store_true",
+        help="stop the Cargento running on --port, and exit",
+    )
+    ap.add_argument(
         "--window-hours",
         type=float,
         default=24,
@@ -6288,6 +6328,10 @@ def main() -> None:
         report = diagnose(args.window_hours)
         diag(json.dumps(report, indent=2) if args.json else render_diagnosis(report))
         return
+    if args.stop:
+        message, code = stop_instance(args.port)
+        diag(message)
+        raise SystemExit(code)
     if args.status:
         status = instance_status(args.port)
         diag(render_status(status))

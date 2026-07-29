@@ -3727,6 +3727,68 @@ console.log(JSON.stringify(out));
                 dashboard.main()
             self.assertEqual(expected, caught.exception.code, state)
 
+    def test_stop_instance_stops_a_running_server_over_http(self) -> None:
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            message, code = dashboard.stop_instance(httpd.server_port)
+            self.assertEqual(0, code, message)
+            self.assertIn("stopped", message)
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive())
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_stop_instance_removes_a_stale_state_file_and_succeeds(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+        ):
+            dashboard.write_state(4553)
+            with mock.patch.object(dashboard, "probe_port", return_value=("closed", None)):
+                message, code = dashboard.stop_instance(4553)
+            self.assertEqual(0, code)
+            self.assertIn("stale", message)
+            self.assertIsNone(dashboard.read_state(4553))
+
+    def test_stop_instance_refuses_to_touch_a_port_owned_by_something_else(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+        ):
+            dashboard.write_state(4553)
+            with mock.patch.object(dashboard, "probe_port", return_value=("foreign", None)):
+                message, code = dashboard.stop_instance(4553)
+            self.assertEqual(1, code)
+            self.assertIn("another process", message)
+            # The state file is evidence, not garbage: leave it alone.
+            self.assertIsNotNone(dashboard.read_state(4553))
+
+    def test_stop_instance_is_idempotent_when_nothing_is_running(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+            mock.patch.object(dashboard, "probe_port", return_value=("closed", None)),
+        ):
+            message, code = dashboard.stop_instance(4553)
+        self.assertEqual(0, code)
+        self.assertIn("nothing running", message)
+
+    def test_stop_flag_exits_with_the_code_stop_instance_returned(self) -> None:
+        with (
+            mock.patch.object(dashboard, "stop_instance", return_value=("nope", 1)) as stop,
+            mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--stop"]),
+            mock.patch.object(dashboard, "diag") as diag,
+            self.assertRaises(SystemExit) as caught,
+        ):
+            dashboard.main()
+        self.assertEqual(1, caught.exception.code)
+        stop.assert_called_once_with(4553)
+        diag.assert_called_once_with("nope")
+
 
 class ReverseLinesTest(unittest.TestCase):
     """Replaces the reverse mmap scans. A mapped region whose file is truncated
