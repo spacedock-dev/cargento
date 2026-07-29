@@ -5108,6 +5108,10 @@ async function requestStop(){
     if(lastData) render(lastData);
     return;
   }
+  /* Clearing the error matters even though the panel replaces the note: a
+     lingering stopError keeps disarmStop() answering true forever, so every
+     later click reports a disarm that disarmed nothing. */
+  stopError = "";
   serverStopped = true;
   renderStopped();
 }
@@ -5340,16 +5344,28 @@ document.addEventListener("click", e => {
 });
 
 document.addEventListener("keydown", e => {
+  /* The stopped panel is terminal, and a shortcut must not act on it, swallow
+     the key, or outlive it. The render() guard stops the paint but not the side
+     effects on the way there: setDisplayMode writes localStorage *before* it
+     paints, so `c` on the terminal panel appeared to do nothing while durably
+     flipping the saved display mode for the next run. */
+  if(serverStopped) return;
   if(e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = e.target && e.target.tagName;
   if(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   const k = e.key;
   const stop = () => { if(e.preventDefault) e.preventDefault(); };
-  /* `c` works in both modes — it is the way back out of calm. */
-  if(k === "c"){ stop(); setDisplayMode(displayMode === "calm" ? "regular" : "calm"); return; }
   if(k === "Escape" && (stopArmed || stopError)){
+    /* While armed, Escape answers the stop and does nothing else. */
     stop(); disarmStop(); if(lastData) render(lastData); return;
   }
+  /* Every other keystroke answers it too. The keyboard drives the same controls
+     the mouse does — `c` is the mode button, `f` the flag, Enter opens a row —
+     so disarming only on click left exactly the staleness the second click
+     exists to prevent reachable with one hand on the keyboard. */
+  if(disarmStop() && lastData) render(lastData);
+  /* `c` works in both modes — it is the way back out of calm. */
+  if(k === "c"){ stop(); setDisplayMode(displayMode === "calm" ? "regular" : "calm"); return; }
   if(displayMode !== "calm" || !lastData) return;
   /* A focused button already answers Enter and Space itself. */
   if((k === "Enter" || k === " ") && e.target && e.target.closest &&
@@ -5643,6 +5659,18 @@ function notifyControl(d){
 }
 
 function render(d){
+  /* The stopped panel is terminal, and this is the sink that would undo it.
+     Guarding refresh() alone was not enough: fourteen other call sites end in
+     render(lastData) — setDisplayMode, toggleIdle, calmAction, calmCopyId, the
+     keyboard — and the keydown listener is on `document`, so nothing in #app
+     gates it. One `c` was enough to repaint a live-looking board, stale
+     needs-input count back in the title, for a server that is gone.
+
+     This covers every DOM write below it, which is all of them except two
+     places that need their own check and have one: renderStopped(), which is
+     the panel, and refresh()'s catch arm, which writes #app and the live-status
+     text without going through here. */
+  if(serverStopped) return;
   lastData = d;
   syncNotifications(d);
   const app = document.getElementById("app");
@@ -5826,6 +5854,9 @@ DAEMON_READY_TIMEOUT_SEC = 10.0
 # How long --stop waits for the port to come free after the server agrees to
 # stop. Generously above the 0.5s serve_forever() poll interval it waits on.
 STOP_RELEASE_TIMEOUT_SEC = 5.0
+# Anything larger in a state file is not a state file. write_state produces a
+# few hundred bytes; the cap is what keeps a corrupt one cheap to reject.
+STATE_READ_CAP_BYTES = 65536
 
 # Resolved through getattr, never referenced directly: `os.fork` and
 # `os.setsid` do not exist on Windows, and a module-level `os.fork` reference
@@ -5898,11 +5929,19 @@ def write_state(port: int) -> None:
 
 
 def read_state(port: int) -> dict[str, Any] | None:
-    """The recorded state for `port`, or None if there is none to trust."""
+    """The recorded state for `port`, or None if there is none to trust.
+
+    Read to a cap and with RecursionError caught, because "none to trust" has to
+    include a corrupt file and not just a missing one. The payload write_state
+    produces is a few hundred bytes; deeply nested JSON blows the recursion
+    limit rather than raising ValueError, which tracebacked straight out of
+    --status and --stop. do_POST already catches RecursionError for the same
+    reason on the same parser.
+    """
     try:
         with open(state_path(port), encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
+            data = json.loads(handle.read(STATE_READ_CAP_BYTES) or "null")
+    except (OSError, ValueError, RecursionError):
         return None
     return data if isinstance(data, dict) else None
 
@@ -5953,14 +5992,47 @@ def port_released(port: int) -> bool:
     reuse semantics as the real listener, so this answers for that listener and
     not for a hypothetical one with different options.
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        if reuse_address_allowed(os.name):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            if reuse_address_allowed(os.name):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # Windows-only, and the same option LoopbackHTTPServer.server_bind
+            # sets. Without it the probe is more permissive than the listener it
+            # answers for: a foreign socket holding the port with SO_REUSEADDR
+            # admits a plain bind but not an exclusive one, so the probe would
+            # report a port released that the real listener cannot take.
+            exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+            if exclusive is not None:
+                sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
             sock.bind(("127.0.0.1", port))
-        except OSError:
+    except OSError as exc:
+        # Only "the address is in use" is evidence the port is held. EACCES on a
+        # privileged port, or an exhausted fd table, says nothing about use —
+        # and answering False there made --stop sit out its entire timeout and
+        # then report an instance still listening when it had already stopped.
+        # Where a bind cannot answer the question, say so by answering True: the
+        # caller is deciding whether to keep waiting, not whether to trust it.
+        winerror = getattr(exc, "winerror", None)
+        if exc.errno == errno.EADDRINUSE or winerror == 10048:  # WSAEADDRINUSE
             return False
+        # On Windows an in-use port also reports EACCES once SO_EXCLUSIVEADDRUSE
+        # is in play — the same ambiguity bind_error_message already names.
+        return not (os.name == "nt" and (exc.errno == errno.EACCES or winerror == 10013))
     return True
+
+
+def await_release(port: int, timeout: float = STOP_RELEASE_TIMEOUT_SEC) -> bool:
+    """Wait for `port` to become bindable. Returns whether it did.
+
+    Always probes at least once, so a zero timeout still answers.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        if port_released(port):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
 
 
 def instance_status(port: int) -> dict[str, Any]:
@@ -6026,29 +6098,38 @@ def stop_instance(port: int) -> tuple[str, int]:
     """
     status = instance_status(port)
     state = status["state"]
+    if state == "foreign":
+        # The state file is evidence about a port we do not own. Leave it.
+        return (render_status(status), 1)
     if state == "running":
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        failure = ""
+        answered: int | None = None
         try:
             conn.request("POST", "/api/shutdown", body=b"", headers={"Content-Length": "0"})
             response = conn.getresponse()
             response.read(1024)
             answered = response.status
         except (OSError, http.client.HTTPException) as exc:
-            return (f"Cargento: could not stop port {port} — {type(exc).__name__}: {exc}", 1)
+            # Not evidence the stop failed. A concurrent --stop, or the page's
+            # own button, may already have taken the server down while this
+            # request was in flight — which reset the connection and reported a
+            # failure for a stop that had in fact just happened. Let the port
+            # decide instead of this connection.
+            failure = f"{type(exc).__name__}: {exc}"
         finally:
             conn.close()
-        if answered != 200:
+        if answered is not None and answered != 200:
             return (f"Cargento: the instance on port {port} refused to stop ({answered}).", 1)
         # Do not claim it stopped until the port is actually free. The handler
         # answers before shutting down, `shutdown()` takes up to one poll
         # interval to be noticed, and the listening socket closes only after
         # serve_forever() returns — so returning on the 200 alone reported a
-        # completed stop while the port was still bound, and the obvious
-        # restart (--stop then start again) failed on a busy port.
-        deadline = time.monotonic() + STOP_RELEASE_TIMEOUT_SEC
-        while not port_released(port) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if not port_released(port):
+        # completed stop while the port was still bound, and the obvious restart
+        # (--stop then start again) failed on a busy port.
+        if not await_release(port):
+            if failure:
+                return (f"Cargento: could not stop port {port} — {failure}", 1)
             return (
                 (
                     f"Cargento: asked the instance on port {port} (pid {status['pid']}) to "
@@ -6058,12 +6139,22 @@ def stop_instance(port: int) -> tuple[str, int]:
                 1,
             )
         return (f"Cargento: stopped (pid {status['pid']}) on port {port}.", 0)
+    # Nothing answered /api/health, which is not the same as nothing holding the
+    # port: main() removes the state file *before* it closes the listener, so a
+    # stop already in progress lands here with the port still bound. Exit 0 has
+    # to mean a new listener can take the port, or the unconditional
+    # --stop-then-start this promises is not safe.
+    if not await_release(port):
+        return (
+            (
+                f"Cargento: nothing on port {port} answers /api/health, but something is "
+                f"still holding the port. Nothing was stopped or removed."
+            ),
+            1,
+        )
     if state == "stale":
         remove_state(port)
         return (f"Cargento: nothing running on port {port}; removed the stale state file.", 0)
-    if state == "foreign":
-        # The state file is evidence about a port we do not own. Leave it.
-        return (render_status(status), 1)
     # Nothing there and nothing recorded. Stopping is idempotent on purpose:
     # a script that calls --stop unconditionally should not fail for it.
     return (f"Cargento: nothing running on port {port}.", 0)
@@ -6144,6 +6235,7 @@ def await_daemon(
     """
     deadline = time.monotonic() + timeout
     seen = b""
+    died = False
     try:
         while time.monotonic() < deadline:
             ready, _, _ = select.select([read_fd], [], [], 0.1)
@@ -6151,7 +6243,8 @@ def await_daemon(
                 continue
             chunk = os.read(read_fd, 64)
             if not chunk:
-                break  # the daemon closed the pipe without announcing: it died
+                died = True  # closed the pipe without announcing
+                break
             seen += chunk
             if b"\n" in seen:
                 break
@@ -6163,6 +6256,17 @@ def await_daemon(
     pid = seen.strip().decode("ascii", "replace")
     if pid.isdigit():
         return (f"Cargento: http://127.0.0.1:{port}/ (pid {pid}, log {log_file})", 0)
+    if died:
+        # Distinguished from the timeout because it is a different thing to go
+        # and look at, and reporting a 10s wait that in fact took a moment sent
+        # readers hunting for a hang that never happened.
+        return (
+            (
+                f"Cargento: the background server exited before it began serving. "
+                f"Its output was:\n{log_tail(log_file)}"
+            ),
+            1,
+        )
     return (
         (
             f"Cargento: started in the background, but it did not report ready "
@@ -6703,8 +6807,19 @@ def main() -> None:
         # Explain a home that cannot be used, rather than tracebacking out of
         # the documented start command. write_state() already degrades this way
         # for a foreground run; detaching has nowhere to put its log without it.
+        #
+        # Open the log here too, for the same reason the socket is bound before
+        # detaching: makedirs(exist_ok=True) succeeds for a directory that
+        # already exists whatever its mode, so the likeliest bad home of all —
+        # one that exists and is not writable — got past the guard and raised in
+        # daemon_redirect_stdio (or spawn_detached) instead, after the point
+        # where a message can still reach the terminal that asked. Failing there
+        # produced a raw traceback and then told the user to check the very file
+        # that could not be opened.
         try:
             ensure_cargento_home()
+            with open(log_file, "ab"):
+                pass
         except OSError as exc:
             diag(
                 f"Cargento: cannot use {cargento_home()} for the daemon state and log "
