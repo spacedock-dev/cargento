@@ -6021,12 +6021,17 @@ def port_released(port: int) -> bool:
     return True
 
 
-def await_release(port: int, timeout: float = STOP_RELEASE_TIMEOUT_SEC) -> bool:
+def await_release(port: int, timeout: float | None = None) -> bool:
     """Wait for `port` to become bindable. Returns whether it did.
 
     Always probes at least once, so a zero timeout still answers.
+
+    The default is read here rather than bound in the signature: a default
+    evaluated at import cannot be patched, so a caller lowering
+    STOP_RELEASE_TIMEOUT_SEC — every test that does — silently waited the full
+    five seconds anyway.
     """
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + (STOP_RELEASE_TIMEOUT_SEC if timeout is None else timeout)
     while True:
         if port_released(port):
             return True

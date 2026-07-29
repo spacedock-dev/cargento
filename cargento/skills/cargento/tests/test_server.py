@@ -3810,11 +3810,12 @@ console.log(JSON.stringify(out));
             message, code = dashboard.stop_instance(port)
             self.assertEqual(0, code, message)
             self.assertIn("stopped", message)
+            # Asserted BEFORE the join, which is what would free the port itself
+            # via serve_until_closed's finally. After it, this passes even if
+            # stop_instance returns the instant it gets its 200.
+            self.assertTrue(dashboard.port_released(port), "the port is still bound")
             thread.join(timeout=10)
             self.assertFalse(thread.is_alive())
-            # stop_instance must not return until the port can be taken again:
-            # --stop followed by a fresh start is the ordinary restart.
-            self.assertTrue(dashboard.port_released(port), "the port is still bound")
         finally:
             httpd.shutdown()
             thread.join(timeout=2)
@@ -8708,13 +8709,14 @@ await __settle(); await __settle();
 failData();
 await poll; await __settle(); await __settle();
 out.stillStopped = __els.app.innerHTML.includes("Cargento stopped");
-out.noStalled = !__els.app.innerHTML.includes("stalled");
 out.failures = window.__refreshFailures || 0;
 console.log(JSON.stringify(out));
 """
         out = self.run_calm(checks)
         self.assertTrue(out["stillStopped"])
-        self.assertTrue(out["noStalled"])
+        # No assertion on the stalled banner here: it is written to #live-status
+        # and #live-dot, which the DOM stub does not register, so any such check
+        # would pass whatever the code did. The failure count is the observable.
         self.assertEqual(0, out["failures"], "a deliberate stop was counted as a refresh failure")
 
 
