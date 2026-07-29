@@ -64,7 +64,7 @@ commands stage the complete skill tree, so the contract cannot be left behind.
 
 ## Recorded Baseline
 
-The implementation starts from `main` commit `2ac652d`. All source line anchors in this plan refer
+The implementation starts from `main` commit `194c08c`. All source line anchors in this plan refer
 to that commit; after earlier tasks move code, use the named symbol rather than the stale line:
 
 | Measurement | Baseline |
@@ -74,7 +74,7 @@ to that commit; after earlier tasks move code, use the named symbol rather than 
 | Statements | 3,871 |
 | Missed statements | 537 |
 | Branches | 1,648 |
-| Partial branches | 209 |
+| Partial branches | 208 |
 | Total coverage | 84.4% |
 | `server.py` coverage | 88.4% |
 

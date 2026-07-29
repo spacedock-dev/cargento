@@ -5,6 +5,7 @@ import contextlib
 import email.message
 import errno
 import glob
+import hashlib
 import http.client
 import http.server
 import importlib.util
@@ -717,6 +718,473 @@ class TurnTrackingTest(unittest.TestCase):
 
         self.assertEqual([5.0], scan["turn"]["durations"])
         self.assertEqual(dashboard.parse_ts("2026-07-29T11:11:00Z"), scan["turn"]["turn_start"])
+
+
+class InstalledContractCharacterizationTest(unittest.TestCase):
+    """The installed executable contract that extraction must preserve."""
+
+    def setUp(self) -> None:
+        with dashboard._lock:
+            dashboard._hook_notifs.clear()
+            dashboard._last_popup.clear()
+            dashboard._last_popup_message.clear()
+            dashboard._last_state.clear()
+            dashboard._hook_generation.clear()
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+
+    def tearDown(self) -> None:
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+
+    @staticmethod
+    def _free_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return int(listener.getsockname()[1])
+
+    @staticmethod
+    def _clean_env(cargento_home: Path) -> dict[str, str]:
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["PYTHONNOUSERSITE"] = "1"
+        env["CARGENTO_HOME"] = str(cargento_home)
+        return env
+
+    @staticmethod
+    def _response(
+        port: int,
+        method: str,
+        path: str,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, email.message.Message, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(method, path, body=body, headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.headers, response.read()
+        finally:
+            conn.close()
+
+    def test_launcher_runs_from_an_unrelated_working_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = self._clean_env(root / "state")
+            proc = subprocess.run(
+                [sys.executable, str(SERVER_PATH), "--diagnose", "--json"],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+                check=False,
+            )
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        self.assertIn("platform", json.loads(proc.stdout))
+
+    def test_cli_help_diagnose_status_stop_and_invalid_arguments_are_stable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            port = self._free_port()
+            env = self._clean_env(root / "state")
+            cases = (
+                ("help", ["--help"], 0, "usage:"),
+                ("diagnose", ["--diagnose", "--json"], 0, '"harnesses"'),
+                ("status", ["--port", str(port), "--status"], 1, "not running"),
+                ("stop", ["--port", str(port), "--stop"], 0, "nothing running"),
+                ("invalid", ["--unknown-flag"], 2, "unrecognized arguments"),
+            )
+            for label, args, expected, text in cases:
+                with self.subTest(path=label):
+                    proc = subprocess.run(
+                        [sys.executable, str(SERVER_PATH), *args],
+                        cwd=root,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=30,
+                        check=False,
+                    )
+                    self.assertEqual(expected, proc.returncode, proc.stderr)
+                    self.assertIn(text, proc.stdout + proc.stderr)
+
+    def test_http_routes_pin_status_content_type_and_response_shapes(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        with mock.patch.object(
+            dashboard,
+            "collect",
+            return_value={"generated": 1.0, "sessions": [], "harnesses": []},
+        ):
+            try:
+                cases = (
+                    ("GET", "/", None, 200, "text/html; charset=utf-8", None),
+                    (
+                        "GET",
+                        "/api/data",
+                        None,
+                        200,
+                        "application/json",
+                        {"generated", "sessions", "harnesses"},
+                    ),
+                    (
+                        "GET",
+                        "/api/health",
+                        None,
+                        200,
+                        "application/json",
+                        {"ok", "pid", "port", "started"},
+                    ),
+                    (
+                        "POST",
+                        "/api/notify",
+                        b'{"session_id":"12345678"}',
+                        200,
+                        "application/json",
+                        {"ok"},
+                    ),
+                    ("GET", "/missing", None, 404, "text/html;charset=utf-8", None),
+                )
+                for method, path, body, status, ctype, keys in cases:
+                    with self.subTest(path=path):
+                        code, headers, received = self._response(
+                            httpd.server_port, method, path, body
+                        )
+                        self.assertEqual(status, code)
+                        self.assertEqual(ctype, headers["Content-Type"])
+                        if status == 404:
+                            self.assertIsNone(headers.get("Cache-Control"))
+                        else:
+                            self.assertEqual("no-store", headers["Cache-Control"])
+                        if keys is not None:
+                            self.assertEqual(keys, set(json.loads(received)))
+                code, headers, received = self._response(
+                    httpd.server_port, "POST", "/api/shutdown", b""
+                )
+                self.assertEqual(200, code)
+                self.assertEqual("application/json", headers["Content-Type"])
+                self.assertEqual("no-store", headers["Cache-Control"])
+                self.assertEqual({"ok", "stopping"}, set(json.loads(received)))
+            finally:
+                httpd.shutdown()
+                thread.join(timeout=5)
+
+    def test_host_origin_dns_rebinding_and_request_limits_are_preserved(self) -> None:
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        self.assertEqual("127.0.0.1", httpd.server_address[0])
+        thread = serve_until_closed(httpd)
+        try:
+            port = httpd.server_port
+            code, _, _ = self._response(
+                port, "GET", "/api/health", headers={"Host": "evil.example"}
+            )
+            self.assertEqual(403, code)
+            code, _, _ = self._response(
+                port,
+                "POST",
+                "/api/notify",
+                b"{}",
+                {"Origin": "https://evil.example", "Content-Type": "application/json"},
+            )
+            self.assertEqual(403, code)
+            code, _, _ = self._response(
+                port,
+                "POST",
+                "/api/notify",
+                b"{}",
+                {"Origin": f"http://127.0.0.1:{port}", "Content-Type": "application/json"},
+            )
+            self.assertEqual(200, code)
+            code, _, _ = self._response(
+                port, "POST", "/api/notify", b"x", {"Content-Length": "65537"}
+            )
+            self.assertEqual(413, code)
+            code, _, _ = self._response(
+                port, "POST", "/api/notify", b"x", {"Content-Length": "not-a-number"}
+            )
+            self.assertEqual(413, code)
+            code, _, _ = self._response(
+                port,
+                "GET",
+                "/",
+                headers={
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                },
+            )
+            self.assertEqual(200, code)
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    def test_health_performs_no_harness_store_reads(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        try:
+            with mock.patch.object(dashboard, "collect") as collect:
+                code, _, body = self._response(httpd.server_port, "GET", "/api/health")
+            self.assertEqual(200, code)
+            self.assertTrue(json.loads(body)["ok"])
+            collect.assert_not_called()
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    def test_collection_memo_holds_its_lock_across_one_scan(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        second_done = threading.Event()
+        bodies: list[bytes] = []
+
+        def scan(*_: Any) -> dict[str, Any]:
+            entered.set()
+            self.assertTrue(release.wait(timeout=5), "test did not release the scan")
+            return {"generated": 1.0, "sessions": [], "harnesses": []}
+
+        def second_request() -> None:
+            bodies.append(dashboard.collect_json(24, False))
+            second_done.set()
+
+        with mock.patch.object(dashboard, "collect", side_effect=scan) as collect:
+            first = threading.Thread(
+                target=lambda: bodies.append(dashboard.collect_json(24, False))
+            )
+            second = threading.Thread(target=second_request)
+            first.start()
+            self.assertTrue(entered.wait(timeout=5), "first scan did not begin")
+            second.start()
+            self.assertFalse(second_done.wait(timeout=0.2), "second request scanned concurrently")
+            release.set()
+            first.join(timeout=5)
+            second.join(timeout=5)
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(1, collect.call_count)
+        self.assertEqual(2, len(bodies))
+        self.assertEqual(bodies[0], bodies[1])
+
+    def test_collection_memo_releases_its_lock_after_failure(self) -> None:
+        good = {"generated": 1.0, "sessions": [], "harnesses": []}
+        with mock.patch.object(
+            dashboard, "collect", side_effect=(RuntimeError("broken store"), good)
+        ):
+            with self.assertRaisesRegex(RuntimeError, "broken store"):
+                dashboard.collect_json(24, False)
+            self.assertEqual(good, json.loads(dashboard.collect_json(24, False)))
+
+    def test_session_end_cannot_be_undone_by_a_slow_notification(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        entered = threading.Event()
+        release = threading.Event()
+        notification: list[tuple[int, bytes]] = []
+
+        def slow_lookup(*_: Any) -> tuple[bool, str]:
+            entered.set()
+            self.assertTrue(release.wait(timeout=5), "test did not release notification")
+            return True, "user-event"
+
+        def post_notification() -> None:
+            code, _, body = self._response(
+                httpd.server_port,
+                "POST",
+                "/api/notify",
+                json.dumps(
+                    {
+                        "session_id": "12345678-session",
+                        "message": "permission needed",
+                        "transcript_path": "/slow.jsonl",
+                    }
+                ).encode(),
+            )
+            notification.append((code, body))
+
+        try:
+            with (
+                mock.patch.object(dashboard, "claude_hook_user_event", side_effect=slow_lookup),
+                mock.patch.object(dashboard, "notify_mac"),
+            ):
+                worker = threading.Thread(target=post_notification)
+                worker.start()
+                self.assertTrue(entered.wait(timeout=5), "notification did not begin")
+                code, _, body = self._response(
+                    httpd.server_port,
+                    "POST",
+                    "/api/notify",
+                    b'{"session_id":"12345678-session","hook_event_name":"SessionEnd"}',
+                )
+                self.assertEqual(200, code)
+                self.assertEqual({"ok": True, "cleared": "session_end"}, json.loads(body))
+                release.set()
+                worker.join(timeout=5)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual([(200, b'{"ok":true,"superseded":true}')], notification)
+            self.assertNotIn("12345678", dashboard._hook_notifs)
+        finally:
+            release.set()
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    def test_daemon_respawn_uses_the_absolute_stable_launcher(self) -> None:
+        args = argparse.Namespace(port=4553, window_hours=24.0, no_spacedock=False, daemon=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            log_file = str(Path(tmp) / "cargento.log")
+            with mock.patch.object(dashboard.subprocess, "Popen") as popen:
+                popen.return_value = mock.Mock(pid=1)
+                dashboard.spawn_detached(args, log_file)
+        self.assertEqual(str(SERVER_PATH), popen.call_args.args[0][1])
+
+    def test_copied_plugin_launches_without_repository_imports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            copied_plugin = root / "copied-plugin" / "cargento"
+            shutil.copytree(SERVER_PATH.parents[2], copied_plugin)
+            launcher = copied_plugin / "skills" / "cargento" / "server.py"
+            cwd = root / "unrelated"
+            cwd.mkdir()
+            cargento_home = root / "state"
+            port = self._free_port()
+            env = self._clean_env(cargento_home)
+            proc = subprocess.Popen(
+                [sys.executable, str(launcher), "--port", str(port)],
+                cwd=cwd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            try:
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    if proc.poll() is not None:
+                        stdout, stderr = proc.communicate(timeout=2)
+                        self.fail(f"copied launcher exited: {stdout!r} {stderr!r}")
+                    try:
+                        code, _, _ = self._response(port, "GET", "/api/health")
+                    except OSError:
+                        time.sleep(0.1)
+                        continue
+                    if code == 200:
+                        break
+                else:
+                    self.fail("copied launcher did not become healthy")
+                code, headers, body = self._response(port, "GET", "/")
+                self.assertEqual(200, code)
+                self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
+                self.assertTrue(body.startswith(b"<!doctype html>"))
+            finally:
+                stop = subprocess.run(
+                    [sys.executable, str(launcher), "--port", str(port), "--stop"],
+                    cwd=cwd,
+                    env=env,
+                    capture_output=True,
+                    timeout=15,
+                    check=False,
+                )
+                if proc.poll() is None:
+                    proc.terminate()
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        proc.wait(timeout=5)
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+                if proc.stdout is not None:
+                    proc.stdout.close()
+                if proc.stderr is not None:
+                    proc.stderr.close()
+                deadline = time.monotonic() + 5
+                while not dashboard.port_released(port) and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertEqual(0, stop.returncode, stop.stderr.decode("utf-8", "replace"))
+                self.assertTrue(dashboard.port_released(port))
+                self.assertEqual([], list(cargento_home.iterdir()))
+
+    def test_windows_detached_argv_preserves_an_absolute_launcher_path(self) -> None:
+        args = argparse.Namespace(port=4553, window_hours=24.0, no_spacedock=False, daemon=True)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(dashboard.os.path, "abspath", return_value="C:\\plugin\\server.py"),
+            mock.patch.object(dashboard.subprocess, "DETACHED_PROCESS", 8, create=True),
+            mock.patch.object(dashboard.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, create=True),
+            mock.patch.object(dashboard.subprocess, "Popen") as popen,
+        ):
+            popen.return_value = mock.Mock(pid=1)
+            dashboard.spawn_detached(args, str(Path(tmp) / "cargento.log"))
+        self.assertEqual("C:\\plugin\\server.py", popen.call_args.args[0][1])
+        self.assertEqual(520, popen.call_args.kwargs["creationflags"])
+
+    def test_main_and_detached_spawn_forward_current_arguments(self) -> None:
+        spawned = mock.Mock(pid=99)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+            mock.patch.object(dashboard.os, "name", "nt"),
+            mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "server.py",
+                    "--port",
+                    "6789",
+                    "--window-hours",
+                    "7.5",
+                    "--no-spacedock",
+                    "--daemon",
+                ],
+            ),
+            mock.patch.object(dashboard, "spawn_detached", return_value=spawned) as spawn,
+            mock.patch.object(dashboard, "await_spawned", return_value=("started", 0)),
+            mock.patch.object(dashboard, "diag"),
+            self.assertRaises(SystemExit) as caught,
+        ):
+            dashboard.main()
+        self.assertEqual(0, caught.exception.code)
+        forwarded = dashboard.forwarded_args(spawn.call_args.args[0])
+        self.assertEqual(["--port", "6789", "--window-hours", "7.5", "--no-spacedock"], forwarded)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(dashboard.subprocess, "Popen") as popen,
+        ):
+            popen.return_value = spawned
+            dashboard.spawn_detached(spawn.call_args.args[0], str(Path(tmp) / "cargento.log"))
+        self.assertEqual(
+            ["--port", "6789", "--window-hours", "7.5", "--no-spacedock"],
+            popen.call_args.args[0][2:],
+        )
+
+    def test_served_page_bytes_equal_the_embedded_page(self) -> None:
+        page = dashboard.PAGE.encode()
+        style = re.search(r"<style>\n(.*?)</style>", dashboard.PAGE, re.DOTALL)
+        script = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE, re.DOTALL)
+        assert style is not None
+        assert script is not None
+        self.assertEqual(93_713, len(page))
+        self.assertEqual(
+            "3a2264edda06e9caf1fbd34c0226ad8c3b0b320f206a87676c183492a5241b37",
+            hashlib.sha256(page).hexdigest(),
+        )
+        self.assertEqual(27_180, len(style.group(1).encode()))
+        self.assertEqual(
+            "e96a2292642bfc40d4bd40e9c23c733cf8d8ef524f55dfb9328685ac53f02cf1",
+            hashlib.sha256(style.group(1).encode()).hexdigest(),
+        )
+        self.assertEqual(66_237, len(script.group(1).encode()))
+        self.assertEqual(
+            "bfe260f4c9807d4a59de41f2a37b3711e76547fc67acc73f9201ff11da4a0e48",
+            hashlib.sha256(script.group(1).encode()).hexdigest(),
+        )
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        try:
+            code, _, served = self._response(httpd.server_port, "GET", "/")
+            self.assertEqual(200, code)
+            self.assertEqual(page, served)
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
 
 
 class CargentoServerTest(PageJsHarness):

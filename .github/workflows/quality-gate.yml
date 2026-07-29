@@ -66,6 +66,23 @@ jobs:
       - name: Mypy (strict)
         run: mypy
 
+  runtime-floor:
+    name: Runtime floor (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+      - name: Direct-launch smoke on the supported floor
+        run: |
+          cd "${RUNNER_TEMP}"
+          python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --help
+          python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --diagnose --json
+
   test:
     name: Tests + coverage threshold
     runs-on: ubuntu-latest
@@ -221,7 +238,7 @@ jobs:
   # every job above must succeed (a skip or failure anywhere fails the gate).
   quality-gate:
     name: quality-gate
-    needs: [lint, typecheck, test, platform-tests]
+    needs: [lint, typecheck, runtime-floor, test, platform-tests]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -230,10 +247,12 @@ jobs:
         run: |
           echo "lint:           ${{ needs.lint.result }}"
           echo "typecheck:      ${{ needs.typecheck.result }}"
+          echo "runtime-floor:  ${{ needs.runtime-floor.result }}"
           echo "test:           ${{ needs.test.result }}"
           echo "platform-tests: ${{ needs.platform-tests.result }}"
           if [ "${{ needs.lint.result }}" != "success" ] ||
              [ "${{ needs.typecheck.result }}" != "success" ] ||
+             [ "${{ needs.runtime-floor.result }}" != "success" ] ||
              [ "${{ needs.test.result }}" != "success" ] ||
              [ "${{ needs.platform-tests.result }}" != "success" ]; then
             echo "::error::One or more quality-gate jobs did not succeed."
