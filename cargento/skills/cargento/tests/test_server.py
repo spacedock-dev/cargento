@@ -3789,6 +3789,87 @@ console.log(JSON.stringify(out));
         stop.assert_called_once_with(4553)
         diag.assert_called_once_with("nope")
 
+    def test_fork_daemon_returns_parent_role_without_touching_setsid(self) -> None:
+        calls: list[str] = []
+
+        def fake_fork() -> int:
+            calls.append("fork")
+            return 4242  # a pid: this process is the original
+
+        def fake_setsid() -> int:
+            calls.append("setsid")
+            return 0
+
+        role, fd = dashboard.fork_daemon(fork=fake_fork, setsid=fake_setsid)
+        os.close(fd)
+        self.assertEqual("parent", role)
+        self.assertEqual(["fork"], calls)
+
+    def test_fork_daemon_double_forks_and_sessions_the_daemon(self) -> None:
+        calls: list[str] = []
+        exited: list[int] = []
+
+        def fake_fork() -> int:
+            calls.append("fork")
+            return 0  # child both times: this process becomes the daemon
+
+        def fake_setsid() -> int:
+            calls.append("setsid")
+            return 0
+
+        role, fd = dashboard.fork_daemon(
+            fork=fake_fork, setsid=fake_setsid, exit_intermediate=exited.append
+        )
+        os.close(fd)
+        self.assertEqual("daemon", role)
+        # setsid between the two forks: the second fork is what guarantees the
+        # daemon is not a session leader and can never acquire a terminal.
+        self.assertEqual(["fork", "setsid", "fork"], calls)
+        self.assertEqual([], exited)
+
+    def test_fork_daemon_exits_the_intermediate_child(self) -> None:
+        forks = iter([0, 9999])  # child, then parent-of-grandchild
+        exited: list[int] = []
+        role, fd = dashboard.fork_daemon(
+            fork=lambda: next(forks),
+            setsid=lambda: 0,
+            exit_intermediate=exited.append,
+        )
+        os.close(fd)
+        # The intermediate's only job was setsid. In production os._exit never
+        # returns; the injected stub does, so the role is reported for the test.
+        self.assertEqual([0], exited)
+        self.assertEqual("daemon", role)
+
+    def test_await_daemon_reports_the_pid_the_daemon_announced(self) -> None:
+        read_fd, write_fd = os.pipe()
+        try:
+            os.write(write_fd, b"31337\n")
+        finally:
+            os.close(write_fd)
+        message, code = dashboard.await_daemon(read_fd, 4553, "/tmp/c.log", timeout=2)
+        self.assertEqual(0, code)
+        self.assertIn("pid 31337", message)
+        self.assertIn("http://127.0.0.1:4553/", message)
+        self.assertIn("/tmp/c.log", message)
+
+    def test_await_daemon_reports_failure_when_the_daemon_says_nothing(self) -> None:
+        read_fd, write_fd = os.pipe()
+        os.close(write_fd)  # daemon died before announcing
+        message, code = dashboard.await_daemon(read_fd, 4553, "/tmp/c.log", timeout=1)
+        self.assertEqual(1, code)
+        self.assertIn("/tmp/c.log", message)
+
+    def test_daemon_rejects_the_flags_it_cannot_combine_with(self) -> None:
+        for other in ("--diagnose", "--stop", "--status"):
+            with (
+                mock.patch.object(sys, "argv", ["server.py", "--daemon", other]),
+                self.assertRaises(SystemExit) as caught,
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                dashboard.main()
+            self.assertEqual(2, caught.exception.code, other)
+
 
 class ReverseLinesTest(unittest.TestCase):
     """Replaces the reverse mmap scans. A mapped region whose file is truncated

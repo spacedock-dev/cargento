@@ -27,6 +27,7 @@ import ntpath
 import os
 import posixpath
 import re
+import select
 import socket
 import stat as stat_module
 import subprocess
@@ -5734,6 +5735,13 @@ def collect_json(window_hours: float, show_all: bool) -> bytes:
 CARGENTO_HOME_ENV = "CARGENTO_HOME"
 DAEMON_READY_TIMEOUT_SEC = 10.0
 
+# Resolved through getattr, never referenced directly: `os.fork` and
+# `os.setsid` do not exist on Windows, and a module-level `os.fork` reference
+# would fail at import there — including under mypy, which checks both
+# platforms.
+_FORK: Callable[[], int] | None = getattr(os, "fork", None)
+_SETSID: Callable[[], int] | None = getattr(os, "setsid", None)
+
 
 def cargento_home() -> str:
     """Where the state file and the daemon log live.
@@ -5924,6 +5932,104 @@ def stop_instance(port: int) -> tuple[str, int]:
     # Nothing there and nothing recorded. Stopping is idempotent on purpose:
     # a script that calls --stop unconditionally should not fail for it.
     return (f"Cargento: nothing running on port {port}.", 0)
+
+
+def fork_daemon(
+    *,
+    fork: Callable[[], int] | None = None,
+    setsid: Callable[[], int] | None = None,
+    exit_intermediate: Callable[[int], None] | None = None,
+) -> tuple[str, int]:
+    """Split this process into a detached daemon and a reporting parent.
+
+    Returns ("parent", read_fd) in the original process, which must report what
+    the daemon says and then exit, and ("daemon", write_fd) in the detached
+    process, which must serve.
+
+    Why the parent reports rather than the daemon: an agent's shell tool stops
+    capturing output when the process it waited for exits, so a line printed by
+    the detached child afterwards is simply lost. The pipe also makes the
+    report *true* — the parent says "running" because the daemon said so.
+
+    Why two forks: the first detaches from the caller, setsid leaves the
+    session and its controlling terminal, and the second means the daemon is
+    not a session leader, so it can never reacquire one.
+
+    The hooks exist so the call sequence can be asserted without a test suite
+    that forks itself.
+    """
+    do_fork = fork or _FORK
+    do_setsid = setsid or _SETSID
+    do_exit = exit_intermediate or os._exit
+    if do_fork is None or do_setsid is None:  # pragma: no cover — POSIX-only path
+        raise RuntimeError("--daemon needs fork/setsid; use the Windows re-spawn path")
+    read_fd, write_fd = os.pipe()
+    if do_fork() > 0:
+        os.close(write_fd)
+        return ("parent", read_fd)
+    os.close(read_fd)
+    do_setsid()
+    if do_fork() > 0:
+        do_exit(0)
+    return ("daemon", write_fd)
+
+
+def daemon_redirect_stdio(log_file: str) -> None:
+    """Point stdio at the log, once there is nothing left to say on the terminal.
+
+    dup2 rather than reassigning sys.stdout: writes from C and an uncaught
+    traceback go to fd 1 and 2 directly, and those are exactly the output a
+    detached failure leaves behind.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    with open(os.devnull, "rb") as devnull:
+        os.dup2(devnull.fileno(), 0)
+    with open(log_file, "ab", buffering=0) as handle:
+        os.dup2(handle.fileno(), 1)
+        os.dup2(handle.fileno(), 2)
+
+
+def daemon_announce(write_fd: int) -> None:
+    """Tell the waiting parent this process is serving, and how to name it."""
+    with contextlib.suppress(OSError):
+        os.write(write_fd, f"{os.getpid()}\n".encode())
+    with contextlib.suppress(OSError):
+        os.close(write_fd)
+
+
+def await_daemon(
+    read_fd: int, port: int, log_file: str, timeout: float = DAEMON_READY_TIMEOUT_SEC
+) -> tuple[str, int]:
+    """Wait for the forked daemon's pid. Returns (message, exit code)."""
+    deadline = time.monotonic() + timeout
+    seen = b""
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([read_fd], [], [], 0.1)
+            if not ready:
+                continue
+            chunk = os.read(read_fd, 64)
+            if not chunk:
+                break  # the daemon closed the pipe without announcing: it died
+            seen += chunk
+            if b"\n" in seen:
+                break
+    except OSError:
+        seen = b""
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(read_fd)
+    pid = seen.strip().decode("ascii", "replace")
+    if pid.isdigit():
+        return (f"Cargento: http://127.0.0.1:{port}/ (pid {pid}, log {log_file})", 0)
+    return (
+        (
+            f"Cargento: started in the background, but it did not report ready "
+            f"within {timeout:.0f}s — check {log_file}."
+        ),
+        1,
+    )
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -6312,6 +6418,11 @@ def main() -> None:
         help="stop the Cargento running on --port, and exit",
     )
     ap.add_argument(
+        "--daemon",
+        action="store_true",
+        help="detach and keep running after the session that started it exits",
+    )
+    ap.add_argument(
         "--window-hours",
         type=float,
         default=24,
@@ -6320,6 +6431,10 @@ def main() -> None:
     args = ap.parse_args()
     global SERVER_STARTED  # noqa: PLW0603 — one process-wide start stamp
     SERVER_STARTED = time.time()
+    if args.daemon and (args.diagnose or args.stop or args.status):
+        # Each of those three exits without serving, so --daemon cannot apply.
+        # Accepting it silently would teach that it had been honored.
+        ap.error("--daemon cannot be combined with --diagnose, --stop or --status")
     if args.no_spacedock:
         global SPACEDOCK_ENABLED  # noqa: PLW0603 — one process-wide switch
         SPACEDOCK_ENABLED = False
@@ -6343,17 +6458,42 @@ def main() -> None:
             "but without its token rate or turn ETA. Install the sqlite3 "
             "extension for this interpreter to enable them."
         )
+    log_file = log_path(args.port)
+    if args.daemon:
+        ensure_cargento_home()
     # Bind to loopback only — this exposes local session data.
+    #
+    # Bind before detaching. bind_error_message() exists so a busy port gets an
+    # explanation rather than a traceback, and SKILL.md tells the agent to look
+    # for an already-running dashboard when it sees one. Forking first would
+    # send that message to a log file nobody has been told about yet, and
+    # report success.
     try:
         server = LoopbackHTTPServer(("127.0.0.1", args.port), Handler)
     except OSError as exc:
         diag(bind_error_message(exc, args.port))
         raise SystemExit(1) from exc
+    announce_fd: int | None = None
+    if args.daemon:
+        role, fd = fork_daemon()
+        if role == "parent":
+            # The daemon holds its own dup of the listening socket; closing
+            # this one keeps a dead daemon from leaving the port looking bound.
+            with contextlib.suppress(OSError):
+                server.server_close()
+            message, code = await_daemon(fd, args.port, log_file)
+            diag(message)
+            raise SystemExit(code)
+        announce_fd = fd
+        daemon_redirect_stdio(log_file)
     # 127.0.0.1, not localhost: on some systems "localhost" resolves to ::1
     # first, and this listener is IPv4-only, so the literal address is the one
     # that always connects.
     diag(f"Cargento: http://127.0.0.1:{args.port}/")
     write_state(args.port)
+    if announce_fd is not None:
+        # After write_state, so --status works the instant the parent returns.
+        daemon_announce(announce_fd)
     try:
         server.serve_forever()
     finally:
