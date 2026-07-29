@@ -259,8 +259,7 @@ def collect(
     now: float,
     window_hours: float,
     show_all: bool,
-) -> list[dict[str, Any]]:
-    ...
+) -> list[dict[str, Any]]: ...
 ```
 
 `aggregate.py` owns `HarnessSpec`, catches discovery and collection errors at the current per-harness

@@ -227,16 +227,12 @@ class RuntimeState:
     turn_scan: dict[str, Any] = field(default_factory=dict)
     agent_class_cache: dict[str, tuple[bool, str, str]] = field(default_factory=dict)
     spacedock_role_cache: dict[str, str] = field(default_factory=dict)
-    spacedock_boot_cache: dict[tuple[str, int], list[dict[str, Any]]] = field(
-        default_factory=dict
-    )
+    spacedock_boot_cache: dict[tuple[str, int], list[dict[str, Any]]] = field(default_factory=dict)
     spacedock_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = field(
         default_factory=dict
     )
     spacedock_entity_cache: dict[tuple[str, int, int], str] = field(default_factory=dict)
-    cursor_metadata_cache: dict[str, tuple[float, str | None, str]] = field(
-        default_factory=dict
-    )
+    cursor_metadata_cache: dict[str, tuple[float, str | None, str]] = field(default_factory=dict)
     collect_memo: dict[tuple[float, bool], CollectMemoEntry] = field(default_factory=dict)
 
 
