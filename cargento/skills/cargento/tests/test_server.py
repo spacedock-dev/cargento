@@ -724,6 +724,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
 
     def setUp(self) -> None:
+        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
+        self._window_hours = dashboard.Handler.window_hours
+        self._server_started = dashboard.__dict__["SERVER_STARTED"]
         with dashboard._lock:
             dashboard._hook_notifs.clear()
             dashboard._last_popup.clear()
@@ -734,11 +737,14 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             dashboard._collect_memo.clear()
 
     def tearDown(self) -> None:
+        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
+        dashboard.Handler.window_hours = self._window_hours
+        dashboard.__dict__["SERVER_STARTED"] = self._server_started
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
 
     @staticmethod
-    def _free_port() -> int:
+    def _candidate_port() -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
             listener.bind(("127.0.0.1", 0))
             return int(listener.getsockname()[1])
@@ -767,6 +773,43 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def _await_owned_instance(
+        self, port: int, proc: subprocess.Popen[bytes], state_path: Path
+    ) -> None:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                stdout, stderr = proc.communicate(timeout=2)
+                self.fail(f"launcher exited: {stdout!r} {stderr!r}")
+            try:
+                code, _, body = self._response(port, "GET", "/api/health")
+                health = json.loads(body) if code == 200 else {}
+            except (OSError, ValueError, json.JSONDecodeError):
+                time.sleep(0.05)
+                continue
+            if health.get("pid") != proc.pid:
+                self.fail(f"port {port} is served by pid {health.get('pid')}, not child {proc.pid}")
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError):
+                time.sleep(0.05)
+                continue
+            self.assertEqual(proc.pid, state.get("pid"))
+            self.assertEqual(port, state.get("port"))
+            return
+        self.fail("owned launcher did not become healthy with its state file")
+
+    def _owns_instance(self, port: int, proc: subprocess.Popen[bytes], state_path: Path) -> bool:
+        if proc.poll() is not None:
+            return False
+        try:
+            code, _, body = self._response(port, "GET", "/api/health")
+            health = json.loads(body) if code == 200 else {}
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return False
+        return health.get("pid") == proc.pid and state.get("pid") == proc.pid
+
     def test_launcher_runs_from_an_unrelated_working_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -787,29 +830,60 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     def test_cli_help_diagnose_status_stop_and_invalid_arguments_are_stable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            port = self._free_port()
+            port = self._candidate_port()
             env = self._clean_env(root / "state")
+            state_path = root / "state" / f"cargento-{port}.json"
+            server = subprocess.Popen(
+                [sys.executable, str(SERVER_PATH), "--port", str(port)],
+                cwd=root,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
             cases = (
                 ("help", ["--help"], 0, "usage:"),
                 ("diagnose", ["--diagnose", "--json"], 0, '"harnesses"'),
-                ("status", ["--port", str(port), "--status"], 1, "not running"),
-                ("stop", ["--port", str(port), "--stop"], 0, "nothing running"),
+                ("status", ["--port", str(port), "--status"], 0, "running"),
+                ("stop", ["--port", str(port), "--stop"], 0, "stopped"),
                 ("invalid", ["--unknown-flag"], 2, "unrecognized arguments"),
             )
-            for label, args, expected, text in cases:
-                with self.subTest(path=label):
-                    proc = subprocess.run(
-                        [sys.executable, str(SERVER_PATH), *args],
+            try:
+                self._await_owned_instance(port, server, state_path)
+                for label, args, expected, text in cases:
+                    with self.subTest(path=label):
+                        proc = subprocess.run(
+                            [sys.executable, str(SERVER_PATH), *args],
+                            cwd=root,
+                            env=env,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            timeout=30,
+                            check=False,
+                        )
+                        self.assertEqual(expected, proc.returncode, proc.stderr)
+                        self.assertIn(text, proc.stdout + proc.stderr)
+            finally:
+                if self._owns_instance(port, server, state_path):
+                    subprocess.run(
+                        [sys.executable, str(SERVER_PATH), "--port", str(port), "--stop"],
                         cwd=root,
                         env=env,
                         capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        timeout=30,
+                        timeout=15,
                         check=False,
                     )
-                    self.assertEqual(expected, proc.returncode, proc.stderr)
-                    self.assertIn(text, proc.stdout + proc.stderr)
+                if server.poll() is None:
+                    server.terminate()
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        server.wait(timeout=5)
+                if server.poll() is None:
+                    server.kill()
+                server.wait(timeout=5)
+                if server.stdout is not None:
+                    server.stdout.close()
+                if server.stderr is not None:
+                    server.stderr.close()
 
     def test_http_routes_pin_status_content_type_and_response_shapes(self) -> None:
         httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
@@ -1096,8 +1170,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             cwd = root / "unrelated"
             cwd.mkdir()
             cargento_home = root / "state"
-            port = self._free_port()
+            port = self._candidate_port()
             env = self._clean_env(cargento_home)
+            state_path = cargento_home / f"cargento-{port}.json"
             proc = subprocess.Popen(
                 [sys.executable, str(launcher), "--port", str(port)],
                 cwd=cwd,
@@ -1105,34 +1180,27 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
+            owned = False
             try:
-                deadline = time.monotonic() + 15
-                while time.monotonic() < deadline:
-                    if proc.poll() is not None:
-                        stdout, stderr = proc.communicate(timeout=2)
-                        self.fail(f"copied launcher exited: {stdout!r} {stderr!r}")
-                    try:
-                        code, _, _ = self._response(port, "GET", "/api/health")
-                    except OSError:
-                        time.sleep(0.1)
-                        continue
-                    if code == 200:
-                        break
-                else:
-                    self.fail("copied launcher did not become healthy")
+                self._await_owned_instance(port, proc, state_path)
+                owned = True
                 code, headers, body = self._response(port, "GET", "/")
                 self.assertEqual(200, code)
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
                 self.assertTrue(body.startswith(b"<!doctype html>"))
             finally:
-                stop = subprocess.run(
-                    [sys.executable, str(launcher), "--port", str(port), "--stop"],
-                    cwd=cwd,
-                    env=env,
-                    capture_output=True,
-                    timeout=15,
-                    check=False,
-                )
+                stop: subprocess.CompletedProcess[bytes] | None = None
+                # A live owned process has exclusive possession of its port,
+                # so the copied --stop command cannot reach a foreign server.
+                if owned and self._owns_instance(port, proc, state_path):
+                    stop = subprocess.run(
+                        [sys.executable, str(launcher), "--port", str(port), "--stop"],
+                        cwd=cwd,
+                        env=env,
+                        capture_output=True,
+                        timeout=15,
+                        check=False,
+                    )
                 if proc.poll() is None:
                     proc.terminate()
                     with contextlib.suppress(subprocess.TimeoutExpired):
@@ -1144,12 +1212,12 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                     proc.stdout.close()
                 if proc.stderr is not None:
                     proc.stderr.close()
-                deadline = time.monotonic() + 5
-                while not dashboard.port_released(port) and time.monotonic() < deadline:
-                    time.sleep(0.05)
-                self.assertEqual(0, stop.returncode, stop.stderr.decode("utf-8", "replace"))
-                self.assertTrue(dashboard.port_released(port))
-                self.assertEqual([], list(cargento_home.iterdir()))
+                if owned:
+                    self.assertIsNotNone(stop, "owned launcher disappeared before safe --stop")
+                    assert stop is not None
+                    self.assertEqual(0, stop.returncode, stop.stderr.decode("utf-8", "replace"))
+                    self.assertTrue(dashboard.await_release(port, timeout=5))
+                    self.assertEqual([], list(cargento_home.iterdir()))
 
     def test_windows_detached_argv_preserves_an_absolute_launcher_path(self) -> None:
         args = argparse.Namespace(port=4553, window_hours=24.0, no_spacedock=False, daemon=True)
