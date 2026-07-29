@@ -117,9 +117,24 @@ The last row is why the pid is in the health response at all. Without it, "somet
 reads as "Cargento is running", and the next step is a kill aimed at an innocent process.
 
 `--stop` is idempotent by design: it exits 0 whether it stopped a running instance, cleaned up a
-stale state file, or found nothing at all, and exits 1 only in the foreign-process case, the one
-case where it deliberately did nothing. A script can call `--stop` unconditionally before starting a
+stale state file, or found nothing at all, and exits 1 in the foreign-process case, the one case
+where it deliberately did nothing. A script can call `--stop` unconditionally before starting a
 fresh instance.
+
+Which is exactly why it does not return on the 200 alone. The handler answers before it stops, and
+`server.shutdown()` takes up to one poll interval to be noticed, after which the listening socket
+closes only once `serve_forever()` has returned — so returning on the 200 asserted a completed stop
+while the port was still bound, and the obvious restart (`--stop`, then start again) failed on a busy
+port and was told to go look at a dashboard that was in the middle of shutting down. `--stop` now
+waits for the port and exits 1, saying so, if it never comes free.
+
+Waiting means asking the right question, and the right question is not "is anything listening". A TCP
+connect to a bound socket that nothing is accepting from still completes, so a connect probe cannot
+see the window between `serve_forever()` returning and `server_close()` running — and each probe
+leaves an unaccepted connection in the backlog, so after `request_queue_size` of them the probe
+starts reporting the port gone while it is still bound. `port_released()` therefore *binds*, with the
+same reuse options as the real listener, because what the caller wants to know is whether a new
+listener could take the port.
 
 ## D-5: Stopping is one code path, over HTTP, shared by the button and the CLI
 
@@ -169,7 +184,11 @@ the same `_local_ok()` checks. `SECURITY.md` says so rather than leaving a reade
 ## D-7: The button arms before it fires, and the stopped page is not the stalled page
 
 A `stop` button sits beside the display toggle, in both display modes. The first click arms it in
-place, asking for confirmation; the second POSTs. `esc` or a click elsewhere disarms.
+place, asking for confirmation; the second POSTs. `esc` disarms, and so does a click anywhere else —
+including a click on another control, which is the part worth stating. Arming survives a render on
+purpose, so without that it survives everything: sort the ledger, toggle a mode, come back later, and
+a single click would stop the server having never been confirmed at all. The second click only means
+something while it is still answering for the first.
 
 `stopArmed` lives in a module variable and is reapplied after each render, which is the rule
 `CONTRIBUTING.md` already states for anything a reader set: `#app` is rebuilt from scratch every five
@@ -183,6 +202,15 @@ On success the page enters a terminal stopped panel and stops polling. Falling t
 existing "stalled · retrying every 5s" banner would be actively misleading: nothing is retrying,
 nothing is coming back, and the reader is the one who ended it. A failed POST shows the error inline
 and disarms, because the server is still running and the page should not pretend otherwise.
+
+`serverStopped` is therefore checked at the top of `refresh()` *and* again after each `await` in it.
+The entry check only skips a poll that has yet to start; a poll already in flight when the stop lands
+settles afterwards, and `/api/data` is the slow request here while the shutdown POST is a loopback
+round trip, so that ordering is the common case rather than a narrow race. Without the later checks
+the reply repainted a live-looking dashboard over the terminal panel — stale needs-input count back
+in the title, and the interval already cleared, so not even the stalled banner was left to contradict
+it. The same check guards the failure arm: a stop the reader asked for is not a refresh failure and
+must not drive the stalled bookkeeping.
 
 ## Verified: the macOS notification path survives detaching
 

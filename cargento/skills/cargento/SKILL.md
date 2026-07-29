@@ -140,7 +140,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 |---|---|
 | `--port N` | Change port (default 4553). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
 | `--daemon` | Detach and keep running after the starting session exits. Prints the URL, pid and log path. |
-| `--stop` | Stop the instance on `--port`, over `/api/shutdown` — the same path the UI's `stop` button uses. |
+| `--stop` | Stop the instance on `--port`, over `/api/shutdown` — the same path the UI's `stop` button uses. Returns once the port is free, so a restart on the same port works. |
 | `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
@@ -170,10 +170,11 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 python3 "<skill-dir>/server.py" --port 4553 --stop
 ```
 
-Or click `stop` in the dashboard header — two clicks, since the page cannot undo it. Both do the
-same thing: `POST /api/shutdown`. `--stop` also clears a state file left behind by a server that
-was killed, and exits non-zero without touching anything if the port turns out to belong to another
-process.
+Or click `stop` in the dashboard header — two clicks, since the page cannot undo it, and anything
+else you click in between counts as "no". Both do the same thing: `POST /api/shutdown`. `--stop`
+waits for the port to come free before reporting success, so you can start a fresh instance on the
+same port straight afterwards. It also clears a state file left behind by a server that was killed,
+and exits non-zero without touching anything if the port turns out to belong to another process.
 
 **Last resort**, for a server wedged badly enough that it no longer answers HTTP. Match only
 *listening* sockets — without that filter these also match connected clients, including the

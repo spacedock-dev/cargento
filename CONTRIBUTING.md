@@ -155,6 +155,12 @@ so re-run the job before investigating, and check the traceback is a timeout and
   thread and the accept loop is never the caller. The reason is that `shutdown()` blocks until the accept
   loop notices, up to one poll interval, and the client should not be held open for that just to hear
   "stopping".
+- Because of that delay, nothing may report a stop as *finished* until the port is free. Ask by
+  binding the port, not by connecting to it: a connect to a bound socket that nothing is accepting
+  from still succeeds, and repeated connects fill the backlog and then report the port gone while it
+  is still bound.
+- Any guard against work landing after teardown has to be re-checked after every `await`, not only on
+  entry. An entry check skips the next poll; it does nothing about the one already in flight.
 
 The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md); for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md); for how a row is labelled and identified, [docs/design-session-identity.md](docs/design-session-identity.md); and for `--daemon`/`--status`/`--stop`, [docs/design-daemon.md](docs/design-daemon.md).
 
