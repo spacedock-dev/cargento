@@ -36,6 +36,11 @@ Data sources (read-only, no external calls; all parsing is defensive — a broke
 
 A `display` switch at the top right toggles between two renderings of the same `/api/data` payload. The choice is remembered per browser (`localStorage`, key `cargento.displayMode`) and `c` toggles it from the keyboard. Nothing is filtered out of one mode and present in the other; the two never disagree about a session.
 
+A `stop` button sits beside the switch in both modes: the first click arms it, the second stops the
+server, and `esc` or a click elsewhere disarms it. After it fires the page stops polling and says
+Cargento was stopped, rather than showing the "stalled" banner that means the server went away on
+its own.
+
 - **regular** (default) — the card stack: hero tiles, the needs-input band, one card per working session, a collapsed idle list.
 - **calm** — one dense ledger row per session in a fixed frame that scrolls internally, for boards with more sessions than fit as cards. Columns: state rail, harness, session title, `project · session id`, what it's doing, flag, current-turn bar, and the state's headline number (wait / tok-per-min / idle age; a dash where the harness reports no token rate, matching the regular view, which omits the meter there). Clicking a row expands it in place with the flag's explanation, the last prompt, tracked tasks, any Spacedock stage strips, the turn estimate, subagents, and `copy id`. When the project name is too long for its column the project is truncated, never the session id.
 
@@ -51,38 +56,47 @@ Three flags appear in the `flag` column, and only these three — each is a sign
 
 ## Start
 
-Stdlib-only, Python 3.11+, no dependencies. Resolve `server.py` relative to this `SKILL.md` in the installed plugin, then start it in the background. Prefer your harness's own background-execution option; otherwise use the form for the shell you are in:
+Stdlib-only, Python 3.11+, no dependencies. Resolve `server.py` relative to this `SKILL.md` in the
+installed plugin and start it detached, so it keeps running after this session ends:
 
 ```bash
-# macOS, Linux, WSL, Git Bash
-python3 "<skill-dir>/server.py" --port 4553 &
-```
-```powershell
-# Windows PowerShell — `&` is the call operator here, not backgrounding.
-# The inner double quotes are deliberate: -ArgumentList joins the array with
-# spaces without quoting it, so a skill directory containing a space would
-# otherwise reach python as two arguments.
-Start-Process -PassThru -WindowStyle Hidden python -ArgumentList '"<skill-dir>\server.py"','--port','4553'
-```
-```bat
-:: Windows cmd
-start "" /b python "<skill-dir>\server.py" --port 4553
+python3 "<skill-dir>/server.py" --port 4553 --daemon
 ```
 
-`python3` is not a reliable spelling on native Windows — use `python` (or `py -3`) there. Whichever interpreter you start the server with, reuse it for the commands below.
+One line on every platform and in every shell — `--daemon` does the detaching itself, so no
+backgrounding operator is involved. It prints the URL, the pid and the log path, and returns.
+On native Windows `python3` is not a reliable spelling; use `python` (or `py -3`). Whichever
+interpreter starts the server, reuse it for the commands below.
 
-Confirm it responds, then open the UI:
+Drop `--daemon` to run it in the foreground instead, which is the easier shape for debugging: log
+output goes to your terminal rather than to the log file.
+
+Then open the UI:
 
 ```bash
-curl -s http://127.0.0.1:4553/api/data | head -c 200
 python3 -m webbrowser -t http://127.0.0.1:4553/
 ```
 
-Use `127.0.0.1`, not `localhost`: the server listens on IPv4 only, and on some systems `localhost` resolves to `::1` first.
+Use `127.0.0.1`, not `localhost`: the server listens on IPv4 only, and on some systems `localhost`
+resolves to `::1` first.
 
-Tell the user the URL, that the page auto-refreshes every 5 seconds, and that popups require the server to be running. Completed-task ages/estimates degrade where the filesystem exposes no birthtime (Linux, and Windows before Python 3.12).
+Tell the user the URL, that the page auto-refreshes every 5 seconds, that it keeps running until
+stopped, and that popups require the server to be running. Completed-task ages/estimates degrade
+where the filesystem exposes no birthtime (Linux, and Windows before Python 3.12).
 
-If the port is busy the server exits with an explanation rather than a traceback. Check whether a dashboard is already there (`curl -s http://127.0.0.1:4553/api/data`) before killing anything.
+If the port is busy the server explains that instead of dumping a traceback, and exits non-zero —
+under `--daemon` too. Check whether a dashboard is already there before killing anything:
+
+```bash
+python3 "<skill-dir>/server.py" --port 4553 --status
+```
+
+`--status` reports one of three things, and never guesses: running (with pid and uptime), not
+running, or that the port belongs to some other process — in which case it changes nothing.
+
+Cargento writes two files, both in a `.cargento` directory under your home directory (relocatable
+with `CARGENTO_HOME`): `cargento-<port>.json`, which records the running instance, and
+`cargento-<port>.log`, where a detached server's output goes.
 
 ## Notifications
 
@@ -124,12 +138,17 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 
 | Flag / URL | Effect |
 |---|---|
-| `--port N` | Change port (default 4553). If the port is busy, check `curl -s http://127.0.0.1:4553/api/data` first — a running dashboard may already be there; don't kill it blindly. |
+| `--port N` | Change port (default 4553). If the port is busy, check `--status` first — a running dashboard may already be there; don't kill it blindly. |
+| `--daemon` | Detach and keep running after the starting session exits. Prints the URL, pid and log path. |
+| `--stop` | Stop the instance on `--port`, over `/api/shutdown` — the same path the UI's `stop` button uses. |
+| `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
+| `/api/health` | Liveness and identity (pid, port, uptime). Scans nothing, unlike `/api/data`. |
+| `POST /api/shutdown` | Stop the server. Loopback-only, with the same origin checks as `/api/notify`. |
 
 ## Interpretation notes (share with the user if asked)
 
@@ -148,6 +167,19 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 ## Stop
 
 ```bash
+python3 "<skill-dir>/server.py" --port 4553 --stop
+```
+
+Or click `stop` in the dashboard header — two clicks, since the page cannot undo it. Both do the
+same thing: `POST /api/shutdown`. `--stop` also clears a state file left behind by a server that
+was killed, and exits non-zero without touching anything if the port turns out to belong to another
+process.
+
+**Last resort**, for a server wedged badly enough that it no longer answers HTTP. Match only
+*listening* sockets — without that filter these also match connected clients, including the
+browser's own network process:
+
+```bash
 # macOS, Linux, WSL (lsof is absent on many minimal images — fuser is the fallback)
 lsof -ti tcp:4553 -sTCP:LISTEN | xargs kill
 fuser -k 4553/tcp
@@ -159,11 +191,11 @@ Get-NetTCPConnection -LocalPort 4553 -State Listen |
 ```
 ```bat
 :: Windows cmd, typed at the prompt — inside a .bat file write %%a for %a.
-:: Two literal findstr passes; findstr does not take a regex without /R.
 for /f "tokens=5" %a in ('netstat -ano ^| findstr "LISTENING" ^| findstr ":4553"') do taskkill /PID %a /F
 ```
 
-Match only *listening* sockets (`-sTCP:LISTEN`, `-State Listen`, `LISTENING`): without that filter these commands also match connected clients — including the browser's network process. Substitute the port the server was actually started on, and note the cmd form matches any port whose digits contain the string (`:4553` also matches `:45530`), so prefer the PowerShell form on Windows.
+Substitute the port the server was actually started on. The cmd form matches any port whose digits
+contain the string (`:4553` also matches `:45530`), so prefer the PowerShell form on Windows.
 
 ## Common mistakes
 

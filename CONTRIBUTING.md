@@ -143,8 +143,20 @@ so re-run the job before investigating, and check the traceback is a timeout and
   `test_server.py` executes the real script under node against a stub DOM, so a test can fire a
   click or a keystroke and assert on what the page did. A `assertIn("some-class", PAGE)` passes
   forever after the behavior behind it breaks.
+- Bind the listener before forking (or, on Windows, before waiting on the re-spawned child), so a
+  failed bind is still reported to the terminal that asked for it, not to a log file nobody has been
+  told about yet.
+- Never use `os.kill`, including `os.kill(pid, 0)` for liveness — CPython implements it on Windows
+  through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
+  Probe `/api/health` instead.
+- Stopping goes over HTTP, so the CLI and the page share one code path, and a handler that stops the
+  server must do it on its own thread. Not because a `ThreadingHTTPServer` handler would deadlock
+  calling `server.shutdown()` inline — it would not, since every request already runs on its own
+  thread and the accept loop is never the caller — but because `shutdown()` blocks until the accept
+  loop notices, up to one poll interval, and the client should not be held open for that just to hear
+  "stopping".
 
-The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md); for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md); and for how a row is labelled and identified, [docs/design-session-identity.md](docs/design-session-identity.md).
+The reasoning behind these, and the alternatives that were tried and rejected, is in [docs/design-cross-platform.md](docs/design-cross-platform.md); for the Spacedock reader, [docs/design-spacedock.md](docs/design-spacedock.md); for how a row is labelled and identified, [docs/design-session-identity.md](docs/design-session-identity.md); and for `--daemon`/`--status`/`--stop`, [docs/design-daemon.md](docs/design-daemon.md).
 
 ## Commits
 

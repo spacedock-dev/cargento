@@ -33,6 +33,26 @@ Exactly one layer delivers a given popup: the server where it has a native backe
 
 Notification delivery is best-effort by design, on every platform. The exit criterion is graceful degradation plus a reported delivery status, not a guarantee: browser notifications need the user's permission and an open tab, `notify-send` needs a graphical user D-Bus session, and a Windows toast needs an interactive session (and, from WSL, enabled interop). A backend that cannot deliver must no-op quietly, never raise.
 
+Verified by hand: on macOS, a `--daemon` server delivers the native notification with no browser tab
+open at all, since the double-fork keeps the daemon in the user's own login session rather than
+moving it to a new one — the main reason daemon mode is worth having. That confirms `osascript`
+reported success, not that a banner was visibly displayed; Focus and Do Not Disturb can still
+suppress on-screen display independently of whether the process is detached. See
+[`docs/design-daemon.md`](docs/design-daemon.md) for how this was verified.
+
+### `--daemon`, `--status`, `--stop`
+
+`--daemon` detaches so the dashboard outlives the session that started it: a double-fork on POSIX,
+a detached re-spawn on Windows (there is no `fork` there). Both bind the listening socket — or, on
+Windows, wait for the re-spawned child to prove it bound, over `/api/health` — before reporting
+success, so a busy port still fails loudly on every platform instead of silently in a log nobody was
+told about.
+
+The per-port state file and log live under `~/.cargento`, one layout on every platform;
+`CARGENTO_HOME` is authoritative when set, the same rule the harness store relocation variables
+follow. Nothing ever removes or rotates the log, so `~/.cargento` accumulates one log file per port
+indefinitely — see [`SECURITY.md`](SECURITY.md) for the written-paths contract.
+
 Other notes:
 
 - Needs-input detection exists only for Claude Code sessions. Other harnesses expose no equivalent signal in their local stores.

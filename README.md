@@ -27,8 +27,11 @@ You do not need all four. The dashboard maps every harness it finds on the machi
 which one launched it, and it runs standalone with no client installed at all:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4553
+python3 cargento/skills/cargento/server.py --port 4553 --daemon
 ```
+
+`--daemon` detaches so the dashboard keeps running after this shell exits. Stop it from the UI's
+`stop` button or with `--stop`; drop `--daemon` to run it in the foreground instead.
 
 ### Claude Code installation
 

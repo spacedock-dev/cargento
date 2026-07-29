@@ -68,6 +68,22 @@ frontmatter body and no filesystem path is ever published, and the page HTML-esc
 Pass `--no-spacedock` to switch the feature off. The read surface is then exactly the documented
 store paths.
 
+## Process lifecycle: written paths, and `/api/shutdown`
+
+Cargento writes exactly two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`,
+authoritative when set): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
+`started`, `log`, `python`), and `cargento-<port>.log`, where a detached (`--daemon`) instance's
+output goes. The directory is created `0o700` because the log can carry local paths — uncaught
+tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
+`--stop` (or a killed process) deletes the state file but leaves the log behind, since it is the
+record of a detached run, so `~/.cargento` accumulates one log file per port indefinitely.
+
+`POST /api/shutdown` stops the server and is gated by the same `_local_ok()` checks — `Host`,
+`Origin`, `Sec-Fetch-Site` — that already protect `/api/notify`. It adds no new exposure of
+consequence: any local process that can reach the port could already read every session on the
+machine through `/api/data`, and can now also stop the server. That is a smaller capability inside
+the same trust boundary described above, not a new one.
+
 ## Known and accepted
 
 Loopback is not a per-user boundary. Any other account on the same machine can `GET /api/data` and
