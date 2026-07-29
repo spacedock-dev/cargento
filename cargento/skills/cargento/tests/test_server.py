@@ -4855,9 +4855,9 @@ class ReviewFixTest(unittest.TestCase):
             conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
             conn.request("POST", "/api/shutdown", body=b"", headers={"Content-Length": "0"})
             response = conn.getresponse()
-            # Answering first is the requirement: socketserver.shutdown() waits
-            # for the serve loop's current pass to finish, and that pass is this
-            # handler. Called inline it deadlocks.
+            # This proves the client gets a 200 and that the server actually
+            # stops (via the join/is_alive check below) — it does not pin how
+            # shutdown is implemented, e.g. that it must run on its own thread.
             self.assertEqual(200, response.status)
             self.assertEqual(b'{"ok":true,"stopping":true}', response.read())
             conn.close()

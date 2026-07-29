@@ -5979,9 +5979,14 @@ class Handler(BaseHTTPRequestHandler):
         """Stop the server: the page's stop button and --stop both land here.
 
         Answer first, then stop. `socketserver.shutdown()` blocks until the
-        serve loop finishes its current pass, and the current pass is this
-        handler — calling it inline deadlocks the process it is trying to end,
-        which is why the stop runs on a thread of its own.
+        accept loop notices the request and exits, which can take up to one
+        poll interval (0.5s by default) — running it on its own thread lets
+        this handler return and the connection close immediately, instead of
+        holding the client for that long. It also keeps this correct if the
+        server class ever stops being a threading one: on a non-threading
+        server the handler runs on the serve loop's own thread, and calling
+        `shutdown()` inline would then deadlock, exactly as `BaseServer.
+        shutdown`'s docstring warns.
         """
         self._send(b'{"ok":true,"stopping":true}', "application/json")
         with contextlib.suppress(OSError, ValueError):
