@@ -146,13 +146,13 @@ so re-run the job before investigating, and check the traceback is a timeout and
 - Bind the listener before forking (or, on Windows, before waiting on the re-spawned child), so a
   failed bind is still reported to the terminal that asked for it, not to a log file nobody has been
   told about yet.
-- Never use `os.kill`, including `os.kill(pid, 0)` for liveness — CPython implements it on Windows
+- Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.
 - Stopping goes over HTTP, so the CLI and the page share one code path, and a handler that stops the
   server must do it on its own thread. Not because a `ThreadingHTTPServer` handler would deadlock
-  calling `server.shutdown()` inline — it would not, since every request already runs on its own
-  thread and the accept loop is never the caller — but because `shutdown()` blocks until the accept
+  calling `server.shutdown()` inline. It would not, since every request already runs on its own
+  thread and the accept loop is never the caller. The reason is that `shutdown()` blocks until the accept
   loop notices, up to one poll interval, and the client should not be held open for that just to hear
   "stopping".
 

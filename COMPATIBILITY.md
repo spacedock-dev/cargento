@@ -35,7 +35,7 @@ Notification delivery is best-effort by design, on every platform. The exit crit
 
 Verified by hand: on macOS, a `--daemon` server delivers the native notification with no browser tab
 open at all, since the double-fork keeps the daemon in the user's own login session rather than
-moving it to a new one — the main reason daemon mode is worth having. That confirms `osascript`
+moving it to a new one, which is the main reason daemon mode is worth having. That confirms `osascript`
 reported success, not that a banner was visibly displayed; Focus and Do Not Disturb can still
 suppress on-screen display independently of whether the process is detached. See
 [`docs/design-daemon.md`](docs/design-daemon.md) for how this was verified.
@@ -43,15 +43,15 @@ suppress on-screen display independently of whether the process is detached. See
 ### `--daemon`, `--status`, `--stop`
 
 `--daemon` detaches so the dashboard outlives the session that started it: a double-fork on POSIX,
-a detached re-spawn on Windows (there is no `fork` there). Both bind the listening socket — or, on
-Windows, wait for the re-spawned child to prove it bound, over `/api/health` — before reporting
+a detached re-spawn on Windows (there is no `fork` there). Both bind the listening socket (or, on
+Windows, wait for the re-spawned child to prove it bound, over `/api/health`) before reporting
 success, so a busy port still fails loudly on every platform instead of silently in a log nobody was
 told about.
 
 The per-port state file and log live under `~/.cargento`, one layout on every platform;
 `CARGENTO_HOME` is authoritative when set, the same rule the harness store relocation variables
 follow. Nothing ever removes or rotates the log, so `~/.cargento` accumulates one log file per port
-indefinitely — see [`SECURITY.md`](SECURITY.md) for the written-paths contract.
+indefinitely. See [`SECURITY.md`](SECURITY.md) for the written-paths contract.
 
 Other notes:
 
@@ -73,4 +73,4 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 6c5cbd4 (2026-07-28) -->
+<!-- docs-synced-through: ce01e9c (2026-07-29) -->

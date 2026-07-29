@@ -18,8 +18,8 @@ across `*.py` and `*.md` before renumbering anything.
 Cargento is started by an agent, in that agent's session, as a background child of the session's
 shell. Two consequences, and they pull against each other.
 
-The dashboard dies with the session that opened it. That is wrong on its own terms — a board
-watching eight harnesses is not an artifact of whichever session happened to open it — and it is
+The dashboard dies with the session that opened it. That is wrong on its own terms (a board
+watching eight harnesses is not an artifact of whichever session happened to open it), and it is
 worse for the notification path, whose whole point is to fire with no browser tab open. Detaching
 fixes it.
 
@@ -39,7 +39,7 @@ Binding first is the load-bearing part. `bind_error_message()` exists so that a 
 explanation instead of a traceback, and the skill tells the agent to check for an already-running
 dashboard when it sees one. A daemon that forks before it binds sends that message to a log file
 nobody has been told about yet, and reports success instead. Binding first is what keeps a busy-port
-message on the terminal that asked, instead of in a log nobody reads — that is the whole value of
+message on the terminal that asked, instead of in a log nobody reads. That is the whole value of
 the ordering, and it is easy to get backwards because forking first *looks* more conventional.
 
 `stdin` comes from `os.devnull`; `stdout` and `stderr` are `os.dup2`'d onto the log file so that
@@ -52,7 +52,7 @@ store path from `HOME`, and it would silently change how any relative path in th
 
 There is no `fork`, so the parent starts a fresh copy of itself with
 `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`, `stdin` from `DEVNULL`, `stdout`/`stderr` to the log
-file, then waits for the child to become reachable — bounded by a named constant,
+file, then waits for the child to become reachable, bounded by a named constant,
 `DAEMON_READY_TIMEOUT_SEC = 10`, polled against `/api/health`. If the child exits first, or the wait
 runs out, the parent prints the tail of its log and exits 1.
 
@@ -64,7 +64,7 @@ The child needs no private flag: it is an ordinary foreground run that happens t
 fewer argument, and one fewer way for the two paths to diverge.
 
 The Windows branch has to be checked, and the re-spawn dispatched, *before* the POSIX bind-then-fork
-path runs — reversing that order means the parent holds the listening socket it is supposed to be
+path runs. Reversing that order means the parent holds the listening socket it is supposed to be
 handing to the child.
 
 ## D-3: One state file per port, written by every instance that binds
@@ -83,14 +83,14 @@ Foreground runs write it too. A user who started the server without `--daemon` s
 means nothing.
 
 This adds the only paths Cargento writes. `CONTRIBUTING.md`'s read-only constraint is about harness
-stores and still holds exactly as written, but `SECURITY.md` has to say what is written and where —
+stores and still holds exactly as written, but `SECURITY.md` has to say what is written and where:
 including that nothing ever deletes or rotates the log, so `~/.cargento` accumulates one log per port
 indefinitely.
 
 ## D-4: Liveness is an HTTP probe. Never a signal, and never `os.kill`
 
 `os.kill(pid, 0)` is the usual liveness check, and it must not be used here. On Windows, CPython
-implements `os.kill` for ordinary signal numbers through `TerminateProcess` — the call that is
+implements `os.kill` for ordinary signal numbers through `TerminateProcess`, the call that is
 supposed to inspect a process kills it instead. This is not a hypothetical: it is the kind of thing
 that looks correct in a POSIX-only test run and only shows up once someone runs `--status` on
 Windows and kills the very process they asked about. A cross-platform `--status` built on `os.kill`
@@ -102,14 +102,14 @@ So `--status` reads the state file, requests `/api/health`, and compares the pid
 |---|---|
 | pid matches | running, with uptime and URL |
 | connection refused, state file present | stale; `--stop` deletes the file and says so |
-| connection refused, no state file | absent — nothing recorded and nothing listening |
-| answered, different pid | the port belongs to another process — touch nothing |
+| connection refused, no state file | absent: nothing recorded and nothing listening |
+| answered, different pid | the port belongs to another process, so touch nothing |
 
 The last row is why the pid is in the health response at all. Without it, "something is listening"
 reads as "Cargento is running", and the next step is a kill aimed at an innocent process.
 
 `--stop` is idempotent by design: it exits 0 whether it stopped a running instance, cleaned up a
-stale state file, or found nothing at all, and exits 1 only in the foreign-process case — the one
+stale state file, or found nothing at all, and exits 1 only in the foreign-process case, the one
 case where it deliberately did nothing. A script can call `--stop` unconditionally before starting a
 fresh instance.
 
@@ -134,7 +134,7 @@ filesystem. The skill previously sent the agent to `/api/data` to ask whether a 
 which runs a full scan across every harness store to answer a yes-or-no question.
 
 `POST /api/shutdown` returns `{"ok": true, "stopping": true}` and is gated by the existing
-`_local_ok()` — the `Host`, `Origin` and `Sec-Fetch-Site` checks that already protect `/api/notify`.
+`_local_ok()`: the `Host`, `Origin` and `Sec-Fetch-Site` checks that already protect `/api/notify`.
 It responds *before* stopping, and calls `server.shutdown()` on a thread it spawns.
 `main()` removes the state file in a `finally` and exits 0.
 
@@ -143,29 +143,29 @@ handler cannot call `server.shutdown()` from inside itself without the accept lo
 reasoning does not hold here, and it is worth being precise about why: the listener is a
 `ThreadingHTTPServer`, so `ThreadingMixIn.process_request` gives every request its own thread, and
 the accept loop is never the thread that dispatched the handler. `BaseServer.shutdown`'s deadlock
-warning describes a server whose handler runs on the same thread as `serve_forever` — the case a
+warning describes a server whose handler runs on the same thread as `serve_forever`, the case a
 threading listener is already clear of. Calling `shutdown()` inline here would not deadlock.
 
 The thread earns its place for two duller reasons instead. First, `shutdown()` blocks until the
 accept loop notices the request, which can take up to one poll interval (0.5s by default); running it
 inline would hold the client open for that long just to deliver "stopping". Second, it keeps the code
-correct if the listener class ever stops being a threading one — at that point the handler *would*
+correct if the listener class ever stops being a threading one. At that point the handler *would*
 run on the serve loop's own thread, and an inline call really would deadlock exactly as the docstring
 warns. The thread costs nothing today and removes a footgun for whoever touches this later.
 
 The exposure is worth stating plainly rather than leaving implicit. Any local process that can reach
 the port could already read every session on the machine through `/api/data`. It can now also stop
-the server — a smaller capability than the one already granted, gated by the same trust boundary and
+the server, a smaller capability than the one already granted, gated by the same trust boundary and
 the same `_local_ok()` checks. `SECURITY.md` says so rather than leaving a reader to work it out.
 
 ## D-7: The button arms before it fires, and the stopped page is not the stalled page
 
 A `stop` button sits beside the display toggle, in both display modes. The first click arms it in
-place (`stop — sure?`); the second POSTs. `esc` or a click elsewhere disarms.
+place, asking for confirmation; the second POSTs. `esc` or a click elsewhere disarms.
 
 `stopArmed` lives in a module variable and is reapplied after each render, which is the rule
 `CONTRIBUTING.md` already states for anything a reader set: `#app` is rebuilt from scratch every five
-seconds, so state that is not reapplied is state the refresh eats. Here that rule has teeth — a
+seconds, so state that is not reapplied is state the refresh eats. Here that rule has teeth: a
 button that disarmed itself on the next poll would arm and disarm under the reader's cursor.
 
 No keystroke is bound to stopping. Calm mode gives single keys to moving, expanding and filtering,
@@ -182,8 +182,8 @@ The one thing this design refused to assume rather than reason about: whether `o
 notification`, fired from a fully double-forked session leader with no controlling terminal, still
 reaches the user's Aqua session. It does. A `--daemon` server, started under a temporary
 `CARGENTO_HOME`, received a `permission_request` POST and answered `{"ok":true}`; its log file stayed
-at 0 bytes, and `notify_mac()` logs any non-zero `osascript` exit through `diag()` — which, in a
-daemon, goes to that same log file — so a silent log is itself the evidence that `osascript`
+at 0 bytes, and `notify_mac()` logs any non-zero `osascript` exit through `diag()`, which in a
+daemon, goes to that same log file, so a silent log is itself the evidence that `osascript`
 reported success. A control `osascript` invocation in the same shell exited 0 for comparison.
 
 The double-fork keeps the daemon in the user's login session rather than moving it to a new one,
@@ -192,7 +192,7 @@ with no browser tab open at all.
 
 One caveat worth keeping attached to this result: it proves `osascript` reported success, not that a
 banner was visibly displayed. Focus modes and Do Not Disturb can still suppress on-screen display
-independently of whether the process is attached to a session — that is a macOS notification-center
+independently of whether the process is attached to a session. That is a macOS notification-center
 setting, not something detaching affects one way or the other.
 
 The equivalent question for Linux and Windows is not this design's to close; it is
