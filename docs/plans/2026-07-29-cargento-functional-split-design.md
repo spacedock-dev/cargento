@@ -2,7 +2,7 @@
 
 Date: 2026-07-29
 
-Status: approved in conversation; adversarial review fixes applied; awaiting written-spec review
+Status: approved; adversarial review fixes applied
 
 ## Context
 
@@ -217,6 +217,9 @@ directory.
 - the absolute `server.py` launcher path used for daemon respawning.
 
 Tests create modified configurations instead of patching module constants.
+An explicit per-store test or adapter override replaces that store's whole candidate list with the
+selected path. Normal configuration retains every resolved candidate. This preserves the current
+isolation rule that a fixture root cannot fall through to a real user store.
 
 ### RuntimeState
 
@@ -246,7 +249,7 @@ The registry uses one explicit contract:
 class HarnessSpec:
     key: str
     label: str
-    discover: Callable[[RuntimeConfig], bool]
+    discover: Callable[[RuntimeConfig, RuntimeState], bool]
     collect: Collector
 
 
@@ -262,7 +265,9 @@ def collect(
 
 `aggregate.py` owns `HarnessSpec`, catches discovery and collection errors at the current per-harness
 boundaries, and records diagnostics through `RuntimeState`. Collector modules export callables but
-do not mutate the registry.
+do not mutate the registry. Discovery receives state because validating a Pi store reads the same
+bounded first-line metadata cache as collection; it must not regain that cache through a hidden
+module global.
 
 `CargentoHTTPServer` stores exactly one `Application` and one assembled page. Request handlers read
 them from their server instance rather than class or process globals. A contract test starts two
@@ -419,7 +424,9 @@ Add tests before moving code:
 - prove daemon respawn uses the stable launcher;
 - copy only the plugin directory and run the launcher from that copy;
 - test the detached-process argument builder with a Windows launcher path;
-- cover the thin launcher's import and argument forwarding in the parent coverage process; and
+- characterize current `main()` and detached-spawn argument forwarding in the parent coverage
+  process, then replace that assertion with thin-launcher import/forwarding coverage when the
+  launcher is reduced; and
 - record the numeric test count, skipped count, test inventory, and measured CI coverage.
 
 At the time of this design, the canonical suite runs 423 tests with one skip. If `main` changes
