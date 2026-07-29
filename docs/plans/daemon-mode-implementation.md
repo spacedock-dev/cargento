@@ -614,9 +614,10 @@ D-6. The one shutdown path, shared by the page button and `--stop`.
             conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
             conn.request("POST", "/api/shutdown", body=b"", headers={"Content-Length": "0"})
             response = conn.getresponse()
-            # Answering first is the requirement: socketserver.shutdown() waits
-            # for the serve loop's current pass to finish, and that pass is this
-            # handler. Called inline it deadlocks.
+            # Answering first is the requirement. What this proves is that the
+            # server actually stopped — it does not pin the mechanism, since a
+            # ThreadingHTTPServer would also survive an inline shutdown() call.
+            # Do not read a pass here as evidence the thread is required.
             self.assertEqual(200, response.status)
             self.assertEqual(b'{"ok":true,"stopping":true}', response.read())
             conn.close()
@@ -687,10 +688,14 @@ Add the method to `Handler`, next to `_health`:
     def _shutdown(self) -> None:
         """Stop the server: the page's stop button and --stop both land here.
 
-        Answer first, then stop. `socketserver.shutdown()` blocks until the
-        serve loop finishes its current pass, and the current pass is this
-        handler — calling it inline deadlocks the process it is trying to end,
-        which is why the stop runs on a thread of its own.
+        Answer first, then stop, and stop on a thread of our own. This listener
+        is a ThreadingHTTPServer, so the handler never runs on the accept
+        loop's thread and an inline `shutdown()` would not deadlock — but it
+        would block until the accept loop notices, up to one poll interval
+        (0.5s), holding the client open just to hear "stopping". The thread
+        also keeps this correct if the listener ever stops being a threading
+        one, where the handler *would* run on the serve loop's thread and
+        `BaseServer.shutdown`'s deadlock warning would apply for real.
         """
         self._send(b'{"ok":true,"stopping":true}', "application/json")
         with contextlib.suppress(OSError, ValueError):
@@ -2011,7 +2016,7 @@ its own.
 - `README.md` — find any line that starts the server (grep for `server.py`) and add `--daemon`; mention that it keeps running until stopped and can be stopped from the UI or with `--stop`.
 - `COMPATIBILITY.md` — a subsection saying `--daemon` double-forks on POSIX and re-spawns detached on Windows; both bind (or verify a bind) before reporting success, so a busy port fails loudly on every platform; the state file and log live under `~/.cargento`, one layout everywhere, `CARGENTO_HOME` authoritative.
 - `SECURITY.md` — the two files Cargento writes and why (`0o700`; the log can carry local paths from tracebacks), and the `/api/shutdown` exposure: any local process that can reach the port could already read every session on the machine through `/api/data`, and can now also stop the server — a smaller capability inside the same trust boundary, gated by the same `Host`/`Origin`/`Sec-Fetch-Site` checks.
-- `CONTRIBUTING.md` — three bullets in "Design constraints for `server.py`": bind the listener before forking, so a failed bind is still reported to the terminal that asked; never use `os.kill`, including `os.kill(pid, 0)` for liveness, because CPython implements it on Windows through `TerminateProcess` — probe `/api/health` instead; stopping goes over HTTP so the CLI and the page share one path, and `socketserver.shutdown()` must never be called from a handler thread.
+- `CONTRIBUTING.md` — three bullets in "Design constraints for `server.py`": bind the listener before forking, so a failed bind is still reported to the terminal that asked; never use `os.kill`, including `os.kill(pid, 0)` for liveness, because CPython implements it on Windows through `TerminateProcess` — probe `/api/health` instead; stopping goes over HTTP so the CLI and the page share one path, and a handler that stops the server must do it on its own thread — not because a `ThreadingHTTPServer` handler would deadlock (it would not; that warning applies to a non-threading listener), but because `shutdown()` blocks until the accept loop notices and the client should not be held open for it.
 
 - [ ] **Step 6: Write `docs/design-daemon.md`**
 

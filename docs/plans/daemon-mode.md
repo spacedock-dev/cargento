@@ -113,9 +113,18 @@ which runs a full scan across every harness store to answer a yes-or-no question
 
 `POST /api/shutdown` returns `{"ok": true, "stopping": true}` and is gated by the existing
 `_local_ok()` — the `Host`, `Origin` and `Sec-Fetch-Site` checks that already protect
-`/api/notify`. It responds *before* stopping, and calls `server.shutdown()` on a thread it spawns:
-`socketserver` deadlocks if a handler shuts down the server that is currently dispatching it.
+`/api/notify`. It responds *before* stopping, and calls `server.shutdown()` on a thread it spawns.
 `main()` removes the state file in a `finally` and exits 0.
+
+An earlier revision of this plan justified that thread as deadlock avoidance, claiming a handler
+cannot shut down the server dispatching it. That is wrong here and the review caught it. The
+listener is a `ThreadingHTTPServer`, so `ThreadingMixIn.process_request` runs every handler on its
+own thread and the accept loop is never the thread calling `shutdown()` — the situation
+`BaseServer.shutdown` warns about is the one we are already on the safe side of. The thread earns
+its place for two duller reasons: `shutdown()` blocks until the accept loop notices, up to one poll
+interval (0.5s by default), and holding the client open for that long to say "stopping" is silly;
+and it keeps the code correct if the listener ever stops being a threading one, where the handler
+*would* run on the serve loop's thread and an inline call really would deadlock.
 
 The exposure is worth stating plainly rather than leaving implicit. Any local process that can reach
 the port could already read every session on the machine through `/api/data`. It can now also stop
