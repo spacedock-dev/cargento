@@ -3718,6 +3718,55 @@ console.log(JSON.stringify(out));
         self.assertIn("Nothing was stopped", foreign)
         self.assertIn("not running", dashboard.render_status({"state": "absent", "port": 4553}))
 
+    def test_render_status_survives_a_started_value_it_cannot_convert(self) -> None:
+        # `started` arrives from whatever answered /api/health — the process
+        # probe_port has just declined to trust — and probe_port type-checks
+        # `ok` and `pid` but not this. Out of range for time_t, or NaN, and
+        # datetime.fromtimestamp raises instead of printing a status line.
+        for started in (1e19, -1e19, float("inf"), float("nan")):
+            with self.subTest(started=started):
+                line = dashboard.render_status(
+                    {"state": "running", "port": 4553, "pid": 7, "started": started, "log": "/l"}
+                )
+                self.assertIn("running", line)
+                self.assertIn("since unknown", line)
+
+    def test_port_released_is_false_while_a_server_still_holds_the_port(self) -> None:
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        port = httpd.server_port
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self.assertFalse(dashboard.port_released(port), "bound and serving")
+            httpd.shutdown()
+            thread.join(timeout=5)
+            # The accept loop has exited but the socket is still open. A connect
+            # probe cannot see this state, and repeated connects fill the
+            # backlog and then wrongly report the port gone; binding sees it.
+            for _ in range(dashboard.LoopbackHTTPServer.request_queue_size + 3):
+                self.assertFalse(dashboard.port_released(port), "bound, not accepting")
+        finally:
+            httpd.server_close()
+            thread.join(timeout=2)
+        self.assertTrue(dashboard.port_released(port), "closed")
+
+    def test_stop_instance_waits_for_the_port_before_claiming_it_stopped(self) -> None:
+        # A server that answers the shutdown POST but never releases the port
+        # must not be reported as stopped: the caller's next move is a start.
+        running = {"state": "running", "port": 4553, "pid": 7, "started": 1000.0, "log": "/l"}
+        with (
+            mock.patch.object(dashboard, "instance_status", return_value=running),
+            mock.patch.object(dashboard, "port_released", return_value=False) as released,
+            mock.patch.object(dashboard, "STOP_RELEASE_TIMEOUT_SEC", 0.2),
+            mock.patch.object(http.client, "HTTPConnection") as conn,
+        ):
+            conn.return_value.getresponse.return_value.status = 200
+            message, code = dashboard.stop_instance(4553)
+        self.assertEqual(1, code)
+        self.assertIn("still listening", message)
+        self.assertNotIn("stopped (pid", message)
+        self.assertGreater(released.call_count, 1, "it never waited")
+
     def test_status_flag_exits_zero_only_when_running(self) -> None:
         for state, expected in (("running", 0), ("stale", 1), ("foreign", 1), ("absent", 1)):
             with (
@@ -3735,18 +3784,34 @@ console.log(JSON.stringify(out));
 
     def test_stop_instance_stops_a_running_server_over_http(self) -> None:
         httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        port = httpd.server_port
+
+        # serve_forever *then* server_close, which is what main()'s try/finally
+        # does. Serving without the close leaves the port bound after the accept
+        # loop exits — a state main() never produces, and one that made this
+        # test assert a successful stop against a still-bound port.
+        def serve() -> None:
+            try:
+                httpd.serve_forever()
+            finally:
+                httpd.server_close()
+
+        thread = threading.Thread(target=serve, daemon=True)
         thread.start()
         try:
-            message, code = dashboard.stop_instance(httpd.server_port)
+            message, code = dashboard.stop_instance(port)
             self.assertEqual(0, code, message)
             self.assertIn("stopped", message)
             thread.join(timeout=10)
             self.assertFalse(thread.is_alive())
+            # stop_instance must not return until the port can be taken again:
+            # --stop followed by a fresh start is the ordinary restart.
+            self.assertTrue(dashboard.port_released(port), "the port is still bound")
         finally:
             httpd.shutdown()
-            httpd.server_close()
             thread.join(timeout=2)
+            with contextlib.suppress(OSError):
+                httpd.server_close()
 
     def test_stop_instance_removes_a_stale_state_file_and_succeeds(self) -> None:
         with (
@@ -3884,6 +3949,32 @@ console.log(JSON.stringify(out));
             ):
                 dashboard.main()
             self.assertEqual(2, caught.exception.code, other)
+
+    def test_daemon_explains_a_home_it_cannot_create_instead_of_tracebacking(self) -> None:
+        # CARGENTO_HOME is user-facing in README, SKILL.md, SECURITY.md and
+        # COMPATIBILITY.md, so pointing it somewhere unusable is an ordinary
+        # mistake. write_state() already degrades for a foreground run; without
+        # this guard only --daemon crashed, and with a raw traceback.
+        with tempfile.TemporaryDirectory() as tmp:
+            not_a_dir = os.path.join(tmp, "occupied")
+            Path(not_a_dir).write_text("", encoding="utf-8")
+            with (
+                mock.patch.dict(os.environ, {"CARGENTO_HOME": not_a_dir}),
+                mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
+                mock.patch.object(dashboard, "diag") as diag,
+                # A traceback here would escape before either of these is used.
+                mock.patch.object(dashboard, "LoopbackHTTPServer") as bind,
+                mock.patch.object(dashboard, "fork_daemon") as fork,
+                self.assertRaises(SystemExit) as caught,
+            ):
+                dashboard.main()
+        self.assertEqual(1, caught.exception.code)
+        bind.assert_not_called()
+        fork.assert_not_called()
+        said = " ".join(str(call.args[0]) for call in diag.call_args_list)
+        self.assertIn("CARGENTO_HOME", said)
+        self.assertIn("--daemon", said)
+        self.assertIn(not_a_dir, said)
 
     def test_forwarded_args_carries_the_flags_the_child_needs_and_drops_daemon(self) -> None:
         args = argparse.Namespace(port=4553, window_hours=12.0, no_spacedock=True, daemon=True)
@@ -8199,6 +8290,19 @@ clickStop();
 out.armedAgain = __els.app.innerHTML.includes("sure?");
 clickAway();
 out.afterClickAway = __els.app.innerHTML.includes("sure?");
+
+// A click on a *different* control is an answer too. Otherwise the armed
+// state outlives the moment it was armed in, and a single later click on
+// stop takes the server down with no confirmation at all.
+const clickControl = (act) => __fire("click", {target: {closest: sel => sel === "[data-calm]"
+  ? {getAttribute: a => a === "data-calm" ? act : null} : null}});
+clickStop();
+out.armedOnceMore = __els.app.innerHTML.includes("sure?");
+clickControl("flag");
+out.afterOtherControl = __els.app.innerHTML.includes("sure?");
+clickStop();                    // must re-arm, not fire
+out.rearmed = __els.app.innerHTML.includes("sure?");
+await __settle(); await __settle();
 out.nothingPosted = __fetchCalls.filter(c => c[0] === "/api/shutdown").length;
 console.log(JSON.stringify(out));
 """
@@ -8207,6 +8311,9 @@ console.log(JSON.stringify(out));
         self.assertFalse(out["afterEsc"])
         self.assertTrue(out["armedAgain"])
         self.assertFalse(out["afterClickAway"])
+        self.assertTrue(out["armedOnceMore"])
+        self.assertFalse(out["afterOtherControl"], "a click on another control left stop armed")
+        self.assertTrue(out["rearmed"])
         self.assertEqual(0, out["nothingPosted"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -8232,7 +8339,7 @@ console.log(JSON.stringify(out));
         self.assertEqual(3, out["rows"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_a_late_refresh_does_not_repaint_over_the_stopped_panel(self) -> None:
+    def test_a_poll_starting_after_the_stop_never_reaches_the_network(self) -> None:
         checks = """
 const out = {};
 render(board());
@@ -8241,7 +8348,7 @@ render(board());
 const before = __fetchCalls.filter(c => String(c[0]).startsWith("/api/data")).length;
 serverStopped = true;
 renderStopped();
-await refresh();          // an in-flight poll settling after the stop
+await refresh();
 out.stillStopped = __els.app.innerHTML.includes("Cargento stopped");
 out.noFetch = __fetchCalls.filter(c => String(c[0]).startsWith("/api/data")).length - before;
 console.log(JSON.stringify(out));
@@ -8249,6 +8356,74 @@ console.log(JSON.stringify(out));
         out = self.run_calm(checks)
         self.assertTrue(out["stillStopped"])
         self.assertEqual(0, out["noFetch"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_poll_in_flight_across_the_stop_does_not_repaint_the_panel(self) -> None:
+        # The one the entry guard above cannot cover: this poll had already
+        # called fetch before the stop landed, so it settles afterwards and
+        # would repaint a live-looking dashboard over the terminal panel — with
+        # the interval already cleared, so no stalled banner contradicts it.
+        # /api/data is the slow request; the shutdown POST is a loopback hop.
+        checks = """
+const out = {};
+render(board());
+let releaseData;
+__fetchImpl = (url) => String(url).startsWith("/api/data")
+  ? new Promise(r => { releaseData = () =>
+      r({ok: true, json: () => Promise.resolve(board())}); })
+  : Promise.resolve({ok: true});          // /api/shutdown answers at once
+const poll = refresh();                   // in flight, deliberately unsettled
+
+const clickStop = () => __fire("click", {target: {closest: sel => sel === "[data-calm]"
+  ? {getAttribute: a => a === "data-calm" ? "stop" : null} : null}});
+clickStop(); clickStop();                 // arm, then confirm
+await __settle(); await __settle();
+out.stoppedAfterStop = __els.app.innerHTML.includes("Cargento stopped");
+
+releaseData();
+await poll; await __settle(); await __settle();
+out.stoppedAfterLatePoll = __els.app.innerHTML.includes("Cargento stopped");
+out.dashboardBack = __els.app.innerHTML.includes("cm-frame");
+out.title = document.title;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["stoppedAfterStop"])
+        self.assertTrue(out["stoppedAfterLatePoll"], "a late poll repainted the stopped panel")
+        self.assertFalse(out["dashboardBack"])
+        self.assertIn("stopped", out["title"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_stop_is_not_counted_as_a_failed_refresh(self) -> None:
+        # The same race down the catch arm: the server has gone, so the poll in
+        # flight rejects. A stop the reader asked for is not a refresh failure,
+        # and counting it as one drives the "stalled · retrying every 5s"
+        # bookkeeping for a server that is never coming back.
+        checks = """
+const out = {};
+render(board());
+let failData;
+__fetchImpl = (url) => String(url).startsWith("/api/data")
+  ? new Promise((_, reject) => { failData = () => reject(new Error("connection refused")); })
+  : Promise.resolve({ok: true});
+const poll = refresh();
+
+const clickStop = () => __fire("click", {target: {closest: sel => sel === "[data-calm]"
+  ? {getAttribute: a => a === "data-calm" ? "stop" : null} : null}});
+clickStop(); clickStop();
+await __settle(); await __settle();
+
+failData();
+await poll; await __settle(); await __settle();
+out.stillStopped = __els.app.innerHTML.includes("Cargento stopped");
+out.noStalled = !__els.app.innerHTML.includes("stalled");
+out.failures = window.__refreshFailures || 0;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["stillStopped"])
+        self.assertTrue(out["noStalled"])
+        self.assertEqual(0, out["failures"], "a deliberate stop was counted as a refresh failure")
 
 
 class DocumentationMatchesCodeTest(unittest.TestCase):

@@ -5330,7 +5330,13 @@ document.addEventListener("click", e => {
     if(disarmStop() && lastData) render(lastData);
     return;
   }
-  calmAction(el.getAttribute("data-calm"), el.getAttribute("data-arg"));
+  /* So is a click on a different control. Otherwise the armed state outlives
+     the moment the reader was answering for — sort the ledger, toggle a mode,
+     come back later, and one click would stop the server with no confirmation
+     at all, which is the whole thing the second click is here to prevent. */
+  const act = el.getAttribute("data-calm");
+  if(act !== "stop" && disarmStop() && lastData) render(lastData);
+  calmAction(act, el.getAttribute("data-arg"));
 });
 
 document.addEventListener("keydown", e => {
@@ -5740,18 +5746,27 @@ function render(d){
 }
 
 async function refresh(){
-  if(serverStopped) return;   /* an in-flight poll must not repaint the panel */
+  /* Checked twice, and both are load-bearing: this one skips a poll that would
+     start after the stop, and the ones below drop a poll that was already in
+     flight when the stop landed. Without those, the reply settles after
+     renderStopped() and repaints a live-looking dashboard over the terminal
+     panel — with the interval already cleared, so not even the stalled banner
+     would contradict it. /api/data is the slow request here; the shutdown POST
+     is a loopback round trip. */
+  if(serverStopped) return;
   const sequence = ++refreshSequence;
   try{
     const r = await fetch("/api/data" + (showAll ? "?all=1" : ""));
     if(!r.ok) throw new Error("bad status");
     const data = await r.json();
+    if(serverStopped) return;
     if(sequence < latestSettledRefresh) return;
     latestSettledRefresh = sequence;
     recordRates(data);
     render(data);
     window.__refreshFailures = 0;
   }catch(e){
+    if(serverStopped) return;
     if(window.__SAMPLE){ recordRates(window.__SAMPLE); render(window.__SAMPLE); return; }
     if(sequence < latestSettledRefresh) return;
     latestSettledRefresh = sequence;
@@ -5808,6 +5823,9 @@ def collect_json(window_hours: float, show_all: bool) -> bytes:
 
 CARGENTO_HOME_ENV = "CARGENTO_HOME"
 DAEMON_READY_TIMEOUT_SEC = 10.0
+# How long --stop waits for the port to come free after the server agrees to
+# stop. Generously above the 0.5s serve_forever() poll interval it waits on.
+STOP_RELEASE_TIMEOUT_SEC = 5.0
 
 # Resolved through getattr, never referenced directly: `os.fork` and
 # `os.setsid` do not exist on Windows, and a module-level `os.fork` reference
@@ -5922,6 +5940,29 @@ def probe_port(port: int, timeout: float = 1.0) -> tuple[str, dict[str, Any] | N
     return ("cargento", data)
 
 
+def port_released(port: int) -> bool:
+    """Whether a new listener could take `port` — the question --stop's caller
+    actually has, since what follows a stop is usually a start.
+
+    By binding, because binding is the question. Tried and rejected: a TCP
+    connect probe. Connecting to a listening socket that nothing is accepting
+    from still completes, so it cannot see the window between `serve_forever()`
+    returning and `server_close()` running — and worse, each probe leaves an
+    unaccepted connection in the backlog, so after `request_queue_size` of them
+    the probe starts reporting "gone" for a port that is still bound. Same
+    reuse semantics as the real listener, so this answers for that listener and
+    not for a hypothetical one with different options.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        if reuse_address_allowed(os.name):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
 def instance_status(port: int) -> dict[str, Any]:
     """Whether Cargento is on `port`, and what to say about it if not."""
     kind, health = probe_port(port)
@@ -5951,11 +5992,13 @@ def render_status(status: dict[str, Any]) -> str:
     state = status["state"]
     if state == "running":
         started = status.get("started")
-        since = (
-            datetime.fromtimestamp(started, tz=UTC).astimezone().strftime("%H:%M")
-            if isinstance(started, int | float) and started
-            else "unknown"
-        )
+        since = "unknown"
+        if isinstance(started, int | float) and started:
+            # `started` arrives from whatever answered /api/health — the one
+            # process probe_port has just declined to take on trust. A value
+            # outside time_t, or NaN, raises here rather than printing a line.
+            with contextlib.suppress(OverflowError, ValueError, OSError):
+                since = datetime.fromtimestamp(started, tz=UTC).astimezone().strftime("%H:%M")
         return (
             f"Cargento: running on port {port} (pid {status['pid']}, since {since}) "
             f"http://127.0.0.1:{port}/"
@@ -5996,6 +6039,24 @@ def stop_instance(port: int) -> tuple[str, int]:
             conn.close()
         if answered != 200:
             return (f"Cargento: the instance on port {port} refused to stop ({answered}).", 1)
+        # Do not claim it stopped until the port is actually free. The handler
+        # answers before shutting down, `shutdown()` takes up to one poll
+        # interval to be noticed, and the listening socket closes only after
+        # serve_forever() returns — so returning on the 200 alone reported a
+        # completed stop while the port was still bound, and the obvious
+        # restart (--stop then start again) failed on a busy port.
+        deadline = time.monotonic() + STOP_RELEASE_TIMEOUT_SEC
+        while not port_released(port) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if not port_released(port):
+            return (
+                (
+                    f"Cargento: asked the instance on port {port} (pid {status['pid']}) to "
+                    f"stop, and it agreed, but it was still listening "
+                    f"{STOP_RELEASE_TIMEOUT_SEC:.0f}s later. Check --status before restarting."
+                ),
+                1,
+            )
         return (f"Cargento: stopped (pid {status['pid']}) on port {port}.", 0)
     if state == "stale":
         remove_state(port)
@@ -6639,7 +6700,18 @@ def main() -> None:
         )
     log_file = log_path(args.port)
     if args.daemon:
-        ensure_cargento_home()
+        # Explain a home that cannot be used, rather than tracebacking out of
+        # the documented start command. write_state() already degrades this way
+        # for a foreground run; detaching has nowhere to put its log without it.
+        try:
+            ensure_cargento_home()
+        except OSError as exc:
+            diag(
+                f"Cargento: cannot use {cargento_home()} for the daemon state and log "
+                f"({type(exc).__name__}: {exc}). Point {CARGENTO_HOME_ENV} at a writable "
+                f"directory, or drop --daemon to run in the foreground."
+            )
+            raise SystemExit(1) from exc
     if args.daemon and os.name == "nt":
         # No fork on Windows: re-spawn, then wait to be sure (D-2). Returns
         # before binding, so the parent never holds the port it handed over.
