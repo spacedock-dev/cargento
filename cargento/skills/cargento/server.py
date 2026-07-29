@@ -64,7 +64,14 @@ DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "sha
 # whose semantics are not documented upstream are deliberately absent rather
 # than guessed at — a wrong override would break a working setup, while a
 # missing one only costs an entry in --diagnose.
-STORE_ENV_VARS = ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "GEMINI_CLI_HOME", "COPILOT_HOME")
+STORE_ENV_VARS = (
+    "CLAUDE_CONFIG_DIR",
+    "CODEX_HOME",
+    "GEMINI_CLI_HOME",
+    "COPILOT_HOME",
+    "PI_CODING_AGENT_DIR",
+    "PI_CODING_AGENT_SESSION_DIR",
+)
 
 # Wall-clock start of the serving process, reported by /api/health so a caller
 # can compute uptime without a second request. Set once by main().
@@ -72,7 +79,11 @@ SERVER_STARTED = 0.0
 
 
 def resolve_store_roots(
-    *, platform_name: str, environ: Mapping[str, str], home: str
+    *,
+    platform_name: str,
+    environ: Mapping[str, str],
+    home: str,
+    pi_settings: Mapping[str, Any] | None = None,
 ) -> dict[str, list[str]]:
     """Candidate locations for every harness store, best candidate first.
 
@@ -89,6 +100,7 @@ def resolve_store_roots(
     # Join with the *target* platform's rules, not the host's, so a Windows
     # layout resolved on a Linux runner is byte-identical to the real thing.
     join = ntpath.join if windows else posixpath.join
+    is_absolute = ntpath.isabs if windows else posixpath.isabs
 
     def under_home(*parts: str) -> str:
         return join(home, *parts)
@@ -114,6 +126,19 @@ def resolve_store_roots(
     gemini_root = env_dir("GEMINI_CLI_HOME")
     gemini_home = join(gemini_root, ".gemini") if gemini_root else under_home(".gemini")
     copilot_home = env_dir("COPILOT_HOME") or under_home(".copilot")
+    pi_config_dir = env_dir("PI_CODING_AGENT_DIR") or under_home(".pi", "agent")
+    pi_session_dir = env_dir("PI_CODING_AGENT_SESSION_DIR")
+    session_setting = pi_settings.get("sessionDir") if pi_settings is not None else None
+    if pi_session_dir is None and isinstance(session_setting, str) and session_setting.strip():
+        if session_setting == "~":
+            pi_session_dir = home
+        elif len(session_setting) > 1 and session_setting[0] == "~" and session_setting[1] in "/\\":
+            pi_session_dir = join(home, session_setting[2:])
+        elif is_absolute(session_setting):
+            pi_session_dir = session_setting
+        else:
+            pi_session_dir = join(pi_config_dir, session_setting)
+    pi_sessions = pi_session_dir or join(pi_config_dir, "sessions")
     antigravity_home = join(gemini_home, "antigravity-cli")
 
     def ordered(*candidates: str | None) -> list[str]:
@@ -143,6 +168,7 @@ def resolve_store_roots(
         "claude.projects": ordered(join(claude_home, "projects")),
         "claude.tasks": ordered(join(claude_home, "tasks")),
         "codex.sessions": ordered(join(codex_home, "sessions")),
+        "pi.sessions": ordered(pi_sessions),
         "gemini.tmp": ordered(join(gemini_home, "tmp")),
         "antigravity.root": ordered(antigravity_home),
         "copilot.root": ordered(copilot_home),
@@ -167,8 +193,24 @@ def resolve_store_roots(
     }
 
 
+def load_pi_settings(config_dir: str) -> dict[str, Any]:
+    try:
+        with open(os.path.join(config_dir, "settings.json"), "rb") as source:
+            value = json.loads(source.read(1_000_001))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+_pi_config_dir = os.environ.get("PI_CODING_AGENT_DIR")
+if not isinstance(_pi_config_dir, str) or not _pi_config_dir.strip():
+    _pi_config_dir = os.path.join(HOME, ".pi", "agent")
+
 STORE_ROOTS: dict[str, list[str]] = resolve_store_roots(
-    platform_name=sys.platform, environ=os.environ, home=HOME
+    platform_name=sys.platform,
+    environ=os.environ,
+    home=HOME,
+    pi_settings=load_pi_settings(_pi_config_dir),
 )
 
 
@@ -212,6 +254,7 @@ def existing_stores(key: str, primary: str) -> list[str]:
 TASKS_DIR = STORE_ROOTS["claude.tasks"][0]
 PROJECTS_DIR = STORE_ROOTS["claude.projects"][0]
 CODEX_SESSIONS_DIR = STORE_ROOTS["codex.sessions"][0]
+PI_SESSIONS_DIR = STORE_ROOTS["pi.sessions"][0]
 GEMINI_TMP = STORE_ROOTS["gemini.tmp"][0]
 ANTIGRAVITY_CLI_DIR = STORE_ROOTS["antigravity.root"][0]
 ANTIGRAVITY_CONVERSATIONS_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "conversations")
@@ -6673,6 +6716,7 @@ def store_primaries() -> dict[str, str]:
         "claude.projects": PROJECTS_DIR,
         "claude.tasks": TASKS_DIR,
         "codex.sessions": CODEX_SESSIONS_DIR,
+        "pi.sessions": PI_SESSIONS_DIR,
         "gemini.tmp": GEMINI_TMP,
         "antigravity.root": ANTIGRAVITY_CLI_DIR,
         "copilot.root": COPILOT_DIR,

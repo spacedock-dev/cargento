@@ -4984,6 +4984,96 @@ class StoreRootsTest(unittest.TestCase):
         self.assertEqual(["/home/u/.local/share/opencode"], roots["opencode.data"])
         self.assertEqual(["/home/u/.local/share/goose/sessions/sessions.db"], roots["goose.db"])
 
+    def test_pi_defaults_to_its_agent_sessions_directory(self) -> None:
+        # Removing Pi's default candidate would leave an ordinary installation
+        # invisible, even though every other harness still resolves normally.
+        roots = self.resolve("darwin", {}, self.POSIX_HOME)
+        self.assertEqual(["/home/u/.pi/agent/sessions"], roots["pi.sessions"])
+
+    def test_pi_session_environment_override_is_authoritative(self) -> None:
+        # A user may relocate sessions independently of Pi's configuration;
+        # searching the configured or default directory as well risks stale
+        # sessions appearing in the dashboard.
+        roots = dashboard.resolve_store_roots(
+            platform_name="linux",
+            environ={
+                "PI_CODING_AGENT_DIR": "/opt/pi",
+                "PI_CODING_AGENT_SESSION_DIR": "/sessions",
+            },
+            home=self.POSIX_HOME,
+            pi_settings={"sessionDir": "/global-history"},
+        )
+        self.assertEqual(["/sessions"], roots["pi.sessions"])
+
+    def test_pi_global_session_directory_precedes_the_default(self) -> None:
+        # Ignoring Pi's global setting would scan the wrong store after a user
+        # changes the history location without setting the session env var.
+        roots = dashboard.resolve_store_roots(
+            platform_name="linux",
+            environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
+            home=self.POSIX_HOME,
+            pi_settings={"sessionDir": "history"},
+        )
+        self.assertEqual(["/opt/pi/history"], roots["pi.sessions"])
+
+    def test_pi_session_setting_expands_home_and_accepts_absolute_paths(self) -> None:
+        # Treating either setting as relative would redirect an intentional
+        # custom location underneath Pi's configuration directory.
+        tilde = dashboard.resolve_store_roots(
+            platform_name="linux",
+            environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
+            home=self.POSIX_HOME,
+            pi_settings={"sessionDir": "~/pi-history"},
+        )
+        absolute = dashboard.resolve_store_roots(
+            platform_name="linux",
+            environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
+            home=self.POSIX_HOME,
+            pi_settings={"sessionDir": "/var/lib/pi/sessions"},
+        )
+        self.assertEqual(["/home/u/pi-history"], tilde["pi.sessions"])
+        self.assertEqual(["/var/lib/pi/sessions"], absolute["pi.sessions"])
+
+    def test_pi_invalid_session_settings_fall_back_to_its_default(self) -> None:
+        # A malformed global settings file must not make Pi disappear; its
+        # documented sessions child remains the safe fallback.
+        invalid_values: tuple[Any, ...] = ("", "   ", None, 42, [])
+        for value in invalid_values:
+            with self.subTest(value=value):
+                roots = dashboard.resolve_store_roots(
+                    platform_name="linux",
+                    environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
+                    home=self.POSIX_HOME,
+                    pi_settings={"sessionDir": value},
+                )
+                self.assertEqual(["/opt/pi/sessions"], roots["pi.sessions"])
+
+    def test_load_pi_settings_reads_only_a_json_object(self) -> None:
+        # Returning arbitrary JSON would make the resolver trust a malformed
+        # global settings file as if it had Pi's object-shaped configuration.
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "agent"
+            config.mkdir()
+            (config / "settings.json").write_text('{"sessionDir":"history"}')
+            self.assertEqual({"sessionDir": "history"}, dashboard.load_pi_settings(str(config)))
+            (config / "settings.json").write_text("[]")
+            self.assertEqual({}, dashboard.load_pi_settings(str(config)))
+            (config / "settings.json").write_text("{")
+            self.assertEqual({}, dashboard.load_pi_settings(str(config)))
+
+        self.assertEqual({}, dashboard.load_pi_settings("/not/a/pi/config"))
+
+    def test_pi_uses_target_windows_path_rules(self) -> None:
+        # A POSIX host resolving a Windows Pi path must not produce mixed
+        # separators, which Windows then interprets as a different location.
+        roots = dashboard.resolve_store_roots(
+            platform_name="win32",
+            environ={"PI_CODING_AGENT_DIR": r"D:\Pi"},
+            home=self.WIN_HOME,
+            pi_settings={"sessionDir": r"history\today"},
+        )
+        self.assertEqual([r"D:\Pi\history\today"], roots["pi.sessions"])
+
     def test_xdg_data_home_is_honored(self) -> None:
         roots = self.resolve("linux", {"XDG_DATA_HOME": "/xdg"}, self.POSIX_HOME)
         self.assertEqual(["/xdg/opencode"], roots["opencode.data"])
@@ -5146,6 +5236,25 @@ class DiagnoseTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"CODEX_HOME": "/opt/cx"}):
             report = dashboard.diagnose(24)
         self.assertEqual("/opt/cx", report["env"]["CODEX_HOME"])
+
+    def test_pi_overrides_and_session_candidate_are_surfaced(self) -> None:
+        # Omitting either override or the candidate leaves a relocated Pi
+        # install indistinguishable from a harness Cargento does not support.
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "PI_CODING_AGENT_DIR": "/opt/pi",
+                    "PI_CODING_AGENT_SESSION_DIR": "/sessions",
+                },
+            ),
+            mock.patch.object(dashboard, "PI_SESSIONS_DIR", "/sessions"),
+        ):
+            report = dashboard.diagnose(24)
+
+        self.assertEqual("/opt/pi", report["env"]["PI_CODING_AGENT_DIR"])
+        self.assertEqual("/sessions", report["env"]["PI_CODING_AGENT_SESSION_DIR"])
+        self.assertEqual("/sessions", report["stores"]["pi.sessions"]["candidates"][0]["path"])
 
 
 class HostAndSocketTest(unittest.TestCase):
