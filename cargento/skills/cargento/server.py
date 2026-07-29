@@ -5975,6 +5975,19 @@ class Handler(BaseHTTPRequestHandler):
             "application/json",
         )
 
+    def _shutdown(self) -> None:
+        """Stop the server: the page's stop button and --stop both land here.
+
+        Answer first, then stop. `socketserver.shutdown()` blocks until the
+        serve loop finishes its current pass, and the current pass is this
+        handler — calling it inline deadlocks the process it is trying to end,
+        which is why the stop runs on a thread of its own.
+        """
+        self._send(b'{"ok":true,"stopping":true}', "application/json")
+        with contextlib.suppress(OSError, ValueError):
+            self.wfile.flush()
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
+
     def do_GET(self) -> None:
         if not self._local_ok(allow_cross_site_navigation=True):
             self.send_error(403)
@@ -5996,7 +6009,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self._local_ok():
             self.send_error(403)
             return
-        if urlparse(self.path).path != "/api/notify":
+        path = urlparse(self.path).path
+        if path == "/api/shutdown":
+            self._shutdown()
+            return
+        if path != "/api/notify":
             self.send_error(404)
             return
         try:
@@ -6256,6 +6273,8 @@ def main() -> None:
         help="sessions with no activity in this window are hidden (default 24)",
     )
     args = ap.parse_args()
+    global SERVER_STARTED  # noqa: PLW0603 — one process-wide start stamp
+    SERVER_STARTED = time.time()
     if args.no_spacedock:
         global SPACEDOCK_ENABLED  # noqa: PLW0603 — one process-wide switch
         SPACEDOCK_ENABLED = False
@@ -6285,7 +6304,13 @@ def main() -> None:
     # first, and this listener is IPv4-only, so the literal address is the one
     # that always connects.
     diag(f"Cargento: http://127.0.0.1:{args.port}/")
-    server.serve_forever()
+    write_state(args.port)
+    try:
+        server.serve_forever()
+    finally:
+        remove_state(args.port)
+        with contextlib.suppress(OSError):
+            server.server_close()
 
 
 if __name__ == "__main__":

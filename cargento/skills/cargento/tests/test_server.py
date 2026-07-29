@@ -4847,6 +4847,53 @@ class ReviewFixTest(unittest.TestCase):
         self.assertEqual("bind", order[-1], "options must be set before bind()")
         self.assertLess(order.index("setsockopt:65531"), order.index("bind"))
 
+    def test_shutdown_endpoint_answers_before_it_stops_the_server(self) -> None:
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+            conn.request("POST", "/api/shutdown", body=b"", headers={"Content-Length": "0"})
+            response = conn.getresponse()
+            # Answering first is the requirement: socketserver.shutdown() waits
+            # for the serve loop's current pass to finish, and that pass is this
+            # handler. Called inline it deadlocks.
+            self.assertEqual(200, response.status)
+            self.assertEqual(b'{"ok":true,"stopping":true}', response.read())
+            conn.close()
+            thread.join(timeout=10)
+            self.assertFalse(thread.is_alive(), "serve_forever did not return")
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_shutdown_endpoint_refuses_a_cross_site_post(self) -> None:
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
+            conn.request(
+                "POST",
+                "/api/shutdown",
+                body=b"",
+                headers={"Content-Length": "0", "Sec-Fetch-Site": "cross-site"},
+            )
+            response = conn.getresponse()
+            self.assertEqual(403, response.status)
+            response.read()
+            conn.close()
+            # Still serving: a refused stop must not stop anything.
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
+            conn.request("GET", "/api/health")
+            self.assertEqual(200, conn.getresponse().status)
+            conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
 
 class VerificationFixTest(unittest.TestCase):
     """Regressions found by the adversarial pass that tried to refute the fixes."""
