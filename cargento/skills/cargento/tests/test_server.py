@@ -8236,11 +8236,15 @@ class DaemonLifecycleTest(unittest.TestCase):
         port = httpd.server_port
         try:
             with tempfile.TemporaryDirectory() as tmp:
-                result = self._run(
-                    "--port", str(port), "--daemon", env={**os.environ, "CARGENTO_HOME": tmp}
-                )
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn(f"port {port}", result.stdout + result.stderr)
+                env = {**os.environ, "CARGENTO_HOME": tmp}
+                try:
+                    result = self._run("--port", str(port), "--daemon", env=env)
+                    self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+                    self.assertIn(f"port {port}", result.stdout + result.stderr)
+                finally:
+                    # If the busy-port race let the bind through anyway, this
+                    # reaps the detached daemon before the temp dir is gone.
+                    self._run("--port", str(port), "--stop", env=env)
         finally:
             httpd.shutdown()
             httpd.server_close()
