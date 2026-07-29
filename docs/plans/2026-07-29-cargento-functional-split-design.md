@@ -2,7 +2,7 @@
 
 Date: 2026-07-29
 
-Status: approved in conversation; awaiting written-spec review
+Status: approved in conversation; adversarial review fixes applied; awaiting written-spec review
 
 ## Context
 
@@ -80,9 +80,11 @@ cargento/skills/cargento/
 │   ├── config.py
 │   ├── state.py
 │   ├── io.py
+│   ├── records.py
 │   ├── transcripts.py
 │   ├── turns.py
 │   ├── sessions.py
+│   ├── claude_data.py
 │   ├── notifications.py
 │   ├── spacedock.py
 │   ├── aggregate.py
@@ -95,7 +97,6 @@ cargento/skills/cargento/
 │   │   ├── codex.py
 │   │   ├── pi.py
 │   │   ├── gemini.py
-│   │   ├── antigravity.py
 │   │   ├── copilot.py
 │   │   ├── opencode.py
 │   │   ├── cursor.py
@@ -140,13 +141,16 @@ responsibility. Any such change must preserve the dependency rules below.
 Runtime imports flow in one direction:
 
 ```text
-config, state, io
+config, state, io, records
         |
         v
-transcripts, turns, sessions
+transcripts, turns, sessions, claude_data
         |
         v
-collectors, spacedock, notifications
+spacedock, notifications
+        |
+        v
+collectors
         |
         v
 aggregate, diagnostics
@@ -165,8 +169,36 @@ Lower layers must not import `server.py`, `cli`, HTTP handling, lifecycle contro
 Collectors may import shared lower layers but may not import one another. Cross-harness behavior
 belongs in `sessions`, `aggregate`, or another shared lower-level module.
 
+`records.py` owns record classification, turn-signal extraction, Gemini event expansion, and event
+fingerprinting shared by transcript and turn analysis. This prevents a
+`transcripts -> turns -> transcripts` cycle.
+
+`claude_data.py` owns Claude transcript facts used outside collection, including session-prefix
+classification. `notifications.py` and `spacedock.py` may import it. The Claude collector may import
+all three. The HTTP layer calls notification operations and never imports the Claude collector.
+
+The `"gemini"` registry entry remains one application collector. `collectors/gemini.py` owns both
+Gemini CLI and Antigravity source readers and composes their rows behind the existing discovery,
+error, and display boundary. They move in one pull request.
+
 `cargento_runtime.__init__` remains empty. Importers name the module they need instead of depending
 on a second facade.
+
+## Canonical import identity
+
+Every process imports the runtime as the top-level package `cargento_runtime`. Runtime modules use
+package-relative imports. Repository code must not import it through the namespace-qualified name
+`cargento.skills.cargento.cargento_runtime`, which would create a second set of classes, locks, and
+caches.
+
+Direct `server.py` execution already places the skill directory on `sys.path`. Repository tests,
+the asset linter, and other path-based tools prepend the absolute skill directory before importing
+`cargento_runtime`. Transitional test support loads `server.py` only after establishing the same
+path.
+
+Tests assert that no namespace-qualified runtime module appears in `sys.modules`. Copied-plugin
+tests assert that every loaded `cargento_runtime` module resolves beneath the copied skill
+directory.
 
 ## Runtime ownership
 
@@ -179,6 +211,8 @@ on a second facade.
 - resolved store roots and documented overrides;
 - threshold and cache-limit values;
 - platform facts;
+- whether Spacedock project reads are enabled;
+- the state directory resolved from `CARGENTO_HOME`;
 - the selected host, port, and display settings; and
 - the absolute `server.py` launcher path used for daemon respawning.
 
@@ -188,7 +222,7 @@ Tests create modified configurations instead of patching module constants.
 
 `RuntimeState` owns mutable process state:
 
-- cache dictionaries and their bounds;
+- cache dictionaries, whose limits come from `RuntimeConfig`;
 - scanner offsets and partial-line state;
 - cache and scanner locks;
 - hook and notification state;
@@ -205,9 +239,17 @@ The application layer owns the collector registry and coordinates diagnostics, c
 handling, and lifecycle operations. It receives `RuntimeConfig` and `RuntimeState`; it does not
 read launcher globals.
 
-Collectors use an explicit contract:
+The registry uses one explicit contract:
 
 ```python
+@dataclass(frozen=True)
+class HarnessSpec:
+    key: str
+    label: str
+    discover: Callable[[RuntimeConfig], bool]
+    collect: Collector
+
+
 def collect(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -218,8 +260,14 @@ def collect(
     ...
 ```
 
-Discovery follows the same model. The exact callable type should live in `aggregate.py` or a small
-shared type module if importing it would otherwise create a cycle.
+`aggregate.py` owns `HarnessSpec`, catches discovery and collection errors at the current per-harness
+boundaries, and records diagnostics through `RuntimeState`. Collector modules export callables but
+do not mutate the registry.
+
+`CargentoHTTPServer` stores exactly one `Application` and one assembled page. Request handlers read
+them from their server instance rather than class or process globals. A contract test starts two
+servers with different configurations and states and proves that requests and notification state
+do not cross between them.
 
 ## Data flow
 
@@ -258,8 +306,11 @@ Extracted modules must not open stores, sockets, browsers, logs, or subprocesses
 `cli.main()` performs runtime construction.
 
 Frontend assets introduce a new packaging failure mode. The page loader reads UTF-8 assets relative
-to its own package and assembles the served page before daemonization. A missing or unreadable asset
-must produce a clear startup error while stderr is still available.
+to its own package. Argument parsing and the `--help`, `--diagnose`, `--status`, and `--stop`
+early-exit paths run before page construction. Foreground and daemon serving paths load the page
+before binding, opening the daemon log, forking, or spawning a child. A missing or unreadable asset
+must therefore produce a clear startup error while stderr is still available without disabling
+recovery commands.
 
 ## Stable external contracts
 
@@ -307,6 +358,10 @@ The transitional loader must register its module in `sys.modules`, and every spl
 that same object from `support.py`. Once the runtime package exists, standard package imports and
 fresh `RuntimeConfig` and `RuntimeState` instances replace the loader and global reset logic.
 
+Fresh-interpreter tests are the deliberate exception. Optional-`sqlite3`, import-side-effect, and
+copied-plugin checks run in isolated subprocesses so they can control `sys.modules` and imports
+without contaminating the shared test process.
+
 `tests/fixtures.py` owns store builders and shared harness contract fixtures.
 `tests/page_harness.py` owns the Node DOM harness.
 
@@ -314,78 +369,131 @@ Tests split by behavior, not by the source file they happened to occupy. Each te
 the production module that owns the behavior. Aggregate contract tests continue to exercise all
 harnesses through the public application boundary.
 
-Replace every hard-coded `test_server` command with one canonical discovery command. The first test
-split must prove the command works from the repository root on Python 3.11 and 3.12, including
-native Windows:
+Replace every hard-coded `test_server` target with canonical dashboard discovery plus the existing
+repository script modules. The coverage sequence is:
 
 ```bash
-python -m unittest discover -s cargento/skills/cargento/tests -t .
+coverage erase
+coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
+coverage run -a -m unittest \
+  scripts.tests.test_validate_plugins \
+  scripts.tests.test_bump_version \
+  scripts.tests.test_lint_embedded
+coverage report
 ```
 
-Update the command in `AGENTS.md`, CI, release validation, repository development skills, and
-contributor documentation in the same pull request.
+The non-coverage sequence runs discovery first, then the same three script modules with a second
+`python -m unittest` invocation. The first test split must prove both sequences work from the
+repository root on Python 3.11 and 3.12, including native Windows.
+
+Update `AGENTS.md`, both quality-gate invocations, `validate.yml`, `release.yml`, the `sync-docs`
+skill, contributor documentation, the root architecture map, and validator comments in the same
+pull request.
 
 Add a Python 3.11 direct-launch smoke job if no required job exercises the supported runtime floor.
 The existing three-platform suite may remain on Python 3.12.
 
-## Behavioral checkpoints
+When the runtime package first appears, add its directory to `[tool.mypy].files`. Transfer only the
+Ruff per-file exemptions required by moved code to each new owner. Do not apply one wildcard
+exemption to the whole package, broaden an ignore, or refactor branchy code merely to make a move
+pass lint.
 
-### Checkpoint 1: characterize the installed contract
+## Delivery phases and behavioral checkpoints
+
+Each phase may contain several pull requests. A pull request moves one responsibility or establishes
+one prerequisite. The implementation plan must name each pull request and its entry and exit
+criteria.
+
+### Phase 1: characterize the installed contract
 
 Add tests before moving code:
 
 - launch `server.py` from an unrelated working directory;
 - exercise help, diagnose, status, stop, and invalid-argument paths;
 - exercise every HTTP route and pin response shapes;
+- preserve Host and Origin rejection, DNS-rebinding protection, request-size limits, and loopback
+  binding;
+- preserve the SessionEnd generation guard and notification ordering;
+- prove `/api/health` performs no harness-store reads;
+- prove collection memoization holds its lock across the scan and releases it after failure;
 - prove daemon respawn uses the stable launcher;
-- copy only the plugin directory and run the launcher from that copy; and
-- record the baseline test inventory and measured coverage.
+- copy only the plugin directory and run the launcher from that copy;
+- test the detached-process argument builder with a Windows launcher path;
+- cover the thin launcher's import and argument forwarding in the parent coverage process; and
+- record the numeric test count, skipped count, test inventory, and measured CI coverage.
+
+At the time of this design, the canonical suite runs 423 tests with one skip. If `main` changes
+before the first implementation pull request, record the new baseline and the commit that produced
+it. Test splitting must match that recorded count before adding new tests.
+
+The copied-plugin subprocess runs from an unrelated temporary directory. Remove `PYTHONPATH`, set
+`PYTHONNOUSERSITE=1`, invoke the absolute copied launcher, and assert that every loaded
+`cargento_runtime` module and frontend asset resolves beneath the copied skill directory. This
+path assertion catches a same-named runtime package installed elsewhere.
 
 Avoid broad golden files. Assert stable behavior and schemas, not volatile timestamps or generated
 prose.
 
-### Checkpoint 2: split tests
+### Phase 2: split tests
 
 Move tests and helpers without changing production code. The new discovery command must collect
 every existing test. Cross-test state checks must remain green under the new import order.
 
-### Checkpoint 3: extract frontend assets
+### Phase 3: extract frontend assets
 
 Create the `cargento_runtime` package shell and move the page source byte-for-byte into its `web`
 subdirectory. Adapt the linter and Node harness, extend the copied-plugin smoke test to require all
 assets, and assert that assembly produces the same response bytes as the former embedded `PAGE`.
 
-### Checkpoint 4: introduce the runtime foundation
+### Phase 4: introduce the runtime foundation
 
-Create config and state ownership. Move pure I/O and session helpers first, then transcript and turn
-scanners. Preserve algorithms, locks, cache bounds, and error handling.
+Use separate pull requests:
 
-### Checkpoint 5: extract collectors
+1. create `RuntimeConfig`, `RuntimeState`, the canonical import bootstrap, and temporary adapters
+   while leaving behavior in `server.py`;
+2. move pure I/O and record-classification helpers;
+3. move shared session construction and identity helpers;
+4. move transcript analysis; and
+5. move turn scanning after shared record operations sit below both analyzers.
 
-Move collectors in dependency order:
+Preserve algorithms, locks, cache bounds, and error handling. A pull request must not both introduce
+state ownership and relocate several functional subsystems.
 
-1. Codex, Pi, Gemini, Copilot, and Droid;
-2. OpenCode, Cursor, and Goose;
-3. Antigravity;
-4. Spacedock and Claude.
+### Phase 5: establish the application boundary and extract collectors
+
+Move collectors through separate pull requests in dependency order:
+
+1. introduce `HarnessSpec`, the registry, `Application`, and temporary adapters while collectors
+   remain in `server.py`;
+2. Codex;
+3. Pi;
+4. Copilot and Droid, separately unless their shared JSONL contract makes one small move clearer;
+5. OpenCode, Cursor, and Goose, separately after shared SQLite helpers exist;
+6. the composite Gemini and Antigravity collector in one pull request;
+7. `claude_data.py`, then Spacedock and notifications through their defined lower-layer APIs; and
+8. the Claude collector.
 
 Each move keeps aggregate harness contracts and adds direct tests at the new module boundary.
 
-### Checkpoint 6: extract application services
+### Phase 6: extract application services
 
-Move aggregation, notifications, diagnostics, HTTP handling, and lifecycle control. Reduce
+Move diagnostics, HTTP handling, and lifecycle control in separate pull requests. Reduce
 `server.py` to the launcher only after the application already runs through the package.
 
-### Checkpoint 7: harden packaging and reconcile documentation
+### Phase 7: harden packaging and reconcile documentation
 
 Teach repository validation to enumerate required runtime files and assets. Run the launcher from a
 copied plugin with no repository path on `sys.path`. Update architecture, compatibility,
 contributor, test, release, and `sync-docs` references.
 
+Fold the durable module boundaries, dependency rules, and rejected alternatives into the owning
+`docs/design-*.md` file. Then delete this design and its implementation plan, because
+`docs/plans/` contains only unshipped work. Run `sync-docs` after those deletions.
+
 ## Pull request rules
 
-Each checkpoint is an independently mergeable pull request based on the latest `main`. Every pull
-request must:
+Every pull request is independently mergeable and based on the latest `main`. Every pull request
+must:
 
 - move one responsibility or establish one prerequisite;
 - include no feature work;
@@ -456,7 +564,7 @@ dependency direction are the architectural checks; line count is a review signal
 
 ## Rollback
 
-Each checkpoint preserves behavior and data formats, so it can be reverted without migration.
-Later checkpoints begin only after the previous pull request reaches `main`. If a checkpoint
-reveals a behavioral defect, record the defect separately and decide whether the present behavior
-or the documented contract is authoritative before continuing.
+Each pull request preserves behavior and data formats, so it can be reverted without migration.
+Later pull requests begin only after the previous one reaches `main`. If a phase reveals a
+behavioral defect, record the defect separately and decide whether the present behavior or the
+documented contract is authoritative before continuing.
