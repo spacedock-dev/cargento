@@ -408,6 +408,169 @@ class PiTranscriptTest(unittest.TestCase):
         self.assertEqual("Stable prompt", after_corruption["last_prompt"])
 
 
+class PiCollectorTest(unittest.TestCase):
+    """Pi session stores are flat for exports and one-level nested by default."""
+
+    NOW = 1_700_000_000.0
+
+    def setUp(self) -> None:
+        with dashboard._scan_lock:
+            dashboard._pi_scan.clear()
+
+    @staticmethod
+    def _header(sid: str, *, parent: str | None = None) -> dict[str, Any]:
+        return {
+            "type": "session",
+            "version": 3,
+            "id": sid,
+            "timestamp": _iso(PiCollectorTest.NOW - 60),
+            "cwd": "/w/proj",
+            "parentSession": parent,
+        }
+
+    @staticmethod
+    def _message(
+        entry_id: str,
+        parent_id: str | None,
+        when: float,
+        role: str,
+        content: Any,
+        *,
+        usage: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
+        message: dict[str, Any] = {"role": role, "content": content}
+        if usage is not None:
+            message["usage"] = usage
+        return {
+            "type": "message",
+            "id": entry_id,
+            "parentId": parent_id,
+            "timestamp": _iso(when),
+            "message": message,
+        }
+
+    def test_collects_flat_and_nested_sessions_with_render_ready_details(self) -> None:
+        # Missing either glob would hide one of Pi's supported on-disk layouts.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _jsonl(
+                root / "flat.jsonl",
+                [
+                    self._header("flat"),
+                    {"type": "session_info", "name": "Pi collector"},
+                    self._message("prompt", None, self.NOW - 30, "user", "Build Pi support"),
+                    self._message(
+                        "tool",
+                        "prompt",
+                        self.NOW - 20,
+                        "assistant",
+                        [{"type": "toolCall", "name": "bash"}],
+                        usage={"output": 100},
+                    ),
+                ],
+                self.NOW - 20,
+            )
+            _jsonl(
+                root / "--w-proj--" / "nested.jsonl",
+                [
+                    self._header("nested"),
+                    self._message("prompt", None, self.NOW - 10, "user", "Nested session"),
+                ],
+                self.NOW - 10,
+            )
+            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
+                rows = dashboard.collect_pi(self.NOW, 24, False)
+
+        by_sid = {row["sid"]: row for row in rows}
+        self.assertEqual({"flat", "nested"}, set(by_sid))
+        flat = by_sid["flat"]
+        self.assertEqual("w/proj", flat["project"])
+        self.assertEqual("Pi collector", flat["title"])
+        self.assertEqual("Build Pi support", flat["last_prompt"])
+        self.assertEqual(10, flat["rate_per_min"])
+        self.assertEqual("running bash", flat["state_detail"])
+        self.assertIsNotNone(flat["turn"])
+        self.assertEqual("30s", flat["turn"]["elapsed_h"])
+
+    def test_keeps_the_newest_duplicate_and_does_not_fold_parent_sessions(self) -> None:
+        # Deduping by parentSession would merge independent resumed Pi sessions.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _jsonl(
+                root / "old.jsonl",
+                [
+                    self._header("duplicate"),
+                    {"type": "session_info", "name": "Old copy"},
+                    self._message("old", None, self.NOW - 60, "user", "Old prompt"),
+                ],
+                self.NOW - 60,
+            )
+            _jsonl(
+                root / "--w-proj--" / "new.jsonl",
+                [
+                    self._header("duplicate"),
+                    {"type": "session_info", "name": "New copy"},
+                    self._message("new", None, self.NOW - 5, "user", "New prompt"),
+                ],
+                self.NOW - 5,
+            )
+            _jsonl(
+                root / "--w-proj--" / "parent.jsonl",
+                [
+                    self._header("parent"),
+                    self._message("parent-prompt", None, self.NOW - 5, "user", "Parent prompt"),
+                ],
+                self.NOW - 5,
+            )
+            _jsonl(
+                root / "--w-proj--" / "child.jsonl",
+                [
+                    self._header("child", parent="parent"),
+                    self._message("child-prompt", None, self.NOW - 5, "user", "Child prompt"),
+                ],
+                self.NOW - 5,
+            )
+            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
+                rows = dashboard.collect_pi(self.NOW, 24, True)
+
+        by_sid = {row["sid"]: row for row in rows}
+        self.assertEqual({"duplicate", "parent", "child"}, set(by_sid))
+        self.assertEqual("New copy", by_sid["duplicate"]["title"])
+
+    def test_ignores_non_session_files_and_rejects_future_event_activity_and_rate(self) -> None:
+        # Promoting any JSONL to a session or accepting a future token event
+        # would show phantom Pi work and output.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _jsonl(
+                root / "not-a-session.jsonl",
+                [self._message("orphan", None, self.NOW, "user", "Not a session")],
+                self.NOW,
+            )
+            _jsonl(
+                root / "future.jsonl",
+                [
+                    self._header("future"),
+                    self._message("prompt", None, self.NOW - 20, "user", "Real prompt"),
+                    self._message(
+                        "future-output",
+                        "prompt",
+                        self.NOW + 86_400,
+                        "assistant",
+                        "future output",
+                        usage={"output": 999},
+                    ),
+                ],
+                self.NOW - 20,
+            )
+            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
+                rows = dashboard.collect_pi(self.NOW, 24, True)
+
+        self.assertEqual(["future"], [row["sid"] for row in rows])
+        self.assertEqual(self.NOW - 20, rows[0]["last_activity"])
+        self.assertEqual(0, rows[0]["rate_per_min"])
+
+
 class TurnTrackingTest(unittest.TestCase):
     def test_pi_turns_apply_the_quiet_gap_rule(self) -> None:
         # Omitting the quiet-gap reset would count the inactive wait as work.
@@ -2093,6 +2256,11 @@ class CargentoServerTest(PageJsHarness):
             '<span class="rrow-badge">${badge(r.key, true)}</span>',
             dashboard.PAGE,
         )
+
+    def test_pi_badge_uses_the_explicit_pi_label(self) -> None:
+        # A generic fallback monogram hides a missing harness presentation entry.
+        rendered = self._run_page_js("console.log(JSON.stringify(HARNESS.pi));")
+        self.assertEqual({"code": "PI", "name": "Pi"}, rendered)
 
     def test_page_ships_trailing_rate_sparklines(self) -> None:
         # Overall + per-session trailing sparklines: client-side ring buffers
@@ -7028,6 +7196,7 @@ STORE_CONSTANTS = (
     "PROJECTS_DIR",
     "TASKS_DIR",
     "CODEX_SESSIONS_DIR",
+    "PI_SESSIONS_DIR",
     "GEMINI_TMP",
     "ANTIGRAVITY_CLI_DIR",
     "ANTIGRAVITY_CONVERSATIONS_DIR",
@@ -7098,6 +7267,34 @@ def build_codex(root: Path, when: float, sid: str, title: str) -> dict[str, str]
         when,
     )
     return {"CODEX_SESSIONS_DIR": str(root)}
+
+
+def build_pi(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    _jsonl(
+        root / "--w-proj--" / f"2026-07-29_{sid}.jsonl",
+        [
+            {
+                "type": "session",
+                "version": 3,
+                "id": sid,
+                "timestamp": _iso(when),
+                "cwd": "/w/proj",
+            },
+            {
+                "type": "message",
+                "id": "user0001",
+                "parentId": None,
+                "timestamp": _iso(when),
+                "message": {
+                    "role": "user",
+                    "content": title,
+                    "timestamp": int(when * 1000),
+                },
+            },
+        ],
+        when,
+    )
+    return {"PI_SESSIONS_DIR": str(root)}
 
 
 def build_gemini(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
@@ -7237,6 +7434,7 @@ def build_droid(root: Path, when: float, sid: str, title: str) -> dict[str, str]
 HARNESSES: tuple[tuple[str, Any], ...] = (
     ("claude", build_claude),
     ("codex", build_codex),
+    ("pi", build_pi),
     ("gemini", build_gemini),
     ("gemini", build_antigravity),
     ("copilot", build_copilot),
@@ -7289,6 +7487,14 @@ class HarnessContractTest(unittest.TestCase):
 
     def sessions_for(self, data: dict[str, Any], key: str) -> list[dict[str, Any]]:
         return [s for s in data["sessions"] if s["harness"] == key]
+
+    def test_pi_store_is_registered_as_a_harness(self) -> None:
+        # Removing Pi from the registry would make a valid store invisible.
+        data = self.collect(build_pi, when=self.NOW)
+        self.assertTrue(
+            any(harness["key"] == "pi" for harness in data["harnesses"]),
+            "Pi store must appear in the harness registry",
+        )
 
     def test_a_fresh_store_is_discovered_and_reads_working(self) -> None:
         for key, build in HARNESSES:

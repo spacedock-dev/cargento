@@ -3432,6 +3432,69 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
     return out
 
 
+def discover_pi() -> bool:
+    """Whether Pi has at least one JSONL file with a valid session header."""
+    paths = set(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*.jsonl"))
+    paths.update(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*", "*.jsonl"))
+    for path in paths:
+        try:
+            if pi_meta(path).get("session_id"):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    """Collect Pi's independent JSONL sessions from flat and nested stores."""
+    paths = set(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*.jsonl"))
+    paths.update(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*", "*.jsonl"))
+    sessions: dict[str, tuple[float, str, dict[str, Any]]] = {}
+    for path in paths:
+        try:
+            mtime = os.path.getmtime(path)
+            meta = pi_meta(path)
+        except (OSError, ValueError):
+            continue
+        sid = meta.get("session_id")
+        if not isinstance(sid, str) or not sid:
+            continue
+        if sid not in sessions or mtime > sessions[sid][0]:
+            sessions[sid] = (mtime, path, meta)
+
+    out: list[dict[str, Any]] = []
+    for sid, (mtime, path, meta) in sessions.items():
+        try:
+            info = scan_pi_session(path)
+        except (OSError, ValueError):
+            continue
+        last_event_ts = info["last_event_ts"] if info else 0
+        last_activity = newest_plausible(now, (last_event_ts, mtime))
+        active = is_fresh(now, last_activity, window_hours * 3600)
+        if not (active or show_all):
+            continue
+        state, state_detail = "idle", "awaiting your message"
+        if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
+            state = "working"
+            state_detail = working_detail(info, [])
+        project = project_from_cwd(meta.get("cwd") or "") or "pi"
+        session = base_session("pi", sid, project)
+        session.update(
+            {
+                "title": (info or {}).get("title"),
+                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "state": state,
+                "state_detail": state_detail,
+                "active": active,
+                "last_activity": last_activity,
+                "rate_per_min": rate_from(info, now),
+                "turn": turn_progress((info or {}).get("turn"), state, now),
+            }
+        )
+        out.append(session)
+    return out
+
+
 def antigravity_log_head_lines(path: str) -> list[str]:
     """Read the bounded identity-bearing beginning of an Antigravity CLI log."""
     try:
@@ -4522,6 +4585,7 @@ HARNESSES: list[
 ] = [
     ("claude", "Claude", lambda: any_store_dir("claude.projects", PROJECTS_DIR), collect_claude),
     ("codex", "Codex", lambda: any_store_dir("codex.sessions", CODEX_SESSIONS_DIR), collect_codex),
+    ("pi", "Pi", discover_pi, collect_pi),
     # Predicate matches both supported Gemini stores: legacy Gemini CLI
     # JSONL and current Antigravity CLI per-conversation SQLite databases.
     (
@@ -5190,6 +5254,7 @@ const iconURI = d => "data:image/svg+xml," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#000"><path d="' + d + '"/></svg>');
 const HARNESS = {
   claude:{code:"CL",name:"Claude"}, codex:{code:"CX",name:"Codex"},
+  pi:{code:"PI",name:"Pi"},
   gemini:{code:"GE",name:"Gemini"}, copilot:{code:"CP",name:"Copilot"},
   opencode:{code:"OC",name:"OpenCode"}, cursor:{code:"CU",name:"Cursor"},
   goose:{code:"GO",name:"Goose"}, droid:{code:"DR",name:"Droid"}
