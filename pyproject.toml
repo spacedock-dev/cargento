@@ -7,6 +7,15 @@ target-version = "py311"
 line-length = 100
 extend-exclude = [".venv", "venv"]
 
+[tool.ruff.format]
+# Ruff formats Python code blocks inside Markdown. Under docs/ that is wrong:
+# plan and design docs show methods indented inside the class they belong to,
+# and fragments that are deliberately incomplete. Formatting them as standalone
+# modules dedents code whose indentation is the instruction — and a dedented
+# method is one an implementer pastes at module level. Source is what this
+# check is for; prose that quotes source is not.
+exclude = ["docs/**/*.md"]
+
 [tool.ruff.lint]
 # Strict-by-default: every rule family on, with a curated, documented
 # ignore list rather than a permissive selection.
