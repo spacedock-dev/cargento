@@ -15,11 +15,13 @@ The repository keeps one shared skill implementation for all clients. Platform-n
 
 This file owns the Python floor. The dashboard server is stdlib-only Python 3.11+, with
 `datetime.UTC` setting the floor, and it runs identically regardless of which harness launched it.
-The floor is restated in six other places across four files, which must all move together:
+The floor is restated in seven other places across five files, which must all move together:
 `README.md`, `CONTRIBUTING.md` (twice, in the prerequisites and in the `server.py` design
 constraints), `cargento/skills/cargento/SKILL.md`, and `pyproject.toml` (`[tool.ruff] target-version`
-and `[tool.mypy] python_version`). The documentation-matches-code test guards the `SKILL.md` copy.
-The rest are on you.
+and `[tool.mypy] python_version`), plus the Python 3.11 direct-launch smoke in
+`.github/workflows/quality-gate.yml`. The documentation-matches-code test guards the `SKILL.md`
+copy, and the runtime-floor job exercises the shipped entry point on Python 3.11. The rest are on
+you.
 
 | Capability | macOS | Linux | Windows | WSL2 |
 |---|---|---|---|---|
@@ -76,4 +78,4 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 2ac652d (2026-07-29) -->
+<!-- docs-synced-through: 194c08c (2026-07-30) -->

@@ -10,10 +10,10 @@ Read [AGENTS.md](AGENTS.md) for the repository architecture and [COMPATIBILITY.m
 
 ## Development setup
 
-Prerequisites: Python 3.11+ (3.12 is what the PR checks run, so it is the safer choice), `git`, Node
-(only for `scripts/lint_embedded.py`, which checks the embedded JS; pass `--allow-missing-node` to
-skip that half), and optionally the Claude Code / AGY CLIs for native validation. See
-[COMPATIBILITY.md](COMPATIBILITY.md) for why 3.11 is the floor.
+Prerequisites: Python 3.11+ (`runtime-floor` checks the shipped entry point on 3.11, while the full
+gate runs on 3.12), `git`, Node (only for `scripts/lint_embedded.py`, which checks the embedded JS;
+pass `--allow-missing-node` to skip that half), and optionally the Claude Code / AGY CLIs for native
+validation. See [COMPATIBILITY.md](COMPATIBILITY.md) for why 3.11 is the floor.
 
 ```bash
 git clone https://github.com/spacedock-dev/cargento.git
@@ -48,6 +48,8 @@ branch, so the doc updates ride in the same PR.
 - `ruff format --check .`
 - `mypy` in `--strict` mode with `warn_unreachable`.
 - `scripts/lint_embedded.py`, which lints the HTML, CSS and JS embedded in `server.py`.
+- `runtime-floor`, which launches the shipped `server.py` entry point directly from outside the
+  checkout on Python 3.11 and exercises `--help` and `--diagnose --json`.
 - The full unittest suite under `coverage`, against the `fail_under` threshold in `pyproject.toml`.
   That threshold only ratchets up. A PR that must merge below it needs the `coverage-exception`
   label, which is visible in the PR timeline.

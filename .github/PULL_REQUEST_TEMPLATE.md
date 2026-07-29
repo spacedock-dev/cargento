@@ -5,6 +5,7 @@
 ## Test plan
 
 - [ ] Ran the pre-PR suite in `AGENTS.md` § Pre-PR Checks (ruff, ruff format, mypy, `lint_embedded.py`, `validate_plugins.py`, `bump_version.py --current`, tests under coverage) and it is clean
+- [ ] Preserved Python 3.11 compatibility; CI's `runtime-floor` job launches the shipped entry point on that floor
 - [ ] Ran `/sync-docs` — the doc updates for this change ride in this PR, or there was nothing to reconcile
 - [ ] Behavior changes to `server.py` include a regression test
 - [ ] No version field was touched (`version-guard` fails any PR that bumps one)
