@@ -1418,6 +1418,96 @@ class CargentoServerTest(PageJsHarness):
         self.assertEqual((True, "reviewer", "12345678"), identity)
         source().read.assert_called_once_with(dashboard._AGENT_SCAN_BYTES)
 
+    def test_configured_agent_transcript_remains_a_top_level_session(self) -> None:
+        now = dashboard.time.time()
+        timestamp = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        session_id = "c0ffee25-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            project = projects / "sample"
+            project.mkdir(parents=True)
+            tasks = Path(tmp) / "tasks"
+            tasks.mkdir()
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(
+                "\n".join(
+                    json.dumps(record)
+                    for record in (
+                        {
+                            "type": "agent-name",
+                            "agentName": dashboard.SPACEDOCK_ENSIGN,
+                            "agentSetting": dashboard.SPACEDOCK_ENSIGN,
+                        },
+                        {
+                            "type": "user",
+                            "sessionId": session_id,
+                            "timestamp": timestamp,
+                            "message": {"role": "user", "content": "run the workflow"},
+                        },
+                    )
+                )
+                + "\n"
+            )
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
+                mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
+            ):
+                sessions = dashboard.collect_claude(now, 24, False)
+                classified_as_subagent = dashboard.claude_prefix_is_agent(session_id[:8])
+
+        self.assertEqual([session_id[:8]], [session["session"] for session in sessions])
+        self.assertFalse(classified_as_subagent)
+        self.assertEqual(
+            {"role": "ensign", "workflows": []},
+            sessions[0]["spacedock"],
+        )
+
+    def test_young_agent_identity_can_gain_a_parent_relation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "young-agent.jsonl"
+            transcript.write_text(
+                json.dumps({"type": "agent-name", "agentName": "reviewer"}) + "\n"
+            )
+
+            self.assertEqual(
+                (False, "reviewer", ""),
+                dashboard.claude_agent_identity(str(transcript)),
+            )
+
+            with transcript.open("a") as stream:
+                stream.write(
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "teamName": "session-12345678",
+                        }
+                    )
+                    + "\n"
+                )
+
+            self.assertEqual(
+                (True, "reviewer", "12345678"),
+                dashboard.claude_agent_identity(str(transcript)),
+            )
+
+    def test_parent_relation_without_agent_name_is_still_a_subagent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "unnamed-agent.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "teamName": "session-12345678",
+                    }
+                )
+                + "\n"
+            )
+
+            self.assertEqual(
+                (True, "", "12345678"),
+                dashboard.claude_agent_identity(str(transcript)),
+            )
+
     def test_claude_agent_negative_cache_waits_for_conclusive_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "young.jsonl"
