@@ -103,7 +103,12 @@ const document = {
 };
 const window = {addEventListener(type, fn){
   (__listeners["window:" + type] = __listeners["window:" + type] || []).push(fn); }};
-const fetch = () => new Promise(() => {});
+// Records what the page requested and lets a test choose the reply. The old
+// never-settling stub is the default, so existing tests behave identically.
+let __fetchCalls = [];
+let __fetchImpl = () => new Promise(() => {});
+const fetch = (...args) => { __fetchCalls.push(args); return __fetchImpl(...args); };
+const clearInterval = () => {};
 const setInterval = () => 0;
 // Notification stub: records what the page would have raised, with a
 // permission value tests can set. Defined here so every page test runs with a
@@ -8093,6 +8098,118 @@ console.log(JSON.stringify({
         for name in ("--sunk", "--line2", "--accent-ink", "--warn", "--warnink"):
             with self.subTest(token=name):
                 self.assertIn(name, dark.group(1))
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_stop_button_arms_then_posts_and_shows_the_stopped_panel(self) -> None:
+        checks = """
+const out = {};
+render(board());
+out.shown = __els.app.innerHTML.includes('data-calm="stop"');
+out.armedBefore = __els.app.innerHTML.includes("sure?");
+
+// First click only arms it: the page cannot undo a stop.
+__fire("click", {target: {closest: sel => sel === "[data-calm]"
+  ? {getAttribute: a => a === "data-calm" ? "stop" : null} : null}});
+out.armedAfter = __els.app.innerHTML.includes("sure?");
+out.postedYet = __fetchCalls.filter(c => c[0] === "/api/shutdown").length;
+
+// A refresh must not disarm it — #app is rebuilt every 5s and the button
+// would flicker under the reader's cursor.
+render(board());
+out.survivesRender = __els.app.innerHTML.includes("sure?");
+
+__fetchImpl = () => Promise.resolve({ok: true});
+__fire("click", {target: {closest: sel => sel === "[data-calm]"
+  ? {getAttribute: a => a === "data-calm" ? "stop" : null} : null}});
+await __settle(); await __settle();
+const posted = __fetchCalls.filter(c => c[0] === "/api/shutdown");
+out.posted = posted.length;
+out.method = posted.length ? posted[0][1].method : null;
+out.stoppedPanel = __els.app.innerHTML.includes("Cargento stopped");
+out.buttonGone = __els.app.innerHTML.includes('data-calm="stop"');
+out.title = document.title;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["shown"])
+        self.assertFalse(out["armedBefore"])
+        self.assertTrue(out["armedAfter"])
+        self.assertEqual(0, out["postedYet"])
+        self.assertTrue(out["survivesRender"])
+        self.assertEqual(1, out["posted"])
+        self.assertEqual("POST", out["method"])
+        self.assertTrue(out["stoppedPanel"])
+        self.assertFalse(out["buttonGone"])
+        self.assertIn("stopped", out["title"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_stop_disarms_on_escape_and_on_a_click_elsewhere(self) -> None:
+        checks = """
+const out = {};
+const clickStop = () => __fire("click", {target: {closest: sel => sel === "[data-calm]"
+  ? {getAttribute: a => a === "data-calm" ? "stop" : null} : null}});
+const clickAway = () => __fire("click", {target: {closest: () => null}});
+
+render(board());
+clickStop();
+out.armed = __els.app.innerHTML.includes("sure?");
+__fire("keydown", {key: "Escape", preventDefault(){}, target: {tagName: "DIV"}});
+out.afterEsc = __els.app.innerHTML.includes("sure?");
+
+clickStop();
+out.armedAgain = __els.app.innerHTML.includes("sure?");
+clickAway();
+out.afterClickAway = __els.app.innerHTML.includes("sure?");
+out.nothingPosted = __fetchCalls.filter(c => c[0] === "/api/shutdown").length;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["armed"])
+        self.assertFalse(out["afterEsc"])
+        self.assertTrue(out["armedAgain"])
+        self.assertFalse(out["afterClickAway"])
+        self.assertEqual(0, out["nothingPosted"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_failed_stop_reports_inline_and_leaves_the_page_live(self) -> None:
+        checks = """
+const out = {};
+render(board());
+const clickStop = () => __fire("click", {target: {closest: sel => sel === "[data-calm]"
+  ? {getAttribute: a => a === "data-calm" ? "stop" : null} : null}});
+clickStop();
+__fetchImpl = () => Promise.resolve({ok: false, status: 403});
+clickStop();
+await __settle(); await __settle();
+// The server is still running, so the page must not claim otherwise.
+out.stoppedPanel = __els.app.innerHTML.includes("Cargento stopped");
+out.error = __els.app.innerHTML.includes("stop failed");
+out.rows = rows();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertFalse(out["stoppedPanel"])
+        self.assertTrue(out["error"])
+        self.assertEqual(3, out["rows"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_late_refresh_does_not_repaint_over_the_stopped_panel(self) -> None:
+        checks = """
+const out = {};
+render(board());
+// The page's own bottom-of-script `refresh()` already fired once at load,
+// before this check ever ran — count from here, not from zero.
+const before = __fetchCalls.filter(c => String(c[0]).startsWith("/api/data")).length;
+serverStopped = true;
+renderStopped();
+await refresh();          // an in-flight poll settling after the stop
+out.stillStopped = __els.app.innerHTML.includes("Cargento stopped");
+out.noFetch = __fetchCalls.filter(c => String(c[0]).startsWith("/api/data")).length - before;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["stillStopped"])
+        self.assertEqual(0, out["noFetch"])
 
 
 class DocumentationMatchesCodeTest(unittest.TestCase):

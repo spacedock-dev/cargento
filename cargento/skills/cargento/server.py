@@ -4482,6 +4482,14 @@ PAGE = r"""<!doctype html>
   .modebtn:hover{color:var(--ink2)}
   .modebtn.on{color:var(--ink);background:var(--panel);box-shadow:0 1px 3px -1px rgba(0,0,0,.22)}
   .modebtn:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .stopbtn{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.03em;padding:5px 12px;border:1px solid var(--line);border-radius:9px;cursor:pointer;color:var(--ink3);background:var(--bg);transition:color .12s,background .12s,border-color .12s}
+  .stopbtn:hover{color:var(--ink2)}
+  .stopbtn.armed{color:var(--alert);border-color:color-mix(in oklab,var(--alert) 45%,transparent);background:color-mix(in oklab,var(--alert) 12%,transparent)}
+  .stopbtn:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .stopnote{font-family:var(--mono);font-size:10.5px;color:var(--alert);margin-left:6px}
+  .stopped{margin:72px auto;max-width:440px;display:flex;flex-direction:column;gap:10px;text-align:center;font-family:var(--mono)}
+  .stopped-h{font-size:15px;font-weight:700;color:var(--ink)}
+  .stopped-p{font-size:12px;color:var(--ink3);line-height:1.65}
 
   /* calm mode — one dense ledger row per session, in a fixed frame that
      scrolls internally so the chrome never leaves the screen */
@@ -5064,12 +5072,65 @@ function setDisplayMode(mode){
   if(lastData) render(lastData);
 }
 
+/* ── stopping the server from the page ─────────────────────────────────────
+   Two clicks, because the page cannot undo a stop and the header is a place
+   people click. `stopArmed` is a module variable for the documented reason:
+   #app is rebuilt every five seconds, so state that is not reapplied after
+   the swap is state the refresh eats — and a button that disarmed itself on
+   the next poll would flicker under the reader's cursor. */
+let stopArmed = false;
+let stopError = "";
+let serverStopped = false;
+
+function stopControl(){
+  if(serverStopped) return "";
+  const note = stopError ? `<span class="stopnote">${esc(stopError)}</span>` : "";
+  return `<button type="button" class="stopbtn${stopArmed ? " armed" : ""}"` +
+    ` data-calm="stop" aria-pressed="${stopArmed}"` +
+    ` title="Stop the Cargento server. Two clicks — this cannot be undone from the page.">` +
+    (stopArmed ? "stop — sure?" : "stop") + `</button>` + note;
+}
+
+function disarmStop(){
+  if(!stopArmed && !stopError) return false;
+  stopArmed = false; stopError = "";
+  return true;
+}
+
+async function requestStop(){
+  stopArmed = false;
+  try{
+    const r = await fetch("/api/shutdown", {method: "POST"});
+    if(!r.ok) throw new Error("status " + r.status);
+  }catch(e){
+    /* Still running, so the page must not claim otherwise. */
+    stopError = "stop failed";
+    if(lastData) render(lastData);
+    return;
+  }
+  serverStopped = true;
+  renderStopped();
+}
+
+function renderStopped(){
+  /* Not the "stalled" banner: nothing is retrying, nothing is coming back,
+     and the reader is the one who ended it. */
+  if(refreshTimer !== null){ clearInterval(refreshTimer); refreshTimer = null; }
+  document.title = "Cargento — stopped";
+  const app = document.getElementById("app");
+  if(!app) return;
+  app.className = "wrap";
+  app.innerHTML = `<div class="stopped"><div class="stopped-h">Cargento stopped.</div>` +
+    `<div class="stopped-p">The server is no longer running, so this page will not ` +
+    `update. Ask your agent to open Cargento again to restart it.</div></div>`;
+}
+
 function modeBar(){
   const btn = k => `<button type="button" class="modebtn${displayMode === k ? " on" : ""}"` +
     ` data-calm="mode" data-arg="${k}" aria-pressed="${displayMode === k}">${k}</button>`;
   return `<div class="modebar"><span class="modebar-k">display</span>` +
     `<div class="modeseg" role="group" aria-label="display mode">` +
-    btn("regular") + btn("calm") + `</div></div>`;
+    btn("regular") + btn("calm") + `</div>` + stopControl() + `</div>`;
 }
 
 /* Two flag tones, and only signals the payload actually carries: --alert for
@@ -5238,6 +5299,11 @@ function calmCopyId(key){
 
 function calmAction(act, arg){
   if(act === "mode"){ setDisplayMode(arg); return; }
+  if(act === "stop"){
+    if(!stopArmed){ stopArmed = true; stopError = ""; if(lastData) render(lastData); return; }
+    requestStop();
+    return;
+  }
   if(act === "copy"){ calmCopyId(arg); return; }
   if(act === "sort"){
     if(calmSort === arg) return;
@@ -5259,7 +5325,11 @@ function calmAction(act, arg){
 
 document.addEventListener("click", e => {
   const el = (e.target && e.target.closest) ? e.target.closest("[data-calm]") : null;
-  if(!el) return;
+  if(!el){
+    /* A click anywhere else is an answer: not that one. */
+    if(disarmStop() && lastData) render(lastData);
+    return;
+  }
   calmAction(el.getAttribute("data-calm"), el.getAttribute("data-arg"));
 });
 
@@ -5271,6 +5341,9 @@ document.addEventListener("keydown", e => {
   const stop = () => { if(e.preventDefault) e.preventDefault(); };
   /* `c` works in both modes — it is the way back out of calm. */
   if(k === "c"){ stop(); setDisplayMode(displayMode === "calm" ? "regular" : "calm"); return; }
+  if(k === "Escape" && (stopArmed || stopError)){
+    stop(); disarmStop(); if(lastData) render(lastData); return;
+  }
   if(displayMode !== "calm" || !lastData) return;
   /* A focused button already answers Enter and Space itself. */
   if((k === "Enter" || k === " ") && e.target && e.target.closest &&
@@ -5667,6 +5740,7 @@ function render(d){
 }
 
 async function refresh(){
+  if(serverStopped) return;   /* an in-flight poll must not repaint the panel */
   const sequence = ++refreshSequence;
   try{
     const r = await fetch("/api/data" + (showAll ? "?all=1" : ""));
@@ -5699,7 +5773,7 @@ async function refresh(){
   }
 }
 refresh();
-setInterval(refresh, 5000);
+let refreshTimer = setInterval(refresh, 5000);
 </script>
 </body>
 </html>
