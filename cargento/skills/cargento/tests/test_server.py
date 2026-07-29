@@ -382,6 +382,31 @@ class PiTranscriptTest(unittest.TestCase):
         self.assertEqual("Rebranched prompt", rebased["last_prompt"])
         self.assertEqual("First prompt", rebased["title"])
 
+    def test_corrupt_parent_does_not_replace_the_last_complete_branch(self) -> None:
+        # Publishing a newest child before its parent has decoded disconnects
+        # it from root and makes a partial write look like a new Pi session.
+        records = [
+            {"type": "session", "version": 3, "id": "corrupt-parent", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Stable prompt"),
+            self._message("stable-leaf", "root", "2026-07-29T11:00:01Z", "assistant", "stable"),
+        ]
+        child = self._message(
+            "unrooted-child", "corrupt-parent", "2026-07-29T11:01:00Z", "user", "Unrooted child"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-corrupt-parent.jsonl"
+            self._write(path, records)
+            stable = dashboard.scan_pi_session(str(path))
+            assert stable is not None
+            with path.open("a") as output:
+                output.write('{"type":"message","id":"corrupt-parent"\n')
+                output.write(json.dumps(child) + "\n")
+            after_corruption = dashboard.scan_pi_session(str(path))
+            assert after_corruption is not None
+
+        self.assertEqual("Stable prompt", stable["last_prompt"])
+        self.assertEqual("Stable prompt", after_corruption["last_prompt"])
+
 
 class TurnTrackingTest(unittest.TestCase):
     def test_pi_turns_apply_the_quiet_gap_rule(self) -> None:

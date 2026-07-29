@@ -1628,6 +1628,51 @@ def _pi_latest_name(path: str, end_pos: int) -> Any:
     return _PI_NO_NAME
 
 
+def _pi_state(path_entries: list[dict[str, Any]], path: str, end_pos: int) -> dict[str, Any]:
+    """Build cache state only for a branch whose ancestry reaches root."""
+    return {
+        "pos": end_pos,
+        "path": path_entries,
+        "ids": {entry["id"]: index for index, entry in enumerate(path_entries)},
+        "name": _pi_latest_name(path, end_pos),
+    }
+
+
+def _pi_last_complete_branch(path: str, end_pos: int) -> list[dict[str, Any]]:
+    """Find the newest root-connected path after the latest candidate breaks."""
+    entries: dict[str, dict[str, Any]] = {}
+    newest: list[dict[str, Any]] = []
+    for raw in reverse_lines(path, end_pos):
+        if not raw.startswith(b"{"):
+            continue
+        try:
+            projection = _pi_projection(json.loads(raw))
+        except ValueError:
+            continue
+        if projection is None or projection["kind"] in ("session", "session_info"):
+            continue
+        entry_id = projection["id"]
+        if entry_id is None or entry_id in entries:
+            continue
+        entries[entry_id] = projection
+        newest.append(projection)
+    for leaf in newest:
+        reverse_path = []
+        entry = leaf
+        seen = set()
+        while entry["id"] not in seen:
+            reverse_path.append(entry)
+            seen.add(entry["id"])
+            parent_id = entry["parent_id"]
+            if parent_id is None:
+                return list(reversed(reverse_path))
+            parent = entries.get(parent_id)
+            if parent is None:
+                break
+            entry = parent
+    return []
+
+
 def _pi_rebuild(path: str, end_pos: int) -> dict[str, Any]:
     """Reconstruct the live Pi branch newest-first without retaining payloads."""
     reverse_path: list[dict[str, Any]] = []
@@ -1651,13 +1696,9 @@ def _pi_rebuild(path: str, end_pos: int) -> dict[str, Any]:
             continue
         if wanted is None:
             break
-    path_entries = list(reversed(reverse_path))
-    return {
-        "pos": end_pos,
-        "path": path_entries,
-        "ids": {entry["id"]: index for index, entry in enumerate(path_entries)},
-        "name": _pi_latest_name(path, end_pos),
-    }
+    if wanted is None and reverse_path:
+        return _pi_state(list(reversed(reverse_path)), path, end_pos)
+    return _pi_state(_pi_last_complete_branch(path, end_pos), path, end_pos)
 
 
 def _pi_extend(state: dict[str, Any], entry: dict[str, Any]) -> bool:
