@@ -1401,7 +1401,7 @@ def await_spawned(
 
 - [ ] **Step 4: Wire it into `main()`**
 
-The Windows path must run *before* the bind, so the parent never holds the port. Insert this immediately before the `log_file = log_path(args.port)` line added in Task 6 — no, place it directly after that line and before the bind:
+The Windows path must run *before* the bind, so the parent never holds the port it hands to the child. Task 6 Step 5 added a `log_file = …` line followed by an `if args.daemon: ensure_cargento_home()` block, and then the bind. Insert the new branch between that block and the bind, so the region reads exactly:
 
 ```python
     log_file = log_path(args.port)
