@@ -723,6 +723,11 @@ class TurnTrackingTest(unittest.TestCase):
 class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
 
+    # macOS arm64 platform runners can be contended while the complete suite
+    # runs. Keep a finite readiness ceiling, but leave enough room for an
+    # owned foreground child to bind and atomically publish its state file.
+    OWNED_INSTANCE_READY_TIMEOUT_SEC = 60.0
+
     def setUp(self) -> None:
         self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
         self._window_hours = dashboard.Handler.window_hours
@@ -776,7 +781,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     def _await_owned_instance(
         self, port: int, proc: subprocess.Popen[bytes], state_path: Path
     ) -> None:
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + self.OWNED_INSTANCE_READY_TIMEOUT_SEC
+        last_observation = "no health response"
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 stdout, stderr = proc.communicate(timeout=2)
@@ -784,20 +790,32 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             try:
                 code, _, body = self._response(port, "GET", "/api/health")
                 health = json.loads(body) if code == 200 else {}
-            except (OSError, ValueError, json.JSONDecodeError):
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                last_observation = f"health request failed: {type(exc).__name__}: {exc}"
+                time.sleep(0.05)
+                continue
+            if code != 200:
+                last_observation = f"health returned HTTP {code}"
                 time.sleep(0.05)
                 continue
             if health.get("pid") != proc.pid:
                 self.fail(f"port {port} is served by pid {health.get('pid')}, not child {proc.pid}")
             try:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError, json.JSONDecodeError):
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                last_observation = (
+                    f"owned health from pid {proc.pid}, but state {state_path} was unreadable: "
+                    f"{type(exc).__name__}: {exc}"
+                )
                 time.sleep(0.05)
                 continue
             self.assertEqual(proc.pid, state.get("pid"))
             self.assertEqual(port, state.get("port"))
             return
-        self.fail("owned launcher did not become healthy with its state file")
+        self.fail(
+            f"owned child {proc.pid} did not become healthy with its state file within "
+            f"{self.OWNED_INSTANCE_READY_TIMEOUT_SEC:.0f}s: {last_observation}"
+        )
 
     def _owns_instance(self, port: int, proc: subprocess.Popen[bytes], state_path: Path) -> bool:
         if proc.poll() is not None:
