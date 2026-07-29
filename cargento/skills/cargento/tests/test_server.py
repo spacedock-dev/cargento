@@ -873,8 +873,36 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 thread.join(timeout=5)
 
     def test_host_origin_dns_rebinding_and_request_limits_are_preserved(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
-        self.assertEqual("127.0.0.1", httpd.server_address[0])
+        captured_addresses: list[tuple[str, int]] = []
+
+        class StopServingError(Exception):
+            pass
+
+        class CapturingServer:
+            def __init__(self, address: tuple[str, int], _: Any) -> None:
+                captured_addresses.append(address)
+
+            def serve_forever(self) -> None:
+                raise StopServingError
+
+            def server_close(self) -> None:
+                pass
+
+        # The shipped launcher, rather than this test's fixture, owns the
+        # required bind address. Capture the constructor call from main() so a
+        # regression to 0.0.0.0 cannot pass merely because this test chose 127.
+        with (
+            mock.patch.object(sys, "argv", ["server.py", "--port", "4553"]),
+            mock.patch.object(dashboard, "LoopbackHTTPServer", CapturingServer),
+            mock.patch.object(dashboard, "write_state"),
+            mock.patch.object(dashboard, "remove_state"),
+            mock.patch.object(dashboard, "diag"),
+            self.assertRaises(StopServingError),
+        ):
+            dashboard.main()
+        self.assertEqual([("127.0.0.1", 4553)], captured_addresses)
+
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         thread = serve_until_closed(httpd)
         try:
             port = httpd.server_port
@@ -925,7 +953,28 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         thread = serve_until_closed(httpd)
         try:
-            with mock.patch.object(dashboard, "collect") as collect:
+            # These are the store-access primitives used by collectors. Health
+            # must remain a pure liveness response even if somebody bypasses
+            # collect() and later reaches into a harness store directly.
+            with (
+                mock.patch.object(dashboard, "collect") as collect,
+                mock.patch("builtins.open", side_effect=AssertionError("health read a file")),
+                mock.patch.object(
+                    dashboard.os,
+                    "scandir",
+                    side_effect=AssertionError("health scanned a directory"),
+                ),
+                mock.patch.object(
+                    dashboard.glob,
+                    "glob",
+                    side_effect=AssertionError("health globbed a store"),
+                ),
+                mock.patch.object(
+                    dashboard.sqlite3,
+                    "connect",
+                    side_effect=AssertionError("health opened SQLite"),
+                ),
+            ):
                 code, _, body = self._response(httpd.server_port, "GET", "/api/health")
             self.assertEqual(200, code)
             self.assertTrue(json.loads(body)["ok"])
