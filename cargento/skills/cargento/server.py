@@ -21,6 +21,7 @@ import contextlib
 import errno
 import glob
 import hashlib
+import http.client
 import json
 import ntpath
 import os
@@ -5811,6 +5812,85 @@ def remove_state(port: int) -> None:
         os.unlink(state_path(port))
 
 
+def probe_port(port: int, timeout: float = 1.0) -> tuple[str, dict[str, Any] | None]:
+    """What is listening on `port`: Cargento, something else, or nothing.
+
+    Returns ("cargento", health) | ("foreign", None) | ("closed", None).
+
+    The distinction is the entire point of this function. "Something is
+    listening" reading as "Cargento is running" is how a stop command ends up
+    aimed at an unrelated local server.
+    """
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.request("GET", "/api/health")
+        response = conn.getresponse()
+        body = response.read(4096)
+        if response.status != 200:
+            return ("foreign", None)
+        data = json.loads(body)
+    except (OSError, http.client.HTTPException):
+        return ("closed", None)
+    except ValueError:
+        return ("foreign", None)  # answered 200 with something that is not JSON
+    finally:
+        conn.close()
+    if not isinstance(data, dict) or not data.get("ok") or not isinstance(data.get("pid"), int):
+        return ("foreign", None)
+    return ("cargento", data)
+
+
+def instance_status(port: int) -> dict[str, Any]:
+    """Whether Cargento is on `port`, and what to say about it if not."""
+    kind, health = probe_port(port)
+    state = read_state(port)
+    recorded_log = (state or {}).get("log") or log_path(port)
+    if kind == "cargento" and health is not None:
+        return {
+            "state": "running",
+            "port": port,
+            "pid": health["pid"],
+            "started": health.get("started"),
+            "log": recorded_log,
+        }
+    if kind == "foreign":
+        return {"state": "foreign", "port": port, "pid": (state or {}).get("pid")}
+    return {
+        "state": "stale" if state is not None else "absent",
+        "port": port,
+        "pid": (state or {}).get("pid"),
+        "log": recorded_log,
+    }
+
+
+def render_status(status: dict[str, Any]) -> str:
+    """One line describing an instance, for --status and --stop."""
+    port = status["port"]
+    state = status["state"]
+    if state == "running":
+        started = status.get("started")
+        since = (
+            datetime.fromtimestamp(started, tz=UTC).astimezone().strftime("%H:%M")
+            if isinstance(started, int | float) and started
+            else "unknown"
+        )
+        return (
+            f"Cargento: running on port {port} (pid {status['pid']}, since {since}) "
+            f"http://127.0.0.1:{port}/"
+        )
+    if state == "foreign":
+        return (
+            f"Cargento: port {port} is held by another process — what answered "
+            f"/api/health is not Cargento. Nothing was stopped or removed."
+        )
+    if state == "stale":
+        return (
+            f"Cargento: not running on port {port}. A stale state file remains "
+            f"(pid {status['pid']}); --stop removes it."
+        )
+    return f"Cargento: not running on port {port}."
+
+
 class Handler(BaseHTTPRequestHandler):
     window_hours = 24
 
@@ -6165,6 +6245,11 @@ def main() -> None:
         help="do not read Spacedock workflow definitions (drops the stage strips)",
     )
     ap.add_argument(
+        "--status",
+        action="store_true",
+        help="report whether a Cargento is running on --port, and exit",
+    )
+    ap.add_argument(
         "--window-hours",
         type=float,
         default=24,
@@ -6179,6 +6264,10 @@ def main() -> None:
         report = diagnose(args.window_hours)
         diag(json.dumps(report, indent=2) if args.json else render_diagnosis(report))
         return
+    if args.status:
+        status = instance_status(args.port)
+        diag(render_status(status))
+        raise SystemExit(0 if status["state"] == "running" else 1)
     if not sqlite_available():
         diag(
             f"Cargento: sqlite3 unavailable ({SQLITE_IMPORT_ERROR}) — OpenCode, "

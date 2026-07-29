@@ -3636,6 +3636,97 @@ console.log(JSON.stringify(out));
                     dashboard.write_state(4553)
                 self.assertTrue(diag.called)
 
+    def test_probe_port_classifies_cargento_foreign_and_closed(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        port = httpd.server_port
+        try:
+            kind, health = dashboard.probe_port(port, timeout=2)
+            self.assertEqual("cargento", kind)
+            assert health is not None
+            self.assertEqual(os.getpid(), health["pid"])
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+        # Same port, now nothing listening.
+        self.assertEqual(("closed", None), dashboard.probe_port(port, timeout=1))
+
+    def test_probe_port_calls_a_non_cargento_listener_foreign(self) -> None:
+        class Other(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"hi")
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), Other)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            # 200 but not JSON: something else owns this port. Reporting it as
+            # Cargento is how a stop command ends up aimed at an unrelated
+            # process.
+            self.assertEqual(("foreign", None), dashboard.probe_port(httpd.server_port, timeout=2))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_instance_status_covers_running_stale_foreign_and_absent(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+        ):
+            health = {"ok": True, "pid": 4242, "port": 4553, "started": 1000.0}
+            with mock.patch.object(dashboard, "probe_port", return_value=("cargento", health)):
+                running = dashboard.instance_status(4553)
+            self.assertEqual("running", running["state"])
+            self.assertEqual(4242, running["pid"])
+
+            with mock.patch.object(dashboard, "probe_port", return_value=("closed", None)):
+                self.assertEqual("absent", dashboard.instance_status(4553)["state"])
+                dashboard.write_state(4553)
+                stale = dashboard.instance_status(4553)
+            self.assertEqual("stale", stale["state"])
+            self.assertEqual(os.getpid(), stale["pid"])
+
+            with mock.patch.object(dashboard, "probe_port", return_value=("foreign", None)):
+                self.assertEqual("foreign", dashboard.instance_status(4553)["state"])
+
+    def test_render_status_names_the_state_and_never_suggests_a_kill(self) -> None:
+        running = dashboard.render_status(
+            {"state": "running", "port": 4553, "pid": 7, "started": 1000.0, "log": "/l"}
+        )
+        self.assertIn("running", running)
+        self.assertIn("pid 7", running)
+        self.assertIn("http://127.0.0.1:4553/", running)
+        stale = dashboard.render_status({"state": "stale", "port": 4553, "pid": 7, "log": "/l"})
+        self.assertIn("--stop", stale)
+        foreign = dashboard.render_status({"state": "foreign", "port": 4553, "pid": None})
+        self.assertIn("another process", foreign)
+        self.assertIn("Nothing was stopped", foreign)
+        self.assertIn("not running", dashboard.render_status({"state": "absent", "port": 4553}))
+
+    def test_status_flag_exits_zero_only_when_running(self) -> None:
+        for state, expected in (("running", 0), ("stale", 1), ("foreign", 1), ("absent", 1)):
+            with (
+                mock.patch.object(
+                    dashboard,
+                    "instance_status",
+                    return_value={"state": state, "port": 4553, "pid": 1},
+                ),
+                mock.patch.object(sys, "argv", ["server.py", "--status"]),
+                mock.patch.object(dashboard, "diag"),
+                self.assertRaises(SystemExit) as caught,
+            ):
+                dashboard.main()
+            self.assertEqual(expected, caught.exception.code, state)
+
 
 class ReverseLinesTest(unittest.TestCase):
     """Replaces the reverse mmap scans. A mapped region whose file is truncated
