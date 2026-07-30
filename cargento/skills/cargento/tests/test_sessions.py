@@ -10,11 +10,13 @@ from unittest import mock
 
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime import turns as runtime_turns
 
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
     make_config,
+    make_runtime,
 )
 
 
@@ -37,9 +39,10 @@ class CargentoServerTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "large.jsonl"
             path.write_text("\n".join(json.dumps(record) for record in [prompt, *events]) + "\n")
-            with mock.patch.object(dashboard, "TURN_SCAN_MAX_BYTES", 200):
-                turns = dashboard.scan_turns(str(path), "claude")
+            config, state = make_runtime(turn_scan_max_bytes=200)
+            turns = runtime_turns.scan_turns(config, state, str(path), "claude")
 
+        assert turns is not None
         self.assertEqual(records.parse_ts(prompt_time), turns["turn_start"])
 
     def test_large_append_recovers_new_turn_start_from_skipped_delta(self) -> None:
@@ -58,23 +61,26 @@ class CargentoServerTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "growing.jsonl"
             path.write_text(json.dumps(first_prompt) + "\n")
-            with mock.patch.object(dashboard, "TURN_SCAN_MAX_BYTES", 200):
-                dashboard.scan_turns(str(path), "claude")
-                with path.open("a") as output:
-                    output.write(json.dumps(second_prompt) + "\n")
-                    for second in range(1, 20):
-                        output.write(
-                            json.dumps(
-                                {
-                                    "type": "assistant",
-                                    "timestamp": (f"2026-01-01T00:01:{second:02d}Z"),
-                                    "message": {"content": "x" * 40},
-                                }
-                            )
-                            + "\n"
+            # The scanner takes its state explicitly now, so both calls share
+            # one runtime the way they shared the process-wide cache before.
+            config, state = make_runtime(turn_scan_max_bytes=200)
+            runtime_turns.scan_turns(config, state, str(path), "claude")
+            with path.open("a") as output:
+                output.write(json.dumps(second_prompt) + "\n")
+                for second in range(1, 20):
+                    output.write(
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "timestamp": (f"2026-01-01T00:01:{second:02d}Z"),
+                                "message": {"content": "x" * 40},
+                            }
                         )
-                turns = dashboard.scan_turns(str(path), "claude")
+                        + "\n"
+                    )
+            turns = runtime_turns.scan_turns(config, state, str(path), "claude")
 
+        assert turns is not None
         self.assertEqual(records.parse_ts(second_time), turns["turn_start"])
 
     def test_base_session_exposes_full_sid_and_truncated_display_id(self) -> None:
@@ -123,7 +129,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "session.jsonl"
             path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
-            scan = dashboard.scan_turns(str(path), "claude")
+            config, state = make_runtime()
+            scan = runtime_turns.scan_turns(config, state, str(path), "claude")
 
         assert scan is not None
         # Clock re-anchored at the post-gap record, not the original prompt.
@@ -408,7 +415,7 @@ class ClockSkewTest(unittest.TestCase):
 
     def test_a_future_dated_turn_start_yields_no_eta(self) -> None:
         scan = {"turn_start": self.NOW + self.SKEW, "durations": [60.0]}
-        self.assertIsNone(dashboard.turn_progress(scan, "working", self.NOW))
+        self.assertIsNone(runtime_turns.turn_progress(scan, "working", self.NOW, make_config()))
 
     def test_a_future_dated_transcript_does_not_read_as_working(self) -> None:
         session_id = "beefcafe-1111-2222-3333-444455556666"

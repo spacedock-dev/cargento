@@ -48,6 +48,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.state",
         },
+        "cargento_runtime.turns": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.sessions",
+            "cargento_runtime.state",
+        },
         "cargento_runtime.web": set(),
         "cargento_runtime.web.page": set(),
     }
@@ -216,7 +223,20 @@ from . import page as sibling_page
             "analyze_copilot_events",
             "analyze_droid_transcript",
         )
-        for symbol in (*io_symbols, *record_symbols, *session_symbols, *transcript_symbols):
+        turn_symbols = (
+            "_apply_turn_record",
+            "_latest_turn_context",
+            "scan_turns",
+            "turns_from_events",
+            "turn_progress",
+        )
+        for symbol in (
+            *io_symbols,
+            *record_symbols,
+            *session_symbols,
+            *transcript_symbols,
+            *turn_symbols,
+        ):
             with self.subTest(symbol=symbol):
                 self.assertFalse(hasattr(dashboard, symbol))
         self.assertTrue(all(hasattr(dashboard.runtime_io, symbol) for symbol in io_symbols))
@@ -237,7 +257,9 @@ from . import page as sibling_page
         self.assertIs(sys.modules["cargento_runtime.io"], dashboard.runtime_io)
         self.assertIs(sys.modules["cargento_runtime.records"], dashboard.records)
         self.assertIs(sys.modules["cargento_runtime.sessions"], dashboard.runtime_sessions)
+        self.assertTrue(all(hasattr(dashboard.runtime_turns, s) for s in turn_symbols))
         self.assertIs(sys.modules["cargento_runtime.transcripts"], dashboard.runtime_transcripts)
+        self.assertIs(sys.modules["cargento_runtime.turns"], dashboard.runtime_turns)
 
     def test_importing_lower_runtime_layers_performs_no_external_operation(self) -> None:
         # Reading ambient state or opening a file, socket, browser, log, or child
@@ -304,6 +326,7 @@ import cargento_runtime.records
 import cargento_runtime.sessions
 import cargento_runtime.state
 import cargento_runtime.transcripts
+import cargento_runtime.turns
 """
         result = subprocess.run(
             [sys.executable, "-c", script],

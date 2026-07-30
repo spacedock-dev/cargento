@@ -12,6 +12,7 @@ from unittest import mock
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
+from cargento_runtime import turns as runtime_turns
 
 from .fixtures import (
     protobuf_bytes_field,
@@ -130,11 +131,13 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
 
             info = runtime_transcripts.analyze_gemini_transcript(make_config(), str(path))
-            turns = dashboard.scan_turns(str(path), "gemini")
+            config, state = make_runtime()
+            turns = runtime_turns.scan_turns(config, state, str(path), "gemini")
 
         self.assertEqual("resumed prompt", info["last_prompt"])
         self.assertEqual("resumed prompt", info["title"])
         self.assertEqual([(records.parse_ts("2026-01-01T00:00:05Z"), 42)], info["usage_events"])
+        assert turns is not None
         self.assertEqual([5.0], turns["durations"])
         self.assertEqual(records.parse_ts("2026-01-01T00:00:10Z"), turns["turn_start"])
 
@@ -165,9 +168,10 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "session-test.jsonl"
             path.write_text(snapshot + "\n" + snapshot + "\n")
-            with mock.patch.object(dashboard, "GEMINI_SEEN_ENTRIES", 2):
-                turns = dashboard.scan_turns(str(path), "gemini")
+            config, state = make_runtime(gemini_seen_entries=2)
+            turns = runtime_turns.scan_turns(config, state, str(path), "gemini")
 
+        assert turns is not None
         self.assertEqual([5.0], turns["durations"])
 
     def test_antigravity_sessions_are_discovered_and_collected(self) -> None:

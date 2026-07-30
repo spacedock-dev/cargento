@@ -45,6 +45,9 @@ max-args = 8
 # The Gemini, Copilot and Droid analyzers keep the server's reviewed branch
 # shape: each arm is one defensively-read field of an untyped harness record.
 "cargento/skills/cargento/cargento_runtime/transcripts.py" = ["C901", "PLR0912"]
+# `scan_turns` and its reverse-scan helper keep the server's reviewed branch
+# shape: incremental offsets, rotation recovery, and the Gemini dedup arm.
+"cargento/skills/cargento/cargento_runtime/turns.py" = ["C901", "PLR0912"]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]

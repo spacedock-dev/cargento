@@ -47,6 +47,7 @@ from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
 from cargento_runtime import transcripts as runtime_transcripts
+from cargento_runtime import turns as runtime_turns
 from cargento_runtime.web import page as frontend_page
 
 sqlite3 = runtime_io.sqlite_module
@@ -978,207 +979,12 @@ def scan_pi_session(path: str) -> dict[str, Any] | None:
         return _pi_info(state)
 
 
-# ---------------------------------------------------------------------------
-# Turn tracking
-
-
+# The turn scanner state and its lock live in RuntimeState; the generic scanner
+# itself is now cargento_runtime.turns, and Pi's branch scanner above still uses
+# the lock. Both aliases stay until the last local collector moves, because the
+# shared test reset still clears them.
 _turn_scan = _LEGACY_STATE.turn_scan
 _scan_lock = _LEGACY_STATE.scanner_lock
-
-
-def _apply_turn_record(st: dict[str, Any], record: Any, harness: str) -> None:
-    """Apply one chronological transcript record to incremental turn state."""
-    ep = records.parse_ts(record.get("timestamp") or "")
-    if not ep:
-        return
-    # A quiet stretch longer than TURN_GAP_RESET_SEC inside a turn means the
-    # agent was not generating (permission wait, AskUserQuestion, sleep).
-    # Bank the active segment and restart the clock at the post-gap event so
-    # "elapsed" reflects work, not waiting.
-    if st["turn_start"] and st["prev_ts"] and ep - st["prev_ts"] > TURN_GAP_RESET_SEC:
-        if st["prev_ts"] > st["turn_start"]:
-            st["durations"].append(st["prev_ts"] - st["turn_start"])
-        st["turn_start"] = ep
-        st["last_start"] = ep
-    sig = records._turn_signal(record, harness)  # noqa: SLF001
-    if sig:
-        kind, override = sig
-        if kind == "end":
-            if st["turn_start"] and ep > st["turn_start"]:
-                st["durations"].append(ep - st["turn_start"])
-            st["turn_start"] = None
-        else:
-            if (
-                kind == "prompt"
-                and st["turn_start"]
-                and st["prev_ts"]
-                and st["prev_ts"] > st["turn_start"]
-            ):
-                st["durations"].append(st["prev_ts"] - st["turn_start"])
-            start = records.norm_epoch(override) or ep
-            st["turn_start"] = start
-            st["last_start"] = start
-    st["prev_ts"] = ep
-
-
-def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any]:
-    """Find the nearest turn boundary before ``end_pos`` without loading the
-    prefix into memory. Used when the file is larger than the forward-read
-    budget so a long current turn is not lost."""
-    context: dict[str, Any] = {"turn_start": None, "last_start": None, "prev_ts": None}
-    if end_pos <= 0:
-        return context
-    active_decided = False
-    later_ts: float | None = None
-    config, _ = _legacy_runtime()
-    for raw in runtime_io.reverse_lines(config, path, end_pos):
-        if not raw.startswith(b"{"):
-            continue
-        try:
-            decoded = json.loads(raw)
-        except ValueError:
-            continue
-        if not isinstance(decoded, dict):
-            continue
-        transcript_records = (
-            reversed(records.gemini_records(decoded)) if harness == "gemini" else (decoded,)
-        )
-        for record in transcript_records:
-            ep = records.parse_ts(record.get("timestamp") or "")
-            if not ep:
-                continue
-            # Walking backward: `later_ts` is the timestamp of the record that
-            # chronologically FOLLOWS this one. A quiet gap re-anchors the turn
-            # at the post-gap record, same rule as the forward scanner.
-            if later_ts is not None and later_ts - ep > TURN_GAP_RESET_SEC:
-                if not active_decided:
-                    context["turn_start"] = later_ts
-                context["last_start"] = later_ts
-                return context
-            later_ts = ep
-            if context["prev_ts"] is None:
-                context["prev_ts"] = ep
-            sig = records._turn_signal(record, harness)  # noqa: SLF001
-            if not sig:
-                continue
-            kind, override = sig
-            if not active_decided:
-                active_decided = True
-                if kind != "end":
-                    context["turn_start"] = records.norm_epoch(override) or ep
-            if kind != "end":
-                context["last_start"] = records.norm_epoch(override) or ep
-                return context
-    return context
-
-
-def scan_turns(path: str, harness: str) -> dict[str, Any] | None:
-    """Whole-file turn tracker for JSONL harnesses. The transcript tail can
-    be shorter than the current turn (long turns bury the prompt >TAIL_BYTES
-    back), so turns are tracked incrementally: each call parses only bytes
-    appended since the last call and carries state in _turn_scan.
-
-    Serialized via _scan_lock — concurrent /api/data requests would otherwise
-    double-advance pos and double-count durations."""
-    try:
-        size = os.path.getsize(path)
-    except OSError:
-        return None
-    with _scan_lock:
-        st = _turn_scan.get(path)
-        if st is None or st["pos"] > size:  # new, truncated, or rotated file
-            if len(_turn_scan) >= MAX_CACHE_ENTRIES:
-                _turn_scan.pop(next(iter(_turn_scan)))
-            st = {
-                "pos": 0,
-                "turn_start": None,
-                "last_start": None,
-                "durations": [],
-                "prev_ts": None,
-                "gemini_seen": {},
-                "gemini_snapshot_count": 0,
-                "gemini_snapshot_tail": None,
-            }
-            _turn_scan[path] = st
-        if size == st["pos"]:
-            return st
-        if size - st["pos"] > TURN_SCAN_MAX_BYTES:
-            # Locate the active turn boundary in the skipped prefix with a
-            # reverse mmap scan, then process the bounded tail forward.
-            tail_start = size - TURN_SCAN_MAX_BYTES
-            st.update(_latest_turn_context(path, tail_start, harness))
-            st["pos"] = tail_start
-        with open(path, "rb") as f:
-            f.seek(st["pos"])
-            data = f.read()
-        end = data.rfind(b"\n")
-        if end < 0:
-            return st  # incomplete line, wait for more bytes
-        st["pos"] += end + 1
-        for raw in data[:end].split(b"\n"):
-            if not raw.startswith(b"{"):
-                continue
-            try:
-                d = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            transcript_records = (
-                records.incremental_gemini_records(d, st) if harness == "gemini" else (d,)
-            )
-            for record in transcript_records:
-                if harness == "gemini":
-                    fingerprint = records.record_fingerprint(record)
-                    if fingerprint in st["gemini_seen"]:
-                        continue
-                    if len(st["gemini_seen"]) >= GEMINI_SEEN_ENTRIES:
-                        st["gemini_seen"].pop(next(iter(st["gemini_seen"])))
-                    st["gemini_seen"][fingerprint] = None
-                _apply_turn_record(st, record, harness)
-        st["durations"] = st["durations"][-50:]
-        return st
-
-
-def turns_from_events(events: list[tuple[float, bool]]) -> dict[str, Any]:
-    """Turn state from chronologically sorted (epoch, is_user_prompt) pairs —
-    used by DB-backed harnesses where messages come from SQL, not a file."""
-    turn_start = prev = None
-    durations = []
-    for ep, is_user in events:
-        if not ep:
-            continue
-        if is_user:
-            if turn_start and prev and prev > turn_start:
-                durations.append(prev - turn_start)
-            turn_start = ep
-        prev = ep
-    return {"turn_start": turn_start, "durations": durations[-50:]}
-
-
-def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[str, Any] | None:
-    """Naive current-turn ETA: estimated total = median of this session's
-    past turns that lasted at least as long as the current one has so far."""
-    if state != "working" or not scan or not scan.get("turn_start"):
-        return None
-    config, _ = _legacy_runtime()
-    elapsed = runtime_sessions.age(config, now, scan["turn_start"])
-    if elapsed is None:
-        return None  # turn start is implausibly ahead of the clock; no ETA
-    history = scan.get("durations") or []
-    cands = sorted(d for d in history if d >= elapsed)
-    if cands:
-        est_total = cands[len(cands) // 2]
-        return {
-            "elapsed_h": runtime_sessions.fmt_duration(elapsed),
-            "eta_h": runtime_sessions.fmt_duration(est_total - elapsed),
-            "pct": min(99, round(elapsed * 100 / est_total)) if est_total else 99,
-            "long": max(est_total, elapsed) >= LONG_TURN_WARN_SEC,
-        }
-    return {
-        "elapsed_h": runtime_sessions.fmt_duration(elapsed),
-        "eta_h": None,  # running longer than any recent turn
-        "pct": 99 if history else None,
-        "long": elapsed >= LONG_TURN_WARN_SEC,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -1392,11 +1198,11 @@ def maybe_popup(
 
 def codex_subagent_rate(path: str, now: float) -> int:
     """Recent Codex subagent output after its own task_started boundary."""
-    scan = scan_turns(path, "codex")
+    config, runtime_state_value = _legacy_runtime()
+    scan = runtime_turns.scan_turns(config, runtime_state_value, path, "codex")
     start = scan.get("last_start") if scan else None
     if not start:
         return 0
-    config, _ = _legacy_runtime()
     info = runtime_transcripts.analyze_codex_transcript(config, path)
     recent: float = sum(
         tokens
@@ -2199,7 +2005,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
     tasks_by_session = load_tasks()
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
     agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
-    config, _ = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     for fp in runtime_io.glob_stores(config, "claude.projects", "*", "*.jsonl"):
         base = os.path.basename(fp)
         if "-agent-" in base or base.startswith("agent-"):
@@ -2394,10 +2200,13 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 "open": open_count,
                 "progress_pct": round(done * 100 / total) if total else 0,
                 "eta_h": runtime_sessions.fmt_duration(eta_sec) if eta_sec else None,
-                "turn": turn_progress(
-                    scan_turns(transcript, "claude") if (info and transcript) else None,
+                "turn": runtime_turns.turn_progress(
+                    runtime_turns.scan_turns(config, runtime_state_value, transcript, "claude")
+                    if (info and transcript)
+                    else None,
                     state,
                     now,
+                    config,
                 ),
                 "subagents": [a["label"] for a in subagents],
                 "tasks": tasks,
@@ -2513,7 +2322,14 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
                 "active": active,
                 "last_activity": last_activity,
                 "rate_per_min": runtime_sessions.rate_from(info, now, config) + data["rate"],
-                "turn": turn_progress(scan_turns(fp, "codex") if info else None, state, now),
+                "turn": runtime_turns.turn_progress(
+                    runtime_turns.scan_turns(config, runtime_state_value, fp, "codex")
+                    if info
+                    else None,
+                    state,
+                    now,
+                    config,
+                ),
                 "subagents": subagents,
             }
         )
@@ -2579,7 +2395,7 @@ def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str
                 "active": active,
                 "last_activity": last_activity,
                 "rate_per_min": runtime_sessions.rate_from(info, now, config),
-                "turn": turn_progress((info or {}).get("turn"), state, now),
+                "turn": runtime_turns.turn_progress((info or {}).get("turn"), state, now, config),
             }
         )
         out.append(session)
@@ -2931,7 +2747,7 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
         if runtime_sessions.is_fresh(config, now, epoch, RATE_WINDOW_SEC)
     )
     result["rate_per_min"] = round(recent / (RATE_WINDOW_SEC / 60))
-    result["turns"] = turns_from_events(events) if events else None
+    result["turns"] = runtime_turns.turns_from_events(events) if events else None
     result["last_tool_action"] = latest_action[1]
     return result
 
@@ -3109,7 +2925,7 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
                 "active": active,
                 "last_activity": last_activity,
                 "rate_per_min": activity["rate_per_min"],
-                "turn": turn_progress(activity["turns"], state, now),
+                "turn": runtime_turns.turn_progress(activity["turns"], state, now, config),
                 "subagents": subagents,
             }
         )
@@ -3202,7 +3018,14 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
                 "active": active,
                 "last_activity": last_activity,
                 "rate_per_min": runtime_sessions.rate_from(info, now, config),
-                "turn": turn_progress(scan_turns(fp, "gemini") if info else None, state, now),
+                "turn": runtime_turns.turn_progress(
+                    runtime_turns.scan_turns(config, runtime_state_value, fp, "gemini")
+                    if info
+                    else None,
+                    state,
+                    now,
+                    config,
+                ),
                 "subagents": subagents,
             }
         )
@@ -3268,7 +3091,14 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": mtime,
-                "turn": turn_progress(scan_turns(fp, "copilot") if info else None, state, now),
+                "turn": runtime_turns.turn_progress(
+                    runtime_turns.scan_turns(config, runtime_state_value, fp, "copilot")
+                    if info
+                    else None,
+                    state,
+                    now,
+                    config,
+                ),
                 "subagents": subagents,
             }
         )
@@ -3359,7 +3189,9 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                                 last_prompt = records.extract_text(jd)[:140] or last_prompt
                     except sqlite3.Error:
                         pass
-                    turn = turn_progress(turns_from_events(events), state, now)
+                    turn = runtime_turns.turn_progress(
+                        runtime_turns.turns_from_events(events), state, now, config
+                    )
 
                 s = runtime_sessions.base_session(
                     "opencode",
@@ -3669,7 +3501,9 @@ def collect_goose_db(
                     rate = round(recent / (RATE_WINDOW_SEC / 60))
                 except sqlite3.Error:
                     pass
-                turn = turn_progress(turns_from_events(events), state, now)
+                turn = runtime_turns.turn_progress(
+                    runtime_turns.turns_from_events(events), state, now, config
+                )
 
             s = runtime_sessions.base_session(
                 "goose",
@@ -3736,7 +3570,14 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": mtime,
-                "turn": turn_progress(scan_turns(fp, "droid") if info else None, state, now),
+                "turn": runtime_turns.turn_progress(
+                    runtime_turns.scan_turns(config, runtime_state_value, fp, "droid")
+                    if info
+                    else None,
+                    state,
+                    now,
+                    config,
+                ),
             }
         )
         out.append(s)
