@@ -1,0 +1,573 @@
+from __future__ import annotations
+
+import hashlib
+import http.client
+import http.server
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from unittest import mock
+
+from .page_harness import PageJsHarness
+from .support import (
+    dashboard,
+    serve_until_closed,
+)
+
+if TYPE_CHECKING:
+    import email.message
+
+
+class InstalledContractCharacterizationTest(unittest.TestCase):
+    """The installed executable contract that extraction must preserve."""
+
+    OWNED_INSTANCE_READY_TIMEOUT_SEC = 60.0
+
+    def setUp(self) -> None:
+        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
+        self._window_hours = dashboard.Handler.window_hours
+        self._server_started = dashboard.__dict__["SERVER_STARTED"]
+        with dashboard._lock:
+            dashboard._hook_notifs.clear()
+            dashboard._last_popup.clear()
+            dashboard._last_popup_message.clear()
+            dashboard._last_state.clear()
+            dashboard._hook_generation.clear()
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+        # Route-shape tests exercise successful /api/notify requests, but do
+        # not assert native delivery. Execute the notification code while
+        # keeping its osascript process off the host.
+        original_run = dashboard.subprocess.run
+
+        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
+            command = args[0] if args else kwargs.get("args")
+            if (
+                isinstance(command, (list, tuple))
+                and command
+                and command[0] == "/usr/bin/osascript"
+            ):
+                return subprocess.CompletedProcess(command, 0)
+            return original_run(*args, **kwargs)
+
+        notify_patcher = mock.patch.object(
+            dashboard.subprocess, "run", side_effect=run_without_native_delivery
+        )
+        notify_patcher.start()
+        self.addCleanup(notify_patcher.stop)
+
+    def tearDown(self) -> None:
+        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
+        dashboard.Handler.window_hours = self._window_hours
+        dashboard.__dict__["SERVER_STARTED"] = self._server_started
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+
+    @staticmethod
+    def _candidate_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return int(listener.getsockname()[1])
+
+    @staticmethod
+    def _clean_env(cargento_home: Path) -> dict[str, str]:
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
+        env["PYTHONNOUSERSITE"] = "1"
+        env["CARGENTO_HOME"] = str(cargento_home)
+        return env
+
+    @staticmethod
+    def _response(
+        port: int,
+        method: str,
+        path: str,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, email.message.Message, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(method, path, body=body, headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.headers, response.read()
+        finally:
+            conn.close()
+
+    def _await_owned_instance(
+        self, port: int, proc: subprocess.Popen[bytes], state_path: Path
+    ) -> None:
+        deadline = time.monotonic() + self.OWNED_INSTANCE_READY_TIMEOUT_SEC
+        last_observation = "no health response"
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                stdout, stderr = proc.communicate(timeout=2)
+                self.fail(f"launcher exited: {stdout!r} {stderr!r}")
+            try:
+                code, _, body = self._response(port, "GET", "/api/health")
+                health = json.loads(body) if code == 200 else {}
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                last_observation = f"health request failed: {type(exc).__name__}: {exc}"
+                time.sleep(0.05)
+                continue
+            if code != 200:
+                last_observation = f"health returned HTTP {code}"
+                time.sleep(0.05)
+                continue
+            if health.get("pid") != proc.pid:
+                self.fail(f"port {port} is served by pid {health.get('pid')}, not child {proc.pid}")
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                last_observation = (
+                    f"owned health from pid {proc.pid}, but state {state_path} was unreadable: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                time.sleep(0.05)
+                continue
+            self.assertEqual(proc.pid, state.get("pid"))
+            self.assertEqual(port, state.get("port"))
+            return
+        self.fail(
+            f"owned child {proc.pid} did not become healthy with its state file within "
+            f"{self.OWNED_INSTANCE_READY_TIMEOUT_SEC:.0f}s: {last_observation}"
+        )
+
+    def _owns_instance(self, port: int, proc: subprocess.Popen[bytes], state_path: Path) -> bool:
+        if proc.poll() is not None:
+            return False
+        try:
+            code, _, body = self._response(port, "GET", "/api/health")
+            health = json.loads(body) if code == 200 else {}
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return False
+        return health.get("pid") == proc.pid and state.get("pid") == proc.pid
+
+    def test_served_page_bytes_equal_the_embedded_page(self) -> None:
+        page = dashboard.PAGE.encode()
+        style = re.search(r"<style>\n(.*?)</style>", dashboard.PAGE, re.DOTALL)
+        script = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE, re.DOTALL)
+        assert style is not None
+        assert script is not None
+        self.assertEqual(93_713, len(page))
+        self.assertEqual(
+            "3a2264edda06e9caf1fbd34c0226ad8c3b0b320f206a87676c183492a5241b37",
+            hashlib.sha256(page).hexdigest(),
+        )
+        self.assertEqual(27_180, len(style.group(1).encode()))
+        self.assertEqual(
+            "e96a2292642bfc40d4bd40e9c23c733cf8d8ef524f55dfb9328685ac53f02cf1",
+            hashlib.sha256(style.group(1).encode()).hexdigest(),
+        )
+        self.assertEqual(66_237, len(script.group(1).encode()))
+        self.assertEqual(
+            "bfe260f4c9807d4a59de41f2a37b3711e76547fc67acc73f9201ff11da4a0e48",
+            hashlib.sha256(script.group(1).encode()).hexdigest(),
+        )
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        try:
+            code, _, served = self._response(httpd.server_port, "GET", "/")
+            self.assertEqual(200, code)
+            self.assertEqual(page, served)
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+
+class CargentoServerTest(PageJsHarness):
+    def test_page_marks_repeated_refresh_failures_as_stalled(self) -> None:
+        self.assertIn('id="live-status"', dashboard.PAGE)
+        self.assertIn("window.__refreshFailures < 2", dashboard.PAGE)
+        self.assertIn("stalled · last update", dashboard.PAGE)
+        self.assertIn("console.error", dashboard.PAGE)
+        self.assertIn("latestSettledRefresh", dashboard.PAGE)
+        self.assertIn("sequence < latestSettledRefresh", dashboard.PAGE)
+
+    def test_entity_slugs_elide_in_the_middle_not_the_tail(self) -> None:
+        """Entity slugs in one workflow share a long prefix and differ only at
+        the end, so tail truncation rendered two different entities as the same
+        string. The full value stays available as a title attribute."""
+        self.assertIn("function sdSlug(slug)", dashboard.PAGE)
+        self.assertIn('title="${esc(ent.slug)}">${esc(sdSlug(ent.slug))}', dashboard.PAGE)
+
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not installed; CI runs this branch")
+        js = "\n".join(re.findall(r"<script[^>]*>\n?(.*?)</script>", dashboard.PAGE, re.DOTALL))
+        # Just the helper and its constants. Taking the whole prefix would drag
+        # in top-level browser globals (`location`) that node does not have.
+        source = re.search(r"const SD_SLUG_MAX = .*?\n}\n", js, re.DOTALL)
+        assert source is not None, "sdSlug and its constants moved"
+        # Run the real function rather than restating its arithmetic here.
+        probe = (
+            source.group(0) + "\nconst cases = ['drc-3832',"
+            " 'datarecce-recce-cloud-infra-pr-1573',"
+            " 'datarecce-recce-cloud-infra-pr-1587'];\n"
+            "console.log(JSON.stringify(cases.map(sdSlug)));\n"
+        )
+        with tempfile.TemporaryDirectory() as holder:
+            script = Path(holder) / "probe.mjs"
+            script.write_text(probe, encoding="utf-8")
+            # Explicit UTF-8 both ways. node reads and writes UTF-8; `text=True`
+            # alone decodes through the locale codec, so on Windows (cp1252) the
+            # ellipsis comes back as "â€¦" — three characters, which fails both
+            # the "elided" and the width assertion below for a reason that has
+            # nothing to do with the code under test.
+            proc = subprocess.run(
+                [node, str(script)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+                check=True,
+            )
+        short, first, second = json.loads(proc.stdout)
+
+        self.assertEqual("drc-3832", short)  # under the cap, untouched
+        self.assertNotEqual(first, second)  # the whole point
+        for rendered, full in ((first, "…-pr-1573"), (second, "…-pr-1587")):
+            self.assertTrue(rendered.endswith(full[1:]), rendered)
+            self.assertIn("…", rendered)
+            self.assertLessEqual(len(rendered), 22)
+
+    def test_output_rate_rows_use_hoverable_harness_badges(self) -> None:
+        self.assertIn(
+            '<span class="rrow-badge">${badge(r.key, true)}</span>',
+            dashboard.PAGE,
+        )
+
+    def test_pi_badge_uses_the_explicit_pi_label(self) -> None:
+        # A generic fallback monogram hides a missing harness presentation entry.
+        rendered = self._run_page_js("console.log(JSON.stringify(HARNESS.pi));")
+        self.assertEqual({"code": "PI", "name": "Pi"}, rendered)
+
+    def test_page_ships_trailing_rate_sparklines(self) -> None:
+        # Overall + per-session trailing sparklines: client-side ring buffers
+        # over a 5-minute window, rendered as SVG in the rate tile and cards.
+        self.assertIn("SPARK_WINDOW_SEC = 300", dashboard.PAGE)
+        self.assertIn("const rateHistory = []", dashboard.PAGE)
+        self.assertIn("const sessRateHistory = new Map()", dashboard.PAGE)
+        self.assertIn("function recordRates", dashboard.PAGE)
+        self.assertIn("function sparkSVG", dashboard.PAGE)
+        self.assertIn('class="spark-wrap"', dashboard.PAGE)
+        self.assertIn('class="rate-spark"', dashboard.PAGE)
+        # Buffers only grow on fresh payloads and drop points past the window.
+        self.assertIn("recordRates(data)", dashboard.PAGE)
+        self.assertIn("arr.shift()", dashboard.PAGE)
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sparkline_buffers_behave_correctly(self) -> None:
+        # Execute the page's actual JS (ring buffers + SVG generation) under
+        # node with a minimal DOM stub, and assert on observable behavior.
+        checks = """
+const out = {};
+{
+  const arr = [];
+  for(let t = 0; t <= 400; t += 5) pushPoint(arr, t, t);
+  pushPoint(arr, 400, 999); // same-timestamp replay must be ignored
+  out.pruned = {len: arr.length, first: arr[0].t,
+                last: arr[arr.length-1].t, lastV: arr[arr.length-1].v};
+}
+{
+  // Two live sessions whose display ids truncate identically must not
+  // share one buffer (Gemini "session-*" fallback ids all become
+  // "session-" after display truncation).
+  recordRates({generated: 1000, summary: {rate_per_min: 14}, sessions: [
+    {harness:"gemini", session:"session-", sid:"session-aaaa", rate_per_min:5},
+    {harness:"gemini", session:"session-", sid:"session-bbbb", rate_per_min:9}]});
+  const a = sessRateHistory.get("gemini:session-aaaa");
+  const b = sessRateHistory.get("gemini:session-bbbb");
+  out.aliasing = {buffers: sessRateHistory.size,
+                  a: a && a[0] && a[0].v, b: b && b[0] && b[0].v};
+  __setNow(1005);
+  recordRates({generated: 1005, summary: {rate_per_min: 6}, sessions: [
+    {harness:"gemini", session:"session-", sid:"session-aaaa", rate_per_min:6}]});
+  const a2 = sessRateHistory.get("gemini:session-aaaa") || [];
+  out.dropped = {buffers: sessRateHistory.size, aLen: a2.length};
+}
+{
+  // Points carry the VIEWER's clock: a skewed/lagging server `generated`
+  // must not shift timestamps, and a replayed `generated` records nothing.
+  __setNow(1010);
+  recordRates({generated: 999111, summary: {rate_per_min: 3}, sessions: []});
+  const last = rateHistory[rateHistory.length-1];
+  const lenBefore = rateHistory.length;
+  __setNow(1011);
+  recordRates({generated: 999111, summary: {rate_per_min: 4}, sessions: []});
+  out.clock = {t: last.t, v: last.v, replayDropped: rateHistory.length === lenBefore};
+}
+{
+  const pts = [{t:900, v:0}, {t:950, v:50}, {t:1000, v:100}];
+  const svg = sparkSVG(pts, 1000, 100, 46, true);
+  const nums = (svg.match(/-?\\d+(\\.\\d+)?/g) || []).map(Number);
+  out.svg = {hasLine: svg.includes("<polyline"),
+             finite: nums.length > 0 && nums.every(Number.isFinite),
+             single: !sparkSVG([{t:1000, v:1}], 1000, 100, 46, true)
+                       .includes("<polyline")};
+}
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        # 300s window over t=0..400 step 5 keeps t=100..400; duplicate dropped.
+        self.assertEqual({"len": 61, "first": 100, "last": 400, "lastV": 400}, out["pruned"])
+        self.assertEqual({"buffers": 2, "a": 5, "b": 9}, out["aliasing"])
+        # Departed session-bbbb is pruned; session-aaaa accumulates.
+        self.assertEqual({"buffers": 1, "aLen": 2}, out["dropped"])
+        # Viewer-clock stamping: server said 999111, viewer clock said 1010.
+        self.assertEqual({"t": 1010, "v": 3, "replayDropped": True}, out["clock"])
+        self.assertEqual({"hasLine": True, "finite": True, "single": True}, out["svg"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_browser_notifications_fire_only_on_transitions_the_server_missed(self) -> None:
+        # Exactly one layer may notify per transition
+        # (design decision D-3 in docs/design-cross-platform.md).
+        checks = """
+__els.app = {innerHTML:""};
+const blocked = {
+  harness:"claude", session:"12345678", sid:"12345678", project:"proj",
+  title:null, last_prompt:"", state:"needs_input", state_detail:"open question",
+  active:true, last_activity:100, blocked_since:970, rate_per_min:0,
+  total:0, done:0, open:0, progress_pct:0, eta_h:null, turn:null,
+  subagents:[], tasks:[]
+};
+const idle = {...blocked, state:"idle", state_detail:"awaiting your message"};
+const payload = (sessions, native) => ({
+  generated:1000, window_hours:24, show_all:false, native_notify:native,
+  harnesses:[], sessions,
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:1,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+});
+const reset = perm => {
+  __notifications = []; __notifyPermission = perm;
+  notifyState = new Map(); notifyPrimed = false;
+};
+const out = {};
+
+// The server already popped natively: the page must stay silent.
+reset("granted");
+render(payload([idle], "osascript"));
+render(payload([blocked], "osascript"));
+out.nativeOwnsIt = __notifications.length;
+
+// No native backend (Linux/Windows today): the page notifies.
+reset("granted");
+render(payload([idle], ""));
+render(payload([blocked], ""));
+out.browserFired = __notifications.length;
+out.body = __notifications[0] && __notifications[0].body;
+out.tag = __notifications[0] && __notifications[0].tag;
+
+// Still blocked on later refreshes: notify on the transition, not repeatedly.
+render(payload([blocked], ""));
+render(payload([blocked], ""));
+out.noRepeat = __notifications.length;
+
+// Cleared, then blocked again: that is a new transition.
+render(payload([idle], ""));
+render(payload([blocked], ""));
+out.refired = __notifications.length;
+
+// A session already blocked when the page opens must not pop on first paint.
+reset("granted");
+render(payload([blocked], ""));
+out.primed = __notifications.length;
+
+// Permission not granted: record state, raise nothing.
+reset("default");
+render(payload([idle], ""));
+render(payload([blocked], ""));
+out.ungranted = __notifications.length;
+
+// Inactive sessions are outside the window and never notify.
+reset("granted");
+render(payload([{...idle, active:false}], ""));
+render(payload([{...blocked, active:false}], ""));
+out.inactive = __notifications.length;
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(0, out["nativeOwnsIt"], "would double-notify on macOS")
+        self.assertEqual(1, out["browserFired"])
+        self.assertEqual("[proj] open question", out["body"])
+        self.assertEqual("claude:12345678", out["tag"])
+        self.assertEqual(1, out["noRepeat"], "notified again while already blocked")
+        self.assertEqual(2, out["refired"])
+        self.assertEqual(0, out["primed"], "popped for a pre-existing block on first paint")
+        self.assertEqual(0, out["ungranted"])
+        self.assertEqual(0, out["inactive"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_notification_permission_control_reflects_state(self) -> None:
+        checks = """
+__els.app = {innerHTML:""};
+const payload = native => ({
+  generated:1000, window_hours:24, show_all:false, native_notify:native,
+  harnesses:[], sessions:[],
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:0,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+});
+const out = {};
+__notifyPermission = "default"; out.prompt = notifyControl(payload(""));
+__notifyPermission = "denied";  out.denied = notifyControl(payload(""));
+__notifyPermission = "granted"; out.granted = notifyControl(payload(""));
+__notifyPermission = "default"; out.native  = notifyControl(payload("osascript"));
+
+// Granting re-renders so the button disappears without a reload.
+__notifyPermission = "default";
+render(payload(""));
+out.buttonBefore = __els.app.innerHTML.includes("Enable notifications");
+requestNotifyPermission();
+out.buttonWhilePending = __els.app.innerHTML.includes("Enable notifications");
+await __settle(); await __settle();
+out.buttonAfter = __els.app.innerHTML.includes("Enable notifications");
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertIn("Enable notifications", out["prompt"])
+        self.assertIn("notifications blocked", out["denied"])
+        self.assertEqual("", out["granted"], "no control once permission is granted")
+        self.assertEqual("", out["native"], "server owns popups; no control needed")
+        self.assertTrue(out["buttonBefore"])
+        self.assertTrue(out["buttonWhilePending"], "must not clear before permission settles")
+        self.assertFalse(out["buttonAfter"], "control should clear after granting")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_page_works_without_the_notification_api(self) -> None:
+        # Older or locked-down browsers expose no Notification constructor.
+        checks = """
+__els.app = {innerHTML:""};
+Notification = undefined;
+const d = {
+  generated:1000, window_hours:24, show_all:false, native_notify:"",
+  harnesses:[], sessions:[],
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:0,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+};
+render(d);
+requestNotifyPermission();
+console.log(JSON.stringify({
+  permission: notifyPermission(), control: notifyControl(d), rendered: !!__els.app.innerHTML
+}));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual("unsupported", out["permission"])
+        self.assertEqual("", out["control"])
+        self.assertTrue(out["rendered"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_needs_input_ui_uses_block_anchor_and_displayed_count(self) -> None:
+        checks = """
+__els.app = {innerHTML:""};
+const activeNeed = {
+  harness:"claude", session:"12345678", sid:"12345678", project:"sample",
+  title:null, last_prompt:"Fallback prompt", state:"needs_input",
+  state_detail:"permission needed", active:true, last_activity:100,
+  blocked_since:970, rate_per_min:0, total:0, done:0, open:0,
+  progress_pct:0, eta_h:null, turn:null, subagents:[], tasks:[]
+};
+const inactiveNeed = {...activeNeed, sid:"old", session:"old", active:false};
+const data = {
+  generated:1000, window_hours:24, show_all:true, harnesses:[],
+  summary:{needs_input:99, working:0, rate_per_min:0, active_sessions:1,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0},
+  sessions:[activeNeed, inactiveNeed]
+};
+const row = needRow(data, activeNeed);
+render(data);
+console.log(JSON.stringify({
+  rowUsesPrompt: row.includes("Fallback prompt"),
+  rowUsesAnchor: row.includes(">30s<"),
+  title: document.title,
+  shownNeeds: (__els.app.innerHTML.match(/class="need"/g) || []).length
+}));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(
+            {
+                "rowUsesPrompt": True,
+                "rowUsesAnchor": True,
+                "title": "(1!) Cargento",
+                "shownNeeds": 1,
+            },
+            out,
+        )
+
+    def test_long_turn_warning_uses_styled_tooltip_not_native_title(self) -> None:
+        # The (!) icon must use the app's styled tooltip (fast, themed), not
+        # the native title attribute (multi-second hover delay).
+        self.assertNotIn('class="lwarn" title=', dashboard.PAGE)
+        self.assertIn('<span class="ltip">', dashboard.PAGE)
+        self.assertIn('class="lwarn" tabindex="0"', dashboard.PAGE)
+        self.assertIn(".lwarn:hover .ltip", dashboard.PAGE)
+        self.assertIn("transition-delay:.2s", dashboard.PAGE)
+
+    def test_page_restores_sparkline_hover_and_focus_after_render(self) -> None:
+        # render() replaces #app's innerHTML every poll; the hover crosshair
+        # and keyboard focus on the rate sparkline must be restored after.
+        self.assertIn("sparkPointer", dashboard.PAGE)
+        self.assertIn("restoreSparkState", dashboard.PAGE)
+        self.assertIn("restoreSparkState(sparkFocused, savedPointer)", dashboard.PAGE)
+        self.assertIn("preventScroll", dashboard.PAGE)
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sparkline_hover_lifecycle_across_renders_and_window_exit(self) -> None:
+        # Behavioral coverage for the interaction layer: hover shows on
+        # pointermove, survives a full render() DOM swap, is CLEARED when the
+        # pointer leaves the window (no in-document pointermove fires), stays
+        # cleared on later renders, and keyboard focus is restored.
+        checks = """
+const out = {};
+const wrap = {
+  id: "spark-main",
+  dataset: {now: "1000"},
+  style: {},
+  closest(sel){ return sel === "#spark-main" ? this : null; },
+  getBoundingClientRect(){
+    return {left: 0, top: 0, right: 100, bottom: 46, width: 100, height: 46};
+  },
+  focus(){ document.activeElement = this; __fire("focusin", {target: this}); }
+};
+const tip = {style: {}, appendChild(){}};
+const xline = {style: {}, parentElement: wrap};
+__els["spark-main"] = wrap; __els["spark-tip"] = tip; __els["spark-x"] = xline;
+__els["app"] = {innerHTML: ""};
+pushPoint(rateHistory, 995, 100);
+pushPoint(rateHistory, 1000, 200);
+const d = {generated: 1000, window_hours: 24, show_all: false, harnesses: [],
+           summary: {needs_input: 0, working: 0, rate_per_min: 200,
+                     total_tasks: 0, open_tasks: 0, progress_pct: 0,
+                     total_done: 0},
+           sessions: []};
+__fire("pointermove", {target: wrap, clientX: 50, clientY: 20});
+out.hoverShown = tip.style.opacity == 1;
+render(d);
+out.restoredAfterRender = tip.style.opacity == 1;
+__fire("mouseout", {relatedTarget: null});   // pointer left the window
+out.clearedOnExit = tip.style.opacity == 0 && sparkPointer === null;
+render(d);
+out.staysHiddenAfterRender = tip.style.opacity == 0;
+wrap.focus();
+render(d);
+out.focusRestored = document.activeElement === wrap && tip.style.opacity == 1;
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(
+            {
+                "hoverShown": True,
+                "restoredAfterRender": True,
+                "clearedOnExit": True,
+                "staysHiddenAfterRender": True,
+                "focusRestored": True,
+            },
+            out,
+        )

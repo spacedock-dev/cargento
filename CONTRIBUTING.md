@@ -210,8 +210,9 @@ git push origin v0.2.0
 The [Release workflow](.github/workflows/release.yml) refuses the tag unless it is on main, is
 strict semver, and is strictly greater than every existing release tag. Semver only moves forward,
 and back-tagging is impossible. It then runs the contract validator plus the validator, bump-version
-and server test modules on the main tip, rather than the whole quality gate, which already ran on
-every commit that reached main. From there it writes one bump commit updating all owned version
+and behavior-focused dashboard test modules on the main tip, rather than the whole quality gate,
+which already ran on every commit that reached main. From there it writes one bump commit updating
+all owned version
 fields, moves the tag onto the released commit, advances the `stable` branch to it, and publishes a
 GitHub Release with generated notes. `stable` is what the shared
 [spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace) listing tracks, so a

@@ -9,6 +9,8 @@ import io
 import json
 import os
 import socket
+import subprocess
+import sys
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +20,7 @@ from unittest import mock
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
+    serve_until_closed,
 )
 
 
@@ -459,3 +462,277 @@ class VerificationFixTest(unittest.TestCase):
         self.assertTrue(handler._local_ok())
         handler.server = mock.Mock(server_port=4553)
         self.assertFalse(handler._local_ok())
+
+
+class InstalledContractCharacterizationTest(unittest.TestCase):
+    """The installed executable contract that extraction must preserve."""
+
+    def setUp(self) -> None:
+        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
+        self._window_hours = dashboard.Handler.window_hours
+        self._server_started = dashboard.__dict__["SERVER_STARTED"]
+        with dashboard._lock:
+            dashboard._hook_notifs.clear()
+            dashboard._last_popup.clear()
+            dashboard._last_popup_message.clear()
+            dashboard._last_state.clear()
+            dashboard._hook_generation.clear()
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+        # Route-shape tests exercise successful /api/notify requests, but do
+        # not assert native delivery. Execute the notification code while
+        # keeping its osascript process off the host.
+        original_run = dashboard.subprocess.run
+
+        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
+            command = args[0] if args else kwargs.get("args")
+            if (
+                isinstance(command, (list, tuple))
+                and command
+                and command[0] == "/usr/bin/osascript"
+            ):
+                return subprocess.CompletedProcess(command, 0)
+            return original_run(*args, **kwargs)
+
+        notify_patcher = mock.patch.object(
+            dashboard.subprocess, "run", side_effect=run_without_native_delivery
+        )
+        notify_patcher.start()
+        self.addCleanup(notify_patcher.stop)
+
+    def tearDown(self) -> None:
+        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
+        dashboard.Handler.window_hours = self._window_hours
+        dashboard.__dict__["SERVER_STARTED"] = self._server_started
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+
+    @staticmethod
+    def _response(
+        port: int,
+        method: str,
+        path: str,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, email.message.Message, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(method, path, body=body, headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.headers, response.read()
+        finally:
+            conn.close()
+
+    def test_http_routes_pin_status_content_type_and_response_shapes(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        with mock.patch.object(
+            dashboard,
+            "collect",
+            return_value={"generated": 1.0, "sessions": [], "harnesses": []},
+        ):
+            try:
+                cases = (
+                    ("GET", "/", None, 200, "text/html; charset=utf-8", None),
+                    (
+                        "GET",
+                        "/api/data",
+                        None,
+                        200,
+                        "application/json",
+                        {"generated", "sessions", "harnesses"},
+                    ),
+                    (
+                        "GET",
+                        "/api/health",
+                        None,
+                        200,
+                        "application/json",
+                        {"ok", "pid", "port", "started"},
+                    ),
+                    (
+                        "POST",
+                        "/api/notify",
+                        b'{"session_id":"12345678"}',
+                        200,
+                        "application/json",
+                        {"ok"},
+                    ),
+                    ("GET", "/missing", None, 404, "text/html;charset=utf-8", None),
+                )
+                for method, path, body, status, ctype, keys in cases:
+                    with self.subTest(path=path):
+                        code, headers, received = self._response(
+                            httpd.server_port, method, path, body
+                        )
+                        self.assertEqual(status, code)
+                        self.assertEqual(ctype, headers["Content-Type"])
+                        if status == 404:
+                            self.assertIsNone(headers.get("Cache-Control"))
+                        else:
+                            self.assertEqual("no-store", headers["Cache-Control"])
+                        if keys is not None:
+                            self.assertEqual(keys, set(json.loads(received)))
+                code, headers, received = self._response(
+                    httpd.server_port, "POST", "/api/shutdown", b""
+                )
+                self.assertEqual(200, code)
+                self.assertEqual("application/json", headers["Content-Type"])
+                self.assertEqual("no-store", headers["Cache-Control"])
+                self.assertEqual({"ok", "stopping"}, set(json.loads(received)))
+            finally:
+                httpd.shutdown()
+                thread.join(timeout=5)
+
+    def test_host_origin_dns_rebinding_and_request_limits_are_preserved(self) -> None:
+        captured_addresses: list[tuple[str, int]] = []
+
+        class StopServingError(Exception):
+            pass
+
+        class CapturingServer:
+            def __init__(self, address: tuple[str, int], _: Any) -> None:
+                captured_addresses.append(address)
+
+            def serve_forever(self) -> None:
+                raise StopServingError
+
+            def server_close(self) -> None:
+                pass
+
+        # The shipped launcher, rather than this test's fixture, owns the
+        # required bind address. Capture the constructor call from main() so a
+        # regression to 0.0.0.0 cannot pass merely because this test chose 127.
+        with (
+            mock.patch.object(sys, "argv", ["server.py", "--port", "4553"]),
+            mock.patch.object(dashboard, "LoopbackHTTPServer", CapturingServer),
+            mock.patch.object(dashboard, "write_state"),
+            mock.patch.object(dashboard, "remove_state"),
+            mock.patch.object(dashboard, "diag"),
+            self.assertRaises(StopServingError),
+        ):
+            dashboard.main()
+        self.assertEqual([("127.0.0.1", 4553)], captured_addresses)
+
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        try:
+            port = httpd.server_port
+            code, _, _ = self._response(
+                port, "GET", "/api/health", headers={"Host": "evil.example"}
+            )
+            self.assertEqual(403, code)
+            code, _, _ = self._response(
+                port,
+                "POST",
+                "/api/notify",
+                b"{}",
+                {"Origin": "https://evil.example", "Content-Type": "application/json"},
+            )
+            self.assertEqual(403, code)
+            code, _, _ = self._response(
+                port,
+                "POST",
+                "/api/notify",
+                b"{}",
+                {"Origin": f"http://127.0.0.1:{port}", "Content-Type": "application/json"},
+            )
+            self.assertEqual(200, code)
+            code, _, _ = self._response(
+                port, "POST", "/api/notify", b"x", {"Content-Length": "65537"}
+            )
+            self.assertEqual(413, code)
+            code, _, _ = self._response(
+                port, "POST", "/api/notify", b"x", {"Content-Length": "not-a-number"}
+            )
+            self.assertEqual(413, code)
+            code, _, _ = self._response(
+                port,
+                "GET",
+                "/",
+                headers={
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                },
+            )
+            self.assertEqual(200, code)
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    def test_health_performs_no_harness_store_reads(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        try:
+            # These are the store-access primitives used by collectors. Health
+            # must remain a pure liveness response even if somebody bypasses
+            # collect() and later reaches into a harness store directly.
+            with (
+                mock.patch.object(dashboard, "collect") as collect,
+                mock.patch("builtins.open", side_effect=AssertionError("health read a file")),
+                mock.patch.object(
+                    dashboard.os,
+                    "scandir",
+                    side_effect=AssertionError("health scanned a directory"),
+                ),
+                mock.patch.object(
+                    dashboard.glob,
+                    "glob",
+                    side_effect=AssertionError("health globbed a store"),
+                ),
+                mock.patch.object(
+                    dashboard.sqlite3,
+                    "connect",
+                    side_effect=AssertionError("health opened SQLite"),
+                ),
+            ):
+                code, _, body = self._response(httpd.server_port, "GET", "/api/health")
+            self.assertEqual(200, code)
+            self.assertTrue(json.loads(body)["ok"])
+            collect.assert_not_called()
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    def test_collection_memo_holds_its_lock_across_one_scan(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        second_done = threading.Event()
+        bodies: list[bytes] = []
+
+        def scan(*_: Any) -> dict[str, Any]:
+            entered.set()
+            self.assertTrue(release.wait(timeout=5), "test did not release the scan")
+            return {"generated": 1.0, "sessions": [], "harnesses": []}
+
+        def second_request() -> None:
+            bodies.append(dashboard.collect_json(24, False))
+            second_done.set()
+
+        with mock.patch.object(dashboard, "collect", side_effect=scan) as collect:
+            first = threading.Thread(
+                target=lambda: bodies.append(dashboard.collect_json(24, False))
+            )
+            second = threading.Thread(target=second_request)
+            first.start()
+            self.assertTrue(entered.wait(timeout=5), "first scan did not begin")
+            second.start()
+            self.assertFalse(second_done.wait(timeout=0.2), "second request scanned concurrently")
+            release.set()
+            first.join(timeout=5)
+            second.join(timeout=5)
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(1, collect.call_count)
+        self.assertEqual(2, len(bodies))
+        self.assertEqual(bodies[0], bodies[1])
+
+    def test_collection_memo_releases_its_lock_after_failure(self) -> None:
+        good = {"generated": 1.0, "sessions": [], "harnesses": []}
+        with mock.patch.object(
+            dashboard, "collect", side_effect=(RuntimeError("broken store"), good)
+        ):
+            with self.assertRaisesRegex(RuntimeError, "broken store"):
+                dashboard.collect_json(24, False)
+            self.assertEqual(good, json.loads(dashboard.collect_json(24, False)))

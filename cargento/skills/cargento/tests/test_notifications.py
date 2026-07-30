@@ -11,7 +11,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
 from .support import (
@@ -19,7 +19,11 @@ from .support import (
     LegacyDashboardTestCase,
     dashboard,
     dashboard_hook,
+    serve_until_closed,
 )
+
+if TYPE_CHECKING:
+    import email.message
 
 
 class CargentoServerTest(LegacyDashboardTestCase):
@@ -1083,3 +1087,116 @@ class GlobUnderTest(unittest.TestCase):
             with mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)):
                 self.assertFalse(dashboard.claude_prefix_is_agent("[a-z]*"))
                 self.assertTrue(dashboard.claude_prefix_is_agent("aaaaaaaa"))
+
+
+class InstalledContractCharacterizationTest(unittest.TestCase):
+    """The installed executable contract that extraction must preserve."""
+
+    def setUp(self) -> None:
+        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
+        self._window_hours = dashboard.Handler.window_hours
+        self._server_started = dashboard.__dict__["SERVER_STARTED"]
+        with dashboard._lock:
+            dashboard._hook_notifs.clear()
+            dashboard._last_popup.clear()
+            dashboard._last_popup_message.clear()
+            dashboard._last_state.clear()
+            dashboard._hook_generation.clear()
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+        # Route-shape tests exercise successful /api/notify requests, but do
+        # not assert native delivery. Execute the notification code while
+        # keeping its osascript process off the host.
+        original_run = dashboard.subprocess.run
+
+        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
+            command = args[0] if args else kwargs.get("args")
+            if (
+                isinstance(command, (list, tuple))
+                and command
+                and command[0] == "/usr/bin/osascript"
+            ):
+                return subprocess.CompletedProcess(command, 0)
+            return original_run(*args, **kwargs)
+
+        notify_patcher = mock.patch.object(
+            dashboard.subprocess, "run", side_effect=run_without_native_delivery
+        )
+        notify_patcher.start()
+        self.addCleanup(notify_patcher.stop)
+
+    def tearDown(self) -> None:
+        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
+        dashboard.Handler.window_hours = self._window_hours
+        dashboard.__dict__["SERVER_STARTED"] = self._server_started
+        with dashboard._collect_memo_lock:
+            dashboard._collect_memo.clear()
+
+    @staticmethod
+    def _response(
+        port: int,
+        method: str,
+        path: str,
+        body: bytes | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, email.message.Message, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(method, path, body=body, headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.headers, response.read()
+        finally:
+            conn.close()
+
+    def test_session_end_cannot_be_undone_by_a_slow_notification(self) -> None:
+        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        thread = serve_until_closed(httpd)
+        entered = threading.Event()
+        release = threading.Event()
+        notification: list[tuple[int, bytes]] = []
+
+        def slow_lookup(*_: Any) -> tuple[bool, str]:
+            entered.set()
+            self.assertTrue(release.wait(timeout=5), "test did not release notification")
+            return True, "user-event"
+
+        def post_notification() -> None:
+            code, _, body = self._response(
+                httpd.server_port,
+                "POST",
+                "/api/notify",
+                json.dumps(
+                    {
+                        "session_id": "12345678-session",
+                        "message": "permission needed",
+                        "transcript_path": "/slow.jsonl",
+                    }
+                ).encode(),
+            )
+            notification.append((code, body))
+
+        try:
+            with (
+                mock.patch.object(dashboard, "claude_hook_user_event", side_effect=slow_lookup),
+                mock.patch.object(dashboard, "notify_mac"),
+            ):
+                worker = threading.Thread(target=post_notification)
+                worker.start()
+                self.assertTrue(entered.wait(timeout=5), "notification did not begin")
+                code, _, body = self._response(
+                    httpd.server_port,
+                    "POST",
+                    "/api/notify",
+                    b'{"session_id":"12345678-session","hook_event_name":"SessionEnd"}',
+                )
+                self.assertEqual(200, code)
+                self.assertEqual({"ok": True, "cleared": "session_end"}, json.loads(body))
+                release.set()
+                worker.join(timeout=5)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual([(200, b'{"ok":true,"superseded":true}')], notification)
+            self.assertNotIn("12345678", dashboard._hook_notifs)
+        finally:
+            release.set()
+            httpd.shutdown()
+            thread.join(timeout=5)
