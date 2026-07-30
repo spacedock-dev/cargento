@@ -157,22 +157,61 @@ from . import page as sibling_page
         self.assertEqual(self.EXPECTED, actual)
 
     def test_importing_config_and_state_performs_no_external_operation(self) -> None:
-        # Opening a file, socket, browser, log, or child during import would make
-        # copied-plugin discovery and diagnostics unsafe.
+        # Reading ambient state or opening a file, socket, browser, log, or child
+        # during import would make copied-plugin discovery and diagnostics unsafe.
         script = """
 import builtins
+import cargento_runtime
+import dataclasses
+import io
+import json
 import logging
+import ntpath
+import os
+import pathlib
+import posixpath
 import socket
 import subprocess
+import threading
+import time
+import types
+import typing
 import webbrowser
 
 def forbidden(*_args, **_kwargs):
     raise AssertionError("runtime import performed an external operation")
 
+class ForbiddenEnvironment:
+    get = forbidden
+    __getitem__ = forbidden
+    __contains__ = forbidden
+    __iter__ = forbidden
+    items = forbidden
+    keys = forbidden
+    values = forbidden
+
 builtins.open = forbidden
+io.open = forbidden
+os.environ = ForbiddenEnvironment()
+os.access = forbidden
+os.listdir = forbidden
+os.lstat = forbidden
+os.scandir = forbidden
+os.stat = forbidden
+os.walk = forbidden
+pathlib.Path.exists = forbidden
+pathlib.Path.is_dir = forbidden
+pathlib.Path.is_file = forbidden
+pathlib.Path.iterdir = forbidden
+pathlib.Path.open = forbidden
+pathlib.Path.read_bytes = forbidden
+pathlib.Path.read_text = forbidden
 socket.socket = forbidden
 subprocess.Popen = forbidden
 subprocess.run = forbidden
+time.monotonic = forbidden
+time.perf_counter = forbidden
+time.time = forbidden
 webbrowser.open = forbidden
 logging.Logger._log = forbidden
 

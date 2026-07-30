@@ -16,7 +16,7 @@ from typing import Any, ClassVar
 from unittest import mock
 
 from cargento_runtime.config import build_runtime_config
-from cargento_runtime.state import bounded_put
+from cargento_runtime.state import bounded_put, build_runtime_state
 
 from .support import (
     LegacyDashboardTestCase,
@@ -73,6 +73,29 @@ class CargentoServerTest(LegacyDashboardTestCase):
         self.assertIs(config, state.config)
         _, same_state = dashboard._legacy_runtime()
         self.assertIs(state, same_state)
+
+    def test_legacy_runtime_preserves_installed_launch_options(self) -> None:
+        # Rebuilding from defaults after main() discards the active listener,
+        # collection window, host, and Spacedock choices.
+        previous_state = dashboard._LEGACY_STATE
+        self.addCleanup(dashboard._install_legacy_state, previous_state)
+        _, launched_state = make_runtime(
+            started=1234.5,
+            host="127.0.0.9",
+            port=6789,
+            window_hours=7.5,
+            spacedock_enabled=False,
+        )
+        dashboard._install_legacy_state(launched_state)
+
+        config, state = dashboard._legacy_runtime()
+
+        self.assertIs(launched_state, state)
+        self.assertIs(config, state.config)
+        self.assertEqual(
+            ("127.0.0.9", 6789, 7.5, False),
+            (config.host, config.port, config.window_hours, config.spacedock_enabled),
+        )
 
 
 class RuntimeConfigTest(unittest.TestCase):
@@ -338,8 +361,19 @@ class RuntimeConfigTest(unittest.TestCase):
             with self.subTest(field=name):
                 self.assertIsNot(getattr(first, name), getattr(second, name))
 
+    def test_runtime_state_builder_never_reads_a_clock(self) -> None:
+        # Reading and discarding a clock value is still an implicit time dependency.
+        config, _ = make_runtime(started=1.0)
+        with mock.patch("time.time", side_effect=AssertionError("clock read")):
+            state = build_runtime_state(config, started=4321.25)
+        self.assertEqual(4321.25, state.server_started)
+
     def test_bounded_put_evicts_only_for_a_new_key_at_the_limit(self) -> None:
         # Evicting on replacement drops an unrelated live cache entry.
+        below_limit = {"first": 1}
+        bounded_put(below_limit, "second", 2, limit=3)
+        self.assertEqual({"first": 1, "second": 2}, below_limit)
+
         cache = {"oldest": 1, "newest": 2}
         bounded_put(cache, "newest", 3, limit=2)
         self.assertEqual({"oldest": 1, "newest": 3}, cache)

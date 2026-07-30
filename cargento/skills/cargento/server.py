@@ -173,12 +173,16 @@ def store_roots(key: str, primary: str) -> list[str]:
 def _legacy_runtime() -> tuple[runtime_config.RuntimeConfig, runtime_state.RuntimeState]:
     """Synchronize legacy aliases into the process-lifetime runtime state."""
     environ = _runtime_environ(HOME)
+    current = _LEGACY_STATE.config
     normal = runtime_config.build_runtime_config(
         environ=environ,
         platform_name=sys.platform,
         os_name=os.name,
         launcher_path=_LAUNCHER_PATH,
-        spacedock_enabled=SPACEDOCK_ENABLED,
+        host=current.host,
+        port=current.port,
+        window_hours=current.window_hours,
+        spacedock_enabled=current.spacedock_enabled,
     )
     aliases = {
         "claude.tasks": TASKS_DIR,
@@ -204,7 +208,10 @@ def _legacy_runtime() -> tuple[runtime_config.RuntimeConfig, runtime_state.Runti
         os_name=os.name,
         launcher_path=_LAUNCHER_PATH,
         store_root_overrides=overrides,
-        spacedock_enabled=SPACEDOCK_ENABLED,
+        host=current.host,
+        port=current.port,
+        window_hours=current.window_hours,
+        spacedock_enabled=current.spacedock_enabled,
     )
     config = replace(
         config,

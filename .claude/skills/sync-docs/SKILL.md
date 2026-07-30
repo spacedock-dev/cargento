@@ -211,8 +211,8 @@ grep -nE '^(STORE_ENV_VARS|CARGENTO_HOME_ENV) = ' "$C"
 # Immutable configuration fields, builders, and locked defaults
 grep -nE '^(class RuntimeConfig|def (build_runtime_config|resolve_store_roots|store_roots|primary_store))' "$C"
 awk '/return RuntimeConfig\\(/,/^    \\)/' "$C"
-# Mutable state fields and its explicit-time builder
-grep -nE '^(class (CollectMemoEntry|RuntimeState)|def (build_runtime_state|bounded_put))' "$R"
+# Mutable state fields, lock/dictionary factories, and builder/helper bodies
+sed -n '/^class CollectMemoEntry/,$p' "$R"
 # Python floor: the ruff target and the mypy pin must agree, and match the docs
 grep -nE 'target-version|python_version|fail_under' pyproject.toml
 # Frontend source ownership, assembly slots, and byte identity
