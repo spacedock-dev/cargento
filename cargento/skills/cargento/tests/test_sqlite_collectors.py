@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -427,9 +428,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # so the resolver keeps several candidates and all of them are read.
         # Mutation-checked: scanning only the first candidate passed the suite.
         now = dashboard.time.time()
-        stamp = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        stamp = datetime.fromtimestamp(now - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
         with tempfile.TemporaryDirectory() as tmp:
             first, second = Path(tmp) / "one.db", Path(tmp) / "two.db"
             self._goose_db(first, "from-first", "First store", stamp)
@@ -445,9 +444,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
 
     def test_goose_sessions_from_shared_db(self) -> None:
         now = dashboard.time.time()
-        stamp = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        stamp = datetime.fromtimestamp(now - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "sessions.db"
             con = sqlite3.connect(db)

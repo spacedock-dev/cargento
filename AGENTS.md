@@ -29,6 +29,7 @@ cargento/                           # plugin root
         │   ├── diagnostics.py      # store-path reporting for --diagnose
         │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
+        │   ├── lifecycle.py       # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── records.py          # untrusted-record parsing and normalization
         │   ├── sessions.py         # session identity, shape, and deterministic aggregation

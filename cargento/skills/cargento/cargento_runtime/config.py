@@ -34,6 +34,11 @@ class RuntimeConfig:
     platform_name: str
     os_name: str
     state_dir: Path
+    # The same location as ``state_dir``, kept verbatim as the user wrote it.
+    # A native Path rewrites separators on Windows, so an override of
+    # "C:/plugin/state" would come back as "C:\\plugin\\state" — a different
+    # string in --status output and in the dirname contract lifecycle relies on.
+    state_home: str
     launcher_path: Path
     host: str
     port: int
@@ -203,9 +208,10 @@ def build_runtime_config(
     for key, selected in (store_root_overrides or {}).items():
         resolved[key] = (selected,)
     state_override = environ.get(CARGENTO_HOME_ENV)
-    state_dir = _PATH_TYPE(
+    state_home = (
         state_override if state_override and state_override.strip() else join(home, ".cargento")
     )
+    state_dir = _PATH_TYPE(state_home)
     return RuntimeConfig(
         home=home,
         data_home=data_home,
@@ -213,6 +219,7 @@ def build_runtime_config(
         platform_name=platform_name,
         os_name=os_name,
         state_dir=state_dir,
+        state_home=state_home,
         launcher_path=launcher_path,
         host=host,
         port=port,

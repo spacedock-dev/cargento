@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import http_api
+from cargento_runtime import http_api, lifecycle
 
 from .page_harness import APP_JS, PAGE_TEXT, PageJsHarness
 from .support import (
@@ -165,10 +165,10 @@ class FrontendAssetContractTest(unittest.TestCase):
                     mock.patch.object(sys, "argv", ["server.py", *args]),
                     mock.patch.object(dashboard, "diagnose", return_value={}),
                     mock.patch.object(
-                        dashboard, "instance_status", return_value={"state": "running"}
+                        lifecycle, "instance_status", return_value={"state": "running"}
                     ),
-                    mock.patch.object(dashboard, "render_status", return_value="running"),
-                    mock.patch.object(dashboard, "stop_instance", return_value=("stopped", 0)),
+                    mock.patch.object(lifecycle, "render_status", return_value="running"),
+                    mock.patch.object(lifecycle, "stop_instance", return_value=("stopped", 0)),
                     mock.patch.object(dashboard.runtime_io, "diag"),
                     mock.patch.object(sys, "stdout", io.StringIO()),
                 ):
@@ -287,7 +287,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
-        original_run = dashboard.subprocess.run
+        original_run = subprocess.run
 
         def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
             command = args[0] if args else kwargs.get("args")
@@ -300,7 +300,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             return original_run(*args, **kwargs)
 
         notify_patcher = mock.patch.object(
-            dashboard.subprocess, "run", side_effect=run_without_native_delivery
+            subprocess, "run", side_effect=run_without_native_delivery
         )
         notify_patcher.start()
         self.addCleanup(notify_patcher.stop)

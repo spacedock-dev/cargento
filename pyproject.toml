@@ -54,6 +54,9 @@ max-args = 8
 # The Spacedock frontmatter and boot-envelope parsers keep the launcher's
 # reviewed shape: one arm per frontmatter spelling, and one bound per read.
 "cargento/skills/cargento/cargento_runtime/spacedock.py" = ["C901", "PLR0912"]
+# stop_instance keeps the launcher's reviewed shape: one early return per way a
+# stop can end, and each carries a distinct message and exit code.
+"cargento/skills/cargento/cargento_runtime/lifecycle.py" = ["PLR0911"]
 # The Claude collector keeps the launcher's shape: one branch per way a session
 # can be read as working or blocked, and the open-question status line reads
 # more clearly inline than wrapped.

@@ -90,6 +90,17 @@ def collect_claude(
     )
 
 
+def cfg() -> RuntimeConfig:
+    """The transitional runtime's config, which lifecycle operations now take.
+
+    Lifecycle helpers read the state home, timeouts and os_name off a config
+    instead of the ambient environment, so a test that patches CARGENTO_HOME has
+    to call this INSIDE the patch to get a config that sees it.
+    """
+    config: RuntimeConfig = dashboard._legacy_runtime()[0]
+    return config
+
+
 def make_server(
     *,
     port: int = 0,

@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -56,7 +57,7 @@ class DroidCollectorTest(LegacyDashboardTestCase):
 
     def test_droid_sessions_from_project_transcripts(self) -> None:
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             fp = Path(tmp) / "proj-x" / "d1d2d3d4.jsonl"
             fp.parent.mkdir(parents=True)

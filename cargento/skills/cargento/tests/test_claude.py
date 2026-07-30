@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -254,7 +255,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
     def test_transcript_mtime_alone_does_not_clear_newer_hook(self) -> None:
         now = dashboard.time.time()
-        event_time = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).isoformat()
+        event_time = datetime.fromtimestamp(now - 10, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
             tasks = Path(tmp) / "tasks"
@@ -415,7 +416,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
     def test_configured_agent_transcript_remains_a_top_level_session(self) -> None:
         now = dashboard.time.time()
-        timestamp = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        timestamp = datetime.fromtimestamp(now - 5, UTC).isoformat()
         session_id = "c0ffee25-0000-0000-0000-000000000000"
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
@@ -631,8 +632,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # standalone sessions; they attach to the parent as named running
         # subagents, keep it working, and contribute to its output rate.
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
-        stale_iso = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        stale_iso = datetime.fromtimestamp(now - 600, UTC).isoformat()
         parent_id = "aaaa1111-0000-0000-0000-000000000000"
         child_id = "bbbb2222-0000-0000-0000-000000000000"
         with tempfile.TemporaryDirectory() as tmp:
@@ -702,7 +703,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # activity even when it is too old to read as running.
         # Mutation-checked: dropping the child freshness filter passed the suite.
         now = dashboard.time.time()
-        stale_iso = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        stale_iso = datetime.fromtimestamp(now - 600, UTC).isoformat()
         parent_id = "aaaa1111-0000-0000-0000-000000000000"
         child_id = "bbbb2222-0000-0000-0000-000000000000"
         with tempfile.TemporaryDirectory() as tmp:
@@ -851,9 +852,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 json.dumps(
                     {
                         "type": "user",
-                        "timestamp": dashboard.datetime.fromtimestamp(
-                            stale, dashboard.UTC
-                        ).isoformat(),
+                        "timestamp": datetime.fromtimestamp(stale, UTC).isoformat(),
                         "message": {"role": "user", "content": "fan the detectors out"},
                     }
                 )
@@ -867,9 +866,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 json.dumps(
                     {
                         "type": "assistant",
-                        "timestamp": dashboard.datetime.fromtimestamp(
-                            now - 5, dashboard.UTC
-                        ).isoformat(),
+                        "timestamp": datetime.fromtimestamp(now - 5, UTC).isoformat(),
                         "message": {
                             "role": "assistant",
                             "content": [],

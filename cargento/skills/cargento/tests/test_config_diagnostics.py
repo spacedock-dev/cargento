@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, diagnostics, http_api, notifications
+from cargento_runtime import aggregate, diagnostics, http_api, lifecycle, notifications
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import claude as claude_collector
@@ -23,7 +23,9 @@ from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import bounded_put, build_runtime_state
 
 from .support import (
+    SERVER_PATH,
     LegacyDashboardTestCase,
+    cfg,
     collect_claude,
     dashboard,
     make_config,
@@ -34,25 +36,35 @@ from .support import (
 class CargentoServerTest(LegacyDashboardTestCase):
     def test_cargento_home_returns_the_authoritative_override_verbatim(self) -> None:
         # Round-tripping an override through a native Path changes its separators
-        # on Windows, breaking the documented string and dirname contracts.
-        stale_config = types.SimpleNamespace(state_dir=Path("normalized-by-path"))
-        with (
-            mock.patch.dict(os.environ, {"CARGENTO_HOME": "/literal/override"}),
-            mock.patch.object(
-                dashboard,
-                "_legacy_runtime",
-                return_value=(stale_config, object()),
-            ),
-        ):
-            self.assertEqual("/literal/override", dashboard.cargento_home())
+        # on Windows, breaking the documented string and dirname contracts. The
+        # config therefore freezes both: state_home verbatim for every string
+        # this prints or joins, state_dir for anything that wants a Path.
+        override = "C:/plugin/state"
+        config = build_runtime_config(
+            environ={"HOME": "/home/cargento-test", "CARGENTO_HOME": override},
+            platform_name="win32",
+            os_name="nt",
+            launcher_path=SERVER_PATH,
+        )
+
+        self.assertEqual(override, config.state_home)
+        self.assertEqual(override, lifecycle.cargento_home(config))
+        # The dirname contract holds against the string the user actually wrote.
+        self.assertEqual(override, os.path.dirname(lifecycle.state_path(config, 4553)))
+        self.assertEqual(override, os.path.dirname(lifecycle.log_path(config, 4553)))
+        # Both fields name the same location; only the spelling may differ.
+        self.assertEqual(Path(override), Path(config.state_home))
+        self.assertEqual(Path(override), config.state_dir)
 
     def test_cargento_home_honours_the_override_and_defaults_under_home(self) -> None:
         with mock.patch.dict(os.environ, {"CARGENTO_HOME": "/tmp/elsewhere"}):
-            self.assertEqual("/tmp/elsewhere", dashboard.cargento_home())
-            self.assertEqual("/tmp/elsewhere", os.path.dirname(dashboard.state_path(4553)))
+            self.assertEqual("/tmp/elsewhere", lifecycle.cargento_home(cfg()))
+            self.assertEqual("/tmp/elsewhere", os.path.dirname(lifecycle.state_path(cfg(), 4553)))
         environ = {k: v for k, v in os.environ.items() if k != "CARGENTO_HOME"}
         with mock.patch.dict(os.environ, environ, clear=True):
-            self.assertEqual(os.path.join(dashboard.HOME, ".cargento"), dashboard.cargento_home())
+            self.assertEqual(
+                os.path.join(dashboard.HOME, ".cargento"), lifecycle.cargento_home(cfg())
+            )
         for blank in ("", " ", "\t\r\n"):
             with (
                 self.subTest(blank=repr(blank)),
@@ -60,16 +72,16 @@ class CargentoServerTest(LegacyDashboardTestCase):
             ):
                 self.assertEqual(
                     os.path.join(dashboard.HOME, ".cargento"),
-                    dashboard.cargento_home(),
+                    lifecycle.cargento_home(cfg()),
                 )
 
     def test_cli_port_type_rejects_values_outside_the_tcp_range(self) -> None:
         for value in ("-1", "0", "65536", "not-a-port"):
             with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
-                dashboard.tcp_port(value)
+                lifecycle.tcp_port(value)
         for value in ("1", "4553", "65535"):
             with self.subTest(value=value):
-                self.assertEqual(int(value), dashboard.tcp_port(value))
+                self.assertEqual(int(value), lifecycle.tcp_port(value))
         with (
             mock.patch.object(sys, "argv", ["server.py", "--port", "0"]),
             mock.patch.object(sys, "stderr", io.StringIO()),

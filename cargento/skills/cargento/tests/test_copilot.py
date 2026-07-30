@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -14,7 +15,7 @@ from .support import LegacyDashboardTestCase, dashboard
 class CopilotCollectorTest(LegacyDashboardTestCase):
     def test_copilot_sessions_are_discovered_and_analyzed(self) -> None:
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             events = Path(tmp) / "session-state" / "11112222-aaaa" / "events.jsonl"
             events.parent.mkdir(parents=True)
@@ -78,7 +79,7 @@ class CopilotCollectorTest(LegacyDashboardTestCase):
         # dropping history-session-state made those sessions invisible AND
         # undiscoverable, and passed the whole suite.
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             self._events(Path(tmp), "history-session-state", "33334444-bbbb", iso, "old session")
             with mock.patch.object(dashboard, "COPILOT_DIR", str(tmp)):
@@ -95,8 +96,8 @@ class CopilotCollectorTest(LegacyDashboardTestCase):
         # file wins, so a stale copy cannot mask live activity. Mutation-checked:
         # preferring the older file passed the whole suite.
         now = dashboard.time.time()
-        fresh_iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
-        stale_iso = dashboard.datetime.fromtimestamp(now - 9000, dashboard.UTC).isoformat()
+        fresh_iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        stale_iso = datetime.fromtimestamp(now - 9000, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             sid = "55556666-cccc"
             old = self._events(Path(tmp), "history-session-state", sid, stale_iso, "stale prompt")
@@ -116,7 +117,7 @@ class CopilotCollectorTest(LegacyDashboardTestCase):
         # fallback passed the whole suite and every idle row read "copilot".
         now = dashboard.time.time()
         stale = now - 100_000  # outside the 24-hour window
-        iso = dashboard.datetime.fromtimestamp(stale, dashboard.UTC).isoformat()
+        iso = datetime.fromtimestamp(stale, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             events = self._events(Path(tmp), "session-state", "77778888-dddd", iso, "old work")
             os.utime(events, (stale, stale))

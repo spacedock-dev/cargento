@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
@@ -139,9 +140,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                         "type": "user",
                         "agentName": "helper",
                         "teamName": "session-aaaa1111",
-                        "timestamp": dashboard.datetime.fromtimestamp(
-                            now, dashboard.UTC
-                        ).isoformat(),
+                        "timestamp": datetime.fromtimestamp(now, UTC).isoformat(),
                         "message": {"role": "user", "content": "x"},
                     }
                 )
@@ -227,16 +226,14 @@ class CargentoServerTest(LegacyDashboardTestCase):
         session_id = "dddd4444-0000-0000-0000-000000000000"
 
         def transcript(last_offset: float) -> str:
-            iso_new = dashboard.datetime.fromtimestamp(now - last_offset, dashboard.UTC).isoformat()
+            iso_new = datetime.fromtimestamp(now - last_offset, UTC).isoformat()
             return (
                 json.dumps(
                     {
                         "type": "user",
                         "sessionId": session_id,
                         "uuid": "u-1",
-                        "timestamp": dashboard.datetime.fromtimestamp(
-                            now - 900, dashboard.UTC
-                        ).isoformat(),
+                        "timestamp": datetime.fromtimestamp(now - 900, UTC).isoformat(),
                         "message": {"role": "user", "content": "kick off reviews"},
                     }
                 )
@@ -299,7 +296,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # needs_input. Permission prompts (different message) still do.
         now = dashboard.time.time()
         session_id = "ffff6666-0000-0000-0000-000000000000"
-        old_iso = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        old_iso = datetime.fromtimestamp(now - 600, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "projects" / "-Users-test-repo"
             proj.mkdir(parents=True)
@@ -497,7 +494,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
     def test_hook_block_uses_hook_time_and_inactive_sessions_are_idle(self) -> None:
         now = dashboard.time.time()
         session_id = "abcd1234-0000-0000-0000-000000000000"
-        event_time = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        event_time = datetime.fromtimestamp(now - 600, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "projects" / "sample"
             project.mkdir(parents=True)
@@ -536,7 +533,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
     def test_transcript_open_question_outranks_fresh_activity(self) -> None:
         now = dashboard.time.time()
         session_id = "face9999-0000-0000-0000-000000000000"
-        question_time = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        question_time = datetime.fromtimestamp(now - 5, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "projects" / "sample"
             project.mkdir(parents=True)
@@ -582,7 +579,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         session_id = "eeee5555-0000-0000-0000-000000000000"
 
         def iso(age: float) -> str:
-            return str(dashboard.datetime.fromtimestamp(now - age, dashboard.UTC).isoformat())
+            return str(datetime.fromtimestamp(now - age, UTC).isoformat())
 
         def user_rec(uuid: str, age: float, text: str) -> str:
             return (
@@ -1170,7 +1167,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
-        original_run = dashboard.subprocess.run
+        original_run = subprocess.run
 
         def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
             command = args[0] if args else kwargs.get("args")
@@ -1183,7 +1180,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             return original_run(*args, **kwargs)
 
         notify_patcher = mock.patch.object(
-            dashboard.subprocess, "run", side_effect=run_without_native_delivery
+            subprocess, "run", side_effect=run_without_native_delivery
         )
         notify_patcher.start()
         self.addCleanup(notify_patcher.stop)

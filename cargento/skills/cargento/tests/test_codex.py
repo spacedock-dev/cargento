@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -37,7 +38,7 @@ class CodexCollectorTest(LegacyDashboardTestCase):
         now = dashboard.time.time()
 
         def timestamp(offset: float) -> str:
-            iso = dashboard.datetime.fromtimestamp(now + offset, dashboard.UTC).isoformat()
+            iso = datetime.fromtimestamp(now + offset, UTC).isoformat()
             return str(iso)
 
         parent_id = "11111111-1111-1111-1111-111111111111"

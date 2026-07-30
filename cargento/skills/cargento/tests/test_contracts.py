@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
@@ -634,6 +635,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.notifications",
         },
+        "cargento_runtime.lifecycle": {
+            "cargento_runtime.config",
+            "cargento_runtime.http_api",
+            "cargento_runtime.io",
+        },
         "cargento_runtime.io": {
             "cargento_runtime.config",
             "cargento_runtime.state",
@@ -826,6 +832,30 @@ from . import page as sibling_page
             "SPACEDOCK_FO",
             "SD_STAGE_RE",
         )
+        lifecycle_symbols = (
+            "tcp_port",
+            "cargento_home",
+            "state_path",
+            "log_path",
+            "ensure_cargento_home",
+            "write_state",
+            "read_state",
+            "remove_state",
+            "probe_port",
+            "port_released",
+            "await_release",
+            "instance_status",
+            "render_status",
+            "stop_instance",
+            "fork_daemon",
+            "daemon_redirect_stdio",
+            "daemon_announce",
+            "await_daemon",
+            "forwarded_args",
+            "spawn_detached",
+            "log_tail",
+            "await_spawned",
+        )
         http_symbols = (
             "normalize_host",
             "reuse_address_allowed",
@@ -890,6 +920,7 @@ from . import page as sibling_page
             *claude_collector_symbols,
             *diagnostics_symbols,
             *http_symbols,
+            *lifecycle_symbols,
             *spacedock_symbols,
         ):
             with self.subTest(symbol=symbol):
@@ -1001,7 +1032,7 @@ class CollectorAgreementTest(LegacyDashboardTestCase):
         now = dashboard.time.time()
         home = "/Users/cl"
         cwd = f"{home}/git/spacedock-research/spacedock/subspace"
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         encoded = runtime_sessions.encoded_home_prefix(cwd)  # Claude's projects/ dir name
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "projects" / encoded

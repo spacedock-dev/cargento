@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, http_api, notifications
+from cargento_runtime import aggregate, http_api, lifecycle, notifications
 
 from .support import (
     PAGE_BYTES,
@@ -561,7 +561,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
-        original_run = dashboard.subprocess.run
+        original_run = subprocess.run
 
         def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
             command = args[0] if args else kwargs.get("args")
@@ -574,7 +574,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             return original_run(*args, **kwargs)
 
         notify_patcher = mock.patch.object(
-            dashboard.subprocess, "run", side_effect=run_without_native_delivery
+            subprocess, "run", side_effect=run_without_native_delivery
         )
         notify_patcher.start()
         self.addCleanup(notify_patcher.stop)
@@ -694,8 +694,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         with (
             mock.patch.object(sys, "argv", ["server.py", "--port", "4553"]),
             mock.patch.object(http_api, "CargentoHTTPServer", CapturingServer),
-            mock.patch.object(dashboard, "write_state"),
-            mock.patch.object(dashboard, "remove_state"),
+            mock.patch.object(lifecycle, "write_state"),
+            mock.patch.object(lifecycle, "remove_state"),
             mock.patch.object(dashboard.runtime_io, "diag"),
             self.assertRaises(StopServingError),
         ):

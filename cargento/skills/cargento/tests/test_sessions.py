@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -98,7 +99,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         base = 1_784_000_000.0
 
         def iso(offset: float) -> str:
-            return str(dashboard.datetime.fromtimestamp(base + offset, dashboard.UTC).isoformat())
+            return str(datetime.fromtimestamp(base + offset, UTC).isoformat())
 
         records = [
             {
@@ -241,7 +242,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # The widening is only worth anything if collect() actually applies
         # it: deleting the call leaves every unit test green.
         now = dashboard.time.time()
-        iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         sids = (
             "019fa752-a888-7fe3-a529-ebd8042771c1",
             "019fa752-a889-73a3-88ba-d362c54a1ae6",

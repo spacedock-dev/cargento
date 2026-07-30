@@ -202,6 +202,7 @@ R=cargento/skills/cargento/cargento_runtime/state.py
 W=cargento/skills/cargento/cargento_runtime/web
 G=cargento/skills/cargento/cargento_runtime/diagnostics.py
 H=cargento/skills/cargento/cargento_runtime/http_api.py
+L=cargento/skills/cargento/cargento_runtime/lifecycle.py
 
 # HTTP routes the server actually serves, and who owns the listener. The
 # pattern matches the local `path` too: do_POST binds it once and compares that,
@@ -225,6 +226,8 @@ from cargento_runtime import aggregate
 for spec in aggregate.default_harnesses(lambda _title, _message: None):
     print(f"{spec.key:10} {spec.label:10} {spec.collect.__module__}")
 PY
+# Lifecycle operations, and the one respawn contract --daemon uses on Windows
+grep -nE '^def (tcp_port|cargento_home|state_path|log_path|write_state|read_state|probe_port|port_released|await_release|instance_status|render_status|stop_instance|fork_daemon|await_daemon|spawn_argv|spawn_detached|await_spawned|prepare_daemon_home|serve)' "$L"
 # The application boundary and the registry contract it consumes
 grep -nE '^(class Application|class HarnessSpec)|^def default_harnesses|^    def collect' "$A"
 grep -nE '^HARNESSES|^def (_legacy_application|_bound_popup_notifier)' "$S"
