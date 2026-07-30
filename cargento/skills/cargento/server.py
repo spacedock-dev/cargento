@@ -3673,15 +3673,16 @@ class _LegacyHarnessAdapter:
     """Presents a global-reading collector under the runtime harness contract.
 
     The wrapped functions still read module aliases, so the adapter refuses to
-    run for anything other than the one runtime those aliases describe: it
-    checks that the caller's state is the state it was bound to, and that the
-    caller's config is the one currently installed on that state. It never
+    run for anything other than the one runtime those aliases describe. It never
     installs config or state by mutating a global, which is what would let a
     second application quietly drive this one's collectors.
 
-    The bound pair is the application's own config and state, which it hands
-    back on every call. That stays stable even though the wrapped functions
-    re-derive a fresh config from the globals while they run.
+    It accepts only the config and state OBJECT IDENTITIES it was bound to,
+    which are the application's own and which the application hands back on
+    every call. It deliberately does not key off ``state.config``: the wrapped
+    functions call ``_legacy_runtime()`` re-entrantly while they run and
+    reassign ``state.config`` to a freshly built object, so a live lookup there
+    would reject every harness after the first.
     """
 
     config: runtime_config.RuntimeConfig
@@ -3736,9 +3737,12 @@ def _legacy_harness_specs(
     return tuple(specs)
 
 
-# The registry as the runtime sees it, for readers that want its keys and
-# labels. Its adapters are bound to the import-time runtime; the application
-# built below binds its own to whatever runtime it will actually run on.
+# The registry as the runtime sees it. Read it for keys and labels only: its
+# adapters are bound to the import-time config object, which `_legacy_runtime()`
+# replaces on its first call, so no later caller can satisfy their identity
+# check. Anything that needs to CALL a spec should build a live one with
+# `_legacy_harness_specs(*_legacy_runtime())`, which is what the application
+# below does.
 HARNESSES: tuple[aggregate.HarnessSpec, ...] = _legacy_harness_specs(
     _LEGACY_STATE.config, _LEGACY_STATE
 )
@@ -3749,8 +3753,9 @@ def _legacy_application(window_hours: float) -> aggregate.Application:
     config, state = _legacy_runtime()
     if window_hours != config.window_hours:
         # The window is a request-time argument until the CLI owns it outright.
+        # Kept local on purpose: publishing it onto the process-lifetime state
+        # would race between concurrent requests, and nothing reads it there.
         config = replace(config, window_hours=window_hours)
-        state.config = config
     return aggregate.Application(
         config,
         state,

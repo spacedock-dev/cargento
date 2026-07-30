@@ -92,15 +92,18 @@ class ApplicationIsolationTest(unittest.TestCase):
         clock: float,
         notifier: str,
         harnesses: tuple[aggregate.HarnessSpec, ...],
+        platform_name: str = "linux",
     ) -> tuple[aggregate.Application, RuntimeConfig, RuntimeState, list[str], list[str]]:
-        config, state = make_runtime(started=started, home=home)
+        config, state = make_runtime(started=started, home=home, platform_name=platform_name)
         diagnostics: list[str] = []
         popups: list[str] = []
         application = aggregate.Application(
             config,
             state,
             harnesses,
-            native_notifier=lambda _platform: notifier,
+            # Echo the argument: the field must be derived from this
+            # application's platform, never from ambient sys.platform.
+            native_notifier=lambda platform: f"{notifier}@{platform}",
             popup_notifier=lambda title, message: popups.append(f"{title}:{message}"),
             diagnostic_sink=diagnostics.append,
             clock=lambda: clock,
@@ -121,6 +124,7 @@ class ApplicationIsolationTest(unittest.TestCase):
             clock=2000.0,
             notifier="notifier-b",
             harnesses=(self._spec("beta"),),
+            platform_name="win32",
         )
 
         data_a = first.collect(show_all=True)
@@ -129,9 +133,12 @@ class ApplicationIsolationTest(unittest.TestCase):
         # The clock is per application, so "generated" cannot be shared.
         self.assertEqual(1000.0, data_a["generated"])
         self.assertEqual(2000.0, data_b["generated"])
-        # The native-notify field comes from the injected notifier.
-        self.assertEqual("notifier-a", data_a["native_notify"])
-        self.assertEqual("notifier-b", data_b["native_notify"])
+        # The native-notify field comes from the injected notifier, called with
+        # this application's platform. Mutation-checked: reading sys.platform
+        # here instead of config.platform_name previously passed the suite.
+        self.assertEqual(f"notifier-a@{config_a.platform_name}", data_a["native_notify"])
+        self.assertEqual(f"notifier-b@{config_b.platform_name}", data_b["native_notify"])
+        self.assertNotEqual(config_a.platform_name, config_b.platform_name)
         # Each application saw only its own registry.
         self.assertEqual(["alpha"], [h["key"] for h in data_a["harnesses"]])
         self.assertEqual(["beta"], [h["key"] for h in data_b["harnesses"]])
@@ -182,6 +189,48 @@ class ApplicationIsolationTest(unittest.TestCase):
         first.collect_json(show_all=True)
         self.assertEqual(2, len(state_a.collect_memo))
         self.assertEqual(1, len(state_b.collect_memo))
+
+    def test_the_memo_expires_on_the_injected_clock(self) -> None:
+        # Mutation-checked: reading time.time() instead of self.clock() in the
+        # freshness comparison previously passed the whole suite, which would
+        # make every warm read look stale under an injected clock.
+        now = [1000.0]
+        config, state = make_runtime()
+        collections: list[float] = []
+
+        def collect(
+            _config: RuntimeConfig,
+            _state: RuntimeState,
+            when: float,
+            _window_hours: float,
+            _show_all: bool,
+        ) -> list[dict[str, Any]]:
+            collections.append(when)
+            return []
+
+        application = aggregate.Application(
+            config,
+            state,
+            (aggregate.HarnessSpec(key="a", label="A", discover=lambda *_: True, collect=collect),),
+            native_notifier=lambda _platform: "",
+            popup_notifier=lambda *_: None,
+            diagnostic_sink=lambda _message: None,
+            clock=lambda: now[0],
+        )
+
+        application.collect_json(show_all=False)
+        self.assertEqual([1000.0], collections)
+        # Still inside the window: served warm, and the entry carries the
+        # injected clock's timestamp rather than a real reading.
+        now[0] += config.collect_memo_sec / 2
+        application.collect_json(show_all=False)
+        self.assertEqual([1000.0], collections)
+        self.assertEqual(1000.0, state.collect_memo[(config.window_hours, False)]["ts"])
+        # Past the window: collected again, and the entry is re-stamped.
+        now[0] = 1000.0 + config.collect_memo_sec + 1
+        application.collect_json(show_all=False)
+        self.assertEqual([1000.0, now[0]], collections)
+        self.assertEqual(now[0], state.collect_memo[(config.window_hours, False)]["ts"])
 
     def test_a_discovery_failure_marks_only_that_harness_absent(self) -> None:
         application, _, _, diagnostics, _ = self._application(
@@ -258,6 +307,29 @@ class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
                     spec.discover(wrong_config, wrong_state)
                 with self.assertRaisesRegex(RuntimeError, "another application"):
                     spec.collect(wrong_config, wrong_state, 1.0, 24.0, False)
+
+    def test_a_wrapped_call_reassigning_state_config_does_not_lock_out_the_spec(self) -> None:
+        # The wrapped collectors call _legacy_runtime() re-entrantly, which
+        # rebinds state.config. Keying the check off state.config instead of the
+        # bound object would therefore reject every harness after the first, and
+        # only 156 unrelated collector tests would notice.
+        config, state = dashboard._legacy_runtime()
+        seen: list[bool] = []
+
+        def legacy_collect(_now: float, _window: float, _show_all: bool) -> list[dict[str, Any]]:
+            dashboard._legacy_runtime()  # rebinds state.config, as the real ones do
+            seen.append(state.config is not config)
+            return []
+
+        registry = (("probe", "Probe", lambda: True, legacy_collect),)
+        with mock.patch.object(dashboard, "_LEGACY_HARNESSES", registry):
+            spec = dashboard._legacy_harness_specs(config, state)[0]
+            spec.collect(config, state, 1.0, 24.0, False)
+            # The bound pair still works after state.config moved underneath it.
+            spec.collect(config, state, 2.0, 24.0, False)
+            self.assertTrue(spec.discover(config, state))
+
+        self.assertEqual([True, True], seen, "the probe did not rebind state.config")
 
     def test_the_registry_keys_and_labels_survive_the_adapter(self) -> None:
         # The adapter changes the calling convention, not the registry itself.

@@ -161,25 +161,41 @@ class CargentoServerTest(LegacyDashboardTestCase):
             thread.join(timeout=2)
 
     def test_collect_json_single_flights_concurrent_cold_requests(self) -> None:
-        calls: list[bool] = []
+        calls: list[tuple[float, bool]] = []
         calls_lock = threading.Lock()
 
-        def fake_collect(*_: Any, show_all: bool) -> dict[str, Any]:
+        # Read the window off the application under test, so a collect_json that
+        # ignored its window argument is visible here rather than silent.
+        def fake_collect(app: aggregate.Application, *, show_all: bool) -> dict[str, Any]:
             with calls_lock:
-                calls.append(show_all)
+                calls.append((app.config.window_hours, show_all))
             dashboard.time.sleep(0.02)
-            return {"window_hours": 24, "show_all": show_all}
+            return {"window_hours": app.config.window_hours, "show_all": show_all}
 
         with mock.patch.object(aggregate.Application, "collect", fake_collect):
             with ThreadPoolExecutor(max_workers=12) as pool:
                 bodies = list(pool.map(lambda _: dashboard.collect_json(24, False), range(24)))
             alternate = dashboard.collect_json(24, True)
 
-        self.assertEqual(1, calls.count(False))
-        self.assertEqual(1, calls.count(True))
+        self.assertEqual(1, calls.count((24, False)))
+        self.assertEqual(1, calls.count((24, True)))
         self.assertEqual(1, len(set(bodies)))
         self.assertNotEqual(bodies[0], alternate)
         self.assertEqual(2, len(dashboard._collect_memo))
+
+    def test_a_requested_window_reaches_the_collection_and_its_memo_key(self) -> None:
+        # The window is a request-time argument: /api/data must collect and
+        # report the window it was asked for, not the configured default.
+        # Mutation-checked: dropping the override in _legacy_application, so
+        # every request silently used the configured window, passed the suite.
+        with mock.patch.object(dashboard, "_LEGACY_HARNESSES", ()):
+            requested = json.loads(dashboard.collect_json(6, False))
+            default = json.loads(dashboard.collect_json(24, False))
+
+            self.assertEqual(6, requested["window_hours"])
+            self.assertEqual(24, default["window_hours"])
+            self.assertIn((6, False), dashboard._collect_memo)
+            self.assertIn((24, False), dashboard._collect_memo)
 
     def test_collector_failure_is_exposed_in_harness_status(self) -> None:
         def fail(*_args: object) -> list[dict[str, Any]]:
@@ -205,7 +221,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             # The readiness wait and --status poll this in a loop. If it ever
             # reaches collect(), a liveness check costs a full multi-harness
             # filesystem scan.
-            with mock.patch.object(dashboard, "collect") as collect:
+            with mock.patch.object(aggregate.Application, "collect") as collect:
                 conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
                 conn.request("GET", "/api/health")
                 response = conn.getresponse()
@@ -709,7 +725,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             # must remain a pure liveness response even if somebody bypasses
             # collect() and later reaches into a harness store directly.
             with (
-                mock.patch.object(dashboard, "collect") as collect,
+                mock.patch.object(aggregate.Application, "collect") as collect,
                 mock.patch("builtins.open", side_effect=AssertionError("health read a file")),
                 mock.patch.object(
                     dashboard.os,
