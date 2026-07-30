@@ -13,6 +13,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
+from cargento_runtime.collectors import cursor as cursor_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 
 from .support import SERVER_PATH, LegacyDashboardTestCase, dashboard, make_runtime
@@ -196,10 +197,50 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             mock.patch.object(dashboard, "CURSOR_CHATS", str(tmp / "chats")),
             mock.patch.dict(dashboard.STORE_ROOTS, {"cursor.chats": [str(tmp / "chats")]}),
         ):
-            sessions: list[dict[str, Any]] = dashboard.collect_cursor(
-                dashboard.time.time(), 24, True
+            config, state = dashboard._legacy_runtime()
+            sessions: list[dict[str, Any]] = cursor_collector.collect(
+                config, state, dashboard.time.time(), 24, True
             )
             return sessions
+
+    def test_cursor_metadata_is_memoized_until_the_store_changes(self) -> None:
+        # The meta table is stable, so a memo hit must not reopen the store on
+        # every five-second refresh. Asserting the returned value is not enough:
+        # the double-checked lock inside _meta returns the cached value even
+        # with the outer memo gone, so this counts store opens instead.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "w" / "proj"
+            workspace.mkdir(parents=True)
+            self._cursor_store(
+                root, "aaaa1111", [{"name": "Some title", "workspacePath": str(workspace)}]
+            )
+            self.assertEqual(1, len(self._collect_cursor(root)))
+
+            config, state = dashboard._legacy_runtime()
+            db = next(iter(state.cursor_metadata_cache))
+            mtime = state.cursor_metadata_cache[db][0]
+
+            opens: list[str] = []
+            real_open = runtime_io.open_sqlite_read_only
+
+            def counting_open(path: str, st: Any) -> Any:
+                opens.append(path)
+                return real_open(path, st)
+
+            with mock.patch.object(runtime_io, "open_sqlite_read_only", counting_open):
+                self.assertEqual(
+                    ("Some title", str(workspace)),
+                    cursor_collector._meta(config, state, db, mtime),
+                )
+                self.assertEqual([], opens, "a memo hit reopened the store")
+
+                # A changed mtime invalidates the memo, so the store is read.
+                self.assertEqual(
+                    ("Some title", str(workspace)),
+                    cursor_collector._meta(config, state, db, mtime + 1),
+                )
+                self.assertEqual([db], opens)
 
     def test_cursor_reports_its_workspace_instead_of_the_harness_name(self) -> None:
         # DRC-3963. Cursor rows were hardcoded to "cursor", so every Cursor
@@ -330,7 +371,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
                     dashboard.STORE_ROOTS, {"cursor.chats": [str(Path(tmp) / "chats")]}
                 ),
             ):
-                sessions = dashboard.collect_cursor(now, 24, True)
+                config, state = dashboard._legacy_runtime()
+                sessions = cursor_collector.collect(config, state, now, 24, True)
 
         self.assertEqual("cursor", sessions[0]["project"])
 
@@ -347,7 +389,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             con.close()
 
             with mock.patch.object(dashboard, "CURSOR_CHATS", str(tmp)):
-                sessions = dashboard.collect_cursor(now, 24, False)
+                config, state = dashboard._legacy_runtime()
+                sessions = cursor_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("working", sessions[0]["state"])
@@ -438,12 +481,13 @@ class SqliteDiagnosticTest(unittest.TestCase):
             dashboard.antigravity_step_activity(str(antigravity), self.NOW)
             self.assertIn(str(antigravity), dashboard._store_errors)
 
-            with dashboard._cache_lock:
-                dashboard._store_errors.clear()
-            self.assertEqual((None, ""), dashboard._cursor_meta(str(cursor), 1.0))
-            self.assertIn(str(cursor), dashboard._store_errors)
+            config, state = dashboard._legacy_runtime()
+            with state.cache_lock:
+                state.store_errors.clear()
+            self.assertEqual((None, ""), cursor_collector._meta(config, state, str(cursor), 1.0))
+            self.assertIn(str(cursor), state.store_errors)
             # A title the query never returned must not be cached as "no title".
-            self.assertNotIn(str(cursor), dashboard._cursor_meta_cache)
+            self.assertNotIn(str(cursor), state.cursor_metadata_cache)
 
 
 class SqliteOptionalTest(unittest.TestCase):
@@ -463,7 +507,7 @@ class SqliteOptionalTest(unittest.TestCase):
             # launcher-owned. Each entry flips as its extraction task lands.
             collectors = (
                 ("opencode", lambda: opencode_collector.collect(config, state, now, 24, False)),
-                ("cursor", lambda: dashboard.collect_cursor(now, 24, False)),
+                ("cursor", lambda: cursor_collector.collect(config, state, now, 24, False)),
                 ("goose", lambda: dashboard.collect_goose(now, 24, False)),
                 ("antigravity", lambda: dashboard.collect_antigravity(now, 24, False)),
             )
@@ -531,9 +575,9 @@ builtins.__import__ = real_import
 assert not m.runtime_io.sqlite_available(), "sqlite_available() should be False"
 now = 1_700_000_000.0
 cfg, st = m._legacy_runtime()
-assert m.opencode_collector.collect(cfg, st, now, 24, True) == [], "opencode"
-for fn in (m.collect_cursor, m.collect_goose):
-    assert fn(now, 24, True) == [], fn.__name__
+for name in ("opencode_collector", "cursor_collector"):
+    assert getattr(m, name).collect(cfg, st, now, 24, True) == [], name
+assert m.collect_goose(now, 24, True) == [], "collect_goose"
 # Antigravity is discovered from store mtime and CLI logs, so it survives
 # without sqlite3 — only its rate and ETA degrade. Give it a real store so
 # this exercises the database-backed path instead of an empty glob.

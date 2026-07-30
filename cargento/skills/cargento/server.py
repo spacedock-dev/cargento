@@ -39,7 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 from cargento_runtime import aggregate, records
 from cargento_runtime import config as runtime_config
@@ -50,6 +50,7 @@ from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import copilot as copilot_collector
+from cargento_runtime.collectors import cursor as cursor_collector
 from cargento_runtime.collectors import droid as droid_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 from cargento_runtime.collectors import pi as pi_collector
@@ -2597,149 +2598,6 @@ _cursor_meta_cache = _LEGACY_STATE.cursor_metadata_cache
 # everywhere in its chat storage. Either would produce a confident wrong label,
 # which is worse than the fallback. So a candidate is accepted only if it
 # resolves to a directory that exists here — a guess that validates itself.
-_CURSOR_CWD_KEYS = ("workspacePath", "workspace", "rootPath", "projectPath", "folder", "cwd")
-_ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
-
-
-def _cursor_workspace(value: Any) -> str:
-    """A meta value promoted to a workspace path, or ``""``.
-
-    Accepts the ``file://`` URI form as well as a bare path: that is the
-    canonical serialization in the VS Code family, and rejecting it would make
-    the whole read a silent no-op that looks identical to "Cursor records no
-    workspace".
-    """
-    if not isinstance(value, str) or not value:
-        return ""
-    if value.startswith("file://"):
-        parsed = urlparse(value)
-        if parsed.netloc:  # file://server/share is a UNC path, not a local dir
-            return ""
-        value = unquote(parsed.path)
-        # file:///C:/x parses to /C:/x; ntpath cannot read that spelling.
-        if os.name == "nt" and re.match(r"^/[A-Za-z]:", value):
-            value = value[1:]
-    if not _ABS_PATH_RE.match(value):
-        return ""
-    try:
-        return value if os.path.isdir(value) else ""
-    except OSError:
-        return ""
-
-
-def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
-    """(session name, workspace path) from the meta table: hex-encoded UTF-8
-    JSON (some versions store plain JSON; value may be NULL or non-text).
-    mode=ro (not immutable) so names still in the WAL are visible. Memoized by
-    mtime — both are stable, so no per-refresh reopen."""
-    with _cache_lock:
-        hit = _cursor_meta_cache.get(db)
-    if hit and hit[0] == mtime:
-        return hit[1], hit[2]
-    title = None
-    cwd_by_key: dict[str, str] = {}
-    _, state = _legacy_runtime()
-    try:
-        con = runtime_io.open_sqlite_read_only(db, state)
-    except sqlite3.Error:
-        return None, ""
-    failed = False
-    try:
-        rows = con.execute("SELECT value FROM meta LIMIT ?", (_CURSOR_META_ROWS,)).fetchall()
-    except sqlite3.Error as exc:
-        runtime_io.record_store_error(state, db, exc)
-        rows, failed = [], True
-    finally:
-        con.close()
-    for (raw,) in rows:
-        v = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
-        if not isinstance(v, str):
-            continue
-        candidates = [v]  # plain JSON first: a hex string can't parse to a dict
-        with contextlib.suppress(ValueError):
-            candidates.append(bytes.fromhex(v).decode("utf-8", "replace"))
-        for decoded in candidates:
-            try:
-                d = json.loads(decoded)
-            except (ValueError, TypeError):
-                continue
-            if not isinstance(d, dict):
-                continue
-            if not title:
-                # Untyped JSON from disk: a non-string name must not
-                # AttributeError the whole Cursor collector. Take the first
-                # value that is actually a string rather than the first that
-                # is merely truthy, or a numeric "name" shadows a good "title".
-                name = next(
-                    (
-                        v.strip()
-                        for v in (d.get("name"), d.get("title"))
-                        if isinstance(v, str) and v.strip()
-                    ),
-                    "",
-                )
-                if name:
-                    title = name[:80]
-            # Keyed by spelling, not by first-seen: the keys are ranked by
-            # trust, and a payload may spread them across rows, so a later row
-            # holding a better-trusted key must still win.
-            for key in _CURSOR_CWD_KEYS:
-                if key in cwd_by_key:
-                    continue
-                workspace = _cursor_workspace(d.get(key))
-                if workspace:
-                    cwd_by_key[key] = workspace
-        if title and _CURSOR_CWD_KEYS[0] in cwd_by_key:
-            break  # best-trusted key already found; nothing later can beat it
-    cwd = next((cwd_by_key[k] for k in _CURSOR_CWD_KEYS if k in cwd_by_key), "")
-    if failed:
-        # Transient: do not cache values the query never returned.
-        return None, ""
-    with _cache_lock:
-        hit = _cursor_meta_cache.get(db)
-        if hit and hit[0] == mtime:
-            return hit[1], hit[2]
-        bounded_put(_cursor_meta_cache, db, (mtime, title, cwd))
-        return title, cwd
-
-
-def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    if not runtime_io.sqlite_available():
-        return []
-    config, _ = _legacy_runtime()
-    # One store.db per chat; content is opaque-ish (hex JSON blobs), so
-    # Cursor rows are discovery + state + title only — no turn ETA.
-    out: list[dict[str, Any]] = []
-    for db in runtime_io.glob_stores(config, "cursor.chats", "*", "*", "store.db"):
-        sid = os.path.basename(os.path.dirname(db))
-        try:
-            mtime = os.path.getmtime(db)
-            wal = db + "-wal"
-            if os.path.exists(wal):
-                mtime = max(mtime, os.path.getmtime(wal))
-        except OSError:
-            continue
-        active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
-        if not (active or show_all):
-            continue
-        state, state_detail = "idle", "awaiting your message"
-        if runtime_sessions.is_fresh(config, now, mtime, WORKING_THRESHOLD_SEC):
-            state, state_detail = "working", "generating…"
-        title, cwd = _cursor_meta(db, mtime)
-        s = runtime_sessions.base_session(
-            "cursor", sid, runtime_sessions.project_from_cwd(config, cwd) or "cursor"
-        )
-        s.update(
-            {
-                "title": title if active else None,
-                "state": state,
-                "state_detail": state_detail,
-                "active": active,
-                "last_activity": mtime,
-            }
-        )
-        out.append(s)
-    return out
 
 
 def goose_user_prompt(content: Any) -> bool:
@@ -2996,17 +2854,7 @@ _HARNESS_ROWS: tuple[tuple[str, str, _Legacy | ModuleType], ...] = (
     ("gemini", "Gemini", _Legacy(_discover_gemini, collect_gemini)),
     ("copilot", "Copilot", copilot_collector),
     ("opencode", "OpenCode", opencode_collector),
-    (
-        "cursor",
-        "Cursor",
-        _Legacy(
-            lambda: (
-                runtime_io.sqlite_available()
-                and _store_glob_exists("cursor.chats", "*", "*", "store.db")
-            ),
-            collect_cursor,
-        ),
-    ),
+    ("cursor", "Cursor", cursor_collector),
     (
         "goose",
         "Goose",

@@ -59,6 +59,10 @@ max-args = 8
   "PLR0912",
   "PLR0915",
 ]
+# Cursor's meta reader keeps the launcher's shape: several store versions,
+# several workspace key spellings, and a transient-failure path that must not
+# be cached.
+"cargento/skills/cargento/cargento_runtime/collectors/cursor.py" = ["C901", "PLR0912"]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]

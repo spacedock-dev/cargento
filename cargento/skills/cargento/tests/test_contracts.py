@@ -360,7 +360,7 @@ class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
             for key, _label, source in dashboard._HARNESS_ROWS
             if not isinstance(source, dashboard._Legacy)
         }
-        self.assertEqual({"codex", "copilot", "droid", "opencode", "pi"}, native)
+        self.assertEqual({"codex", "copilot", "cursor", "droid", "opencode", "pi"}, native)
         self.assertIs(
             codex_collector.collect,
             next(s.collect for s in dashboard.HARNESSES if s.key == "codex"),
@@ -393,6 +393,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.state",
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",
+        },
+        "cargento_runtime.collectors.cursor": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.sessions",
+            "cargento_runtime.state",
         },
         "cargento_runtime.collectors.droid": {
             "cargento_runtime.config",
