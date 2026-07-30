@@ -33,6 +33,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
     EXPECTED: ClassVar[dict[str, set[str]]] = {
         "cargento_runtime": set(),
         "cargento_runtime.config": set(),
+        "cargento_runtime.io": {
+            "cargento_runtime.config",
+            "cargento_runtime.state",
+        },
+        "cargento_runtime.records": set(),
         "cargento_runtime.state": {"cargento_runtime.config"},
         "cargento_runtime.web": set(),
         "cargento_runtime.web.page": set(),
@@ -156,7 +161,31 @@ from . import page as sibling_page
             actual[module] = dependencies
         self.assertEqual(self.EXPECTED, actual)
 
-    def test_importing_config_and_state_performs_no_external_operation(self) -> None:
+    def test_moved_symbols_exist_only_on_their_runtime_owner(self) -> None:
+        io_symbols = (
+            "glob_stores",
+            "read_tail",
+            "reverse_lines",
+            "sqlite_ro_uri",
+            "record_store_error",
+        )
+        record_symbols = (
+            "safe_text",
+            "parse_ts",
+            "as_dict",
+            "record_fingerprint",
+            "gemini_records",
+            "_turn_signal",
+        )
+        for symbol in (*io_symbols, *record_symbols):
+            with self.subTest(symbol=symbol):
+                self.assertFalse(hasattr(dashboard, symbol))
+        self.assertTrue(all(hasattr(dashboard.runtime_io, symbol) for symbol in io_symbols))
+        self.assertTrue(all(hasattr(dashboard.records, symbol) for symbol in record_symbols))
+        self.assertIs(sys.modules["cargento_runtime.io"], dashboard.runtime_io)
+        self.assertIs(sys.modules["cargento_runtime.records"], dashboard.records)
+
+    def test_importing_lower_runtime_layers_performs_no_external_operation(self) -> None:
         # Reading ambient state or opening a file, socket, browser, log, or child
         # during import would make copied-plugin discovery and diagnostics unsafe.
         script = """
@@ -216,6 +245,8 @@ webbrowser.open = forbidden
 logging.Logger._log = forbidden
 
 import cargento_runtime.config
+import cargento_runtime.io
+import cargento_runtime.records
 import cargento_runtime.state
 """
         result = subprocess.run(

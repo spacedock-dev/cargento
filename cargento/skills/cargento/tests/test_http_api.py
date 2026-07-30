@@ -391,7 +391,7 @@ class ReviewFixTest(unittest.TestCase):
             mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", 0xFFFB, create=True),
             # The fake option number is rejected by the OS; that path warns,
             # which is correct behaviour but noise in the test output.
-            mock.patch.object(dashboard, "diag"),
+            mock.patch.object(dashboard.runtime_io, "diag"),
         ):
             httpd = dashboard.LoopbackHTTPServer(
                 ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
@@ -641,7 +641,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             mock.patch.object(dashboard, "LoopbackHTTPServer", CapturingServer),
             mock.patch.object(dashboard, "write_state"),
             mock.patch.object(dashboard, "remove_state"),
-            mock.patch.object(dashboard, "diag"),
+            mock.patch.object(dashboard.runtime_io, "diag"),
             self.assertRaises(StopServingError),
         ):
             dashboard.main()

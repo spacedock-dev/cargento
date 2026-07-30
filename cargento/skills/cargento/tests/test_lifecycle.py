@@ -389,7 +389,7 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             ),
             mock.patch.object(dashboard, "spawn_detached", return_value=spawned) as spawn,
             mock.patch.object(dashboard, "await_spawned", return_value=("started", 0)),
-            mock.patch.object(dashboard, "diag"),
+            mock.patch.object(dashboard.runtime_io, "diag"),
             self.assertRaises(SystemExit) as caught,
         ):
             dashboard.main()
@@ -449,7 +449,7 @@ class CargentoServerTest(PageJsHarness):
             blocker = os.path.join(tmp, "home")
             Path(blocker).write_text("not a directory", encoding="utf-8")
             with mock.patch.dict(os.environ, {"CARGENTO_HOME": blocker}):
-                with mock.patch.object(dashboard, "diag") as diag:
+                with mock.patch.object(dashboard.runtime_io, "diag") as diag:
                     dashboard.write_state(4553)
                 self.assertTrue(diag.called)
 
@@ -636,7 +636,7 @@ class CargentoServerTest(PageJsHarness):
                     return_value={"state": state, "port": 4553, "pid": 1},
                 ),
                 mock.patch.object(sys, "argv", ["server.py", "--status"]),
-                mock.patch.object(dashboard, "diag"),
+                mock.patch.object(dashboard.runtime_io, "diag"),
                 self.assertRaises(SystemExit) as caught,
             ):
                 dashboard.main()
@@ -863,7 +863,7 @@ class CargentoServerTest(PageJsHarness):
                 with (
                     mock.patch.dict(os.environ, {"CARGENTO_HOME": home}),
                     mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
-                    mock.patch.object(dashboard, "diag") as diag,
+                    mock.patch.object(dashboard.runtime_io, "diag") as diag,
                     mock.patch.object(dashboard, "LoopbackHTTPServer") as bind,
                     mock.patch.object(dashboard, "fork_daemon") as fork,
                     mock.patch.object(dashboard, "spawn_detached") as spawn,
@@ -910,13 +910,13 @@ class CargentoServerTest(PageJsHarness):
         with (
             mock.patch.object(dashboard, "stop_instance", return_value=("nope", 1)) as stop,
             mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--stop"]),
-            mock.patch.object(dashboard, "diag") as diag,
+            mock.patch.object(dashboard.runtime_io, "diag") as diag,
             self.assertRaises(SystemExit) as caught,
         ):
             dashboard.main()
         self.assertEqual(1, caught.exception.code)
         stop.assert_called_once_with(4553)
-        diag.assert_called_once_with("nope")
+        diag.assert_called_once_with("nope", print)
 
     def test_fork_daemon_returns_parent_role_without_touching_setsid(self) -> None:
         calls: list[str] = []
@@ -1027,7 +1027,7 @@ class CargentoServerTest(PageJsHarness):
             with (
                 mock.patch.dict(os.environ, {"CARGENTO_HOME": not_a_dir}),
                 mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
-                mock.patch.object(dashboard, "diag") as diag,
+                mock.patch.object(dashboard.runtime_io, "diag") as diag,
                 # A traceback here would escape before either of these is used.
                 mock.patch.object(dashboard, "LoopbackHTTPServer") as bind,
                 mock.patch.object(dashboard, "fork_daemon") as fork,

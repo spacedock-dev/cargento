@@ -40,23 +40,17 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from cargento_runtime import config as runtime_config
+from cargento_runtime import io as runtime_io
+from cargento_runtime import records
 from cargento_runtime import state as runtime_state
 from cargento_runtime.web import page as frontend_page
 
-try:
-    import sqlite3
-except ImportError as exc:  # pragma: no cover — depends on the interpreter build
-    # ``sqlite3`` is an optional stdlib module: minimal and musl-based builds
-    # (Alpine images, hand-rolled interpreters) ship without the extension. A
-    # bare ``import`` here would take the whole dashboard down, including the
-    # five harnesses that need no database at all.
-    SQLITE_IMPORT_ERROR: str | None = str(exc)
-else:
-    SQLITE_IMPORT_ERROR = None
+sqlite3 = runtime_io.sqlite_module
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
@@ -215,6 +209,9 @@ def _legacy_runtime() -> tuple[runtime_config.RuntimeConfig, runtime_state.Runti
     )
     config = replace(
         config,
+        store_roots=MappingProxyType(
+            {key: tuple(store_roots(key, aliases[key])) for key in aliases}
+        ),
         rate_window_sec=RATE_WINDOW_SEC,
         working_threshold_sec=WORKING_THRESHOLD_SEC,
         turn_gap_reset_sec=TURN_GAP_RESET_SEC,
@@ -295,25 +292,6 @@ def _install_legacy_state(state: runtime_state.RuntimeState) -> None:
     _collect_memo = state.collect_memo
 
 
-def glob_stores(key: str, primary: str, *pattern: str) -> list[str]:
-    """``glob_under`` across every candidate root for a store.
-
-    Collectors already key sessions by id and keep the newest file per key, so
-    scanning more than one root merges naturally instead of double-counting.
-    """
-    return [path for root in store_roots(key, primary) for path in glob_under(root, *pattern)]
-
-
-def any_store_dir(key: str, primary: str, *parts: str) -> bool:
-    """Whether any candidate root for a store contains ``parts`` as a directory."""
-    return any(os.path.isdir(os.path.join(root, *parts)) for root in store_roots(key, primary))
-
-
-def existing_stores(key: str, primary: str) -> list[str]:
-    """Candidate paths for a store that actually exist as files."""
-    return [path for path in store_roots(key, primary) if os.path.isfile(path)]
-
-
 def encoded_home_prefix(home: str) -> str:
     """Reproduce how Claude encodes ``home`` into a ``projects/`` directory name.
 
@@ -387,13 +365,6 @@ def bounded_put(cache: dict[Any, Any], key: Any, value: Any) -> None:
     Callers must hold the lock that protects ``cache``.
     """
     runtime_state.bounded_put(cache, key, value, limit=MAX_CACHE_ENTRIES)
-
-
-def notification_text(value: Any, limit: int) -> str:
-    """Return argv-safe single-line notification text."""
-    text = str(value or "").encode("utf-8", "replace").decode("utf-8")
-    text = re.sub(r"[\x00-\x1f\x7f]+", " ", text)
-    return text[:limit]
 
 
 def normalized_notification_type(value: Any) -> str:
@@ -480,32 +451,6 @@ def project_from_cwd(cwd: str, home: str | None = None, windows: bool | None = N
     return "/".join(parts[-2:])
 
 
-def parse_ts(ts: Any) -> float | None:
-    try:
-        return datetime.fromisoformat(ts).timestamp()
-    except (ValueError, TypeError):
-        return None
-
-
-def parse_utc_sql(v: Any) -> float:
-    """SQL TIMESTAMP text (e.g. goose datetime('now'): "YYYY-MM-DD HH:MM:SS",
-    stored UTC without offset) -> epoch."""
-    try:
-        dt = datetime.fromisoformat(str(v).replace(" ", "T"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        return dt.timestamp()
-    except (ValueError, TypeError):
-        return 0
-
-
-def norm_epoch(v: Any) -> float:
-    """Numeric timestamp in unknown unit (s or ms) -> epoch seconds."""
-    if not isinstance(v, (int, float)) or v <= 0:
-        return 0
-    return v / 1000 if v > 1e12 else v
-
-
 def fmt_duration(seconds: float | None) -> str:
     if seconds is None or seconds < 0:
         return "–"
@@ -517,148 +462,6 @@ def fmt_duration(seconds: float | None) -> str:
     if seconds < 86400:
         return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
     return f"{seconds // 86400}d {(seconds % 86400) // 3600}h"
-
-
-def read_tail(path: str) -> list[str]:
-    try:
-        size = os.path.getsize(path)
-        with open(path, "rb") as f:
-            truncated = False
-            if size > TAIL_BYTES:
-                # Only drop the first line when the seek actually lands
-                # mid-record: if the byte before the window is a newline,
-                # the window starts on a complete record.
-                f.seek(size - TAIL_BYTES - 1)
-                truncated = f.read(1) != b"\n"
-            data = f.read().decode("utf-8", "replace")
-    except OSError:
-        return []
-    lines = data.split("\n")
-    if truncated:
-        lines = lines[1:]
-    return lines
-
-
-def reverse_lines(
-    path: str,
-    end_pos: int | None = None,
-    *,
-    max_bytes: int | None = None,
-    contains: bytes | None = None,
-) -> Iterator[bytes]:
-    """Yield complete lines from ``path`` newest-first, reading fixed chunks.
-
-    Deliberately not ``mmap``, which is faster but unsafe on a file a running
-    agent owns. If the writer truncates or rotates a transcript while a region
-    of it is mapped, POSIX delivers SIGBUS on the next access — uncatchable,
-    it kills the process — and Windows instead refuses the writer's truncate,
-    so the reader breaks the agent. A chunked read has neither failure mode:
-    the worst case is a short read, which ends the scan.
-
-    ``end_pos`` scans only what precedes that offset, exclusively — but a line
-    that *ends* exactly at ``end_pos`` is still yielded. That boundary is not
-    arbitrary: ``scan_turns`` resumes its forward pass at the same offset, and
-    a forward read starting on a newline never sees the record that newline
-    terminates. Dropping it here would lose that record entirely, which is what
-    the previous mmap implementation did.
-
-    ``max_bytes`` bounds how far back to walk. When the walk stops early the
-    oldest line is dropped, since it is probably a fragment rather than a whole
-    record.
-
-    ``contains`` skips whole chunks that cannot hold a match, avoiding the
-    per-line split for them. The line scan, not the I/O, is what costs: on a
-    38 MB transcript whose only match is at the very start (the worst case)
-    this takes the backward walk from 44 ms to 20 ms, against 16 ms for the
-    mmap version it replaces. It is a coarse filter — callers must still test
-    each line they receive.
-
-    Empty lines are yielded as-is — callers already skip anything that is not a
-    JSON object.
-    """
-    try:
-        with open(path, "rb") as source:
-            size = os.fstat(source.fileno()).st_size
-            stop = size if end_pos is None else min(end_pos, size)
-            floor = 0 if max_bytes is None else max(0, stop - max_bytes)
-            pos = stop
-            # Fragments of a line whose start lies further back, newest first.
-            # Kept as a list and joined once: concatenating bytes per chunk made
-            # a single very long record quadratic (a 64 MB one-line transcript
-            # took 0.9 s), and large tool results do produce such records.
-            carry: list[bytes] = []
-            while pos > floor:
-                read_size = min(REVERSE_CHUNK_BYTES, pos - floor)
-                pos -= read_size
-                source.seek(pos)
-                chunk = source.read(read_size)
-                if len(chunk) < read_size:
-                    return  # truncated underneath us — stop rather than misparse
-                last_newline = chunk.rfind(b"\n")
-                if last_newline < 0:
-                    carry.append(chunk)  # no line boundary in this window yet
-                    continue
-                carry.append(chunk[last_newline + 1 :])
-                completed = b"".join(reversed(carry))
-                # Everything before the final newline splits cleanly; its first
-                # element is the next line's tail and becomes the new carry.
-                parts = chunk[:last_newline].split(b"\n")
-                carry = [parts[0]]
-                if contains is None or contains in chunk or contains in completed:
-                    yield completed
-                    yield from reversed(parts[1:])
-            # Emit the first line even when empty (a file starting with a
-            # newline has one), but only if the walk actually reached the start
-            # of the file — otherwise it is a fragment, not a record.
-            if floor == 0 and stop > 0:
-                yield b"".join(reversed(carry))
-    except OSError:
-        return
-
-
-def extract_text(v: Any, depth: int = 0) -> str:
-    """Best-effort text from harness message payloads whose exact shape
-    varies (string, list of parts, nested dicts)."""
-    if depth > 4 or v is None:
-        return ""
-    if isinstance(v, str):
-        return v
-    if isinstance(v, list):
-        parts = (extract_text(x, depth + 1) for x in v)
-        return " ".join(p for p in parts if p)[:2000]
-    if isinstance(v, dict):
-        for k in ("text", "content", "message", "prompt", "value"):
-            if k in v:
-                t = extract_text(v[k], depth + 1)
-                if t:
-                    return t
-    return ""
-
-
-def as_dict(value: Any) -> dict[str, Any]:
-    """``value`` if it is a dict, else an empty dict.
-
-    Every harness payload is untyped JSON read off disk, and the idiom
-    ``record.get("x") or {}`` is not safe: any truthy non-dict (a string, a
-    number, a list) passes the ``or`` and the following ``.get()`` raises,
-    taking the whole collector down for that refresh. Same for iteration —
-    see ``as_list``.
-    """
-    return value if isinstance(value, dict) else {}
-
-
-def as_list(value: Any) -> list[Any]:
-    """``value`` if it is a list, else an empty list."""
-    return value if isinstance(value, list) else []
-
-
-def message_dict(record: Any) -> dict[str, Any]:
-    """The ``message`` object of a transcript record, or an empty dict."""
-    return as_dict(as_dict(record).get("message"))
-
-
-def alnum(s: Any) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
 
 
 def normalize_host(value: str) -> str:
@@ -750,7 +553,10 @@ class LoopbackHTTPServer(ThreadingHTTPServer):
                 # Bind anyway, but say so: without this option the port can be
                 # hijacked, and silently dropping the guarantee is worse than
                 # a noisy one-line warning at startup.
-                diag(f"Cargento: could not claim the port exclusively ({exc}); continuing")
+                runtime_io.diag(
+                    f"Cargento: could not claim the port exclusively ({exc}); continuing",
+                    print,
+                )
         super().server_bind()
 
 
@@ -810,42 +616,6 @@ def assign_display_ids(sessions: list[dict[str, Any]]) -> None:
 _store_errors = _LEGACY_STATE.store_errors
 
 
-def record_store_error(path: str, exc: BaseException) -> None:
-    """Remember why a store could not be read, for ``--diagnose``.
-
-    Collectors swallow these so one broken store cannot take the dashboard
-    down. Without recording them, a corrupt or locked database is reported as
-    a healthy store holding no sessions — precisely the confusion --diagnose
-    exists to remove.
-    """
-    with _cache_lock:
-        bounded_put(_store_errors, path, f"{type(exc).__name__}: {exc}")
-
-
-def sqlite_available() -> bool:
-    """Whether the optional ``sqlite3`` extension module was importable."""
-    return SQLITE_IMPORT_ERROR is None
-
-
-def diag(message: str) -> None:
-    """Write a diagnostic line without ever raising.
-
-    Diagnostics carry harness-derived text (tool names, session titles, error
-    strings) and the skill is normally started with stdout redirected to a log,
-    where the stream uses the locale encoding rather than the console's Unicode
-    path — so text outside that encoding raises UnicodeEncodeError. This is
-    called from inside the collectors' own exception handler, where a second
-    exception would escape it and take down the refresh it was reporting on.
-    """
-    try:
-        print(message)
-    except (OSError, ValueError):
-        # Retry ASCII-safe; if even that fails (stdout closed or detached) a
-        # diagnostic must still never be fatal.
-        with contextlib.suppress(OSError, ValueError):
-            print(message.encode("ascii", "backslashreplace").decode("ascii"))
-
-
 def age(now: float, timestamp: float) -> float | None:
     """Seconds since ``timestamp``; ``None`` when the timestamp is implausible.
 
@@ -894,53 +664,6 @@ def newest_plausible(now: float, timestamps: Iterable[float]) -> float:
     return max((t for t in timestamps if age(now, t) is not None), default=0.0)
 
 
-def glob_under(root: str, *pattern: str) -> list[str]:
-    """Glob ``pattern`` beneath a literal directory ``root``.
-
-    ``root`` is a real path, not a pattern. Interpolating it into a glob makes
-    any metacharacter in it (``[``, ``*``, ``?``) match nothing at all, so a
-    home directory such as ``/Users/A [Contractor]`` silently hides every
-    session — the failure is total and looks identical to "no sessions".
-
-    Results are sorted because ``glob()`` order is unspecified: several callers
-    keep the newest file per session, and an unsorted list makes an equal-mtime
-    tie resolve differently from one platform (or one call) to the next.
-    """
-    return sorted(glob.glob(os.path.join(glob.escape(root), *pattern)))
-
-
-def sqlite_ro_uri(path: str, *, immutable: bool = False, windows: bool | None = None) -> str:
-    """Return a read-only SQLite URI for a filesystem path.
-
-    Interpolating a path straight into ``file:{path}?mode=ro`` is wrong on every
-    platform: SQLite percent-decodes the path portion, so a store path
-    containing ``%`` becomes unopenable, and ``?``/``#`` terminate the path
-    early. On Windows a ``C:\\dir`` path is not a valid URI path at all —
-    SQLite documents that backslashes must become forward slashes and that a
-    drive letter is only recognized in the form ``/X:/``.
-
-    ``windows`` selects the path flavor and defaults to the running platform;
-    tests pass it explicitly so both branches are exercised everywhere.
-    """
-    if windows is None:
-        windows = os.name == "nt"
-    absolute = (ntpath if windows else posixpath).abspath(path)
-    if windows:
-        absolute = absolute.replace("\\", "/")
-        if not absolute.startswith("/"):
-            absolute = "/" + absolute  # C:/dir -> /C:/dir, SQLite's drive form
-    # "/" stays a separator and ":" must survive for the drive form; everything
-    # else SQLite would reinterpret (%, ?, #) gets escaped.
-    quoted = quote(absolute, safe="/:")
-    if quoted.startswith("//") and not quoted.startswith("///"):
-        # "//server/share" (UNC) or a POSIX "//dir" would parse as a URI
-        # authority, which SQLite rejects unless it is empty or "localhost".
-        # Two more slashes make the authority explicitly empty.
-        quoted = "//" + quoted
-    query = "?mode=ro&immutable=1" if immutable else "?mode=ro"
-    return f"file:{quoted}{query}"
-
-
 # ---------------------------------------------------------------------------
 # First-line metadata cache (JSONL harnesses write immutable line-1 metadata)
 
@@ -954,12 +677,11 @@ def first_line_meta(path: str, parse: Callable[[dict[str, Any]], dict[str, Any]]
         m = _meta_cache.get(path)
     if m is not None:
         return m
-    try:
-        with open(path, "rb") as f:
-            d = json.loads(f.readline(FIRST_LINE_JSON_CAP_BYTES))
-    except (OSError, ValueError):
+    config, _ = _legacy_runtime()
+    d = runtime_io.read_first_json(config, path)
+    if not d:
         return {}
-    m = parse(d if isinstance(d, dict) else {})
+    m = parse(d)
     with _cache_lock:
         cached = _meta_cache.get(path)
         if cached is not None:
@@ -978,7 +700,9 @@ def codex_meta(path: str) -> dict[str, Any]:
         p = d.get("payload")
         if not isinstance(p, dict):
             p = {}
-        spawn = as_dict(as_dict(as_dict(p.get("source")).get("subagent")).get("thread_spawn"))
+        spawn = records.as_dict(
+            records.as_dict(records.as_dict(p.get("source")).get("subagent")).get("thread_spawn")
+        )
         nickname = p.get("agent_nickname")
         agent_path = p.get("agent_path")
         label = (
@@ -1024,8 +748,8 @@ def copilot_meta(path: str) -> dict[str, Any]:
     data.context.cwd."""
 
     def parse(d: dict[str, Any]) -> dict[str, Any]:
-        data = as_dict(d.get("data"))
-        ctx = as_dict(data.get("context"))
+        data = records.as_dict(d.get("data"))
+        ctx = records.as_dict(data.get("context"))
         return (
             {"cwd": ctx.get("cwd") or data.get("cwd")} if d.get("type") == "session.start" else {}
         )
@@ -1171,7 +895,8 @@ def claude_session_title(path: str) -> str | None:
     title = None
     # The chunk filter does the heavy lifting; the per-line test below only
     # re-checks the few lines inside a chunk that had a hit.
-    for raw in reverse_lines(path, contains=b'"aiTitle"'):
+    config, _ = _legacy_runtime()
+    for raw in runtime_io.reverse_lines(config, path, contains=b'"aiTitle"'):
         if b'"aiTitle"' not in raw:
             continue
         try:
@@ -1197,10 +922,12 @@ def claude_session_title(path: str) -> str | None:
                         continue
                     if not isinstance(record, dict):
                         continue
-                    signal = _turn_signal(record, "claude")
+                    signal = records._turn_signal(record, "claude")  # noqa: SLF001
                     if not signal or signal[0] != "prompt":
                         continue
-                    prompt = extract_text(message_dict(record).get("content")).strip()
+                    prompt = records.extract_text(
+                        records.message_dict(record).get("content")
+                    ).strip()
                     title = prompt_title(prompt)
                     break
         except OSError:
@@ -1225,7 +952,8 @@ def claude_last_user_event(path: str) -> str | None:
 
     marker = None
     # Superset filter: a user record must contain the literal "user".
-    for raw in reverse_lines(path, contains=b'"user"'):
+    config, _ = _legacy_runtime()
+    for raw in runtime_io.reverse_lines(config, path, contains=b'"user"'):
         if not raw.startswith(b"{") or b'"user"' not in raw:
             continue
         try:
@@ -1259,7 +987,8 @@ def analyze_transcript(path: str) -> dict[str, Any]:
         "last_user_event": claude_last_user_event(path),
     }
     pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts"} for INPUT_TOOLS only
-    for line in read_tail(path):
+    config, _ = _legacy_runtime()
+    for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
         try:
@@ -1267,23 +996,23 @@ def analyze_transcript(path: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             continue
         t = d.get("type")
-        ep = parse_ts(d.get("timestamp") or "")
+        ep = records.parse_ts(d.get("timestamp") or "")
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
         if t == "last-prompt":
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":
-            msg = message_dict(d)
-            usage = as_dict(msg.get("usage"))
+            msg = records.message_dict(d)
+            usage = records.as_dict(msg.get("usage"))
             if ep and usage.get("output_tokens"):
                 info["usage_events"].append((ep, usage["output_tokens"]))
-            for c in as_list(msg.get("content")):
+            for c in records.as_list(msg.get("content")):
                 if isinstance(c, dict) and c.get("type") == "tool_use":
                     info["last_tool"] = c.get("name")
                     if c.get("name") in INPUT_TOOLS:
                         pending[c.get("id")] = {"name": c.get("name"), "ts": ep}
         elif t == "user":
-            for c in as_list(message_dict(d).get("content")):
+            for c in records.as_list(records.message_dict(d).get("content")):
                 if isinstance(c, dict) and c.get("type") == "tool_result":
                     pending.pop(c.get("tool_use_id"), None)
     if pending:
@@ -1311,26 +1040,25 @@ def claude_session_cwd(path: str) -> str:
     if hit is not None:
         return hit
     cwd = ""
+    config, _ = _legacy_runtime()
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for _ in range(_CWD_SCAN_LINES):
-                # Bounded like codex_meta's head read: one pasted prompt is
-                # enough to make an unbounded readline pull megabytes into
-                # memory before the substring test can reject the line.
-                line = f.readline(CLAUDE_CWD_LINE_BYTES)
-                if not line:
-                    break
-                if '"cwd"' not in line:
-                    continue  # cheap reject before paying for a JSON parse
-                try:
-                    d = json.loads(line)
-                except ValueError:
-                    continue
-                value = d.get("cwd") if isinstance(d, dict) else None
-                if isinstance(value, str) and value:
-                    cwd = value
-                    break
-    except OSError:
+        lines = runtime_io.iter_bounded_text_lines(
+            path,
+            max_lines=config.claude_cwd_scan_lines,
+            per_line_bytes=config.claude_cwd_line_bytes,
+        )
+        for line in lines:
+            if '"cwd"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            value = d.get("cwd") if isinstance(d, dict) else None
+            if isinstance(value, str) and value:
+                cwd = value
+                break
+    except OSError:  # pragma: no cover - iterator handles filesystem failures
         return ""
     if cwd:
         with _cache_lock:
@@ -1362,18 +1090,19 @@ def analyze_codex_transcript(path: str) -> dict[str, Any]:
         "last_tool": None,
         "last_event_ts": 0,
     }
-    for line in read_tail(path):
+    config, _ = _legacy_runtime()
+    for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
             continue
-        ep = parse_ts(d.get("timestamp") or "")
+        ep = records.parse_ts(d.get("timestamp") or "")
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
         t = d.get("type")
-        p = as_dict(d.get("payload"))
+        p = records.as_dict(d.get("payload"))
         if t == "event_msg":
             pt = p.get("type")
             if pt == "user_message":
@@ -1382,49 +1111,14 @@ def analyze_codex_transcript(path: str) -> dict[str, Any]:
                 info["last_prompt"] = msg
                 info["title"] = msg.split("\n")[0][:80] or None
             elif pt == "token_count":
-                out = as_dict(as_dict(p.get("info")).get("last_token_usage")).get("output_tokens")
+                out = records.as_dict(records.as_dict(p.get("info")).get("last_token_usage")).get(
+                    "output_tokens"
+                )
                 if ep and out:
                     info["usage_events"].append((ep, out))
         elif t == "response_item" and p.get("type") in ("function_call", "custom_tool_call"):
             info["last_tool"] = p.get("name")
     return info
-
-
-def record_fingerprint(record: Any) -> bytes:
-    """Stable bounded-size identity for repeated transcript records."""
-    raw = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-        "utf-8", "replace"
-    )
-    return hashlib.blake2b(raw, digest_size=16).digest()
-
-
-def gemini_records(record: Any) -> tuple[Any, ...]:
-    """Expand a Gemini control record into its contained messages."""
-    snapshot = record.get("$set")
-    messages = snapshot.get("messages") if isinstance(snapshot, dict) else None
-    if isinstance(messages, list):
-        return tuple(message for message in messages if isinstance(message, dict))
-    return (record,)
-
-
-def incremental_gemini_records(record: Any, state: dict[str, Any]) -> tuple[Any, ...]:
-    """Return only messages added since the prior cumulative $set snapshot."""
-    snapshot = record.get("$set")
-    messages = snapshot.get("messages") if isinstance(snapshot, dict) else None
-    if not isinstance(messages, list):
-        return (record,)
-    messages = tuple(message for message in messages if isinstance(message, dict))
-    previous_count = state["gemini_snapshot_count"]
-    start = 0
-    if (
-        previous_count
-        and len(messages) >= previous_count
-        and record_fingerprint(messages[previous_count - 1]) == state["gemini_snapshot_tail"]
-    ):
-        start = previous_count
-    state["gemini_snapshot_count"] = len(messages)
-    state["gemini_snapshot_tail"] = record_fingerprint(messages[-1]) if messages else None
-    return messages[start:]
 
 
 def analyze_gemini_transcript(path: str) -> dict[str, Any]:
@@ -1438,24 +1132,25 @@ def analyze_gemini_transcript(path: str) -> dict[str, Any]:
         "last_event_ts": 0,
     }
     seen = set()
-    for line in read_tail(path):
+    config, _ = _legacy_runtime()
+    for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
             continue
-        for message in gemini_records(d):
-            fingerprint = record_fingerprint(message)
+        for message in records.gemini_records(d):
+            fingerprint = records.record_fingerprint(message)
             if fingerprint in seen:
                 continue
             seen.add(fingerprint)
-            ep = parse_ts(message.get("timestamp") or "")
+            ep = records.parse_ts(message.get("timestamp") or "")
             if ep:
                 info["last_event_ts"] = max(info["last_event_ts"], ep)
             t = message.get("type")
             if t == "user":
-                txt = extract_text(message.get("content")).strip()
+                txt = records.extract_text(message.get("content")).strip()
                 if txt:
                     info["last_prompt"] = txt
                     info["title"] = txt.split("\n")[0][:80]
@@ -1463,7 +1158,7 @@ def analyze_gemini_transcript(path: str) -> dict[str, Any]:
                 toks = message.get("tokens") or {}
                 if ep and isinstance(toks, dict) and toks.get("output"):
                     info["usage_events"].append((ep, toks["output"]))
-                for tc in as_list(message.get("toolCalls")):
+                for tc in records.as_list(message.get("toolCalls")):
                     if isinstance(tc, dict) and tc.get("name"):
                         info["last_tool"] = tc.get("name")
     return info
@@ -1482,23 +1177,24 @@ def analyze_copilot_events(path: str) -> dict[str, Any]:
         "cwd": None,
         "pending_agents": {},  # started-but-not-completed subagents
     }
-    for line in read_tail(path):
+    config, _ = _legacy_runtime()
+    for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
             continue
-        ep = parse_ts(d.get("timestamp") or "")
+        ep = records.parse_ts(d.get("timestamp") or "")
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
         t = d.get("type")
-        data = as_dict(d.get("data"))
+        data = records.as_dict(d.get("data"))
         if t == "session.start":
-            ctx = as_dict(data.get("context"))
+            ctx = records.as_dict(data.get("context"))
             info["cwd"] = ctx.get("cwd") or data.get("cwd") or info["cwd"]
         elif t == "user.message":
-            txt = extract_text(data).strip()
+            txt = records.extract_text(data).strip()
             if txt:
                 info["last_prompt"] = txt
                 info["title"] = txt.split("\n")[0][:80]
@@ -1535,25 +1231,26 @@ def analyze_droid_transcript(path: str) -> dict[str, Any]:
         "last_tool": None,
         "last_event_ts": 0,
     }
-    for line in read_tail(path):
+    config, _ = _legacy_runtime()
+    for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
             continue
-        ep = parse_ts(d.get("timestamp") or "")
+        ep = records.parse_ts(d.get("timestamp") or "")
         if ep:
             info["last_event_ts"] = max(info["last_event_ts"], ep)
         if d.get("type") != "message":
             continue
-        msg = message_dict(d)
+        msg = records.message_dict(d)
         content = msg.get("content")
         blocks = content if isinstance(content, list) else []
         if msg.get("role") == "user":
             if any(isinstance(c, dict) and c.get("type") == "tool_result" for c in blocks):
                 continue
-            txt = extract_text(content).strip()
+            txt = records.extract_text(content).strip()
             if txt:
                 info["last_prompt"] = txt
                 info["title"] = txt.split("\n")[0][:80]
@@ -1582,7 +1279,7 @@ def _pi_projection(record: Any) -> dict[str, Any] | None:
         entry_id = None
     if not isinstance(parent_id, str):
         parent_id = None
-    message = message_dict(record)
+    message = records.message_dict(record)
     role = message.get("role")
     prompt = None
     tool = None
@@ -1590,16 +1287,16 @@ def _pi_projection(record: Any) -> dict[str, Any] | None:
     if kind == "message":
         usage_source = message.get("usage")
         if role == "user":
-            text = extract_text(message.get("content")).strip()
+            text = records.extract_text(message.get("content")).strip()
             prompt = text or None
         if role == "assistant":
-            for block in as_list(message.get("content")):
+            for block in records.as_list(message.get("content")):
                 if not isinstance(block, dict) or block.get("type") != "toolCall":
                     continue
                 tool_name = block.get("name")
                 if isinstance(tool_name, str) and tool_name:
                     tool = tool_name
-    output = as_dict(usage_source).get("output")
+    output = records.as_dict(usage_source).get("output")
     usage = output if isinstance(output, (int, float)) and not isinstance(output, bool) else None
     name: Any = _PI_NO_NAME
     if kind == "session_info":
@@ -1608,7 +1305,7 @@ def _pi_projection(record: Any) -> dict[str, Any] | None:
     return {
         "id": entry_id,
         "parent_id": parent_id,
-        "timestamp": parse_ts(record.get("timestamp") or "") or 0,
+        "timestamp": records.parse_ts(record.get("timestamp") or "") or 0,
         "prompt": prompt,
         "usage": usage,
         "tool": tool,
@@ -1641,7 +1338,13 @@ def _pi_complete_end(path: str, size: int) -> int:
 
 def _pi_latest_name(path: str, end_pos: int) -> Any:
     """The newest global Pi session name, including an explicit clear."""
-    for raw in reverse_lines(path, end_pos, contains=b'"session_info"'):
+    config, _ = _legacy_runtime()
+    for raw in runtime_io.reverse_lines(
+        config,
+        path,
+        end_pos,
+        contains=b'"session_info"',
+    ):
         if not raw.startswith(b"{") or b'"session_info"' not in raw:
             continue
         try:
@@ -1667,7 +1370,8 @@ def _pi_last_complete_branch(path: str, end_pos: int) -> list[dict[str, Any]]:
     """Find the newest root-connected path after the latest candidate breaks."""
     entries: dict[str, dict[str, Any]] = {}
     newest: list[dict[str, Any]] = []
-    for raw in reverse_lines(path, end_pos):
+    config, _ = _legacy_runtime()
+    for raw in runtime_io.reverse_lines(config, path, end_pos):
         if not raw.startswith(b"{"):
             continue
         try:
@@ -1702,7 +1406,8 @@ def _pi_rebuild(path: str, end_pos: int) -> dict[str, Any]:
     """Reconstruct the live Pi branch newest-first without retaining payloads."""
     reverse_path: list[dict[str, Any]] = []
     wanted: str | None = None
-    for raw in reverse_lines(path, end_pos):
+    config, _ = _legacy_runtime()
+    for raw in runtime_io.reverse_lines(config, path, end_pos):
         if not raw.startswith(b"{"):
             continue
         try:
@@ -1848,70 +1553,9 @@ _turn_scan = _LEGACY_STATE.turn_scan
 _scan_lock = _LEGACY_STATE.scanner_lock
 
 
-def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
-    """Classify a transcript record for turn tracking.
-
-    Returns ("prompt"|"start"|"end", epoch_override|None) or None.
-    "prompt" starts a turn and closes the previous one at the last event
-    before it; "start"/"end" are explicit turn-span markers."""
-    t = d.get("type")
-    if harness == "codex":
-        if t != "event_msg":
-            return None
-        p = as_dict(d.get("payload"))
-        pt = p.get("type")
-        if pt == "task_started":
-            return ("start", p.get("started_at"))
-        if pt in ("task_complete", "turn_aborted"):
-            return ("end", None)
-        return None
-    if harness == "copilot":
-        if t == "user.message":
-            return ("prompt", None)
-        if t in ("session.task_complete", "session.shutdown", "abort"):
-            return ("end", None)
-        return None
-    if harness == "gemini":
-        if t != "user":
-            return None
-        content = d.get("content")
-        if isinstance(content, list) and any(
-            isinstance(c, dict) and "functionResponse" in c for c in content
-        ):
-            return None  # tool response recorded as a user part, not a prompt
-        return ("prompt", None)
-    if harness == "droid":
-        if t != "message":
-            return None
-        msg = message_dict(d)
-        if msg.get("role") != "user":
-            return None
-        content = msg.get("content")
-        if isinstance(content, list) and any(
-            isinstance(c, dict) and c.get("type") == "tool_result" for c in content
-        ):
-            return None
-        return ("prompt", None)
-    # claude
-    if t != "user" or d.get("isMeta"):
-        return None
-    content = message_dict(d).get("content")
-    if isinstance(content, list) and any(
-        isinstance(c, dict) and c.get("type") == "tool_result" for c in content
-    ):
-        return None
-    # Local command output/caveat records are user-typed but are not prompts —
-    # nothing generates in response to them, so they must not start a turn.
-    if isinstance(content, str) and content.lstrip().startswith(
-        ("<local-command-stdout>", "<local-command-caveat>")
-    ):
-        return None
-    return ("prompt", None)
-
-
 def _apply_turn_record(st: dict[str, Any], record: Any, harness: str) -> None:
     """Apply one chronological transcript record to incremental turn state."""
-    ep = parse_ts(record.get("timestamp") or "")
+    ep = records.parse_ts(record.get("timestamp") or "")
     if not ep:
         return
     # A quiet stretch longer than TURN_GAP_RESET_SEC inside a turn means the
@@ -1923,7 +1567,7 @@ def _apply_turn_record(st: dict[str, Any], record: Any, harness: str) -> None:
             st["durations"].append(st["prev_ts"] - st["turn_start"])
         st["turn_start"] = ep
         st["last_start"] = ep
-    sig = _turn_signal(record, harness)
+    sig = records._turn_signal(record, harness)  # noqa: SLF001
     if sig:
         kind, override = sig
         if kind == "end":
@@ -1938,7 +1582,7 @@ def _apply_turn_record(st: dict[str, Any], record: Any, harness: str) -> None:
                 and st["prev_ts"] > st["turn_start"]
             ):
                 st["durations"].append(st["prev_ts"] - st["turn_start"])
-            start = norm_epoch(override) or ep
+            start = records.norm_epoch(override) or ep
             st["turn_start"] = start
             st["last_start"] = start
     st["prev_ts"] = ep
@@ -1953,7 +1597,8 @@ def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any
         return context
     active_decided = False
     later_ts: float | None = None
-    for raw in reverse_lines(path, end_pos):
+    config, _ = _legacy_runtime()
+    for raw in runtime_io.reverse_lines(config, path, end_pos):
         if not raw.startswith(b"{"):
             continue
         try:
@@ -1962,9 +1607,11 @@ def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any
             continue
         if not isinstance(decoded, dict):
             continue
-        records = reversed(gemini_records(decoded)) if harness == "gemini" else (decoded,)
-        for record in records:
-            ep = parse_ts(record.get("timestamp") or "")
+        transcript_records = (
+            reversed(records.gemini_records(decoded)) if harness == "gemini" else (decoded,)
+        )
+        for record in transcript_records:
+            ep = records.parse_ts(record.get("timestamp") or "")
             if not ep:
                 continue
             # Walking backward: `later_ts` is the timestamp of the record that
@@ -1978,16 +1625,16 @@ def _latest_turn_context(path: str, end_pos: int, harness: str) -> dict[str, Any
             later_ts = ep
             if context["prev_ts"] is None:
                 context["prev_ts"] = ep
-            sig = _turn_signal(record, harness)
+            sig = records._turn_signal(record, harness)  # noqa: SLF001
             if not sig:
                 continue
             kind, override = sig
             if not active_decided:
                 active_decided = True
                 if kind != "end":
-                    context["turn_start"] = norm_epoch(override) or ep
+                    context["turn_start"] = records.norm_epoch(override) or ep
             if kind != "end":
-                context["last_start"] = norm_epoch(override) or ep
+                context["last_start"] = records.norm_epoch(override) or ep
                 return context
     return context
 
@@ -2042,10 +1689,12 @@ def scan_turns(path: str, harness: str) -> dict[str, Any] | None:
                 d = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            records = incremental_gemini_records(d, st) if harness == "gemini" else (d,)
-            for record in records:
+            transcript_records = (
+                records.incremental_gemini_records(d, st) if harness == "gemini" else (d,)
+            )
+            for record in transcript_records:
                 if harness == "gemini":
-                    fingerprint = record_fingerprint(record)
+                    fingerprint = records.record_fingerprint(record)
                     if fingerprint in st["gemini_seen"]:
                         continue
                     if len(st["gemini_seen"]) >= GEMINI_SEEN_ENTRIES:
@@ -2105,7 +1754,8 @@ def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[s
 def load_tasks() -> dict[str, list[dict[str, Any]]]:
     """session prefix -> list of task dicts."""
     by_session: dict[str, list[dict[str, Any]]] = {}
-    for fp in glob_stores("claude.tasks", TASKS_DIR, "*", "*.json"):
+    config, _ = _legacy_runtime()
+    for fp in runtime_io.glob_stores(config, "claude.tasks", "*", "*.json"):
         if os.path.basename(fp).startswith("."):
             continue
         try:
@@ -2164,7 +1814,7 @@ def claude_agent_transcripts(transcript: str | None) -> list[tuple[str, float]]:
     )
     found: list[tuple[str, float]] = []
     for pattern in CLAUDE_SUBAGENT_GLOBS:
-        for fp in glob_under(sess_dir, *pattern):
+        for fp in runtime_io.glob_under(sess_dir, *pattern):
             try:
                 found.append((fp, os.path.getmtime(fp)))
             except OSError:
@@ -2226,8 +1876,8 @@ def notify_mac(title: Any, message: Any) -> None:
     def esc(s: str) -> str:
         return str(s).replace("\\", "\\\\").replace('"', '\\"')
 
-    safe_message = notification_text(message, 180)
-    safe_title = notification_text(title, 60)
+    safe_message = records.safe_text(message, 180)
+    safe_title = records.safe_text(title, 60)
     script = f'display notification "{esc(safe_message)}" with title "{esc(safe_title)}" sound name "Glass"'
     try:
         result = subprocess.run(  # noqa: S603 — fixed binary, esc()-sanitized args
@@ -2239,9 +1889,9 @@ def notify_mac(title: Any, message: Any) -> None:
         )
         if result.returncode:
             detail = (result.stderr or result.stdout or "unknown error").strip()
-            diag(f"[notify] osascript failed: {detail[:300]}")
+            runtime_io.diag(f"[notify] osascript failed: {detail[:300]}", print)
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}")
+        runtime_io.diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}", print)
 
 
 def hook_generation(prefix: str) -> int:
@@ -2700,14 +2350,14 @@ def claude_agent_identity(path: str) -> tuple[bool, str, str]:
     name, parent = "", ""
     size = 0
     lines_seen = 0
+    config, _ = _legacy_runtime()
     try:
         size = os.path.getsize(path)
-        with open(path, "rb") as f:
-            data = f.read(_AGENT_SCAN_BYTES)
+        data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
         lines = data.split(b"\n")
         if size > len(data) and data and not data.endswith(b"\n"):
             lines.pop()  # the byte prefix ended inside a JSON record
-        for line in lines[:_AGENT_SCAN_LINES]:
+        for line in lines[: config.claude_agent_scan_lines]:
             if not line:
                 continue
             lines_seen += 1
@@ -2732,8 +2382,8 @@ def claude_agent_identity(path: str) -> tuple[bool, str, str]:
     # trusted once the file has enough content that later records cannot change it.
     if (
         (parent and name)
-        or lines_seen >= _AGENT_SCAN_LINES
-        or size >= _AGENT_CACHE_NEGATIVE_MIN_BYTES
+        or lines_seen >= config.claude_agent_scan_lines
+        or size >= config.claude_agent_cache_negative_min_bytes
     ):
         with _cache_lock:
             bounded_put(_agent_class_cache, path, result)
@@ -2759,14 +2409,14 @@ def claude_agent_setting(path: str) -> str:
         return cached
     setting = ""
     size = 0
+    config, _ = _legacy_runtime()
     try:
         size = os.path.getsize(path)
-        with open(path, "rb") as handle:
-            data = handle.read(_AGENT_SCAN_BYTES)
+        data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
         lines = data.split(b"\n")
         if size > len(data) and data and not data.endswith(b"\n"):
             lines.pop()
-        for line in lines[:_AGENT_SCAN_LINES]:
+        for line in lines[: config.claude_agent_scan_lines]:
             if not line or b"agentSetting" not in line:
                 continue
             try:
@@ -2781,7 +2431,7 @@ def claude_agent_setting(path: str) -> str:
                 break
     except OSError:
         return ""
-    if setting or size >= _AGENT_CACHE_NEGATIVE_MIN_BYTES:
+    if setting or size >= config.claude_agent_cache_negative_min_bytes:
         with _cache_lock:
             bounded_put(_sd_role_cache, path, setting)
     return setting
@@ -3140,7 +2790,13 @@ def claude_prefix_is_agent(prefix: str) -> bool:
     """True when the newest transcript for this 8-char prefix belongs to a
     subagent. Used to suppress popups for agent sessions."""
     newest, newest_mtime = None, 0.0
-    for fp in glob_stores("claude.projects", PROJECTS_DIR, "*", glob.escape(prefix) + "*.jsonl"):
+    config, _ = _legacy_runtime()
+    for fp in runtime_io.glob_stores(
+        config,
+        "claude.projects",
+        "*",
+        glob.escape(prefix) + "*.jsonl",
+    ):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -3156,7 +2812,8 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
     tasks_by_session = load_tasks()
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
     agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
-    for fp in glob_stores("claude.projects", PROJECTS_DIR, "*", "*.jsonl"):
+    config, _ = _legacy_runtime()
+    for fp in runtime_io.glob_stores(config, "claude.projects", "*", "*.jsonl"):
         base = os.path.basename(fp)
         if "-agent-" in base or base.startswith("agent-"):
             continue  # legacy subagent transcripts aren't top-level sessions
@@ -3391,7 +3048,15 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
     sessions: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
     # parent session_id -> {"agents": [(label, mtime)], "rate": int}
     agent_data: dict[str, dict[str, Any]] = {}
-    for fp in glob_stores("codex.sessions", CODEX_SESSIONS_DIR, "*", "*", "*", "rollout-*.jsonl"):
+    config, _ = _legacy_runtime()
+    for fp in runtime_io.glob_stores(
+        config,
+        "codex.sessions",
+        "*",
+        "*",
+        "*",
+        "rollout-*.jsonl",
+    ):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -3446,8 +3111,9 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
 
 def discover_pi() -> bool:
     """Whether Pi has at least one JSONL file with a valid session header."""
-    paths = set(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*.jsonl"))
-    paths.update(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*", "*.jsonl"))
+    config, _ = _legacy_runtime()
+    paths = set(runtime_io.glob_stores(config, "pi.sessions", "*.jsonl"))
+    paths.update(runtime_io.glob_stores(config, "pi.sessions", "*", "*.jsonl"))
     for path in paths:
         try:
             if pi_meta(path).get("session_id"):
@@ -3459,8 +3125,9 @@ def discover_pi() -> bool:
 
 def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     """Collect Pi's independent JSONL sessions from flat and nested stores."""
-    paths = set(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*.jsonl"))
-    paths.update(glob_stores("pi.sessions", PI_SESSIONS_DIR, "*", "*.jsonl"))
+    config, _ = _legacy_runtime()
+    paths = set(runtime_io.glob_stores(config, "pi.sessions", "*.jsonl"))
+    paths.update(runtime_io.glob_stores(config, "pi.sessions", "*", "*.jsonl"))
     sessions: dict[str, tuple[float, str, dict[str, Any]]] = {}
     for path in paths:
         try:
@@ -3509,11 +3176,15 @@ def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str
 
 def antigravity_log_head_lines(path: str) -> list[str]:
     """Read the bounded identity-bearing beginning of an Antigravity CLI log."""
-    try:
-        with open(path, "rb") as source:
-            return source.read(ANTIGRAVITY_LOG_HEAD_BYTES).decode("utf-8", "replace").splitlines()
-    except OSError:
-        return []
+    config, _ = _legacy_runtime()
+    return (
+        runtime_io.read_prefix_bytes(
+            path,
+            max_bytes=config.antigravity_log_head_bytes,
+        )
+        .decode("utf-8", "replace")
+        .splitlines()
+    )
 
 
 def antigravity_log_lines(path: str) -> list[str]:
@@ -3523,7 +3194,8 @@ def antigravity_log_lines(path: str) -> list[str]:
     while the latest user prompt is near the tail. Long-running sessions can
     exceed ``TAIL_BYTES``, so reading only one side loses one of those.
     """
-    return antigravity_log_head_lines(path) + read_tail(path)
+    config, _ = _legacy_runtime()
+    return antigravity_log_head_lines(path) + runtime_io.read_tail(config, path)
 
 
 def antigravity_session_metadata(
@@ -3554,7 +3226,7 @@ def antigravity_session_metadata(
     except (OSError, ValueError, TypeError, RecursionError):
         pass
 
-    all_logs = glob_under(ANTIGRAVITY_LOG_DIR, "cli-*.log")
+    all_logs = runtime_io.glob_under(ANTIGRAVITY_LOG_DIR, "cli-*.log")
     try:
         all_logs.sort(key=os.path.getmtime)
     except OSError:
@@ -3599,7 +3271,7 @@ def antigravity_session_metadata(
                     pending_prompt = decoded if isinstance(decoded, str) else raw
                 except (ValueError, TypeError, RecursionError):
                     pending_prompt = raw.strip('"')
-                pending_prompt = notification_text(pending_prompt, 2000)
+                pending_prompt = records.safe_text(pending_prompt, 2000)
                 continue
             match = forward_re.search(line)
             if match:
@@ -3754,7 +3426,7 @@ def antigravity_step_info(metadata: Any) -> dict[str, Any]:
     def text(value: Any) -> str:
         if not value:
             return ""
-        return notification_text(value.decode("utf-8", "replace"), 140)
+        return records.safe_text(value.decode("utf-8", "replace"), 140)
 
     return {
         "epoch": protobuf_timestamp(started) if started else 0,
@@ -3779,12 +3451,16 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
         "turns": None,
         "last_tool_action": "",
     }
-    if not sqlite_available():
+    if not runtime_io.sqlite_available():
         return result
+    _, state = _legacy_runtime()
     query = "SELECT step_type, metadata FROM steps ORDER BY idx DESC LIMIT ?"
     rows = None
     read_error: BaseException | None = None
-    for uri in (sqlite_ro_uri(path), sqlite_ro_uri(path, immutable=True)):
+    for uri in (
+        runtime_io.sqlite_ro_uri(path),
+        runtime_io.sqlite_ro_uri(path, immutable=True),
+    ):
         try:
             con = sqlite3.connect(uri, uri=True, timeout=0.2)
         except sqlite3.Error as exc:
@@ -3800,7 +3476,7 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
             con.close()
     if rows is None:
         if read_error:
-            record_store_error(path, read_error)
+            runtime_io.record_store_error(state, path, read_error)
         return result
 
     events = []
@@ -3833,8 +3509,9 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
 def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
     """Extract parent conversation ID and subagent label from an Antigravity store."""
     info: dict[str, Any] = {"parent_id": None, "subagent_label": None}
-    if not sqlite_available():
+    if not runtime_io.sqlite_available():
         return info
+    _, state = _legacy_runtime()
     query = "SELECT data FROM trajectory_metadata_blob WHERE id='main'"
 
     def read_row(uri: str) -> tuple[bool, Any, BaseException | None]:
@@ -3849,20 +3526,20 @@ def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
         finally:
             con.close()
 
-    readable, row, read_error = read_row(sqlite_ro_uri(path))
+    readable, row, read_error = read_row(runtime_io.sqlite_ro_uri(path))
     if not readable and antigravity_wal_has_data(path):
         if read_error:
-            record_store_error(path, read_error)
+            runtime_io.record_store_error(state, path, read_error)
         return info
     if not readable:
-        readable, row, fallback_error = read_row(sqlite_ro_uri(path, immutable=True))
+        readable, row, fallback_error = read_row(runtime_io.sqlite_ro_uri(path, immutable=True))
         if antigravity_wal_has_data(path):
             if read_error:
-                record_store_error(path, read_error)
+                runtime_io.record_store_error(state, path, read_error)
             return info
         if not readable:
             if fallback_error:
-                record_store_error(path, fallback_error)
+                runtime_io.record_store_error(state, path, fallback_error)
             return info
     if not readable or not row or not row[0]:
         return info
@@ -3890,7 +3567,7 @@ def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
                 cleaned
                 for label in labels
                 if label
-                for cleaned in (notification_text(label, 70).strip(),)
+                for cleaned in (records.safe_text(label, 70).strip(),)
                 if cleaned
             ),
             None,
@@ -3900,7 +3577,7 @@ def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
 
 def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     metadata = antigravity_session_metadata(now, window_hours, show_all)
-    dbs = glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
+    dbs = runtime_io.glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
 
     agents_by_parent: dict[str, list[tuple[str, str, float]]] = {}
     subagent_sids: set[str] = set()
@@ -4017,21 +3694,35 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     # appended from its per-conversation SQLite stores below.
     # sanitized parent session id -> [(label, mtime)]
     agents_by_parent: dict[str, list[tuple[str, float]]] = {}
-    for fp in glob_stores("gemini.tmp", GEMINI_TMP, "*", "chats", "*", "*.jsonl"):
+    config, _ = _legacy_runtime()
+    for fp in runtime_io.glob_stores(
+        config,
+        "gemini.tmp",
+        "*",
+        "chats",
+        "*",
+        "*.jsonl",
+    ):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
         if not is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
             continue
-        parent = alnum(os.path.basename(os.path.dirname(fp)))
+        parent = records.alnum(os.path.basename(os.path.dirname(fp)))
         label = "subagent " + os.path.basename(fp)[:8]
         agents_by_parent.setdefault(parent, []).append((label, mtime))
 
     sessions: dict[
         str, tuple[float, str]
     ] = {}  # session id (or filename fallback) -> (mtime, path)
-    for fp in glob_stores("gemini.tmp", GEMINI_TMP, "*", "chats", "session-*.jsonl"):
+    for fp in runtime_io.glob_stores(
+        config,
+        "gemini.tmp",
+        "*",
+        "chats",
+        "session-*.jsonl",
+    ):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -4045,7 +3736,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
 
     out: list[dict[str, Any]] = []
     for sid, (mtime, fp) in sessions.items():
-        agents = sorted(agents_by_parent.get(alnum(sid), []), key=lambda a: -a[1])
+        agents = sorted(agents_by_parent.get(records.alnum(sid), []), key=lambda a: -a[1])
         activity_sources = (mtime, *(m for _, m in agents))
         last_activity = newest_plausible(now, activity_sources)
         active = is_fresh(now, last_activity, window_hours * 3600)
@@ -4089,8 +3780,15 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
     # history-session-state is assumed to share the <uuid>/events.jsonl
     # layout — unverified legacy format; a mismatch just means those old
     # sessions stay invisible.
+    config, _ = _legacy_runtime()
     for base in ("session-state", "history-session-state"):
-        for fp in glob_stores("copilot.root", COPILOT_DIR, base, "*", "events.jsonl"):
+        for fp in runtime_io.glob_stores(
+            config,
+            "copilot.root",
+            base,
+            "*",
+            "events.jsonl",
+        ):
             sid = os.path.basename(os.path.dirname(fp))
             try:
                 mtime = os.path.getmtime(fp)
@@ -4131,28 +3829,15 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
     return out
 
 
-def _sql_ro(path: str) -> sqlite3.Connection:
-    """Read-only SQLite connection that never blocks a live agent's writes.
-
-    Deliberately no ``immutable=1`` fallback: these are databases a live agent
-    is still writing, and SQLite documents that opening a changing database as
-    immutable can return incorrect results or SQLITE_CORRUPT. A failure here is
-    reported, not silently downgraded.
-    """
-    con = sqlite3.connect(sqlite_ro_uri(path), uri=True, timeout=0.2)
-    con.row_factory = sqlite3.Row
-    return con
-
-
 def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    if not sqlite_available():
+    if not runtime_io.sqlite_available():
         return []
+    config, runtime_state_value = _legacy_runtime()
     out: list[dict[str, Any]] = []
-    for db in glob_stores("opencode.data", OPENCODE_DATA, "opencode*.db"):
+    for db in runtime_io.glob_stores(config, "opencode.data", "opencode*.db"):
         try:
-            con = _sql_ro(db)
-        except sqlite3.Error as exc:
-            record_store_error(db, exc)
+            con = runtime_io.open_sqlite_read_only(db, runtime_state_value)
+        except sqlite3.Error:
             continue
         # ?all=1 promises every session ever; LIMIT -1 is SQLite's "no limit".
         limit = -1 if show_all else 200
@@ -4171,7 +3856,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                     (limit,),
                 ).fetchall()
         except sqlite3.Error as exc:
-            record_store_error(db, exc)
+            runtime_io.record_store_error(runtime_state_value, db, exc)
             con.close()
             continue
         try:
@@ -4182,7 +3867,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
             for r in rows:
                 if r["time_archived"]:
                     continue  # archival bumps time_updated; don't ghost as working
-                upd = norm_epoch(r["time_updated"])
+                upd = records.norm_epoch(r["time_updated"])
                 if r["parent_id"]:
                     if is_fresh(now, upd, WORKING_THRESHOLD_SEC):
                         children.setdefault(r["parent_id"], []).append(
@@ -4218,13 +3903,13 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                         ).fetchall()
                         for m in reversed(msgs):
                             is_user = m["type"] == "user"
-                            events.append((norm_epoch(m["time_created"]), is_user))
+                            events.append((records.norm_epoch(m["time_created"]), is_user))
                             if is_user:
                                 try:
                                     jd = json.loads(m["data"] or "{}")
                                 except (ValueError, TypeError):
                                     jd = {}
-                                last_prompt = extract_text(jd)[:140] or last_prompt
+                                last_prompt = records.extract_text(jd)[:140] or last_prompt
                     except sqlite3.Error:
                         pass
                     turn = turn_progress(turns_from_events(events), state, now)
@@ -4304,16 +3989,16 @@ def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
         return hit[1], hit[2]
     title = None
     cwd_by_key: dict[str, str] = {}
+    _, state = _legacy_runtime()
     try:
-        con = sqlite3.connect(sqlite_ro_uri(db), uri=True, timeout=0.2)
-    except sqlite3.Error as exc:
-        record_store_error(db, exc)
+        con = runtime_io.open_sqlite_read_only(db, state)
+    except sqlite3.Error:
         return None, ""
     failed = False
     try:
         rows = con.execute("SELECT value FROM meta LIMIT ?", (_CURSOR_META_ROWS,)).fetchall()
     except sqlite3.Error as exc:
-        record_store_error(db, exc)
+        runtime_io.record_store_error(state, db, exc)
         rows, failed = [], True
     finally:
         con.close()
@@ -4370,12 +4055,13 @@ def _cursor_meta(db: str, mtime: float) -> tuple[str | None, str]:
 
 
 def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    if not sqlite_available():
+    if not runtime_io.sqlite_available():
         return []
+    config, _ = _legacy_runtime()
     # One store.db per chat; content is opaque-ish (hex JSON blobs), so
     # Cursor rows are discovery + state + title only — no turn ETA.
     out: list[dict[str, Any]] = []
-    for db in glob_stores("cursor.chats", CURSOR_CHATS, "*", "*", "store.db"):
+    for db in runtime_io.glob_stores(config, "cursor.chats", "*", "*", "store.db"):
         sid = os.path.basename(os.path.dirname(db))
         try:
             mtime = os.path.getmtime(db)
@@ -4414,17 +4100,19 @@ def goose_user_prompt(content: Any) -> bool:
     if not isinstance(content, list):
         return True
     return not any(
-        isinstance(part, dict) and alnum(part.get("type")) == "toolresponse" for part in content
+        isinstance(part, dict) and records.alnum(part.get("type")) == "toolresponse"
+        for part in content
     )
 
 
 def collect_goose(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    if not sqlite_available():
+    if not runtime_io.sqlite_available():
         return []
     # Goose keeps its store in a different place per platform, so scan every
     # candidate that exists rather than betting on one.
+    config, _ = _legacy_runtime()
     out: list[dict[str, Any]] = []
-    for db in existing_stores("goose.db", GOOSE_DB):
+    for db in runtime_io.existing_stores(config, "goose.db"):
         out.extend(collect_goose_db(db, now, window_hours, show_all))
     return out
 
@@ -4435,10 +4123,10 @@ def collect_goose_db(
     # Single shared sessions.db (v1.10.0+): per-session activity comes from
     # the updated_at column, NOT file mtime (the DB is shared by all
     # sessions). Legacy per-session .jsonl files are not supported.
+    _, runtime_state_value = _legacy_runtime()
     try:
-        con = _sql_ro(goose_db)
-    except sqlite3.Error as exc:
-        record_store_error(goose_db, exc)
+        con = runtime_io.open_sqlite_read_only(goose_db, runtime_state_value)
+    except sqlite3.Error:
         return []
     try:
         try:
@@ -4458,8 +4146,8 @@ def collect_goose_db(
         for r in rows:
             if r["archived_at"]:
                 continue  # archival bumps updated_at; don't resurrect
-            upd = parse_utc_sql(r["updated_at"])
-            stype = alnum(r["session_type"])
+            upd = records.parse_utc_sql(r["updated_at"])
+            stype = records.alnum(r["session_type"])
             if stype == "subagent":
                 if r["parent_session_id"] and is_fresh(now, upd, WORKING_THRESHOLD_SEC):
                     children.setdefault(r["parent_session_id"], []).append(
@@ -4496,7 +4184,7 @@ def collect_goose_db(
                         (r["id"], SQL_MSG_LIMIT),
                     ).fetchall()
                     for m in reversed(msgs):
-                        ep = norm_epoch(m["created_timestamp"])
+                        ep = records.norm_epoch(m["created_timestamp"])
                         try:
                             content = json.loads(m["content_json"] or "[]")
                         except (ValueError, TypeError, RecursionError):
@@ -4504,7 +4192,7 @@ def collect_goose_db(
                         is_prompt = m["role"] == "user" and goose_user_prompt(content)
                         events.append((ep, is_prompt))
                         if is_prompt:
-                            last_prompt = extract_text(content)[:140] or last_prompt
+                            last_prompt = records.extract_text(content)[:140] or last_prompt
                 except sqlite3.Error:
                     pass
                 try:
@@ -4518,7 +4206,11 @@ def collect_goose_db(
                     recent = sum(
                         (x["output_tokens"] or 0)
                         for x in led
-                        if is_fresh(now, norm_epoch(x["created_timestamp"]), RATE_WINDOW_SEC)
+                        if is_fresh(
+                            now,
+                            records.norm_epoch(x["created_timestamp"]),
+                            RATE_WINDOW_SEC,
+                        )
                     )
                     rate = round(recent / (RATE_WINDOW_SEC / 60))
                 except sqlite3.Error:
@@ -4541,7 +4233,7 @@ def collect_goose_db(
             )
             out.append(s)
     except sqlite3.Error as exc:
-        record_store_error(goose_db, exc)
+        runtime_io.record_store_error(runtime_state_value, goose_db, exc)
         return []
     else:
         return out
@@ -4551,7 +4243,8 @@ def collect_goose_db(
 
 def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for fp in glob_stores("droid.projects", FACTORY_PROJECTS, "*", "*.jsonl"):
+    config, _ = _legacy_runtime()
+    for fp in runtime_io.glob_stores(config, "droid.projects", "*", "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
         except OSError:
@@ -4591,32 +4284,47 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
 # Harness registry — a harness appears in the dashboard only if discovered
 
 
+def _store_dir_exists(key: str, *parts: str) -> bool:
+    config, _ = _legacy_runtime()
+    return runtime_io.any_store_dir(config, key, *parts)
+
+
+def _store_glob_exists(key: str, *pattern: str) -> bool:
+    config, _ = _legacy_runtime()
+    return bool(runtime_io.glob_stores(config, key, *pattern))
+
+
+def _store_file_exists(key: str) -> bool:
+    config, _ = _legacy_runtime()
+    return bool(runtime_io.existing_stores(config, key))
+
+
+def _discover_gemini() -> bool:
+    return _store_glob_exists("gemini.tmp", "*", "chats", "session-*.jsonl") or bool(
+        runtime_io.glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
+    )
+
+
 HARNESSES: list[
     tuple[str, str, Callable[[], bool], Callable[[float, float, bool], list[dict[str, Any]]]]
 ] = [
-    ("claude", "Claude", lambda: any_store_dir("claude.projects", PROJECTS_DIR), collect_claude),
-    ("codex", "Codex", lambda: any_store_dir("codex.sessions", CODEX_SESSIONS_DIR), collect_codex),
+    ("claude", "Claude", lambda: _store_dir_exists("claude.projects"), collect_claude),
+    ("codex", "Codex", lambda: _store_dir_exists("codex.sessions"), collect_codex),
     ("pi", "Pi", discover_pi, collect_pi),
     # Predicate matches both supported Gemini stores: legacy Gemini CLI
     # JSONL and current Antigravity CLI per-conversation SQLite databases.
     (
         "gemini",
         "Gemini",
-        lambda: bool(
-            glob_stores("gemini.tmp", GEMINI_TMP, "*", "chats", "session-*.jsonl")
-            # Antigravity discovery needs no sqlite3: identity and working/idle
-            # come from store mtime and the CLI logs. Only the token rate and
-            # turn ETA read the database, and those degrade to zero without it.
-            or glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
-        ),
+        _discover_gemini,
         collect_gemini,
     ),
     (
         "copilot",
         "Copilot",
         lambda: (
-            any_store_dir("copilot.root", COPILOT_DIR, "session-state")
-            or any_store_dir("copilot.root", COPILOT_DIR, "history-session-state")
+            _store_dir_exists("copilot.root", "session-state")
+            or _store_dir_exists("copilot.root", "history-session-state")
         ),
         collect_copilot,
     ),
@@ -4624,7 +4332,7 @@ HARNESSES: list[
         "opencode",
         "OpenCode",
         lambda: (
-            sqlite_available() and bool(glob_stores("opencode.data", OPENCODE_DATA, "opencode*.db"))
+            runtime_io.sqlite_available() and _store_glob_exists("opencode.data", "opencode*.db")
         ),
         collect_opencode,
     ),
@@ -4632,21 +4340,21 @@ HARNESSES: list[
         "cursor",
         "Cursor",
         lambda: (
-            sqlite_available()
-            and bool(glob_stores("cursor.chats", CURSOR_CHATS, "*", "*", "store.db"))
+            runtime_io.sqlite_available()
+            and _store_glob_exists("cursor.chats", "*", "*", "store.db")
         ),
         collect_cursor,
     ),
     (
         "goose",
         "Goose",
-        lambda: sqlite_available() and bool(existing_stores("goose.db", GOOSE_DB)),
+        lambda: runtime_io.sqlite_available() and _store_file_exists("goose.db"),
         collect_goose,
     ),
     (
         "droid",
         "Droid",
-        lambda: bool(glob_stores("droid.projects", FACTORY_PROJECTS, "*", "*.jsonl")),
+        lambda: _store_glob_exists("droid.projects", "*", "*.jsonl"),
         collect_droid,
     ),
 ]
@@ -4674,7 +4382,7 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
             out_sessions.extend(collector(now, window_hours, show_all))
         except Exception as e:  # noqa: BLE001 — one broken harness must not take down the rest
             harness["error"] = f"{type(e).__name__}: {e}"
-            diag(f"[{key}] collector error: {harness['error']}")
+            runtime_io.diag(f"[{key}] collector error: {harness['error']}", print)
 
     out_sessions = dedupe_sessions(out_sessions)
     assign_display_ids(out_sessions)
@@ -4812,7 +4520,10 @@ def write_state(port: int) -> None:
             json.dump(payload, handle)
         os.replace(tmp, target)
     except OSError as exc:
-        diag(f"Cargento: could not write {target} ({exc}); --status will not see this instance")
+        runtime_io.diag(
+            f"Cargento: could not write {target} ({exc}); --status will not see this instance",
+            print,
+        )
         with contextlib.suppress(OSError):
             os.unlink(tmp)
 
@@ -5461,7 +5172,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(b'{"ok":true,"cleared":"session_end"}', "application/json")
             return
         raw_message = payload.get("message")
-        message = notification_text(
+        message = records.safe_text(
             raw_message
             if isinstance(raw_message, str) and raw_message
             else "Claude is waiting for your input",
@@ -5597,9 +5308,9 @@ def diagnose(window_hours: float) -> dict[str, Any]:
         "executable": sys.executable,
         "home": HOME,
         "sqlite": {
-            "available": sqlite_available(),
-            "error": SQLITE_IMPORT_ERROR,
-            "version": sqlite3.sqlite_version if sqlite_available() else None,
+            "available": runtime_io.sqlite_available(),
+            "error": runtime_io.SQLITE_IMPORT_ERROR,
+            "version": sqlite3.sqlite_version if runtime_io.sqlite_available() else None,
         },
         "env": {name: os.environ[name] for name in STORE_ENV_VARS if os.environ.get(name)},
         # Failures the collectors swallowed. Without these a corrupt database
@@ -5725,15 +5436,18 @@ def main() -> None:
     Handler.window_hours = args.window_hours
     if args.diagnose:
         report = diagnose(args.window_hours)
-        diag(json.dumps(report, indent=2) if args.json else render_diagnosis(report))
+        runtime_io.diag(
+            json.dumps(report, indent=2) if args.json else render_diagnosis(report),
+            print,
+        )
         return
     if args.stop:
         message, code = stop_instance(args.port)
-        diag(message)
+        runtime_io.diag(message, print)
         raise SystemExit(code)
     if args.status:
         status = instance_status(args.port)
-        diag(render_status(status))
+        runtime_io.diag(render_status(status), print)
         raise SystemExit(0 if status["state"] == "running" else 1)
     try:
         page_bytes = frontend_page.load_page()
@@ -5743,12 +5457,13 @@ def main() -> None:
             file=sys.stderr,
         )
         raise SystemExit(1) from exc
-    if not sqlite_available():
-        diag(
-            f"Cargento: sqlite3 unavailable ({SQLITE_IMPORT_ERROR}) — OpenCode, "
+    if not runtime_io.sqlite_available():
+        runtime_io.diag(
+            f"Cargento: sqlite3 unavailable ({runtime_io.SQLITE_IMPORT_ERROR}) — OpenCode, "
             "Cursor and Goose sessions cannot be read; Antigravity still appears "
             "but without its token rate or turn ETA. Install the sqlite3 "
-            "extension for this interpreter to enable them."
+            "extension for this interpreter to enable them.",
+            print,
         )
     log_file = log_path(args.port)
     if args.daemon:
@@ -5769,17 +5484,18 @@ def main() -> None:
             with open(log_file, "ab"):
                 pass
         except OSError as exc:
-            diag(
+            runtime_io.diag(
                 f"Cargento: cannot use {cargento_home()} for the daemon state and log "
                 f"({type(exc).__name__}: {exc}). Point {CARGENTO_HOME_ENV} at a writable "
-                f"directory, or drop --daemon to run in the foreground."
+                f"directory, or drop --daemon to run in the foreground.",
+                print,
             )
             raise SystemExit(1) from exc
     if args.daemon and os.name == "nt":
         # No fork on Windows: re-spawn, then wait to be sure (D-2). Returns
         # before binding, so the parent never holds the port it handed over.
         message, code = await_spawned(spawn_detached(args, log_file), args.port, log_file)
-        diag(message)
+        runtime_io.diag(message, print)
         raise SystemExit(code)
     # Bind to loopback only — this exposes local session data.
     #
@@ -5795,7 +5511,7 @@ def main() -> None:
             page_bytes=page_bytes,
         )
     except OSError as exc:
-        diag(bind_error_message(exc, args.port))
+        runtime_io.diag(bind_error_message(exc, args.port), print)
         raise SystemExit(1) from exc
     announce_fd: int | None = None
     if args.daemon and os.name != "nt":
@@ -5806,14 +5522,14 @@ def main() -> None:
             with contextlib.suppress(OSError):
                 server.server_close()
             message, code = await_daemon(fd, args.port, log_file)
-            diag(message)
+            runtime_io.diag(message, print)
             raise SystemExit(code)
         announce_fd = fd
         daemon_redirect_stdio(log_file)
     # 127.0.0.1, not localhost: on some systems "localhost" resolves to ::1
     # first, and this listener is IPv4-only, so the literal address is the one
     # that always connects.
-    diag(f"Cargento: http://127.0.0.1:{args.port}/")
+    runtime_io.diag(f"Cargento: http://127.0.0.1:{args.port}/", print)
     write_state(args.port)
     if announce_fd is not None:
         # After write_state, so --status works the instant the parent returns.

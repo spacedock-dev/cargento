@@ -40,6 +40,8 @@ max-args = 8
 # satisfy complexity limits would trade real robustness for score.
 "cargento/skills/cargento/server.py" = ["E501", "C901", "PLR0911", "PLR0912", "PLR0915"]
 "cargento/skills/cargento/cargento_runtime/config.py" = ["C901", "PLR0913"]
+# `_turn_signal` retains the server's reviewed branch shape after extraction.
+"cargento/skills/cargento/cargento_runtime/records.py" = ["C901", "PLR0911", "PLR0912"]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]

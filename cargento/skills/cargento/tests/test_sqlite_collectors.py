@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from .support import SERVER_PATH, LegacyDashboardTestCase, dashboard
+from cargento_runtime import io as runtime_io
+
+from .support import SERVER_PATH, LegacyDashboardTestCase, dashboard, make_runtime
 
 
 class SqliteCollectorTest(LegacyDashboardTestCase):
@@ -75,7 +77,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
     def test_cursor_reports_its_workspace_instead_of_the_harness_name(self) -> None:
         # DRC-3963. Cursor rows were hardcoded to "cursor", so every Cursor
         # session in every repository shared one label.
-        if not dashboard.sqlite_available():
+        if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -97,7 +99,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # and in that family "workspace" routinely holds a .code-workspace FILE
         # while workspaceStorage/<hash> paths are everywhere. Either would give
         # a confident wrong label, which is worse than the harness name.
-        if not dashboard.sqlite_available():
+        if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -120,7 +122,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # file:// is the canonical serialization in the VS Code family.
         # Rejecting it makes the whole read a silent no-op that looks exactly
         # like "Cursor records no workspace".
-        if not dashboard.sqlite_available():
+        if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -137,7 +139,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # The payload may spread keys across meta rows. First-row-wins would
         # let a low-trust "folder" in row 1 beat "workspacePath" in row 2, so
         # the ranking in _CURSOR_CWD_KEYS has to survive the row order.
-        if not dashboard.sqlite_available():
+        if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -157,7 +159,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
     def test_cursor_finds_a_workspace_past_the_first_few_meta_rows(self) -> None:
         # A key/value table has no guaranteed order, and the old LIMIT was
         # tuned when only the title was being looked for.
-        if not dashboard.sqlite_available():
+        if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -172,7 +174,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
     def test_cursor_title_survives_a_non_string_name(self) -> None:
         # A numeric "name" is truthy, so an `or` chain picks it and then the
         # isinstance guard discards a perfectly good "title" alongside it.
-        if not dashboard.sqlite_available():
+        if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -183,7 +185,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
 
     def test_cursor_without_a_workspace_path_keeps_the_harness_name(self) -> None:
         now = dashboard.time.time()
-        if not dashboard.sqlite_available():
+        if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "chats" / "hash1" / "sess-2" / "store.db"
@@ -322,12 +324,12 @@ class SqliteOptionalTest(unittest.TestCase):
 
     @contextlib.contextmanager
     def without_sqlite(self) -> Any:
-        with mock.patch.object(dashboard, "SQLITE_IMPORT_ERROR", "No module named '_sqlite3'"):
+        with mock.patch.object(runtime_io, "SQLITE_IMPORT_ERROR", "No module named '_sqlite3'"):
             yield
 
     def test_db_backed_collectors_return_empty_instead_of_raising(self) -> None:
         with self.without_sqlite():
-            self.assertFalse(dashboard.sqlite_available())
+            self.assertFalse(runtime_io.sqlite_available())
             for collector in (
                 dashboard.collect_opencode,
                 dashboard.collect_cursor,
@@ -393,7 +395,7 @@ spec = importlib.util.spec_from_file_location("srv", {path!r})
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)          # must not raise
 builtins.__import__ = real_import
-assert not m.sqlite_available(), "sqlite_available() should be False"
+assert not m.runtime_io.sqlite_available(), "sqlite_available() should be False"
 now = 1_700_000_000.0
 for fn in (m.collect_opencode, m.collect_cursor, m.collect_goose):
     assert fn(now, 24, True) == [], fn.__name__
@@ -447,24 +449,24 @@ class SqliteUriTest(unittest.TestCase):
         }
         for path, expected in cases.items():
             with self.subTest(path=path):
-                self.assertEqual(expected, dashboard.sqlite_ro_uri(path, windows=False))
+                self.assertEqual(expected, runtime_io.sqlite_ro_uri(path, windows=False))
 
     def test_posix_double_slash_root_gets_an_empty_authority(self) -> None:
         # "//dir" would otherwise parse as the URI authority "dir".
         self.assertEqual(
             "file:////dir/x.db",
-            dashboard.sqlite_ro_uri("//dir/x.db", windows=False)[: -len("?mode=ro")],
+            runtime_io.sqlite_ro_uri("//dir/x.db", windows=False)[: -len("?mode=ro")],
         )
 
     def test_windows_paths_use_sqlite_drive_letter_form(self) -> None:
         # SQLite only recognizes a drive letter as "/X:/...".
         self.assertEqual(
             "file:/C:/Users/a/x.db?mode=ro",
-            dashboard.sqlite_ro_uri(r"C:\Users\a\x.db", windows=True),
+            runtime_io.sqlite_ro_uri(r"C:\Users\a\x.db", windows=True),
         )
         self.assertEqual(
             "file:/C:/Users/a%25b/x.db?mode=ro",
-            dashboard.sqlite_ro_uri(r"C:\Users\a%b\x.db", windows=True),
+            runtime_io.sqlite_ro_uri(r"C:\Users\a%b\x.db", windows=True),
         )
 
     def test_windows_unc_paths_keep_an_empty_authority(self) -> None:
@@ -472,13 +474,13 @@ class SqliteUriTest(unittest.TestCase):
         # accepts an empty or "localhost" authority.
         self.assertEqual(
             "file:////server/share/x.db?mode=ro",
-            dashboard.sqlite_ro_uri(r"\\server\share\x.db", windows=True),
+            runtime_io.sqlite_ro_uri(r"\\server\share\x.db", windows=True),
         )
 
     def test_immutable_flag_is_opt_in(self) -> None:
         self.assertEqual(
             "file:/data/x.db?mode=ro&immutable=1",
-            dashboard.sqlite_ro_uri("/data/x.db", immutable=True, windows=False),
+            runtime_io.sqlite_ro_uri("/data/x.db", immutable=True, windows=False),
         )
 
     def test_reserved_characters_open_a_real_database(self) -> None:
@@ -493,7 +495,7 @@ class SqliteUriTest(unittest.TestCase):
                 seed.commit()
                 seed.close()
                 with self.subTest(name=name):
-                    con = sqlite3.connect(dashboard.sqlite_ro_uri(str(path)), uri=True)
+                    con = sqlite3.connect(runtime_io.sqlite_ro_uri(str(path)), uri=True)
                     try:
                         self.assertEqual((7,), con.execute("SELECT x FROM t").fetchone())
                     finally:
@@ -528,3 +530,31 @@ class SqliteUriTest(unittest.TestCase):
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("Percent", sessions[0]["title"])
+
+    def test_open_sqlite_read_only_rejects_writes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "store.db"
+            seed = sqlite3.connect(path)
+            seed.execute("CREATE TABLE t(x)")
+            seed.commit()
+            seed.close()
+            _, state = make_runtime()
+
+            connection = runtime_io.open_sqlite_read_only(str(path), state)
+            try:
+                with self.assertRaises(sqlite3.OperationalError):
+                    connection.execute("INSERT INTO t VALUES (1)")
+            finally:
+                connection.close()
+
+    def test_open_failure_records_only_on_the_supplied_state(self) -> None:
+        _, untouched = make_runtime()
+        _, supplied = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = str(Path(tmp) / "missing" / "store.db")
+            with self.assertRaises(sqlite3.OperationalError):
+                runtime_io.open_sqlite_read_only(missing, supplied)
+
+        self.assertEqual({}, untouched.store_errors)
+        self.assertIn(missing, supplied.store_errors)
+        self.assertIn("OperationalError", supplied.store_errors[missing])

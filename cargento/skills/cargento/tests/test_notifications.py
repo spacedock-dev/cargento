@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
+from cargento_runtime import records
+
 from .support import (
     HOOK_PATH,
     PAGE_BYTES,
@@ -511,7 +513,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 session = dashboard.collect_claude(now, 24, False)[0]
 
         self.assertEqual("needs_input", session["state"])
-        self.assertEqual(dashboard.parse_ts(question_time), session["blocked_since"])
+        self.assertEqual(records.parse_ts(question_time), session["blocked_since"])
 
     def test_background_task_flap_lifecycle_end_to_end(self) -> None:
         # Full lifecycle of the live 936f2c2b case, through the real notify

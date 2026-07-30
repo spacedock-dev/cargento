@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import records as runtime_records
+
 from .fixtures import (
     _iso,
     _jsonl,
@@ -94,7 +96,7 @@ class PiTranscriptTest(unittest.TestCase):
             self.assertEqual("Named session", scan["title"])
             self.assertEqual("Implement the fix", scan["last_prompt"])
             self.assertEqual("bash", scan["last_tool"])
-            self.assertEqual([(dashboard.parse_ts(self.NOW), 40)], scan["usage_events"])
+            self.assertEqual([(runtime_records.parse_ts(self.NOW), 40)], scan["usage_events"])
             self.assertIn("turn", scan)
 
             with path.open("a") as output:
@@ -174,15 +176,18 @@ class PiTranscriptTest(unittest.TestCase):
         self.assertEqual("bash", scan["last_tool"])
         self.assertEqual(
             [
-                (dashboard.parse_ts("2026-07-29T11:01:01Z"), 10),
-                (dashboard.parse_ts("2026-07-29T11:01:02Z"), 3),
-                (dashboard.parse_ts("2026-07-29T11:01:03Z"), 4),
-                (dashboard.parse_ts("2026-07-29T11:01:04Z"), 5),
+                (runtime_records.parse_ts("2026-07-29T11:01:01Z"), 10),
+                (runtime_records.parse_ts("2026-07-29T11:01:02Z"), 3),
+                (runtime_records.parse_ts("2026-07-29T11:01:03Z"), 4),
+                (runtime_records.parse_ts("2026-07-29T11:01:04Z"), 5),
             ],
             scan["usage_events"],
         )
         self.assertEqual([30.0], scan["turn"]["durations"])
-        self.assertEqual(dashboard.parse_ts("2026-07-29T11:01:00Z"), scan["turn"]["turn_start"])
+        self.assertEqual(
+            runtime_records.parse_ts("2026-07-29T11:01:00Z"),
+            scan["turn"]["turn_start"],
+        )
 
     def test_initial_rebuild_follows_messages_through_session_info(self) -> None:
         records = [
@@ -221,15 +226,15 @@ class PiTranscriptTest(unittest.TestCase):
         self.assertEqual("Continue after rename", scan["last_prompt"])
         self.assertEqual("bash", scan["last_tool"])
         self.assertEqual(
-            [(dashboard.parse_ts("2026-07-29T11:00:03Z"), 12)],
+            [(runtime_records.parse_ts("2026-07-29T11:00:03Z"), 12)],
             scan["usage_events"],
         )
         self.assertEqual(
-            dashboard.parse_ts("2026-07-29T11:00:02Z"),
+            runtime_records.parse_ts("2026-07-29T11:00:02Z"),
             scan["turn"]["turn_start"],
         )
         self.assertEqual(
-            dashboard.parse_ts("2026-07-29T11:00:03Z"),
+            runtime_records.parse_ts("2026-07-29T11:00:03Z"),
             scan["last_event_ts"],
         )
 
@@ -278,15 +283,15 @@ class PiTranscriptTest(unittest.TestCase):
         self.assertEqual("Continue after rename", scan["last_prompt"])
         self.assertEqual("bash", scan["last_tool"])
         self.assertEqual(
-            [(dashboard.parse_ts("2026-07-29T11:00:03Z"), 12)],
+            [(runtime_records.parse_ts("2026-07-29T11:00:03Z"), 12)],
             scan["usage_events"],
         )
         self.assertEqual(
-            dashboard.parse_ts("2026-07-29T11:00:02Z"),
+            runtime_records.parse_ts("2026-07-29T11:00:02Z"),
             scan["turn"]["turn_start"],
         )
         self.assertEqual(
-            dashboard.parse_ts("2026-07-29T11:00:03Z"),
+            runtime_records.parse_ts("2026-07-29T11:00:03Z"),
             scan["last_event_ts"],
         )
 
@@ -553,4 +558,7 @@ class TurnTrackingTest(unittest.TestCase):
             assert scan is not None
 
         self.assertEqual([5.0], scan["turn"]["durations"])
-        self.assertEqual(dashboard.parse_ts("2026-07-29T11:11:00Z"), scan["turn"]["turn_start"])
+        self.assertEqual(
+            runtime_records.parse_ts("2026-07-29T11:11:00Z"),
+            scan["turn"]["turn_start"],
+        )

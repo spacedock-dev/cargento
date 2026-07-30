@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from cargento_runtime import records
+
 from .support import LegacyDashboardTestCase, dashboard
 
 
@@ -208,14 +210,52 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             }
         )
         source = mock.mock_open(read_data=(record + "\n" + ("x" * 100_000)).encode())
+        runtime = dashboard._legacy_runtime()
         with (
             mock.patch("builtins.open", source),
             mock.patch.object(dashboard.os.path, "getsize", return_value=1_000_000),
+            mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
         ):
             identity = dashboard.claude_agent_identity("/fake/transcript.jsonl")
 
         self.assertEqual((True, "reviewer", "12345678"), identity)
-        source().read.assert_called_once_with(dashboard._AGENT_SCAN_BYTES)
+        source().read.assert_called_once_with(runtime[0].claude_agent_scan_bytes)
+
+    def test_claude_agent_identity_drops_a_partial_final_prefix_record(self) -> None:
+        apparent_record = b'{"agentName":"reviewer","teamName":"session-badbad00"}'
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.jsonl"
+            path.write_bytes(apparent_record + b"-continued-without-newline")
+            with (
+                mock.patch.object(dashboard, "_AGENT_SCAN_BYTES", len(apparent_record)),
+                mock.patch.object(
+                    dashboard,
+                    "_AGENT_CACHE_NEGATIVE_MIN_BYTES",
+                    len(apparent_record) * 10,
+                ),
+            ):
+                identity = dashboard.claude_agent_identity(str(path))
+
+        self.assertEqual((False, "", ""), identity)
+
+    def test_claude_cwd_uses_independent_line_and_count_caps(self) -> None:
+        first = json.dumps({"ignored": "x" * 100})
+        target = json.dumps({"cwd": "/wanted/project"})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "session.jsonl"
+            path.write_text(first + "\n" + target + "\n")
+            short_scan = Path(tmp) / "short-scan.jsonl"
+            short_scan.write_text(first + "\n" + target + "\n")
+            with (
+                mock.patch.object(dashboard, "_CWD_SCAN_LINES", 2),
+                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first) + 1),
+            ):
+                self.assertEqual("/wanted/project", dashboard.claude_session_cwd(str(path)))
+            with (
+                mock.patch.object(dashboard, "_CWD_SCAN_LINES", 1),
+                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first) + 1),
+            ):
+                self.assertEqual("", dashboard.claude_session_cwd(str(short_scan)))
 
     def test_configured_agent_transcript_remains_a_top_level_session(self) -> None:
         now = dashboard.time.time()
@@ -703,9 +743,9 @@ class ClaudeReviewFixTest(unittest.TestCase):
             os.utime(transcript, (now, now))
 
             self.assertIsNone(dashboard.claude_session_title(str(transcript)))
-            self.assertEqual({}, dashboard.message_dict({"message": "str"}))
-            self.assertEqual({}, dashboard.message_dict("not-a-record"))
-            self.assertEqual({"a": 1}, dashboard.message_dict({"message": {"a": 1}}))
+            self.assertEqual({}, records.message_dict({"message": "str"}))
+            self.assertEqual({}, records.message_dict("not-a-record"))
+            self.assertEqual({"a": 1}, records.message_dict({"message": {"a": 1}}))
 
             with (
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),

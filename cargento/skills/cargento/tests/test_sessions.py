@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import records
+
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
@@ -36,7 +38,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             with mock.patch.object(dashboard, "TURN_SCAN_MAX_BYTES", 200):
                 turns = dashboard.scan_turns(str(path), "claude")
 
-        self.assertEqual(dashboard.parse_ts(prompt_time), turns["turn_start"])
+        self.assertEqual(records.parse_ts(prompt_time), turns["turn_start"])
 
     def test_large_append_recovers_new_turn_start_from_skipped_delta(self) -> None:
         first_time = "2026-01-01T00:00:00Z"
@@ -71,7 +73,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                         )
                 turns = dashboard.scan_turns(str(path), "claude")
 
-        self.assertEqual(dashboard.parse_ts(second_time), turns["turn_start"])
+        self.assertEqual(records.parse_ts(second_time), turns["turn_start"])
 
     def test_base_session_exposes_full_sid_and_truncated_display_id(self) -> None:
         s = dashboard.base_session("gemini", "session-abcdef123", "proj")
@@ -136,7 +138,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 "content": "<local-command-stdout>ok</local-command-stdout>",
             },
         }
-        self.assertIsNone(dashboard._turn_signal(rec, "claude"))
+        self.assertIsNone(records._turn_signal(rec, "claude"))
         caveat = {
             "type": "user",
             "timestamp": "2026-01-01T00:00:00Z",
@@ -145,7 +147,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 "content": "<local-command-caveat>x</local-command-caveat>",
             },
         }
-        self.assertIsNone(dashboard._turn_signal(caveat, "claude"))
+        self.assertIsNone(records._turn_signal(caveat, "claude"))
 
     def test_uuidv7_sessions_started_together_get_distinct_display_ids(self) -> None:
         # DRC-3962. Codex ids are UUIDv7: the first 48 bits are a millisecond
@@ -295,11 +297,11 @@ class DurationAndEpochTest(unittest.TestCase):
     def test_millisecond_timestamps_are_detected_by_magnitude(self) -> None:
         """Harness stores mix seconds and milliseconds. Guessing wrong puts a
         session in 1970 or 55000 AD, and it silently reads as never-active."""
-        self.assertEqual(1_700_000_000, dashboard.norm_epoch(1_700_000_000))
-        self.assertEqual(1_700_000_000.0, dashboard.norm_epoch(1_700_000_000_000))
+        self.assertEqual(1_700_000_000, records.norm_epoch(1_700_000_000))
+        self.assertEqual(1_700_000_000.0, records.norm_epoch(1_700_000_000_000))
         # The cutover itself: 1e12 is seconds, one above it is milliseconds.
-        self.assertEqual(1e12, dashboard.norm_epoch(1e12))
-        self.assertAlmostEqual(1e9, dashboard.norm_epoch(1e12 + 1), places=0)
+        self.assertEqual(1e12, records.norm_epoch(1e12))
+        self.assertAlmostEqual(1e9, records.norm_epoch(1e12 + 1), places=0)
 
     def test_a_task_shorter_than_the_floor_does_not_licence_an_estimate(self) -> None:
         """The skill body promises "no estimate" until a session has a completed
@@ -356,7 +358,7 @@ class DurationAndEpochTest(unittest.TestCase):
         nonsense: list[Any] = [0, -5, "1700000000", None, [], {}]
         for bad in nonsense:
             with self.subTest(value=bad):
-                self.assertEqual(0, dashboard.norm_epoch(bad))
+                self.assertEqual(0, records.norm_epoch(bad))
 
 
 class ClockSkewTest(unittest.TestCase):

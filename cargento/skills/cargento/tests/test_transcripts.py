@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import random
 import tempfile
@@ -12,9 +13,13 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
+from cargento_runtime import io as runtime_io
+from cargento_runtime import records
+
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
+    make_config,
 )
 
 
@@ -54,20 +59,126 @@ class CargentoServerTest(LegacyDashboardTestCase):
 
             # Window of 10 starts right after the newline at offset 4:
             # "bbbb" is a complete record and must be kept.
-            with mock.patch.object(dashboard, "TAIL_BYTES", 10):
-                aligned = dashboard.read_tail(str(path))
+            aligned = runtime_io.read_tail(make_config(tail_bytes=10), str(path))
             # Window of 9 starts mid-"bbbb": the partial line must drop.
-            with mock.patch.object(dashboard, "TAIL_BYTES", 9):
-                misaligned = dashboard.read_tail(str(path))
+            misaligned = runtime_io.read_tail(make_config(tail_bytes=9), str(path))
 
         self.assertEqual(["bbbb", "cccc", ""], aligned)
         self.assertEqual(["cccc", ""], misaligned)
+
+
+class BoundedReadTest(unittest.TestCase):
+    def test_first_json_record_honors_before_at_and_after_cap(self) -> None:
+        payload = b'{"x":1}'
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "record.jsonl"
+            path.write_bytes(payload)
+
+            before = runtime_io.read_first_json(
+                make_config(first_line_json_cap_bytes=len(payload) - 1),
+                str(path),
+            )
+            at = runtime_io.read_first_json(
+                make_config(first_line_json_cap_bytes=len(payload)),
+                str(path),
+            )
+            after = runtime_io.read_first_json(
+                make_config(first_line_json_cap_bytes=len(payload) + 1),
+                str(path),
+            )
+
+        self.assertEqual({}, before)
+        self.assertEqual({"x": 1}, at)
+        self.assertEqual({"x": 1}, after)
+
+    def test_first_json_record_rejects_non_objects_and_bad_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "record.jsonl"
+            for raw in (b"[1,2]", b"{bad", b"\xff"):
+                with self.subTest(raw=raw):
+                    path.write_bytes(raw)
+                    self.assertEqual(
+                        {},
+                        runtime_io.read_first_json(
+                            make_config(first_line_json_cap_bytes=64),
+                            str(path),
+                        ),
+                    )
+            self.assertEqual(
+                {},
+                runtime_io.read_first_json(
+                    make_config(first_line_json_cap_bytes=64),
+                    str(Path(tmp) / "missing"),
+                ),
+            )
+
+    def test_prefix_bytes_returns_only_the_requested_total_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prefix"
+            path.write_bytes(b"abcdef")
+            self.assertEqual(b"", runtime_io.read_prefix_bytes(str(path), max_bytes=0))
+            self.assertEqual(b"abc", runtime_io.read_prefix_bytes(str(path), max_bytes=3))
+            self.assertEqual(b"abcdef", runtime_io.read_prefix_bytes(str(path), max_bytes=6))
+            self.assertEqual(b"abcdef", runtime_io.read_prefix_bytes(str(path), max_bytes=7))
+
+    def test_bounded_lines_use_independent_per_call_caps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "lines"
+            path.write_bytes(b"abc\n12345\nz\n")
+            self.assertEqual(
+                [],
+                list(
+                    runtime_io.iter_bounded_text_lines(
+                        str(path),
+                        max_lines=0,
+                        per_line_bytes=4,
+                    )
+                ),
+            )
+            self.assertEqual(
+                ["abc\n", "1234"],
+                list(
+                    runtime_io.iter_bounded_text_lines(
+                        str(path),
+                        max_lines=2,
+                        per_line_bytes=4,
+                    )
+                ),
+            )
+            self.assertEqual(
+                ["abc\n", "1234", "5\n", "z\n"],
+                list(
+                    runtime_io.iter_bounded_text_lines(
+                        str(path),
+                        max_lines=4,
+                        per_line_bytes=4,
+                    )
+                ),
+            )
+
+    def test_bounded_lines_replace_invalid_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "lines"
+            path.write_bytes(b"a\xff\n")
+            self.assertEqual(
+                ["a\ufffd\n"],
+                list(
+                    runtime_io.iter_bounded_text_lines(
+                        str(path),
+                        max_lines=1,
+                        per_line_bytes=8,
+                    )
+                ),
+            )
 
 
 class ReverseLinesTest(unittest.TestCase):
     """Replaces the reverse mmap scans. A mapped region whose file is truncated
     underneath it raises SIGBUS on POSIX (uncatchable) and blocks the writer's
     truncate on Windows; these are transcripts a live agent may rotate."""
+
+    def setUp(self) -> None:
+        self.config = make_config()
 
     def write(self, tmp: str, text: str) -> str:
         path = Path(tmp) / "t.jsonl"
@@ -78,7 +189,8 @@ class ReverseLinesTest(unittest.TestCase):
         return str(path)
 
     def read_back(self, path: str, **kwargs: Any) -> list[str]:
-        return [raw.decode() for raw in dashboard.reverse_lines(path, **kwargs)]
+        config = kwargs.pop("config", None) or self.config
+        return [raw.decode() for raw in runtime_io.reverse_lines(config, path, **kwargs)]
 
     def test_yields_lines_newest_first(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,11 +215,18 @@ class ReverseLinesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write(tmp, "\n".join(lines) + "\n")
             for chunk in (1, 2, 3, 7, 64, 1000):
-                with (
-                    self.subTest(chunk=chunk),
-                    mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk),
-                ):
-                    got = [line for line in self.read_back(path) if line]
+                with self.subTest(chunk=chunk):
+                    got = [
+                        line
+                        for line in self.read_back(
+                            path,
+                            config=dataclasses.replace(
+                                self.config,
+                                reverse_chunk_bytes=chunk,
+                            ),
+                        )
+                        if line
+                    ]
                     self.assertEqual(list(reversed(lines)), got)
 
     def test_contains_filter_never_hides_a_matching_line(self) -> None:
@@ -118,13 +237,17 @@ class ReverseLinesTest(unittest.TestCase):
                 text = "x" * offset + "\nfiller\nNEEDLE-here\nfiller\n"
                 path = self.write(tmp, text)
                 for chunk in (1, 2, 3, 5, 8, 13):
-                    with (
-                        self.subTest(offset=offset, chunk=chunk),
-                        mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk),
-                    ):
+                    with self.subTest(offset=offset, chunk=chunk):
                         got = [
                             raw.decode()
-                            for raw in dashboard.reverse_lines(path, contains=b"NEEDLE")
+                            for raw in runtime_io.reverse_lines(
+                                dataclasses.replace(
+                                    self.config,
+                                    reverse_chunk_bytes=chunk,
+                                ),
+                                path,
+                                contains=b"NEEDLE",
+                            )
                             if b"NEEDLE" in raw
                         ]
                         self.assertEqual(["NEEDLE-here"], got)
@@ -134,15 +257,15 @@ class ReverseLinesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write(tmp, "\n".join(lines) + "\n")
             for chunk in (4, 16, 256):
-                with (
-                    self.subTest(chunk=chunk),
-                    mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk),
-                ):
-                    unfiltered = [r for r in dashboard.reverse_lines(path) if b"TARGET" in r]
+                with self.subTest(chunk=chunk):
+                    config = dataclasses.replace(self.config, reverse_chunk_bytes=chunk)
+                    unfiltered = [
+                        raw for raw in runtime_io.reverse_lines(config, path) if b"TARGET" in raw
+                    ]
                     filtered = [
-                        r
-                        for r in dashboard.reverse_lines(path, contains=b"TARGET")
-                        if b"TARGET" in r
+                        raw
+                        for raw in runtime_io.reverse_lines(config, path, contains=b"TARGET")
+                        if b"TARGET" in raw
                     ]
                     self.assertEqual(unfiltered, filtered)
                     self.assertEqual(6, len(filtered))
@@ -172,10 +295,17 @@ class ReverseLinesTest(unittest.TestCase):
                 for stop in {size, max(0, size // 2), max(0, size - 1), 0}:
                     for max_bytes in (None, 3, 10):
                         for chunk in (1, 2, 5, 4096):
-                            with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk):
-                                got = list(
-                                    dashboard.reverse_lines(str(path), stop, max_bytes=max_bytes)
+                            got = list(
+                                runtime_io.reverse_lines(
+                                    dataclasses.replace(
+                                        self.config,
+                                        reverse_chunk_bytes=chunk,
+                                    ),
+                                    str(path),
+                                    stop,
+                                    max_bytes=max_bytes,
                                 )
+                            )
                             if got != reference(data, stop, max_bytes):
                                 self.fail(
                                     f"data={data!r} stop={stop} max_bytes={max_bytes} "
@@ -193,13 +323,21 @@ class ReverseLinesTest(unittest.TestCase):
                 data = b"\n".join(rng.choice(alphabet) for _ in range(rng.randint(0, 8)))
                 path.write_bytes(data + rng.choice([b"\n", b""]))
                 for chunk in (1, 2, 3, 5, 17, 4096):
-                    with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", chunk):
-                        plain = [r for r in dashboard.reverse_lines(str(path)) if b"NEEDLE" in r]
-                        filtered = [
-                            r
-                            for r in dashboard.reverse_lines(str(path), contains=b"NEEDLE")
-                            if b"NEEDLE" in r
-                        ]
+                    config = dataclasses.replace(self.config, reverse_chunk_bytes=chunk)
+                    plain = [
+                        raw
+                        for raw in runtime_io.reverse_lines(config, str(path))
+                        if b"NEEDLE" in raw
+                    ]
+                    filtered = [
+                        raw
+                        for raw in runtime_io.reverse_lines(
+                            config,
+                            str(path),
+                            contains=b"NEEDLE",
+                        )
+                        if b"NEEDLE" in raw
+                    ]
                     self.assertEqual(plain, filtered, f"chunk={chunk} data={data!r}")
 
     def test_crlf_transcripts_still_parse(self) -> None:
@@ -235,11 +373,13 @@ class ReverseLinesTest(unittest.TestCase):
     def test_a_file_truncated_mid_scan_stops_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write(tmp, "\n".join(f"line{i}" for i in range(500)) + "\n")
-            with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", 16):
-                walker = dashboard.reverse_lines(path)
-                next(walker)
-                Path(path).write_bytes(b"")  # writer rotates the transcript
-                remaining = list(walker)  # must not raise
+            walker = runtime_io.reverse_lines(
+                dataclasses.replace(self.config, reverse_chunk_bytes=16),
+                path,
+            )
+            next(walker)
+            Path(path).write_bytes(b"")  # writer rotates the transcript
+            remaining = list(walker)  # must not raise
         self.assertIsInstance(remaining, list)
 
     def test_a_line_ending_exactly_at_end_pos_is_yielded(self) -> None:
@@ -257,7 +397,9 @@ class ReverseLinesTest(unittest.TestCase):
             path = self.write(tmp, "first\nsecond\nthird\n")
             split = len("first\nsecond")  # the newline terminating "second"
             self.assertEqual(b"\n", Path(path).read_bytes()[split : split + 1])
-            got = [raw.decode() for raw in dashboard.reverse_lines(path, split) if raw]
+            got = [
+                raw.decode() for raw in runtime_io.reverse_lines(self.config, path, split) if raw
+            ]
         self.assertEqual(["second", "first"], got)
 
     def test_title_and_user_event_still_scan_the_whole_file(self) -> None:
@@ -534,15 +676,19 @@ class MalformedRecordTest(unittest.TestCase):
     def test_typed_accessors(self) -> None:
         not_dicts: list[Any] = [5, "str", [1, 2], None, True]
         for value in not_dicts:
-            self.assertEqual({}, dashboard.as_dict(value))
-            self.assertEqual({}, dashboard.message_dict({"message": value}))
-        self.assertEqual({"a": 1}, dashboard.as_dict({"a": 1}))
-        self.assertEqual({"a": 1}, dashboard.message_dict({"message": {"a": 1}}))
-        self.assertEqual({}, dashboard.message_dict("not-a-record"))
+            self.assertEqual({}, records.as_dict(value))
+            self.assertEqual({}, records.message_dict({"message": value}))
+        self.assertEqual({"a": 1}, records.as_dict({"a": 1}))
+        self.assertEqual({"a": 1}, records.message_dict({"message": {"a": 1}}))
+        self.assertEqual({}, records.message_dict("not-a-record"))
         not_lists: list[Any] = [5, "str", {"k": 1}, None, True]
         for value in not_lists:
-            self.assertEqual([], dashboard.as_list(value))
-        self.assertEqual([1, 2], dashboard.as_list([1, 2]))
+            self.assertEqual([], records.as_list(value))
+        self.assertEqual([1, 2], records.as_list([1, 2]))
+
+    def test_safe_text_replaces_controls_and_truncates(self) -> None:
+        self.assertEqual("a b c", records.safe_text("a\x00b\nc", 10))
+        self.assertEqual("abc", records.safe_text("abcdef", 3))
 
 
 class ReviewFixTest(unittest.TestCase):
@@ -574,7 +720,7 @@ class ReviewFixTest(unittest.TestCase):
                 samples = []
                 for _ in range(3):
                     start = time.perf_counter()
-                    list(dashboard.reverse_lines(str(path)))
+                    list(runtime_io.reverse_lines(make_config(), str(path)))
                     samples.append(time.perf_counter() - start)
                 timings.append(min(samples))
         # Quadratic would be ~16x for 4x the bytes. Linear is ~4x; allow 8x for

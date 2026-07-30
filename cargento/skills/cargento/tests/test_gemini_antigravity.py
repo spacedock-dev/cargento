@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import records
+
 from .fixtures import (
     protobuf_bytes_field,
     protobuf_int_field,
@@ -18,6 +20,64 @@ from .support import LegacyDashboardTestCase, dashboard
 
 
 class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
+    def test_record_fingerprint_is_stable_and_bounded(self) -> None:
+        self.assertEqual(
+            records.record_fingerprint({"a": 1, "b": 2}),
+            records.record_fingerprint({"b": 2, "a": 1}),
+        )
+        self.assertEqual(16, len(records.record_fingerprint({"payload": "x" * 10_000})))
+
+    def test_gemini_snapshot_expansion_keeps_only_records(self) -> None:
+        first = {"type": "user", "content": "one"}
+        second = {"type": "gemini", "content": "two"}
+        snapshot = {"$set": {"messages": [first, "bad", second]}}
+
+        self.assertEqual((first, second), records.gemini_records(snapshot))
+        self.assertEqual((first,), records.gemini_records(first))
+
+    def test_incremental_snapshot_returns_only_appended_records(self) -> None:
+        first = {"type": "user", "content": "one"}
+        second = {"type": "gemini", "content": "two"}
+        third = {"type": "user", "content": "three"}
+        state = {"gemini_snapshot_count": 0, "gemini_snapshot_tail": None}
+
+        self.assertEqual(
+            (first, second),
+            records.incremental_gemini_records(
+                {"$set": {"messages": [first, second]}},
+                state,
+            ),
+        )
+        self.assertEqual(
+            (),
+            records.incremental_gemini_records(
+                {"$set": {"messages": [first, second]}},
+                state,
+            ),
+        )
+        self.assertEqual(
+            (third,),
+            records.incremental_gemini_records(
+                {"$set": {"messages": [first, second, third]}},
+                state,
+            ),
+        )
+
+    def test_antigravity_head_keeps_partial_tail_without_a_line_cap(self) -> None:
+        complete = [f"line-{index}" for index in range(40)]
+        prefix = ("\n".join(complete) + "\npartial").encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cli.log"
+            path.write_bytes(prefix + b"-continued")
+            with mock.patch.object(
+                dashboard,
+                "ANTIGRAVITY_LOG_HEAD_BYTES",
+                len(prefix),
+            ):
+                lines = dashboard.antigravity_log_head_lines(str(path))
+
+        self.assertEqual([*complete, "partial"], lines)
+
     def test_gemini_set_snapshot_updates_summary_and_turns(self) -> None:
         messages = [
             {
@@ -50,9 +110,9 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
 
         self.assertEqual("resumed prompt", info["last_prompt"])
         self.assertEqual("resumed prompt", info["title"])
-        self.assertEqual([(dashboard.parse_ts("2026-01-01T00:00:05Z"), 42)], info["usage_events"])
+        self.assertEqual([(records.parse_ts("2026-01-01T00:00:05Z"), 42)], info["usage_events"])
         self.assertEqual([5.0], turns["durations"])
-        self.assertEqual(dashboard.parse_ts("2026-01-01T00:00:10Z"), turns["turn_start"])
+        self.assertEqual(records.parse_ts("2026-01-01T00:00:10Z"), turns["turn_start"])
 
     def test_large_repeated_gemini_snapshot_does_not_churn_dedup_cache(self) -> None:
         messages = [

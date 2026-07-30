@@ -166,7 +166,7 @@ class FrontendAssetContractTest(unittest.TestCase):
                     ),
                     mock.patch.object(dashboard, "render_status", return_value="running"),
                     mock.patch.object(dashboard, "stop_instance", return_value=("stopped", 0)),
-                    mock.patch.object(dashboard, "diag"),
+                    mock.patch.object(dashboard.runtime_io, "diag"),
                     mock.patch.object(sys, "stdout", io.StringIO()),
                 ):
                     if expected_exit is None:

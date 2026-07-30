@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
+from cargento_runtime import io as runtime_io
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import bounded_put, build_runtime_state
 
@@ -620,6 +621,27 @@ class StoreRootsTest(unittest.TestCase):
 
         self.assertEqual({"11111111", "22222222"}, {s["session"] for s in sessions})
 
+    def test_patched_candidate_order_reaches_runtime_globbing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = Path(tmp) / "a", Path(tmp) / "b"
+            first.mkdir()
+            second.mkdir()
+            first_file = first / "first.jsonl"
+            second_file = second / "second.jsonl"
+            first_file.write_text("{}\n")
+            second_file.write_text("{}\n")
+            with (
+                mock.patch.dict(
+                    dashboard.STORE_ROOTS,
+                    {"claude.projects": [str(first), str(second)]},
+                ),
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(first)),
+            ):
+                config, _ = dashboard._legacy_runtime()
+                found = runtime_io.glob_stores(config, "claude.projects", "*.jsonl")
+
+        self.assertEqual([str(first_file), str(second_file)], found)
+
 
 class DiagnoseTest(unittest.TestCase):
     def test_report_names_every_candidate_and_what_was_found(self) -> None:
@@ -955,7 +977,7 @@ class TextIoTest(unittest.TestCase):
 
         stream = AsciiOnly()
         with contextlib.redirect_stdout(stream):
-            dashboard.diag("collector error: café ☕")
+            runtime_io.diag("collector error: café ☕", print)
         self.assertIn("caf\\xe9", "".join(stream.written))
 
     def test_a_closed_stream_costs_one_line_not_the_diagnostics(self) -> None:
@@ -965,11 +987,11 @@ class TextIoTest(unittest.TestCase):
         closed = io.StringIO()
         closed.close()
         with contextlib.redirect_stdout(closed):
-            dashboard.diag("swallowed")
+            runtime_io.diag("swallowed", print)
 
         recovered = io.StringIO()
         with contextlib.redirect_stdout(recovered):
-            dashboard.diag("written after the failure")
+            runtime_io.diag("written after the failure", print)
 
         self.assertEqual("written after the failure\n", recovered.getvalue())
 
@@ -1053,12 +1075,13 @@ class GlobUnderTest(unittest.TestCase):
 
             self.assertEqual([], glob.glob(str(root / "*" / "*.jsonl")))  # the old behavior
             self.assertEqual(
-                [str(root / "sub" / "found.jsonl")], dashboard.glob_under(str(root), "*", "*.jsonl")
+                [str(root / "sub" / "found.jsonl")],
+                runtime_io.glob_under(str(root), "*", "*.jsonl"),
             )
 
     def test_results_are_sorted_for_deterministic_tie_breaks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             for name in ("c.jsonl", "a.jsonl", "b.jsonl"):
                 (Path(tmp) / name).write_text("{}\n")
-            found = [Path(p).name for p in dashboard.glob_under(str(tmp), "*.jsonl")]
+            found = [Path(p).name for p in runtime_io.glob_under(str(tmp), "*.jsonl")]
         self.assertEqual(["a.jsonl", "b.jsonl", "c.jsonl"], found)
