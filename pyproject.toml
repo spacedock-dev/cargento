@@ -52,6 +52,13 @@ max-args = 8
 # the launcher: one arm per JSONL entry kind, and one early return per way a
 # partial write can interrupt a scan.
 "cargento/skills/cargento/cargento_runtime/collectors/pi.py" = ["C901", "PLR0911"]
+# OpenCode's one pass over a session table keeps the launcher's shape: parent
+# and child rows, archival, freshness, and the per-session message scan.
+"cargento/skills/cargento/cargento_runtime/collectors/opencode.py" = [
+  "C901",
+  "PLR0912",
+  "PLR0915",
+]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]

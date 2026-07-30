@@ -13,6 +13,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
+from cargento_runtime.collectors import opencode as opencode_collector
 
 from .support import SERVER_PATH, LegacyDashboardTestCase, dashboard, make_runtime
 
@@ -25,6 +26,131 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             )
         )
         self.assertTrue(dashboard.goose_user_prompt([{"type": "text", "text": "hello"}]))
+
+    @staticmethod
+    def _opencode_db(
+        path: Path,
+        rows: list[tuple[Any, ...]],
+        *,
+        with_archived: bool = True,
+        messages: list[tuple[Any, ...]] | None = None,
+    ) -> None:
+        archived = ", time_archived INTEGER" if with_archived else ""
+        con = sqlite3.connect(path)
+        con.execute(
+            "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT,"
+            f" title TEXT, time_updated INTEGER{archived})"
+        )
+        placeholders = ", ".join("?" * (6 if with_archived else 5))
+        con.executemany(
+            f"INSERT INTO session VALUES ({placeholders})",  # noqa: S608 — literal "?" only
+            rows,
+        )
+        con.execute(
+            "CREATE TABLE session_message (session_id TEXT, type TEXT,"
+            " time_created INTEGER, data TEXT)"
+        )
+        if messages:
+            con.executemany("INSERT INTO session_message VALUES (?, ?, ?, ?)", messages)
+        con.commit()
+        con.close()
+
+    def test_an_archived_session_does_not_ghost_as_working(self) -> None:
+        # Archiving bumps time_updated, so an archived session would otherwise
+        # read as active the moment it was filed away. Mutation-checked:
+        # dropping the time_archived skip passed the whole suite.
+        now = dashboard.time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [
+                    ("live", None, "/w/live", "Live", millis, None),
+                    ("filed", None, "/w/filed", "Filed", millis, millis),
+                ],
+            )
+            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
+                config, state = dashboard._legacy_runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(["live"], [row["sid"] for row in rows])
+
+    def test_a_store_without_time_archived_still_reads(self) -> None:
+        # OpenCode added the column, and an older store must not read as empty.
+        # Mutation-checked: narrowing the fallback's exception passed the suite.
+        now = dashboard.time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("old", None, "/w/old", "Old schema", millis)],
+                with_archived=False,
+            )
+            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
+                config, state = dashboard._legacy_runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(["old"], [row["sid"] for row in rows])
+
+    def test_fresh_child_sessions_become_the_parents_subagents(self) -> None:
+        # Mutation-checked: dropping the child titles passed the whole suite.
+        now = dashboard.time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [
+                    ("parent", None, "/w/proj", "Parent", millis, None),
+                    ("kid", "parent", "/w/proj", "researcher", millis, None),
+                ],
+            )
+            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
+                config, state = dashboard._legacy_runtime()
+                rows = opencode_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows), "a child must not become its own row")
+        self.assertEqual(["researcher"], rows[0]["subagents"])
+        self.assertEqual("working", rows[0]["state"])
+
+    def test_a_broken_session_query_is_recorded_as_a_store_error(self) -> None:
+        # Collectors swallow their failures, so a corrupt store reads as an idle
+        # machine unless the error reaches diagnostics. Mutation-checked:
+        # dropping record_store_error passed the whole suite.
+        now = dashboard.time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "opencode.db"
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE unrelated (x INTEGER)")  # no session table
+            con.commit()
+            con.close()
+            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
+                config, state = dashboard._legacy_runtime()
+
+                self.assertEqual([], opencode_collector.collect(config, state, now, 24, True))
+                self.assertIn(str(db), state.store_errors)
+
+    def test_a_real_store_yields_nothing_when_sqlite3_is_missing(self) -> None:
+        # The guard only matters when a store EXISTS and sqlite3 does not; with
+        # no store the empty glob hides it. Mutation-checked: removing the guard
+        # passed the whole suite.
+        now = dashboard.time.time()
+        millis = int(now * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._opencode_db(
+                Path(tmp) / "opencode.db",
+                [("s1", None, "/w/proj", "Work", millis, None)],
+            )
+            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
+                config, state = dashboard._legacy_runtime()
+                self.assertEqual(
+                    ["s1"],
+                    [r["sid"] for r in opencode_collector.collect(config, state, now, 24, True)],
+                )
+                with mock.patch.object(
+                    runtime_io, "SQLITE_IMPORT_ERROR", "No module named '_sqlite3'"
+                ):
+                    self.assertFalse(opencode_collector.discover(config, state))
+                    self.assertEqual([], opencode_collector.collect(config, state, now, 24, True))
 
     def test_opencode_show_all_returns_every_session(self) -> None:
         now = dashboard.time.time()
@@ -44,8 +170,9 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             con.close()
 
             with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
-                everything = dashboard.collect_opencode(now, 24, True)
-                windowed = dashboard.collect_opencode(now, 24, False)
+                config, state = dashboard._legacy_runtime()
+                everything = opencode_collector.collect(config, state, now, 24, True)
+                windowed = opencode_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(250, len(everything))  # previously capped at 200
         self.assertEqual(0, len(windowed))
@@ -330,14 +457,19 @@ class SqliteOptionalTest(unittest.TestCase):
     def test_db_backed_collectors_return_empty_instead_of_raising(self) -> None:
         with self.without_sqlite():
             self.assertFalse(runtime_io.sqlite_available())
-            for collector in (
-                dashboard.collect_opencode,
-                dashboard.collect_cursor,
-                dashboard.collect_goose,
-                dashboard.collect_antigravity,
-            ):
-                with self.subTest(collector=collector.__name__):
-                    self.assertEqual([], collector(1_700_000_000.0, 24, False))
+            now = 1_700_000_000.0
+            config, state = dashboard._legacy_runtime()
+            # Moved collectors take the runtime contract; the rest are still
+            # launcher-owned. Each entry flips as its extraction task lands.
+            collectors = (
+                ("opencode", lambda: opencode_collector.collect(config, state, now, 24, False)),
+                ("cursor", lambda: dashboard.collect_cursor(now, 24, False)),
+                ("goose", lambda: dashboard.collect_goose(now, 24, False)),
+                ("antigravity", lambda: dashboard.collect_antigravity(now, 24, False)),
+            )
+            for name, run in collectors:
+                with self.subTest(collector=name):
+                    self.assertEqual([], run())
 
     def test_db_backed_harnesses_are_not_advertised_as_discovered(self) -> None:
         # Reporting "discovered" for a store we cannot open would show the
@@ -398,7 +530,9 @@ spec.loader.exec_module(m)          # must not raise
 builtins.__import__ = real_import
 assert not m.runtime_io.sqlite_available(), "sqlite_available() should be False"
 now = 1_700_000_000.0
-for fn in (m.collect_opencode, m.collect_cursor, m.collect_goose):
+cfg, st = m._legacy_runtime()
+assert m.opencode_collector.collect(cfg, st, now, 24, True) == [], "opencode"
+for fn in (m.collect_cursor, m.collect_goose):
     assert fn(now, 24, True) == [], fn.__name__
 # Antigravity is discovered from store mtime and CLI logs, so it survives
 # without sqlite3 — only its rate and ETA degrade. Give it a real store so
@@ -527,7 +661,8 @@ class SqliteUriTest(unittest.TestCase):
             con.close()
 
             with mock.patch.object(dashboard, "OPENCODE_DATA", str(data)):
-                sessions = dashboard.collect_opencode(now, 24, False)
+                config, state = dashboard._legacy_runtime()
+                sessions = opencode_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("Percent", sessions[0]["title"])

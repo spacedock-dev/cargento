@@ -51,6 +51,7 @@ from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import copilot as copilot_collector
 from cargento_runtime.collectors import droid as droid_collector
+from cargento_runtime.collectors import opencode as opencode_collector
 from cargento_runtime.collectors import pi as pi_collector
 from cargento_runtime.web import page as frontend_page
 
@@ -2583,116 +2584,6 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     return out
 
 
-def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    if not runtime_io.sqlite_available():
-        return []
-    config, runtime_state_value = _legacy_runtime()
-    out: list[dict[str, Any]] = []
-    for db in runtime_io.glob_stores(config, "opencode.data", "opencode*.db"):
-        try:
-            con = runtime_io.open_sqlite_read_only(db, runtime_state_value)
-        except sqlite3.Error:
-            continue
-        # ?all=1 promises every session ever; LIMIT -1 is SQLite's "no limit".
-        limit = -1 if show_all else 200
-        try:
-            try:
-                rows = con.execute(
-                    "SELECT id, parent_id, directory, title, time_updated, time_archived "
-                    "FROM session ORDER BY time_updated DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
-            except sqlite3.OperationalError:  # older schema without time_archived
-                rows = con.execute(
-                    "SELECT id, parent_id, directory, title, time_updated, "
-                    "NULL AS time_archived FROM session "
-                    "ORDER BY time_updated DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
-        except sqlite3.Error as exc:
-            runtime_io.record_store_error(runtime_state_value, db, exc)
-            con.close()
-            continue
-        try:
-            children: dict[
-                Any, list[tuple[str, float]]
-            ] = {}  # parent session id -> [(title, epoch)]
-            tops: list[tuple[Any, float]] = []
-            for r in rows:
-                if r["time_archived"]:
-                    continue  # archival bumps time_updated; don't ghost as working
-                upd = records.norm_epoch(r["time_updated"])
-                if r["parent_id"]:
-                    if runtime_sessions.is_fresh(config, now, upd, WORKING_THRESHOLD_SEC):
-                        children.setdefault(r["parent_id"], []).append(
-                            ((r["title"] or "subagent")[:70], upd)
-                        )
-                else:
-                    tops.append((r, upd))
-            for r, upd in tops:
-                agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
-                activity_sources = (upd, *(m for _, m in agents))
-                last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
-                active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
-                if not (active or show_all):
-                    continue
-                subagents = [label for label, _ in agents]
-                state, state_detail = "idle", "awaiting your message"
-                if runtime_sessions.is_fresh(config, now, last_activity, WORKING_THRESHOLD_SEC):
-                    state = "working"
-                    state_detail = runtime_sessions.working_detail(None, subagents)
-
-                turn = None
-                last_prompt = ""
-                if active:
-                    events = []
-                    try:
-                        # The message kind lives in the `type` COLUMN (tagged
-                        # union discriminator); `data` omits type/id and holds
-                        # the prompt in data.text.
-                        msgs = con.execute(
-                            "SELECT type, time_created, data FROM session_message "
-                            "WHERE session_id = ? ORDER BY time_created DESC LIMIT ?",
-                            (r["id"], SQL_MSG_LIMIT),
-                        ).fetchall()
-                        for m in reversed(msgs):
-                            is_user = m["type"] == "user"
-                            events.append((records.norm_epoch(m["time_created"]), is_user))
-                            if is_user:
-                                try:
-                                    jd = json.loads(m["data"] or "{}")
-                                except (ValueError, TypeError):
-                                    jd = {}
-                                last_prompt = records.extract_text(jd)[:140] or last_prompt
-                    except sqlite3.Error:
-                        pass
-                    turn = runtime_turns.turn_progress(
-                        runtime_turns.turns_from_events(events), state, now, config
-                    )
-
-                s = runtime_sessions.base_session(
-                    "opencode",
-                    r["id"],
-                    runtime_sessions.project_from_cwd(config, r["directory"] or "") or "opencode",
-                )
-                s.update(
-                    {
-                        "title": (r["title"] or "").strip()[:80] or None,
-                        "last_prompt": last_prompt,
-                        "state": state,
-                        "state_detail": state_detail,
-                        "active": active,
-                        "last_activity": last_activity,
-                        "turn": turn,
-                        "subagents": subagents,
-                    }
-                )
-                out.append(s)
-        finally:
-            con.close()
-    return out
-
-
 # db path -> (mtime, title, cwd)
 _cursor_meta_cache = _LEGACY_STATE.cursor_metadata_cache
 
@@ -3104,17 +2995,7 @@ _HARNESS_ROWS: tuple[tuple[str, str, _Legacy | ModuleType], ...] = (
     # JSONL and current Antigravity CLI per-conversation SQLite databases.
     ("gemini", "Gemini", _Legacy(_discover_gemini, collect_gemini)),
     ("copilot", "Copilot", copilot_collector),
-    (
-        "opencode",
-        "OpenCode",
-        _Legacy(
-            lambda: (
-                runtime_io.sqlite_available()
-                and _store_glob_exists("opencode.data", "opencode*.db")
-            ),
-            collect_opencode,
-        ),
-    ),
+    ("opencode", "OpenCode", opencode_collector),
     (
         "cursor",
         "Cursor",
