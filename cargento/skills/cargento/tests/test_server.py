@@ -53,6 +53,26 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             dashboard._hook_generation.clear()
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
+        # Route-shape tests exercise successful /api/notify requests, but do
+        # not assert native delivery. Execute the notification code while
+        # keeping its osascript process off the host.
+        original_run = dashboard.subprocess.run
+
+        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
+            command = args[0] if args else kwargs.get("args")
+            if (
+                isinstance(command, (list, tuple))
+                and command
+                and command[0] == "/usr/bin/osascript"
+            ):
+                return subprocess.CompletedProcess(command, 0)
+            return original_run(*args, **kwargs)
+
+        notify_patcher = mock.patch.object(
+            dashboard.subprocess, "run", side_effect=run_without_native_delivery
+        )
+        notify_patcher.start()
+        self.addCleanup(notify_patcher.stop)
 
     def tearDown(self) -> None:
         dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
