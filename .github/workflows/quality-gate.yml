@@ -1,7 +1,7 @@
 name: Quality Gate
 
-# Strict lint (ruff, all rules), formatting, mypy --strict, embedded HTML/CSS/JS
-# asset checks, and the full unittest suite under coverage with an enforced
+# Strict lint (ruff, all rules), formatting, mypy --strict, frontend source
+# checks, and the full unittest suite under coverage with an enforced
 # threshold. The final `quality-gate` job aggregates every result into the one
 # status that branch protection requires.
 #
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   lint:
-    name: Lint (ruff + format + embedded assets)
+    name: Lint (ruff + format + frontend sources)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -45,7 +45,7 @@ jobs:
         run: ruff check --output-format=github .
       - name: Ruff format check
         run: ruff format --check .
-      - name: Embedded page assets (JS syntax, CSS structure, DOM ids)
+      - name: Frontend source checks (JS syntax, CSS structure, DOM ids)
         run: python3 scripts/lint_embedded.py
 
   typecheck:

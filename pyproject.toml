@@ -35,7 +35,7 @@ ignore = [
 max-args = 8
 
 [tool.ruff.lint.per-file-ignores]
-# The embedded HTML/CSS/JS page and SVG icon paths make long source lines
+# The frontend HTML/CSS/JS source and SVG icon paths make long source lines
 # unavoidable, and the ten defensive harness collectors are inherently
 # branchy — refactoring them to satisfy complexity limits would trade real
 # robustness for score.

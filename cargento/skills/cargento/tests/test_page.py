@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 class FrontendAssetContractTest(unittest.TestCase):
-    """The shipped asset boundary that replaces the embedded page literal."""
+    """The shipped frontend asset boundary and assembled page contract."""
 
     def test_runtime_package_has_one_canonical_top_level_identity(self) -> None:
         self.assertNotIn("cargento.skills.cargento.cargento_runtime", sys.modules)
@@ -325,7 +325,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_served_page_bytes_equal_the_embedded_page(self) -> None:
+    def test_served_page_bytes_equal_the_frontend_page(self) -> None:
         page = frontend_page.load_page()
         httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler, page_bytes=page)
         thread = serve_until_closed(httpd)
