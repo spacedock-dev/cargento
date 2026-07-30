@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cargento_runtime import claude_data, records
+from cargento_runtime import claude_data, records, spacedock
 from cargento_runtime import sessions as runtime_sessions
 
 from .support import LegacyDashboardTestCase, dashboard, make_runtime
@@ -360,7 +360,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
 
     def test_transient_agent_setting_read_failure_is_not_negative_cached(self) -> None:
-        record = json.dumps({"agentSetting": dashboard.SPACEDOCK_ENSIGN})
+        record = json.dumps({"agentSetting": spacedock.SPACEDOCK_ENSIGN})
         source = mock.mock_open(read_data=(record + "\n").encode())
         runtime = dashboard._legacy_runtime()
         path = "/fake/transient-setting.jsonl"
@@ -378,9 +378,9 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         ):
             config, state = dashboard._legacy_runtime()
             self.assertEqual("", claude_data.agent_setting(config, state, path))
-            self.assertNotIn(path, dashboard._sd_role_cache)
+            self.assertNotIn(path, state.spacedock_role_cache)
             self.assertEqual(
-                dashboard.SPACEDOCK_ENSIGN,
+                spacedock.SPACEDOCK_ENSIGN,
                 claude_data.agent_setting(config, state, path),
             )
 
@@ -428,8 +428,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                     for record in (
                         {
                             "type": "agent-name",
-                            "agentName": dashboard.SPACEDOCK_ENSIGN,
-                            "agentSetting": dashboard.SPACEDOCK_ENSIGN,
+                            "agentName": spacedock.SPACEDOCK_ENSIGN,
+                            "agentSetting": spacedock.SPACEDOCK_ENSIGN,
                         },
                         {
                             "type": "user",

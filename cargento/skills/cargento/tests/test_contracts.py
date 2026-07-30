@@ -446,6 +446,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",
         },
+        "cargento_runtime.spacedock": {
+            "cargento_runtime.config",
+            "cargento_runtime.sessions",
+            "cargento_runtime.state",
+        },
         "cargento_runtime.claude_data": {
             "cargento_runtime.config",
             "cargento_runtime.io",

@@ -51,6 +51,9 @@ max-args = 8
 # The Claude title, tail analyzer and agent classifier keep the launcher's
 # reviewed shape: one arm per record kind, and one cache decision per bound.
 "cargento/skills/cargento/cargento_runtime/claude_data.py" = ["C901", "PLR0912"]
+# The Spacedock frontmatter and boot-envelope parsers keep the launcher's
+# reviewed shape: one arm per frontmatter spelling, and one bound per read.
+"cargento/skills/cargento/cargento_runtime/spacedock.py" = ["C901", "PLR0912"]
 # Pi's projection and incremental scanner keep the branch shape they had in
 # the launcher: one arm per JSONL entry kind, and one early return per way a
 # partial write can interrupt a scan.

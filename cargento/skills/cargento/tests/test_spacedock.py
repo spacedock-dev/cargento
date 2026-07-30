@@ -7,10 +7,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from .support import dashboard
+from cargento_runtime import spacedock
+
+from .support import dashboard, make_runtime
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -31,11 +33,13 @@ class SpacedockParserTest(unittest.TestCase):
     ]
 
     def frontmatter(self, body: str) -> list[str]:
-        lines: list[str] = dashboard.sd_frontmatter_lines(body)
+        config, _runtime = dashboard._legacy_runtime()
+        lines: list[str] = spacedock.frontmatter_lines(config, body)
         return lines
 
     def test_stage_names_read_document_order_past_sibling_blocks(self) -> None:
         """`transitions:` and a nested `decision:` must not leak into the spine."""
+        config, _runtime = dashboard._legacy_runtime()
         body = (
             "---\n"
             "commissioned-by: spacedock@0.22.0\n"
@@ -66,10 +70,10 @@ class SpacedockParserTest(unittest.TestCase):
         )
         lines = self.frontmatter(body)
 
-        self.assertEqual("spacedock@0.22.0", dashboard.sd_scalar(lines, "commissioned-by"))
+        self.assertEqual("spacedock@0.22.0", spacedock.scalar(lines, "commissioned-by"))
         self.assertEqual(
             ["intake", "review", "fix-and-harden", "escalated", "posted"],
-            dashboard.sd_stage_names(lines),
+            spacedock.stage_names(config, lines),
         )
         # The initial and terminal flags belong to the item they are nested
         # under, and `gate:`/`worktree:`/the decision options are not flags.
@@ -77,12 +81,13 @@ class SpacedockParserTest(unittest.TestCase):
             [("intake", True, False), ("posted", False, True)],
             [
                 (entry["name"], entry["initial"], entry["terminal"])
-                for entry in dashboard.sd_stage_entries(lines)
+                for entry in spacedock.stage_entries(config, lines)
                 if entry["initial"] or entry["terminal"]
             ],
         )
 
     def test_stage_flags_accept_yamls_true_ish_spellings(self) -> None:
+        config, _runtime = dashboard._legacy_runtime()
         body = (
             "---\n"
             "stages:\n"
@@ -100,7 +105,7 @@ class SpacedockParserTest(unittest.TestCase):
             [("intake", True, False), ("review", False, False), ("posted", False, True)],
             [
                 (e["name"], e["initial"], e["terminal"])
-                for e in dashboard.sd_stage_entries(self.frontmatter(body))
+                for e in spacedock.stage_entries(config, self.frontmatter(body))
             ],
         )
 
@@ -115,6 +120,7 @@ class SpacedockParserTest(unittest.TestCase):
 
     def test_stage_names_refuse_shapes_the_scanner_cannot_model(self) -> None:
         """An unmodellable construct must render no strip, never a wrong one."""
+        config, _runtime = dashboard._legacy_runtime()
         cases = {
             "flow sequence": "stages:\n  states: [intake, review]\n",
             "no states block": "stages:\n  defaults:\n    worktree: false\n",
@@ -127,7 +133,7 @@ class SpacedockParserTest(unittest.TestCase):
         for label, block in cases.items():
             with self.subTest(case=label):
                 lines = ("---\n" + block + "---\n").split("\n")[1:-2]
-                self.assertEqual([], dashboard.sd_stage_names(lines))
+                self.assertEqual([], spacedock.stage_names(config, lines))
 
     def test_workers_are_attributed_to_a_known_slug(self) -> None:
         """Cycle markers appear on either side of the stage, and a slug may end
@@ -150,7 +156,7 @@ class SpacedockParserTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(
                     expected,
-                    dashboard.sd_attribute_worker(name, slugs, self.DEBUG_FLYWHEEL),
+                    spacedock.attribute_worker(name, slugs, self.DEBUG_FLYWHEEL),
                 )
 
     def test_workers_are_rejected_rather_than_mis_attributed(self) -> None:
@@ -162,11 +168,12 @@ class SpacedockParserTest(unittest.TestCase):
             ("real content beside the stage", "spacedock-ensign-case-7-uat-extra"),
         ]:
             with self.subTest(case=label):
-                self.assertIsNone(dashboard.sd_attribute_worker(name, slugs, self.DEBUG_FLYWHEEL))
+                self.assertIsNone(spacedock.attribute_worker(name, slugs, self.DEBUG_FLYWHEEL))
 
     def test_boot_records_require_tool_result_provenance(self) -> None:
         """Boot output is command output. Conversation text that merely contains
         an envelope must not be able to nominate a path for Cargento to open."""
+        config, _runtime = dashboard._legacy_runtime()
         envelope = (
             '{"command":"boot","id_style":"slug",'
             '"dispatchable":[{"slug":"drc-1","current":"review","next":"disposition"}],'
@@ -183,18 +190,19 @@ class SpacedockParserTest(unittest.TestCase):
                 }
             ).encode()
 
-        records = dashboard.sd_boot_records(line("tool_result"))
+        records = spacedock.boot_records(config, line("tool_result"))
 
         self.assertEqual(1, len(records))
         self.assertEqual("/w/one", records[0]["definition_dir"])
-        self.assertEqual({"drc-1": "review"}, dashboard.sd_boot_entities(records, "/w/one"))
-        self.assertEqual(["/w/one"], dashboard.sd_workflow_dirs(records))
+        self.assertEqual({"drc-1": "review"}, spacedock.boot_entities(records, "/w/one"))
+        self.assertEqual(["/w/one"], spacedock.workflow_dirs(config, records))
         # Same bytes, ordinary text block: no provenance, no record.
-        self.assertEqual([], dashboard.sd_boot_records(line("text")))
-        self.assertEqual([], dashboard.sd_boot_records(b'{"not":"jsonl definition_dir"}'))
+        self.assertEqual([], spacedock.boot_records(config, line("text")))
+        self.assertEqual([], spacedock.boot_records(config, b'{"not":"jsonl definition_dir"}'))
 
     def test_boot_scan_is_bounded_against_decoy_candidates(self) -> None:
         """Every unbalanced candidate used to rescan to the end of the blob."""
+        config, _runtime = dashboard._legacy_runtime()
         decoys = '{"command"' * 40_000
         payload = json.dumps(
             {
@@ -206,19 +214,20 @@ class SpacedockParserTest(unittest.TestCase):
         ).encode()
         started = time.monotonic()
 
-        self.assertEqual([], dashboard.sd_boot_records(payload))
+        self.assertEqual([], spacedock.boot_records(config, payload))
 
         self.assertLess(time.monotonic() - started, 1.0)
 
     def test_workflow_dirs_reject_relative_and_nul_paths(self) -> None:
-        records = [
+        config, _runtime = dashboard._legacy_runtime()
+        records: list[dict[str, Any]] = [
             {"command": "boot", "definition_dir": "docs/spacedock/rel"},
             {"command": "boot", "definition_dir": "/abs/ok"},
             {"command": "boot", "definition_dir": "/abs/ok"},
             {"command": "boot", "definition_dir": ""},
         ]
 
-        self.assertEqual(["/abs/ok"], dashboard.sd_workflow_dirs(records))
+        self.assertEqual(["/abs/ok"], spacedock.workflow_dirs(config, records))
 
 
 class SpacedockReadContractTest(unittest.TestCase):
@@ -239,11 +248,12 @@ class SpacedockReadContractTest(unittest.TestCase):
     )
 
     def setUp(self) -> None:
+        _config, runtime = dashboard._legacy_runtime()
         with dashboard._cache_lock:
-            dashboard._sd_workflow_cache.clear()
-            dashboard._sd_boot_cache.clear()
-            dashboard._sd_role_cache.clear()
-            dashboard._sd_entity_cache.clear()
+            runtime.spacedock_workflow_cache.clear()
+            runtime.spacedock_boot_cache.clear()
+            runtime.spacedock_role_cache.clear()
+            runtime.spacedock_entity_cache.clear()
 
     def workflow(self, body: str | None = None) -> Path:
         holder = tempfile.TemporaryDirectory(prefix="cargento-sd-")
@@ -266,6 +276,7 @@ class SpacedockReadContractTest(unittest.TestCase):
         return path
 
     def test_commissioned_readme_yields_its_ordered_stages(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
 
         self.assertEqual(
@@ -274,10 +285,11 @@ class SpacedockReadContractTest(unittest.TestCase):
                 "stages": ["intake", "review", "posted"],
                 "resting": ["intake", "posted"],
             },
-            dashboard.sd_read_workflow(str(root)),
+            spacedock.read_workflow(config, runtime, str(root)),
         )
 
     def test_uncommissioned_or_absent_readme_yields_nothing(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         cases = [
             ("absent", None),
             ("not commissioned", "---\nstages:\n  states:\n    - name: intake\n---\n"),
@@ -285,10 +297,13 @@ class SpacedockReadContractTest(unittest.TestCase):
         ]
         for label, body in cases:
             with self.subTest(case=label):
-                self.assertIsNone(dashboard.sd_read_workflow(str(self.workflow(body))))
+                self.assertIsNone(
+                    spacedock.read_workflow(config, runtime, str(self.workflow(body)))
+                )
 
     @unittest.skipUnless(hasattr(os, "symlink"), "platform has no symlink")
     def test_a_symlinked_readme_is_refused_not_followed(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(None)
         target = root.parent / "elsewhere.md"
         target.write_text(self.README, encoding="utf-8")
@@ -297,18 +312,41 @@ class SpacedockReadContractTest(unittest.TestCase):
         except OSError:  # pragma: no cover - Windows without the privilege
             self.skipTest("symlink creation not permitted")
 
-        self.assertIsNone(dashboard.sd_read_workflow(str(root)))
+        self.assertIsNone(spacedock.read_workflow(config, runtime, str(root)))
+
+    def test_the_readme_read_stops_at_its_configured_bounds(self) -> None:
+        # These are project reads, not store reads, so the byte and line bounds
+        # are the read policy rather than an optimisation. Mutation-checked:
+        # raising either bound passed the whole suite, because every other
+        # fixture is far smaller than the shipped defaults.
+        root = self.workflow(self.README)
+        head = self.README.index("states:")
+
+        generous, runtime = make_runtime()
+        self.assertIsNotNone(spacedock.read_workflow(generous, runtime, str(root)))
+
+        # A byte bound that stops before the states block yields no stages.
+        byte_bound, byte_runtime = make_runtime(spacedock_readme_bytes=head)
+        truncated = spacedock.read_workflow(byte_bound, byte_runtime, str(root))
+        self.assertEqual([], (truncated or {}).get("stages", []))
+
+        # A line bound of one cannot reach the states block either.
+        line_bound, line_runtime = make_runtime(spacedock_max_frontmatter_lines=1)
+        clipped = spacedock.read_workflow(line_bound, line_runtime, str(root))
+        self.assertEqual([], (clipped or {}).get("stages", []))
 
     def test_only_frontmatter_is_read_however_long_the_body(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README + ("prose line\n" * 40_000))
 
-        result = dashboard.sd_read_workflow(str(root))
+        result = spacedock.read_workflow(config, runtime, str(root))
 
         self.assertIsNotNone(result)
         assert result is not None
         self.assertEqual(["intake", "review", "posted"], result["stages"])
 
     def test_session_workflows_prefer_live_workers_then_boot_entities(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         boot = [
             {
@@ -322,8 +360,8 @@ class SpacedockReadContractTest(unittest.TestCase):
             }
         ]
 
-        strips = dashboard.sd_session_workflows(
-            boot, ["spacedock-ensign-drc-1-posted"], time.time(), 3600
+        strips = spacedock.session_workflows(
+            config, runtime, boot, ["spacedock-ensign-drc-1-posted"], time.time(), 3600
         )
 
         self.assertEqual(1, len(strips))
@@ -340,6 +378,7 @@ class SpacedockReadContractTest(unittest.TestCase):
         before any entity is intaken reports `dispatchable: []` for the rest of
         the session; without the state directory there is no slug to anchor the
         live worker on, and the workflow renders no strip at all."""
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         state = root / ".spacedock-state"
         self.entity(state, "drc-7", "intake")  # queued, not moving
@@ -356,8 +395,8 @@ class SpacedockReadContractTest(unittest.TestCase):
             }
         ]
 
-        strips = dashboard.sd_session_workflows(
-            boot, ["spacedock-ensign-pr-42-posted"], time.time(), 3600
+        strips = spacedock.session_workflows(
+            config, runtime, boot, ["spacedock-ensign-pr-42-posted"], time.time(), 3600
         )
 
         self.assertEqual(1, len(strips))
@@ -369,6 +408,7 @@ class SpacedockReadContractTest(unittest.TestCase):
         )
 
     def test_entity_state_is_read_newest_first_in_both_file_shapes(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         state = root / ".spacedock-state"
         older = self.entity(state, "drc-1", "review")
@@ -378,12 +418,13 @@ class SpacedockReadContractTest(unittest.TestCase):
 
         self.assertEqual(
             [("drc-2", "review"), ("drc-1", "review")],
-            dashboard.sd_read_entities(
-                str(state), ["intake", "review", "posted"], 1_700_000_200, 3600
+            spacedock.read_entities(
+                config, runtime, str(state), ["intake", "review", "posted"], 1_700_000_200, 3600
             ),
         )
 
     def test_entity_state_refuses_everything_that_is_not_an_entity(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         state = root / ".spacedock-state"
         self.entity(state, "drc-1", "review")
@@ -400,8 +441,8 @@ class SpacedockReadContractTest(unittest.TestCase):
 
         self.assertEqual(
             [("drc-1", "review")],
-            dashboard.sd_read_entities(
-                str(state), ["intake", "review", "posted"], time.time(), 3600
+            spacedock.read_entities(
+                config, runtime, str(state), ["intake", "review", "posted"], time.time(), 3600
             ),
         )
 
@@ -411,6 +452,7 @@ class SpacedockReadContractTest(unittest.TestCase):
         descriptor, so every entity file would be refused on that platform
         alone. Reproduced here by simulating the cached stat, because a POSIX
         runner cannot otherwise see it."""
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         state = root / ".spacedock-state"
         self.entity(state, "drc-1", "review")
@@ -448,7 +490,7 @@ class SpacedockReadContractTest(unittest.TestCase):
                 yield [WindowsLikeEntry(entry) for entry in entries]
 
         with mock.patch.object(dashboard.os, "scandir", windows_like_scandir):
-            found = dashboard.sd_entity_files(str(state))
+            found = spacedock.entity_files(config, str(state))
             self.assertEqual(1, len(found))
             _, path, info = found[0]
             self.assertEqual(
@@ -457,14 +499,15 @@ class SpacedockReadContractTest(unittest.TestCase):
             )
             self.assertEqual(
                 [("drc-1", "review")],
-                dashboard.sd_read_entities(
-                    str(state), ["intake", "review", "posted"], time.time(), 3600
+                spacedock.read_entities(
+                    config, runtime, str(state), ["intake", "review", "posted"], time.time(), 3600
                 ),
             )
 
     def test_entity_state_older_than_the_window_is_history_not_work(self) -> None:
         """A first officer discovers every workflow in the project. One retired
         months ago still has entities frozen mid-pipeline."""
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         state = root / ".spacedock-state"
         stale = self.entity(state, "drc-1", "review")
@@ -472,13 +515,19 @@ class SpacedockReadContractTest(unittest.TestCase):
 
         self.assertEqual(
             [],
-            dashboard.sd_read_entities(
-                str(state), ["intake", "review", "posted"], 1_700_000_000 + 90_000, 86_400
+            spacedock.read_entities(
+                config,
+                runtime,
+                str(state),
+                ["intake", "review", "posted"],
+                1_700_000_000 + 90_000,
+                86_400,
             ),
         )
 
     @unittest.skipUnless(hasattr(os, "symlink"), "platform has no symlink")
     def test_a_symlinked_entity_file_is_refused_not_followed(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         state = root / ".spacedock-state"
         target = self.entity(state, "drc-1", "review")
@@ -489,12 +538,13 @@ class SpacedockReadContractTest(unittest.TestCase):
 
         self.assertEqual(
             [("drc-1", "review")],
-            dashboard.sd_read_entities(
-                str(state), ["intake", "review", "posted"], time.time(), 3600
+            spacedock.read_entities(
+                config, runtime, str(state), ["intake", "review", "posted"], time.time(), 3600
             ),
         )
 
     def test_entity_frontmatter_is_reread_only_when_the_file_changes(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         state = root / ".spacedock-state"
         path = self.entity(state, "drc-1", "review")
@@ -502,40 +552,41 @@ class SpacedockReadContractTest(unittest.TestCase):
         now = time.time()
 
         reads: list[str] = []
-        real = dashboard.sd_read_frontmatter
+        real = spacedock.read_frontmatter
 
-        def counting(p: str, limit: int, expect: os.stat_result) -> list[str]:
+        def counting(cfg: Any, p: str, limit: int, expect: os.stat_result) -> list[str]:
             reads.append(p)
-            lines: list[str] = real(p, limit, expect)
+            lines: list[str] = real(cfg, p, limit, expect)
             return lines
 
-        with mock.patch.object(dashboard, "sd_read_frontmatter", counting):
-            dashboard.sd_read_entities(str(state), stages, now, 3600)
-            dashboard.sd_read_entities(str(state), stages, now, 3600)
+        with mock.patch.object(spacedock, "read_frontmatter", counting):
+            spacedock.read_entities(config, runtime, str(state), stages, now, 3600)
+            spacedock.read_entities(config, runtime, str(state), stages, now, 3600)
             self.assertEqual(1, len(reads))
             self.entity(state, "drc-1", "posted")
             os.utime(path, (now + 1, now + 1))
             self.assertEqual(
                 [("drc-1", "posted")],
-                dashboard.sd_read_entities(str(state), stages, now + 2, 3600),
+                spacedock.read_entities(config, runtime, str(state), stages, now + 2, 3600),
             )
         self.assertEqual(2, len(reads))
 
     def test_the_entity_dir_is_taken_from_boot_and_must_be_absolute(self) -> None:
-        records = [
+        records: list[dict[str, Any]] = [
             {"command": "boot", "definition_dir": "/w", "entity_dir": "relative/state"},
             {"command": "boot", "definition_dir": "/other", "entity_dir": "/other/state"},
             {"command": "boot", "definition_dir": "/w", "entity_dir": "/w/state"},
             {"command": "boot", "definition_dir": "/w", "entity_dir": 17},
         ]
 
-        self.assertEqual("/w/state", dashboard.sd_boot_entity_dir(records, "/w"))
-        self.assertEqual("/other/state", dashboard.sd_boot_entity_dir(records, "/other"))
-        self.assertEqual("", dashboard.sd_boot_entity_dir(records, "/absent"))
+        self.assertEqual("/w/state", spacedock.boot_entity_dir(records, "/w"))
+        self.assertEqual("/other/state", spacedock.boot_entity_dir(records, "/other"))
+        self.assertEqual("", spacedock.boot_entity_dir(records, "/absent"))
 
     def test_a_failed_wrap_does_not_leak_the_descriptor(self) -> None:
         """os.fdopen leaves the fd open when it raises, and this runs every
         refresh — a leak here exhausts the descriptor table."""
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         opened: list[int] = []
         real_open = os.open
@@ -549,23 +600,30 @@ class SpacedockReadContractTest(unittest.TestCase):
             mock.patch.object(os, "open", counting_open),
             mock.patch.object(os, "fdopen", side_effect=OSError("boom")),
         ):
-            self.assertIsNone(dashboard.sd_read_workflow(str(root)))
+            self.assertIsNone(spacedock.read_workflow(config, runtime, str(root)))
 
         self.assertEqual(1, len(opened))
         with self.assertRaises(OSError):
             os.fstat(opened[0])
 
     def test_no_workflow_no_strip(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         now = time.time()
-        self.assertEqual([], dashboard.sd_session_workflows([], [], now, 3600))
+        self.assertEqual([], spacedock.session_workflows(config, runtime, [], [], now, 3600))
         self.assertEqual(
             [],
-            dashboard.sd_session_workflows(
-                [{"command": "boot", "definition_dir": "/nonexistent/wf"}], [], now, 3600
+            spacedock.session_workflows(
+                config,
+                runtime,
+                [{"command": "boot", "definition_dir": "/nonexistent/wf"}],
+                [],
+                now,
+                3600,
             ),
         )
 
     def test_a_workflow_with_no_state_directory_still_costs_no_walk(self) -> None:
+        config, runtime = dashboard._legacy_runtime()
         root = self.workflow(self.README)
         boot = [
             {
@@ -576,4 +634,6 @@ class SpacedockReadContractTest(unittest.TestCase):
             }
         ]
 
-        self.assertEqual([], dashboard.sd_session_workflows(boot, [], time.time(), 3600))
+        self.assertEqual(
+            [], spacedock.session_workflows(config, runtime, boot, [], time.time(), 3600)
+        )
