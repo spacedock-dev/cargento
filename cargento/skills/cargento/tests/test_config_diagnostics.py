@@ -26,6 +26,20 @@ from .support import (
 
 
 class CargentoServerTest(LegacyDashboardTestCase):
+    def test_cargento_home_returns_the_authoritative_override_verbatim(self) -> None:
+        # Round-tripping an override through a native Path changes its separators
+        # on Windows, breaking the documented string and dirname contracts.
+        stale_config = types.SimpleNamespace(state_dir=Path("normalized-by-path"))
+        with (
+            mock.patch.dict(os.environ, {"CARGENTO_HOME": "/literal/override"}),
+            mock.patch.object(
+                dashboard,
+                "_legacy_runtime",
+                return_value=(stale_config, object()),
+            ),
+        ):
+            self.assertEqual("/literal/override", dashboard.cargento_home())
+
     def test_cargento_home_honours_the_override_and_defaults_under_home(self) -> None:
         with mock.patch.dict(os.environ, {"CARGENTO_HOME": "/tmp/elsewhere"}):
             self.assertEqual("/tmp/elsewhere", dashboard.cargento_home())
@@ -204,7 +218,8 @@ class RuntimeConfigTest(unittest.TestCase):
         )
 
     def test_pi_session_dir_setting_resolves_relative_to_config_root(self) -> None:
-        # Ignoring sessionDir would silently scan Pi's default sessions child.
+        # Using the host path module instead of the requested target platform
+        # creates mixed separators and scans a different Pi history directory.
         with tempfile.TemporaryDirectory() as tmp:
             config_dir = Path(tmp) / "pi"
             config_dir.mkdir()
@@ -212,13 +227,24 @@ class RuntimeConfigTest(unittest.TestCase):
                 '{"sessionDir": "history"}',
                 encoding="utf-8",
             )
-            config = self.build(
-                environ={
-                    **self.POSIX_ENV,
-                    "PI_CODING_AGENT_DIR": str(config_dir),
-                },
-            )
-        self.assertEqual((str(config_dir / "history"),), config.store_roots["pi.sessions"])
+            settings = dashboard.load_pi_settings(str(config_dir))
+
+        cases = (
+            ("linux", "/opt/pi", "/home/ada", "/opt/pi/history"),
+            ("win32", r"C:\Pi\agent", r"C:\Users\ada", r"C:\Pi\agent\history"),
+        )
+        for platform_name, config_root, home, expected in cases:
+            with self.subTest(platform=platform_name):
+                roots = dashboard.resolve_store_roots(
+                    platform_name=platform_name,
+                    environ={"PI_CODING_AGENT_DIR": config_root},
+                    home=home,
+                    pi_settings=settings,
+                )
+                self.assertEqual(
+                    [expected],
+                    roots["pi.sessions"],
+                )
 
     def test_runtime_options_and_state_directory_are_preserved(self) -> None:
         # Dropping a constructor argument would make the runtime use a CLI default.

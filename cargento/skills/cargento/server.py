@@ -3636,7 +3636,7 @@ def antigravity_session_metadata(
                 if not match:
                     continue
                 sid = match.group(1)
-                if workspace in missing_contexts and sid in cached_cwds:
+                if workspace is not None and workspace in missing_contexts and sid in cached_cwds:
                     workspace_primaries[workspace] = cached_cwds[sid]
                     missing_contexts.remove(workspace)
             if not missing_contexts:
@@ -4760,6 +4760,9 @@ def cargento_home() -> str:
     CARGENTO_HOME is authoritative, which is the rule the harness store
     variables in STORE_ENV_VARS already follow.
     """
+    override = os.environ.get(CARGENTO_HOME_ENV)
+    if override and override.strip():
+        return override
     config, _ = _legacy_runtime()
     return str(config.state_dir)
 
