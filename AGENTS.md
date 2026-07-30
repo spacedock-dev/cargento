@@ -27,6 +27,7 @@ cargento/                           # plugin root
         │   ├── records.py          # untrusted-record parsing and normalization
         │   ├── sessions.py         # session identity, shape, and deterministic aggregation
         │   ├── state.py            # mutable process state, locks, and bounded caches
+        │   ├── transcripts.py      # shared metadata, prompt titles, non-Claude analyzers
         │   └── web/                # HTML, CSS, JS, and byte-preserving page loader
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support

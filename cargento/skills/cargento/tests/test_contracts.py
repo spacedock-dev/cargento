@@ -42,6 +42,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
         "cargento_runtime.records": set(),
         "cargento_runtime.sessions": {"cargento_runtime.config"},
         "cargento_runtime.state": {"cargento_runtime.config"},
+        "cargento_runtime.transcripts": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.state",
+        },
         "cargento_runtime.web": set(),
         "cargento_runtime.web.page": set(),
     }
@@ -195,7 +201,22 @@ from . import page as sibling_page
             "rate_from",
             "working_detail",
         )
-        for symbol in (*io_symbols, *record_symbols, *session_symbols):
+        transcript_symbols = (
+            "first_line_meta",
+            "codex_meta",
+            "gemini_meta",
+            "copilot_meta",
+            "droid_meta",
+            "pi_meta",
+            "shorten_paths",
+            "clip",
+            "prompt_title",
+            "analyze_codex_transcript",
+            "analyze_gemini_transcript",
+            "analyze_copilot_events",
+            "analyze_droid_transcript",
+        )
+        for symbol in (*io_symbols, *record_symbols, *session_symbols, *transcript_symbols):
             with self.subTest(symbol=symbol):
                 self.assertFalse(hasattr(dashboard, symbol))
         self.assertTrue(all(hasattr(dashboard.runtime_io, symbol) for symbol in io_symbols))
@@ -210,9 +231,13 @@ from . import page as sibling_page
             )
         )
         self.assertFalse(hasattr(runtime_sessions, "HOME_PREFIX"))
+        self.assertTrue(
+            all(hasattr(dashboard.runtime_transcripts, symbol) for symbol in transcript_symbols)
+        )
         self.assertIs(sys.modules["cargento_runtime.io"], dashboard.runtime_io)
         self.assertIs(sys.modules["cargento_runtime.records"], dashboard.records)
         self.assertIs(sys.modules["cargento_runtime.sessions"], dashboard.runtime_sessions)
+        self.assertIs(sys.modules["cargento_runtime.transcripts"], dashboard.runtime_transcripts)
 
     def test_importing_lower_runtime_layers_performs_no_external_operation(self) -> None:
         # Reading ambient state or opening a file, socket, browser, log, or child
@@ -278,6 +303,7 @@ import cargento_runtime.io
 import cargento_runtime.records
 import cargento_runtime.sessions
 import cargento_runtime.state
+import cargento_runtime.transcripts
 """
         result = subprocess.run(
             [sys.executable, "-c", script],

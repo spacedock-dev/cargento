@@ -11,6 +11,7 @@ from unittest import mock
 
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime import transcripts as runtime_transcripts
 
 from .fixtures import (
     protobuf_bytes_field,
@@ -128,7 +129,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                 + "\n"
             )
 
-            info = dashboard.analyze_gemini_transcript(str(path))
+            info = runtime_transcripts.analyze_gemini_transcript(make_config(), str(path))
             turns = dashboard.scan_turns(str(path), "gemini")
 
         self.assertEqual("resumed prompt", info["last_prompt"])

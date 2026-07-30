@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import json
 import random
 import tempfile
@@ -15,16 +16,21 @@ from unittest import mock
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime import records
+from cargento_runtime import transcripts as runtime_transcripts
 
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
     make_config,
+    make_runtime,
 )
+
+CONFIG = make_config()
 
 
 class CargentoServerTest(LegacyDashboardTestCase):
     def test_metadata_cache_is_safe_under_concurrent_reads(self) -> None:
+        config, state = make_runtime()
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "meta.jsonl"
             path.write_text(json.dumps({"value": "ok"}) + "\n")
@@ -44,13 +50,13 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 return {"value": value.get("value")}
 
             def read() -> Any:
-                return dashboard.first_line_meta(str(path), parse)
+                return runtime_transcripts.first_line_meta(config, state, str(path), parse)
 
             with ThreadPoolExecutor(max_workers=12) as pool:
                 results = list(pool.map(lambda _: read(), range(100)))
 
         self.assertTrue(all(result == {"value": "ok"} for result in results))
-        self.assertEqual(1, len(dashboard._meta_cache))
+        self.assertEqual(1, len(state.metadata_cache))
 
     def test_read_tail_keeps_first_record_when_window_starts_on_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -438,7 +444,7 @@ class PromptTitleTest(unittest.TestCase):
             "            <command-args></command-args>"
         )
 
-        self.assertEqual("/plugin", dashboard.prompt_title(prompt))
+        self.assertEqual("/plugin", runtime_transcripts.prompt_title(CONFIG, prompt))
 
     def test_a_command_keeps_its_arguments(self) -> None:
         prompt = (
@@ -449,7 +455,7 @@ class PromptTitleTest(unittest.TestCase):
 
         self.assertEqual(
             "/recce-dev:claude-code-review https://example.test/pr/1 and fix the findings",
-            dashboard.prompt_title(prompt),
+            runtime_transcripts.prompt_title(CONFIG, prompt),
         )
 
     def test_a_wrapped_payload_shows_its_content_not_the_envelope(self) -> None:
@@ -461,29 +467,34 @@ class PromptTitleTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            "Read the dispatch file and start the review", dashboard.prompt_title(prompt)
+            "Read the dispatch file and start the review",
+            runtime_transcripts.prompt_title(CONFIG, prompt),
         )
 
     def test_an_ordinary_prompt_is_left_alone(self) -> None:
         self.assertEqual(
             "Fix the flaky Windows test",
-            dashboard.prompt_title("Fix the flaky Windows test\nsecond line ignored"),
+            runtime_transcripts.prompt_title(
+                CONFIG, "Fix the flaky Windows test\nsecond line ignored"
+            ),
         )
 
     def test_markup_with_no_content_yields_nothing(self) -> None:
         # Better to fall through to another signal than to title a card "<>".
         for empty in ("<local-command-stdout></local-command-stdout>", "<a></a>", "   ", ""):
             with self.subTest(prompt=empty):
-                self.assertIsNone(dashboard.prompt_title(empty))
+                self.assertIsNone(runtime_transcripts.prompt_title(CONFIG, empty))
 
     def test_the_title_is_bounded(self) -> None:
-        self.assertLessEqual(len(dashboard.prompt_title("x " * 400, limit=10) or ""), 11)
+        self.assertLessEqual(
+            len(runtime_transcripts.prompt_title(CONFIG, "x " * 400, limit=10) or ""), 11
+        )
 
     def test_absolute_paths_collapse_to_their_basename(self) -> None:
         self.assertEqual(
             "Round 3 review of PR #268 (repo pendulum-of-despair)",
-            dashboard.prompt_title(
-                "Round 3 review of PR #268 (repo /Users/jane/repos/pendulum-of-despair)"
+            runtime_transcripts.prompt_title(
+                CONFIG, "Round 3 review of PR #268 (repo /Users/jane/repos/pendulum-of-despair)"
             ),
         )
 
@@ -496,11 +507,11 @@ class PromptTitleTest(unittest.TestCase):
             "Research how Goose works (github.com/block/goose)",
         ):
             with self.subTest(text=text):
-                self.assertEqual(text, dashboard.prompt_title(text))
+                self.assertEqual(text, runtime_transcripts.prompt_title(CONFIG, text))
 
     def test_truncation_lands_on_a_word_boundary(self) -> None:
         prompt = "Take your time and tell all subagents the same"
-        title = dashboard.prompt_title(prompt, limit=30)
+        title = runtime_transcripts.prompt_title(CONFIG, prompt, limit=30)
 
         assert title is not None
         self.assertTrue(title.endswith("…"), title)
@@ -520,7 +531,7 @@ class PromptTitleTest(unittest.TestCase):
             "Serve /a/b from the CDN",
         ):
             with self.subTest(text=text):
-                self.assertEqual(text, dashboard.prompt_title(text))
+                self.assertEqual(text, runtime_transcripts.prompt_title(CONFIG, text))
 
     def test_a_clip_does_not_end_on_an_orphaned_combining_mark(self) -> None:
         # The base character it belongs to was cut away, so it would render
@@ -529,7 +540,7 @@ class PromptTitleTest(unittest.TestCase):
         orphaned = [
             limit
             for limit in range(3, 60)
-            if (kept := dashboard.clip(decomposed, limit).rstrip("…"))
+            if (kept := runtime_transcripts.clip(decomposed, limit).rstrip("…"))
             and unicodedata.combining(kept[-1])
         ]
 
@@ -538,7 +549,7 @@ class PromptTitleTest(unittest.TestCase):
     def test_a_hard_cut_does_not_leave_dangling_punctuation(self) -> None:
         # One long token has no boundary to fall back to, and ".…" reads as a
         # typo rather than as truncation.
-        self.assertEqual("aaaa…", dashboard.clip("aaaa.bbbbbbbbbbbb", limit=5))
+        self.assertEqual("aaaa…", runtime_transcripts.clip("aaaa.bbbbbbbbbbbb", limit=5))
 
     def test_the_path_floor_is_a_boundary_not_a_vibe(self) -> None:
         # Mutation-checked: `<` vs `<=` on SD_MIN_COLLAPSED_PATH survived the
@@ -546,12 +557,18 @@ class PromptTitleTest(unittest.TestCase):
         def path_of_length(total: int) -> str:
             return "/" + "a" * (total - 4) + "/bc"  # 1 + (total - 4) + 3
 
-        floor = dashboard.SD_MIN_COLLAPSED_PATH
+        floor = CONFIG.prompt_path_collapse_min_length
         just_under, just_over = path_of_length(floor - 1), path_of_length(floor)
 
         self.assertEqual((floor - 1, floor), (len(just_under), len(just_over)))
-        self.assertEqual(just_under, dashboard.shorten_paths(just_under), "collapsed below floor")
-        self.assertEqual("bc", dashboard.shorten_paths(just_over), "not collapsed at floor")
+        self.assertEqual(
+            just_under,
+            runtime_transcripts.shorten_paths(CONFIG, just_under),
+            "collapsed below floor",
+        )
+        self.assertEqual(
+            "bc", runtime_transcripts.shorten_paths(CONFIG, just_over), "not collapsed at floor"
+        )
 
 
 class MalformedRecordTest(unittest.TestCase):
@@ -600,7 +617,7 @@ class MalformedRecordTest(unittest.TestCase):
             ),
             (
                 "codex",
-                dashboard.analyze_codex_transcript,
+                functools.partial(runtime_transcripts.analyze_codex_transcript, CONFIG),
                 [
                     {"type": "event_msg", "payload": hostile},
                     {"type": "event_msg", "payload": {"type": "token_count", "info": hostile}},
@@ -617,7 +634,7 @@ class MalformedRecordTest(unittest.TestCase):
             ),
             (
                 "gemini",
-                dashboard.analyze_gemini_transcript,
+                functools.partial(runtime_transcripts.analyze_gemini_transcript, CONFIG),
                 [
                     {"type": "gemini", "toolCalls": hostile, "tokens": hostile},
                     {"type": "user", "content": hostile},
@@ -627,7 +644,7 @@ class MalformedRecordTest(unittest.TestCase):
             ),
             (
                 "copilot",
-                dashboard.analyze_copilot_events,
+                functools.partial(runtime_transcripts.analyze_copilot_events, CONFIG),
                 [
                     {"type": "session.start", "data": hostile},
                     {"type": "session.start", "data": {"context": hostile}},
@@ -637,7 +654,7 @@ class MalformedRecordTest(unittest.TestCase):
             ),
             (
                 "droid",
-                dashboard.analyze_droid_transcript,
+                functools.partial(runtime_transcripts.analyze_droid_transcript, CONFIG),
                 [
                     {"type": "message", "message": hostile},
                     {"type": "message", "message": {"role": "user", "content": hostile}},

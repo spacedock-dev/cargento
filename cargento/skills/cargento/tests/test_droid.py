@@ -7,7 +7,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from .support import LegacyDashboardTestCase, dashboard
+from cargento_runtime import transcripts as runtime_transcripts
+
+from .support import LegacyDashboardTestCase, dashboard, make_runtime
 
 
 class DroidCollectorTest(LegacyDashboardTestCase):
@@ -145,7 +147,11 @@ class CodexPathTest(unittest.TestCase):
                 )
                 + "\n"
             )
-            self.assertEqual("reviewer.md", dashboard.codex_meta(str(rollout))["agent_label"])
+            config, state = make_runtime()
+            self.assertEqual(
+                "reviewer.md",
+                runtime_transcripts.codex_meta(config, state, str(rollout))["agent_label"],
+            )
 
     @unittest.skipUnless(os.name == "nt", "os.path is ntpath only on Windows")
     def test_codex_agent_label_splits_windows_separators(self) -> None:
@@ -166,4 +172,8 @@ class CodexPathTest(unittest.TestCase):
                 )
                 + "\n"
             )
-            self.assertEqual("reviewer.md", dashboard.codex_meta(str(rollout))["agent_label"])
+            config, state = make_runtime()
+            self.assertEqual(
+                "reviewer.md",
+                runtime_transcripts.codex_meta(config, state, str(rollout))["agent_label"],
+            )

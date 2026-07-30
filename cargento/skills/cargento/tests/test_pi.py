@@ -8,12 +8,13 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import records as runtime_records
+from cargento_runtime import transcripts as runtime_transcripts
 
 from .fixtures import (
     _iso,
     _jsonl,
 )
-from .support import PiScanTestCase, dashboard
+from .support import PiScanTestCase, dashboard, make_runtime
 
 
 class PiTranscriptTest(unittest.TestCase):
@@ -87,9 +88,10 @@ class PiTranscriptTest(unittest.TestCase):
             path = Path(tmp) / "pi-session.jsonl"
             self._write(path, [header, named, root, filler, assistant, leaf])
 
+            config, state = make_runtime()
             self.assertEqual(
                 {"session_id": sid, "cwd": "/w/proj", "parent_session": None},
-                dashboard.pi_meta(str(path)),
+                runtime_transcripts.pi_meta(config, state, str(path)),
             )
             scan = dashboard.scan_pi_session(str(path))
             assert scan is not None

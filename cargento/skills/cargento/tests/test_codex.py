@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from .support import LegacyDashboardTestCase, dashboard
+from cargento_runtime import transcripts as runtime_transcripts
+
+from .support import LegacyDashboardTestCase, dashboard, make_runtime
 
 
 class CodexCollectorTest(LegacyDashboardTestCase):
@@ -23,7 +25,8 @@ class CodexCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "rollout.jsonl"
             path.write_text(json.dumps(record) + "\n")
-            meta = dashboard.codex_meta(str(path))
+            config, state = make_runtime()
+            meta = runtime_transcripts.codex_meta(config, state, str(path))
 
         self.assertTrue(meta["subagent"])
         self.assertEqual("child-thread", meta["session_id"])
@@ -117,8 +120,9 @@ class CodexCollectorTest(LegacyDashboardTestCase):
                 + "\n"
             )
 
-            meta_a = dashboard.codex_meta(str(non_dict))
-            meta_b = dashboard.codex_meta(str(bad_fields))
+            config, state = make_runtime()
+            meta_a = runtime_transcripts.codex_meta(config, state, str(non_dict))
+            meta_b = runtime_transcripts.codex_meta(config, state, str(bad_fields))
 
         self.assertIsNone(meta_a["session_id"])
         self.assertFalse(meta_a["subagent"])

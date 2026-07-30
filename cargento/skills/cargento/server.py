@@ -33,7 +33,6 @@ import subprocess
 import sys
 import threading
 import time
-import unicodedata
 from dataclasses import replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -47,6 +46,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
+from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.web import page as frontend_page
 
 sqlite3 = runtime_io.sqlite_module
@@ -471,214 +471,18 @@ class LoopbackHTTPServer(ThreadingHTTPServer):
 _store_errors = _LEGACY_STATE.store_errors
 
 
-# ---------------------------------------------------------------------------
-# First-line metadata cache (JSONL harnesses write immutable line-1 metadata)
-
+# The first-line metadata cache itself lives in RuntimeState, and its readers
+# are cargento_runtime.transcripts. This alias stays until the last local
+# collector moves, because the shared test reset still clears it.
 _meta_cache = _LEGACY_STATE.metadata_cache
 
 
-def first_line_meta(path: str, parse: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
-    """parse(first-line JSON dict) -> dict; cached per path. Not cached on
-    read/parse failure so a partially written first line retries later."""
-    with _cache_lock:
-        m = _meta_cache.get(path)
-    if m is not None:
-        return m
-    config, _ = _legacy_runtime()
-    d = runtime_io.read_first_json(config, path)
-    if not d:
-        return {}
-    m = parse(d)
-    with _cache_lock:
-        cached = _meta_cache.get(path)
-        if cached is not None:
-            return cached
-        bounded_put(_meta_cache, path, m)
-        return m
-
-
-def codex_meta(path: str) -> dict[str, Any]:
-    """Codex rollout line 1 (session_meta): identity, cwd, and whether the
-    file is a subagent thread (thread_source == "subagent")."""
-
-    def parse(d: dict[str, Any]) -> dict[str, Any]:
-        # Every field is untyped JSON from disk — one malformed rollout must
-        # not AttributeError the whole Codex collector.
-        p = d.get("payload")
-        if not isinstance(p, dict):
-            p = {}
-        spawn = records.as_dict(
-            records.as_dict(records.as_dict(p.get("source")).get("subagent")).get("thread_spawn")
-        )
-        nickname = p.get("agent_nickname")
-        agent_path = p.get("agent_path")
-        label = (
-            nickname
-            if isinstance(nickname, str) and nickname
-            # basename(), not rsplit("/"): on Windows the recorded path is
-            # backslash-separated, and a hardcoded "/" would keep the whole
-            # path as the agent's label.
-            else (
-                os.path.basename(agent_path) if isinstance(agent_path, str) and agent_path else None
-            )
-        )
-        return {
-            "session_id": p.get("session_id") or p.get("id"),
-            "parent_session_id": (
-                spawn.get("parent_thread_id") if isinstance(spawn, dict) else None
-            ),
-            "cwd": p.get("cwd"),
-            "subagent": p.get("thread_source") == "subagent",
-            "agent_label": label or None,
-        }
-
-    return first_line_meta(path, parse)
-
-
-def gemini_meta(path: str) -> dict[str, Any]:
-    """Gemini chat recording line 1: sessionId, kind (main|subagent),
-    directories (cwd list)."""
-
-    def parse(d: dict[str, Any]) -> dict[str, Any]:
-        dirs = d.get("directories")
-        return {
-            "session_id": d.get("sessionId"),
-            "kind": d.get("kind"),
-            "cwd": dirs[0] if isinstance(dirs, list) and dirs else None,
-        }
-
-    return first_line_meta(path, parse)
-
-
-def copilot_meta(path: str) -> dict[str, Any]:
-    """Copilot events.jsonl line 1 is normally session.start with
-    data.context.cwd."""
-
-    def parse(d: dict[str, Any]) -> dict[str, Any]:
-        data = records.as_dict(d.get("data"))
-        ctx = records.as_dict(data.get("context"))
-        return (
-            {"cwd": ctx.get("cwd") or data.get("cwd")} if d.get("type") == "session.start" else {}
-        )
-
-    return first_line_meta(path, parse)
-
-
-def droid_meta(path: str) -> dict[str, Any]:
-    """Droid transcript line 1 (session_start): id, session title, cwd."""
-
-    def parse(d: dict[str, Any]) -> dict[str, Any]:
-        if d.get("type") != "session_start":
-            return {}
-        return {
-            "session_id": d.get("id"),
-            "title": d.get("sessionTitle") or d.get("title"),
-            "cwd": d.get("cwd"),
-        }
-
-    return first_line_meta(path, parse)
-
-
-def pi_meta(path: str) -> dict[str, Any]:
-    """Pi v3's immutable session header: identity and workspace only."""
-
-    def parse(d: dict[str, Any]) -> dict[str, Any]:
-        if d.get("type") != "session":
-            return {}
-        session_id = d.get("id")
-        cwd = d.get("cwd")
-        parent_session = d.get("parentSession")
-        return {
-            "session_id": session_id if isinstance(session_id, str) else None,
-            "cwd": cwd if isinstance(cwd, str) else None,
-            "parent_session": parent_session if isinstance(parent_session, str) else None,
-        }
-
-    return first_line_meta(path, parse)
-
-
 # ---------------------------------------------------------------------------
-# Transcript analyzers (tail pass -> title, prompt, usage, activity)
+# Claude transcript analyzers (tail pass -> title, prompt, usage, activity)
 
 
 _claude_title_cache = _LEGACY_STATE.claude_title_cache
 _claude_user_event_cache = _LEGACY_STATE.claude_user_event_cache
-
-# Harness-injected wrappers around a user prompt. A slash command arrives as
-# `<command-name>/plugin</command-name>` and a dispatched worker's instructions
-# as `<teammate-message teammate_id="...">`, so the naive "first line of the
-# first prompt" title renders raw markup. Measured over 248 real transcripts,
-# 138 titles began with one of these.
-_PROMPT_TAG_RE = re.compile(r"</?[a-z][a-z0-9-]*(?:\s[^>]*?)?/?>", re.IGNORECASE)
-_COMMAND_NAME_RE = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.DOTALL)
-_COMMAND_ARGS_RE = re.compile(r"<command-args>\s*(.*?)\s*</command-args>", re.DOTALL)
-# A filesystem path, not a URL: `://` is excluded so a GitHub link survives
-# whole, since the repo and PR number in it are the informative part. Absolute
-# paths otherwise eat the entire title budget and say nothing a basename does
-# not, and a dispatch prompt naming a UUID temp file is the worst of them.
-_PROMPT_PATH_RE = re.compile(r"(?<!:)(?<![\w/])(?:~|/[^\s/]+)(?:/[^\s/]+)+/?")
-
-
-# Only collapse a path long enough to be the problem this solves. Across the
-# transcripts sampled the median slash-run is 11 characters and the 90th
-# percentile is 140: the short ones are mostly not paths at all, and collapsing
-# them corrupts real content. `^/api/v1/users$` became `^users$` before this.
-def shorten_paths(text: str) -> str:
-    """Collapse long absolute filesystem paths in a title to their last segment."""
-
-    def basename(match: re.Match[str]) -> str:
-        path = match.group(0)
-        if len(path) < SD_MIN_COLLAPSED_PATH:
-            return path
-        return path.rstrip("/").rpartition("/")[2] or path
-
-    return _PROMPT_PATH_RE.sub(basename, text)
-
-
-def clip(text: str, limit: int) -> str:
-    """Trim to ``limit`` on a word boundary where one is close enough.
-
-    Cutting mid-word reads as damage rather than as truncation: "tell all
-    subagents and tea" looks like a bug. Falling back to a hard cut keeps the
-    bound absolute for a single long token such as a URL.
-    """
-    if len(text) <= limit:
-        return text
-    head = text[:limit].rstrip()
-    space = head.rfind(" ")
-    # Only honour a boundary in the last third, so one long token cannot
-    # shrink the title to a couple of words.
-    kept = head[:space] if space > limit * 2 // 3 else head
-    # A hard cut can land on punctuation, and ".…" reads as a typo.
-    kept = kept.rstrip(" .,;:-_/(")
-    # It can also land inside a decomposed grapheme, leaving accent marks whose
-    # base character was cut away to combine with the ellipsis instead.
-    while kept and unicodedata.combining(kept[-1]):
-        kept = kept[:-1]
-    return kept + "…"
-
-
-def prompt_title(text: str, limit: int = 80) -> str | None:
-    """A readable one-line title from a raw user prompt, or None.
-
-    Slash commands keep their name and any arguments, so `/plugin` reads as
-    `/plugin` rather than as the markup it arrived in. Everything else has its
-    wrapper tags removed and falls back to the first line with real content in
-    it, which is what makes a `<teammate-message>` show the instruction instead
-    of the envelope.
-    """
-    name = _COMMAND_NAME_RE.search(text)
-    if name and name.group(1):
-        args = _COMMAND_ARGS_RE.search(text)
-        command = name.group(1).strip()
-        argument = _PROMPT_TAG_RE.sub(" ", args.group(1)).strip() if args else ""
-        joined = f"{command} {argument}".strip() if argument else command
-        return clip(" ".join(shorten_paths(joined).split()), limit) or None
-    for line in _PROMPT_TAG_RE.sub("", text).split("\n"):
-        collapsed = " ".join(shorten_paths(line).split())
-        if collapsed:
-            return clip(collapsed, limit)
-    return None
 
 
 def claude_session_title(path: str) -> str | None:
@@ -735,7 +539,7 @@ def claude_session_title(path: str) -> str | None:
                     prompt = records.extract_text(
                         records.message_dict(record).get("content")
                     ).strip()
-                    title = prompt_title(prompt)
+                    title = runtime_transcripts.prompt_title(config, prompt)
                     break
         except OSError:
             pass
@@ -885,187 +689,6 @@ def claude_hook_user_event(path: str, prefix: str) -> tuple[bool, str | None]:
     if not inside_projects or not basename.startswith(prefix) or not basename.endswith(".jsonl"):
         return (False, None)
     return (True, claude_last_user_event(real_path))
-
-
-def analyze_codex_transcript(path: str) -> dict[str, Any]:
-    """Codex rollout tail: user_message (prompt/title), token_count (usage),
-    tool calls. Turn spans come from scan_turns; cwd/subagents from meta."""
-    info: dict[str, Any] = {
-        "title": None,
-        "last_prompt": None,
-        "usage_events": [],
-        "last_tool": None,
-        "last_event_ts": 0,
-    }
-    config, _ = _legacy_runtime()
-    for line in runtime_io.read_tail(config, path):
-        if not line or line[0] != "{":
-            continue
-        try:
-            d = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        ep = records.parse_ts(d.get("timestamp") or "")
-        if ep:
-            info["last_event_ts"] = max(info["last_event_ts"], ep)
-        t = d.get("type")
-        p = records.as_dict(d.get("payload"))
-        if t == "event_msg":
-            pt = p.get("type")
-            if pt == "user_message":
-                msg = p.get("message")
-                msg = msg.strip() if isinstance(msg, str) else ""
-                info["last_prompt"] = msg
-                info["title"] = msg.split("\n")[0][:80] or None
-            elif pt == "token_count":
-                out = records.as_dict(records.as_dict(p.get("info")).get("last_token_usage")).get(
-                    "output_tokens"
-                )
-                if ep and out:
-                    info["usage_events"].append((ep, out))
-        elif t == "response_item" and p.get("type") in ("function_call", "custom_tool_call"):
-            info["last_tool"] = p.get("name")
-    return info
-
-
-def analyze_gemini_transcript(path: str) -> dict[str, Any]:
-    """Gemini chats/*.jsonl tail: type 'user' | 'gemini' records with
-    per-message tokens; resumed-session $set snapshots are expanded."""
-    info: dict[str, Any] = {
-        "title": None,
-        "last_prompt": None,
-        "usage_events": [],
-        "last_tool": None,
-        "last_event_ts": 0,
-    }
-    seen = set()
-    config, _ = _legacy_runtime()
-    for line in runtime_io.read_tail(config, path):
-        if not line or line[0] != "{":
-            continue
-        try:
-            d = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        for message in records.gemini_records(d):
-            fingerprint = records.record_fingerprint(message)
-            if fingerprint in seen:
-                continue
-            seen.add(fingerprint)
-            ep = records.parse_ts(message.get("timestamp") or "")
-            if ep:
-                info["last_event_ts"] = max(info["last_event_ts"], ep)
-            t = message.get("type")
-            if t == "user":
-                txt = records.extract_text(message.get("content")).strip()
-                if txt:
-                    info["last_prompt"] = txt
-                    info["title"] = txt.split("\n")[0][:80]
-            elif t == "gemini":
-                toks = message.get("tokens") or {}
-                if ep and isinstance(toks, dict) and toks.get("output"):
-                    info["usage_events"].append((ep, toks["output"]))
-                for tc in records.as_list(message.get("toolCalls")):
-                    if isinstance(tc, dict) and tc.get("name"):
-                        info["last_tool"] = tc.get("name")
-    return info
-
-
-def analyze_copilot_events(path: str) -> dict[str, Any]:
-    """Copilot events.jsonl tail: typed events with data payloads. Field
-    names inside data are de-facto (not a stable API) — extracted
-    defensively."""
-    info: dict[str, Any] = {
-        "title": None,
-        "last_prompt": None,
-        "usage_events": [],
-        "last_tool": None,
-        "last_event_ts": 0,
-        "cwd": None,
-        "pending_agents": {},  # started-but-not-completed subagents
-    }
-    config, _ = _legacy_runtime()
-    for line in runtime_io.read_tail(config, path):
-        if not line or line[0] != "{":
-            continue
-        try:
-            d = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        ep = records.parse_ts(d.get("timestamp") or "")
-        if ep:
-            info["last_event_ts"] = max(info["last_event_ts"], ep)
-        t = d.get("type")
-        data = records.as_dict(d.get("data"))
-        if t == "session.start":
-            ctx = records.as_dict(data.get("context"))
-            info["cwd"] = ctx.get("cwd") or data.get("cwd") or info["cwd"]
-        elif t == "user.message":
-            txt = records.extract_text(data).strip()
-            if txt:
-                info["last_prompt"] = txt
-                info["title"] = txt.split("\n")[0][:80]
-        elif t == "tool.execution_start":
-            name = data.get("toolName") or data.get("name") or data.get("tool")
-            if name:
-                info["last_tool"] = str(name)
-        elif t == "subagent.started":
-            key = data.get("id") or data.get("subagentId") or d.get("id")
-            label = (
-                data.get("name")
-                or data.get("agentName")
-                or data.get("agent")
-                or data.get("agentType")
-                or "subagent"
-            )
-            info["pending_agents"][key] = str(label)[:70]
-        elif t == "subagent.completed":
-            key = data.get("id") or data.get("subagentId") or d.get("id")
-            if key in info["pending_agents"]:
-                info["pending_agents"].pop(key)
-            elif info["pending_agents"]:  # unmatched key scheme: drop oldest
-                info["pending_agents"].pop(next(iter(info["pending_agents"])))
-    return info
-
-
-def analyze_droid_transcript(path: str) -> dict[str, Any]:
-    """Droid transcript tail: {type: "message", timestamp, message: {role,
-    content: [Anthropic-style blocks]}}."""
-    info: dict[str, Any] = {
-        "title": None,
-        "last_prompt": None,
-        "usage_events": [],
-        "last_tool": None,
-        "last_event_ts": 0,
-    }
-    config, _ = _legacy_runtime()
-    for line in runtime_io.read_tail(config, path):
-        if not line or line[0] != "{":
-            continue
-        try:
-            d = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        ep = records.parse_ts(d.get("timestamp") or "")
-        if ep:
-            info["last_event_ts"] = max(info["last_event_ts"], ep)
-        if d.get("type") != "message":
-            continue
-        msg = records.message_dict(d)
-        content = msg.get("content")
-        blocks = content if isinstance(content, list) else []
-        if msg.get("role") == "user":
-            if any(isinstance(c, dict) and c.get("type") == "tool_result" for c in blocks):
-                continue
-            txt = records.extract_text(content).strip()
-            if txt:
-                info["last_prompt"] = txt
-                info["title"] = txt.split("\n")[0][:80]
-        elif msg.get("role") == "assistant":
-            for c in blocks:
-                if isinstance(c, dict) and c.get("type") == "tool_use":
-                    info["last_tool"] = c.get("name")
-    return info
 
 
 # Pi stores an append-only tree rather than a linear transcript.  The session
@@ -1290,10 +913,13 @@ def _pi_info(state: dict[str, Any]) -> dict[str, Any] | None:
     path_entries = state["path"]
     if not path_entries:
         return None
+    config, _ = _legacy_runtime()
     prompts = [entry["prompt"] for entry in path_entries if entry["prompt"]]
     name = state["name"]
     title = (
-        name if isinstance(name, str) and name else (prompt_title(prompts[0]) if prompts else None)
+        name
+        if isinstance(name, str) and name
+        else (runtime_transcripts.prompt_title(config, prompts[0]) if prompts else None)
     )
     usage_events = [
         (entry["timestamp"], entry["usage"])
@@ -1770,8 +1396,8 @@ def codex_subagent_rate(path: str, now: float) -> int:
     start = scan.get("last_start") if scan else None
     if not start:
         return 0
-    info = analyze_codex_transcript(path)
     config, _ = _legacy_runtime()
+    info = runtime_transcripts.analyze_codex_transcript(config, path)
     recent: float = sum(
         tokens
         for epoch, tokens in info["usage_events"]
@@ -2821,7 +2447,7 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
     sessions: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
     # parent session_id -> {"agents": [(label, mtime)], "rate": int}
     agent_data: dict[str, dict[str, Any]] = {}
-    config, _ = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     for fp in runtime_io.glob_stores(
         config,
         "codex.sessions",
@@ -2834,7 +2460,7 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
-        meta = codex_meta(fp)
+        meta = runtime_transcripts.codex_meta(config, runtime_state_value, fp)
         sid = meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")][-36:]
         if meta.get("subagent"):
             parent_sid = meta.get("parent_session_id") or sid
@@ -2856,7 +2482,7 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
-        info = analyze_codex_transcript(fp) if active else None
+        info = runtime_transcripts.analyze_codex_transcript(config, fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
@@ -2872,7 +2498,11 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         s = runtime_sessions.base_session(
             "codex",
             sid,
-            runtime_sessions.project_from_cwd(config, codex_meta(fp).get("cwd") or "") or "codex",
+            runtime_sessions.project_from_cwd(
+                config,
+                runtime_transcripts.codex_meta(config, runtime_state_value, fp).get("cwd") or "",
+            )
+            or "codex",
         )
         s.update(
             {
@@ -2893,12 +2523,12 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
 
 def discover_pi() -> bool:
     """Whether Pi has at least one JSONL file with a valid session header."""
-    config, _ = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     paths = set(runtime_io.glob_stores(config, "pi.sessions", "*.jsonl"))
     paths.update(runtime_io.glob_stores(config, "pi.sessions", "*", "*.jsonl"))
     for path in paths:
         try:
-            if pi_meta(path).get("session_id"):
+            if runtime_transcripts.pi_meta(config, runtime_state_value, path).get("session_id"):
                 return True
         except (OSError, ValueError):
             continue
@@ -2907,14 +2537,14 @@ def discover_pi() -> bool:
 
 def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     """Collect Pi's independent JSONL sessions from flat and nested stores."""
-    config, _ = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     paths = set(runtime_io.glob_stores(config, "pi.sessions", "*.jsonl"))
     paths.update(runtime_io.glob_stores(config, "pi.sessions", "*", "*.jsonl"))
     sessions: dict[str, tuple[float, str, dict[str, Any]]] = {}
     for path in paths:
         try:
             mtime = os.path.getmtime(path)
-            meta = pi_meta(path)
+            meta = runtime_transcripts.pi_meta(config, runtime_state_value, path)
         except (OSError, ValueError):
             continue
         sid = meta.get("session_id")
@@ -3495,7 +3125,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     # appended from its per-conversation SQLite stores below.
     # sanitized parent session id -> [(label, mtime)]
     agents_by_parent: dict[str, list[tuple[str, float]]] = {}
-    config, _ = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     for fp in runtime_io.glob_stores(
         config,
         "gemini.tmp",
@@ -3528,7 +3158,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
-        meta = gemini_meta(fp)
+        meta = runtime_transcripts.gemini_meta(config, runtime_state_value, fp)
         if meta.get("kind") == "subagent":
             continue
         sid = meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")]
@@ -3543,7 +3173,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
         active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
-        info = analyze_gemini_transcript(fp) if active else None
+        info = runtime_transcripts.analyze_gemini_transcript(config, fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
@@ -3556,7 +3186,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
             state = "working"
             state_detail = runtime_sessions.working_detail(info, subagents)
 
-        cwd = gemini_meta(fp).get("cwd")
+        cwd = runtime_transcripts.gemini_meta(config, runtime_state_value, fp).get("cwd")
         project = runtime_sessions.project_from_cwd(
             config, cwd or ""
         ) or runtime_sessions.project_label(
@@ -3588,7 +3218,7 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
     # history-session-state is assumed to share the <uuid>/events.jsonl
     # layout — unverified legacy format; a mismatch just means those old
     # sessions stay invisible.
-    config, _ = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     for base in ("session-state", "history-session-state"):
         for fp in runtime_io.glob_stores(
             config,
@@ -3610,7 +3240,7 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
         active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
-        info = analyze_copilot_events(fp) if active else None
+        info = runtime_transcripts.analyze_copilot_events(config, fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
         subagents: list[str] = []
@@ -3624,7 +3254,9 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
             subagents = list((info or {}).get("pending_agents", {}).values())
             state_detail = runtime_sessions.working_detail(info, subagents)
 
-        cwd = (info or {}).get("cwd") or copilot_meta(fp).get("cwd")
+        cwd = (info or {}).get("cwd") or runtime_transcripts.copilot_meta(
+            config, runtime_state_value, fp
+        ).get("cwd")
         s = runtime_sessions.base_session(
             "copilot", sid, runtime_sessions.project_from_cwd(config, cwd or "") or "copilot"
         )
@@ -4069,7 +3701,7 @@ def collect_goose_db(
 
 def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    config, _ = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     for fp in runtime_io.glob_stores(config, "droid.projects", "*", "*.jsonl"):
         try:
             mtime = os.path.getmtime(fp)
@@ -4078,9 +3710,9 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
         active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
-        meta = droid_meta(fp)
+        meta = runtime_transcripts.droid_meta(config, runtime_state_value, fp)
         sid = str(meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")])
-        info = analyze_droid_transcript(fp) if active else None
+        info = runtime_transcripts.analyze_droid_transcript(config, fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
         if runtime_sessions.is_fresh(
