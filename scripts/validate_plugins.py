@@ -40,7 +40,7 @@ ROOT_DOCS = (
     ".github/PULL_REQUEST_TEMPLATE.md",
 )
 # The server binds IPv4 loopback only, and on some systems `localhost` resolves
-# to ::1 first. Every document says 127.0.0.1; test_server.py pins this for the
+# to ::1 first. Every document says 127.0.0.1; the dashboard tests pin this for the
 # shipped SKILL.md, and this pins it for the rest.
 BANNED_DOC_LITERALS = {
     "http://localhost:4553": "the server is IPv4-only; write http://127.0.0.1:4553",

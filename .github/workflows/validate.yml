@@ -34,5 +34,5 @@ jobs:
         run: python3 -m unittest scripts/tests/test_bump_version.py
       - name: Check version-field parity across all owned locations
         run: python3 scripts/bump_version.py --current
-      - name: Run dashboard server tests
-        run: python3 -m unittest cargento/skills/cargento/tests/test_server.py
+      - name: Run dashboard tests
+        run: python3 -m unittest discover -s cargento/skills/cargento/tests -t .

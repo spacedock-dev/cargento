@@ -22,7 +22,7 @@ cargento/                           # plugin root
         ├── server.py               # stdlib-only dashboard server
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
         ├── agents/openai.yaml      # Codex presentation metadata
-        └── tests/test_server.py    # server unit tests
+        └── tests/                  # dashboard unit tests and shared support
 ```
 
 The Codex/AGY marketplace lives at `.agents/plugins/marketplace.json`. There is no Claude
@@ -91,7 +91,9 @@ python3 scripts/bump_version.py --current   # version-field parity across all ow
 # MOVED since the merge base. Check that half yourself — nothing local does:
 git diff "$(git merge-base origin/main HEAD)"..HEAD \
   -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
-coverage run -m unittest cargento.skills.cargento.tests.test_server \
+coverage erase
+coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
+coverage run -a -m unittest \
   scripts.tests.test_validate_plugins scripts.tests.test_bump_version \
   scripts.tests.test_lint_embedded
 coverage report   # enforces the fail_under threshold from pyproject.toml

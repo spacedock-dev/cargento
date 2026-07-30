@@ -63,7 +63,7 @@ diff-and-reconcile pass, not a rewrite.
 ### Constraints on `cargento/skills/cargento/SKILL.md`
 
 `scripts/validate_plugins.py` scans every Markdown file under `cargento/skills/`, and
-`tests/test_server.py` asserts the skill body against the code. Both are required checks:
+The dashboard test suite asserts the skill body against the code. Both are required checks:
 
 - Frontmatter fields are exactly `name`, `description`, `license` — nothing else, no duplicate keys.
   `name` must be lowercase kebab-case and equal the directory name.
@@ -85,7 +85,7 @@ diff-and-reconcile pass, not a rewrite.
   spelling is not written out here.
 
 After any edit under `cargento/skills/`, run `python3 scripts/validate_plugins.py` and
-`python3 -m unittest cargento/skills/cargento/tests/test_server.py` before committing.
+`python3 -m unittest discover -s cargento/skills/cargento/tests -t .` before committing.
 
 ## Voice and tone
 
@@ -299,7 +299,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    python3 scripts/validate_plugins.py
 
    # d. If you touched the skill body, the documentation-matches-code assertions.
-   python3 -m unittest cargento/skills/cargento/tests/test_server.py
+   python3 -m unittest discover -s cargento/skills/cargento/tests -t .
 
    # e. Tone: no em/en dashes or curly quotes in the human-facing prose docs. Nothing in CI
    #    enforces this, so it is the one anti-drift check that only exists here.

@@ -77,11 +77,22 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.11"
+      - name: Install toolchain
+        run: python -m pip install -r requirements-dev.txt -r requirements-validation.txt
       - name: Direct-launch smoke on the supported floor
         run: |
           cd "${RUNNER_TEMP}"
           python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --help
           python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --diagnose --json
+      - name: Run full unittest suite under coverage
+        run: |
+          coverage erase
+          coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
+          coverage run -a -m unittest \
+            scripts.tests.test_validate_plugins \
+            scripts.tests.test_bump_version \
+            scripts.tests.test_lint_embedded
+          coverage report
 
   test:
     name: Tests + coverage threshold
@@ -104,11 +115,13 @@ jobs:
 
       - name: Run full unittest suite under coverage
         run: |
-          coverage run -m unittest \
-            cargento.skills.cargento.tests.test_server \
+          coverage erase
+          coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
+          coverage run -a -m unittest \
             scripts.tests.test_validate_plugins \
             scripts.tests.test_bump_version \
             scripts.tests.test_lint_embedded
+          coverage report
 
       # The threshold lives in pyproject.toml ([tool.coverage.report]
       # fail_under) so local runs enforce the same gate. A PR labeled
@@ -231,8 +244,10 @@ jobs:
         run: python -c "import sys, os; print(sys.version, os.name, sys.platform)"
       - name: Confirm sqlite3 is present on this runner
         run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
-      - name: Run unittest suite
-        run: python -m unittest cargento.skills.cargento.tests.test_server scripts.tests.test_validate_plugins scripts.tests.test_bump_version scripts.tests.test_lint_embedded
+      - name: Run dashboard test discovery
+        run: python -m unittest discover -s cargento/skills/cargento/tests -t .
+      - name: Run script unit tests
+        run: python -m unittest scripts.tests.test_validate_plugins scripts.tests.test_bump_version scripts.tests.test_lint_embedded
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

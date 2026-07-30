@@ -8,7 +8,6 @@ import glob
 import hashlib
 import http.client
 import http.server
-import importlib.util
 import io
 import json
 import ntpath
@@ -26,161 +25,34 @@ import time
 import unicodedata
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
+from .fixtures import (
+    HARNESSES,
+    STORE_CONSTANTS,
+    _iso,
+    _jsonl,
+    build_opencode,
+    build_pi,
+    protobuf_bytes_field,
+    protobuf_int_field,
+    write_antigravity_metadata,
+)
+from .page_harness import PageJsHarness
+from .support import (
+    HOOK_PATH,
+    SERVER_PATH,
+    HarnessContractTestCase,
+    PiScanTestCase,
+    dashboard,
+    dashboard_hook,
+    serve_until_closed,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
-SPEC = importlib.util.spec_from_file_location("cargento_server", SERVER_PATH)
-assert SPEC is not None
-assert SPEC.loader is not None
-dashboard = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(dashboard)
-
-HOOK_PATH = SERVER_PATH.parent / "notify_hook.py"
-HOOK_SPEC = importlib.util.spec_from_file_location("cargento_notify_hook", HOOK_PATH)
-assert HOOK_SPEC is not None
-assert HOOK_SPEC.loader is not None
-dashboard_hook = importlib.util.module_from_spec(HOOK_SPEC)
-HOOK_SPEC.loader.exec_module(dashboard_hook)
-
-
-def serve_until_closed(httpd: Any) -> threading.Thread:
-    """Serve on a thread that closes the listening socket when the loop exits.
-
-    Mirrors what ``main()`` does in its ``try/finally``. Serving without the
-    close leaves the port bound after the accept loop has gone — a state
-    ``main()`` never produces, and one that makes anything waiting for the port
-    to come free (``--stop``, and therefore any restart) wait for nothing.
-    """
-
-    def serve() -> None:
-        try:
-            httpd.serve_forever()
-        finally:
-            httpd.server_close()
-
-    thread = threading.Thread(target=serve, daemon=True)
-    thread.start()
-    return thread
-
-
-def protobuf_varint(value: int) -> bytes:
-    encoded = bytearray()
-    while value > 0x7F:
-        encoded.append((value & 0x7F) | 0x80)
-        value >>= 7
-    encoded.append(value)
-    return bytes(encoded)
-
-
-def protobuf_bytes_field(number: int, value: bytes) -> bytes:
-    return protobuf_varint((number << 3) | 2) + protobuf_varint(len(value)) + value
-
-
-def protobuf_int_field(number: int, value: int) -> bytes:
-    return protobuf_varint(number << 3) + protobuf_varint(value)
-
-
-def write_antigravity_metadata(path: Path, blob: bytes) -> None:
-    with contextlib.closing(sqlite3.connect(path)) as connection:
-        connection.execute("CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB)")
-        connection.execute("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)", (blob,))
-        connection.commit()
-
-
-class PageJsHarness(unittest.TestCase):
-    """Runs the dashboard page's real JS under node against a stub DOM.
-
-    Shared by every test that asserts on page *behaviour* rather than on the
-    text of ``PAGE``: string assertions rot silently, executed ones do not.
-    """
-
-    # Functional DOM/window stubs for executing the page script under node:
-    # listeners are captured so tests can fire synthetic events, and
-    # getElementById serves whatever elements a test registers in __els.
-    PAGE_JS_STUBS = """
-const __listeners = {};
-const __els = {};
-const __fire = (type, ev) => (__listeners[type] || []).forEach(f => f(ev));
-// Deterministic viewer clock: sparkline points are stamped with Date.now()
-// at receipt, so tests pin it and advance it explicitly via __setNow.
-let __nowSec = 1000;
-const __setNow = s => { __nowSec = s; };
-Date.now = () => __nowSec * 1000;
-const location = {search: ""};
-const document = {
-  addEventListener(type, fn){ (__listeners[type] = __listeners[type] || []).push(fn); },
-  getElementById(id){ return __els[id] || null; },
-  createElement(){ return {textContent: "", style: {}, appendChild(){}}; },
-  createTextNode(){ return {textContent: ""}; },
-  activeElement: null,
-  hidden: false,
-  title: ""
-};
-const window = {addEventListener(type, fn){
-  (__listeners["window:" + type] = __listeners["window:" + type] || []).push(fn); }};
-// Records what the page requested and lets a test choose the reply. The old
-// never-settling stub is the default, so existing tests behave identically.
-let __fetchCalls = [];
-let __fetchImpl = () => new Promise(() => {});
-const fetch = (...args) => { __fetchCalls.push(args); return __fetchImpl(...args); };
-let __clearedIntervals = [];
-const clearInterval = id => { __clearedIntervals.push(id); };
-const setInterval = () => 73;
-// Notification stub: records what the page would have raised, with a
-// permission value tests can set. Defined here so every page test runs with a
-// browser-notification-capable environment, as a real browser would.
-let __notifications = [];
-let __notifyPermission = "default";
-function Notification(title, opts){ __notifications.push(Object.assign({title}, opts)); }
-Object.defineProperty(Notification, "permission", {get: () => __notifyPermission});
-// Settles on a later microtask, as the real API does: a synchronous stub let
-// code that re-renders immediately (before permission resolves) pass.
-Notification.requestPermission = cb => Promise.resolve().then(() => {
-  __notifyPermission = "granted";
-  if(cb) cb("granted");
-  return "granted";
-});
-const __settle = () => new Promise(r => setImmediate(r));
-"""
-
-    def _run_page_js(self, checks: str, prelude: str = "") -> Any:
-        """`prelude` runs before the page script, for globals the page reads at
-        load time (localStorage) or feature-detects (navigator.clipboard)."""
-        match = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE, re.DOTALL)
-        assert match is not None
-        script = match.group(1)
-        with tempfile.TemporaryDirectory() as tmp:
-            js = Path(tmp) / "page_test.js"
-            # Checks run inside an async IIFE so they can await the async
-            # stubs (permission settles on a microtask, as in a browser).
-            # Explicit UTF-8 both ways: the page carries glyphs outside Latin-1,
-            # and on Windows the default is the locale codec (cp1252), which
-            # raises instead of running the check. node speaks UTF-8.
-            js.write_text(
-                self.PAGE_JS_STUBS
-                + prelude
-                + script
-                + "\n;(async () => {\n"
-                + checks
-                + "\n})();\n",
-                encoding="utf-8",
-            )
-            proc = subprocess.run(
-                [shutil.which("node") or "node", str(js)],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=30,
-                check=False,
-            )
-        self.assertEqual(0, proc.returncode, proc.stderr)
-        return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
 class PiTranscriptTest(unittest.TestCase):
@@ -534,14 +406,10 @@ class PiTranscriptTest(unittest.TestCase):
         self.assertEqual("Stable prompt", after_corruption["last_prompt"])
 
 
-class PiCollectorTest(unittest.TestCase):
+class PiCollectorTest(PiScanTestCase):
     """Pi session stores are flat for exports and one-level nested by default."""
 
     NOW = 1_700_000_000.0
-
-    def setUp(self) -> None:
-        with dashboard._scan_lock:
-            dashboard._pi_scan.clear()
 
     @staticmethod
     def _header(sid: str, *, parent: str | None = None) -> dict[str, Any]:
@@ -1323,30 +1191,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
 
 class CargentoServerTest(PageJsHarness):
-    def setUp(self) -> None:
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-        with dashboard._cache_lock:
-            dashboard._meta_cache.clear()
-            dashboard._cwd_cache.clear()
-            dashboard._cursor_meta_cache.clear()
-            dashboard._agent_class_cache.clear()
-            dashboard._claude_title_cache.clear()
-            dashboard._claude_user_event_cache.clear()
-        with dashboard._scan_lock:
-            dashboard._turn_scan.clear()
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
-        # No test may fire a real macOS popup ("[sample] permission" spam
-        # during dev runs). Tests asserting popups use their own nested patch.
-        notify_patcher = mock.patch.object(dashboard, "notify_mac")
-        notify_patcher.start()
-        self.addCleanup(notify_patcher.stop)
-
     def test_load_tasks_supports_current_and_legacy_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -7920,260 +7764,8 @@ class SqliteUriTest(unittest.TestCase):
 # CI runner, so the same contract is checked against real macOS, Linux and
 # Windows filesystem semantics.
 
-STORE_CONSTANTS = (
-    "PROJECTS_DIR",
-    "TASKS_DIR",
-    "CODEX_SESSIONS_DIR",
-    "PI_SESSIONS_DIR",
-    "GEMINI_TMP",
-    "ANTIGRAVITY_CLI_DIR",
-    "ANTIGRAVITY_CONVERSATIONS_DIR",
-    "ANTIGRAVITY_LOG_DIR",
-    "ANTIGRAVITY_LAST_CONVERSATIONS",
-    "COPILOT_DIR",
-    "OPENCODE_DATA",
-    "CURSOR_CHATS",
-    "GOOSE_DB",
-    "FACTORY_PROJECTS",
-)
 
-
-def _iso(when: float) -> str:
-    return datetime.fromtimestamp(when, tz=UTC).isoformat()
-
-
-def _jsonl(path: Path, records: list[dict[str, Any]], when: float) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
-    os.utime(path, (when, when))
-
-
-def _sqlite(path: Path, statements: list[tuple[str, tuple[Any, ...]]], when: float) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(path))
-    try:
-        for sql, params in statements:
-            con.execute(sql, params)
-        con.commit()
-    finally:
-        con.close()
-    os.utime(path, (when, when))
-
-
-def build_claude(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    projects = root / "projects"
-    _jsonl(
-        projects / "-w-proj" / f"{sid}.jsonl",
-        [
-            {"type": "user", "uuid": "u1", "timestamp": _iso(when), "message": {"content": title}},
-            {
-                "type": "assistant",
-                "timestamp": _iso(when),
-                "message": {"usage": {"output_tokens": 10}, "content": []},
-            },
-        ],
-        when,
-    )
-    return {"PROJECTS_DIR": str(projects), "TASKS_DIR": str(root / "tasks")}
-
-
-def build_codex(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    _jsonl(
-        root / "2024" / "01" / "02" / "rollout-1.jsonl",
-        [
-            {
-                "type": "session_meta",
-                "timestamp": _iso(when),
-                "payload": {"id": sid, "cwd": "/w/proj"},
-            },
-            {
-                "type": "event_msg",
-                "timestamp": _iso(when),
-                "payload": {"type": "user_message", "message": title},
-            },
-        ],
-        when,
-    )
-    return {"CODEX_SESSIONS_DIR": str(root)}
-
-
-def build_pi(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    _jsonl(
-        root / "--w-proj--" / f"2026-07-29_{sid}.jsonl",
-        [
-            {
-                "type": "session",
-                "version": 3,
-                "id": sid,
-                "timestamp": _iso(when),
-                "cwd": "/w/proj",
-            },
-            {
-                "type": "message",
-                "id": "user0001",
-                "parentId": None,
-                "timestamp": _iso(when),
-                "message": {
-                    "role": "user",
-                    "content": title,
-                    "timestamp": int(when * 1000),
-                },
-            },
-        ],
-        when,
-    )
-    return {"PI_SESSIONS_DIR": str(root)}
-
-
-def build_gemini(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    _jsonl(
-        root / "proj" / "chats" / f"session-{sid}.jsonl",
-        [
-            {"sessionId": sid, "kind": "main", "directories": ["/w/proj"]},
-            {"type": "user", "timestamp": _iso(when), "content": title},
-        ],
-        when,
-    )
-    return {"GEMINI_TMP": str(root)}
-
-
-def build_antigravity(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    conversations = root / "conversations"
-    _sqlite(
-        conversations / f"{sid}.db",
-        [("CREATE TABLE steps (idx INTEGER, step_type INTEGER, metadata BLOB)", ())],
-        when,
-    )
-    cache = root / "cache" / "last_conversations.json"
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({f"/w/{title}": sid}), encoding="utf-8")
-    return {
-        "ANTIGRAVITY_CONVERSATIONS_DIR": str(conversations),
-        "ANTIGRAVITY_LOG_DIR": str(root / "log"),
-        "ANTIGRAVITY_LAST_CONVERSATIONS": str(cache),
-    }
-
-
-def build_copilot(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    _jsonl(
-        root / "session-state" / sid / "events.jsonl",
-        [
-            {
-                "type": "session.start",
-                "timestamp": _iso(when),
-                "data": {"context": {"cwd": "/w/proj"}},
-            },
-            {"type": "user.message", "timestamp": _iso(when), "data": {"text": title}},
-        ],
-        when,
-    )
-    return {"COPILOT_DIR": str(root)}
-
-
-def build_opencode(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    _sqlite(
-        root / "opencode.db",
-        [
-            (
-                "CREATE TABLE session (id TEXT, parent_id TEXT, directory TEXT, title TEXT, time_updated INTEGER, time_archived INTEGER)",
-                (),
-            ),
-            (
-                "INSERT INTO session VALUES (?, NULL, '/w/proj', ?, ?, NULL)",
-                (sid, title, int(when * 1000)),
-            ),
-            (
-                "CREATE TABLE session_message (session_id TEXT, type TEXT, time_created INTEGER, data TEXT)",
-                (),
-            ),
-            (
-                "INSERT INTO session_message VALUES (?, 'user', ?, ?)",
-                (sid, int(when * 1000), json.dumps({"text": title})),
-            ),
-        ],
-        when,
-    )
-    return {"OPENCODE_DATA": str(root)}
-
-
-def build_cursor(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    _sqlite(
-        root / "w" / sid / "store.db",
-        [
-            ("CREATE TABLE meta (value TEXT)", ()),
-            ("INSERT INTO meta VALUES (?)", (json.dumps({"name": title}).encode().hex(),)),
-        ],
-        when,
-    )
-    return {"CURSOR_CHATS": str(root)}
-
-
-def build_goose(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    stamp = datetime.fromtimestamp(when, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
-    database = root / "sessions.db"
-    _sqlite(
-        database,
-        [
-            (
-                "CREATE TABLE sessions (id TEXT, description TEXT, working_dir TEXT, updated_at TEXT, session_type TEXT, parent_session_id TEXT, archived_at TEXT)",
-                (),
-            ),
-            (
-                "INSERT INTO sessions VALUES (?, ?, '/w/proj', ?, NULL, NULL, NULL)",
-                (sid, title, stamp),
-            ),
-            (
-                "CREATE TABLE messages (session_id TEXT, role TEXT, created_timestamp INTEGER, content_json TEXT)",
-                (),
-            ),
-            (
-                "CREATE TABLE usage_ledger (session_id TEXT, created_timestamp INTEGER, output_tokens INTEGER)",
-                (),
-            ),
-        ],
-        when,
-    )
-    return {"GOOSE_DB": str(database)}
-
-
-def build_droid(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
-    _jsonl(
-        root / "proj" / f"{sid}.jsonl",
-        [
-            {
-                "type": "session_start",
-                "id": sid,
-                "sessionTitle": title,
-                "cwd": "/w/proj",
-                "timestamp": _iso(when),
-            },
-            {
-                "type": "message",
-                "timestamp": _iso(when),
-                "message": {"role": "user", "content": title},
-            },
-        ],
-        when,
-    )
-    return {"FACTORY_PROJECTS": str(root)}
-
-
-# (harness key reported in /api/data, fixture builder, store files to corrupt)
-HARNESSES: tuple[tuple[str, Any], ...] = (
-    ("claude", build_claude),
-    ("codex", build_codex),
-    ("pi", build_pi),
-    ("gemini", build_gemini),
-    ("gemini", build_antigravity),
-    ("copilot", build_copilot),
-    ("opencode", build_opencode),
-    ("cursor", build_cursor),
-    ("goose", build_goose),
-    ("droid", build_droid),
-)
-
-
-class HarnessContractTest(unittest.TestCase):
+class HarnessContractTest(HarnessContractTestCase):
     """One behavioural contract, asserted against every harness.
 
     The rest of the suite grew out of specific bugs, so it covers Claude deeply
@@ -8181,43 +7773,10 @@ class HarnessContractTest(unittest.TestCase):
     checks all of them, on whichever OS the runner is.
     """
 
-    NOW = 1_700_000_000.0
-    SID = "abcdef12-3456-7890-abcd-ef1234567890"
-    TITLE = "Investigate the failing build"
-
-    def setUp(self) -> None:
-        # collect() updates transition/cooldown state. Without clearing it here,
-        # a shuffled run can inherit a prior test's _last_state and suppress or
-        # invent the transition this contract is meant to observe.
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-
-    def collect(self, build: Any, *, when: float, subdir: str = "store") -> dict[str, Any]:
-        """Build one harness's store in isolation and run a full collection."""
-        with tempfile.TemporaryDirectory() as tmp:
-            empty = Path(tmp) / "empty"
-            empty.mkdir()
-            # Point every store at an empty directory first, so a harness
-            # installed on the developer's machine cannot leak into the result.
-            patches: dict[str, str] = {name: str(empty / name) for name in STORE_CONSTANTS}
-            patches.update(build(Path(tmp) / subdir, when, self.SID, self.TITLE))
-            with contextlib.ExitStack() as stack:
-                for name, value in patches.items():
-                    stack.enter_context(mock.patch.object(dashboard, name, value))
-                stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
-                stack.enter_context(mock.patch.object(dashboard.time, "time", lambda: self.NOW))
-                collected: dict[str, Any] = dashboard.collect(24, show_all=True)
-                return collected
-
-    def sessions_for(self, data: dict[str, Any], key: str) -> list[dict[str, Any]]:
-        return [s for s in data["sessions"] if s["harness"] == key]
-
     def test_pi_store_is_registered_as_a_harness(self) -> None:
         # Removing Pi from the registry would make a valid store invisible.
+        self.assertIs(sys.modules["cargento_server"], dashboard)
+        self.assertNotIn("cargento.skills.cargento.cargento_runtime", sys.modules)
         data = self.collect(build_pi, when=self.NOW)
         self.assertTrue(
             any(harness["key"] == "pi" for harness in data["harnesses"]),

@@ -155,7 +155,7 @@ jobs:
           python3 scripts/validate_plugins.py
           python3 -m unittest scripts/tests/test_validate_plugins.py
           python3 -m unittest scripts/tests/test_bump_version.py
-          python3 -m unittest cargento/skills/cargento/tests/test_server.py
+          python3 -m unittest discover -s cargento/skills/cargento/tests -t .
 
       - name: Bump version fields, re-validate, and push the release commit
         if: env.RELEASE_COMMIT == ''

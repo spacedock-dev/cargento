@@ -58,7 +58,7 @@ branch, so the doc updates ride in the same PR.
 ### Tests
 
 Every behavior change to `server.py` needs a regression test in
-`cargento/skills/cargento/tests/test_server.py`. The suite uses only the standard library, and the
+`cargento/skills/cargento/tests/`. The suite uses only the standard library, and the
 fixtures are temp directories and in-memory SQLite databases. It has three layers, and a change
 usually touches more than one:
 
@@ -142,7 +142,7 @@ so re-run the job before investigating, and check the traceback is a timeout and
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
 - Test the page by running it, not by matching strings against `PAGE`. `PageJsHarness` in
-  `test_server.py` executes the real script under node against a stub DOM, so a test can fire a
+  `page_harness.py` executes the real script under node against a stub DOM, so a test can fire a
   click or a keystroke and assert on what the page did. A `assertIn("some-class", PAGE)` passes
   forever after the behavior behind it breaks.
 - Acquire everything that can fail before forking (or, on Windows, before waiting on the re-spawned
