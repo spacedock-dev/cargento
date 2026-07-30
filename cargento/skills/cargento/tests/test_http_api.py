@@ -17,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import aggregate
+
 from .support import (
     PAGE_BYTES,
     LegacyDashboardTestCase,
@@ -159,22 +161,22 @@ class CargentoServerTest(LegacyDashboardTestCase):
             thread.join(timeout=2)
 
     def test_collect_json_single_flights_concurrent_cold_requests(self) -> None:
-        calls: list[tuple[float, bool]] = []
+        calls: list[bool] = []
         calls_lock = threading.Lock()
 
-        def fake_collect(window_hours: float, show_all: bool) -> dict[str, Any]:
+        def fake_collect(*_: Any, show_all: bool) -> dict[str, Any]:
             with calls_lock:
-                calls.append((window_hours, show_all))
+                calls.append(show_all)
             dashboard.time.sleep(0.02)
-            return {"window_hours": window_hours, "show_all": show_all}
+            return {"window_hours": 24, "show_all": show_all}
 
-        with mock.patch.object(dashboard, "collect", fake_collect):
+        with mock.patch.object(aggregate.Application, "collect", fake_collect):
             with ThreadPoolExecutor(max_workers=12) as pool:
                 bodies = list(pool.map(lambda _: dashboard.collect_json(24, False), range(24)))
             alternate = dashboard.collect_json(24, True)
 
-        self.assertEqual(1, calls.count((24, False)))
-        self.assertEqual(1, calls.count((24, True)))
+        self.assertEqual(1, calls.count(False))
+        self.assertEqual(1, calls.count(True))
         self.assertEqual(1, len(set(bodies)))
         self.assertNotEqual(bodies[0], alternate)
         self.assertEqual(2, len(dashboard._collect_memo))
@@ -183,9 +185,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
         def fail(*_args: object) -> list[dict[str, Any]]:
             raise RuntimeError("broken store")
 
-        harnesses = [("test", "Test", lambda: True, fail)]
+        harnesses = (("test", "Test", lambda: True, fail),)
         with (
-            mock.patch.object(dashboard, "HARNESSES", harnesses),
+            mock.patch.object(dashboard, "_LEGACY_HARNESSES", harnesses),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             result = dashboard.collect(24, False)
@@ -551,8 +553,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         thread = serve_until_closed(httpd)
         with mock.patch.object(
             dashboard,
-            "collect",
-            return_value={"generated": 1.0, "sessions": [], "harnesses": []},
+            "collect_json",
+            return_value=json.dumps({"generated": 1.0, "sessions": [], "harnesses": []}).encode(),
         ):
             try:
                 cases = (
@@ -739,7 +741,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         second_done = threading.Event()
         bodies: list[bytes] = []
 
-        def scan(*_: Any) -> dict[str, Any]:
+        def scan(*_: Any, **__: Any) -> dict[str, Any]:
             entered.set()
             self.assertTrue(release.wait(timeout=5), "test did not release the scan")
             return {"generated": 1.0, "sessions": [], "harnesses": []}
@@ -748,7 +750,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             bodies.append(dashboard.collect_json(24, False))
             second_done.set()
 
-        with mock.patch.object(dashboard, "collect", side_effect=scan) as collect:
+        with mock.patch.object(aggregate.Application, "collect", side_effect=scan) as collect:
             first = threading.Thread(
                 target=lambda: bodies.append(dashboard.collect_json(24, False))
             )
@@ -769,7 +771,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     def test_collection_memo_releases_its_lock_after_failure(self) -> None:
         good = {"generated": 1.0, "sessions": [], "harnesses": []}
         with mock.patch.object(
-            dashboard, "collect", side_effect=(RuntimeError("broken store"), good)
+            aggregate.Application, "collect", side_effect=(RuntimeError("broken store"), good)
         ):
             with self.assertRaisesRegex(RuntimeError, "broken store"):
                 dashboard.collect_json(24, False)

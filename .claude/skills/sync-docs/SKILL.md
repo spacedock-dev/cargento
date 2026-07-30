@@ -196,6 +196,7 @@ Run these from the repository root; the output is what the docs MUST match.
 
 ```bash
 S=cargento/skills/cargento/server.py
+A=cargento/skills/cargento/cargento_runtime/aggregate.py
 C=cargento/skills/cargento/cargento_runtime/config.py
 R=cargento/skills/cargento/cargento_runtime/state.py
 W=cargento/skills/cargento/cargento_runtime/web
@@ -204,8 +205,14 @@ W=cargento/skills/cargento/cargento_runtime/web
 grep -oE '(url\.path|urlparse\(self\.path\)\.path) [!=]= "[^"]+"' "$S" | grep -oE '"/[^"]*"' | sort -u
 # CLI flags and their defaults
 grep -E -A4 'ap\.add_argument\(' "$S" | grep -E '"--|default='
-# The harness registry — one collector per supported harness
-awk '/^HARNESSES/,/^\]$/' "$S" | grep -oE 'collect_[a-z]+' | sort -u
+# The harness registry — one collector per supported harness. Still supplied by
+# the transitional server: `_LEGACY_HARNESSES` is the source, and each row is
+# wrapped in a `_LegacyHarnessAdapter` so the runtime sees the standard
+# (config, state, ...) contract. Match on the tuple's own closing paren.
+awk '/^_LEGACY_HARNESSES/,/^\)$/' "$S" | grep -oE 'collect_[a-z]+' | sort -u
+# The application boundary and the registry contract it consumes
+grep -nE '^(class Application|class HarnessSpec)|^    def collect' "$A"
+grep -nE '^(HARNESSES|_LEGACY_HARNESSES)|^def _legacy_(application|harness_specs)|^class _LegacyHarnessAdapter' "$S"
 # Store-relocation environment variables the resolver advertises
 grep -nE '^(STORE_ENV_VARS|CARGENTO_HOME_ENV) = ' "$C"
 # Immutable configuration fields, builders, and locked defaults

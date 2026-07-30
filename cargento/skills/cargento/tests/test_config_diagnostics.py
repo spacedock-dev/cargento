@@ -706,7 +706,7 @@ class DiagnoseTest(unittest.TestCase):
         # Every registered harness is accounted for, present or not: a missing
         # row is indistinguishable from a harness that was never checked.
         self.assertEqual(
-            {key for key, *_ in dashboard.HARNESSES},
+            {spec.key for spec in dashboard.HARNESSES},
             {h["key"] for h in report["harnesses"]},
         )
         for harness in report["harnesses"]:

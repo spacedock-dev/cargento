@@ -9,9 +9,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
+from cargento_runtime import aggregate
 from cargento_runtime import sessions as runtime_sessions
 
 from . import test_claude, test_codex, test_copilot, test_droid, test_pi
@@ -21,12 +22,249 @@ from .fixtures import (
     build_opencode,
     build_pi,
 )
-from .support import HarnessContractTestCase, LegacyDashboardTestCase, dashboard
+from .support import (
+    HarnessContractTestCase,
+    LegacyDashboardTestCase,
+    dashboard,
+    make_runtime,
+)
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 RUNTIME_DIR = SKILL_DIR / "cargento_runtime"
 RUNTIME_PREFIX = "cargento_runtime"
 FORBIDDEN_RUNTIME_PREFIX = "cargento.skills.cargento.cargento_runtime"
+
+if TYPE_CHECKING:
+    from cargento_runtime.config import RuntimeConfig
+    from cargento_runtime.state import RuntimeState
+
+
+class ApplicationIsolationTest(unittest.TestCase):
+    """Two applications in one process must share nothing.
+
+    The design requires it because a contract test starts two servers with
+    different configurations and proves requests and notification state do not
+    cross. Everything asserted here is what "do not cross" has to mean.
+    """
+
+    @staticmethod
+    def _spec(
+        key: str,
+        *,
+        discover_error: BaseException | None = None,
+        collect_error: BaseException | None = None,
+        sessions: int = 1,
+    ) -> aggregate.HarnessSpec:
+        """A runtime-native harness: it reads the config and state it is given."""
+
+        def discover(config: RuntimeConfig, state: RuntimeState) -> bool:
+            if discover_error is not None:
+                raise discover_error
+            state.store_errors[f"{key}-discovered"] = config.home
+            return True
+
+        def collect(
+            config: RuntimeConfig,
+            state: RuntimeState,
+            now: float,
+            window_hours: float,
+            show_all: bool,
+        ) -> list[dict[str, Any]]:
+            if collect_error is not None:
+                raise collect_error
+            rows = []
+            for index in range(sessions):
+                row = runtime_sessions.base_session(key, f"{key}-{index}", config.home)
+                # Carry the inputs into the row so a crossed config, state,
+                # clock or window is visible in the collection itself.
+                row["last_activity"] = now
+                row["title"] = f"{id(state)}|{window_hours}|{show_all}"
+                rows.append(row)
+            return rows
+
+        return aggregate.HarnessSpec(key=key, label=key.title(), discover=discover, collect=collect)
+
+    def _application(
+        self,
+        *,
+        home: str,
+        started: float,
+        clock: float,
+        notifier: str,
+        harnesses: tuple[aggregate.HarnessSpec, ...],
+    ) -> tuple[aggregate.Application, RuntimeConfig, RuntimeState, list[str], list[str]]:
+        config, state = make_runtime(started=started, home=home)
+        diagnostics: list[str] = []
+        popups: list[str] = []
+        application = aggregate.Application(
+            config,
+            state,
+            harnesses,
+            native_notifier=lambda _platform: notifier,
+            popup_notifier=lambda title, message: popups.append(f"{title}:{message}"),
+            diagnostic_sink=diagnostics.append,
+            clock=lambda: clock,
+        )
+        return application, config, state, diagnostics, popups
+
+    def test_two_applications_share_no_config_state_memo_clock_or_notifier(self) -> None:
+        first, config_a, state_a, diag_a, popups_a = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(self._spec("alpha"),),
+        )
+        second, config_b, state_b, diag_b, popups_b = self._application(
+            home="/home/b",
+            started=22.0,
+            clock=2000.0,
+            notifier="notifier-b",
+            harnesses=(self._spec("beta"),),
+        )
+
+        data_a = first.collect(show_all=True)
+        data_b = second.collect(show_all=True)
+
+        # The clock is per application, so "generated" cannot be shared.
+        self.assertEqual(1000.0, data_a["generated"])
+        self.assertEqual(2000.0, data_b["generated"])
+        # The native-notify field comes from the injected notifier.
+        self.assertEqual("notifier-a", data_a["native_notify"])
+        self.assertEqual("notifier-b", data_b["native_notify"])
+        # Each application saw only its own registry.
+        self.assertEqual(["alpha"], [h["key"] for h in data_a["harnesses"]])
+        self.assertEqual(["beta"], [h["key"] for h in data_b["harnesses"]])
+        # Each collector read its own config and state, not the other's.
+        self.assertEqual(["/home/a"], [s["project"] for s in data_a["sessions"]])
+        self.assertEqual(["/home/b"], [s["project"] for s in data_b["sessions"]])
+        self.assertEqual(
+            f"{id(state_a)}|{config_a.window_hours}|True", data_a["sessions"][0]["title"]
+        )
+        self.assertEqual(
+            f"{id(state_b)}|{config_b.window_hours}|True", data_b["sessions"][0]["title"]
+        )
+        # Discovery also received the right config and state.
+        self.assertEqual({"alpha-discovered": "/home/a"}, state_a.store_errors)
+        self.assertEqual({"beta-discovered": "/home/b"}, state_b.store_errors)
+        # Separate sinks, separate popup notifiers, separate start times.
+        self.assertEqual(([], []), (diag_a, diag_b))
+        self.assertIsNot(popups_a, popups_b)
+        self.assertEqual((11.0, 22.0), (state_a.server_started, state_b.server_started))
+
+    def test_the_collection_memo_does_not_cross_applications(self) -> None:
+        first, _, state_a, _, _ = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(self._spec("alpha"),),
+        )
+        second, _, state_b, _, _ = self._application(
+            home="/home/b",
+            started=22.0,
+            clock=2000.0,
+            notifier="notifier-b",
+            harnesses=(self._spec("beta"),),
+        )
+
+        body_a = first.collect_json(show_all=False)
+        body_b = second.collect_json(show_all=False)
+
+        self.assertNotEqual(body_a, body_b)
+        self.assertEqual(1, len(state_a.collect_memo))
+        self.assertEqual(1, len(state_b.collect_memo))
+        # A warm read comes from the application's own memo, not the neighbour's.
+        self.assertEqual(body_a, first.collect_json(show_all=False))
+        self.assertEqual(body_b, second.collect_json(show_all=False))
+        self.assertEqual(1, len(state_a.collect_memo))
+        # A different show_all is a different key, so it is a second entry.
+        first.collect_json(show_all=True)
+        self.assertEqual(2, len(state_a.collect_memo))
+        self.assertEqual(1, len(state_b.collect_memo))
+
+    def test_a_discovery_failure_marks_only_that_harness_absent(self) -> None:
+        application, _, _, diagnostics, _ = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(
+                self._spec("broken", discover_error=OSError("no store")),
+                self._spec("healthy"),
+            ),
+        )
+
+        data = application.collect(show_all=True)
+
+        broken, healthy = data["harnesses"]
+        self.assertEqual(
+            ("broken", False, None), (broken["key"], broken["discovered"], broken["error"])
+        )
+        self.assertEqual(
+            ("healthy", True, None), (healthy["key"], healthy["discovered"], healthy["error"])
+        )
+        # An absent store is not an error, so nothing is reported.
+        self.assertEqual([], diagnostics)
+        self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
+
+    def test_a_collector_failure_sets_only_its_own_error(self) -> None:
+        application, _, _, diagnostics, _ = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(
+                self._spec("broken", collect_error=RuntimeError("broken store")),
+                self._spec("healthy"),
+            ),
+        )
+
+        data = application.collect(show_all=True)
+
+        broken, healthy = data["harnesses"]
+        self.assertTrue(broken["discovered"])
+        self.assertEqual("RuntimeError: broken store", broken["error"])
+        self.assertIsNone(healthy["error"])
+        # The failure is reported through the injected sink, never printed.
+        self.assertEqual(["[broken] collector error: RuntimeError: broken store"], diagnostics)
+        # The surviving harness still contributes its sessions.
+        self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
+
+
+class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
+    """The transitional adapter must refuse to serve a second application.
+
+    Its wrapped collectors still read module globals, so running them for
+    another application's config and state would silently produce that
+    application's rows from this one's stores.
+    """
+
+    def test_a_foreign_application_cannot_drive_the_legacy_harnesses(self) -> None:
+        config, state = dashboard._legacy_runtime()
+        spec = dashboard._legacy_harness_specs(config, state)[0]
+        foreign_config, foreign_state = make_runtime(home="/home/foreign")
+
+        # The bound pair is accepted.
+        self.assertIsInstance(spec.discover(config, state), bool)
+
+        for label, wrong_config, wrong_state in (
+            ("foreign config", foreign_config, state),
+            ("foreign state", config, foreign_state),
+            ("both foreign", foreign_config, foreign_state),
+        ):
+            with self.subTest(mismatch=label):
+                with self.assertRaisesRegex(RuntimeError, "another application"):
+                    spec.discover(wrong_config, wrong_state)
+                with self.assertRaisesRegex(RuntimeError, "another application"):
+                    spec.collect(wrong_config, wrong_state, 1.0, 24.0, False)
+
+    def test_the_registry_keys_and_labels_survive_the_adapter(self) -> None:
+        # The adapter changes the calling convention, not the registry itself.
+        self.assertEqual(
+            [(key, label) for key, label, *_ in dashboard._LEGACY_HARNESSES],
+            [(spec.key, spec.label) for spec in dashboard.HARNESSES],
+        )
 
 
 class RuntimeImportGraphTest(unittest.TestCase):
@@ -34,6 +272,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
 
     EXPECTED: ClassVar[dict[str, set[str]]] = {
         "cargento_runtime": set(),
+        "cargento_runtime.aggregate": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.sessions",
+            "cargento_runtime.state",
+        },
+        "cargento_runtime.collectors": set(),
         "cargento_runtime.config": set(),
         "cargento_runtime.io": {
             "cargento_runtime.config",

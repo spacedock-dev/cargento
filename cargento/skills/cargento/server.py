@@ -33,7 +33,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -41,9 +41,9 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, unquote, urlparse
 
+from cargento_runtime import aggregate, records
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
-from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
 from cargento_runtime import transcripts as runtime_transcripts
@@ -3609,9 +3609,13 @@ def _discover_gemini() -> bool:
     )
 
 
-HARNESSES: list[
-    tuple[str, str, Callable[[], bool], Callable[[float, float, bool], list[dict[str, Any]]]]
-] = [
+# The legacy registry: predicates and collectors that still read module
+# globals. Task 12 wraps each pair in a _LegacyHarnessAdapter so the runtime
+# sees the standard (config, state, ...) contract; later collector tasks replace
+# one row at a time with a runtime-native callback.
+_LEGACY_HARNESSES: tuple[
+    tuple[str, str, Callable[[], bool], Callable[[float, float, bool], list[dict[str, Any]]]], ...
+] = (
     ("claude", "Claude", lambda: _store_dir_exists("claude.projects"), collect_claude),
     ("codex", "Codex", lambda: _store_dir_exists("codex.sessions"), collect_codex),
     ("pi", "Pi", discover_pi, collect_pi),
@@ -3661,82 +3665,118 @@ HARNESSES: list[
         lambda: _store_glob_exists("droid.projects", "*", "*.jsonl"),
         collect_droid,
     ),
-]
+)
 
 
-def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
-    now = time.time()
-    out_sessions: list[dict[str, Any]] = []
-    harnesses: list[dict[str, Any]] = []
-    for key, label, discover, collector in HARNESSES:
-        try:
-            found = bool(discover())
-        except OSError:
-            found = False
-        harness: dict[str, Any] = {
-            "key": key,
-            "label": label,
-            "discovered": found,
-            "error": None,
-        }
-        harnesses.append(harness)
-        if not found:
-            continue
-        try:
-            out_sessions.extend(collector(now, window_hours, show_all))
-        except Exception as e:  # noqa: BLE001 — one broken harness must not take down the rest
-            harness["error"] = f"{type(e).__name__}: {e}"
-            runtime_io.diag(f"[{key}] collector error: {harness['error']}", print)
+@dataclass(frozen=True)
+class _LegacyHarnessAdapter:
+    """Presents a global-reading collector under the runtime harness contract.
 
-    config, _ = _legacy_runtime()
-    out_sessions = runtime_sessions.dedupe_sessions(out_sessions)
-    runtime_sessions.assign_display_ids(config, out_sessions)
-    state_rank = {"needs_input": 0, "working": 1, "idle": 2}
-    # Session id as tiebreaker (not last_activity) so rows don't reshuffle
-    # on every refresh while sessions are generating.
-    out_sessions.sort(key=lambda x: (state_rank.get(x["state"], 3), x["sid"]))
-    active_sessions = [x for x in out_sessions if x["active"]]
-    total_tasks = sum(x["total"] for x in out_sessions)
-    total_done = sum(x["done"] for x in out_sessions)
-    return {
-        "generated": now,
-        "window_hours": window_hours,
-        "show_all": show_all,
-        # Which layer owns needs-input popups. Empty means the page should
-        # raise its own; a backend name means the server already did.
-        "native_notify": native_notifier(sys.platform),
-        "harnesses": harnesses,
-        "summary": {
-            "needs_input": sum(1 for x in active_sessions if x["state"] == "needs_input"),
-            "working": sum(1 for x in active_sessions if x["state"] == "working"),
-            "rate_per_min": sum(x["rate_per_min"] for x in active_sessions),
-            "active_sessions": len(active_sessions),
-            "open_tasks": sum(x["open"] for x in out_sessions),
-            "progress_pct": round(total_done * 100 / total_tasks) if total_tasks else 0,
-            "total_tasks": total_tasks,
-            "total_done": total_done,
-        },
-        "sessions": out_sessions,
-    }
+    The wrapped functions still read module aliases, so the adapter refuses to
+    run for anything other than the one runtime those aliases describe: it
+    checks that the caller's state is the state it was bound to, and that the
+    caller's config is the one currently installed on that state. It never
+    installs config or state by mutating a global, which is what would let a
+    second application quietly drive this one's collectors.
+
+    The bound pair is the application's own config and state, which it hands
+    back on every call. That stays stable even though the wrapped functions
+    re-derive a fresh config from the globals while they run.
+    """
+
+    config: runtime_config.RuntimeConfig
+    state: runtime_state.RuntimeState
+    legacy_discover: Callable[[], bool]
+    legacy_collect: Callable[[float, float, bool], list[dict[str, Any]]]
+
+    def _require(
+        self,
+        config: runtime_config.RuntimeConfig,
+        state: runtime_state.RuntimeState,
+    ) -> None:
+        if config is not self.config or state is not self.state:
+            raise RuntimeError("legacy harness used by another application")
+
+    def discover(
+        self,
+        config: runtime_config.RuntimeConfig,
+        state: runtime_state.RuntimeState,
+    ) -> bool:
+        self._require(config, state)
+        return bool(self.legacy_discover())
+
+    def collect(
+        self,
+        config: runtime_config.RuntimeConfig,
+        state: runtime_state.RuntimeState,
+        now: float,
+        window_hours: float,
+        show_all: bool,
+    ) -> list[dict[str, Any]]:
+        self._require(config, state)
+        return self.legacy_collect(now, window_hours, show_all)
 
 
-# (window_hours, show_all) -> {"ts": epoch, "body": bytes}
+def _legacy_harness_specs(
+    config: runtime_config.RuntimeConfig,
+    state: runtime_state.RuntimeState,
+) -> tuple[aggregate.HarnessSpec, ...]:
+    """Wrap the legacy registry for exactly one config and state."""
+    specs = []
+    for key, label, legacy_discover, legacy_collect in _LEGACY_HARNESSES:
+        adapter = _LegacyHarnessAdapter(config, state, legacy_discover, legacy_collect)
+        specs.append(
+            aggregate.HarnessSpec(
+                key=key,
+                label=label,
+                discover=adapter.discover,
+                collect=adapter.collect,
+            )
+        )
+    return tuple(specs)
+
+
+# The registry as the runtime sees it, for readers that want its keys and
+# labels. Its adapters are bound to the import-time runtime; the application
+# built below binds its own to whatever runtime it will actually run on.
+HARNESSES: tuple[aggregate.HarnessSpec, ...] = _legacy_harness_specs(
+    _LEGACY_STATE.config, _LEGACY_STATE
+)
+
+
+def _legacy_application(window_hours: float) -> aggregate.Application:
+    """The one transitional application, built over the legacy globals."""
+    config, state = _legacy_runtime()
+    if window_hours != config.window_hours:
+        # The window is a request-time argument until the CLI owns it outright.
+        config = replace(config, window_hours=window_hours)
+        state.config = config
+    return aggregate.Application(
+        config,
+        state,
+        _legacy_harness_specs(config, state),
+        native_notifier=native_notifier,
+        popup_notifier=notify_mac,
+        diagnostic_sink=print,
+        # Passed explicitly rather than left to the default: the default binds
+        # time.time once at import, and the tests still patch the time module.
+        clock=time.time,
+    )
+
+
+# (window_hours, show_all) -> {"ts": epoch, "body": bytes}. Both live in
+# RuntimeState now; the aliases stay until the last local collector moves,
+# because the shared test reset still clears them.
 _collect_memo = _LEGACY_STATE.collect_memo
 _collect_memo_lock = _LEGACY_STATE.collect_memo_lock
 
 
+def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
+    return _legacy_application(window_hours).collect(show_all=show_all)
+
+
 def collect_json(window_hours: float, show_all: bool) -> bytes:
-    key = (window_hours, show_all)
-    with _collect_memo_lock:
-        cached = _collect_memo.get(key)
-        if cached and time.time() - cached["ts"] < COLLECT_MEMO_SEC:
-            body: bytes = cached["body"]
-            return body
-        # Hold the lock through collection: ThreadingHTTPServer callers share
-        # one filesystem/SQLite scan rather than stampeding cold cache entries.
-        body = json.dumps(collect(window_hours, show_all)).encode()
-        _collect_memo[key] = {"ts": time.time(), "body": body}
-        return body
+    return _legacy_application(window_hours).collect_json(show_all=show_all)
 
 
 # ── process lifecycle: state file, health probe, detaching, stopping ────────

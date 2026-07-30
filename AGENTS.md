@@ -22,6 +22,8 @@ cargento/                           # plugin root
         ├── server.py               # stdlib-only dashboard server
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
         ├── cargento_runtime/       # importable dashboard runtime package
+        │   ├── aggregate.py        # harness registry, failure boundary, and the application
+        │   ├── collectors/         # one harness collector per file (populated from Task 13)
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── records.py          # untrusted-record parsing and normalization

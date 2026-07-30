@@ -393,6 +393,7 @@ sys.modules.pop("sqlite3", None)
 sys.path.insert(0, str(Path({path!r}).parent))
 spec = importlib.util.spec_from_file_location("srv", {path!r})
 m = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = m          # dataclasses resolves annotations via sys.modules
 spec.loader.exec_module(m)          # must not raise
 builtins.__import__ = real_import
 assert not m.runtime_io.sqlite_available(), "sqlite_available() should be False"

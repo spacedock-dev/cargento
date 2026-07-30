@@ -216,10 +216,12 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                     create=True,
                 ),
             ):
-                gemini = next(h for h in dashboard.HARNESSES if h[0] == "gemini")
-                discovered = gemini[2]()
+                registered = {spec.key for spec in dashboard.HARNESSES}
+                discovered = dashboard._discover_gemini()
                 sessions = dashboard.collect_gemini(now, 24, False)
 
+        # The predicate only matters because the registry actually carries it.
+        self.assertIn("gemini", registered)
         self.assertTrue(discovered)
         self.assertEqual(1, len(sessions))
         self.assertEqual("gemini", sessions[0]["harness"])

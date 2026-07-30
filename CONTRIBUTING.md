@@ -191,7 +191,7 @@ Format: `<type>(<scope>): <description>`, where type is one of `feat`, `fix`, `d
 
 ## Adding support for a new harness
 
-This is the contribution we most want. Each harness is one entry in the `HARNESSES` registry in `server.py`: a key, a display label, a cheap discovery predicate, and a collector function. Study `collect_droid` (JSONL-based) or `collect_goose` (SQLite-based) as templates. Requirements:
+This is the contribution we most want. Each harness is one registry entry: a key, a display label, a cheap discovery predicate, and a collector function. The runtime contract is `HarnessSpec` in `cargento_runtime/aggregate.py`, whose discovery takes `(config, state)` and whose collector takes `(config, state, now, window_hours, show_all)`. While the staged split is in progress the entries are still authored in `_LEGACY_HARNESSES` in `server.py` and wrapped to that contract, so add yours there and follow the neighbours. Study `collect_droid` (JSONL-based) or `collect_goose` (SQLite-based) as templates. Requirements:
 
 - Discovery must be cheap (an `isdir` or a `glob_under()` call), and the collector must degrade gracefully on schema drift.
 - Resolve store roots through the candidate-set resolver rather than a single hardcoded path, and honor the harness's documented relocation variable if it has one.
