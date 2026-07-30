@@ -18,6 +18,7 @@ from typing import Any
 from unittest import mock
 
 from .support import (
+    PAGE_BYTES,
     LegacyDashboardTestCase,
     dashboard,
     serve_until_closed,
@@ -26,7 +27,9 @@ from .support import (
 
 class CargentoServerTest(LegacyDashboardTestCase):
     def test_notify_endpoint_accepts_valid_non_object_and_deep_json(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         bodies = [
@@ -57,7 +60,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
             thread.join(timeout=2)
 
     def test_cross_site_fetch_metadata_is_rejected(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -133,7 +138,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
             ),
             ("GET", "/", {"Host": "evil.example"}, 403, "DNS rebinding"),
         ]
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -297,7 +304,9 @@ class HostAndSocketTest(unittest.TestCase):
                 self.assertIn(expected, dashboard.bind_error_message(exc, 4553))
 
     def test_server_binds_and_serves(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -323,7 +332,9 @@ class ReviewFixTest(unittest.TestCase):
         # "same-site" for a page served from another local port. A hostname-only
         # Origin check trusted it, and text/plain is CORS-safelisted so no
         # preflight would have stopped the request.
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         port = httpd.server_port
@@ -378,7 +389,9 @@ class ReviewFixTest(unittest.TestCase):
             # which is correct behaviour but noise in the test output.
             mock.patch.object(dashboard, "diag"),
         ):
-            httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            httpd = dashboard.LoopbackHTTPServer(
+                ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+            )
             httpd.server_close()
 
         self.assertIn("setsockopt:65531", order)
@@ -386,7 +399,9 @@ class ReviewFixTest(unittest.TestCase):
         self.assertLess(order.index("setsockopt:65531"), order.index("bind"))
 
     def test_shutdown_endpoint_answers_before_it_stops_the_server(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -418,7 +433,9 @@ class ReviewFixTest(unittest.TestCase):
         handler.server.shutdown.assert_called_once_with()
 
     def test_shutdown_endpoint_refuses_a_cross_site_post(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -524,7 +541,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             conn.close()
 
     def test_http_routes_pin_status_content_type_and_response_shapes(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = serve_until_closed(httpd)
         with mock.patch.object(
             dashboard,
@@ -586,13 +605,21 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def test_host_origin_dns_rebinding_and_request_limits_are_preserved(self) -> None:
         captured_addresses: list[tuple[str, int]] = []
+        captured_pages: list[bytes] = []
 
         class StopServingError(Exception):
             pass
 
         class CapturingServer:
-            def __init__(self, address: tuple[str, int], _: Any) -> None:
+            def __init__(
+                self,
+                address: tuple[str, int],
+                _: Any,
+                *,
+                page_bytes: bytes,
+            ) -> None:
                 captured_addresses.append(address)
+                captured_pages.append(page_bytes)
 
             def serve_forever(self) -> None:
                 raise StopServingError
@@ -613,8 +640,11 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         ):
             dashboard.main()
         self.assertEqual([("127.0.0.1", 4553)], captured_addresses)
+        self.assertEqual([PAGE_BYTES], captured_pages)
 
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = serve_until_closed(httpd)
         try:
             port = httpd.server_port

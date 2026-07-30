@@ -22,8 +22,10 @@ from unittest import mock
 
 from .page_harness import PageJsHarness
 from .support import (
+    PAGE_BYTES,
     SERVER_PATH,
     dashboard,
+    frontend_page,
     serve_until_closed,
 )
 
@@ -240,17 +242,71 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 dashboard.spawn_detached(args, log_file)
         self.assertEqual(str(SERVER_PATH), popen.call_args.args[0][1])
 
-    def test_copied_plugin_launches_without_repository_imports(self) -> None:
+    def test_copied_plugin_launches_without_repository_imports(self) -> None:  # noqa: PLR0915
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             copied_plugin = root / "copied-plugin" / "cargento"
             shutil.copytree(SERVER_PATH.parents[2], copied_plugin)
             launcher = copied_plugin / "skills" / "cargento" / "server.py"
+            copied_skill = launcher.parent.resolve()
+            copied_web = copied_skill / "cargento_runtime" / "web"
+            for name in ("index.html", "styles.css", "app.js", "page.py"):
+                with self.subTest(shipped_file=name):
+                    self.assertTrue((copied_web / name).is_file())
             cwd = root / "unrelated"
             cwd.mkdir()
             cargento_home = root / "state"
             port = self._candidate_port()
             env = self._clean_env(cargento_home)
+            probe = f"""
+import importlib
+import json
+import pkgutil
+import sys
+from pathlib import Path
+
+repository = Path({str(SERVER_PATH.parents[4])!r}).resolve()
+cwd = Path.cwd().resolve()
+sys.path[:] = [
+    entry for entry in sys.path
+    if not Path(entry or cwd).resolve().is_relative_to(repository)
+]
+skill = Path({str(copied_skill)!r}).resolve()
+sys.path.insert(0, str(skill))
+import cargento_runtime
+from cargento_runtime.web import page
+
+origins = {{}}
+modules = [cargento_runtime]
+modules.extend(
+    importlib.import_module(found.name)
+    for found in pkgutil.walk_packages(
+        cargento_runtime.__path__, cargento_runtime.__name__ + "."
+    )
+)
+for module in modules:
+    origins[module.__name__] = str(Path(module.__file__).resolve())
+assets = {{
+    name: str(page.asset_path(name).resolve())
+    for name in ("index.html", "styles.css", "app.js")
+}}
+print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.load_page())}}))
+"""
+            origin_probe = subprocess.run(
+                [sys.executable, "-c", probe],
+                cwd=cwd,
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+                check=False,
+            )
+            self.assertEqual(0, origin_probe.returncode, origin_probe.stderr)
+            discovered = json.loads(origin_probe.stdout)
+            for origin in [*discovered["origins"].values(), *discovered["assets"].values()]:
+                self.assertTrue(Path(origin).is_relative_to(copied_skill), origin)
+            self.assertEqual(93_713, discovered["page_size"])
             state_path = cargento_home / f"cargento-{port}.json"
             proc = subprocess.Popen(
                 [sys.executable, str(launcher), "--port", str(port)],
@@ -266,7 +322,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 code, headers, body = self._response(port, "GET", "/")
                 self.assertEqual(200, code)
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
-                self.assertTrue(body.startswith(b"<!doctype html>"))
+                self.assertEqual(frontend_page.load_page(), body)
             finally:
                 stop: subprocess.CompletedProcess[bytes] | None = None
                 # A live owned process has exclusive possession of its port,
@@ -507,7 +563,9 @@ class CargentoServerTest(PageJsHarness):
                 self.assertIn("since unknown", line)
 
     def test_port_released_is_false_while_a_server_still_holds_the_port(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         port = httpd.server_port
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -583,7 +641,9 @@ class CargentoServerTest(PageJsHarness):
             self.assertEqual(expected, caught.exception.code, state)
 
     def test_stop_instance_stops_a_running_server_over_http(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         port = httpd.server_port
         loop_exited = threading.Event()
         allow_close = threading.Event()
@@ -1154,7 +1214,9 @@ class DaemonLifecycleTest(unittest.TestCase):
     def test_a_busy_port_still_explains_itself_under_daemon(self) -> None:
         """D-1's promise: binding happens before detaching, so this message
         reaches the terminal that asked for it and not just a log file."""
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         # Closes the listener when the loop exits, so the reaping --stop below
         # does not sit out the whole release timeout waiting for a socket that
         # only the outer finally was ever going to close.

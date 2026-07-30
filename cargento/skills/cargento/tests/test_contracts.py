@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import ast
 import contextlib
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest import mock
 
 from . import test_claude, test_codex, test_copilot, test_droid, test_pi
@@ -16,6 +18,80 @@ from .fixtures import (
     build_pi,
 )
 from .support import HarnessContractTestCase, LegacyDashboardTestCase, dashboard
+
+SKILL_DIR = Path(__file__).resolve().parents[1]
+RUNTIME_DIR = SKILL_DIR / "cargento_runtime"
+RUNTIME_PREFIX = "cargento_runtime"
+FORBIDDEN_RUNTIME_PREFIX = "cargento.skills.cargento.cargento_runtime"
+
+
+class RuntimeImportGraphTest(unittest.TestCase):
+    """Every runtime dependency is reviewed in the task that introduces it."""
+
+    EXPECTED: ClassVar[dict[str, set[str]]] = {
+        "cargento_runtime": set(),
+        "cargento_runtime.web": set(),
+        "cargento_runtime.web.page": set(),
+    }
+
+    @staticmethod
+    def _module_name(path: Path) -> str:
+        relative = path.relative_to(SKILL_DIR).with_suffix("")
+        parts = list(relative.parts)
+        if parts[-1] == "__init__":
+            parts.pop()
+        return ".".join(parts)
+
+    def _relative_target(self, module: str, node: ast.ImportFrom, *, is_package: bool) -> str:
+        package = module.split(".") if is_package else module.split(".")[:-1]
+        if node.level > len(package):
+            self.fail(f"{module} has a relative import that climbs above cargento_runtime")
+        base = package[: len(package) - node.level + 1]
+        if not base or base[0] != RUNTIME_PREFIX:
+            self.fail(f"{module} has a relative import that climbs above cargento_runtime")
+        return ".".join([*base, *([node.module] if node.module else [])])
+
+    def test_runtime_import_graph_matches_the_reviewed_allowlist(self) -> None:
+        actual: dict[str, set[str]] = {}
+        for path in sorted(RUNTIME_DIR.rglob("*.py")):
+            module = self._module_name(path)
+            dependencies: set[str] = set()
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        self.assertFalse(
+                            alias.name == FORBIDDEN_RUNTIME_PREFIX
+                            or alias.name.startswith(f"{FORBIDDEN_RUNTIME_PREFIX}."),
+                            f"{module} uses namespace-qualified runtime import {alias.name}",
+                        )
+                        if alias.name == RUNTIME_PREFIX or alias.name.startswith(
+                            f"{RUNTIME_PREFIX}."
+                        ):
+                            dependencies.add(alias.name)
+                elif isinstance(node, ast.ImportFrom):
+                    imported = (
+                        self._relative_target(
+                            module,
+                            node,
+                            is_package=path.name == "__init__.py",
+                        )
+                        if node.level
+                        else (node.module or "")
+                    )
+                    self.assertFalse(
+                        imported == FORBIDDEN_RUNTIME_PREFIX
+                        or imported.startswith(f"{FORBIDDEN_RUNTIME_PREFIX}."),
+                        f"{module} uses namespace-qualified runtime import {imported}",
+                    )
+                    if imported == RUNTIME_PREFIX or imported.startswith(f"{RUNTIME_PREFIX}."):
+                        if imported == RUNTIME_PREFIX or node.module is None:
+                            dependencies.update(f"{imported}.{alias.name}" for alias in node.names)
+                        else:
+                            dependencies.add(imported)
+            dependencies.discard(module)
+            actual[module] = dependencies
+        self.assertEqual(self.EXPECTED, actual)
 
 
 class CollectorAgreementTest(LegacyDashboardTestCase):

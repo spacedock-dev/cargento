@@ -1,21 +1,31 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from .support import LegacyDashboardTestCase, dashboard
+from .support import LegacyDashboardTestCase
+
+APP_PATH = Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "app.js"
+WEB_DIR = APP_PATH.parent
+APP_JS = APP_PATH.read_text(encoding="utf-8")
+STYLES = (WEB_DIR / "styles.css").read_text(encoding="utf-8")
+PAGE_TEXT = (
+    (WEB_DIR / "index.html")
+    .read_text(encoding="utf-8")
+    .replace("{{CARGENTO_STYLES}}", STYLES)
+    .replace("{{CARGENTO_APP}}", APP_JS)
+)
 
 
 class PageJsHarness(LegacyDashboardTestCase):
     """Runs the dashboard page's real JS under node against a stub DOM.
 
     Shared by every test that asserts on page *behaviour* rather than on the
-    text of ``PAGE``: string assertions rot silently, executed ones do not.
+    text of the page: string assertions rot silently, executed ones do not.
     """
 
     # Functional DOM/window stubs for executing the page script under node:
@@ -70,9 +80,6 @@ const __settle = () => new Promise(r => setImmediate(r));
     def _run_page_js(self, checks: str, prelude: str = "") -> Any:
         """`prelude` runs before the page script, for globals the page reads at
         load time (localStorage) or feature-detects (navigator.clipboard)."""
-        match = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE, re.DOTALL)
-        assert match is not None
-        script = match.group(1)
         with tempfile.TemporaryDirectory() as tmp:
             js = Path(tmp) / "page_test.js"
             # Checks run inside an async IIFE so they can await the async
@@ -83,7 +90,7 @@ const __settle = () => new Promise(r => setImmediate(r));
             js.write_text(
                 self.PAGE_JS_STUBS
                 + prelude
-                + script
+                + APP_JS
                 + "\n;(async () => {\n"
                 + checks
                 + "\n})();\n",

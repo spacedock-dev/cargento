@@ -196,6 +196,7 @@ Run these from the repository root; the output is what the docs MUST match.
 
 ```bash
 S=cargento/skills/cargento/server.py
+W=cargento/skills/cargento/cargento_runtime/web
 
 # HTTP routes the server actually serves
 grep -oE '(url\.path|urlparse\(self\.path\)\.path) [!=]= "[^"]+"' "$S" | grep -oE '"/[^"]*"' | sort -u
@@ -209,6 +210,28 @@ grep -oE 'STORE_ENV_VARS = \(.*\)' "$S"
 grep -nE '^[A-Z_]+ = [0-9]' "$S"
 # Python floor: the ruff target and the mypy pin must agree, and match the docs
 grep -nE 'target-version|python_version|fail_under' pyproject.toml
+# Frontend source ownership, assembly slots, and byte identity
+grep -nE 'WEB_DIR|load_frontend' scripts/lint_embedded.py
+grep -o '{{CARGENTO_STYLES}}\|{{CARGENTO_APP}}' "$W/index.html" | sort | uniq -c
+python3 - "$W" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+web = Path(sys.argv[1])
+for name in ("index.html", "styles.css", "app.js"):
+    payload = (web / name).read_bytes()
+    print(name, len(payload), hashlib.sha256(payload).hexdigest())
+template = (web / "index.html").read_text(encoding="utf-8")
+styles = (web / "styles.css").read_text(encoding="utf-8")
+script = (web / "app.js").read_text(encoding="utf-8")
+page = (
+    template.replace("{{CARGENTO_STYLES}}", styles)
+    .replace("{{CARGENTO_APP}}", script)
+    .encode("utf-8")
+)
+print("assembled page", len(page), hashlib.sha256(page).hexdigest())
+PY
 # The real CI command surface
 grep -nE '^\s+(- name:|run:|  +[a-z].*)$' .github/workflows/quality-gate.yml | grep -E 'ruff|mypy|coverage|unittest|lint_embedded|validate_plugins'
 grep -nE 'run: ' .github/workflows/validate.yml

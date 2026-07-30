@@ -11,7 +11,7 @@ Read [AGENTS.md](AGENTS.md) for the repository architecture and [COMPATIBILITY.m
 ## Development setup
 
 Prerequisites: Python 3.11+ (`runtime-floor` checks the shipped entry point on 3.11, while the full
-gate runs on 3.12), `git`, Node (only for `scripts/lint_embedded.py`, which checks the embedded JS;
+gate runs on 3.12), `git`, Node (only for `scripts/lint_embedded.py`, which checks the frontend JS;
 pass `--allow-missing-node` to skip that half), and optionally the Claude Code / AGY CLIs for native
 validation. See [COMPATIBILITY.md](COMPATIBILITY.md) for why 3.11 is the floor.
 
@@ -47,7 +47,7 @@ branch, so the doc updates ride in the same PR.
   `pyproject.toml`. Do not add an ignore without one.
 - `ruff format --check .`
 - `mypy` in `--strict` mode with `warn_unreachable`.
-- `scripts/lint_embedded.py`, which lints the HTML, CSS and JS embedded in `server.py`.
+- `scripts/lint_embedded.py`, which lints the shipped HTML, CSS and JS source files directly.
 - `runtime-floor`, which launches the shipped `server.py` entry point directly from outside the
   checkout on Python 3.11 and exercises `--help` and `--diagnose --json`.
 - The full unittest suite under `coverage`, against the `fail_under` threshold in `pyproject.toml`.
@@ -135,21 +135,22 @@ so re-run the job before investigating, and check the traceback is a timeout and
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
-- The embedded page rebuilds `#app` from scratch every five seconds. Anything the reader set has to
+- The frontend rebuilds `#app` from scratch every five seconds. Anything the reader set has to
   live in a module variable and be reapplied after the swap: the expanded row, the keyboard cursor,
   the filters, the scroll offset. Two rules follow. Escape every payload-derived string through
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
-- Test the page by running it, not by matching strings against `PAGE`. `PageJsHarness` in
-  `page_harness.py` executes the real script under node against a stub DOM, so a test can fire a
-  click or a keystroke and assert on what the page did. A `assertIn("some-class", PAGE)` passes
+- Test the page by running it, not by matching strings against its source. `PageJsHarness` in
+  `page_harness.py` executes the real `app.js` under node against a stub DOM, so a test can fire a
+  click or a keystroke and assert on what the page did. A source-text assertion passes
   forever after the behavior behind it breaks.
-- Acquire everything that can fail before forking (or, on Windows, before waiting on the re-spawned
-  child): the listening socket, and the log file the detached process will write to. After the fork
-  there is nowhere for a failure to go. Reporting one means pointing the user at the very log that
-  could not be opened. Note that `os.makedirs(exist_ok=True)` is not this check: it succeeds for a
-  directory that already exists whatever its mode, which is the likeliest bad state of all.
+- Load the frontend before creating the daemon log, binding the socket, forking, or spawning a
+  Windows child. Then acquire the log file and listening socket before forking (or, on Windows,
+  before waiting on the re-spawned child). After the fork there is nowhere for a failure to go.
+  Reporting one means pointing the user at the very log that could not be opened. Note that
+  `os.makedirs(exist_ok=True)` is not this check: it succeeds for a directory that already exists
+  whatever its mode, which is the likeliest bad state of all.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.

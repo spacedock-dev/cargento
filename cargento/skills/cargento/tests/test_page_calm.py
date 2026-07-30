@@ -6,10 +6,7 @@ import shutil
 import unittest
 from typing import Any
 
-from .page_harness import PageJsHarness
-from .support import (
-    dashboard,
-)
+from .page_harness import APP_JS, PAGE_TEXT, STYLES, PageJsHarness
 
 
 class CalmModeTest(PageJsHarness):
@@ -264,10 +261,10 @@ console.log(JSON.stringify(out));
     def test_the_long_turn_wording_has_exactly_one_source(self) -> None:
         # The ⚠️ tooltip and the calm flag explanation are the same sentence;
         # two copies is how they drift apart.
-        self.assertIn("const LONG_TURN_NOTE =", dashboard.PAGE)
+        self.assertIn("const LONG_TURN_NOTE =", APP_JS)
         self.assertEqual(
             1,
-            dashboard.PAGE.count("This request is running long (or estimated to)."),
+            APP_JS.count("This request is running long (or estimated to)."),
             "the long-turn sentence is duplicated instead of shared",
         )
 
@@ -807,10 +804,8 @@ console.log(JSON.stringify({lied: h.includes(">copied<"), told: h.includes(">blo
 
     def test_every_css_variable_the_page_uses_is_declared(self) -> None:
         # A `var(--typo)` renders as nothing at all and no linter here sees it.
-        style = re.search(r"<style>(.*?)</style>", dashboard.PAGE, re.DOTALL)
-        assert style is not None
-        declared = set(re.findall(r"(--[\w-]+)\s*:", style.group(1)))
-        used = set(re.findall(r"var\((--[\w-]+)", dashboard.PAGE))
+        declared = set(re.findall(r"(--[\w-]+)\s*:", STYLES))
+        used = set(re.findall(r"var\((--[\w-]+)", PAGE_TEXT))
         self.assertEqual(set(), used - declared, "page uses CSS variables nothing declares")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -831,19 +826,17 @@ console.log(JSON.stringify({
         out = self.run_calm(checks)
         self.assertTrue(out["nested"], "the column headers are outside the scroll container")
         self.assertTrue(out["headings"])
-        self.assertIn(".cm-head{position:sticky;top:0;", dashboard.PAGE)
+        self.assertIn(".cm-head{position:sticky;top:0;", STYLES)
 
     def test_a_focused_quick_action_can_actually_be_seen(self) -> None:
         # The row's quick action lives in a container held at opacity:0 until
         # hover. Ancestor opacity composites the whole subtree as a group, so a
         # focused child cannot make itself visible — the row has to. Without
         # this the ledger has one invisible tab stop per row.
-        self.assertIn(".cm-row:focus-within .cm-q{opacity:1}", dashboard.PAGE)
+        self.assertIn(".cm-row:focus-within .cm-q{opacity:1}", STYLES)
 
     def test_no_control_drops_its_focus_ring_without_replacing_it(self) -> None:
-        style = re.search(r"<style>(.*?)</style>", dashboard.PAGE, re.DOTALL)
-        assert style is not None
-        rules = re.findall(r"\n\s*([^\n{]*:focus-visible[^\n{]*)\{([^}]*)\}", style.group(1))
+        rules = re.findall(r"\n\s*([^\n{]*:focus-visible[^\n{]*)\{([^}]*)\}", STYLES)
         self.assertGreater(len(rules), 4, "focus-visible rules disappeared; is the regex stale?")
         for selector, body in rules:
             with self.subTest(selector=selector.strip()):
@@ -857,9 +850,7 @@ console.log(JSON.stringify({
     def test_the_calm_palette_has_a_dark_counterpart(self) -> None:
         # Calm mode adds surfaces and a second flag tone. Declaring them only
         # in the light block leaves a light-on-light ledger after dark.
-        dark = re.search(
-            r"@media \(prefers-color-scheme:dark\)\{(.*?)\n  \}", dashboard.PAGE, re.DOTALL
-        )
+        dark = re.search(r"@media \(prefers-color-scheme:dark\)\{(.*?)\n  \}", STYLES, re.DOTALL)
         assert dark is not None
         for name in ("--sunk", "--line2", "--accent-ink", "--warn", "--warnink"):
             with self.subTest(token=name):

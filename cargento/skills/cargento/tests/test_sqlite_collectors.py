@@ -380,6 +380,7 @@ class SqliteTrulyAbsentTest(unittest.TestCase):
 
     SCRIPT = """
 import builtins, importlib.util, sys
+from pathlib import Path
 real_import = builtins.__import__
 def blocked(name, *a, **k):
     if name == "sqlite3" or name.startswith("sqlite3."):
@@ -387,6 +388,7 @@ def blocked(name, *a, **k):
     return real_import(name, *a, **k)
 builtins.__import__ = blocked
 sys.modules.pop("sqlite3", None)
+sys.path.insert(0, str(Path({path!r}).parent))
 spec = importlib.util.spec_from_file_location("srv", {path!r})
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)          # must not raise

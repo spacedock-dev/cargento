@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Lint the HTML page embedded in the dashboard server module.
+"""Lint the dashboard frontend source files.
 
-The Cargento dashboard ships as a single stdlib-only Python file whose UI
-lives in one big ``PAGE`` string (HTML + CSS + JS). Python linters cannot see
-inside that string, so this script extracts the embedded assets and checks
+The Cargento dashboard ships its HTML, CSS, and JavaScript as direct source
+files. Python linters cannot see inside those assets, so this script checks
 them:
 
 - JavaScript: syntax-checked with ``node --check`` (hard requirement; pass
@@ -11,7 +10,7 @@ them:
   without node).
 - CSS: structural checks — balanced braces, no empty rules, no stray ``<``
   outside selectors, every declaration line ends in ``}`` or ``;``.
-- HTML shell: every ``id=`` referenced from the extracted JS via
+- HTML shell: every ``id=`` referenced from the JS via
   ``getElementById`` exists either in the static HTML or is created by the
   JS itself (catches renamed-element regressions the unit tests may miss).
 
@@ -21,7 +20,6 @@ Exit code 0 when clean; 1 with a findings listing otherwise.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import re
 import shutil
 import subprocess
@@ -29,29 +27,22 @@ import sys
 import tempfile
 from pathlib import Path
 
-SERVER_PATH = Path(__file__).resolve().parents[1] / "cargento" / "skills" / "cargento" / "server.py"
+WEB_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "cargento"
+    / "skills"
+    / "cargento"
+    / "cargento_runtime"
+    / "web"
+)
 
 
-def load_page() -> str:
-    spec = importlib.util.spec_from_file_location("cargento_server", SERVER_PATH)
-    if spec is None or spec.loader is None:
-        msg = f"cannot import {SERVER_PATH}"
-        raise SystemExit(msg)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    page = module.PAGE
-    if not isinstance(page, str):
-        msg = "PAGE is not a string"
-        raise SystemExit(msg)
-    return page
-
-
-def extract(page: str, tag: str) -> str:
-    blocks = re.findall(rf"<{tag}[^>]*>\n?(.*?)</{tag}>", page, re.DOTALL)
-    if not blocks:
-        msg = f"no <{tag}> block found in PAGE"
-        raise SystemExit(msg)
-    return "\n".join(blocks)
+def load_frontend(web_dir: Path = WEB_DIR) -> tuple[str, str, str]:
+    return (
+        (web_dir / "index.html").read_text(encoding="utf-8"),
+        (web_dir / "styles.css").read_text(encoding="utf-8"),
+        (web_dir / "app.js").read_text(encoding="utf-8"),
+    )
 
 
 def check_js(js: str, *, allow_missing_node: bool) -> list[str]:
@@ -79,7 +70,7 @@ def check_js(js: str, *, allow_missing_node: bool) -> list[str]:
     finally:
         temp_path.unlink(missing_ok=True)
     if proc.returncode != 0:
-        return [f"embedded JS failed node --check:\n{proc.stderr.strip()}"]
+        return [f"frontend JS failed node --check:\n{proc.stderr.strip()}"]
     return []
 
 
@@ -120,9 +111,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    page = load_page()
-    js = extract(page, "script")
-    css = extract(page, "style")
+    page, css, js = load_frontend()
 
     problems = (
         check_js(js, allow_missing_node=args.allow_missing_node)
@@ -132,9 +121,9 @@ def main() -> int:
     if problems:
         for problem in problems:
             print(f"error: {problem}")
-        print(f"{len(problems)} embedded-asset problem(s) found.")
+        print(f"{len(problems)} frontend problem(s) found.")
         return 1
-    print("Embedded page assets clean (JS syntax, CSS structure, DOM id references).")
+    print("Frontend assets clean (JS syntax, CSS structure, DOM id references).")
     return 0
 
 

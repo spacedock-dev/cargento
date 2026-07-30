@@ -90,8 +90,8 @@ In Codex, invoke it as `$cargento`. In any harness you can also just ask: "open 
 
 The skill starts a stdlib-only Python server (`cargento/skills/cargento/server.py`). The server reads
 local harness session stores read-only, meaning transcripts, task files, and SQLite databases, and
-serves a self-refreshing dashboard at `http://127.0.0.1:4553/`. No data leaves your machine; the
-server binds to 127.0.0.1 only.
+serves the HTML, CSS and JavaScript under `cargento_runtime/web/` as a self-refreshing dashboard at
+`http://127.0.0.1:4553/`. No data leaves your machine; the server binds to 127.0.0.1 only.
 
 The dashboard renders the same data two ways, switched by the `display` control at the top right or
 by pressing `c`. Regular mode is a stack of cards, one per working session. Calm mode is a single
@@ -103,7 +103,7 @@ See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for d
 ## 4. Validation
 
 The canonical pre-PR suite lives in [AGENTS.md](AGENTS.md#pre-pr-checks): lint, types,
-embedded-asset lint, the contract validator, tests under coverage, and the native plugin validators.
+frontend-asset lint, the contract validator, tests under coverage, and the native plugin validators.
 Contributors should start from [CONTRIBUTING.md](CONTRIBUTING.md), which walks through setting it up.
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract.

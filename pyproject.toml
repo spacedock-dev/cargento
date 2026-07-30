@@ -57,7 +57,10 @@ warn_unreachable = true
 # Deleting it or writing a true justification is an open decision tracked in
 # docs/plans/native-notifications.md.
 platform = "darwin"
+mypy_path = ["cargento/skills/cargento", "scripts"]
+explicit_package_bases = true
 files = [
+  "cargento/skills/cargento/cargento_runtime",
   "cargento/skills/cargento/notify_hook.py",
   "cargento/skills/cargento/server.py",
   "cargento/skills/cargento/tests",

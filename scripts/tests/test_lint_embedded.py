@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -12,16 +13,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lint_embedded
 
 
-class ExtractTest(unittest.TestCase):
-    PAGE = "<html><style>\n.a{color:red}\n</style><script>\nconst x = 1;\n</script></html>"
+class LoadFrontendTest(unittest.TestCase):
+    def test_load_frontend_reads_each_direct_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "index.html").write_text('<main id="app"></main>', encoding="utf-8")
+            (web / "styles.css").write_text(".a{color:red}\n", encoding="utf-8")
+            (web / "app.js").write_text("const x = 1;\n", encoding="utf-8")
+            self.assertEqual(
+                ('<main id="app"></main>', ".a{color:red}\n", "const x = 1;\n"),
+                lint_embedded.load_frontend(web),
+            )
 
-    def test_extract_returns_block_contents(self) -> None:
-        self.assertEqual("const x = 1;\n", lint_embedded.extract(self.PAGE, "script"))
-        self.assertEqual(".a{color:red}\n", lint_embedded.extract(self.PAGE, "style"))
+    def test_load_frontend_names_a_missing_source(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            self.assertRaisesRegex(FileNotFoundError, "index.html"),
+        ):
+            lint_embedded.load_frontend(Path(tmp))
 
-    def test_extract_missing_tag_is_fatal(self) -> None:
-        with self.assertRaises(SystemExit):
-            lint_embedded.extract("<html></html>", "script")
+    def test_load_frontend_rejects_invalid_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "index.html").write_bytes(b"\xff")
+            (web / "styles.css").write_text("", encoding="utf-8")
+            (web / "app.js").write_text("", encoding="utf-8")
+            with self.assertRaises(UnicodeDecodeError):
+                lint_embedded.load_frontend(web)
 
 
 class CheckCssTest(unittest.TestCase):

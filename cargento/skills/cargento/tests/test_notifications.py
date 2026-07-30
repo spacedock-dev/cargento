@@ -16,6 +16,7 @@ from unittest import mock
 
 from .support import (
     HOOK_PATH,
+    PAGE_BYTES,
     LegacyDashboardTestCase,
     dashboard,
     dashboard_hook,
@@ -632,7 +633,9 @@ class NotifyHookTest(unittest.TestCase):
         )
 
     def test_payload_reaches_a_running_server(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         url = f"http://127.0.0.1:{httpd.server_port}/api/notify"

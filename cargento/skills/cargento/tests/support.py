@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import importlib.util
 import sys
 import tempfile
@@ -13,6 +14,10 @@ from unittest import mock
 from .fixtures import STORE_CONSTANTS
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
+sys.path.insert(0, str(SERVER_PATH.parent))
+frontend_page = importlib.import_module("cargento_runtime.web.page")
+PAGE_BYTES = frontend_page.load_page()
+
 SPEC = importlib.util.spec_from_file_location("cargento_server", SERVER_PATH)
 assert SPEC is not None
 assert SPEC.loader is not None

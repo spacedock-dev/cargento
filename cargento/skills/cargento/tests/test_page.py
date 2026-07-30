@@ -9,27 +9,200 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from .page_harness import PageJsHarness
+from .page_harness import APP_JS, PAGE_TEXT, PageJsHarness
 from .support import (
     dashboard,
+    frontend_page,
     serve_until_closed,
 )
+
+SKILL_DIR = Path(__file__).resolve().parents[1]
 
 if TYPE_CHECKING:
     import email.message
 
 
+class FrontendAssetContractTest(unittest.TestCase):
+    """The shipped asset boundary that replaces the embedded page literal."""
+
+    def test_runtime_package_has_one_canonical_top_level_identity(self) -> None:
+        self.assertNotIn("cargento.skills.cargento.cargento_runtime", sys.modules)
+        assert frontend_page.__file__ is not None
+        self.assertTrue(Path(frontend_page.__file__).resolve().is_relative_to(SKILL_DIR))
+
+    def test_package_initializers_stay_empty(self) -> None:
+        self.assertEqual(b"", (SKILL_DIR / "cargento_runtime" / "__init__.py").read_bytes())
+        self.assertEqual(b"", (SKILL_DIR / "cargento_runtime" / "web" / "__init__.py").read_bytes())
+
+    def test_assets_stay_inside_the_installed_skill(self) -> None:
+        for name in ("index.html", "styles.css", "app.js"):
+            with self.subTest(asset=name):
+                self.assertTrue(frontend_page.asset_path(name).resolve().is_relative_to(SKILL_DIR))
+
+    def test_load_page_preserves_all_three_byte_oracles(self) -> None:
+        assembled = frontend_page.load_page()
+        styles = frontend_page.asset_path("styles.css").read_bytes()
+        script = frontend_page.asset_path("app.js").read_bytes()
+        self.assertEqual(93_713, len(assembled))
+        self.assertEqual(
+            "3a2264edda06e9caf1fbd34c0226ad8c3b0b320f206a87676c183492a5241b37",
+            hashlib.sha256(assembled).hexdigest(),
+        )
+        self.assertEqual(27_180, len(styles))
+        self.assertEqual(
+            "e96a2292642bfc40d4bd40e9c23c733cf8d8ef524f55dfb9328685ac53f02cf1",
+            hashlib.sha256(styles).hexdigest(),
+        )
+        self.assertEqual(66_237, len(script))
+        self.assertEqual(
+            "bfe260f4c9807d4a59de41f2a37b3711e76547fc67acc73f9201ff11da4a0e48",
+            hashlib.sha256(script).hexdigest(),
+        )
+
+    def test_load_page_names_a_missing_asset(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(frontend_page, "WEB_DIR", Path(tmp)),
+            self.assertRaisesRegex(FileNotFoundError, "index.html"),
+        ):
+            frontend_page.load_page()
+
+    def test_load_page_rejects_invalid_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "index.html").write_text("{{CARGENTO_STYLES}}{{CARGENTO_APP}}", encoding="utf-8")
+            (web / "styles.css").write_text("", encoding="utf-8")
+            (web / "app.js").write_bytes(b"\xff")
+            with (
+                mock.patch.object(frontend_page, "WEB_DIR", web),
+                self.assertRaises(UnicodeDecodeError),
+            ):
+                frontend_page.load_page()
+
+    def test_load_page_rejects_each_malformed_template_slot(self) -> None:
+        cases = (
+            ("{{CARGENTO_APP}}", "index.html must contain one CARGENTO_STYLES slot"),
+            ("{{CARGENTO_STYLES}}", "index.html must contain one CARGENTO_APP slot"),
+            (
+                "{{CARGENTO_STYLES}}{{CARGENTO_STYLES}}{{CARGENTO_APP}}",
+                "index.html must contain one CARGENTO_STYLES slot",
+            ),
+        )
+        for template, message in cases:
+            with self.subTest(template=template), tempfile.TemporaryDirectory() as tmp:
+                web = Path(tmp)
+                (web / "index.html").write_text(template, encoding="utf-8")
+                (web / "styles.css").write_text("css", encoding="utf-8")
+                (web / "app.js").write_text("js", encoding="utf-8")
+                with (
+                    mock.patch.object(frontend_page, "WEB_DIR", web),
+                    self.assertRaisesRegex(RuntimeError, f"^{re.escape(message)}$"),
+                ):
+                    frontend_page.load_page()
+
+    def test_early_cli_paths_do_not_read_missing_assets(self) -> None:
+        cases = (
+            ("help", ["--help"], 0, "usage:"),
+            ("diagnose", ["--diagnose", "--json"], 0, '"harnesses"'),
+            ("status", ["--port", "1", "--status"], 1, "not running"),
+            ("stop", ["--port", "1", "--stop"], 0, "nothing running"),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = Path(tmp) / "skill"
+            shutil.copytree(SKILL_DIR, skill)
+            for name in ("index.html", "styles.css", "app.js"):
+                (skill / "cargento_runtime" / "web" / name).unlink()
+            env = dict(os.environ)
+            env.pop("PYTHONPATH", None)
+            env["PYTHONNOUSERSITE"] = "1"
+            for label, args, expected_code, expected_text in cases:
+                with self.subTest(path=label):
+                    proc = subprocess.run(
+                        [sys.executable, str(skill / "server.py"), *args],
+                        cwd=tmp,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=30,
+                        check=False,
+                    )
+                    self.assertEqual(expected_code, proc.returncode, proc.stderr)
+                    self.assertIn(expected_text, proc.stdout + proc.stderr)
+                    self.assertNotIn("cannot load frontend assets", proc.stderr)
+
+    def test_serving_reports_asset_failure_before_log_creation_or_bind(self) -> None:
+        cases = (
+            ("missing", "FileNotFoundError", "index.html"),
+            ("unreadable", "IsADirectoryError", "index.html"),
+            ("invalid UTF-8", "UnicodeDecodeError", "invalid start byte"),
+            (
+                "malformed template",
+                "RuntimeError",
+                "index.html must contain one CARGENTO_STYLES slot",
+            ),
+        )
+        for mutation, error_type, detail in cases:
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                skill = root / "skill"
+                shutil.copytree(SKILL_DIR, skill)
+                web = skill / "cargento_runtime" / "web"
+                if mutation == "missing":
+                    (web / "index.html").unlink()
+                elif mutation == "unreadable":
+                    (web / "index.html").unlink()
+                    (web / "index.html").mkdir()
+                elif mutation == "invalid UTF-8":
+                    (web / "app.js").write_bytes(b"\xff")
+                else:
+                    (web / "index.html").write_text("no slots", encoding="utf-8")
+                state = root / "state"
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+                    listener.bind(("127.0.0.1", 0))
+                    listener.listen()
+                    port = listener.getsockname()[1]
+                    env = dict(os.environ)
+                    env.pop("PYTHONPATH", None)
+                    env["PYTHONNOUSERSITE"] = "1"
+                    env["CARGENTO_HOME"] = str(state)
+                    proc = subprocess.run(
+                        [
+                            sys.executable,
+                            str(skill / "server.py"),
+                            "--daemon",
+                            "--port",
+                            str(port),
+                        ],
+                        cwd=root,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=30,
+                        check=False,
+                    )
+                self.assertEqual(1, proc.returncode)
+                self.assertTrue(
+                    proc.stderr.startswith(
+                        f"Cargento: cannot load frontend assets ({error_type}: "
+                    ),
+                    proc.stderr,
+                )
+                self.assertIn(detail, proc.stderr)
+                self.assertTrue(proc.stderr.endswith(").\n"), proc.stderr)
+                self.assertFalse(state.exists())
+
+
 class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
-
-    OWNED_INSTANCE_READY_TIMEOUT_SEC = 60.0
 
     def setUp(self) -> None:
         self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
@@ -72,20 +245,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             dashboard._collect_memo.clear()
 
     @staticmethod
-    def _candidate_port() -> int:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-            listener.bind(("127.0.0.1", 0))
-            return int(listener.getsockname()[1])
-
-    @staticmethod
-    def _clean_env(cargento_home: Path) -> dict[str, str]:
-        env = dict(os.environ)
-        env.pop("PYTHONPATH", None)
-        env["PYTHONNOUSERSITE"] = "1"
-        env["CARGENTO_HOME"] = str(cargento_home)
-        return env
-
-    @staticmethod
     def _response(
         port: int,
         method: str,
@@ -101,78 +260,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         finally:
             conn.close()
 
-    def _await_owned_instance(
-        self, port: int, proc: subprocess.Popen[bytes], state_path: Path
-    ) -> None:
-        deadline = time.monotonic() + self.OWNED_INSTANCE_READY_TIMEOUT_SEC
-        last_observation = "no health response"
-        while time.monotonic() < deadline:
-            if proc.poll() is not None:
-                stdout, stderr = proc.communicate(timeout=2)
-                self.fail(f"launcher exited: {stdout!r} {stderr!r}")
-            try:
-                code, _, body = self._response(port, "GET", "/api/health")
-                health = json.loads(body) if code == 200 else {}
-            except (OSError, ValueError, json.JSONDecodeError) as exc:
-                last_observation = f"health request failed: {type(exc).__name__}: {exc}"
-                time.sleep(0.05)
-                continue
-            if code != 200:
-                last_observation = f"health returned HTTP {code}"
-                time.sleep(0.05)
-                continue
-            if health.get("pid") != proc.pid:
-                self.fail(f"port {port} is served by pid {health.get('pid')}, not child {proc.pid}")
-            try:
-                state = json.loads(state_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError, json.JSONDecodeError) as exc:
-                last_observation = (
-                    f"owned health from pid {proc.pid}, but state {state_path} was unreadable: "
-                    f"{type(exc).__name__}: {exc}"
-                )
-                time.sleep(0.05)
-                continue
-            self.assertEqual(proc.pid, state.get("pid"))
-            self.assertEqual(port, state.get("port"))
-            return
-        self.fail(
-            f"owned child {proc.pid} did not become healthy with its state file within "
-            f"{self.OWNED_INSTANCE_READY_TIMEOUT_SEC:.0f}s: {last_observation}"
-        )
-
-    def _owns_instance(self, port: int, proc: subprocess.Popen[bytes], state_path: Path) -> bool:
-        if proc.poll() is not None:
-            return False
-        try:
-            code, _, body = self._response(port, "GET", "/api/health")
-            health = json.loads(body) if code == 200 else {}
-            state = json.loads(state_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError):
-            return False
-        return health.get("pid") == proc.pid and state.get("pid") == proc.pid
-
     def test_served_page_bytes_equal_the_embedded_page(self) -> None:
-        page = dashboard.PAGE.encode()
-        style = re.search(r"<style>\n(.*?)</style>", dashboard.PAGE, re.DOTALL)
-        script = re.search(r"<script>\n(.*?)</script>", dashboard.PAGE, re.DOTALL)
-        assert style is not None
-        assert script is not None
-        self.assertEqual(93_713, len(page))
-        self.assertEqual(
-            "3a2264edda06e9caf1fbd34c0226ad8c3b0b320f206a87676c183492a5241b37",
-            hashlib.sha256(page).hexdigest(),
-        )
-        self.assertEqual(27_180, len(style.group(1).encode()))
-        self.assertEqual(
-            "e96a2292642bfc40d4bd40e9c23c733cf8d8ef524f55dfb9328685ac53f02cf1",
-            hashlib.sha256(style.group(1).encode()).hexdigest(),
-        )
-        self.assertEqual(66_237, len(script.group(1).encode()))
-        self.assertEqual(
-            "bfe260f4c9807d4a59de41f2a37b3711e76547fc67acc73f9201ff11da4a0e48",
-            hashlib.sha256(script.group(1).encode()).hexdigest(),
-        )
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        page = frontend_page.load_page()
+        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler, page_bytes=page)
         thread = serve_until_closed(httpd)
         try:
             code, _, served = self._response(httpd.server_port, "GET", "/")
@@ -185,27 +275,26 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
 class CargentoServerTest(PageJsHarness):
     def test_page_marks_repeated_refresh_failures_as_stalled(self) -> None:
-        self.assertIn('id="live-status"', dashboard.PAGE)
-        self.assertIn("window.__refreshFailures < 2", dashboard.PAGE)
-        self.assertIn("stalled · last update", dashboard.PAGE)
-        self.assertIn("console.error", dashboard.PAGE)
-        self.assertIn("latestSettledRefresh", dashboard.PAGE)
-        self.assertIn("sequence < latestSettledRefresh", dashboard.PAGE)
+        self.assertIn('id="live-status"', PAGE_TEXT)
+        self.assertIn("window.__refreshFailures < 2", PAGE_TEXT)
+        self.assertIn("stalled · last update", PAGE_TEXT)
+        self.assertIn("console.error", PAGE_TEXT)
+        self.assertIn("latestSettledRefresh", PAGE_TEXT)
+        self.assertIn("sequence < latestSettledRefresh", PAGE_TEXT)
 
     def test_entity_slugs_elide_in_the_middle_not_the_tail(self) -> None:
         """Entity slugs in one workflow share a long prefix and differ only at
         the end, so tail truncation rendered two different entities as the same
         string. The full value stays available as a title attribute."""
-        self.assertIn("function sdSlug(slug)", dashboard.PAGE)
-        self.assertIn('title="${esc(ent.slug)}">${esc(sdSlug(ent.slug))}', dashboard.PAGE)
+        self.assertIn("function sdSlug(slug)", APP_JS)
+        self.assertIn('title="${esc(ent.slug)}">${esc(sdSlug(ent.slug))}', APP_JS)
 
         node = shutil.which("node")
         if node is None:
             self.skipTest("node not installed; CI runs this branch")
-        js = "\n".join(re.findall(r"<script[^>]*>\n?(.*?)</script>", dashboard.PAGE, re.DOTALL))
         # Just the helper and its constants. Taking the whole prefix would drag
         # in top-level browser globals (`location`) that node does not have.
-        source = re.search(r"const SD_SLUG_MAX = .*?\n}\n", js, re.DOTALL)
+        source = re.search(r"const SD_SLUG_MAX = .*?\n}\n", APP_JS, re.DOTALL)
         assert source is not None, "sdSlug and its constants moved"
         # Run the real function rather than restating its arithmetic here.
         probe = (
@@ -242,7 +331,7 @@ class CargentoServerTest(PageJsHarness):
     def test_output_rate_rows_use_hoverable_harness_badges(self) -> None:
         self.assertIn(
             '<span class="rrow-badge">${badge(r.key, true)}</span>',
-            dashboard.PAGE,
+            APP_JS,
         )
 
     def test_pi_badge_uses_the_explicit_pi_label(self) -> None:
@@ -253,16 +342,16 @@ class CargentoServerTest(PageJsHarness):
     def test_page_ships_trailing_rate_sparklines(self) -> None:
         # Overall + per-session trailing sparklines: client-side ring buffers
         # over a 5-minute window, rendered as SVG in the rate tile and cards.
-        self.assertIn("SPARK_WINDOW_SEC = 300", dashboard.PAGE)
-        self.assertIn("const rateHistory = []", dashboard.PAGE)
-        self.assertIn("const sessRateHistory = new Map()", dashboard.PAGE)
-        self.assertIn("function recordRates", dashboard.PAGE)
-        self.assertIn("function sparkSVG", dashboard.PAGE)
-        self.assertIn('class="spark-wrap"', dashboard.PAGE)
-        self.assertIn('class="rate-spark"', dashboard.PAGE)
+        self.assertIn("SPARK_WINDOW_SEC = 300", APP_JS)
+        self.assertIn("const rateHistory = []", APP_JS)
+        self.assertIn("const sessRateHistory = new Map()", APP_JS)
+        self.assertIn("function recordRates", APP_JS)
+        self.assertIn("function sparkSVG", APP_JS)
+        self.assertIn('class="spark-wrap"', APP_JS)
+        self.assertIn('class="rate-spark"', APP_JS)
         # Buffers only grow on fresh payloads and drop points past the window.
-        self.assertIn("recordRates(data)", dashboard.PAGE)
-        self.assertIn("arr.shift()", dashboard.PAGE)
+        self.assertIn("recordRates(data)", APP_JS)
+        self.assertIn("arr.shift()", APP_JS)
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_sparkline_buffers_behave_correctly(self) -> None:
@@ -504,19 +593,19 @@ console.log(JSON.stringify({
     def test_long_turn_warning_uses_styled_tooltip_not_native_title(self) -> None:
         # The (!) icon must use the app's styled tooltip (fast, themed), not
         # the native title attribute (multi-second hover delay).
-        self.assertNotIn('class="lwarn" title=', dashboard.PAGE)
-        self.assertIn('<span class="ltip">', dashboard.PAGE)
-        self.assertIn('class="lwarn" tabindex="0"', dashboard.PAGE)
-        self.assertIn(".lwarn:hover .ltip", dashboard.PAGE)
-        self.assertIn("transition-delay:.2s", dashboard.PAGE)
+        self.assertNotIn('class="lwarn" title=', APP_JS)
+        self.assertIn('<span class="ltip">', APP_JS)
+        self.assertIn('class="lwarn" tabindex="0"', APP_JS)
+        self.assertIn(".lwarn:hover .ltip", PAGE_TEXT)
+        self.assertIn("transition-delay:.2s", PAGE_TEXT)
 
     def test_page_restores_sparkline_hover_and_focus_after_render(self) -> None:
         # render() replaces #app's innerHTML every poll; the hover crosshair
         # and keyboard focus on the rate sparkline must be restored after.
-        self.assertIn("sparkPointer", dashboard.PAGE)
-        self.assertIn("restoreSparkState", dashboard.PAGE)
-        self.assertIn("restoreSparkState(sparkFocused, savedPointer)", dashboard.PAGE)
-        self.assertIn("preventScroll", dashboard.PAGE)
+        self.assertIn("sparkPointer", APP_JS)
+        self.assertIn("restoreSparkState", APP_JS)
+        self.assertIn("restoreSparkState(sparkFocused, savedPointer)", APP_JS)
+        self.assertIn("preventScroll", APP_JS)
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_sparkline_hover_lifecycle_across_renders_and_window_exit(self) -> None:
