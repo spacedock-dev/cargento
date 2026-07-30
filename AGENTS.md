@@ -23,6 +23,8 @@ cargento/                           # plugin root
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
         ├── cargento_runtime/       # importable dashboard runtime package
         │   ├── config.py           # immutable process configuration and store roots
+        │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
+        │   ├── records.py          # untrusted-record parsing and normalization
         │   ├── state.py            # mutable process state, locks, and bounded caches
         │   └── web/                # HTML, CSS, JS, and byte-preserving page loader
         ├── agents/openai.yaml      # Codex presentation metadata
