@@ -9,6 +9,7 @@ from unittest import mock
 
 from cargento_runtime import records as runtime_records
 from cargento_runtime import transcripts as runtime_transcripts
+from cargento_runtime.collectors import pi as pi_collector
 
 from .fixtures import (
     _iso,
@@ -19,6 +20,14 @@ from .support import PiScanTestCase, dashboard, make_runtime
 
 class PiTranscriptTest(unittest.TestCase):
     """Pi v3 transcripts: only the leaf's parent chain is the live branch."""
+
+    def setUp(self) -> None:
+        # One runtime per test: the scanner is incremental, so successive calls
+        # in a test must share the state the previous call recorded.
+        self.config, self.state = make_runtime()
+
+    def scan(self, path: Any) -> Any:
+        return pi_collector.scan_pi_session(self.config, self.state, str(path))
 
     NOW = "2026-07-29T12:00:00Z"
 
@@ -42,6 +51,35 @@ class PiTranscriptTest(unittest.TestCase):
             "timestamp": timestamp,
             "message": {"role": role, "content": content, **extra},
         }
+
+    def test_an_unterminated_trailing_entry_waits_for_its_newline(self) -> None:
+        # Pi appends line by line, so a record without its newline is still
+        # being written; reading it would report a prompt the agent has not
+        # finished sending. Mutation-checked: scanning to the raw file size
+        # instead of the last complete entry passed the whole suite.
+        header = {"type": "session", "version": 3, "id": "s1", "cwd": "/w/proj"}
+        first = self._message("m1", None, "2026-07-29T11:59:30Z", "user", "First prompt")
+        second = self._message("m2", "m1", "2026-07-29T11:59:55Z", "user", "Second prompt")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-session.jsonl"
+            path.write_text(
+                json.dumps(header)
+                + "\n"
+                + json.dumps(first)
+                + "\n"
+                + json.dumps(second)  # deliberately unterminated
+            )
+
+            scanned = self.scan(path)
+            assert scanned is not None
+            self.assertEqual("First prompt", scanned["last_prompt"])
+
+            with path.open("a") as output:
+                output.write("\n")
+            completed = self.scan(path)
+
+        assert completed is not None
+        self.assertEqual("Second prompt", completed["last_prompt"])
 
     def test_metadata_and_global_name_survive_a_long_transcript(self) -> None:
         # Removing the global name pass, or reading only TAIL_BYTES, would make
@@ -93,7 +131,7 @@ class PiTranscriptTest(unittest.TestCase):
                 {"session_id": sid, "cwd": "/w/proj", "parent_session": None},
                 runtime_transcripts.pi_meta(config, state, str(path)),
             )
-            scan = dashboard.scan_pi_session(str(path))
+            scan = self.scan(path)
             assert scan is not None
             self.assertEqual("Named session", scan["title"])
             self.assertEqual("Implement the fix", scan["last_prompt"])
@@ -114,7 +152,7 @@ class PiTranscriptTest(unittest.TestCase):
                     )
                     + "\n"
                 )
-            cleared = dashboard.scan_pi_session(str(path))
+            cleared = self.scan(path)
             assert cleared is not None
 
         self.assertEqual("Implement the fix", cleared["title"])
@@ -171,7 +209,7 @@ class PiTranscriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-tree.jsonl"
             self._write(path, records)
-            scan = dashboard.scan_pi_session(str(path))
+            scan = self.scan(path)
             assert scan is not None
 
         self.assertEqual("Winning prompt", scan["last_prompt"])
@@ -221,7 +259,7 @@ class PiTranscriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-named-tree.jsonl"
             self._write(path, records)
-            scan = dashboard.scan_pi_session(str(path))
+            scan = self.scan(path)
             assert scan is not None
 
         self.assertEqual("Renamed work", scan["title"])
@@ -272,12 +310,12 @@ class PiTranscriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-append-name.jsonl"
             self._write(path, records)
-            before = dashboard.scan_pi_session(str(path))
+            before = self.scan(path)
             assert before is not None
             with path.open("a") as output:
                 for record in appended:
                     output.write(json.dumps(record) + "\n")
-            scan = dashboard.scan_pi_session(str(path))
+            scan = self.scan(path)
             assert scan is not None
 
         self.assertEqual("Old prompt", before["last_prompt"])
@@ -309,10 +347,10 @@ class PiTranscriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-empty.jsonl"
             self._write(path, [header])
-            self.assertIsNone(dashboard.scan_pi_session(str(path)))
+            self.assertIsNone(self.scan(path))
             with path.open("a") as output:
                 output.write(json.dumps(child) + "\n")
-            scan = dashboard.scan_pi_session(str(path))
+            scan = self.scan(path)
 
         self.assertIsNone(scan)
 
@@ -331,15 +369,15 @@ class PiTranscriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-append.jsonl"
             self._write(path, records)
-            first = dashboard.scan_pi_session(str(path))
+            first = self.scan(path)
             assert first is not None
             with path.open("a") as output:
                 output.write("not json\n" + encoded[:-1])
-            partial = dashboard.scan_pi_session(str(path))
+            partial = self.scan(path)
             assert partial is not None
             with path.open("a") as output:
                 output.write(encoded[-1:] + "\n")
-            rebased = dashboard.scan_pi_session(str(path))
+            rebased = self.scan(path)
             assert rebased is not None
 
         self.assertEqual("First prompt", partial["last_prompt"])
@@ -360,12 +398,12 @@ class PiTranscriptTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-corrupt-parent.jsonl"
             self._write(path, records)
-            stable = dashboard.scan_pi_session(str(path))
+            stable = self.scan(path)
             assert stable is not None
             with path.open("a") as output:
                 output.write('{"type":"message","id":"corrupt-parent"\n')
                 output.write(json.dumps(child) + "\n")
-            after_corruption = dashboard.scan_pi_session(str(path))
+            after_corruption = self.scan(path)
             assert after_corruption is not None
 
         self.assertEqual("Stable prompt", stable["last_prompt"])
@@ -409,6 +447,23 @@ class PiCollectorTest(PiScanTestCase):
             "message": message,
         }
 
+    def test_discovery_requires_a_real_session_header(self) -> None:
+        # A stray .jsonl in the Pi store must not make Pi "discovered": a
+        # harness that is not installed has to read differently from a broken
+        # one. Mutation-checked: skipping the header check passed the suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "sessions"
+            root.mkdir()
+            (root / "not-pi.jsonl").write_text('{"type": "other", "id": "x"}\n')
+            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
+                config, state = dashboard._legacy_runtime()
+
+                self.assertFalse(pi_collector.discover(config, state))
+
+                (root / "real.jsonl").write_text(json.dumps(self._header("s1")) + "\n")
+
+                self.assertTrue(pi_collector.discover(config, state))
+
     def test_collects_flat_and_nested_sessions_with_render_ready_details(self) -> None:
         # Missing either glob would hide one of Pi's supported on-disk layouts.
         with tempfile.TemporaryDirectory() as tmp:
@@ -439,7 +494,8 @@ class PiCollectorTest(PiScanTestCase):
                 self.NOW - 10,
             )
             with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
-                rows = dashboard.collect_pi(self.NOW, 24, False)
+                config, state = dashboard._legacy_runtime()
+                rows = pi_collector.collect(config, state, self.NOW, 24, False)
 
         by_sid = {row["sid"]: row for row in rows}
         self.assertEqual({"flat", "nested"}, set(by_sid))
@@ -500,7 +556,8 @@ class PiCollectorTest(PiScanTestCase):
                 self.NOW - 5,
             )
             with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
-                rows = dashboard.collect_pi(self.NOW, 24, True)
+                config, state = dashboard._legacy_runtime()
+                rows = pi_collector.collect(config, state, self.NOW, 24, True)
 
         by_sid = {row["sid"]: row for row in rows}
         self.assertEqual({"duplicate", "parent", "child"}, set(by_sid))
@@ -533,7 +590,8 @@ class PiCollectorTest(PiScanTestCase):
                 self.NOW - 20,
             )
             with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
-                rows = dashboard.collect_pi(self.NOW, 24, True)
+                config, state = dashboard._legacy_runtime()
+                rows = pi_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual(["future"], [row["sid"] for row in rows])
         self.assertEqual(self.NOW - 20, rows[0]["last_activity"])
@@ -541,6 +599,14 @@ class PiCollectorTest(PiScanTestCase):
 
 
 class TurnTrackingTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # One runtime per test: the scanner is incremental, so successive calls
+        # in a test must share the state the previous call recorded.
+        self.config, self.state = make_runtime()
+
+    def scan(self, path: Any) -> Any:
+        return pi_collector.scan_pi_session(self.config, self.state, str(path))
+
     def test_pi_turns_apply_the_quiet_gap_rule(self) -> None:
         # Omitting the quiet-gap reset would count the inactive wait as work.
         records = [
@@ -556,7 +622,7 @@ class TurnTrackingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-turns.jsonl"
             PiTranscriptTest._write(path, records)
-            scan = dashboard.scan_pi_session(str(path))
+            scan = self.scan(path)
             assert scan is not None
 
         self.assertEqual([5.0], scan["turn"]["durations"])
