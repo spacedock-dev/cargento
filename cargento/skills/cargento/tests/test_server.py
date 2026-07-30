@@ -500,6 +500,15 @@ class PiCollectorTest(PiScanTestCase):
                 self.NOW - 60,
             )
             _jsonl(
+                root / "--w-proj--" / "old-peer.jsonl",
+                [
+                    self._header("duplicate"),
+                    {"type": "session_info", "name": "Old peer"},
+                    self._message("old-peer", None, self.NOW - 60, "user", "Old peer prompt"),
+                ],
+                self.NOW - 60,
+            )
+            _jsonl(
                 root / "--w-proj--" / "new.jsonl",
                 [
                     self._header("duplicate"),
@@ -2222,11 +2231,23 @@ class CargentoServerTest(PageJsHarness):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "meta.jsonl"
             path.write_text(json.dumps({"value": "ok"}) + "\n")
+            parsed = threading.Event()
+            parse_lock = threading.Lock()
+            parse_count = 0
+
+            def parse(value: dict[str, Any]) -> dict[str, Any]:
+                nonlocal parse_count
+                with parse_lock:
+                    parse_count += 1
+                    wait_for_pair = parse_count <= 2
+                    if parse_count == 2:
+                        parsed.set()
+                if wait_for_pair and not parsed.wait(timeout=5):
+                    raise AssertionError("concurrent readers did not reach the metadata parser")
+                return {"value": value.get("value")}
 
             def read() -> Any:
-                return dashboard.first_line_meta(
-                    str(path), lambda value: {"value": value.get("value")}
-                )
+                return dashboard.first_line_meta(str(path), parse)
 
             with ThreadPoolExecutor(max_workers=12) as pool:
                 results = list(pool.map(lambda _: read(), range(100)))
