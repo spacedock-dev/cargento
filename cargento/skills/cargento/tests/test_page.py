@@ -204,9 +204,10 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
     def test_serving_reports_asset_failure_before_log_creation_or_bind(self) -> None:
+        unreadable_error = "PermissionError" if os.name == "nt" else "IsADirectoryError"
         cases = (
             ("missing", "FileNotFoundError", "index.html"),
-            ("unreadable", "IsADirectoryError", "index.html"),
+            ("unreadable", unreadable_error, "index.html"),
             ("invalid UTF-8", "UnicodeDecodeError", "invalid start byte"),
             (
                 "malformed template",
