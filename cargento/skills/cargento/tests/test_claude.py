@@ -238,6 +238,60 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
         self.assertEqual((False, "", ""), identity)
 
+    def test_transient_agent_identity_read_failure_is_not_negative_cached(self) -> None:
+        record = json.dumps(
+            {
+                "type": "user",
+                "agentName": "reviewer",
+                "teamName": "session-12345678",
+            }
+        )
+        source = mock.mock_open(read_data=(record + "\n").encode())
+        runtime = dashboard._legacy_runtime()
+        path = "/fake/transient-agent.jsonl"
+        with (
+            mock.patch(
+                "builtins.open",
+                side_effect=[PermissionError("temporarily locked"), source.return_value],
+            ),
+            mock.patch.object(
+                dashboard.os.path,
+                "getsize",
+                return_value=runtime[0].claude_agent_cache_negative_min_bytes,
+            ),
+            mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
+        ):
+            self.assertEqual((False, "", ""), dashboard.claude_agent_identity(path))
+            self.assertNotIn(path, dashboard._agent_class_cache)
+            self.assertEqual(
+                (True, "reviewer", "12345678"),
+                dashboard.claude_agent_identity(path),
+            )
+
+    def test_transient_agent_setting_read_failure_is_not_negative_cached(self) -> None:
+        record = json.dumps({"agentSetting": dashboard.SPACEDOCK_ENSIGN})
+        source = mock.mock_open(read_data=(record + "\n").encode())
+        runtime = dashboard._legacy_runtime()
+        path = "/fake/transient-setting.jsonl"
+        with (
+            mock.patch(
+                "builtins.open",
+                side_effect=[PermissionError("temporarily locked"), source.return_value],
+            ),
+            mock.patch.object(
+                dashboard.os.path,
+                "getsize",
+                return_value=runtime[0].claude_agent_cache_negative_min_bytes,
+            ),
+            mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
+        ):
+            self.assertEqual("", dashboard.claude_agent_setting(path))
+            self.assertNotIn(path, dashboard._sd_role_cache)
+            self.assertEqual(
+                dashboard.SPACEDOCK_ENSIGN,
+                dashboard.claude_agent_setting(path),
+            )
+
     def test_claude_cwd_uses_independent_line_and_count_caps(self) -> None:
         first = json.dumps({"ignored": "x" * 100})
         target = json.dumps({"cwd": "/wanted/project"})

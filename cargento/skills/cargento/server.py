@@ -3174,17 +3174,27 @@ def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str
     return out
 
 
+def _antigravity_log_head_lines(
+    config: runtime_config.RuntimeConfig,
+    path: str,
+) -> list[str]:
+    try:
+        return (
+            runtime_io.read_prefix_bytes(
+                path,
+                max_bytes=config.antigravity_log_head_bytes,
+            )
+            .decode("utf-8", "replace")
+            .splitlines()
+        )
+    except OSError:
+        return []
+
+
 def antigravity_log_head_lines(path: str) -> list[str]:
     """Read the bounded identity-bearing beginning of an Antigravity CLI log."""
     config, _ = _legacy_runtime()
-    return (
-        runtime_io.read_prefix_bytes(
-            path,
-            max_bytes=config.antigravity_log_head_bytes,
-        )
-        .decode("utf-8", "replace")
-        .splitlines()
-    )
+    return _antigravity_log_head_lines(config, path)
 
 
 def antigravity_log_lines(path: str) -> list[str]:
@@ -3195,7 +3205,7 @@ def antigravity_log_lines(path: str) -> list[str]:
     exceed ``TAIL_BYTES``, so reading only one side loses one of those.
     """
     config, _ = _legacy_runtime()
-    return antigravity_log_head_lines(path) + runtime_io.read_tail(config, path)
+    return _antigravity_log_head_lines(config, path) + runtime_io.read_tail(config, path)
 
 
 def antigravity_session_metadata(

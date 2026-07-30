@@ -16,7 +16,7 @@ from .fixtures import (
     protobuf_int_field,
     write_antigravity_metadata,
 )
-from .support import LegacyDashboardTestCase, dashboard
+from .support import LegacyDashboardTestCase, dashboard, make_runtime
 
 
 class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
@@ -77,6 +77,28 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                 lines = dashboard.antigravity_log_head_lines(str(path))
 
         self.assertEqual([*complete, "partial"], lines)
+
+    def test_antigravity_combined_read_uses_one_runtime_snapshot(self) -> None:
+        first_runtime = make_runtime(
+            antigravity_log_head_bytes=13,
+            tail_bytes=10,
+        )
+        second_runtime = make_runtime(
+            antigravity_log_head_bytes=5,
+            tail_bytes=10,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cli.log"
+            path.write_bytes(b"first-header\nmiddle\nlast-tail\n")
+            with mock.patch.object(
+                dashboard,
+                "_legacy_runtime",
+                side_effect=[first_runtime, second_runtime],
+            ) as legacy_runtime:
+                lines = dashboard.antigravity_log_lines(str(path))
+
+        self.assertEqual(["first-header", "last-tail", ""], lines)
+        self.assertEqual(1, legacy_runtime.call_count)
 
     def test_gemini_set_snapshot_updates_summary_and_turns(self) -> None:
         messages = [

@@ -64,11 +64,8 @@ def read_first_json(config: RuntimeConfig, path: str) -> dict[str, Any]:
 
 
 def read_prefix_bytes(path: str, *, max_bytes: int) -> bytes:
-    try:
-        with open(path, "rb") as source:
-            return source.read(max_bytes)
-    except OSError:
-        return b""
+    with open(path, "rb") as source:
+        return source.read(max_bytes)
 
 
 def iter_bounded_text_lines(
