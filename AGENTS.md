@@ -43,7 +43,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `README.md` | The front door: what Cargento is, install per harness, skill inventory, links out. |
 | `AGENTS.md` | **This file.** The repository contract for agents, and the canonical pre-PR command list. |
 | `CLAUDE.md` | Claude-Code-only addenda; imports this file. |
-| `CONTRIBUTING.md` | The human contributor journey, and the design constraints on `server.py`. |
+| `CONTRIBUTING.md` | The human contributor journey, and the dashboard implementation constraints. |
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
 | `SECURITY.md` | Security invariants, accepted exposures, and private reporting. |
 | `cargento/skills/cargento/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |

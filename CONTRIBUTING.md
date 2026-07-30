@@ -57,10 +57,10 @@ branch, so the doc updates ride in the same PR.
 
 ### Tests
 
-Every behavior change to `server.py` needs a regression test in
-`cargento/skills/cargento/tests/`. The suite uses only the standard library, and the
-fixtures are temp directories and in-memory SQLite databases. It has three layers, and a change
-usually touches more than one:
+Every behavior change to `server.py` or `cargento_runtime/` needs a regression test in
+`cargento/skills/cargento/tests/`. The suite uses only the standard library, and the fixtures are
+temp directories and in-memory SQLite databases. It has three layers, and a change usually touches
+more than one:
 
 - Pure-function tests. Platform- and clock-dependent decisions take their environment as an explicit
   argument rather than reading global state (design decision D-4), so one runner exercises the
@@ -111,7 +111,7 @@ so re-run the job before investigating, and check the traceback is a timeout and
   destination (wrap the target in `<>`), and links inside a four-space-indented code block (use a
   fence instead).
 
-### Design constraints for `server.py`
+### Design constraints for the dashboard implementation
 
 - Stdlib only, Python 3.11+. No dependencies, ever. The skill must run on a bare `python3`.
 - Read-only. The server only reads harness session stores. It must never write to them or block a
