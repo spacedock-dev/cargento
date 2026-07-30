@@ -35,10 +35,9 @@ ignore = [
 max-args = 8
 
 [tool.ruff.lint.per-file-ignores]
-# The frontend HTML/CSS/JS source and SVG icon paths make long source lines
-# unavoidable, and the ten defensive harness collectors are inherently
-# branchy — refactoring them to satisfy complexity limits would trade real
-# robustness for score.
+# Two user-facing command/status expressions read more clearly inline, and the
+# defensive harness collectors are inherently branchy; refactoring them to
+# satisfy complexity limits would trade real robustness for score.
 "cargento/skills/cargento/server.py" = ["E501", "C901", "PLR0911", "PLR0912", "PLR0915"]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
