@@ -42,9 +42,6 @@ STORE_CONSTANTS = (
     "PI_SESSIONS_DIR",
     "GEMINI_TMP",
     "ANTIGRAVITY_CLI_DIR",
-    "ANTIGRAVITY_CONVERSATIONS_DIR",
-    "ANTIGRAVITY_LOG_DIR",
-    "ANTIGRAVITY_LAST_CONVERSATIONS",
     "COPILOT_DIR",
     "OPENCODE_DATA",
     "CURSOR_CHATS",
@@ -152,11 +149,9 @@ def build_antigravity(root: Path, when: float, sid: str, title: str) -> dict[str
     cache = root / "cache" / "last_conversations.json"
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({f"/w/{title}": sid}), encoding="utf-8")
-    return {
-        "ANTIGRAVITY_CONVERSATIONS_DIR": str(conversations),
-        "ANTIGRAVITY_LOG_DIR": str(root / "log"),
-        "ANTIGRAVITY_LAST_CONVERSATIONS": str(cache),
-    }
+    (root / "log").mkdir(parents=True, exist_ok=True)
+    # The collector derives conversations/, log/ and cache/ from the one root.
+    return {"ANTIGRAVITY_CLI_DIR": str(root)}
 
 
 def build_copilot(root: Path, when: float, sid: str, title: str) -> dict[str, str]:

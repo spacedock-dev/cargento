@@ -71,6 +71,14 @@ max-args = 8
   "PLR0912",
   "PLR0915",
 ]
+# The Antigravity log scanner, protobuf reader and step activity keep the
+# launcher's reviewed shape: several log formats, a cache fallback, and a
+# wire-format walk with one arm per wire type.
+"cargento/skills/cargento/cargento_runtime/collectors/gemini.py" = [
+  "C901",
+  "PLR0912",
+  "PLR0915",
+]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]

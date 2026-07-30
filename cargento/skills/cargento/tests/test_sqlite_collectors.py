@@ -14,6 +14,7 @@ from unittest import mock
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime.collectors import cursor as cursor_collector
+from cargento_runtime.collectors import gemini as gemini_collector
 from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 
@@ -524,7 +525,8 @@ class SqliteDiagnosticTest(unittest.TestCase):
 
             with dashboard._cache_lock:
                 dashboard._store_errors.clear()
-            dashboard.antigravity_step_activity(str(antigravity), self.NOW)
+            config, state = dashboard._legacy_runtime()
+            gemini_collector._step_activity(config, state, str(antigravity), self.NOW)
             self.assertIn(str(antigravity), dashboard._store_errors)
 
             config, state = dashboard._legacy_runtime()
@@ -551,11 +553,14 @@ class SqliteOptionalTest(unittest.TestCase):
             config, state = dashboard._legacy_runtime()
             # Moved collectors take the runtime contract; the rest are still
             # launcher-owned. Each entry flips as its extraction task lands.
-            collectors = (
+            collectors: tuple[tuple[str, Any], ...] = (
                 ("opencode", lambda: opencode_collector.collect(config, state, now, 24, False)),
                 ("cursor", lambda: cursor_collector.collect(config, state, now, 24, False)),
                 ("goose", lambda: goose_collector.collect(config, state, now, 24, False)),
-                ("antigravity", lambda: dashboard.collect_antigravity(now, 24, False)),
+                (
+                    "antigravity",
+                    lambda: gemini_collector._collect_antigravity(config, state, now, 24, False),
+                ),
             )
             for name, run in collectors:
                 with self.subTest(collector=name):
@@ -628,12 +633,14 @@ for name in ("opencode_collector", "cursor_collector", "goose_collector"):
 # this exercises the database-backed path instead of an empty glob.
 import os, tempfile
 ag = tempfile.mkdtemp()
-store = os.path.join(ag, "conv-1.db")
+os.makedirs(os.path.join(ag, "conversations"))
+store = os.path.join(ag, "conversations", "conv-1.db")
 open(store, "wb").write(b"not a database")
 os.utime(store, (now, now))
-m.ANTIGRAVITY_CONVERSATIONS_DIR = ag
+m.ANTIGRAVITY_CLI_DIR = ag
 m.STORE_ROOTS["antigravity.root"] = [ag]
-found_ag = m.collect_antigravity(now, 24, True)
+cfg2, st2 = m._legacy_runtime()
+found_ag = m.gemini_collector._collect_antigravity(cfg2, st2, now, 24, True)
 assert len(found_ag) == 1, found_ag
 assert found_ag[0]["rate_per_min"] == 0, "rate should degrade to zero"
 assert found_ag[0]["turn"] is None, "no ETA without the database"
