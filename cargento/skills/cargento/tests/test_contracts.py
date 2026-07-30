@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import http.client
 import json
 import os
 import subprocess
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, notifications, records
+from cargento_runtime import aggregate, http_api, notifications, records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
@@ -33,6 +34,7 @@ from .support import (
     collect_claude,
     dashboard,
     make_runtime,
+    serve_until_closed,
 )
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
@@ -164,6 +166,124 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(([], []), (diag_a, diag_b))
         self.assertIsNot(popups_a, popups_b)
         self.assertEqual((11.0, 22.0), (state_a.server_started, state_b.server_started))
+
+    def _get(self, port: int, path: str) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", path)
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def _post(self, port: int, path: str, payload: dict[str, Any]) -> bytes:
+        body = json.dumps(payload).encode()
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("POST", path, body=body, headers={"Content-Type": "application/json"})
+            return conn.getresponse().read()
+        finally:
+            conn.close()
+
+    def test_two_servers_answer_only_for_their_own_application(self) -> None:
+        # The design requires this: CargentoHTTPServer stores exactly one
+        # application and one page, and handlers read them off the server
+        # instance. Two live servers in one interpreter must not cross.
+        first, config_a, state_a, _, popups_a = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(self._spec("alpha"),),
+        )
+        second, config_b, state_b, _, popups_b = self._application(
+            home="/home/b",
+            started=22.0,
+            clock=2000.0,
+            notifier="notifier-b",
+            harnesses=(self._spec("beta"),),
+        )
+        servers = [
+            http_api.CargentoHTTPServer(("127.0.0.1", 0), app, page)
+            for app, page in ((first, b"<page-a>"), (second, b"<page-b>"))
+        ]
+        threads = [serve_until_closed(httpd) for httpd in servers]
+        port_a, port_b = (httpd.server_port for httpd in servers)
+        try:
+            # The page is per instance, not a module global.
+            self.assertEqual((200, b"<page-a>"), self._get(port_a, "/"))
+            self.assertEqual((200, b"<page-b>"), self._get(port_b, "/"))
+
+            data_a = json.loads(self._get(port_a, "/api/data")[1])
+            data_b = json.loads(self._get(port_b, "/api/data")[1])
+            self.assertEqual(["alpha"], [h["key"] for h in data_a["harnesses"]])
+            self.assertEqual(["beta"], [h["key"] for h in data_b["harnesses"]])
+            # Each collected on its own injected clock and config.
+            self.assertEqual((1000.0, 2000.0), (data_a["generated"], data_b["generated"]))
+            self.assertEqual(["/home/a"], [row["project"] for row in data_a["sessions"]])
+            self.assertEqual(["/home/b"], [row["project"] for row in data_b["sessions"]])
+
+            # /api/health reports each server's own port and start stamp.
+            health_a = json.loads(self._get(port_a, "/api/health")[1])
+            health_b = json.loads(self._get(port_b, "/api/health")[1])
+            self.assertEqual((port_a, 11.0), (health_a["port"], health_a["started"]))
+            self.assertEqual((port_b, 22.0), (health_b["port"], health_b["started"]))
+
+            # A notification POST lands in the receiving server's state only,
+            # and pops through that application's own notifier.
+            self._post(port_a, "/api/notify", {"session_id": "aaaaaaaa", "message": "permission"})
+            self.assertIn("aaaaaaaa", state_a.hook_notifications)
+            self.assertEqual({}, dict(state_b.hook_notifications))
+            self.assertEqual(1, len(popups_a))
+            self.assertEqual([], popups_b)
+
+            # Give B its own standing hook, then end that session on A. A
+            # SessionEnd is the most destructive payload there is; it must not
+            # reach across.
+            self._post(port_b, "/api/notify", {"session_id": "aaaaaaaa", "message": "permission"})
+            self.assertIn("aaaaaaaa", state_b.hook_notifications)
+            self._post(
+                port_a,
+                "/api/notify",
+                {"session_id": "aaaaaaaa", "hook_event_name": "SessionEnd"},
+            )
+            self.assertNotIn("aaaaaaaa", state_a.hook_notifications)
+            self.assertIn("aaaaaaaa", state_b.hook_notifications)
+            self.assertEqual(1, state_a.hook_generation["aaaaaaaa"])
+            self.assertEqual(0, state_b.hook_generation.get("aaaaaaaa", 0))
+            self.assertNotEqual(config_a.home, config_b.home)
+        finally:
+            for httpd, thread in zip(servers, threads, strict=True):
+                httpd.shutdown()
+                thread.join(timeout=5)
+
+    def test_health_reports_the_captured_start_stamp_without_a_second_clock_read(self) -> None:
+        # --status and the daemon readiness wait poll this in a loop. Sampling a
+        # clock in the handler would report a different uptime on every poll for
+        # one unchanging process, so the value must be the sentinel that
+        # build_runtime_state captured.
+        sentinel = 1_234_567.5
+        application, _, state, _, _ = self._application(
+            home="/home/a",
+            started=sentinel,
+            clock=9_999_999.0,
+            notifier="notifier-a",
+            harnesses=(),
+        )
+        self.assertEqual(sentinel, state.server_started)
+        httpd = http_api.CargentoHTTPServer(("127.0.0.1", 0), application, b"<page>")
+        thread = serve_until_closed(httpd)
+        try:
+            first = json.loads(self._get(httpd.server_port, "/api/health")[1])
+            second = json.loads(self._get(httpd.server_port, "/api/health")[1])
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+        self.assertEqual(sentinel, first["started"])
+        # Same value on a second poll, and never the application's clock.
+        self.assertEqual(first["started"], second["started"])
+        self.assertEqual(os.getpid(), first["pid"])
 
     def test_the_collection_memo_does_not_cross_applications(self) -> None:
         first, _, state_a, _, _ = self._application(
@@ -509,6 +629,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.turns",
         },
         "cargento_runtime.config": set(),
+        "cargento_runtime.http_api": {
+            "cargento_runtime.aggregate",
+            "cargento_runtime.io",
+            "cargento_runtime.notifications",
+        },
         "cargento_runtime.io": {
             "cargento_runtime.config",
             "cargento_runtime.state",
@@ -701,6 +826,13 @@ from . import page as sibling_page
             "SPACEDOCK_FO",
             "SD_STAGE_RE",
         )
+        http_symbols = (
+            "normalize_host",
+            "reuse_address_allowed",
+            "bind_error_message",
+            "LoopbackHTTPServer",
+            "Handler",
+        )
         diagnostics_symbols = (
             "store_primaries",
             "candidate_report",
@@ -757,6 +889,7 @@ from . import page as sibling_page
             *notification_symbols,
             *claude_collector_symbols,
             *diagnostics_symbols,
+            *http_symbols,
             *spacedock_symbols,
         ):
             with self.subTest(symbol=symbol):

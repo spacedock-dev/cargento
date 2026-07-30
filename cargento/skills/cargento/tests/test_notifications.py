@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import http.client
 import http.server
-import io
 import json
 import os
 import subprocess
@@ -18,12 +17,13 @@ from cargento_runtime import claude_data, notifications, records
 
 from .support import (
     HOOK_PATH,
-    PAGE_BYTES,
     LegacyDashboardTestCase,
     collect_claude,
     dashboard,
     dashboard_hook,
     make_config,
+    make_server,
+    notify_handler,
     serve_until_closed,
 )
 
@@ -147,16 +147,15 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 )
                 + "\n"
             )
-            httpd = dashboard.LoopbackHTTPServer(
-                ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-            )
+            # The store patch has to be in place BEFORE the server is built: the
+            # application captures its config once, at construction, so a patch
+            # applied afterwards would not reach the running instance.
+            with mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")):
+                httpd = make_server()
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             try:
-                with (
-                    mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                    mock.patch.object(notifications, "notify_mac") as notify,
-                ):
+                with mock.patch.object(notifications, "notify_mac") as notify:
                     data = self._post_notify(
                         httpd.server_port,
                         {"session_id": child_id, "message": "permission"},
@@ -174,9 +173,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # Claude re-emits the same notification while a session stays blocked;
         # only the first within the suppression window may popup. A different
         # message from the same session still pops.
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
 
@@ -321,9 +318,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             )
             old = now - 600
             dashboard.os.utime(fp, (old, old))
-            httpd = dashboard.LoopbackHTTPServer(
-                ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-            )
+            httpd = make_server()
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             try:
@@ -366,9 +361,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 thread.join(timeout=2)
 
     def test_structured_notification_type_overrides_message_text(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -453,9 +446,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 "ts": dashboard.time.time() - 30,
                 "message": "MCP input requested",
             }
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -482,9 +473,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 "message": "permission needed",
             }
             dashboard._last_state["deadbeef"] = "needs_input"
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -630,9 +619,11 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             )
-            httpd = dashboard.LoopbackHTTPServer(
-                ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-            )
+            # Built inside the store patches: the application captures its config
+            # once, at construction, so the POSTs this test makes must reach a
+            # server that already knows about the temporary store.
+            with patches[0], patches[1]:
+                httpd = make_server()
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             try:
@@ -715,9 +706,7 @@ class NotifyHookTest(unittest.TestCase):
         )
 
     def test_payload_reaches_a_running_server(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         url = f"http://127.0.0.1:{httpd.server_port}/api/notify"
@@ -882,14 +871,7 @@ class HookOrderingTest(unittest.TestCase):
             return False
 
         def request(payload: dict[str, Any]) -> Any:
-            handler = dashboard.Handler.__new__(dashboard.Handler)
-            body = json.dumps(payload).encode()
-            handler.headers = {"Content-Length": str(len(body))}
-            handler.path = "/api/notify"
-            handler.rfile = io.BytesIO(body)
-            handler._local_ok = lambda **_kw: True
-            handler._send = lambda *_a, **_k: None
-            return handler
+            return notify_handler(payload)
 
         session = "deadbeef-0000-0000-0000-000000000000"
         with (
@@ -1056,14 +1038,7 @@ class HookOrderingTest(unittest.TestCase):
             return False
 
         def request(payload: dict[str, Any]) -> Any:
-            handler = dashboard.Handler.__new__(dashboard.Handler)
-            body = json.dumps(payload).encode()
-            handler.headers = {"Content-Length": str(len(body))}
-            handler.path = "/api/notify"
-            handler.rfile = io.BytesIO(body)
-            handler._local_ok = lambda **_kw: True
-            handler._send = lambda *_a, **_k: None
-            return handler
+            return notify_handler(payload)
 
         session = "deadbeef-0000-0000-0000-000000000000"
         first = request(
@@ -1113,20 +1088,14 @@ class HookOrderingTest(unittest.TestCase):
 
     def test_an_unraced_notification_still_records(self) -> None:
         session = "cafebabe-0000-0000-0000-000000000000"
-        handler = dashboard.Handler.__new__(dashboard.Handler)
-        body = json.dumps(
+        handler = notify_handler(
             {
                 "session_id": session,
                 "hook_event_name": "Notification",
                 "notification_type": "permission_prompt",
                 "message": "permission",
             }
-        ).encode()
-        handler.headers = {"Content-Length": str(len(body))}
-        handler.path = "/api/notify"
-        handler.rfile = io.BytesIO(body)
-        handler._local_ok = lambda **_kw: True
-        handler._send = lambda *_a, **_k: None
+        )
         with (
             mock.patch.object(claude_data, "prefix_is_agent", lambda *_a: False),
             mock.patch.object(notifications, "notify_mac"),
@@ -1189,7 +1158,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
-        self._window_hours = dashboard.Handler.window_hours
         self._server_started = dashboard.__dict__["SERVER_STARTED"]
         with dashboard._lock:
             dashboard._hook_notifs.clear()
@@ -1222,7 +1190,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
-        dashboard.Handler.window_hours = self._window_hours
         dashboard.__dict__["SERVER_STARTED"] = self._server_started
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
@@ -1244,9 +1211,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             conn.close()
 
     def test_session_end_cannot_be_undone_by_a_slow_notification(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         thread = serve_until_closed(httpd)
         entered = threading.Event()
         release = threading.Event()

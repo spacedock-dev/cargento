@@ -4,15 +4,18 @@ import contextlib
 import dataclasses
 import importlib
 import importlib.util
+import io
+import json
 import sys
 import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import notifications
+from cargento_runtime import http_api, notifications
 from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import RuntimeState, build_runtime_state
@@ -85,6 +88,47 @@ def collect_claude(
         show_all,
         popup_notifier=popup_notifier or dashboard._bound_popup_notifier(config),
     )
+
+
+def make_server(
+    *,
+    port: int = 0,
+    application: Any = None,
+    page_bytes: bytes | None = None,
+    window_hours: float = 24,
+) -> Any:
+    """A CargentoHTTPServer over the legacy runtime this suite resets.
+
+    The server takes its application and page as arguments now, so every test
+    that used to rely on module state passes them here instead. Defaults
+    reproduce what the launcher builds.
+    """
+    return http_api.CargentoHTTPServer(
+        ("127.0.0.1", port),
+        application if application is not None else dashboard._legacy_application(window_hours),
+        PAGE_BYTES if page_bytes is None else page_bytes,
+    )
+
+
+def notify_handler(payload: dict[str, Any], *, application: Any = None) -> Any:
+    """A bare request handler wired to an application, for POST-ordering tests.
+
+    Those tests drive ``do_POST`` directly rather than over a socket, because
+    they need to suspend it mid-flight and land a second request inside the
+    window. The handler reads its application off the server instance now, so it
+    gets a stand-in carrying exactly that and nothing else.
+    """
+    handler: Any = http_api._RequestHandler.__new__(http_api._RequestHandler)
+    body = json.dumps(payload).encode()
+    handler.headers = {"Content-Length": str(len(body))}
+    handler.path = "/api/notify"
+    handler.rfile = io.BytesIO(body)
+    handler.server = SimpleNamespace(
+        application=application if application is not None else dashboard._legacy_application(24)
+    )
+    handler._local_ok = lambda **_kw: True
+    handler._send = lambda *_a, **_k: None
+    return handler
 
 
 def serve_until_closed(httpd: Any) -> threading.Thread:

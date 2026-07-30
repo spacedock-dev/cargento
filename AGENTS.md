@@ -27,6 +27,7 @@ cargento/                           # plugin root
         │   ├── collectors/         # one harness collector per file, one per supported harness
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── diagnostics.py      # store-path reporting for --diagnose
+        │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── records.py          # untrusted-record parsing and normalization

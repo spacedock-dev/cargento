@@ -16,16 +16,19 @@ import tempfile
 import threading
 import time
 import unittest
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
+from cargento_runtime import http_api
+
 from .page_harness import PageJsHarness
 from .support import (
-    PAGE_BYTES,
     SERVER_PATH,
     dashboard,
     frontend_page,
+    make_server,
     serve_until_closed,
 )
 
@@ -40,7 +43,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
-        self._window_hours = dashboard.Handler.window_hours
         self._server_started = dashboard.__dict__["SERVER_STARTED"]
         with dashboard._lock:
             dashboard._hook_notifs.clear()
@@ -73,7 +75,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
-        dashboard.Handler.window_hours = self._window_hours
         dashboard.__dict__["SERVER_STARTED"] = self._server_started
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
@@ -454,9 +455,7 @@ class CargentoServerTest(PageJsHarness):
                 self.assertTrue(diag.called)
 
     def test_probe_port_classifies_cargento_foreign_and_closed(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         port = httpd.server_port
@@ -483,7 +482,7 @@ class CargentoServerTest(PageJsHarness):
             def log_message(self, *args: object) -> None:
                 pass
 
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), Other)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), Other)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -565,9 +564,7 @@ class CargentoServerTest(PageJsHarness):
                 self.assertIn("since unknown", line)
 
     def test_port_released_is_false_while_a_server_still_holds_the_port(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         port = httpd.server_port
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -578,7 +575,7 @@ class CargentoServerTest(PageJsHarness):
             # The accept loop has exited but the socket is still open. A connect
             # probe cannot see this state, and repeated connects fill the
             # backlog and then wrongly report the port gone; binding sees it.
-            for _ in range(dashboard.LoopbackHTTPServer.request_queue_size + 3):
+            for _ in range(http_api.CargentoHTTPServer.request_queue_size + 3):
                 self.assertFalse(dashboard.port_released(port), "bound, not accepting")
         finally:
             httpd.server_close()
@@ -643,9 +640,7 @@ class CargentoServerTest(PageJsHarness):
             self.assertEqual(expected, caught.exception.code, state)
 
     def test_stop_instance_stops_a_running_server_over_http(self) -> None:
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         port = httpd.server_port
         loop_exited = threading.Event()
         allow_close = threading.Event()
@@ -864,7 +859,7 @@ class CargentoServerTest(PageJsHarness):
                     mock.patch.dict(os.environ, {"CARGENTO_HOME": home}),
                     mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
                     mock.patch.object(dashboard.runtime_io, "diag") as diag,
-                    mock.patch.object(dashboard, "LoopbackHTTPServer") as bind,
+                    mock.patch.object(http_api, "CargentoHTTPServer") as bind,
                     mock.patch.object(dashboard, "fork_daemon") as fork,
                     mock.patch.object(dashboard, "spawn_detached") as spawn,
                     self.assertRaises(SystemExit) as caught,
@@ -1029,7 +1024,7 @@ class CargentoServerTest(PageJsHarness):
                 mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
                 mock.patch.object(dashboard.runtime_io, "diag") as diag,
                 # A traceback here would escape before either of these is used.
-                mock.patch.object(dashboard, "LoopbackHTTPServer") as bind,
+                mock.patch.object(http_api, "CargentoHTTPServer") as bind,
                 mock.patch.object(dashboard, "fork_daemon") as fork,
                 self.assertRaises(SystemExit) as caught,
             ):
@@ -1216,9 +1211,7 @@ class DaemonLifecycleTest(unittest.TestCase):
     def test_a_busy_port_still_explains_itself_under_daemon(self) -> None:
         """D-1's promise: binding happens before detaching, so this message
         reaches the terminal that asked for it and not just a log file."""
-        httpd = dashboard.LoopbackHTTPServer(
-            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
-        )
+        httpd = make_server()
         # Closes the listener when the loop exits, so the reaping --stop below
         # does not sit out the whole release timeout waiting for a socket that
         # only the outer finally was ever going to close.

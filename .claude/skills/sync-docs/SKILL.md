@@ -201,9 +201,13 @@ C=cargento/skills/cargento/cargento_runtime/config.py
 R=cargento/skills/cargento/cargento_runtime/state.py
 W=cargento/skills/cargento/cargento_runtime/web
 G=cargento/skills/cargento/cargento_runtime/diagnostics.py
+H=cargento/skills/cargento/cargento_runtime/http_api.py
 
-# HTTP routes the server actually serves
-grep -oE '(url\.path|urlparse\(self\.path\)\.path) [!=]= "[^"]+"' "$S" | grep -oE '"/[^"]*"' | sort -u
+# HTTP routes the server actually serves, and who owns the listener. The
+# pattern matches the local `path` too: do_POST binds it once and compares that,
+# so an `urlparse(...)`-only pattern silently missed both POST routes.
+grep -oE '\b(url\.path|path) [!=]= "/[^"]*"' "$H" | grep -oE '"/[^"]*"' | sort -u
+grep -nE '^(class CargentoHTTPServer|class _RequestHandler)|^def (normalize_host|reuse_address_allowed|bind_error_message)' "$H"
 # CLI flags and their defaults
 grep -E -A4 'ap\.add_argument\(' "$S" | grep -E '"--|default='
 # The harness registry: one row per supported harness, in the order the page

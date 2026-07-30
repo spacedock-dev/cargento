@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, diagnostics, notifications
+from cargento_runtime import aggregate, diagnostics, http_api, notifications
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import claude as claude_collector
@@ -73,7 +73,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         with (
             mock.patch.object(sys, "argv", ["server.py", "--port", "0"]),
             mock.patch.object(sys, "stderr", io.StringIO()),
-            mock.patch.object(dashboard, "LoopbackHTTPServer") as bind,
+            mock.patch.object(http_api, "CargentoHTTPServer") as bind,
             self.assertRaises(SystemExit) as caught,
         ):
             dashboard.main()
@@ -954,8 +954,31 @@ class OperatingSystemExpectationTest(unittest.TestCase):
     def test_port_sharing_policy_per_platform(self) -> None:
         # POSIX: SO_REUSEADDR only bypasses TIME_WAIT, so restarts work.
         # Windows: it lets another process bind an already-bound port.
-        self.assertTrue(dashboard.reuse_address_allowed("posix"))
-        self.assertFalse(dashboard.reuse_address_allowed("nt"))
+        self.assertTrue(http_api.reuse_address_allowed("posix"))
+        self.assertFalse(http_api.reuse_address_allowed("nt"))
+
+    def test_the_listener_takes_its_reuse_policy_from_the_config(self) -> None:
+        # The helper above is pure, but the server has to actually ask it with
+        # THIS application's os_name. Reading the ambient os.name instead agrees
+        # with the config on every runner we test on, so only a config that
+        # disagrees with the host can tell the two apart.
+        # Mutation-checked: substituting os.name passed the whole suite.
+        for os_name, expected in (("nt", False), ("posix", True)):
+            with self.subTest(os_name=os_name):
+                config, state = make_runtime(os_name=os_name)
+                application = aggregate.Application(
+                    config,
+                    state,
+                    (),
+                    native_notifier=lambda _platform: "",
+                    popup_notifier=lambda _title, _message: None,
+                    diagnostic_sink=lambda _line: None,
+                )
+                httpd = http_api.CargentoHTTPServer(("127.0.0.1", 0), application, b"<page>")
+                try:
+                    self.assertIs(expected, httpd.allow_reuse_address)
+                finally:
+                    httpd.server_close()
 
     def test_store_locations_per_platform(self) -> None:
         posix = dashboard.resolve_store_roots(platform_name="darwin", environ={}, home="/Users/u")

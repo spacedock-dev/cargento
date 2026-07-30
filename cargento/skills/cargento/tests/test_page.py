@@ -17,10 +17,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
+from cargento_runtime import http_api
+
 from .page_harness import APP_JS, PAGE_TEXT, PageJsHarness
 from .support import (
     dashboard,
     frontend_page,
+    make_server,
     serve_until_closed,
 )
 
@@ -185,8 +188,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 side_effect=RuntimeError("review loader probe"),
             ),
             mock.patch.object(
-                dashboard,
-                "LoopbackHTTPServer",
+                http_api,
+                "CargentoHTTPServer",
                 side_effect=AssertionError("bound before canonical loader"),
             ),
             mock.patch.object(sys, "argv", ["server.py"]),
@@ -272,7 +275,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
-        self._window_hours = dashboard.Handler.window_hours
         self._server_started = dashboard.__dict__["SERVER_STARTED"]
         with dashboard._lock:
             dashboard._hook_notifs.clear()
@@ -305,7 +307,6 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
-        dashboard.Handler.window_hours = self._window_hours
         dashboard.__dict__["SERVER_STARTED"] = self._server_started
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
@@ -328,7 +329,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def test_served_page_bytes_equal_the_frontend_page(self) -> None:
         page = frontend_page.load_page()
-        httpd = dashboard.LoopbackHTTPServer(("127.0.0.1", 0), dashboard.Handler, page_bytes=page)
+        httpd = make_server(page_bytes=page)
         thread = serve_until_closed(httpd)
         try:
             code, _, served = self._response(httpd.server_port, "GET", "/")
