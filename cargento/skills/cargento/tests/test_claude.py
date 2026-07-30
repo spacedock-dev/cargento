@@ -295,19 +295,23 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
     def test_claude_cwd_uses_independent_line_and_count_caps(self) -> None:
         first = json.dumps({"ignored": "x" * 100})
         target = json.dumps({"cwd": "/wanted/project"})
+        first_line = (first + "\n").encode()
+        payload = first_line + (target + "\n").encode()
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "session.jsonl"
-            path.write_text(first + "\n" + target + "\n")
+            path.write_bytes(payload)
             short_scan = Path(tmp) / "short-scan.jsonl"
-            short_scan.write_text(first + "\n" + target + "\n")
+            short_scan.write_bytes(payload)
+            self.assertEqual(payload, path.read_bytes())
+            self.assertEqual(payload, short_scan.read_bytes())
             with (
                 mock.patch.object(dashboard, "_CWD_SCAN_LINES", 2),
-                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first) + 1),
+                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first_line)),
             ):
                 self.assertEqual("/wanted/project", dashboard.claude_session_cwd(str(path)))
             with (
                 mock.patch.object(dashboard, "_CWD_SCAN_LINES", 1),
-                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first) + 1),
+                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first_line)),
             ):
                 self.assertEqual("", dashboard.claude_session_cwd(str(short_scan)))
 
