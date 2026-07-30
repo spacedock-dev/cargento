@@ -9,10 +9,12 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import records
+from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
+    make_config,
 )
 
 
@@ -76,7 +78,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         self.assertEqual(records.parse_ts(second_time), turns["turn_start"])
 
     def test_base_session_exposes_full_sid_and_truncated_display_id(self) -> None:
-        s = dashboard.base_session("gemini", "session-abcdef123", "proj")
+        s = runtime_sessions.base_session("gemini", "session-abcdef123", "proj")
         self.assertEqual("session-", s["session"])  # display stays 8 chars
         self.assertEqual("session-abcdef123", s["sid"])  # identity stays full
 
@@ -156,10 +158,12 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # sessions as the same harness, project and id — one session, seen
         # four times. Observed live: 019fa752-a888…, -a889…, -a88d…, -a8a7….
         sessions = [
-            dashboard.base_session("codex", f"019fa752-a88{tail}-7fe3-a529-ebd8042771c{i}", "p")
+            runtime_sessions.base_session(
+                "codex", f"019fa752-a88{tail}-7fe3-a529-ebd8042771c{i}", "p"
+            )
             for i, tail in enumerate(("8", "9", "d"))
         ]
-        dashboard.assign_display_ids(sessions)
+        runtime_sessions.assign_display_ids(make_config(), sessions)
         shown = [s["session"] for s in sessions]
 
         self.assertEqual(len(shown), len(set(shown)))
@@ -172,12 +176,12 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # they were truncated: an 8-char sid is unaffected by any width, so a
         # test using one cannot tell per-harness widening from global.
         sessions = [
-            dashboard.base_session("gemini", "aaaa1111-cccc-4444-8888-000000000001", "p"),
-            dashboard.base_session("gemini", "bbbb2222-dddd-4444-8888-000000000002", "p"),
-            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
-            dashboard.base_session("codex", "019fa752-a889-73a3-88ba-d362c54a1ae6", "p"),
+            runtime_sessions.base_session("gemini", "aaaa1111-cccc-4444-8888-000000000001", "p"),
+            runtime_sessions.base_session("gemini", "bbbb2222-dddd-4444-8888-000000000002", "p"),
+            runtime_sessions.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
+            runtime_sessions.base_session("codex", "019fa752-a889-73a3-88ba-d362c54a1ae6", "p"),
         ]
-        dashboard.assign_display_ids(sessions)
+        runtime_sessions.assign_display_ids(make_config(), sessions)
 
         # Gemini's ids already differ at 8 chars, so they stay at the floor
         # even though Codex in the same snapshot had to widen.
@@ -192,12 +196,20 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # width to every other Codex row, including a lone session in an
         # unrelated worktree that was never ambiguous.
         sessions = [
-            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "recce/infra"),
-            dashboard.base_session("codex", "019fa752-a889-73a3-88ba-d362c54a1ae6", "recce/infra"),
-            dashboard.base_session("codex", "019fa752-a88d-7d23-978a-a8d2d2584c3b", "recce/infra"),
-            dashboard.base_session("codex", "019fa752-a8a7-71f1-ac29-fd97c876c5e3", "recce/other"),
+            runtime_sessions.base_session(
+                "codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "recce/infra"
+            ),
+            runtime_sessions.base_session(
+                "codex", "019fa752-a889-73a3-88ba-d362c54a1ae6", "recce/infra"
+            ),
+            runtime_sessions.base_session(
+                "codex", "019fa752-a88d-7d23-978a-a8d2d2584c3b", "recce/infra"
+            ),
+            runtime_sessions.base_session(
+                "codex", "019fa752-a8a7-71f1-ac29-fd97c876c5e3", "recce/other"
+            ),
         ]
-        dashboard.assign_display_ids(sessions)
+        runtime_sessions.assign_display_ids(make_config(), sessions)
 
         # The lone row in the other worktree keeps the floor.
         self.assertEqual("019fa752", sessions[3]["session"])
@@ -209,10 +221,10 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # ambiguous: the harness badge already separates them.
         shared = "019fa752-a888-7fe3-a529-ebd8042771c1"
         sessions = [
-            dashboard.base_session("codex", shared, "p"),
-            dashboard.base_session("gemini", shared, "p"),
+            runtime_sessions.base_session("codex", shared, "p"),
+            runtime_sessions.base_session("gemini", shared, "p"),
         ]
-        dashboard.assign_display_ids(sessions)
+        runtime_sessions.assign_display_ids(make_config(), sessions)
 
         self.assertEqual(["019fa752", "019fa752"], [s["session"] for s in sessions])
 
@@ -257,10 +269,10 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # widening must not fire at all: it terminates, and it leaves the id
         # short rather than pointlessly expanding both to the full uuid.
         sessions = [
-            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
-            dashboard.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
+            runtime_sessions.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
+            runtime_sessions.base_session("codex", "019fa752-a888-7fe3-a529-ebd8042771c1", "p"),
         ]
-        dashboard.assign_display_ids(sessions)
+        runtime_sessions.assign_display_ids(make_config(), sessions)
 
         self.assertEqual(["019fa752"] * 2, [s["session"] for s in sessions])
 
@@ -285,14 +297,14 @@ class DurationAndEpochTest(unittest.TestCase):
             (90061, "1d 1h"),
         ):
             with self.subTest(seconds=seconds):
-                self.assertEqual(expected, dashboard.fmt_duration(seconds))
+                self.assertEqual(expected, runtime_sessions.fmt_duration(seconds))
 
     def test_an_unknown_or_impossible_duration_renders_a_dash(self) -> None:
         # A negative duration means the clock moved, not that work took
         # negative time, so the card must decline to state one.
         for bad in (None, -1, -0.5, -86400):
             with self.subTest(seconds=bad):
-                self.assertEqual("–", dashboard.fmt_duration(bad))
+                self.assertEqual("–", runtime_sessions.fmt_duration(bad))
 
     def test_millisecond_timestamps_are_detected_by_magnitude(self) -> None:
         """Harness stores mix seconds and milliseconds. Guessing wrong puts a
@@ -369,25 +381,30 @@ class ClockSkewTest(unittest.TestCase):
     SKEW = 86_400.0  # a day ahead, e.g. a WSL2 guest clock after host suspend
 
     def test_an_implausibly_future_timestamp_is_rejected(self) -> None:
-        self.assertIsNone(dashboard.age(self.NOW, self.NOW + self.SKEW))
-        self.assertEqual(10.0, dashboard.age(self.NOW, self.NOW - 10))
+        config = make_config()
+        self.assertIsNone(runtime_sessions.age(config, self.NOW, self.NOW + self.SKEW))
+        self.assertEqual(10.0, runtime_sessions.age(config, self.NOW, self.NOW - 10))
 
     def test_sampling_noise_is_clamped_rather_than_rejected(self) -> None:
         # stat() and the collection clock are read microseconds apart, and
         # coarse filesystems round upward — a small overshoot is not skew.
-        jitter = dashboard.FUTURE_SKEW_TOLERANCE_SEC / 2
-        self.assertEqual(0.0, dashboard.age(self.NOW, self.NOW + jitter))
-        self.assertTrue(dashboard.is_fresh(self.NOW, self.NOW + jitter, 1))
+        config = make_config()
+        jitter = config.future_skew_tolerance_sec / 2
+        self.assertEqual(0.0, runtime_sessions.age(config, self.NOW, self.NOW + jitter))
+        self.assertTrue(runtime_sessions.is_fresh(config, self.NOW, self.NOW + jitter, 1))
 
     def test_a_future_timestamp_does_not_read_as_activity(self) -> None:
         # The whole point: negative ages used to pass every threshold test.
+        config = make_config()
         self.assertFalse(
-            dashboard.is_fresh(self.NOW, self.NOW + self.SKEW, dashboard.WORKING_THRESHOLD_SEC)
+            runtime_sessions.is_fresh(
+                config, self.NOW, self.NOW + self.SKEW, config.working_threshold_sec
+            )
         )
 
     def test_future_dated_tokens_do_not_inflate_the_output_rate(self) -> None:
         info = {"usage_events": [(self.NOW + self.SKEW, 5000)]}
-        self.assertEqual(0, dashboard.rate_from(info, self.NOW))
+        self.assertEqual(0, runtime_sessions.rate_from(info, self.NOW, make_config()))
 
     def test_a_future_dated_turn_start_yields_no_eta(self) -> None:
         scan = {"turn_start": self.NOW + self.SKEW, "durations": [60.0]}
@@ -424,11 +441,11 @@ class ReviewFixTest(unittest.TestCase):
         # Scanning every candidate root can find a session left behind by a
         # migration twice; the DB-backed collectors append per store.
         rows = [
-            {**dashboard.base_session("opencode", "same", "p"), "last_activity": 10.0},
-            {**dashboard.base_session("opencode", "same", "p"), "last_activity": 99.0},
-            {**dashboard.base_session("goose", "same", "p"), "last_activity": 5.0},
+            {**runtime_sessions.base_session("opencode", "same", "p"), "last_activity": 10.0},
+            {**runtime_sessions.base_session("opencode", "same", "p"), "last_activity": 99.0},
+            {**runtime_sessions.base_session("goose", "same", "p"), "last_activity": 5.0},
         ]
-        merged = dashboard.dedupe_sessions(rows)
+        merged = runtime_sessions.dedupe_sessions(rows)
         self.assertEqual(2, len(merged), "duplicate session id was not merged")
         opencode = next(r for r in merged if r["harness"] == "opencode")
         self.assertEqual(99.0, opencode["last_activity"], "kept the staler copy")
@@ -442,17 +459,24 @@ class VerificationFixTest(unittest.TestCase):
     FUTURE = NOW + 86_400
 
     def test_newest_plausible_ignores_skew(self) -> None:
-        self.assertEqual(self.NOW, dashboard.newest_plausible(self.NOW, (self.FUTURE, self.NOW)))
-        self.assertEqual(0.0, dashboard.newest_plausible(self.NOW, (self.FUTURE,)))
-        self.assertEqual(0.0, dashboard.newest_plausible(self.NOW, ()))
+        config = make_config()
+        self.assertEqual(
+            self.NOW,
+            runtime_sessions.newest_plausible(config, self.NOW, (self.FUTURE, self.NOW)),
+        )
+        self.assertEqual(0.0, runtime_sessions.newest_plausible(config, self.NOW, (self.FUTURE,)))
+        self.assertEqual(0.0, runtime_sessions.newest_plausible(config, self.NOW, ()))
 
     def test_a_skewed_duplicate_does_not_win_deduplication(self) -> None:
         # Ranking by raw last_activity let a clock-skewed migrated copy beat the
         # live one — the very problem rejecting future timestamps is for.
-        good = {**dashboard.base_session("opencode", "same", "p"), "state": "working"}
-        good["last_activity"] = dashboard.newest_plausible(self.NOW, (self.NOW,))
-        skewed = {**dashboard.base_session("opencode", "same", "p"), "state": "idle"}
-        skewed["last_activity"] = dashboard.newest_plausible(self.NOW, (self.FUTURE,))
+        config = make_config()
+        good = {**runtime_sessions.base_session("opencode", "same", "p"), "state": "working"}
+        good["last_activity"] = runtime_sessions.newest_plausible(config, self.NOW, (self.NOW,))
+        skewed = {**runtime_sessions.base_session("opencode", "same", "p"), "state": "idle"}
+        skewed["last_activity"] = runtime_sessions.newest_plausible(
+            config, self.NOW, (self.FUTURE,)
+        )
         for order in ([good, skewed], [skewed, good]):
             with self.subTest(order=[s["state"] for s in order]):
-                self.assertEqual("working", dashboard.dedupe_sessions(order)[0]["state"])
+                self.assertEqual("working", runtime_sessions.dedupe_sessions(order)[0]["state"])

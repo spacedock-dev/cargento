@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import ClassVar
 from unittest import mock
 
+from cargento_runtime import sessions as runtime_sessions
+
 from . import test_claude, test_codex, test_copilot, test_droid, test_pi
 from .fixtures import (
     HARNESSES,
@@ -38,6 +40,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.state",
         },
         "cargento_runtime.records": set(),
+        "cargento_runtime.sessions": {"cargento_runtime.config"},
         "cargento_runtime.state": {"cargento_runtime.config"},
         "cargento_runtime.web": set(),
         "cargento_runtime.web.page": set(),
@@ -177,13 +180,39 @@ from . import page as sibling_page
             "gemini_records",
             "_turn_signal",
         )
-        for symbol in (*io_symbols, *record_symbols):
+        session_symbols = (
+            "encoded_home_prefix",
+            "HOME_PREFIX",
+            "project_label",
+            "project_from_cwd",
+            "fmt_duration",
+            "age",
+            "is_fresh",
+            "newest_plausible",
+            "dedupe_sessions",
+            "assign_display_ids",
+            "base_session",
+            "rate_from",
+            "working_detail",
+        )
+        for symbol in (*io_symbols, *record_symbols, *session_symbols):
             with self.subTest(symbol=symbol):
                 self.assertFalse(hasattr(dashboard, symbol))
         self.assertTrue(all(hasattr(dashboard.runtime_io, symbol) for symbol in io_symbols))
         self.assertTrue(all(hasattr(dashboard.records, symbol) for symbol in record_symbols))
+        # HOME_PREFIX is deliberately gone rather than relocated: project_label
+        # derives the encoded prefix from config.home on every call.
+        self.assertTrue(
+            all(
+                hasattr(dashboard.runtime_sessions, symbol)
+                for symbol in session_symbols
+                if symbol != "HOME_PREFIX"
+            )
+        )
+        self.assertFalse(hasattr(runtime_sessions, "HOME_PREFIX"))
         self.assertIs(sys.modules["cargento_runtime.io"], dashboard.runtime_io)
         self.assertIs(sys.modules["cargento_runtime.records"], dashboard.records)
+        self.assertIs(sys.modules["cargento_runtime.sessions"], dashboard.runtime_sessions)
 
     def test_importing_lower_runtime_layers_performs_no_external_operation(self) -> None:
         # Reading ambient state or opening a file, socket, browser, log, or child
@@ -247,6 +276,7 @@ logging.Logger._log = forbidden
 import cargento_runtime.config
 import cargento_runtime.io
 import cargento_runtime.records
+import cargento_runtime.sessions
 import cargento_runtime.state
 """
         result = subprocess.run(
@@ -270,7 +300,7 @@ class CollectorAgreementTest(LegacyDashboardTestCase):
         home = "/Users/cl"
         cwd = f"{home}/git/spacedock-research/spacedock/subspace"
         iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
-        encoded = dashboard.encoded_home_prefix(cwd)  # Claude's projects/ dir name
+        encoded = runtime_sessions.encoded_home_prefix(cwd)  # Claude's projects/ dir name
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "projects" / encoded
             project_dir.mkdir(parents=True)
@@ -311,7 +341,6 @@ class CollectorAgreementTest(LegacyDashboardTestCase):
                     },
                 ),
                 mock.patch.object(dashboard, "HOME", home),
-                mock.patch.object(dashboard, "HOME_PREFIX", dashboard.encoded_home_prefix(home)),
             ):
                 claude = dashboard.collect_claude(now, 24, False)
                 codex = dashboard.collect_codex(now, 24, False)

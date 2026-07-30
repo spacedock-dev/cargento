@@ -10,13 +10,14 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import records
+from cargento_runtime import sessions as runtime_sessions
 
 from .fixtures import (
     protobuf_bytes_field,
     protobuf_int_field,
     write_antigravity_metadata,
 )
-from .support import LegacyDashboardTestCase, dashboard, make_runtime
+from .support import LegacyDashboardTestCase, dashboard, make_config, make_runtime
 
 
 class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
@@ -258,7 +259,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
 
         self.assertEqual(2, len(sessions))
         self.assertEqual({"acme/proj"}, {session["project"] for session in sessions})
-        dashboard.assign_display_ids(sessions)
+        runtime_sessions.assign_display_ids(make_config(), sessions)
         self.assertEqual(2, len({session["session"] for session in sessions}))
         self.assertTrue(all(len(session["session"]) > 8 for session in sessions))
 

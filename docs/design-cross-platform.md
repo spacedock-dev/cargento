@@ -86,6 +86,14 @@ platform, launcher path, and selected store roots, then freezes the derived path
 receives the server start time. Importing either runtime module therefore does not sample the
 ambient environment, clock, or filesystem.
 
+Helpers that have moved into the runtime package take their context from that frozen configuration
+rather than from per-call keywords. `project_from_cwd(config, cwd)` reads `config.os_name` and
+`config.home`, and `age`, `is_fresh` and `newest_plausible` read
+`config.future_skew_tolerance_sec`, so a cross-platform test builds a config for the target
+platform instead of passing hidden `home=` and `windows=` overrides. Either shape satisfies D-4;
+prefer the config field once the value is already frozen in `RuntimeConfig`, because an optional
+override is a second source of truth for the same fact.
+
 The payoff is testing: the Linux CI runner executes the Windows and macOS branches directly, with no
 `sys.platform` mocking and no frozen clock, so a platform branch is never dead code on the runner
 that gates the merge. Write new platform-dependent code this way by default.

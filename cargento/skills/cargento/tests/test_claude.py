@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from cargento_runtime import records
+from cargento_runtime import sessions as runtime_sessions
 
 from .support import LegacyDashboardTestCase, dashboard
 
@@ -763,7 +764,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # fallback stays whole rather than guessing at a split.
         now = dashboard.time.time()
         home = "/Users/cl"
-        encoded = f"{dashboard.encoded_home_prefix(home)}-git-spacedock-subspace"
+        encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
         with tempfile.TemporaryDirectory() as tmp:
             project_dir = Path(tmp) / "projects" / encoded
             project_dir.mkdir(parents=True)
@@ -772,7 +773,6 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
                 mock.patch.object(dashboard, "HOME", home),
-                mock.patch.object(dashboard, "HOME_PREFIX", dashboard.encoded_home_prefix(home)),
             ):
                 sessions = dashboard.collect_claude(now, 24, False)
 

@@ -25,6 +25,7 @@ cargento/                           # plugin root
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── records.py          # untrusted-record parsing and normalization
+        │   ├── sessions.py         # session identity, shape, and deterministic aggregation
         │   ├── state.py            # mutable process state, locks, and bounded caches
         │   └── web/                # HTML, CSS, JS, and byte-preserving page loader
         ├── agents/openai.yaml      # Codex presentation metadata

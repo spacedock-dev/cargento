@@ -24,9 +24,7 @@ import hashlib
 import http.client
 import json
 import math
-import ntpath
 import os
-import posixpath
 import re
 import select
 import socket
@@ -47,13 +45,14 @@ from urllib.parse import parse_qs, unquote, urlparse
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import records
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
 from cargento_runtime.web import page as frontend_page
 
 sqlite3 = runtime_io.sqlite_module
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator
+    from collections.abc import Callable, Iterator
 
 
 def _runtime_environ(home: str | None = None) -> dict[str, str]:
@@ -292,25 +291,6 @@ def _install_legacy_state(state: runtime_state.RuntimeState) -> None:
     _collect_memo = state.collect_memo
 
 
-def encoded_home_prefix(home: str) -> str:
-    """Reproduce how Claude encodes ``home`` into a ``projects/`` directory name.
-
-    Claude turns a working directory into a directory name by replacing path
-    separators with ``-``; stripping that prefix is what leaves a readable
-    project label. Replacing only ``/`` worked on POSIX and did nothing on a
-    Windows home, so every Claude row there showed the whole encoded path
-    instead of the project.
-
-    Backslash and the drive colon are folded too. The exact Windows encoding is
-    not documented, so this is deliberately non-destructive: if it turns out to
-    differ, the prefix simply does not match and project_label() shows the full
-    name — exactly what it does today.
-    """
-    return re.sub(r"[/\\:]", "-", home)
-
-
-HOME_PREFIX = encoded_home_prefix(HOME)
-
 # Tools that mean Claude is blocked on the human, not just running long.
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 # Claude Code's documented Notification matcher values. ``idle_timeout`` is
@@ -390,78 +370,6 @@ def notification_disposition(notification_type: Any, message: str) -> tuple[bool
         return (True, True)  # future/unknown structured prompt: fail visible
     idle_nudge = message.strip().lower().startswith("claude is waiting for your input")
     return (not idle_nudge, True)
-
-
-def project_label(dirname: str, home_prefix: str | None = None) -> str:
-    """Shorten an encoded project directory name to just the project part."""
-    prefix = HOME_PREFIX if home_prefix is None else home_prefix
-    dirname = dirname.removeprefix(prefix)
-    return dirname.lstrip("-") or "(home)"
-
-
-def project_from_cwd(cwd: str, home: str | None = None, windows: bool | None = None) -> str:
-    """``<parent>/<basename>`` for a working directory, ``""`` when unusable.
-
-    One directory has to read the same on every harness row, so this is the
-    single rule they all share. Bare basename was the old per-collector rule
-    and it collapses every checkout named ``subspace`` into one label; two
-    segments keep sibling worktrees apart without pasting a whole path into
-    the row.
-
-    Separators are the host's, via ``ntpath``/``posixpath``, never a hand-rolled
-    split on both. ``docs/design-cross-platform.md`` rejects that helper outright:
-    ``\\`` is a legal POSIX filename character, so splitting on it turns one
-    directory named ``my\\proj`` into two. Cargento only ever reads stores written
-    on the machine it runs on, so the host's own rules are the correct ones.
-
-    A path under ``home`` is labelled relative to it, because ``project_label``
-    strips the home prefix and the two have to agree: ``~/foo`` reads ``foo``
-    from either, never ``<username>/foo``.
-
-    ``home`` and ``windows`` are injectable so one runner exercises both
-    platforms (design decision D-4).
-
-    Callers apply their own fallback to ``""`` — the harness name, or the
-    encoded-directory label for the two collectors that have one.
-    """
-    path = ntpath if (os.name == "nt" if windows is None else windows) else posixpath
-    if not cwd or not path.isabs(cwd):
-        return ""  # a relative cwd names no project; fall through to the caller
-    home_dir = HOME if home is None else home
-
-    def trim(value: str) -> str:
-        seps = path.sep + (path.altsep or "")
-        return value.rstrip(seps) or value
-
-    # normcase folds Windows case *and* separators, and preserves length, so
-    # the comparison is spelling-independent and the slice below stays valid.
-    cwd_cmp, home_cmp = path.normcase(trim(cwd)), path.normcase(trim(home_dir))
-    if cwd_cmp == home_cmp:
-        return "(home)"
-    rest = trim(cwd)
-    if home_cmp and cwd_cmp.startswith(home_cmp + path.sep):
-        rest = rest[len(trim(home_dir)) :]
-    else:
-        rest = path.splitdrive(rest)[1]  # "C:" names no project
-    if path.altsep:  # Windows accepts either spelling; POSIX has no altsep
-        rest = rest.replace(path.altsep, path.sep)
-    parts = [p for p in rest.split(path.sep) if p and p != "."]
-    if any(p == ".." for p in parts):
-        return ""  # an unresolved cwd would render as an absurd label
-    return "/".join(parts[-2:])
-
-
-def fmt_duration(seconds: float | None) -> str:
-    if seconds is None or seconds < 0:
-        return "–"
-    seconds = int(seconds)
-    if seconds < 60:
-        return f"{seconds}s"
-    if seconds < 3600:
-        return f"{seconds // 60}m"
-    if seconds < 86400:
-        return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
-    return f"{seconds // 86400}d {(seconds % 86400) // 3600}h"
 
 
 def normalize_host(value: str) -> str:
@@ -560,108 +468,7 @@ class LoopbackHTTPServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def dedupe_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Collapse sessions found in more than one candidate store.
-
-    Scanning every candidate root means a session left behind by a migration
-    can be discovered twice. Most collectors key by session id internally and
-    merge naturally, but the database-backed ones append per store — so the
-    same id produced two rows and counted its tokens twice in the summary.
-    The freshest copy wins.
-    """
-    best: dict[tuple[str, str], dict[str, Any]] = {}
-    for session in sessions:
-        key = (str(session["harness"]), str(session["sid"]))
-        current = best.get(key)
-        if current is None or session["last_activity"] > current["last_activity"]:
-            best[key] = session
-    return list(best.values())
-
-
-def assign_display_ids(sessions: list[dict[str, Any]]) -> None:
-    """Widen each session's display id until it is unique among the rows it
-    could be confused with.
-
-    Codex hands out UUIDv7, whose leading 48 bits are a millisecond timestamp.
-    A fan-out launched in one directory therefore shares its leading hex, and
-    an 8-char display id rendered several distinct sessions as the same
-    harness, project and id — one session, apparently.
-
-    The group is ``(harness, project)`` because that is exactly what a row
-    prints beside the id, so those are the rows a reader has to tell apart.
-    Widening per harness instead would drag every unrelated row in that harness
-    out to the width one colliding fan-out needed: four agents started in the
-    same millisecond need 16 to 18 characters, and a lone session in another
-    worktree would inherit that for nothing.
-
-    Mutates ``session["session"]`` only. ``sid`` is what every caller keys on
-    and is left whole.
-    """
-    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for session in sessions:
-        groups.setdefault((str(session["harness"]), str(session["project"])), []).append(session)
-    for group in groups.values():
-        sids = [str(s["sid"]) for s in group]
-        width = DISPLAY_ID_LEN
-        longest = max((len(sid) for sid in sids), default=DISPLAY_ID_LEN)
-        # Terminates: width strictly increases and is bounded by the longest
-        # sid, where every prefix is the whole id. Comparing distinct prefixes
-        # against distinct sids also means repeated sids cannot drive it.
-        while width < longest and len({sid[:width] for sid in sids}) != len(set(sids)):
-            width += 1
-        for session in group:
-            session["session"] = str(session["sid"])[:width]
-
-
 _store_errors = _LEGACY_STATE.store_errors
-
-
-def age(now: float, timestamp: float) -> float | None:
-    """Seconds since ``timestamp``; ``None`` when the timestamp is implausible.
-
-    A timestamp far in the future is not activity. It arrives from a store
-    restored from backup, a file copied across the WSL boundary with its original
-    mtime, or a guest whose clock drifted while the host was suspended. Read as
-    an ordinary age, ``now - timestamp`` goes negative and satisfies *every*
-    ``<= threshold`` comparison built on it — so the session reads Working, and
-    keeps reading Working, for as long as the skew lasts. A clock a day ahead
-    buys a day of phantom activity and phantom output tokens.
-
-    Note that merely clamping the result at zero does not help: zero reads as
-    "just now", which is still fresh. An implausible timestamp has to be
-    rejected outright so no activity is invented from it. Overshoots within
-    ``FUTURE_SKEW_TOLERANCE_SEC`` are clamped instead of rejected, because at
-    that scale they are sampling noise — ``stat()`` and the collection clock are
-    read microseconds apart, and coarse filesystems (FAT's two-second write
-    time, some network mounts) round upward.
-    """
-    if timestamp - now > FUTURE_SKEW_TOLERANCE_SEC:
-        return None
-    return max(0.0, now - timestamp)
-
-
-def is_fresh(now: float, timestamp: float, window_sec: float) -> bool:
-    """Whether ``timestamp`` is a plausible time within ``window_sec`` of now."""
-    seconds = age(now, timestamp)
-    return seconds is not None and seconds <= window_sec
-
-
-def newest_plausible(now: float, timestamps: Iterable[float]) -> float:
-    """Newest timestamp that is not implausibly ahead of ``now``; 0 if none.
-
-    Every activity decision goes through this rather than ``max()``. ``max()``
-    picks the *implausible* value — a future timestamp is by definition the
-    largest — so rejecting it afterwards throws away the good evidence too, and
-    a transcript being written right now but holding one clock-skewed record
-    reads Idle. That is the opposite of what rejecting future timestamps is
-    for. It also matters for display (a skewed value renders as "–") and for
-    de-duplication, where it would beat a perfectly good copy of the session.
-
-    Callers then test the result with ``is_fresh()``: freshness is monotonic in
-    the timestamp, so checking the newest plausible source is equivalent to
-    checking them all, at half the work on every five-second refresh.
-    """
-    return max((t for t in timestamps if age(now, t) is not None), default=0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -1726,7 +1533,8 @@ def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[s
     past turns that lasted at least as long as the current one has so far."""
     if state != "working" or not scan or not scan.get("turn_start"):
         return None
-    elapsed = age(now, scan["turn_start"])
+    config, _ = _legacy_runtime()
+    elapsed = runtime_sessions.age(config, now, scan["turn_start"])
     if elapsed is None:
         return None  # turn start is implausibly ahead of the clock; no ETA
     history = scan.get("durations") or []
@@ -1734,13 +1542,13 @@ def turn_progress(scan: dict[str, Any] | None, state: str, now: float) -> dict[s
     if cands:
         est_total = cands[len(cands) // 2]
         return {
-            "elapsed_h": fmt_duration(elapsed),
-            "eta_h": fmt_duration(est_total - elapsed),
+            "elapsed_h": runtime_sessions.fmt_duration(elapsed),
+            "eta_h": runtime_sessions.fmt_duration(est_total - elapsed),
             "pct": min(99, round(elapsed * 100 / est_total)) if est_total else 99,
             "long": max(est_total, elapsed) >= LONG_TURN_WARN_SEC,
         }
     return {
-        "elapsed_h": fmt_duration(elapsed),
+        "elapsed_h": runtime_sessions.fmt_duration(elapsed),
         "eta_h": None,  # running longer than any recent turn
         "pct": 99 if history else None,
         "long": elapsed >= LONG_TURN_WARN_SEC,
@@ -1826,8 +1634,9 @@ def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, 
     """Running Claude subagents beneath the session directory; fresh mtime =
     running. Covers both layouts in ``CLAUDE_SUBAGENT_GLOBS``."""
     agents: list[dict[str, Any]] = []
+    config, _ = _legacy_runtime()
     for fp, mtime in claude_agent_transcripts(transcript):
-        if not is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
+        if not runtime_sessions.is_fresh(config, now, mtime, WORKING_THRESHOLD_SEC):
             continue
         label = None
         try:
@@ -1955,47 +1764,6 @@ def maybe_popup(
 # Session assembly helpers
 
 
-def base_session(harness: str, sid: Any, project: str) -> dict[str, Any]:
-    # "session" is the display id and starts at the DISPLAY_ID_LEN floor;
-    # assign_display_ids() widens it per harness where that floor collides.
-    # "sid" keeps the full identity so the client can key per-session state
-    # without truncation collisions (e.g. two Gemini "session-*" fallback ids
-    # are one string apart at the floor). Claude passes its 8-char prefix, so
-    # sid == session there — that whole collector is already keyed on the
-    # prefix upstream, and widening is a no-op for it.
-    return {
-        "session": str(sid)[:8],
-        "sid": str(sid),
-        "harness": harness,
-        "project": project,
-        "title": None,
-        "last_prompt": "",
-        "state": "idle",
-        "state_detail": "awaiting your message",
-        "active": False,
-        "last_activity": 0,
-        "rate_per_min": 0,
-        "total": 0,
-        "done": 0,
-        "open": 0,
-        "progress_pct": 0,
-        "eta_h": None,
-        "turn": None,
-        "subagents": [],
-        "tasks": [],
-        "spacedock": None,
-    }
-
-
-def rate_from(info: dict[str, Any] | None, now: float) -> int:
-    if not info:
-        return 0
-    recent: float = sum(
-        tok for ep, tok in info["usage_events"] if is_fresh(now, ep, RATE_WINDOW_SEC)
-    )
-    return round(recent / (RATE_WINDOW_SEC / 60))
-
-
 def codex_subagent_rate(path: str, now: float) -> int:
     """Recent Codex subagent output after its own task_started boundary."""
     scan = scan_turns(path, "codex")
@@ -2003,21 +1771,13 @@ def codex_subagent_rate(path: str, now: float) -> int:
     if not start:
         return 0
     info = analyze_codex_transcript(path)
+    config, _ = _legacy_runtime()
     recent: float = sum(
         tokens
         for epoch, tokens in info["usage_events"]
-        if epoch >= start and is_fresh(now, epoch, RATE_WINDOW_SEC)
+        if epoch >= start and runtime_sessions.is_fresh(config, now, epoch, RATE_WINDOW_SEC)
     )
     return round(recent / (RATE_WINDOW_SEC / 60))
-
-
-def working_detail(info: dict[str, Any] | None, subagents: list[Any]) -> str:
-    if subagents:
-        n = len(subagents)
-        return f"running {n} subagent{'s' if n > 1 else ''}"
-    if info and info.get("last_tool"):
-        return f"running {info['last_tool']}"
-    return "generating…"
 
 
 # ---------------------------------------------------------------------------
@@ -2678,8 +2438,9 @@ def sd_read_entities(
     """
     declared = set(stages)
     out: list[tuple[str, str]] = []
+    config, _ = _legacy_runtime()
     for slug, path, info in sd_entity_files(entity_dir):
-        if not is_fresh(now, info.st_mtime, window_sec):
+        if not runtime_sessions.is_fresh(config, now, info.st_mtime, window_sec):
             continue
         stage = sd_entity_stage(path, info)
         if stage in declared:
@@ -2821,12 +2582,14 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             mtime = os.path.getmtime(fp)
         except OSError:
             continue  # transcript rotated/deleted between glob and stat
-        if show_all or is_fresh(now, mtime, window_hours * 3600):
+        if show_all or runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600):
             is_agent, agent_name, parent_prefix = claude_agent_identity(fp)
             if is_agent:
                 # Fold into the parent session; never a standalone session.
                 # Without a parent prefix there is nothing to attach to.
-                if parent_prefix and is_fresh(now, mtime, window_hours * 3600):
+                if parent_prefix and runtime_sessions.is_fresh(
+                    config, now, mtime, window_hours * 3600
+                ):
                     agent_children.setdefault(parent_prefix, []).append(
                         {
                             "path": fp,
@@ -2860,7 +2623,9 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         subagents += [
             {"label": c["label"], "mtime": c["mtime"]}
             for c in children
-            if is_fresh(now, c["mtime"], WORKING_THRESHOLD_SEC)  # fresh = running
+            if runtime_sessions.is_fresh(
+                config, now, c["mtime"], WORKING_THRESHOLD_SEC
+            )  # fresh = running
         ]
         latest_agent_mtime = max(
             (a["mtime"] for a in subagents),
@@ -2878,17 +2643,19 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             latest_agent_file_mtime,
             latest_child_mtime,
         )
-        last_activity = newest_plausible(now, activity_sources)
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
+        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
 
         project = (
             (
-                project_from_cwd(claude_session_cwd(transcript))
+                runtime_sessions.project_from_cwd(config, claude_session_cwd(transcript))
                 # Lossy fallback: the encoded name cannot be split back into
                 # segments, so it stays whole rather than guessing at a split.
-                or project_label(os.path.basename(os.path.dirname(transcript)))
+                or runtime_sessions.project_label(
+                    config, os.path.basename(os.path.dirname(transcript))
+                )
             )
             if transcript
             else "unknown"
@@ -2913,21 +2680,24 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             p = info["pending_input_tool"]
             state = "needs_input"
             blocked_since = p["ts"] or last_activity
-            state_detail = f"open question ({p['name']}), waiting {fmt_duration(age(now, p['ts'])) if p['ts'] else '?'}"
+            state_detail = f"open question ({p['name']}), waiting {runtime_sessions.fmt_duration(runtime_sessions.age(config, now, p['ts'])) if p['ts'] else '?'}"
         # Fresh activity beats a hook: Claude Code emits "waiting for your
         # input" notifications for sessions that keep running via background
         # tasks and will resume on their own. A hook only surfaces as
         # needs-input once the session actually goes quiet; permission-prompt
         # popups are unaffected (they fire on the POST itself).
-        elif subagents or is_fresh(
-            now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC
+        elif subagents or runtime_sessions.is_fresh(
+            config,
+            now,
+            runtime_sessions.newest_plausible(config, now, last_event_sources),
+            WORKING_THRESHOLD_SEC,
         ):
             state = "working"
             in_prog = next((t for t in tasks if t["status"] == "in_progress"), None)
             if in_prog:
                 state_detail = (in_prog["activeForm"] or in_prog["subject"]) + "…"
             else:
-                state_detail = working_detail(info, subagents)
+                state_detail = runtime_sessions.working_detail(info, subagents)
         elif hook:
             state = "needs_input"
             blocked_since = hook["ts"]
@@ -2962,12 +2732,15 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             elapsed = (
                 (t["updated"] - t["created"])
                 if t["status"] == "completed"
-                else age(now, t["created"])
+                else runtime_sessions.age(config, now, t["created"])
             )
-            t["elapsed_h"] = fmt_duration(elapsed)
-            t["updated_ago"] = fmt_duration(age(now, t["updated"])) + " ago"
+            t["elapsed_h"] = runtime_sessions.fmt_duration(elapsed)
+            t["updated_ago"] = (
+                runtime_sessions.fmt_duration(runtime_sessions.age(config, now, t["updated"]))
+                + " ago"
+            )
 
-        s = base_session("claude", prefix, project)
+        s = runtime_sessions.base_session("claude", prefix, project)
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -2979,22 +2752,22 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 "last_activity": last_activity,
                 # Subagent output now lives in the children's own transcripts;
                 # fold it in so the session's rate reflects all its work.
-                "rate_per_min": rate_from(info, now)
+                "rate_per_min": runtime_sessions.rate_from(info, now, config)
                 + sum(
-                    rate_from(analyze_transcript(path), now)
+                    runtime_sessions.rate_from(analyze_transcript(path), now, config)
                     for path, mtime in agent_files
-                    if is_fresh(now, mtime, RATE_WINDOW_SEC)
+                    if runtime_sessions.is_fresh(config, now, mtime, RATE_WINDOW_SEC)
                 )
                 + sum(
-                    rate_from(analyze_transcript(c["path"]), now)
+                    runtime_sessions.rate_from(analyze_transcript(c["path"]), now, config)
                     for c in children
-                    if is_fresh(now, c["mtime"], RATE_WINDOW_SEC)
+                    if runtime_sessions.is_fresh(config, now, c["mtime"], RATE_WINDOW_SEC)
                 ),
                 "total": total,
                 "done": done,
                 "open": open_count,
                 "progress_pct": round(done * 100 / total) if total else 0,
-                "eta_h": fmt_duration(eta_sec) if eta_sec else None,
+                "eta_h": runtime_sessions.fmt_duration(eta_sec) if eta_sec else None,
                 "turn": turn_progress(
                     scan_turns(transcript, "claude") if (info and transcript) else None,
                     state,
@@ -3066,9 +2839,9 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         if meta.get("subagent"):
             parent_sid = meta.get("parent_session_id") or sid
             data = agent_data.setdefault(parent_sid, {"agents": [], "rate": 0})
-            if is_fresh(now, mtime, RATE_WINDOW_SEC):
+            if runtime_sessions.is_fresh(config, now, mtime, RATE_WINDOW_SEC):
                 data["rate"] += codex_subagent_rate(fp, now)
-            if is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
+            if runtime_sessions.is_fresh(config, now, mtime, WORKING_THRESHOLD_SEC):
                 data["agents"].append(((meta.get("agent_label") or "subagent")[:70], mtime))
             continue
         if sid not in sessions or mtime > sessions[sid][0]:
@@ -3079,19 +2852,28 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
         data = agent_data.get(sid) or {"agents": [], "rate": 0}
         agents = sorted(data["agents"], key=lambda a: -a[1])
         activity_sources = (mtime, *(m for _, m in agents))
-        last_activity = newest_plausible(now, activity_sources)
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
+        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_codex_transcript(fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
+        if runtime_sessions.is_fresh(
+            config,
+            now,
+            runtime_sessions.newest_plausible(config, now, last_event_sources),
+            WORKING_THRESHOLD_SEC,
+        ):
             state = "working"
-            state_detail = working_detail(info, subagents)
+            state_detail = runtime_sessions.working_detail(info, subagents)
 
-        s = base_session("codex", sid, project_from_cwd(codex_meta(fp).get("cwd") or "") or "codex")
+        s = runtime_sessions.base_session(
+            "codex",
+            sid,
+            runtime_sessions.project_from_cwd(config, codex_meta(fp).get("cwd") or "") or "codex",
+        )
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -3100,7 +2882,7 @@ def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": last_activity,
-                "rate_per_min": rate_from(info, now) + data["rate"],
+                "rate_per_min": runtime_sessions.rate_from(info, now, config) + data["rate"],
                 "turn": turn_progress(scan_turns(fp, "codex") if info else None, state, now),
                 "subagents": subagents,
             }
@@ -3148,16 +2930,16 @@ def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str
         except (OSError, ValueError):
             continue
         last_event_ts = info["last_event_ts"] if info else 0
-        last_activity = newest_plausible(now, (last_event_ts, mtime))
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        last_activity = runtime_sessions.newest_plausible(config, now, (last_event_ts, mtime))
+        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
+        if runtime_sessions.is_fresh(config, now, last_activity, WORKING_THRESHOLD_SEC):
             state = "working"
-            state_detail = working_detail(info, [])
-        project = project_from_cwd(meta.get("cwd") or "") or "pi"
-        session = base_session("pi", sid, project)
+            state_detail = runtime_sessions.working_detail(info, [])
+        project = runtime_sessions.project_from_cwd(config, meta.get("cwd") or "") or "pi"
+        session = runtime_sessions.base_session("pi", sid, project)
         session.update(
             {
                 "title": (info or {}).get("title"),
@@ -3166,7 +2948,7 @@ def collect_pi(now: float, window_hours: float, show_all: bool) -> list[dict[str
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": last_activity,
-                "rate_per_min": rate_from(info, now),
+                "rate_per_min": runtime_sessions.rate_from(info, now, config),
                 "turn": turn_progress((info or {}).get("turn"), state, now),
             }
         )
@@ -3221,6 +3003,7 @@ def antigravity_session_metadata(
     """
     sessions: dict[str, dict[str, Any]] = {}
     cached_cwds: dict[str, str] = {}
+    config, _ = _legacy_runtime()
     try:
         with open(ANTIGRAVITY_LAST_CONVERSATIONS, encoding="utf-8") as source:
             recent = json.load(source)
@@ -3229,7 +3012,7 @@ def antigravity_session_metadata(
                 if (
                     isinstance(workspace, str)
                     and isinstance(sid, str)
-                    and project_from_cwd(workspace)
+                    and runtime_sessions.project_from_cwd(config, workspace)
                 ):
                     sessions.setdefault(sid, {})["cwd"] = workspace
                     cached_cwds[sid] = workspace
@@ -3246,7 +3029,9 @@ def antigravity_session_metadata(
         recent_logs: list[str] = []
         for path in logs:
             try:
-                if is_fresh(now, os.path.getmtime(path), window_hours * 3600):
+                if runtime_sessions.is_fresh(
+                    config, now, os.path.getmtime(path), window_hours * 3600
+                ):
                     recent_logs.append(path)
             except OSError:
                 continue
@@ -3342,13 +3127,14 @@ def antigravity_wal_has_data(path: str) -> bool:
 
 def antigravity_store_mtime(path: str, now: float) -> float:
     """Newest plausible durable activity marker for a conversation store."""
+    config, _ = _legacy_runtime()
     mtimes: list[float] = []
     with contextlib.suppress(OSError):
         mtimes.append(os.path.getmtime(path))
     if antigravity_wal_has_data(path):
         with contextlib.suppress(OSError):
             mtimes.append(os.path.getmtime(path + "-wal"))
-    return newest_plausible(now, mtimes)
+    return runtime_sessions.newest_plausible(config, now, mtimes)
 
 
 def protobuf_fields(payload: Any) -> Iterator[tuple[int, int, Any]]:
@@ -3463,7 +3249,7 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
     }
     if not runtime_io.sqlite_available():
         return result
-    _, state = _legacy_runtime()
+    config, state = _legacy_runtime()
     query = "SELECT step_type, metadata FROM steps ORDER BY idx DESC LIMIT ?"
     rows = None
     read_error: BaseException | None = None
@@ -3509,7 +3295,11 @@ def antigravity_step_activity(path: str, now: float) -> dict[str, Any]:
         if action and epoch >= last_prompt:
             latest_action = (epoch, action)
 
-    recent = sum(tokens for epoch, tokens in usage_events if is_fresh(now, epoch, RATE_WINDOW_SEC))
+    recent = sum(
+        tokens
+        for epoch, tokens in usage_events
+        if runtime_sessions.is_fresh(config, now, epoch, RATE_WINDOW_SEC)
+    )
     result["rate_per_min"] = round(recent / (RATE_WINDOW_SEC / 60))
     result["turns"] = turns_from_events(events) if events else None
     result["last_tool_action"] = latest_action[1]
@@ -3586,6 +3376,7 @@ def antigravity_session_info(path: str, sid: str) -> dict[str, Any]:
 
 
 def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
+    config, _ = _legacy_runtime()
     metadata = antigravity_session_metadata(now, window_hours, show_all)
     dbs = runtime_io.glob_under(ANTIGRAVITY_CONVERSATIONS_DIR, "*.db")
 
@@ -3605,7 +3396,7 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
     pending = [
         sid
         for sid, mtime in db_mtimes.items()
-        if show_all or is_fresh(now, mtime, window_hours * 3600)
+        if show_all or runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
     ]
     inspected: set[str] = set()
     while pending:
@@ -3645,8 +3436,8 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
             continue
         agents = sorted(descendants(sid), key=lambda a: -a[2])
         activity_sources = (session_mtime, *(mtime for _, _, mtime in agents))
-        last_activity = newest_plausible(now, activity_sources)
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
+        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         activity: dict[str, Any] = (
@@ -3658,27 +3449,27 @@ def collect_antigravity(now: float, window_hours: float, show_all: bool) -> list
             activity["rate_per_min"] += sum(
                 antigravity_step_activity(db_paths[agent_sid], now)["rate_per_min"]
                 for agent_sid, _, agent_mtime in agents
-                if is_fresh(now, agent_mtime, RATE_WINDOW_SEC)
+                if runtime_sessions.is_fresh(config, now, agent_mtime, RATE_WINDOW_SEC)
             )
         subagents = [
             label
             for _, label, agent_mtime in agents
-            if is_fresh(now, agent_mtime, WORKING_THRESHOLD_SEC)
+            if runtime_sessions.is_fresh(config, now, agent_mtime, WORKING_THRESHOLD_SEC)
         ]
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
+        if runtime_sessions.is_fresh(config, now, last_activity, WORKING_THRESHOLD_SEC):
             state = "working"
             state_detail = (
-                working_detail(None, subagents)
+                runtime_sessions.working_detail(None, subagents)
                 if subagents
-                else activity["last_tool_action"] or working_detail(None, [])
+                else activity["last_tool_action"] or runtime_sessions.working_detail(None, [])
             )
 
         meta = metadata.get(sid) or {}
         prompt = str(meta.get("last_prompt") or "").strip()
         cwd = str(meta.get("cwd") or "").strip()
-        project = project_from_cwd(cwd) or "antigravity"
-        session = base_session("gemini", sid, project)
+        project = runtime_sessions.project_from_cwd(config, cwd) or "antigravity"
+        session = runtime_sessions.base_session("gemini", sid, project)
         session.update(
             {
                 "title": prompt.split("\n")[0][:80] or None,
@@ -3717,7 +3508,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
-        if not is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
+        if not runtime_sessions.is_fresh(config, now, mtime, WORKING_THRESHOLD_SEC):
             continue
         parent = records.alnum(os.path.basename(os.path.dirname(fp)))
         label = "subagent " + os.path.basename(fp)[:8]
@@ -3748,23 +3539,30 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     for sid, (mtime, fp) in sessions.items():
         agents = sorted(agents_by_parent.get(records.alnum(sid), []), key=lambda a: -a[1])
         activity_sources = (mtime, *(m for _, m in agents))
-        last_activity = newest_plausible(now, activity_sources)
-        active = is_fresh(now, last_activity, window_hours * 3600)
+        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
+        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_gemini_transcript(fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [label for label, _ in agents]
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
+        if runtime_sessions.is_fresh(
+            config,
+            now,
+            runtime_sessions.newest_plausible(config, now, last_event_sources),
+            WORKING_THRESHOLD_SEC,
+        ):
             state = "working"
-            state_detail = working_detail(info, subagents)
+            state_detail = runtime_sessions.working_detail(info, subagents)
 
         cwd = gemini_meta(fp).get("cwd")
-        project = project_from_cwd(cwd or "") or project_label(
-            os.path.basename(os.path.dirname(os.path.dirname(fp)))
+        project = runtime_sessions.project_from_cwd(
+            config, cwd or ""
+        ) or runtime_sessions.project_label(
+            config, os.path.basename(os.path.dirname(os.path.dirname(fp)))
         )
-        s = base_session("gemini", sid, project)
+        s = runtime_sessions.base_session("gemini", sid, project)
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -3773,7 +3571,7 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": last_activity,
-                "rate_per_min": rate_from(info, now),
+                "rate_per_min": runtime_sessions.rate_from(info, now, config),
                 "turn": turn_progress(scan_turns(fp, "gemini") if info else None, state, now),
                 "subagents": subagents,
             }
@@ -3809,20 +3607,27 @@ def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dic
 
     out: list[dict[str, Any]] = []
     for sid, (mtime, fp) in files.items():
-        active = is_fresh(now, mtime, window_hours * 3600)
+        active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
         info = analyze_copilot_events(fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
         subagents: list[str] = []
-        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
+        if runtime_sessions.is_fresh(
+            config,
+            now,
+            runtime_sessions.newest_plausible(config, now, last_event_sources),
+            WORKING_THRESHOLD_SEC,
+        ):
             state = "working"
             subagents = list((info or {}).get("pending_agents", {}).values())
-            state_detail = working_detail(info, subagents)
+            state_detail = runtime_sessions.working_detail(info, subagents)
 
         cwd = (info or {}).get("cwd") or copilot_meta(fp).get("cwd")
-        s = base_session("copilot", sid, project_from_cwd(cwd or "") or "copilot")
+        s = runtime_sessions.base_session(
+            "copilot", sid, runtime_sessions.project_from_cwd(config, cwd or "") or "copilot"
+        )
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -3879,7 +3684,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                     continue  # archival bumps time_updated; don't ghost as working
                 upd = records.norm_epoch(r["time_updated"])
                 if r["parent_id"]:
-                    if is_fresh(now, upd, WORKING_THRESHOLD_SEC):
+                    if runtime_sessions.is_fresh(config, now, upd, WORKING_THRESHOLD_SEC):
                         children.setdefault(r["parent_id"], []).append(
                             ((r["title"] or "subagent")[:70], upd)
                         )
@@ -3888,15 +3693,15 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
             for r, upd in tops:
                 agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
                 activity_sources = (upd, *(m for _, m in agents))
-                last_activity = newest_plausible(now, activity_sources)
-                active = is_fresh(now, last_activity, window_hours * 3600)
+                last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
+                active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
                 if not (active or show_all):
                     continue
                 subagents = [label for label, _ in agents]
                 state, state_detail = "idle", "awaiting your message"
-                if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
+                if runtime_sessions.is_fresh(config, now, last_activity, WORKING_THRESHOLD_SEC):
                     state = "working"
-                    state_detail = working_detail(None, subagents)
+                    state_detail = runtime_sessions.working_detail(None, subagents)
 
                 turn = None
                 last_prompt = ""
@@ -3924,8 +3729,10 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
                         pass
                     turn = turn_progress(turns_from_events(events), state, now)
 
-                s = base_session(
-                    "opencode", r["id"], project_from_cwd(r["directory"] or "") or "opencode"
+                s = runtime_sessions.base_session(
+                    "opencode",
+                    r["id"],
+                    runtime_sessions.project_from_cwd(config, r["directory"] or "") or "opencode",
                 )
                 s.update(
                     {
@@ -4080,14 +3887,16 @@ def collect_cursor(now: float, window_hours: float, show_all: bool) -> list[dict
                 mtime = max(mtime, os.path.getmtime(wal))
         except OSError:
             continue
-        active = is_fresh(now, mtime, window_hours * 3600)
+        active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, mtime, WORKING_THRESHOLD_SEC):
+        if runtime_sessions.is_fresh(config, now, mtime, WORKING_THRESHOLD_SEC):
             state, state_detail = "working", "generating…"
         title, cwd = _cursor_meta(db, mtime)
-        s = base_session("cursor", sid, project_from_cwd(cwd) or "cursor")
+        s = runtime_sessions.base_session(
+            "cursor", sid, runtime_sessions.project_from_cwd(config, cwd) or "cursor"
+        )
         s.update(
             {
                 "title": title if active else None,
@@ -4133,7 +3942,7 @@ def collect_goose_db(
     # Single shared sessions.db (v1.10.0+): per-session activity comes from
     # the updated_at column, NOT file mtime (the DB is shared by all
     # sessions). Legacy per-session .jsonl files are not supported.
-    _, runtime_state_value = _legacy_runtime()
+    config, runtime_state_value = _legacy_runtime()
     try:
         con = runtime_io.open_sqlite_read_only(goose_db, runtime_state_value)
     except sqlite3.Error:
@@ -4159,7 +3968,9 @@ def collect_goose_db(
             upd = records.parse_utc_sql(r["updated_at"])
             stype = records.alnum(r["session_type"])
             if stype == "subagent":
-                if r["parent_session_id"] and is_fresh(now, upd, WORKING_THRESHOLD_SEC):
+                if r["parent_session_id"] and runtime_sessions.is_fresh(
+                    config, now, upd, WORKING_THRESHOLD_SEC
+                ):
                     children.setdefault(r["parent_session_id"], []).append(
                         ((r["description"] or "subagent")[:70], upd)
                     )
@@ -4172,15 +3983,15 @@ def collect_goose_db(
         for r, upd in tops:
             agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
             activity_sources = (upd, *(m for _, m in agents))
-            last_activity = newest_plausible(now, activity_sources)
-            active = is_fresh(now, last_activity, window_hours * 3600)
+            last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
+            active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
             if not (active or show_all):
                 continue
             subagents = [label for label, _ in agents]
             state, state_detail = "idle", "awaiting your message"
-            if is_fresh(now, last_activity, WORKING_THRESHOLD_SEC):
+            if runtime_sessions.is_fresh(config, now, last_activity, WORKING_THRESHOLD_SEC):
                 state = "working"
-                state_detail = working_detail(None, subagents)
+                state_detail = runtime_sessions.working_detail(None, subagents)
 
             turn = None
             last_prompt = ""
@@ -4216,7 +4027,8 @@ def collect_goose_db(
                     recent = sum(
                         (x["output_tokens"] or 0)
                         for x in led
-                        if is_fresh(
+                        if runtime_sessions.is_fresh(
+                            config,
                             now,
                             records.norm_epoch(x["created_timestamp"]),
                             RATE_WINDOW_SEC,
@@ -4227,7 +4039,11 @@ def collect_goose_db(
                     pass
                 turn = turn_progress(turns_from_events(events), state, now)
 
-            s = base_session("goose", r["id"], project_from_cwd(r["working_dir"] or "") or "goose")
+            s = runtime_sessions.base_session(
+                "goose",
+                r["id"],
+                runtime_sessions.project_from_cwd(config, r["working_dir"] or "") or "goose",
+            )
             s.update(
                 {
                     "title": (r["description"] or "").strip()[:80] or None,
@@ -4259,7 +4075,7 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
             mtime = os.path.getmtime(fp)
         except OSError:
             continue
-        active = is_fresh(now, mtime, window_hours * 3600)
+        active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
         if not (active or show_all):
             continue
         meta = droid_meta(fp)
@@ -4267,14 +4083,19 @@ def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[
         info = analyze_droid_transcript(fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         state, state_detail = "idle", "awaiting your message"
-        if is_fresh(now, newest_plausible(now, last_event_sources), WORKING_THRESHOLD_SEC):
+        if runtime_sessions.is_fresh(
+            config,
+            now,
+            runtime_sessions.newest_plausible(config, now, last_event_sources),
+            WORKING_THRESHOLD_SEC,
+        ):
             state = "working"
-            state_detail = working_detail(info, [])
+            state_detail = runtime_sessions.working_detail(info, [])
 
-        project = project_from_cwd(meta.get("cwd") or "") or project_label(
-            os.path.basename(os.path.dirname(fp))
-        )
-        s = base_session("droid", sid, project)
+        project = runtime_sessions.project_from_cwd(
+            config, meta.get("cwd") or ""
+        ) or runtime_sessions.project_label(config, os.path.basename(os.path.dirname(fp)))
+        s = runtime_sessions.base_session("droid", sid, project)
         s.update(
             {
                 "title": (meta.get("title") or "").strip()[:80] or (info or {}).get("title"),
@@ -4394,8 +4215,9 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
             harness["error"] = f"{type(e).__name__}: {e}"
             runtime_io.diag(f"[{key}] collector error: {harness['error']}", print)
 
-    out_sessions = dedupe_sessions(out_sessions)
-    assign_display_ids(out_sessions)
+    config, _ = _legacy_runtime()
+    out_sessions = runtime_sessions.dedupe_sessions(out_sessions)
+    runtime_sessions.assign_display_ids(config, out_sessions)
     state_rank = {"needs_input": 0, "working": 1, "idle": 2}
     # Session id as tiebreaker (not last_activity) so rows don't reshuffle
     # on every refresh while sessions are generating.

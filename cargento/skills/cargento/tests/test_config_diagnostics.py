@@ -16,12 +16,14 @@ from typing import Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import bounded_put, build_runtime_state
 
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
+    make_config,
     make_runtime,
 )
 
@@ -755,14 +757,14 @@ class OperatingSystemExpectationTest(unittest.TestCase):
         ]
         for home, encoded, expected in cases:
             with self.subTest(home=home, encoded=encoded):
-                prefix = dashboard.encoded_home_prefix(home)
-                self.assertEqual(expected, dashboard.project_label(encoded, prefix))
+                config = make_config(home=home)
+                self.assertEqual(expected, runtime_sessions.project_label(config, encoded))
 
     def test_project_from_cwd_is_parent_over_basename(self) -> None:
         # DRC-3963. Bare basename collapses every checkout named "subspace"
         # into one label, so the contract is the last two path segments.
-        # home and windows are injected (D-4) so this runner exercises both
-        # platforms rather than only its own.
+        # The home and OS name come from an explicit config (D-4) so this
+        # runner exercises both platforms rather than only its own.
         posix = [
             ("/Users/cl/git/spacedock-research/spacedock/subspace", "spacedock/subspace"),
             ("/Users/cl/repos/recce/cargento", "recce/cargento"),
@@ -785,11 +787,10 @@ class OperatingSystemExpectationTest(unittest.TestCase):
             ("..", ""),
             ("/Users/cl/repos/..", ""),
         ]
+        posix_config = make_config(home="/Users/cl", os_name="posix")
         for cwd, expected in posix:
             with self.subTest(cwd=cwd, platform="posix"):
-                self.assertEqual(
-                    expected, dashboard.project_from_cwd(cwd, home="/Users/cl", windows=False)
-                )
+                self.assertEqual(expected, runtime_sessions.project_from_cwd(posix_config, cwd))
 
         windows = [
             (r"C:\Users\cl\git\spacedock\subspace", "spacedock/subspace"),
@@ -799,46 +800,44 @@ class OperatingSystemExpectationTest(unittest.TestCase):
             (r"C:\Users\cl\foo", "foo"),
             (r"relative\path", ""),
         ]
+        windows_config = make_config(home=r"C:\Users\cl", os_name="nt")
         for cwd, expected in windows:
             with self.subTest(cwd=cwd, platform="windows"):
                 self.assertEqual(
                     expected,
-                    dashboard.project_from_cwd(cwd, home=r"C:\Users\cl", windows=True),
+                    runtime_sessions.project_from_cwd(windows_config, cwd),
                 )
 
     def test_project_from_cwd_names_the_home_directory_in_any_spelling(self) -> None:
         # project_label() renders a session started in $HOME as "(home)".
         # On Windows the same directory can be recorded with either separator
         # and either case, and all of those spellings are one directory.
-        self.assertEqual(
-            "(home)", dashboard.project_from_cwd("/Users/cl", home="/Users/cl", windows=False)
-        )
-        self.assertEqual(
-            "(home)", dashboard.project_from_cwd("/Users/cl/", home="/Users/cl", windows=False)
-        )
+        posix_config = make_config(home="/Users/cl", os_name="posix")
+        self.assertEqual("(home)", runtime_sessions.project_from_cwd(posix_config, "/Users/cl"))
+        self.assertEqual("(home)", runtime_sessions.project_from_cwd(posix_config, "/Users/cl/"))
         # A sibling whose name merely starts with the home path is not home.
         self.assertEqual(
             "Users/clXYZ",
-            dashboard.project_from_cwd("/Users/clXYZ", home="/Users/cl", windows=False),
+            runtime_sessions.project_from_cwd(posix_config, "/Users/clXYZ"),
         )
+        windows_config = make_config(home=r"C:\Users\jared", os_name="nt")
         for spelling in (r"C:\Users\jared", "C:/Users/jared", r"c:\users\JARED", "C:/Users/Jared/"):
             with self.subTest(spelling=spelling):
                 self.assertEqual(
                     "(home)",
-                    dashboard.project_from_cwd(spelling, home=r"C:\Users\jared", windows=True),
+                    runtime_sessions.project_from_cwd(windows_config, spelling),
                 )
 
     def test_project_from_cwd_agrees_with_project_label_under_home(self) -> None:
         # The whole point of DRC-3963 is that one directory reads the same on
         # every row. The cwd path and the encoded-name fallback are the two
         # ways a label is produced, so they have to produce the same string.
-        home = "/Users/cl"
+        config = make_config(home="/Users/cl", os_name="posix")
         for cwd in ("/Users/cl/foo", "/Users/cl/git/spacedock/subspace"):
             with self.subTest(cwd=cwd):
-                encoded = dashboard.encoded_home_prefix(cwd)
-                prefix = dashboard.encoded_home_prefix(home)
-                from_cwd = dashboard.project_from_cwd(cwd, home=home, windows=False)
-                from_name = dashboard.project_label(encoded, prefix)
+                encoded = runtime_sessions.encoded_home_prefix(cwd)
+                from_cwd = runtime_sessions.project_from_cwd(config, cwd)
+                from_name = runtime_sessions.project_label(config, encoded)
                 # The encoded name cannot be split back into segments, so it
                 # keeps its hyphens; what must agree is that neither leaks the
                 # account name.
