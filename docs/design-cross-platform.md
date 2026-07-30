@@ -24,9 +24,9 @@ user's sessions.
 
 ## D-1: Scan every viable root, never pick one
 
-Each harness has an ordered *candidate set* of store roots (`resolve_store_roots` in `server.py`),
-and every candidate that exists is scanned on every collection pass. Results are de-duplicated by
-`(harness, session id)`, keeping the freshest copy.
+Each harness has an ordered *candidate set* of store roots (`resolve_store_roots` in
+`cargento_runtime/config.py`), and every candidate that exists is scanned on every collection pass.
+Results are de-duplicated by `(harness, session id)`, keeping the freshest copy.
 
 Rejected: selecting the first matching candidate at import. It regresses real users three ways. A
 store created after launch stays invisible until restart, an empty native directory shadows
@@ -79,6 +79,12 @@ that context explicitly rather than reading global state, and the caller passes 
 `sys.platform` string, `reuse_address_allowed(os_name)` takes `os.name`, `sqlite_ro_uri(...,
 windows=...)` takes an explicit flag, `encoded_home_prefix(home)` takes the home path, and
 `age` / `is_fresh` / `newest_plausible` take `now`.
+
+`build_runtime_config` applies the same rule at the process boundary. It receives the environment,
+platform, launcher path, and selected store roots, then freezes the derived paths and limits in
+`RuntimeConfig`. Mutable caches and locks belong to a separate `RuntimeState`, whose builder
+receives the server start time. Importing either runtime module therefore does not sample the
+ambient environment, clock, or filesystem.
 
 The payoff is testing: the Linux CI runner executes the Windows and macOS branches directly, with no
 `sys.platform` mocking and no frozen clock, so a platform branch is never dead code on the runner
