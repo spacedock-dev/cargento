@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import records
+from cargento_runtime import claude_data, records
 
 from .support import (
     HOOK_PATH,
@@ -810,7 +810,7 @@ class HookOrderingTest(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_lookup(_prefix: str) -> bool:
+        def slow_lookup(*_args: object) -> bool:
             started.set()
             release.wait(timeout=5)
             return False
@@ -827,7 +827,7 @@ class HookOrderingTest(unittest.TestCase):
 
         session = "deadbeef-0000-0000-0000-000000000000"
         with (
-            mock.patch.object(dashboard, "claude_prefix_is_agent", slow_lookup),
+            mock.patch.object(claude_data, "prefix_is_agent", slow_lookup),
             mock.patch.object(dashboard, "notify_mac"),
         ):
             notification = request(
@@ -908,14 +908,15 @@ class HookOrderingTest(unittest.TestCase):
             os.utime(transcript, (now - 300, now - 300))  # quiet, so state is decided above
 
             patches: dict[str, Any] = {"notify_mac": lambda *a: popups.append(a)}
+            data_patches: dict[str, Any] = {}
             if at == "analyze":
-                real_analyze = dashboard.analyze_transcript
+                real_analyze = claude_data.analyze_transcript
 
-                def analyze(path: str) -> Any:
+                def analyze(cfg: Any, st: Any, path: str) -> Any:
                     end_session()
-                    return real_analyze(path)
+                    return real_analyze(cfg, st, path)
 
-                patches["analyze_transcript"] = analyze
+                data_patches["analyze_transcript"] = analyze
             elif at == "popup":
                 real_popup = dashboard.maybe_popup
 
@@ -929,6 +930,12 @@ class HookOrderingTest(unittest.TestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
                 mock.patch.multiple(dashboard, **patches),
+                # patch.multiple rejects an empty mapping, so re-patch the real
+                # function when this variant does not intercept it.
+                mock.patch.multiple(
+                    claude_data,
+                    **(data_patches or {"analyze_transcript": claude_data.analyze_transcript}),
+                ),
             ):
                 sessions = dashboard.collect_claude(now, 24, True)
         return sessions[0]["state"], len(popups)
@@ -975,7 +982,7 @@ class HookOrderingTest(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_lookup(_prefix: str) -> bool:
+        def slow_lookup(*_args: object) -> bool:
             started.set()
             release.wait(timeout=5)
             return False
@@ -1000,13 +1007,13 @@ class HookOrderingTest(unittest.TestCase):
             }
         )
         with (
-            mock.patch.object(dashboard, "claude_prefix_is_agent", slow_lookup),
+            mock.patch.object(claude_data, "prefix_is_agent", slow_lookup),
             mock.patch.object(dashboard, "notify_mac"),
         ):
             thread = threading.Thread(target=first.do_POST)
             thread.start()
             self.assertTrue(started.wait(timeout=5))
-            with mock.patch.object(dashboard, "claude_prefix_is_agent", lambda _: False):
+            with mock.patch.object(claude_data, "prefix_is_agent", lambda *_a: False):
                 request(second).do_POST()
             release.set()
             thread.join(timeout=5)
@@ -1053,7 +1060,7 @@ class HookOrderingTest(unittest.TestCase):
         handler._local_ok = lambda **_kw: True
         handler._send = lambda *_a, **_k: None
         with (
-            mock.patch.object(dashboard, "claude_prefix_is_agent", lambda _: False),
+            mock.patch.object(claude_data, "prefix_is_agent", lambda *_a: False),
             mock.patch.object(dashboard, "notify_mac"),
         ):
             handler.do_POST()
@@ -1104,8 +1111,10 @@ class GlobUnderTest(unittest.TestCase):
                 + "\n"
             )
             with mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)):
-                self.assertFalse(dashboard.claude_prefix_is_agent("[a-z]*"))
-                self.assertTrue(dashboard.claude_prefix_is_agent("aaaaaaaa"))
+                config, state = dashboard._legacy_runtime()
+                self.assertFalse(claude_data.prefix_is_agent(config, state, "[a-z]*"))
+                config, state = dashboard._legacy_runtime()
+                self.assertTrue(claude_data.prefix_is_agent(config, state, "aaaaaaaa"))
 
 
 class InstalledContractCharacterizationTest(unittest.TestCase):
@@ -1198,7 +1207,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
         try:
             with (
-                mock.patch.object(dashboard, "claude_hook_user_event", side_effect=slow_lookup),
+                mock.patch.object(claude_data, "hook_user_event", side_effect=slow_lookup),
                 mock.patch.object(dashboard, "notify_mac"),
             ):
                 worker = threading.Thread(target=post_notification)

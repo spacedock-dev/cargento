@@ -14,6 +14,8 @@ from unittest import mock
 
 from cargento_runtime import aggregate
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime import transcripts as runtime_transcripts
+from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import codex as codex_collector
 
 from . import test_claude, test_codex, test_copilot, test_droid, test_pi
@@ -444,6 +446,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",
         },
+        "cargento_runtime.claude_data": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.state",
+            "cargento_runtime.transcripts",
+        },
         "cargento_runtime.collectors.codex": {
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -626,6 +635,17 @@ from . import page as sibling_page
             "rate_from",
             "working_detail",
         )
+        claude_data_symbols = (
+            "claude_session_title",
+            "claude_last_user_event",
+            "analyze_transcript",
+            "claude_session_cwd",
+            "claude_hook_user_event",
+            "claude_agent_identity",
+            "claude_agent_setting",
+            "claude_prefix_is_agent",
+            "INPUT_TOOLS",
+        )
         transcript_symbols = (
             "first_line_meta",
             "codex_meta",
@@ -654,6 +674,7 @@ from . import page as sibling_page
             *session_symbols,
             *transcript_symbols,
             *turn_symbols,
+            *claude_data_symbols,
         ):
             with self.subTest(symbol=symbol):
                 self.assertFalse(hasattr(dashboard, symbol))
@@ -663,21 +684,19 @@ from . import page as sibling_page
         # derives the encoded prefix from config.home on every call.
         self.assertTrue(
             all(
-                hasattr(dashboard.runtime_sessions, symbol)
+                hasattr(runtime_sessions, symbol)
                 for symbol in session_symbols
                 if symbol != "HOME_PREFIX"
             )
         )
         self.assertFalse(hasattr(runtime_sessions, "HOME_PREFIX"))
-        self.assertTrue(
-            all(hasattr(dashboard.runtime_transcripts, symbol) for symbol in transcript_symbols)
-        )
+        self.assertTrue(all(hasattr(runtime_transcripts, symbol) for symbol in transcript_symbols))
         self.assertIs(sys.modules["cargento_runtime.io"], dashboard.runtime_io)
         self.assertIs(sys.modules["cargento_runtime.records"], dashboard.records)
-        self.assertIs(sys.modules["cargento_runtime.sessions"], dashboard.runtime_sessions)
-        self.assertTrue(all(hasattr(dashboard.runtime_turns, s) for s in turn_symbols))
-        self.assertIs(sys.modules["cargento_runtime.transcripts"], dashboard.runtime_transcripts)
-        self.assertIs(sys.modules["cargento_runtime.turns"], dashboard.runtime_turns)
+        self.assertIs(sys.modules["cargento_runtime.sessions"], runtime_sessions)
+        self.assertTrue(all(hasattr(runtime_turns, s) for s in turn_symbols))
+        self.assertIs(sys.modules["cargento_runtime.transcripts"], runtime_transcripts)
+        self.assertIs(sys.modules["cargento_runtime.turns"], runtime_turns)
 
     def test_importing_lower_runtime_layers_performs_no_external_operation(self) -> None:
         # Reading ambient state or opening a file, socket, browser, log, or child

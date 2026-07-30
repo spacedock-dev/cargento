@@ -7,10 +7,86 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cargento_runtime import records
+from cargento_runtime import claude_data, records
 from cargento_runtime import sessions as runtime_sessions
 
-from .support import LegacyDashboardTestCase, dashboard
+from .support import LegacyDashboardTestCase, dashboard, make_runtime
+
+
+class ClaudeDataBoundTest(unittest.TestCase):
+    """Every bounded read stops where the configuration says it does.
+
+    Each fixture puts a usable record immediately before the bound and another
+    immediately after it, so a test cannot pass by reading either everything or
+    nothing.
+    """
+
+    def test_the_cwd_per_line_cap_truncates_a_long_record(self) -> None:
+        # A single record longer than the per-line cap is read only up to it, so
+        # a cwd hiding past the cap must not be found. Mutation-checked:
+        # removing the cap passed the whole suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "long.jsonl"
+            padded = {"type": "user", "pad": "x" * 400, "cwd": "/w/beyond"}
+            path.write_text(json.dumps(padded) + "\n")
+            config, state = make_runtime(claude_cwd_line_bytes=64)
+
+            self.assertEqual("", claude_data.session_cwd(config, state, str(path)))
+
+            wide, wide_state = make_runtime(claude_cwd_line_bytes=100_000)
+            self.assertEqual("/w/beyond", claude_data.session_cwd(wide, wide_state, str(path)))
+
+    def test_the_cwd_line_count_cap_stops_at_the_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "many.jsonl"
+            filler = json.dumps({"type": "assistant"})
+            inside = json.dumps({"type": "user", "cwd": "/w/inside"})
+            beyond = json.dumps({"type": "user", "cwd": "/w/beyond"})
+            path.write_text(f"{filler}\n{inside}\n{filler}\n{beyond}\n")
+            # Two lines reaches the record before the bound, never the one after.
+            config, state = make_runtime(claude_cwd_scan_lines=2)
+
+            self.assertEqual("/w/inside", claude_data.session_cwd(config, state, str(path)))
+
+    def test_the_agent_scan_line_cap_stops_at_the_bound(self) -> None:
+        # Mutation-checked: dropping the line cap passed the whole suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.jsonl"
+            filler = json.dumps({"type": "assistant"})
+            beyond = json.dumps({"type": "agent-name", "agentName": "reviewer"})
+            path.write_text(f"{filler}\n{filler}\n{beyond}\n")
+            capped, capped_state = make_runtime(claude_agent_scan_lines=2)
+            wide, wide_state = make_runtime(claude_agent_scan_lines=10)
+
+            self.assertEqual(
+                (False, "", ""), claude_data.agent_identity(capped, capped_state, str(path))
+            )
+            self.assertEqual(
+                (False, "reviewer", ""), claude_data.agent_identity(wide, wide_state, str(path))
+            )
+
+    def test_a_hook_transcript_outside_the_projects_tree_is_refused(self) -> None:
+        # The hook payload names its own transcript path, so containment is what
+        # stops it naming an arbitrary file. Mutation-checked: dropping the
+        # check passed the whole suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects" / "-w-proj"
+            projects.mkdir(parents=True)
+            prefix = "abcdef12"
+            record = json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}})
+            inside = projects / f"{prefix}-0000-0000-0000-000000000000.jsonl"
+            inside.write_text(record + "\n")
+            outside = Path(tmp) / f"{prefix}-0000-0000-0000-000000000000.jsonl"
+            outside.write_text(record + "\n")
+
+            with mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")):
+                config, state = dashboard._legacy_runtime()
+
+                self.assertTrue(claude_data.hook_user_event(config, state, str(inside), prefix)[0])
+                self.assertEqual(
+                    (False, None),
+                    claude_data.hook_user_event(config, state, str(outside), prefix),
+                )
 
 
 class ClaudeCollectorTest(LegacyDashboardTestCase):
@@ -53,8 +129,9 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 + "\n"
             )
             with mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)):
-                found, user_event = dashboard.claude_hook_user_event(
-                    str(transcript), session_id[:8]
+                config, state = dashboard._legacy_runtime()
+                found, user_event = claude_data.hook_user_event(
+                    config, state, str(transcript), session_id[:8]
                 )
 
         self.assertTrue(found)
@@ -85,7 +162,10 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 )
                 + "\n"
             )
-            before = dashboard.analyze_transcript(str(transcript))["last_user_event"]
+            config, state = dashboard._legacy_runtime()
+            before = claude_data.analyze_transcript(config, state, str(transcript))[
+                "last_user_event"
+            ]
             with dashboard._lock:
                 dashboard._hook_notifs["12345678"] = {
                     "ts": 10_000.0,
@@ -102,7 +182,10 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                     )
                     + "\n"
                 )
-            after = dashboard.analyze_transcript(str(transcript))["last_user_event"]
+            config, state = dashboard._legacy_runtime()
+            after = claude_data.analyze_transcript(config, state, str(transcript))[
+                "last_user_event"
+            ]
 
         self.assertNotEqual(before, after)
         self.assertIsNone(dashboard.current_hook("12345678", after, 0.0))
@@ -122,7 +205,10 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "12345678-session.jsonl"
             transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
-            user_event = dashboard.analyze_transcript(str(transcript))["last_user_event"]
+            config, state = dashboard._legacy_runtime()
+            user_event = claude_data.analyze_transcript(config, state, str(transcript))[
+                "last_user_event"
+            ]
 
         self.assertEqual("user-before-hook", user_event)
 
@@ -159,7 +245,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             transcript.write_text(
                 "\n".join(json.dumps(record) for record in (question, filler, answer)) + "\n"
             )
-            info = dashboard.analyze_transcript(str(transcript))
+            config, state = dashboard._legacy_runtime()
+            info = claude_data.analyze_transcript(config, state, str(transcript))
 
         self.assertIsNone(info["pending_input_tool"])
 
@@ -217,7 +304,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             mock.patch.object(dashboard.os.path, "getsize", return_value=1_000_000),
             mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
         ):
-            identity = dashboard.claude_agent_identity("/fake/transcript.jsonl")
+            config, state = dashboard._legacy_runtime()
+            identity = claude_data.agent_identity(config, state, "/fake/transcript.jsonl")
 
         self.assertEqual((True, "reviewer", "12345678"), identity)
         source().read.assert_called_once_with(runtime[0].claude_agent_scan_bytes)
@@ -235,7 +323,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                     len(apparent_record) * 10,
                 ),
             ):
-                identity = dashboard.claude_agent_identity(str(path))
+                config, state = dashboard._legacy_runtime()
+                identity = claude_data.agent_identity(config, state, str(path))
 
         self.assertEqual((False, "", ""), identity)
 
@@ -262,11 +351,12 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             ),
             mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
         ):
-            self.assertEqual((False, "", ""), dashboard.claude_agent_identity(path))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual((False, "", ""), claude_data.agent_identity(config, state, path))
             self.assertNotIn(path, dashboard._agent_class_cache)
             self.assertEqual(
                 (True, "reviewer", "12345678"),
-                dashboard.claude_agent_identity(path),
+                claude_data.agent_identity(config, state, path),
             )
 
     def test_transient_agent_setting_read_failure_is_not_negative_cached(self) -> None:
@@ -286,11 +376,12 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             ),
             mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
         ):
-            self.assertEqual("", dashboard.claude_agent_setting(path))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual("", claude_data.agent_setting(config, state, path))
             self.assertNotIn(path, dashboard._sd_role_cache)
             self.assertEqual(
                 dashboard.SPACEDOCK_ENSIGN,
-                dashboard.claude_agent_setting(path),
+                claude_data.agent_setting(config, state, path),
             )
 
     def test_claude_cwd_uses_independent_line_and_count_caps(self) -> None:
@@ -309,12 +400,16 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "_CWD_SCAN_LINES", 2),
                 mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first_line)),
             ):
-                self.assertEqual("/wanted/project", dashboard.claude_session_cwd(str(path)))
+                config, state = dashboard._legacy_runtime()
+                self.assertEqual(
+                    "/wanted/project", claude_data.session_cwd(config, state, str(path))
+                )
             with (
                 mock.patch.object(dashboard, "_CWD_SCAN_LINES", 1),
                 mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first_line)),
             ):
-                self.assertEqual("", dashboard.claude_session_cwd(str(short_scan)))
+                config, state = dashboard._legacy_runtime()
+                self.assertEqual("", claude_data.session_cwd(config, state, str(short_scan)))
 
     def test_configured_agent_transcript_remains_a_top_level_session(self) -> None:
         now = dashboard.time.time()
@@ -351,7 +446,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
             ):
                 sessions = dashboard.collect_claude(now, 24, False)
-                classified_as_subagent = dashboard.claude_prefix_is_agent(session_id[:8])
+                config, state = dashboard._legacy_runtime()
+                classified_as_subagent = claude_data.prefix_is_agent(config, state, session_id[:8])
 
         self.assertEqual([session_id[:8]], [session["session"] for session in sessions])
         self.assertFalse(classified_as_subagent)
@@ -361,6 +457,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         )
 
     def test_young_agent_identity_can_gain_a_parent_relation(self) -> None:
+        config, state = dashboard._legacy_runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "young-agent.jsonl"
             transcript.write_text(
@@ -369,7 +466,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
             self.assertEqual(
                 (False, "reviewer", ""),
-                dashboard.claude_agent_identity(str(transcript)),
+                claude_data.agent_identity(config, state, str(transcript)),
             )
 
             with transcript.open("a") as stream:
@@ -385,10 +482,11 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
             self.assertEqual(
                 (True, "reviewer", "12345678"),
-                dashboard.claude_agent_identity(str(transcript)),
+                claude_data.agent_identity(config, state, str(transcript)),
             )
 
     def test_young_agent_identity_can_gain_a_name_after_parent_relation(self) -> None:
+        config, state = dashboard._legacy_runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "young-agent.jsonl"
             transcript.write_text(
@@ -403,7 +501,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
             self.assertEqual(
                 (True, "", "12345678"),
-                dashboard.claude_agent_identity(str(transcript)),
+                claude_data.agent_identity(config, state, str(transcript)),
             )
             self.assertNotIn(str(transcript), dashboard._agent_class_cache)
 
@@ -420,10 +518,11 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
             self.assertEqual(
                 (True, "reviewer", "12345678"),
-                dashboard.claude_agent_identity(str(transcript)),
+                claude_data.agent_identity(config, state, str(transcript)),
             )
 
     def test_parent_relation_without_agent_name_is_still_a_subagent(self) -> None:
+        config, state = dashboard._legacy_runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "unnamed-agent.jsonl"
             transcript.write_text(
@@ -438,23 +537,24 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
             self.assertEqual(
                 (True, "", "12345678"),
-                dashboard.claude_agent_identity(str(transcript)),
+                claude_data.agent_identity(config, state, str(transcript)),
             )
 
     def test_claude_agent_negative_cache_waits_for_conclusive_prefix(self) -> None:
+        config, state = dashboard._legacy_runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "young.jsonl"
             transcript.write_text("{}\n")
             self.assertEqual(
                 (False, "", ""),
-                dashboard.claude_agent_identity(str(transcript)),
+                claude_data.agent_identity(config, state, str(transcript)),
             )
             self.assertNotIn(str(transcript), dashboard._agent_class_cache)
 
             transcript.write_text("{}\n" * 50)
             self.assertEqual(
                 (False, "", ""),
-                dashboard.claude_agent_identity(str(transcript)),
+                claude_data.agent_identity(config, state, str(transcript)),
             )
 
         self.assertIn(str(transcript), dashboard._agent_class_cache)
@@ -477,7 +577,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "session.jsonl"
             transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
-            info = dashboard.analyze_transcript(str(transcript))
+            config, state = dashboard._legacy_runtime()
+            info = claude_data.analyze_transcript(config, state, str(transcript))
 
         self.assertEqual("Current generated title", info["title"])
 
@@ -498,7 +599,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "session.jsonl"
             transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
-            info = dashboard.analyze_transcript(str(transcript))
+            config, state = dashboard._legacy_runtime()
+            info = claude_data.analyze_transcript(config, state, str(transcript))
 
         self.assertEqual("First useful prompt", info["title"])
 
@@ -743,19 +845,23 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             filler = "\n".join(json.dumps({"type": "x", "n": i}) for i in range(60))
             late.write_text(filler + "\n" + json.dumps({"type": "user", "cwd": "/w/late"}) + "\n")
             # Past the 50-line scan bound: not found, and not cached as a miss.
-            self.assertEqual("", dashboard.claude_session_cwd(str(late)))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual("", claude_data.session_cwd(config, state, str(late)))
             self.assertNotIn(str(late), dashboard._cwd_cache)
 
             early = Path(tmp) / "early.jsonl"
             early.write_text("{}\n")
-            self.assertEqual("", dashboard.claude_session_cwd(str(early)))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual("", claude_data.session_cwd(config, state, str(early)))
             # A miss must not be cached, or a transcript whose head is written
             # before its first cwd record keeps the fallback label forever.
             early.write_text(json.dumps({"type": "user", "cwd": "/w/early"}) + "\n")
-            self.assertEqual("/w/early", dashboard.claude_session_cwd(str(early)))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual("/w/early", claude_data.session_cwd(config, state, str(early)))
 
             missing = Path(tmp) / "gone.jsonl"
-            self.assertEqual("", dashboard.claude_session_cwd(str(missing)))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual("", claude_data.session_cwd(config, state, str(missing)))
 
     def test_claude_project_falls_back_when_transcript_has_no_cwd(self) -> None:
         # A transcript head can be written before any record carries cwd. The
@@ -800,7 +906,8 @@ class ClaudeReviewFixTest(unittest.TestCase):
             transcript.write_text("\n".join(json.dumps(r) for r in malformed) + "\n")
             os.utime(transcript, (now, now))
 
-            self.assertIsNone(dashboard.claude_session_title(str(transcript)))
+            config, state = dashboard._legacy_runtime()
+            self.assertIsNone(claude_data.session_title(config, state, str(transcript)))
             self.assertEqual({}, records.message_dict({"message": "str"}))
             self.assertEqual({}, records.message_dict("not-a-record"))
             self.assertEqual({"a": 1}, records.message_dict({"message": {"a": 1}}))

@@ -48,6 +48,9 @@ max-args = 8
 # `scan_turns` and its reverse-scan helper keep the server's reviewed branch
 # shape: incremental offsets, rotation recovery, and the Gemini dedup arm.
 "cargento/skills/cargento/cargento_runtime/turns.py" = ["C901", "PLR0912"]
+# The Claude title, tail analyzer and agent classifier keep the launcher's
+# reviewed shape: one arm per record kind, and one cache decision per bound.
+"cargento/skills/cargento/cargento_runtime/claude_data.py" = ["C901", "PLR0912"]
 # Pi's projection and incremental scanner keep the branch shape they had in
 # the launcher: one arm per JSONL entry kind, and one early return per way a
 # partial write can interrupt a scan.

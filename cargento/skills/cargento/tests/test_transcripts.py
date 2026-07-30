@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
+from cargento_runtime import claude_data, records
 from cargento_runtime import io as runtime_io
-from cargento_runtime import records
 from cargento_runtime import transcripts as runtime_transcripts
 
 from .support import (
@@ -25,7 +25,7 @@ from .support import (
     make_runtime,
 )
 
-CONFIG = make_config()
+CONFIG, STATE = make_runtime()
 
 
 class CargentoServerTest(LegacyDashboardTestCase):
@@ -361,8 +361,10 @@ class ReverseLinesTest(unittest.TestCase):
                 )
                 + b"\r\n"
             )
-            self.assertEqual("CRLF title", dashboard.claude_session_title(str(path)))
-            self.assertEqual("u-crlf", dashboard.claude_last_user_event(str(path)))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual("CRLF title", claude_data.session_title(config, state, str(path)))
+            config, state = dashboard._legacy_runtime()
+            self.assertEqual("u-crlf", claude_data.last_user_event(config, state, str(path)))
 
     def test_end_pos_limits_the_scan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -428,8 +430,10 @@ class ReverseLinesTest(unittest.TestCase):
                 + "\n",
             )
             with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", 128):
-                self.assertEqual("Newest title", dashboard.claude_session_title(path))
-                self.assertEqual("u-new", dashboard.claude_last_user_event(path))
+                config, state = dashboard._legacy_runtime()
+                self.assertEqual("Newest title", claude_data.session_title(config, state, path))
+                config, state = dashboard._legacy_runtime()
+                self.assertEqual("u-new", claude_data.last_user_event(config, state, path))
 
 
 class PromptTitleTest(unittest.TestCase):
@@ -607,7 +611,7 @@ class MalformedRecordTest(unittest.TestCase):
         return [
             (
                 "claude",
-                dashboard.analyze_transcript,
+                functools.partial(claude_data.analyze_transcript, CONFIG, STATE),
                 [
                     {"type": "assistant", "message": {"usage": hostile, "content": hostile}},
                     {"type": "user", "message": {"content": hostile}},

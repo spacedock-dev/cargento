@@ -19,8 +19,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import errno
-import glob
-import hashlib
 import http.client
 import json
 import math
@@ -41,12 +39,11 @@ from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
-from cargento_runtime import aggregate, records
+from cargento_runtime import aggregate, claude_data, records
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
-from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import copilot as copilot_collector
@@ -296,7 +293,6 @@ def _install_legacy_state(state: runtime_state.RuntimeState) -> None:
 
 
 # Tools that mean Claude is blocked on the human, not just running long.
-INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 # Claude Code's documented Notification matcher values. ``idle_timeout`` is
 # accepted as a compatibility alias, while current payloads use
 # ``idle_prompt``. Unknown structured values remain actionable so a newly
@@ -489,210 +485,7 @@ _claude_title_cache = _LEGACY_STATE.claude_title_cache
 _claude_user_event_cache = _LEGACY_STATE.claude_user_event_cache
 
 
-def claude_session_title(path: str) -> str | None:
-    """Newest generated Claude title, falling back to the first user prompt.
-
-    ``ai-title`` records can be older than the bounded activity tail, so walk
-    the file backward to find the newest one. The cache is invalidated whenever
-    the transcript's size or mtime changes because Claude repeats title records
-    as a session grows.
-    """
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return None
-    cache_key = (stat.st_mtime_ns, stat.st_size)
-    with _cache_lock:
-        cached = _claude_title_cache.get(path)
-    if cached is not None and cached[:2] == cache_key:
-        return cached[2]
-
-    title = None
-    # The chunk filter does the heavy lifting; the per-line test below only
-    # re-checks the few lines inside a chunk that had a hit.
-    config, _ = _legacy_runtime()
-    for raw in runtime_io.reverse_lines(config, path, contains=b'"aiTitle"'):
-        if b'"aiTitle"' not in raw:
-            continue
-        try:
-            record = json.loads(raw)
-        except ValueError:
-            continue
-        if not isinstance(record, dict):
-            continue
-        value = record.get("aiTitle")
-        if record.get("type") == "ai-title" and isinstance(value, str) and value:
-            title = value
-            break
-
-    if title is None:
-        try:
-            with open(path, encoding="utf-8", errors="replace") as source:
-                for line in source:
-                    if not line.startswith("{"):
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except ValueError:
-                        continue
-                    if not isinstance(record, dict):
-                        continue
-                    signal = records._turn_signal(record, "claude")  # noqa: SLF001
-                    if not signal or signal[0] != "prompt":
-                        continue
-                    prompt = records.extract_text(
-                        records.message_dict(record).get("content")
-                    ).strip()
-                    title = runtime_transcripts.prompt_title(config, prompt)
-                    break
-        except OSError:
-            pass
-
-    with _cache_lock:
-        bounded_put(_claude_title_cache, path, (*cache_key, title))
-    return title
-
-
-def claude_last_user_event(path: str) -> str | None:
-    """Identity of the newest user record, independent of record timestamps."""
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return None
-    cache_key = (stat.st_mtime_ns, stat.st_size)
-    with _cache_lock:
-        cached = _claude_user_event_cache.get(path)
-    if cached is not None and cached[:2] == cache_key:
-        return cached[2]
-
-    marker = None
-    # Superset filter: a user record must contain the literal "user".
-    config, _ = _legacy_runtime()
-    for raw in runtime_io.reverse_lines(config, path, contains=b'"user"'):
-        if not raw.startswith(b"{") or b'"user"' not in raw:
-            continue
-        try:
-            record = json.loads(raw)
-        except ValueError:
-            continue
-        if not isinstance(record, dict) or record.get("type") != "user":
-            continue
-        uuid = record.get("uuid")
-        marker = (
-            uuid
-            if isinstance(uuid, str) and uuid
-            else hashlib.blake2b(raw, digest_size=16).hexdigest()
-        )
-        break
-
-    with _cache_lock:
-        bounded_put(_claude_user_event_cache, path, (*cache_key, marker))
-    return marker
-
-
-def analyze_transcript(path: str) -> dict[str, Any]:
-    """Claude Code transcript tail."""
-    info: dict[str, Any] = {
-        "title": claude_session_title(path),
-        "last_prompt": None,
-        "usage_events": [],  # (epoch, output_tokens)
-        "pending_input_tool": None,  # {"name", "ts"} awaiting the human
-        "last_tool": None,
-        "last_event_ts": 0,
-        "last_user_event": claude_last_user_event(path),
-    }
-    pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts"} for INPUT_TOOLS only
-    config, _ = _legacy_runtime()
-    for line in runtime_io.read_tail(config, path):
-        if not line or line[0] != "{":
-            continue
-        try:
-            d = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        t = d.get("type")
-        ep = records.parse_ts(d.get("timestamp") or "")
-        if ep:
-            info["last_event_ts"] = max(info["last_event_ts"], ep)
-        if t == "last-prompt":
-            info["last_prompt"] = d.get("lastPrompt")
-        elif t == "assistant":
-            msg = records.message_dict(d)
-            usage = records.as_dict(msg.get("usage"))
-            if ep and usage.get("output_tokens"):
-                info["usage_events"].append((ep, usage["output_tokens"]))
-            for c in records.as_list(msg.get("content")):
-                if isinstance(c, dict) and c.get("type") == "tool_use":
-                    info["last_tool"] = c.get("name")
-                    if c.get("name") in INPUT_TOOLS:
-                        pending[c.get("id")] = {"name": c.get("name"), "ts": ep}
-        elif t == "user":
-            for c in records.as_list(records.message_dict(d).get("content")):
-                if isinstance(c, dict) and c.get("type") == "tool_result":
-                    pending.pop(c.get("tool_use_id"), None)
-    if pending:
-        info["pending_input_tool"] = max(pending.values(), key=lambda p: p["ts"] or 0)
-    return info
-
-
 _cwd_cache = _LEGACY_STATE.cwd_cache
-
-
-def claude_session_cwd(path: str) -> str:
-    """Working directory recorded on the transcript head, ``""`` if absent.
-
-    Claude is the one harness whose store does not hand a collector a cwd: the
-    ``projects/`` directory name encodes the path with every separator replaced
-    by ``-``, and that cannot be split back apart because a directory may
-    legitimately contain ``-``. The records themselves carry the real path, so
-    read it rather than guessing at the encoding.
-
-    An absent cwd is not cached: a transcript head can be written before any
-    record carries one, and the answer changes as soon as one does.
-    """
-    with _cache_lock:
-        hit = _cwd_cache.get(path)
-    if hit is not None:
-        return hit
-    cwd = ""
-    config, _ = _legacy_runtime()
-    try:
-        lines = runtime_io.iter_bounded_text_lines(
-            path,
-            max_lines=config.claude_cwd_scan_lines,
-            per_line_bytes=config.claude_cwd_line_bytes,
-        )
-        for line in lines:
-            if '"cwd"' not in line:
-                continue
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            value = d.get("cwd") if isinstance(d, dict) else None
-            if isinstance(value, str) and value:
-                cwd = value
-                break
-    except OSError:  # pragma: no cover - iterator handles filesystem failures
-        return ""
-    if cwd:
-        with _cache_lock:
-            bounded_put(_cwd_cache, path, cwd)
-    return cwd
-
-
-def claude_hook_user_event(path: str, prefix: str) -> tuple[bool, str | None]:
-    """Return a safe transcript baseline for a Notification-hook payload."""
-    try:
-        real_path = os.path.realpath(path)
-        projects_root = os.path.realpath(PROJECTS_DIR)
-        inside_projects = os.path.commonpath((projects_root, real_path)) == projects_root
-    except (OSError, ValueError):
-        return (False, None)
-    basename = os.path.basename(real_path)
-    if not inside_projects or not basename.startswith(prefix) or not basename.endswith(".jsonl"):
-        return (False, None)
-    return (True, claude_last_user_event(real_path))
 
 
 # Pi's branch scanner and the generic turn scanner both live in the runtime now
@@ -1227,107 +1020,10 @@ def sd_boot_entity_dir(records: list[dict[str, Any]], workflow_dir: str) -> str:
 _agent_class_cache = _LEGACY_STATE.agent_class_cache
 
 
-def claude_agent_identity(path: str) -> tuple[bool, str, str]:
-    """Classify a top-level transcript: (is_subagent, agent_name, parent_prefix).
-
-    Harness >= 2.x writes subagent transcripts as ordinary <uuid>.jsonl files
-    in the project directory; their records carry ``agentName`` and
-    ``teamName`` = "session-<parent 8-char prefix>". Older harnesses used
-    <session>/subagents/agent-*.jsonl, still handled by
-    load_claude_subagents().
-    """
-    with _cache_lock:
-        cached = _agent_class_cache.get(path)
-    if cached is not None:
-        return cached
-    name, parent = "", ""
-    size = 0
-    lines_seen = 0
-    config, _ = _legacy_runtime()
-    try:
-        size = os.path.getsize(path)
-        data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
-        lines = data.split(b"\n")
-        if size > len(data) and data and not data.endswith(b"\n"):
-            lines.pop()  # the byte prefix ended inside a JSON record
-        for line in lines[: config.claude_agent_scan_lines]:
-            if not line:
-                continue
-            lines_seen += 1
-            if name and parent:
-                break
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            if not isinstance(rec, dict):
-                continue
-            agent_name = rec.get("agentName")
-            if not name and isinstance(agent_name, str) and agent_name:
-                name = agent_name
-            team = rec.get("teamName")
-            if not parent and isinstance(team, str) and team.startswith("session-"):
-                parent = team[len("session-") :][:8]
-    except OSError:
-        return (False, "", "")
-    result = (bool(parent), name, parent)
-    # A complete subagent identity is conclusive; an incomplete result is only
-    # trusted once the file has enough content that later records cannot change it.
-    if (
-        (parent and name)
-        or lines_seen >= config.claude_agent_scan_lines
-        or size >= config.claude_agent_cache_negative_min_bytes
-    ):
-        with _cache_lock:
-            bounded_put(_agent_class_cache, path, result)
-    return result
-
-
 _sd_role_cache = _LEGACY_STATE.spacedock_role_cache
 _sd_boot_cache = _LEGACY_STATE.spacedock_boot_cache
 _sd_workflow_cache = _LEGACY_STATE.spacedock_workflow_cache
 _sd_entity_cache = _LEGACY_STATE.spacedock_entity_cache
-
-
-def claude_agent_setting(path: str) -> str:
-    """The ``agentSetting`` a transcript declares in its head, else "".
-
-    The launcher passes ``--agent spacedock:first-officer``, so the value is
-    written at record index 0 or 1 — inside the same head bytes the subagent
-    classifier already reads. Immutable per file once present.
-    """
-    with _cache_lock:
-        cached = _sd_role_cache.get(path)
-    if cached is not None:
-        return cached
-    setting = ""
-    size = 0
-    config, _ = _legacy_runtime()
-    try:
-        size = os.path.getsize(path)
-        data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
-        lines = data.split(b"\n")
-        if size > len(data) and data and not data.endswith(b"\n"):
-            lines.pop()
-        for line in lines[: config.claude_agent_scan_lines]:
-            if not line or b"agentSetting" not in line:
-                continue
-            try:
-                record = json.loads(line)
-            except ValueError:
-                continue
-            if not isinstance(record, dict):
-                continue
-            value = record.get("agentSetting")
-            if isinstance(value, str) and value:
-                setting = value
-                break
-    except OSError:
-        return ""
-    if setting or size >= config.claude_agent_cache_negative_min_bytes:
-        with _cache_lock:
-            bounded_put(_sd_role_cache, path, setting)
-    return setting
 
 
 def sd_transcript_boot(path: str) -> list[dict[str, Any]]:
@@ -1680,28 +1376,6 @@ def sd_session_workflows(
     return out
 
 
-def claude_prefix_is_agent(prefix: str) -> bool:
-    """True when the newest transcript for this 8-char prefix belongs to a
-    subagent. Used to suppress popups for agent sessions."""
-    newest, newest_mtime = None, 0.0
-    config, _ = _legacy_runtime()
-    for fp in runtime_io.glob_stores(
-        config,
-        "claude.projects",
-        "*",
-        glob.escape(prefix) + "*.jsonl",
-    ):
-        try:
-            mtime = os.path.getmtime(fp)
-        except OSError:
-            continue
-        if mtime > newest_mtime:
-            newest, newest_mtime = fp, mtime
-    if not newest:
-        return False
-    return claude_agent_identity(newest)[0]
-
-
 def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     tasks_by_session = load_tasks()
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
@@ -1716,7 +1390,9 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         except OSError:
             continue  # transcript rotated/deleted between glob and stat
         if show_all or runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600):
-            is_agent, agent_name, parent_prefix = claude_agent_identity(fp)
+            is_agent, agent_name, parent_prefix = claude_data.agent_identity(
+                config, runtime_state_value, fp
+            )
             if is_agent:
                 # Fold into the parent session; never a standalone session.
                 # Without a parent prefix there is nothing to attach to.
@@ -1783,7 +1459,9 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
 
         project = (
             (
-                runtime_sessions.project_from_cwd(config, claude_session_cwd(transcript))
+                runtime_sessions.project_from_cwd(
+                    config, claude_data.session_cwd(config, runtime_state_value, transcript)
+                )
                 # Lossy fallback: the encoded name cannot be split back into
                 # segments, so it stays whole rather than guessing at a split.
                 or runtime_sessions.project_label(
@@ -1796,7 +1474,11 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         # Sampled before analyze_transcript: that scan is the slow part, and a
         # SessionEnd landing during it must invalidate everything derived here.
         seen_generation = hook_generation(prefix)
-        info = analyze_transcript(transcript) if (transcript and active) else None
+        info = (
+            claude_data.analyze_transcript(config, runtime_state_value, transcript)
+            if (transcript and active)
+            else None
+        )
 
         state, state_detail = "idle", "awaiting your message"
         blocked_since = None
@@ -1887,12 +1569,20 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
                 # fold it in so the session's rate reflects all its work.
                 "rate_per_min": runtime_sessions.rate_from(info, now, config)
                 + sum(
-                    runtime_sessions.rate_from(analyze_transcript(path), now, config)
+                    runtime_sessions.rate_from(
+                        claude_data.analyze_transcript(config, runtime_state_value, path),
+                        now,
+                        config,
+                    )
                     for path, mtime in agent_files
                     if runtime_sessions.is_fresh(config, now, mtime, RATE_WINDOW_SEC)
                 )
                 + sum(
-                    runtime_sessions.rate_from(analyze_transcript(c["path"]), now, config)
+                    runtime_sessions.rate_from(
+                        claude_data.analyze_transcript(config, runtime_state_value, c["path"]),
+                        now,
+                        config,
+                    )
                     for c in children
                     if runtime_sessions.is_fresh(config, now, c["mtime"], RATE_WINDOW_SEC)
                 ),
@@ -1933,7 +1623,8 @@ def claude_spacedock(
     """
     if not transcript:
         return None
-    setting = claude_agent_setting(transcript)
+    config, runtime_state_value = _legacy_runtime()
+    setting = claude_data.agent_setting(config, runtime_state_value, transcript)
     if setting == SPACEDOCK_ENSIGN:
         return {"role": "ensign", "workflows": []}
     if setting != SPACEDOCK_FO:
@@ -2871,17 +2562,20 @@ class Handler(BaseHTTPRequestHandler):
         # for a SessionEnd to land in between and be silently undone.
         with _lock:
             generation = _hook_generation.get(prefix, 0)
+        config, runtime_state_value = _legacy_runtime()
         # Subagent sessions also emit Notification-hook events (permission
         # prompts inside agents). They are not user-facing sessions — a popup
         # about them is noise the human cannot act on from the dashboard.
-        if prefix and claude_prefix_is_agent(prefix):
+        if prefix and claude_data.prefix_is_agent(config, runtime_state_value, prefix):
             self._send(b'{"ok":true,"suppressed":"subagent"}', "application/json")
             return
         now = time.time()
         hook = {"ts": now, "message": message}
         transcript_path = payload.get("transcript_path")
         if prefix and isinstance(transcript_path, str):
-            found, user_event = claude_hook_user_event(transcript_path, prefix)
+            found, user_event = claude_data.hook_user_event(
+                config, runtime_state_value, transcript_path, prefix
+            )
             if found:
                 hook["user_event"] = user_event
         with _lock:

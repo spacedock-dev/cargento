@@ -732,9 +732,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                     "scandir",
                     side_effect=AssertionError("health scanned a directory"),
                 ),
-                mock.patch.object(
-                    dashboard.glob,
-                    "glob",
+                mock.patch(
+                    "cargento_runtime.io.glob.glob",
                     side_effect=AssertionError("health globbed a store"),
                 ),
                 mock.patch.object(
