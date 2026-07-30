@@ -14,6 +14,7 @@ from unittest import mock
 
 from cargento_runtime import aggregate
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime.collectors import codex as codex_collector
 
 from . import test_claude, test_codex, test_copilot, test_droid, test_pi
 from .fixtures import (
@@ -291,7 +292,7 @@ class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
 
     def test_a_foreign_application_cannot_drive_the_legacy_harnesses(self) -> None:
         config, state = dashboard._legacy_runtime()
-        spec = dashboard._legacy_harness_specs(config, state)[0]
+        spec = dashboard._harness_specs(config, state)[0]
         foreign_config, foreign_state = make_runtime(home="/home/foreign")
 
         # The bound pair is accepted.
@@ -321,9 +322,9 @@ class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
             seen.append(state.config is not config)
             return []
 
-        registry = (("probe", "Probe", lambda: True, legacy_collect),)
-        with mock.patch.object(dashboard, "_LEGACY_HARNESSES", registry):
-            spec = dashboard._legacy_harness_specs(config, state)[0]
+        registry = (("probe", "Probe", dashboard._Legacy(lambda: True, legacy_collect)),)
+        with mock.patch.object(dashboard, "_HARNESS_ROWS", registry):
+            spec = dashboard._harness_specs(config, state)[0]
             spec.collect(config, state, 1.0, 24.0, False)
             # The bound pair still works after state.config moved underneath it.
             spec.collect(config, state, 2.0, 24.0, False)
@@ -331,10 +332,44 @@ class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
 
         self.assertEqual([True, True], seen, "the probe did not rebind state.config")
 
+    def test_the_registry_order_is_pinned(self) -> None:
+        # Registry order is the collection order AND the order /api/data lists
+        # harnesses in, which is the order the page renders its harness chips.
+        # Mutation-checked: moving a row silently reordered the chips and passed
+        # the whole suite, and each remaining extraction task flips one row.
+        self.assertEqual(
+            [
+                "claude",
+                "codex",
+                "pi",
+                "gemini",
+                "copilot",
+                "opencode",
+                "cursor",
+                "goose",
+                "droid",
+            ],
+            [spec.key for spec in dashboard.HARNESSES],
+        )
+
+    def test_a_moved_collector_is_wired_natively_not_re_wrapped(self) -> None:
+        # Once a collector speaks the runtime contract its row must stop going
+        # through the legacy adapter, or the extraction bought nothing.
+        native = {
+            key
+            for key, _label, source in dashboard._HARNESS_ROWS
+            if not isinstance(source, dashboard._Legacy)
+        }
+        self.assertIn("codex", native)
+        self.assertIs(
+            codex_collector.collect,
+            next(s.collect for s in dashboard.HARNESSES if s.key == "codex"),
+        )
+
     def test_the_registry_keys_and_labels_survive_the_adapter(self) -> None:
         # The adapter changes the calling convention, not the registry itself.
         self.assertEqual(
-            [(key, label) for key, label, *_ in dashboard._LEGACY_HARNESSES],
+            [(key, label) for key, label, _source in dashboard._HARNESS_ROWS],
             [(spec.key, spec.label) for spec in dashboard.HARNESSES],
         )
 
@@ -351,6 +386,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.state",
         },
         "cargento_runtime.collectors": set(),
+        "cargento_runtime.collectors.codex": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.sessions",
+            "cargento_runtime.state",
+            "cargento_runtime.transcripts",
+            "cargento_runtime.turns",
+        },
         "cargento_runtime.config": set(),
         "cargento_runtime.io": {
             "cargento_runtime.config",
@@ -709,7 +752,8 @@ class CollectorAgreementTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "HOME", home),
             ):
                 claude = dashboard.collect_claude(now, 24, False)
-                codex = dashboard.collect_codex(now, 24, False)
+                config, state = dashboard._legacy_runtime()
+                codex = codex_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(claude))
         self.assertEqual(1, len(codex))

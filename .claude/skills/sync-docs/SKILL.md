@@ -205,14 +205,28 @@ W=cargento/skills/cargento/cargento_runtime/web
 grep -oE '(url\.path|urlparse\(self\.path\)\.path) [!=]= "[^"]+"' "$S" | grep -oE '"/[^"]*"' | sort -u
 # CLI flags and their defaults
 grep -E -A4 'ap\.add_argument\(' "$S" | grep -E '"--|default='
-# The harness registry — one collector per supported harness. Still supplied by
-# the transitional server: `_LEGACY_HARNESSES` is the source, and each row is
-# wrapped in a `_LegacyHarnessAdapter` so the runtime sees the standard
-# (config, state, ...) contract. Match on the tuple's own closing paren.
-awk '/^_LEGACY_HARNESSES/,/^\)$/' "$S" | grep -oE 'collect_[a-z]+' | sort -u
+# The harness registry: one row per supported harness, in the order the page
+# renders its chips. Read it from the registry itself rather than by matching
+# source text, because the rows are multi-line and a row's source is either a
+# collector module already speaking the runtime contract or a `_Legacy` pair
+# still reading module globals. The third column tells you which, so this is
+# also the progress readout for the remaining extraction tasks.
+python3 - "$S" <<'PY'
+import importlib.util, pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+sys.path.insert(0, str(path.parent))
+spec = importlib.util.spec_from_file_location("cargento_probe", path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module          # dataclasses resolves annotations here
+spec.loader.exec_module(module)
+for key, label, source in module._HARNESS_ROWS:
+    kind = "legacy (server.py)" if isinstance(source, module._Legacy) else source.__name__
+    print(f"{key:10} {label:10} {kind}")
+PY
 # The application boundary and the registry contract it consumes
 grep -nE '^(class Application|class HarnessSpec)|^    def collect' "$A"
-grep -nE '^(HARNESSES|_LEGACY_HARNESSES)|^def _legacy_(application|harness_specs)|^class _LegacyHarnessAdapter' "$S"
+grep -nE '^(HARNESSES|_HARNESS_ROWS)|^def (_legacy_application|_harness_specs)|^class _Legacy' "$S"
 # Store-relocation environment variables the resolver advertises
 grep -nE '^(STORE_ENV_VARS|CARGENTO_HOME_ENV) = ' "$C"
 # Immutable configuration fields, builders, and locked defaults

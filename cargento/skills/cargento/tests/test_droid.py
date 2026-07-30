@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from cargento_runtime import transcripts as runtime_transcripts
+from cargento_runtime.collectors import codex as codex_collector
 
 from .support import LegacyDashboardTestCase, dashboard, make_runtime
 
@@ -123,7 +124,8 @@ class DroidVerificationFixTest(unittest.TestCase):
                 mock.patch.dict(dashboard.STORE_ROOTS, {"codex.sessions": [str(tmp)]}),
                 mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(tmp)),
             ):
-                sessions = dashboard.collect_codex(self.NOW, 24, True)
+                config, state = dashboard._legacy_runtime()
+                sessions = codex_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual("working", sessions[0]["state"])
         self.assertEqual(["reviewer"], sessions[0]["subagents"])

@@ -37,7 +37,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -48,6 +48,7 @@ from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
+from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.web import page as frontend_page
 
 sqlite3 = runtime_io.sqlite_module
@@ -1196,22 +1197,6 @@ def maybe_popup(
 # Session assembly helpers
 
 
-def codex_subagent_rate(path: str, now: float) -> int:
-    """Recent Codex subagent output after its own task_started boundary."""
-    config, runtime_state_value = _legacy_runtime()
-    scan = runtime_turns.scan_turns(config, runtime_state_value, path, "codex")
-    start = scan.get("last_start") if scan else None
-    if not start:
-        return 0
-    info = runtime_transcripts.analyze_codex_transcript(config, path)
-    recent: float = sum(
-        tokens
-        for epoch, tokens in info["usage_events"]
-        if epoch >= start and runtime_sessions.is_fresh(config, now, epoch, RATE_WINDOW_SEC)
-    )
-    return round(recent / (RATE_WINDOW_SEC / 60))
-
-
 # ---------------------------------------------------------------------------
 # Harness collectors — each returns a list of session dicts
 
@@ -2247,94 +2232,6 @@ def claude_spacedock(
         "role": "first-officer",
         "workflows": sd_session_workflows(boot, names, now, window_sec),
     }
-
-
-def collect_codex(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    # Resumes and subagent threads write separate rollout files; group by the
-    # session_meta session_id, keep the newest top-level file per session,
-    # and treat fresh subagent-thread files as that session's running agents.
-    sessions: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
-    # parent session_id -> {"agents": [(label, mtime)], "rate": int}
-    agent_data: dict[str, dict[str, Any]] = {}
-    config, runtime_state_value = _legacy_runtime()
-    for fp in runtime_io.glob_stores(
-        config,
-        "codex.sessions",
-        "*",
-        "*",
-        "*",
-        "rollout-*.jsonl",
-    ):
-        try:
-            mtime = os.path.getmtime(fp)
-        except OSError:
-            continue
-        meta = runtime_transcripts.codex_meta(config, runtime_state_value, fp)
-        sid = meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")][-36:]
-        if meta.get("subagent"):
-            parent_sid = meta.get("parent_session_id") or sid
-            data = agent_data.setdefault(parent_sid, {"agents": [], "rate": 0})
-            if runtime_sessions.is_fresh(config, now, mtime, RATE_WINDOW_SEC):
-                data["rate"] += codex_subagent_rate(fp, now)
-            if runtime_sessions.is_fresh(config, now, mtime, WORKING_THRESHOLD_SEC):
-                data["agents"].append(((meta.get("agent_label") or "subagent")[:70], mtime))
-            continue
-        if sid not in sessions or mtime > sessions[sid][0]:
-            sessions[sid] = (mtime, fp)
-
-    out: list[dict[str, Any]] = []
-    for sid, (mtime, fp) in sessions.items():
-        data = agent_data.get(sid) or {"agents": [], "rate": 0}
-        agents = sorted(data["agents"], key=lambda a: -a[1])
-        activity_sources = (mtime, *(m for _, m in agents))
-        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
-        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
-        if not (active or show_all):
-            continue
-        info = runtime_transcripts.analyze_codex_transcript(config, fp) if active else None
-        last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
-        subagents = [label for label, _ in agents]
-        state, state_detail = "idle", "awaiting your message"
-        if runtime_sessions.is_fresh(
-            config,
-            now,
-            runtime_sessions.newest_plausible(config, now, last_event_sources),
-            WORKING_THRESHOLD_SEC,
-        ):
-            state = "working"
-            state_detail = runtime_sessions.working_detail(info, subagents)
-
-        s = runtime_sessions.base_session(
-            "codex",
-            sid,
-            runtime_sessions.project_from_cwd(
-                config,
-                runtime_transcripts.codex_meta(config, runtime_state_value, fp).get("cwd") or "",
-            )
-            or "codex",
-        )
-        s.update(
-            {
-                "title": (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-                "state": state,
-                "state_detail": state_detail,
-                "active": active,
-                "last_activity": last_activity,
-                "rate_per_min": runtime_sessions.rate_from(info, now, config) + data["rate"],
-                "turn": runtime_turns.turn_progress(
-                    runtime_turns.scan_turns(config, runtime_state_value, fp, "codex")
-                    if info
-                    else None,
-                    state,
-                    now,
-                    config,
-                ),
-                "subagents": subagents,
-            }
-        )
-        out.append(s)
-    return out
 
 
 def discover_pi() -> bool:
@@ -3609,63 +3506,12 @@ def _discover_gemini() -> bool:
     )
 
 
-# The legacy registry: predicates and collectors that still read module
-# globals. Task 12 wraps each pair in a _LegacyHarnessAdapter so the runtime
-# sees the standard (config, state, ...) contract; later collector tasks replace
-# one row at a time with a runtime-native callback.
-_LEGACY_HARNESSES: tuple[
-    tuple[str, str, Callable[[], bool], Callable[[float, float, bool], list[dict[str, Any]]]], ...
-] = (
-    ("claude", "Claude", lambda: _store_dir_exists("claude.projects"), collect_claude),
-    ("codex", "Codex", lambda: _store_dir_exists("codex.sessions"), collect_codex),
-    ("pi", "Pi", discover_pi, collect_pi),
-    # Predicate matches both supported Gemini stores: legacy Gemini CLI
-    # JSONL and current Antigravity CLI per-conversation SQLite databases.
-    (
-        "gemini",
-        "Gemini",
-        _discover_gemini,
-        collect_gemini,
-    ),
-    (
-        "copilot",
-        "Copilot",
-        lambda: (
-            _store_dir_exists("copilot.root", "session-state")
-            or _store_dir_exists("copilot.root", "history-session-state")
-        ),
-        collect_copilot,
-    ),
-    (
-        "opencode",
-        "OpenCode",
-        lambda: (
-            runtime_io.sqlite_available() and _store_glob_exists("opencode.data", "opencode*.db")
-        ),
-        collect_opencode,
-    ),
-    (
-        "cursor",
-        "Cursor",
-        lambda: (
-            runtime_io.sqlite_available()
-            and _store_glob_exists("cursor.chats", "*", "*", "store.db")
-        ),
-        collect_cursor,
-    ),
-    (
-        "goose",
-        "Goose",
-        lambda: runtime_io.sqlite_available() and _store_file_exists("goose.db"),
-        collect_goose,
-    ),
-    (
-        "droid",
-        "Droid",
-        lambda: _store_glob_exists("droid.projects", "*", "*.jsonl"),
-        collect_droid,
-    ),
-)
+@dataclass(frozen=True)
+class _Legacy:
+    """Marks a registry row whose callables still read module globals."""
+
+    discover: Callable[[], bool]
+    collect: Callable[[float, float, bool], list[dict[str, Any]]]
 
 
 @dataclass(frozen=True)
@@ -3687,8 +3533,7 @@ class _LegacyHarnessAdapter:
 
     config: runtime_config.RuntimeConfig
     state: runtime_state.RuntimeState
-    legacy_discover: Callable[[], bool]
-    legacy_collect: Callable[[float, float, bool], list[dict[str, Any]]]
+    legacy: _Legacy
 
     def _require(
         self,
@@ -3704,7 +3549,7 @@ class _LegacyHarnessAdapter:
         state: runtime_state.RuntimeState,
     ) -> bool:
         self._require(config, state)
-        return bool(self.legacy_discover())
+        return bool(self.legacy.discover())
 
     def collect(
         self,
@@ -3715,37 +3560,94 @@ class _LegacyHarnessAdapter:
         show_all: bool,
     ) -> list[dict[str, Any]]:
         self._require(config, state)
-        return self.legacy_collect(now, window_hours, show_all)
+        return self.legacy.collect(now, window_hours, show_all)
 
 
-def _legacy_harness_specs(
+# The one registry. Its order is the collection order and the order the response
+# lists harnesses in, so it stays in one place. A row's source is either a
+# collector module already speaking the runtime contract, or a `_Legacy` pair
+# still reading module globals; each remaining extraction task flips one row.
+_HARNESS_ROWS: tuple[tuple[str, str, _Legacy | ModuleType], ...] = (
+    ("claude", "Claude", _Legacy(lambda: _store_dir_exists("claude.projects"), collect_claude)),
+    ("codex", "Codex", codex_collector),
+    ("pi", "Pi", _Legacy(discover_pi, collect_pi)),
+    # Predicate matches both supported Gemini stores: legacy Gemini CLI
+    # JSONL and current Antigravity CLI per-conversation SQLite databases.
+    ("gemini", "Gemini", _Legacy(_discover_gemini, collect_gemini)),
+    (
+        "copilot",
+        "Copilot",
+        _Legacy(
+            lambda: (
+                _store_dir_exists("copilot.root", "session-state")
+                or _store_dir_exists("copilot.root", "history-session-state")
+            ),
+            collect_copilot,
+        ),
+    ),
+    (
+        "opencode",
+        "OpenCode",
+        _Legacy(
+            lambda: (
+                runtime_io.sqlite_available()
+                and _store_glob_exists("opencode.data", "opencode*.db")
+            ),
+            collect_opencode,
+        ),
+    ),
+    (
+        "cursor",
+        "Cursor",
+        _Legacy(
+            lambda: (
+                runtime_io.sqlite_available()
+                and _store_glob_exists("cursor.chats", "*", "*", "store.db")
+            ),
+            collect_cursor,
+        ),
+    ),
+    (
+        "goose",
+        "Goose",
+        _Legacy(
+            lambda: runtime_io.sqlite_available() and _store_file_exists("goose.db"),
+            collect_goose,
+        ),
+    ),
+    (
+        "droid",
+        "Droid",
+        _Legacy(lambda: _store_glob_exists("droid.projects", "*", "*.jsonl"), collect_droid),
+    ),
+)
+
+
+def _harness_specs(
     config: runtime_config.RuntimeConfig,
     state: runtime_state.RuntimeState,
 ) -> tuple[aggregate.HarnessSpec, ...]:
-    """Wrap the legacy registry for exactly one config and state."""
+    """Build the registry for exactly one config and state, in registry order."""
     specs = []
-    for key, label, legacy_discover, legacy_collect in _LEGACY_HARNESSES:
-        adapter = _LegacyHarnessAdapter(config, state, legacy_discover, legacy_collect)
+    for key, label, source in _HARNESS_ROWS:
+        if isinstance(source, _Legacy):
+            adapter = _LegacyHarnessAdapter(config, state, source)
+            discover, collect = adapter.discover, adapter.collect
+        else:
+            discover, collect = source.discover, source.collect
         specs.append(
-            aggregate.HarnessSpec(
-                key=key,
-                label=label,
-                discover=adapter.discover,
-                collect=adapter.collect,
-            )
+            aggregate.HarnessSpec(key=key, label=label, discover=discover, collect=collect)
         )
     return tuple(specs)
 
 
 # The registry as the runtime sees it. Read it for keys and labels only: its
-# adapters are bound to the import-time config object, which `_legacy_runtime()`
-# replaces on its first call, so no later caller can satisfy their identity
-# check. Anything that needs to CALL a spec should build a live one with
-# `_legacy_harness_specs(*_legacy_runtime())`, which is what the application
+# legacy adapters are bound to the import-time config object, which
+# `_legacy_runtime()` replaces on its first call, so no later caller can satisfy
+# their identity check. Anything that needs to CALL a spec should build a live
+# one with `_harness_specs(*_legacy_runtime())`, which is what the application
 # below does.
-HARNESSES: tuple[aggregate.HarnessSpec, ...] = _legacy_harness_specs(
-    _LEGACY_STATE.config, _LEGACY_STATE
-)
+HARNESSES: tuple[aggregate.HarnessSpec, ...] = _harness_specs(_LEGACY_STATE.config, _LEGACY_STATE)
 
 
 def _legacy_application(window_hours: float) -> aggregate.Application:
@@ -3759,7 +3661,7 @@ def _legacy_application(window_hours: float) -> aggregate.Application:
     return aggregate.Application(
         config,
         state,
-        _legacy_harness_specs(config, state),
+        _harness_specs(config, state),
         native_notifier=native_notifier,
         popup_notifier=notify_mac,
         diagnostic_sink=print,

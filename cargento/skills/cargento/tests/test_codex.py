@@ -7,6 +7,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import transcripts as runtime_transcripts
+from cargento_runtime.collectors import codex as codex_collector
 
 from .support import LegacyDashboardTestCase, dashboard, make_runtime
 
@@ -95,7 +96,8 @@ class CodexCollectorTest(LegacyDashboardTestCase):
             )
 
             with mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(Path(tmp))):
-                sessions = dashboard.collect_codex(now, 24, False)
+                config, state = dashboard._legacy_runtime()
+                sessions = codex_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(100, sessions[0]["rate_per_min"])
