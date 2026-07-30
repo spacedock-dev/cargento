@@ -36,11 +36,15 @@ import sys
 import threading
 import time
 import unicodedata
+from dataclasses import replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
+from cargento_runtime import config as runtime_config
+from cargento_runtime import state as runtime_state
 from cargento_runtime.web import page as frontend_page
 
 try:
@@ -55,165 +59,99 @@ else:
     SQLITE_IMPORT_ERROR = None
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
-
-HOME = os.path.expanduser("~")
-DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
-
-# Documented per-harness relocation variables. When one of these is set it is
-# authoritative: only paths derived from it are searched, so a user who
-# relocated a store never silently reads a stale default instead. Variables
-# whose semantics are not documented upstream are deliberately absent rather
-# than guessed at — a wrong override would break a working setup, while a
-# missing one only costs an entry in --diagnose.
-STORE_ENV_VARS = (
-    "CLAUDE_CONFIG_DIR",
-    "CODEX_HOME",
-    "GEMINI_CLI_HOME",
-    "COPILOT_HOME",
-    "PI_CODING_AGENT_DIR",
-    "PI_CODING_AGENT_SESSION_DIR",
-)
-
-# Wall-clock start of the serving process, reported by /api/health so a caller
-# can compute uptime without a second request. Set once by main().
-SERVER_STARTED = 0.0
+    from collections.abc import Callable, Iterable, Iterator
 
 
-def resolve_store_roots(
-    *,
-    platform_name: str,
-    environ: Mapping[str, str],
-    home: str,
-    pi_settings: Mapping[str, Any] | None = None,
-) -> dict[str, list[str]]:
-    """Candidate locations for every harness store, best candidate first.
-
-    Pure: everything it depends on is an argument, so each platform's layout is
-    exercisable from any runner (and mypy sees every branch, rather than
-    treating the other platforms' as unreachable).
-
-    Candidates are cheap — one that does not exist simply never matches — so
-    the lists include plausible-but-unconfirmed locations alongside documented
-    ones. What must never happen is silently searching *only* a wrong path,
-    which is why --diagnose reports every candidate it considered.
-    """
-    windows = platform_name == "win32"
-    # Join with the *target* platform's rules, not the host's, so a Windows
-    # layout resolved on a Linux runner is byte-identical to the real thing.
-    join = ntpath.join if windows else posixpath.join
-    is_absolute = ntpath.isabs if windows else posixpath.isabs
-
-    def under_home(*parts: str) -> str:
-        return join(home, *parts)
-
-    def env_dir(name: str) -> str | None:
-        value = environ.get(name)
-        if not isinstance(value, str) or not value.strip():
-            return None
-        # Returned byte-for-byte, not stripped: trailing whitespace is legal in
-        # a POSIX path, and XDG_DATA_HOME was already honoured before this
-        # resolver existed. Stripping it would silently move an existing
-        # OpenCode or Goose store out from under a macOS or Linux user.
-        return value
-
-    xdg_data = env_dir("XDG_DATA_HOME") or under_home(".local", "share")
-    # Windows app-data roots; None elsewhere so those entries drop out.
-    local_app_data = env_dir("LOCALAPPDATA") if windows else None
-    roaming_app_data = env_dir("APPDATA") if windows else None
-
-    claude_home = env_dir("CLAUDE_CONFIG_DIR") or under_home(".claude")
-    codex_home = env_dir("CODEX_HOME") or under_home(".codex")
-    # GEMINI_CLI_HOME names a parent: the CLI creates ".gemini" inside it.
-    gemini_root = env_dir("GEMINI_CLI_HOME")
-    gemini_home = join(gemini_root, ".gemini") if gemini_root else under_home(".gemini")
-    copilot_home = env_dir("COPILOT_HOME") or under_home(".copilot")
-    pi_config_dir = env_dir("PI_CODING_AGENT_DIR") or under_home(".pi", "agent")
-    pi_session_dir = env_dir("PI_CODING_AGENT_SESSION_DIR")
-    session_setting = pi_settings.get("sessionDir") if pi_settings is not None else None
-    if pi_session_dir is None and isinstance(session_setting, str) and session_setting.strip():
-        if session_setting == "~":
-            pi_session_dir = home
-        elif len(session_setting) > 1 and session_setting[0] == "~" and session_setting[1] in "/\\":
-            pi_session_dir = join(home, session_setting[2:])
-        elif is_absolute(session_setting):
-            pi_session_dir = session_setting
-        else:
-            pi_session_dir = join(pi_config_dir, session_setting)
-    pi_sessions = pi_session_dir or join(pi_config_dir, "sessions")
-    antigravity_home = join(gemini_home, "antigravity-cli")
-
-    def ordered(*candidates: str | None) -> list[str]:
-        """Drop ``None`` and duplicates, keep order.
-
-        Candidates coincide on some setups — XDG_DATA_HOME already pointing at
-        ~/.local/share, a Windows profile without LOCALAPPDATA — and a repeated
-        root would scan the same store twice. ``normcase`` folds case and
-        separators on Windows, where paths are case-insensitive; on POSIX it is
-        the identity.
-        """
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for candidate in candidates:
-            if candidate is None:
-                continue
-            key = ntpath.normcase(candidate) if windows else candidate
-            if key not in seen:
-                seen.add(key)
-                deduped.append(candidate)
-        return deduped
-
-    def app_data(root: str | None, *parts: str) -> str | None:
-        return join(root, *parts) if root else None
-
-    return {
-        "claude.projects": ordered(join(claude_home, "projects")),
-        "claude.tasks": ordered(join(claude_home, "tasks")),
-        "codex.sessions": ordered(join(codex_home, "sessions")),
-        "pi.sessions": ordered(pi_sessions),
-        "gemini.tmp": ordered(join(gemini_home, "tmp")),
-        "antigravity.root": ordered(antigravity_home),
-        "copilot.root": ordered(copilot_home),
-        # OpenCode: the XDG location is confirmed and must stay first — it is
-        # what works on Linux and macOS today, and the first candidate becomes
-        # the primary constant. Windows builds have been reported both under
-        # %LOCALAPPDATA% and at a literal ~/.local/share; both follow.
-        "opencode.data": ordered(
-            join(xdg_data, "opencode"),
-            app_data(local_app_data, "opencode", "data"),
-            app_data(local_app_data, "opencode"),
-            under_home(".local", "share", "opencode") if windows else None,
-        ),
-        "cursor.chats": ordered(under_home(".cursor", "chats")),
-        # Goose: the Windows build uses an org-scoped app-data directory.
-        "goose.db": ordered(
-            join(xdg_data, "goose", "sessions", "sessions.db"),
-            app_data(roaming_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
-            app_data(local_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
-        ),
-        "droid.projects": ordered(under_home(".factory", "projects")),
-    }
+def _runtime_environ(home: str | None = None) -> dict[str, str]:
+    """Capture ambient process inputs at the executable boundary."""
+    environ = dict(os.environ)
+    resolved_home = os.path.expanduser("~") if home is None else home
+    environ["HOME"] = resolved_home
+    if sys.platform == "win32":
+        environ["USERPROFILE"] = resolved_home
+    return environ
 
 
-def load_pi_settings(config_dir: str) -> dict[str, Any]:
-    try:
-        with open(os.path.join(config_dir, "settings.json"), "rb") as source:
-            value = json.loads(source.read(1_000_001))
-    except (OSError, ValueError):
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
-_pi_config_dir = os.environ.get("PI_CODING_AGENT_DIR")
-if not isinstance(_pi_config_dir, str) or not _pi_config_dir.strip():
-    _pi_config_dir = os.path.join(HOME, ".pi", "agent")
-
-STORE_ROOTS: dict[str, list[str]] = resolve_store_roots(
+_LAUNCHER_PATH = Path(__file__).resolve()
+_BASE_CONFIG = runtime_config.build_runtime_config(
+    environ=_runtime_environ(),
     platform_name=sys.platform,
-    environ=os.environ,
-    home=HOME,
-    pi_settings=load_pi_settings(_pi_config_dir),
+    os_name=os.name,
+    launcher_path=_LAUNCHER_PATH,
 )
+
+# Transitional aliases preserve every test and collector seam until its owner
+# moves. Configuration truth lives in cargento_runtime.config.
+HOME = _BASE_CONFIG.home
+DATA_HOME = _BASE_CONFIG.data_home
+STORE_ENV_VARS = runtime_config.STORE_ENV_VARS
+CARGENTO_HOME_ENV = runtime_config.CARGENTO_HOME_ENV
+resolve_store_roots = runtime_config.resolve_store_roots
+load_pi_settings = runtime_config.load_pi_settings
+STORE_ROOTS: dict[str, list[str]] = {
+    key: list(candidates) for key, candidates in _BASE_CONFIG.store_roots.items()
+}
+
+TASKS_DIR = runtime_config.primary_store(_BASE_CONFIG, "claude.tasks")
+PROJECTS_DIR = runtime_config.primary_store(_BASE_CONFIG, "claude.projects")
+CODEX_SESSIONS_DIR = runtime_config.primary_store(_BASE_CONFIG, "codex.sessions")
+PI_SESSIONS_DIR = runtime_config.primary_store(_BASE_CONFIG, "pi.sessions")
+GEMINI_TMP = runtime_config.primary_store(_BASE_CONFIG, "gemini.tmp")
+ANTIGRAVITY_CLI_DIR = runtime_config.primary_store(_BASE_CONFIG, "antigravity.root")
+ANTIGRAVITY_CONVERSATIONS_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "conversations")
+ANTIGRAVITY_LOG_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "log")
+ANTIGRAVITY_LAST_CONVERSATIONS = os.path.join(
+    ANTIGRAVITY_CLI_DIR, "cache", "last_conversations.json"
+)
+COPILOT_DIR = runtime_config.primary_store(_BASE_CONFIG, "copilot.root")
+OPENCODE_DATA = runtime_config.primary_store(_BASE_CONFIG, "opencode.data")
+CURSOR_CHATS = runtime_config.primary_store(_BASE_CONFIG, "cursor.chats")
+GOOSE_DB = runtime_config.primary_store(_BASE_CONFIG, "goose.db")
+FACTORY_PROJECTS = runtime_config.primary_store(_BASE_CONFIG, "droid.projects")
+
+RATE_WINDOW_SEC = _BASE_CONFIG.rate_window_sec
+WORKING_THRESHOLD_SEC = _BASE_CONFIG.working_threshold_sec
+TURN_GAP_RESET_SEC = _BASE_CONFIG.turn_gap_reset_sec
+TAIL_BYTES = _BASE_CONFIG.tail_bytes
+POPUP_COOLDOWN_SEC = _BASE_CONFIG.popup_cooldown_sec
+GLOBAL_POPUP_COOLDOWN_SEC = _BASE_CONFIG.global_popup_cooldown_sec
+POPUP_REPEAT_SUPPRESS_SEC = _BASE_CONFIG.popup_repeat_suppress_sec
+LONG_TURN_WARN_SEC = _BASE_CONFIG.long_turn_warn_sec
+FUTURE_SKEW_TOLERANCE_SEC = _BASE_CONFIG.future_skew_tolerance_sec
+SQL_MSG_LIMIT = _BASE_CONFIG.sql_message_limit
+MAX_CACHE_ENTRIES = _BASE_CONFIG.max_cache_entries
+GEMINI_SEEN_ENTRIES = _BASE_CONFIG.gemini_seen_entries
+REVERSE_CHUNK_BYTES = _BASE_CONFIG.reverse_chunk_bytes
+DISPLAY_ID_LEN = _BASE_CONFIG.display_id_len
+_CWD_SCAN_LINES = _BASE_CONFIG.claude_cwd_scan_lines
+CLAUDE_CWD_LINE_BYTES = _BASE_CONFIG.claude_cwd_line_bytes
+TURN_SCAN_MAX_BYTES = _BASE_CONFIG.turn_scan_max_bytes
+_AGENT_SCAN_LINES = _BASE_CONFIG.claude_agent_scan_lines
+_AGENT_CACHE_NEGATIVE_MIN_BYTES = _BASE_CONFIG.claude_agent_cache_negative_min_bytes
+_AGENT_SCAN_BYTES = _BASE_CONFIG.claude_agent_scan_bytes
+_CURSOR_META_ROWS = _BASE_CONFIG.cursor_meta_rows
+ANTIGRAVITY_LOG_HEAD_BYTES = _BASE_CONFIG.antigravity_log_head_bytes
+SD_BOOT_SCAN_BYTES = _BASE_CONFIG.spacedock_boot_scan_bytes
+SD_README_BYTES = _BASE_CONFIG.spacedock_readme_bytes
+SD_ENTITY_BYTES = _BASE_CONFIG.spacedock_entity_bytes
+SD_MAX_FRONTMATTER_LINES = _BASE_CONFIG.spacedock_max_frontmatter_lines
+SD_MAX_STAGES = _BASE_CONFIG.spacedock_max_stages
+SD_MAX_WORKFLOWS = _BASE_CONFIG.spacedock_max_workflows
+SD_MAX_ENTITIES = _BASE_CONFIG.spacedock_max_entities
+SD_MAX_ENTITY_FILES = _BASE_CONFIG.spacedock_max_entity_files
+SD_MAX_BOOT_RECORDS = _BASE_CONFIG.spacedock_max_boot_records
+SD_MAX_BOOT_CANDIDATES = _BASE_CONFIG.spacedock_max_boot_candidates
+COLLECT_MEMO_SEC = _BASE_CONFIG.collect_memo_sec
+DAEMON_READY_TIMEOUT_SEC = _BASE_CONFIG.daemon_ready_timeout_sec
+STOP_RELEASE_TIMEOUT_SEC = _BASE_CONFIG.stop_release_timeout_sec
+STATE_READ_CAP_BYTES = _BASE_CONFIG.state_read_cap_bytes
+SD_MIN_COLLAPSED_PATH = _BASE_CONFIG.prompt_path_collapse_min_length
+FIRST_LINE_JSON_CAP_BYTES = _BASE_CONFIG.first_line_json_cap_bytes
+NOTIFICATION_BODY_CAP_BYTES = _BASE_CONFIG.notification_body_cap_bytes
+SPACEDOCK_ENABLED = _BASE_CONFIG.spacedock_enabled
+
+_LEGACY_STATE = runtime_state.build_runtime_state(_BASE_CONFIG, started=0.0)
+SERVER_STARTED = _LEGACY_STATE.server_started
 
 
 def store_roots(key: str, primary: str) -> list[str]:
@@ -230,6 +168,124 @@ def store_roots(key: str, primary: str) -> list[str]:
     if not candidates or primary != candidates[0]:
         return [primary]
     return candidates
+
+
+def _legacy_runtime() -> tuple[runtime_config.RuntimeConfig, runtime_state.RuntimeState]:
+    """Synchronize legacy aliases into the process-lifetime runtime state."""
+    environ = _runtime_environ(HOME)
+    normal = runtime_config.build_runtime_config(
+        environ=environ,
+        platform_name=sys.platform,
+        os_name=os.name,
+        launcher_path=_LAUNCHER_PATH,
+        spacedock_enabled=SPACEDOCK_ENABLED,
+    )
+    aliases = {
+        "claude.tasks": TASKS_DIR,
+        "claude.projects": PROJECTS_DIR,
+        "codex.sessions": CODEX_SESSIONS_DIR,
+        "pi.sessions": PI_SESSIONS_DIR,
+        "gemini.tmp": GEMINI_TMP,
+        "antigravity.root": ANTIGRAVITY_CLI_DIR,
+        "copilot.root": COPILOT_DIR,
+        "opencode.data": OPENCODE_DATA,
+        "cursor.chats": CURSOR_CHATS,
+        "goose.db": GOOSE_DB,
+        "droid.projects": FACTORY_PROJECTS,
+    }
+    overrides = {
+        key: selected
+        for key, selected in aliases.items()
+        if selected != runtime_config.primary_store(normal, key)
+    }
+    config = runtime_config.build_runtime_config(
+        environ=environ,
+        platform_name=sys.platform,
+        os_name=os.name,
+        launcher_path=_LAUNCHER_PATH,
+        store_root_overrides=overrides,
+        spacedock_enabled=SPACEDOCK_ENABLED,
+    )
+    config = replace(
+        config,
+        rate_window_sec=RATE_WINDOW_SEC,
+        working_threshold_sec=WORKING_THRESHOLD_SEC,
+        turn_gap_reset_sec=TURN_GAP_RESET_SEC,
+        tail_bytes=TAIL_BYTES,
+        popup_cooldown_sec=POPUP_COOLDOWN_SEC,
+        global_popup_cooldown_sec=GLOBAL_POPUP_COOLDOWN_SEC,
+        popup_repeat_suppress_sec=POPUP_REPEAT_SUPPRESS_SEC,
+        long_turn_warn_sec=LONG_TURN_WARN_SEC,
+        future_skew_tolerance_sec=FUTURE_SKEW_TOLERANCE_SEC,
+        sql_message_limit=SQL_MSG_LIMIT,
+        max_cache_entries=MAX_CACHE_ENTRIES,
+        gemini_seen_entries=GEMINI_SEEN_ENTRIES,
+        reverse_chunk_bytes=REVERSE_CHUNK_BYTES,
+        display_id_len=DISPLAY_ID_LEN,
+        claude_cwd_scan_lines=_CWD_SCAN_LINES,
+        claude_cwd_line_bytes=CLAUDE_CWD_LINE_BYTES,
+        turn_scan_max_bytes=TURN_SCAN_MAX_BYTES,
+        claude_agent_scan_lines=_AGENT_SCAN_LINES,
+        claude_agent_cache_negative_min_bytes=_AGENT_CACHE_NEGATIVE_MIN_BYTES,
+        claude_agent_scan_bytes=_AGENT_SCAN_BYTES,
+        cursor_meta_rows=_CURSOR_META_ROWS,
+        antigravity_log_head_bytes=ANTIGRAVITY_LOG_HEAD_BYTES,
+        spacedock_boot_scan_bytes=SD_BOOT_SCAN_BYTES,
+        spacedock_readme_bytes=SD_README_BYTES,
+        spacedock_entity_bytes=SD_ENTITY_BYTES,
+        spacedock_max_frontmatter_lines=SD_MAX_FRONTMATTER_LINES,
+        spacedock_max_stages=SD_MAX_STAGES,
+        spacedock_max_workflows=SD_MAX_WORKFLOWS,
+        spacedock_max_entities=SD_MAX_ENTITIES,
+        spacedock_max_entity_files=SD_MAX_ENTITY_FILES,
+        spacedock_max_boot_records=SD_MAX_BOOT_RECORDS,
+        spacedock_max_boot_candidates=SD_MAX_BOOT_CANDIDATES,
+        collect_memo_sec=COLLECT_MEMO_SEC,
+        daemon_ready_timeout_sec=DAEMON_READY_TIMEOUT_SEC,
+        stop_release_timeout_sec=STOP_RELEASE_TIMEOUT_SEC,
+        state_read_cap_bytes=STATE_READ_CAP_BYTES,
+        prompt_path_collapse_min_length=SD_MIN_COLLAPSED_PATH,
+        first_line_json_cap_bytes=FIRST_LINE_JSON_CAP_BYTES,
+        notification_body_cap_bytes=NOTIFICATION_BODY_CAP_BYTES,
+    )
+    _LEGACY_STATE.config = config
+    return config, _LEGACY_STATE
+
+
+def _install_legacy_state(state: runtime_state.RuntimeState) -> None:
+    """Rebind transitional aliases when main creates the serving state."""
+    global _LEGACY_STATE, _lock, _cache_lock, _scan_lock, _collect_memo_lock  # noqa: PLW0603
+    global _hook_notifs, _last_popup, _last_popup_message, _last_state  # noqa: PLW0603
+    global _hook_generation, _store_errors, _meta_cache, _claude_title_cache  # noqa: PLW0603
+    global _claude_user_event_cache, _cwd_cache, _pi_scan, _turn_scan  # noqa: PLW0603
+    global _agent_class_cache, _sd_role_cache, _sd_boot_cache  # noqa: PLW0603
+    global _sd_workflow_cache, _sd_entity_cache, _cursor_meta_cache  # noqa: PLW0603
+    global _collect_memo  # noqa: PLW0603
+
+    _LEGACY_STATE = state
+    _lock = state.hook_lock
+    _cache_lock = state.cache_lock
+    _scan_lock = state.scanner_lock
+    _collect_memo_lock = state.collect_memo_lock
+    _hook_notifs = state.hook_notifications
+    _last_popup = state.last_popup
+    _last_popup_message = state.last_popup_message
+    _last_state = state.last_session_state
+    _hook_generation = state.hook_generation
+    _store_errors = state.store_errors
+    _meta_cache = state.metadata_cache
+    _claude_title_cache = state.claude_title_cache
+    _claude_user_event_cache = state.claude_user_event_cache
+    _cwd_cache = state.cwd_cache
+    _pi_scan = state.pi_scan
+    _turn_scan = state.turn_scan
+    _agent_class_cache = state.agent_class_cache
+    _sd_role_cache = state.spacedock_role_cache
+    _sd_boot_cache = state.spacedock_boot_cache
+    _sd_workflow_cache = state.spacedock_workflow_cache
+    _sd_entity_cache = state.spacedock_entity_cache
+    _cursor_meta_cache = state.cursor_metadata_cache
+    _collect_memo = state.collect_memo
 
 
 def glob_stores(key: str, primary: str, *pattern: str) -> list[str]:
@@ -249,46 +305,6 @@ def any_store_dir(key: str, primary: str, *parts: str) -> bool:
 def existing_stores(key: str, primary: str) -> list[str]:
     """Candidate paths for a store that actually exist as files."""
     return [path for path in store_roots(key, primary) if os.path.isfile(path)]
-
-
-# Per-harness data roots. Each is the best candidate for its store and stays a
-# module-level constant: it is the documented override seam (see store_roots).
-TASKS_DIR = STORE_ROOTS["claude.tasks"][0]
-PROJECTS_DIR = STORE_ROOTS["claude.projects"][0]
-CODEX_SESSIONS_DIR = STORE_ROOTS["codex.sessions"][0]
-PI_SESSIONS_DIR = STORE_ROOTS["pi.sessions"][0]
-GEMINI_TMP = STORE_ROOTS["gemini.tmp"][0]
-ANTIGRAVITY_CLI_DIR = STORE_ROOTS["antigravity.root"][0]
-ANTIGRAVITY_CONVERSATIONS_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "conversations")
-ANTIGRAVITY_LOG_DIR = os.path.join(ANTIGRAVITY_CLI_DIR, "log")
-ANTIGRAVITY_LAST_CONVERSATIONS = os.path.join(
-    ANTIGRAVITY_CLI_DIR, "cache", "last_conversations.json"
-)
-COPILOT_DIR = STORE_ROOTS["copilot.root"][0]
-OPENCODE_DATA = STORE_ROOTS["opencode.data"][0]
-CURSOR_CHATS = STORE_ROOTS["cursor.chats"][0]
-GOOSE_DB = STORE_ROOTS["goose.db"][0]
-FACTORY_PROJECTS = STORE_ROOTS["droid.projects"][0]
-
-RATE_WINDOW_SEC = 600  # usage rate is measured over the last 10 minutes
-WORKING_THRESHOLD_SEC = 90  # activity newer than this = WORKING
-# A transcript that writes nothing for this long mid-turn was waiting on a
-# human (permission prompt, open question) or asleep — not generating. The
-# turn clock re-anchors after such a gap so "elapsed" measures work, not
-# waiting. Kept well above the longest common tool run.
-TURN_GAP_RESET_SEC = 300
-TAIL_BYTES = 400_000  # only the transcript tail is parsed per refresh
-POPUP_COOLDOWN_SEC = 60  # per-session floor between macOS popups
-GLOBAL_POPUP_COOLDOWN_SEC = 15  # floor across caller-controlled session ids
-POPUP_REPEAT_SUPPRESS_SEC = 600  # identical message per session: one popup per window
-LONG_TURN_WARN_SEC = 900  # warn when a request runs (or is estimated) this long
-# How far ahead of the collection clock a store timestamp may read before it is
-# treated as skew rather than activity. Generous enough to absorb sampling noise
-# and coarse filesystem write times; far below any real clock drift.
-FUTURE_SKEW_TOLERANCE_SEC = 120
-SQL_MSG_LIMIT = 400  # newest messages fetched per DB-backed session
-MAX_CACHE_ENTRIES = 8192  # bound process-lifetime caches over long uptime
-GEMINI_SEEN_ENTRIES = 2048  # bound per-transcript snapshot deduplication
 
 
 def encoded_home_prefix(home: str) -> str:
@@ -334,12 +350,12 @@ CLEARING_NOTIFICATION_TYPES = IDLE_NOTIFICATION_TYPES | {
     "elicitation_response",
 }
 
-_lock = threading.Lock()
+_lock = _LEGACY_STATE.hook_lock
 # session prefix -> {"ts": epoch, "message": str, "user_event"?: str | None}
-_hook_notifs: dict[str, dict[str, Any]] = {}
-_last_popup: dict[str, float] = {}  # session prefix -> epoch
-_last_popup_message: dict[str, tuple[str, float]] = {}  # prefix -> (message, epoch)
-_last_state: dict[str, str] = {}  # session prefix -> state string (popup on transition)
+_hook_notifs = _LEGACY_STATE.hook_notifications
+_last_popup = _LEGACY_STATE.last_popup
+_last_popup_message = _LEGACY_STATE.last_popup_message
+_last_state = _LEGACY_STATE.last_session_state
 # Bumped only by SessionEnd — the one event meaning "this session is gone".
 # Notification handling and collection both sample it before their slow
 # transcript lookups and refuse to act if it moved, so a SessionEnd arriving
@@ -354,8 +370,8 @@ _last_state: dict[str, str] = {}  # session prefix -> state string (popup on tra
 # Bounded like the other caches. Evicting a session's entry degrades it to the
 # pre-guard behaviour for that session — a stale row that clears on the next
 # refresh — never to anything worse, so the bound is safe to keep.
-_hook_generation: dict[str, int] = {}
-_cache_lock = threading.Lock()
+_hook_generation = _LEGACY_STATE.hook_generation
+_cache_lock = _LEGACY_STATE.cache_lock
 
 
 def bounded_put(cache: dict[Any, Any], key: Any, value: Any) -> None:
@@ -363,9 +379,7 @@ def bounded_put(cache: dict[Any, Any], key: Any, value: Any) -> None:
 
     Callers must hold the lock that protects ``cache``.
     """
-    if key not in cache and len(cache) >= MAX_CACHE_ENTRIES:
-        cache.pop(next(iter(cache)))
-    cache[key] = value
+    runtime_state.bounded_put(cache, key, value, limit=MAX_CACHE_ENTRIES)
 
 
 def notification_text(value: Any, limit: int) -> str:
@@ -516,9 +530,6 @@ def read_tail(path: str) -> list[str]:
     if truncated:
         lines = lines[1:]
     return lines
-
-
-REVERSE_CHUNK_BYTES = 262_144  # bytes per read when walking a transcript backward
 
 
 def reverse_lines(
@@ -754,9 +765,6 @@ def dedupe_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(best.values())
 
 
-DISPLAY_ID_LEN = 8  # floor; widened per harness only where 8 chars collide
-
-
 def assign_display_ids(sessions: list[dict[str, Any]]) -> None:
     """Widen each session's display id until it is unique among the rows it
     could be confused with.
@@ -792,7 +800,7 @@ def assign_display_ids(sessions: list[dict[str, Any]]) -> None:
             session["session"] = str(session["sid"])[:width]
 
 
-_store_errors: dict[str, str] = {}
+_store_errors = _LEGACY_STATE.store_errors
 
 
 def record_store_error(path: str, exc: BaseException) -> None:
@@ -929,7 +937,7 @@ def sqlite_ro_uri(path: str, *, immutable: bool = False, windows: bool | None = 
 # ---------------------------------------------------------------------------
 # First-line metadata cache (JSONL harnesses write immutable line-1 metadata)
 
-_meta_cache: dict[str, dict[str, Any]] = {}  # path -> parsed metadata dict
+_meta_cache = _LEGACY_STATE.metadata_cache
 
 
 def first_line_meta(path: str, parse: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
@@ -941,7 +949,7 @@ def first_line_meta(path: str, parse: Callable[[dict[str, Any]], dict[str, Any]]
         return m
     try:
         with open(path, "rb") as f:
-            d = json.loads(f.readline(200_000))
+            d = json.loads(f.readline(FIRST_LINE_JSON_CAP_BYTES))
     except (OSError, ValueError):
         return {}
     m = parse(d if isinstance(d, dict) else {})
@@ -1055,8 +1063,8 @@ def pi_meta(path: str) -> dict[str, Any]:
 # Transcript analyzers (tail pass -> title, prompt, usage, activity)
 
 
-_claude_title_cache: dict[str, tuple[int, int, str | None]] = {}
-_claude_user_event_cache: dict[str, tuple[int, int, str | None]] = {}
+_claude_title_cache = _LEGACY_STATE.claude_title_cache
+_claude_user_event_cache = _LEGACY_STATE.claude_user_event_cache
 
 # Harness-injected wrappers around a user prompt. A slash command arrives as
 # `<command-name>/plugin</command-name>` and a dispatched worker's instructions
@@ -1071,13 +1079,12 @@ _COMMAND_ARGS_RE = re.compile(r"<command-args>\s*(.*?)\s*</command-args>", re.DO
 # paths otherwise eat the entire title budget and say nothing a basename does
 # not, and a dispatch prompt naming a UUID temp file is the worst of them.
 _PROMPT_PATH_RE = re.compile(r"(?<!:)(?<![\w/])(?:~|/[^\s/]+)(?:/[^\s/]+)+/?")
+
+
 # Only collapse a path long enough to be the problem this solves. Across the
 # transcripts sampled the median slash-run is 11 characters and the 90th
 # percentile is 140: the short ones are mostly not paths at all, and collapsing
 # them corrupts real content. `^/api/v1/users$` became `^users$` before this.
-SD_MIN_COLLAPSED_PATH = 25
-
-
 def shorten_paths(text: str) -> str:
     """Collapse long absolute filesystem paths in a title to their last segment."""
 
@@ -1277,8 +1284,7 @@ def analyze_transcript(path: str) -> dict[str, Any]:
     return info
 
 
-_CWD_SCAN_LINES = 50
-_cwd_cache: dict[str, str] = {}
+_cwd_cache = _LEGACY_STATE.cwd_cache
 
 
 def claude_session_cwd(path: str) -> str:
@@ -1304,7 +1310,7 @@ def claude_session_cwd(path: str) -> str:
                 # Bounded like codex_meta's head read: one pasted prompt is
                 # enough to make an unbounded readline pull megabytes into
                 # memory before the substring test can reject the line.
-                line = f.readline(200_000)
+                line = f.readline(CLAUDE_CWD_LINE_BYTES)
                 if not line:
                     break
                 if '"cwd"' not in line:
@@ -1555,7 +1561,7 @@ def analyze_droid_transcript(path: str) -> dict[str, Any]:
 # selector follows the path from the newest entry back to parentId: null, so
 # retaining sibling branches would report tools and tokens the agent abandoned.
 _PI_NO_NAME = object()
-_pi_scan: dict[str, dict[str, Any]] = {}
+_pi_scan = _LEGACY_STATE.pi_scan
 
 
 def _pi_projection(record: Any) -> dict[str, Any] | None:
@@ -1831,9 +1837,8 @@ def scan_pi_session(path: str) -> dict[str, Any] | None:
 # Turn tracking
 
 
-_turn_scan: dict[str, Any] = {}  # path -> incremental turn-tracking state
-_scan_lock = threading.Lock()  # ThreadingHTTPServer: serialize scanner state
-TURN_SCAN_MAX_BYTES = 8 * 1024 * 1024  # cap per-call read of a transcript delta
+_turn_scan = _LEGACY_STATE.turn_scan
+_scan_lock = _LEGACY_STATE.scanner_lock
 
 
 def _turn_signal(d: dict[str, Any], harness: str) -> tuple[str, Any] | None:
@@ -2399,21 +2404,11 @@ SPACEDOCK_ENSIGN = "spacedock:ensign"
 # transcripts on one machine it lands 97 KB-405 KB in, so the tail window the
 # turn scanner uses never contains it. 512 KiB caught 25 of 27; a session that
 # boots later than that renders no strip rather than a guessed one.
-SD_BOOT_SCAN_BYTES = 512_000
-SD_README_BYTES = 65_536  # frontmatter is ~540 bytes behind 32 KB of prose
-SD_ENTITY_BYTES = 8_192  # an entity file's frontmatter, ahead of its report body
-SD_MAX_FRONTMATTER_LINES = 400
-SD_MAX_STAGES = 32
-SD_MAX_WORKFLOWS = 8  # one first officer can drive several workflows
-SD_MAX_ENTITIES = 12  # strips rendered per workflow
 # Entity files whose frontmatter is read per workflow, newest first. A mature
 # queue holds far more than it is running: 31 files in the largest live state
 # directory measured, nearly all parked on the initial stage.
-SD_MAX_ENTITY_FILES = 96
-SD_MAX_BOOT_RECORDS = 16
 # Decode attempts per tool result. A transcript full of `{"command"` lookalikes
 # would otherwise cost one failed decode each while the collection lock is held.
-SD_MAX_BOOT_CANDIDATES = 64
 # Spacedock's own stage-name grammar (internal/status/stages.go): lowercase
 # kebab, at least two characters, interior hyphens legal. Hyphens inside stage
 # names are why worker names cannot be parsed positionally.
@@ -2422,12 +2417,11 @@ SD_STAGE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
 # every position: before the stage and after it.
 SD_CYCLE_RE = re.compile(r"^(?:cycle|pass|round|c|v|p|r)\d+[a-z]?$|^(?:retry|rerun)$")
 SD_COMMISSIONED_PREFIX = "spacedock@"
+
+
 # The workflow README and the entity-state frontmatter are the only project
 # reads Cargento performs. The switch exists so an operator who wants the
 # store-only read surface can have it back; see SECURITY.md.
-SPACEDOCK_ENABLED = True
-
-
 def sd_frontmatter_lines(text: str) -> list[str]:
     """The lines between a leading ``---`` fence and its closer, else [].
 
@@ -2680,10 +2674,7 @@ def sd_boot_entity_dir(records: list[dict[str, Any]], workflow_dir: str) -> str:
 # belongs to a subagent and its eventual label are immutable for a given file,
 # but young files may not have written both identifying records yet — so
 # incomplete results are cached only once the file is big enough to be conclusive.
-_agent_class_cache: dict[str, tuple[bool, str, str]] = {}
-_AGENT_SCAN_LINES = 50
-_AGENT_CACHE_NEGATIVE_MIN_BYTES = 16384
-_AGENT_SCAN_BYTES = _AGENT_CACHE_NEGATIVE_MIN_BYTES
+_agent_class_cache = _LEGACY_STATE.agent_class_cache
 
 
 def claude_agent_identity(path: str) -> tuple[bool, str, str]:
@@ -2742,10 +2733,10 @@ def claude_agent_identity(path: str) -> tuple[bool, str, str]:
     return result
 
 
-_sd_role_cache: dict[str, str] = {}
-_sd_boot_cache: dict[tuple[str, int], list[dict[str, Any]]] = {}
-_sd_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = {}
-_sd_entity_cache: dict[tuple[str, int, int], str] = {}
+_sd_role_cache = _LEGACY_STATE.spacedock_role_cache
+_sd_boot_cache = _LEGACY_STATE.spacedock_boot_cache
+_sd_workflow_cache = _LEGACY_STATE.spacedock_workflow_cache
+_sd_entity_cache = _LEGACY_STATE.spacedock_entity_cache
 
 
 def claude_agent_setting(path: str) -> str:
@@ -3513,7 +3504,7 @@ def antigravity_log_head_lines(path: str) -> list[str]:
     """Read the bounded identity-bearing beginning of an Antigravity CLI log."""
     try:
         with open(path, "rb") as source:
-            return source.read(80_000).decode("utf-8", "replace").splitlines()
+            return source.read(ANTIGRAVITY_LOG_HEAD_BYTES).decode("utf-8", "replace").splitlines()
     except OSError:
         return []
 
@@ -4253,7 +4244,7 @@ def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[di
 
 
 # db path -> (mtime, title, cwd)
-_cursor_meta_cache: dict[str, tuple[float, str | None, str]] = {}
+_cursor_meta_cache = _LEGACY_STATE.cursor_metadata_cache
 
 # Cursor does not document its meta payload, so the workspace path is read by
 # trying the plausible spellings, in this order of trust. A miss leaves the row
@@ -4267,7 +4258,6 @@ _cursor_meta_cache: dict[str, tuple[float, str | None, str]] = {}
 # resolves to a directory that exists here — a guess that validates itself.
 _CURSOR_CWD_KEYS = ("workspacePath", "workspace", "rootPath", "projectPath", "folder", "cwd")
 _ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
-_CURSOR_META_ROWS = 50  # a key/value table; the workspace need not be in row 1-5
 
 
 def _cursor_workspace(value: Any) -> str:
@@ -4711,9 +4701,8 @@ def collect(window_hours: float, show_all: bool) -> dict[str, Any]:
 
 
 # (window_hours, show_all) -> {"ts": epoch, "body": bytes}
-_collect_memo: dict[tuple[float, bool], dict[str, Any]] = {}
-_collect_memo_lock = threading.Lock()
-COLLECT_MEMO_SEC = 2.5  # multiple tabs / curl loops share one scan per window
+_collect_memo = _LEGACY_STATE.collect_memo
+_collect_memo_lock = _LEGACY_STATE.collect_memo_lock
 
 
 def collect_json(window_hours: float, show_all: bool) -> bytes:
@@ -4735,15 +4724,6 @@ def collect_json(window_hours: float, show_all: bool) -> bytes:
 # it needs the three things a supervised process gets for free: a way to be
 # found, a way to be asked whether it is alive, and a way to be stopped. See
 # docs/design-daemon.md.
-
-CARGENTO_HOME_ENV = "CARGENTO_HOME"
-DAEMON_READY_TIMEOUT_SEC = 10.0
-# How long --stop waits for the port to come free after the server agrees to
-# stop. Generously above the 0.5s serve_forever() poll interval it waits on.
-STOP_RELEASE_TIMEOUT_SEC = 5.0
-# Anything larger in a state file is not a state file. write_state produces a
-# few hundred bytes; the cap is what keeps a corrupt one cheap to reject.
-STATE_READ_CAP_BYTES = 65536
 
 # Resolved through getattr, never referenced directly: `os.fork` and
 # `os.setsid` do not exist on Windows, and a module-level `os.fork` reference
@@ -4773,8 +4753,8 @@ def cargento_home() -> str:
     CARGENTO_HOME is authoritative, which is the rule the harness store
     variables in STORE_ENV_VARS already follow.
     """
-    override = os.environ.get(CARGENTO_HOME_ENV)
-    return override if override and override.strip() else os.path.join(HOME, ".cargento")
+    config, _ = _legacy_runtime()
+    return str(config.state_dir)
 
 
 def state_path(port: int) -> str:
@@ -5450,7 +5430,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = -1
-        if not 0 <= length <= 65536:
+        if not 0 <= length <= NOTIFICATION_BODY_CAP_BYTES:
             self.send_error(413)
             return
         try:
@@ -5714,8 +5694,17 @@ def main() -> None:
         help="sessions with no activity in this window are hidden (default 24)",
     )
     args = ap.parse_args()
+    started = time.time()
     global SERVER_STARTED  # noqa: PLW0603 — one process-wide start stamp
-    SERVER_STARTED = time.time()
+    config, _ = _legacy_runtime()
+    config = replace(
+        config,
+        port=args.port,
+        window_hours=args.window_hours,
+        spacedock_enabled=not args.no_spacedock,
+    )
+    _install_legacy_state(runtime_state.build_runtime_state(config, started=started))
+    SERVER_STARTED = started
     if args.daemon and (args.diagnose or args.stop or args.status):
         # Each of those three exits without serving, so --daemon cannot apply.
         # Accepting it silently would teach that it had been honored.

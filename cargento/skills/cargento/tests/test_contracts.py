@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 import contextlib
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -30,6 +32,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
 
     EXPECTED: ClassVar[dict[str, set[str]]] = {
         "cargento_runtime": set(),
+        "cargento_runtime.config": set(),
+        "cargento_runtime.state": {"cargento_runtime.config"},
         "cargento_runtime.web": set(),
         "cargento_runtime.web.page": set(),
     }
@@ -151,6 +155,39 @@ from . import page as sibling_page
             dependencies.discard(module)
             actual[module] = dependencies
         self.assertEqual(self.EXPECTED, actual)
+
+    def test_importing_config_and_state_performs_no_external_operation(self) -> None:
+        # Opening a file, socket, browser, log, or child during import would make
+        # copied-plugin discovery and diagnostics unsafe.
+        script = """
+import builtins
+import logging
+import socket
+import subprocess
+import webbrowser
+
+def forbidden(*_args, **_kwargs):
+    raise AssertionError("runtime import performed an external operation")
+
+builtins.open = forbidden
+socket.socket = forbidden
+subprocess.Popen = forbidden
+subprocess.run = forbidden
+webbrowser.open = forbidden
+logging.Logger._log = forbidden
+
+import cargento_runtime.config
+import cargento_runtime.state
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=SKILL_DIR,
+            env={**os.environ, "PYTHONPATH": str(SKILL_DIR)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
 
 
 class CollectorAgreementTest(LegacyDashboardTestCase):

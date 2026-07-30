@@ -196,6 +196,8 @@ Run these from the repository root; the output is what the docs MUST match.
 
 ```bash
 S=cargento/skills/cargento/server.py
+C=cargento/skills/cargento/cargento_runtime/config.py
+R=cargento/skills/cargento/cargento_runtime/state.py
 W=cargento/skills/cargento/cargento_runtime/web
 
 # HTTP routes the server actually serves
@@ -205,9 +207,12 @@ grep -E -A4 'ap\.add_argument\(' "$S" | grep -E '"--|default='
 # The harness registry — one collector per supported harness
 awk '/^HARNESSES/,/^\]$/' "$S" | grep -oE 'collect_[a-z]+' | sort -u
 # Store-relocation environment variables the resolver advertises
-grep -oE 'STORE_ENV_VARS = \(.*\)' "$S"
-# Tunable constants the docs quote by value (ports, thresholds, windows)
-grep -nE '^[A-Z_]+ = [0-9]' "$S"
+grep -nE '^(STORE_ENV_VARS|CARGENTO_HOME_ENV) = ' "$C"
+# Immutable configuration fields, builders, and locked defaults
+grep -nE '^(class RuntimeConfig|def (build_runtime_config|resolve_store_roots|store_roots|primary_store))' "$C"
+awk '/return RuntimeConfig\\(/,/^    \\)/' "$C"
+# Mutable state fields and its explicit-time builder
+grep -nE '^(class (CollectMemoEntry|RuntimeState)|def (build_runtime_state|bounded_put))' "$R"
 # Python floor: the ruff target and the mypy pin must agree, and match the docs
 grep -nE 'target-version|python_version|fail_under' pyproject.toml
 # Frontend source ownership, assembly slots, and byte identity

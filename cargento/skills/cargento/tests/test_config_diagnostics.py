@@ -9,14 +9,19 @@ import ntpath
 import os
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
+from cargento_runtime.config import build_runtime_config
+from cargento_runtime.state import bounded_put
+
 from .support import (
     LegacyDashboardTestCase,
     dashboard,
+    make_runtime,
 )
 
 
@@ -54,6 +59,293 @@ class CargentoServerTest(LegacyDashboardTestCase):
             dashboard.main()
         self.assertEqual(2, caught.exception.code)
         bind.assert_not_called()
+
+    def test_legacy_runtime_refreshes_patched_root_and_limit_into_one_state(self) -> None:
+        # A stale adapter config makes moved helpers ignore existing patch seams.
+        with (
+            mock.patch.object(dashboard, "OPENCODE_DATA", "/fixture/opencode"),
+            mock.patch.object(dashboard, "MAX_CACHE_ENTRIES", 17),
+        ):
+            config, state = dashboard._legacy_runtime()
+
+        self.assertEqual(("/fixture/opencode",), config.store_roots["opencode.data"])
+        self.assertEqual(17, config.max_cache_entries)
+        self.assertIs(config, state.config)
+        _, same_state = dashboard._legacy_runtime()
+        self.assertIs(state, same_state)
+
+
+class RuntimeConfigTest(unittest.TestCase):
+    POSIX_ENV: ClassVar[dict[str, str]] = {
+        "HOME": "/home/ada",
+        "XDG_DATA_HOME": "/var/data/ada",
+    }
+    WINDOWS_ENV: ClassVar[dict[str, str]] = {
+        "HOME": r"C:\Users\ada",
+        "USERPROFILE": r"C:\Users\ada",
+        "LOCALAPPDATA": r"C:\Users\ada\AppData\Local",
+        "APPDATA": r"C:\Users\ada\AppData\Roaming",
+    }
+
+    def build(
+        self,
+        *,
+        environ: dict[str, str],
+        platform_name: str = "linux",
+        os_name: str = "posix",
+        **changes: Any,
+    ) -> Any:
+        return build_runtime_config(
+            environ=environ,
+            platform_name=platform_name,
+            os_name=os_name,
+            launcher_path=Path("/opt/cargento/server.py"),
+            **changes,
+        )
+
+    def test_explicit_posix_environment_builds_home_data_and_store_roots(self) -> None:
+        # Reading ambient os.environ would replace these literal fixture roots.
+        with mock.patch.dict(
+            os.environ,
+            {"HOME": "/ambient", "XDG_DATA_HOME": "/ambient/data"},
+            clear=True,
+        ):
+            config = self.build(environ=dict(self.POSIX_ENV))
+
+        self.assertEqual("/home/ada", config.home)
+        self.assertEqual("/var/data/ada", config.data_home)
+        self.assertEqual(("/home/ada/.claude/projects",), config.store_roots["claude.projects"])
+        self.assertEqual(("/var/data/ada/opencode",), config.store_roots["opencode.data"])
+        self.assertIsInstance(config.store_roots, types.MappingProxyType)
+
+    def test_explicit_windows_environment_uses_target_path_rules(self) -> None:
+        # Joining with host POSIX rules would produce mixed-separator Windows roots.
+        config = self.build(
+            environ=dict(self.WINDOWS_ENV),
+            platform_name="win32",
+            os_name="nt",
+        )
+
+        self.assertEqual(r"C:\Users\ada", config.home)
+        self.assertEqual(r"C:\Users\ada\.local\share", config.data_home)
+        self.assertEqual(
+            (r"C:\Users\ada\.codex\sessions",),
+            config.store_roots["codex.sessions"],
+        )
+        self.assertEqual(
+            (
+                r"C:\Users\ada\.local\share\opencode",
+                r"C:\Users\ada\AppData\Local\opencode\data",
+                r"C:\Users\ada\AppData\Local\opencode",
+            ),
+            config.store_roots["opencode.data"],
+        )
+
+    def test_documented_store_environment_overrides_remain_authoritative(self) -> None:
+        # Appending default candidates would resurrect stale stores after relocation.
+        environ = {
+            **self.POSIX_ENV,
+            "CLAUDE_CONFIG_DIR": "/srv/claude",
+            "CODEX_HOME": "/srv/codex",
+            "GEMINI_CLI_HOME": "/srv/gemini",
+            "COPILOT_HOME": "/srv/copilot",
+            "PI_CODING_AGENT_DIR": "/srv/pi",
+            "PI_CODING_AGENT_SESSION_DIR": "/srv/pi-history",
+        }
+        config = self.build(environ=environ)
+
+        self.assertEqual(("/srv/claude/projects",), config.store_roots["claude.projects"])
+        self.assertEqual(("/srv/claude/tasks",), config.store_roots["claude.tasks"])
+        self.assertEqual(("/srv/codex/sessions",), config.store_roots["codex.sessions"])
+        self.assertEqual(("/srv/gemini/.gemini/tmp",), config.store_roots["gemini.tmp"])
+        self.assertEqual(("/srv/copilot",), config.store_roots["copilot.root"])
+        self.assertEqual(("/srv/pi-history",), config.store_roots["pi.sessions"])
+
+    def test_selected_root_replaces_only_that_store_candidate_tuple(self) -> None:
+        # Falling through after a patched primary can leak a developer's real store.
+        config = self.build(
+            environ=dict(self.WINDOWS_ENV),
+            platform_name="win32",
+            os_name="nt",
+            store_root_overrides={"opencode.data": r"D:\fixture\opencode"},
+        )
+
+        self.assertEqual((r"D:\fixture\opencode",), config.store_roots["opencode.data"])
+        self.assertEqual(
+            (
+                r"C:\Users\ada\.local\share\goose\sessions\sessions.db",
+                r"C:\Users\ada\AppData\Roaming\Block\goose\data\sessions\sessions.db",
+                r"C:\Users\ada\AppData\Local\Block\goose\data\sessions\sessions.db",
+            ),
+            config.store_roots["goose.db"],
+        )
+
+    def test_pi_session_dir_setting_resolves_relative_to_config_root(self) -> None:
+        # Ignoring sessionDir would silently scan Pi's default sessions child.
+        with tempfile.TemporaryDirectory() as tmp:
+            config_dir = Path(tmp) / "pi"
+            config_dir.mkdir()
+            (config_dir / "settings.json").write_text(
+                '{"sessionDir": "history"}',
+                encoding="utf-8",
+            )
+            config = self.build(
+                environ={
+                    **self.POSIX_ENV,
+                    "PI_CODING_AGENT_DIR": str(config_dir),
+                },
+            )
+        self.assertEqual((str(config_dir / "history"),), config.store_roots["pi.sessions"])
+
+    def test_runtime_options_and_state_directory_are_preserved(self) -> None:
+        # Dropping a constructor argument would make the runtime use a CLI default.
+        config = self.build(
+            environ={**self.POSIX_ENV, "CARGENTO_HOME": "/run/cargento"},
+            host="127.0.0.9",
+            port=9123,
+            window_hours=6.5,
+            spacedock_enabled=False,
+        )
+
+        self.assertEqual(Path("/run/cargento"), config.state_dir)
+        self.assertEqual(Path("/opt/cargento/server.py"), config.launcher_path)
+        self.assertEqual("127.0.0.9", config.host)
+        self.assertEqual(9123, config.port)
+        self.assertEqual(6.5, config.window_hours)
+        self.assertFalse(config.spacedock_enabled)
+        self.assertEqual("linux", config.platform_name)
+        self.assertEqual("posix", config.os_name)
+
+    def test_every_threshold_and_limit_has_the_locked_default(self) -> None:
+        # A reordered or copied-wrong limit changes bounded reads and cache behavior.
+        config = self.build(environ=dict(self.POSIX_ENV))
+        actual = (
+            config.rate_window_sec,
+            config.working_threshold_sec,
+            config.turn_gap_reset_sec,
+            config.tail_bytes,
+            config.popup_cooldown_sec,
+            config.global_popup_cooldown_sec,
+            config.popup_repeat_suppress_sec,
+            config.long_turn_warn_sec,
+            config.future_skew_tolerance_sec,
+            config.sql_message_limit,
+            config.max_cache_entries,
+            config.gemini_seen_entries,
+            config.reverse_chunk_bytes,
+            config.display_id_len,
+            config.claude_cwd_scan_lines,
+            config.claude_cwd_line_bytes,
+            config.turn_scan_max_bytes,
+            config.claude_agent_scan_lines,
+            config.claude_agent_cache_negative_min_bytes,
+            config.claude_agent_scan_bytes,
+            config.cursor_meta_rows,
+            config.antigravity_log_head_bytes,
+            config.spacedock_boot_scan_bytes,
+            config.spacedock_readme_bytes,
+            config.spacedock_entity_bytes,
+            config.spacedock_max_frontmatter_lines,
+            config.spacedock_max_stages,
+            config.spacedock_max_workflows,
+            config.spacedock_max_entities,
+            config.spacedock_max_entity_files,
+            config.spacedock_max_boot_records,
+            config.spacedock_max_boot_candidates,
+            config.collect_memo_sec,
+            config.daemon_ready_timeout_sec,
+            config.stop_release_timeout_sec,
+            config.state_read_cap_bytes,
+            config.prompt_path_collapse_min_length,
+            config.first_line_json_cap_bytes,
+            config.notification_body_cap_bytes,
+        )
+        self.assertEqual(
+            (
+                600,
+                90,
+                300,
+                400_000,
+                60,
+                15,
+                600,
+                900,
+                120,
+                400,
+                8192,
+                2048,
+                262_144,
+                8,
+                50,
+                200_000,
+                8 * 1024 * 1024,
+                50,
+                16_384,
+                16_384,
+                50,
+                80_000,
+                512_000,
+                65_536,
+                8_192,
+                400,
+                32,
+                8,
+                12,
+                96,
+                16,
+                64,
+                2.5,
+                10.0,
+                5.0,
+                65_536,
+                25,
+                200_000,
+                65_536,
+            ),
+            actual,
+        )
+
+    def test_runtime_states_retain_start_times_and_isolate_mutable_fields(self) -> None:
+        # A default clock read, shared lock, or shared dict crosses runtime boundaries.
+        _, first = make_runtime(started=1234.5)
+        _, second = make_runtime(started=9876.5)
+
+        self.assertEqual(1234.5, first.server_started)
+        self.assertEqual(9876.5, second.server_started)
+        dict_fields = (
+            "hook_notifications",
+            "last_popup",
+            "last_popup_message",
+            "last_session_state",
+            "hook_generation",
+            "store_errors",
+            "metadata_cache",
+            "claude_title_cache",
+            "claude_user_event_cache",
+            "cwd_cache",
+            "pi_scan",
+            "turn_scan",
+            "agent_class_cache",
+            "spacedock_role_cache",
+            "spacedock_boot_cache",
+            "spacedock_workflow_cache",
+            "spacedock_entity_cache",
+            "cursor_metadata_cache",
+            "collect_memo",
+        )
+        lock_fields = ("hook_lock", "cache_lock", "scanner_lock", "collect_memo_lock")
+        for name in (*dict_fields, *lock_fields):
+            with self.subTest(field=name):
+                self.assertIsNot(getattr(first, name), getattr(second, name))
+
+    def test_bounded_put_evicts_only_for_a_new_key_at_the_limit(self) -> None:
+        # Evicting on replacement drops an unrelated live cache entry.
+        cache = {"oldest": 1, "newest": 2}
+        bounded_put(cache, "newest", 3, limit=2)
+        self.assertEqual({"oldest": 1, "newest": 3}, cache)
+
+        bounded_put(cache, "third", 4, limit=2)
+        self.assertEqual({"newest": 3, "third": 4}, cache)
 
 
 class StoreRootsTest(unittest.TestCase):

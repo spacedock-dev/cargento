@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import importlib
 import importlib.util
 import sys
@@ -10,6 +11,9 @@ import unittest
 from pathlib import Path
 from typing import Any
 from unittest import mock
+
+from cargento_runtime.config import RuntimeConfig, build_runtime_config
+from cargento_runtime.state import RuntimeState, build_runtime_state
 
 from .fixtures import STORE_CONSTANTS
 
@@ -32,6 +36,25 @@ assert HOOK_SPEC.loader is not None
 dashboard_hook = importlib.util.module_from_spec(HOOK_SPEC)
 sys.modules[HOOK_SPEC.name] = dashboard_hook
 HOOK_SPEC.loader.exec_module(dashboard_hook)
+
+
+def make_config(**changes: Any) -> RuntimeConfig:
+    config = build_runtime_config(
+        environ={"HOME": "/home/cargento-test"},
+        platform_name="linux",
+        os_name="posix",
+        launcher_path=SERVER_PATH,
+    )
+    return dataclasses.replace(config, **changes)
+
+
+def make_runtime(
+    *,
+    started: float = 1_700_000_000.0,
+    **changes: Any,
+) -> tuple[RuntimeConfig, RuntimeState]:
+    config = make_config(**changes)
+    return config, build_runtime_state(config, started=started)
 
 
 def serve_until_closed(httpd: Any) -> threading.Thread:
@@ -73,6 +96,30 @@ class LegacyDashboardTestCase(unittest.TestCase):
             dashboard._turn_scan.clear()
         with dashboard._collect_memo_lock:
             dashboard._collect_memo.clear()
+        _, state = dashboard._legacy_runtime()
+        with state.hook_lock:
+            state.hook_notifications.clear()
+            state.last_popup.clear()
+            state.last_popup_message.clear()
+            state.last_session_state.clear()
+            state.hook_generation.clear()
+        with state.cache_lock:
+            state.store_errors.clear()
+            state.metadata_cache.clear()
+            state.claude_title_cache.clear()
+            state.claude_user_event_cache.clear()
+            state.cwd_cache.clear()
+            state.agent_class_cache.clear()
+            state.spacedock_role_cache.clear()
+            state.spacedock_boot_cache.clear()
+            state.spacedock_workflow_cache.clear()
+            state.spacedock_entity_cache.clear()
+            state.cursor_metadata_cache.clear()
+        with state.scanner_lock:
+            state.pi_scan.clear()
+            state.turn_scan.clear()
+        with state.collect_memo_lock:
+            state.collect_memo.clear()
         # No test may fire a real macOS popup ("[sample] permission" spam
         # during dev runs). Tests asserting popups use their own nested patch.
         notify_patcher = mock.patch.object(dashboard, "notify_mac")
