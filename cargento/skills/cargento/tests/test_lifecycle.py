@@ -454,7 +454,9 @@ class CargentoServerTest(PageJsHarness):
                 self.assertTrue(diag.called)
 
     def test_probe_port_classifies_cargento_foreign_and_closed(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         port = httpd.server_port

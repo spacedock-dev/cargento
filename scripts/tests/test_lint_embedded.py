@@ -1,4 +1,4 @@
-"""Tests for the embedded-asset linter."""
+"""Tests for the frontend source linter."""
 
 from __future__ import annotations
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import http.client
 import http.server
+import io
 import json
 import os
 import re
@@ -137,6 +138,70 @@ class FrontendAssetContractTest(unittest.TestCase):
                     self.assertEqual(expected_code, proc.returncode, proc.stderr)
                     self.assertIn(expected_text, proc.stdout + proc.stderr)
                     self.assertNotIn("cannot load frontend assets", proc.stderr)
+
+    def test_early_cli_paths_never_call_the_canonical_page_loader(self) -> None:
+        cases = (
+            ("help", ["--help"], 0),
+            ("diagnose", ["--diagnose", "--json"], None),
+            ("status", ["--status"], 0),
+            ("stop", ["--stop"], 0),
+        )
+        for label, args, expected_exit in cases:
+            with self.subTest(path=label):
+                calls: list[str] = []
+
+                def record_load(
+                    observed: list[str] = calls,
+                    path: str = label,
+                ) -> bytes:
+                    observed.append(path)
+                    return b"must not be read"
+
+                with (
+                    mock.patch.object(frontend_page, "load_page", side_effect=record_load),
+                    mock.patch.object(sys, "argv", ["server.py", *args]),
+                    mock.patch.object(dashboard, "diagnose", return_value={}),
+                    mock.patch.object(
+                        dashboard, "instance_status", return_value={"state": "running"}
+                    ),
+                    mock.patch.object(dashboard, "render_status", return_value="running"),
+                    mock.patch.object(dashboard, "stop_instance", return_value=("stopped", 0)),
+                    mock.patch.object(dashboard, "diag"),
+                    mock.patch.object(sys, "stdout", io.StringIO()),
+                ):
+                    if expected_exit is None:
+                        dashboard.main()
+                    else:
+                        with self.assertRaises(SystemExit) as caught:
+                            dashboard.main()
+                        self.assertEqual(expected_exit, caught.exception.code)
+                self.assertEqual([], calls, f"{label} read frontend assets")
+
+    def test_serving_uses_the_canonical_loader_before_binding(self) -> None:
+        with (
+            mock.patch.object(
+                frontend_page,
+                "load_page",
+                side_effect=RuntimeError("review loader probe"),
+            ),
+            mock.patch.object(
+                dashboard,
+                "LoopbackHTTPServer",
+                side_effect=AssertionError("bound before canonical loader"),
+            ),
+            mock.patch.object(sys, "argv", ["server.py"]),
+            mock.patch.object(sys, "stderr", io.StringIO()) as stderr,
+        ):
+            try:
+                dashboard.main()
+            except SystemExit as exc:
+                self.assertEqual(1, exc.code)
+            except AssertionError as exc:
+                self.fail(str(exc))
+        self.assertEqual(
+            "Cargento: cannot load frontend assets (RuntimeError: review loader probe).\n",
+            stderr.getvalue(),
+        )
 
     def test_serving_reports_asset_failure_before_log_creation_or_bind(self) -> None:
         cases = (

@@ -51,6 +51,60 @@ class RuntimeImportGraphTest(unittest.TestCase):
             self.fail(f"{module} has a relative import that climbs above cargento_runtime")
         return ".".join([*base, *([node.module] if node.module else [])])
 
+    def _run_graph_fixture(
+        self,
+        source: str,
+        expected_dependencies: set[str],
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp)
+            runtime_dir = skill_dir / "cargento_runtime"
+            runtime_dir.mkdir()
+            module_path = runtime_dir / "fixture.py"
+            module_path.write_text(source, encoding="utf-8")
+            expected = {"cargento_runtime.fixture": expected_dependencies}
+            with (
+                mock.patch.multiple(
+                    sys.modules[__name__],
+                    SKILL_DIR=skill_dir,
+                    RUNTIME_DIR=runtime_dir,
+                ),
+                mock.patch.object(self, "EXPECTED", expected),
+            ):
+                self.test_runtime_import_graph_matches_the_reviewed_allowlist()
+
+    def test_importfrom_namespace_aliases_are_rejected(self) -> None:
+        forbidden = (
+            "from cargento.skills.cargento import cargento_runtime\n",
+            "from cargento.skills.cargento import cargento_runtime as runtime\n",
+            "from cargento.skills.cargento import cargento_runtime, server\n",
+        )
+        for source in forbidden:
+            with (
+                self.subTest(source=source),
+                self.assertRaisesRegex(AssertionError, "namespace-qualified runtime import"),
+            ):
+                self._run_graph_fixture(source, set())
+
+    def test_canonical_import_forms_remain_legal(self) -> None:
+        source = """
+import cargento_runtime.web.page
+from cargento_runtime.web import page
+from . import page as sibling_page
+"""
+        self._run_graph_fixture(
+            source,
+            {
+                "cargento_runtime.page",
+                "cargento_runtime.web",
+                "cargento_runtime.web.page",
+            },
+        )
+
+    def test_relative_import_cannot_climb_above_runtime(self) -> None:
+        with self.assertRaisesRegex(AssertionError, "climbs above cargento_runtime"):
+            self._run_graph_fixture("from .. import server\n", set())
+
     def test_runtime_import_graph_matches_the_reviewed_allowlist(self) -> None:
         actual: dict[str, set[str]] = {}
         for path in sorted(RUNTIME_DIR.rglob("*.py")):
@@ -79,11 +133,16 @@ class RuntimeImportGraphTest(unittest.TestCase):
                         if node.level
                         else (node.module or "")
                     )
-                    self.assertFalse(
-                        imported == FORBIDDEN_RUNTIME_PREFIX
-                        or imported.startswith(f"{FORBIDDEN_RUNTIME_PREFIX}."),
-                        f"{module} uses namespace-qualified runtime import {imported}",
-                    )
+                    candidates = [
+                        imported,
+                        *(f"{imported}.{alias.name}" for alias in node.names),
+                    ]
+                    for candidate in candidates:
+                        self.assertFalse(
+                            candidate == FORBIDDEN_RUNTIME_PREFIX
+                            or candidate.startswith(f"{FORBIDDEN_RUNTIME_PREFIX}."),
+                            f"{module} uses namespace-qualified runtime import {candidate}",
+                        )
                     if imported == RUNTIME_PREFIX or imported.startswith(f"{RUNTIME_PREFIX}."):
                         if imported == RUNTIME_PREFIX or node.module is None:
                             dependencies.update(f"{imported}.{alias.name}" for alias in node.names)

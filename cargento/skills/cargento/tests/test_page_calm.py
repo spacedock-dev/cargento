@@ -13,8 +13,8 @@ class CalmModeTest(PageJsHarness):
     """The calm display mode and the switch between it and the regular view.
 
     Calm mode renders the same ``/api/data`` payload as a dense ledger. These
-    execute the page's real JS: every assertion is about what the page does
-    with a payload, not about the text of ``PAGE``.
+    execute the shipped `app.js`: every assertion is about what the page does
+    with a payload, not about the assembled document's source text.
     """
 
     # Globals the page reads at load (localStorage) or feature-detects

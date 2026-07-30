@@ -41,7 +41,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from cargento_runtime.web.page import load_page
+from cargento_runtime.web import page as frontend_page
 
 try:
     import sqlite3
@@ -5737,7 +5737,7 @@ def main() -> None:
         diag(render_status(status))
         raise SystemExit(0 if status["state"] == "running" else 1)
     try:
-        page_bytes = load_page()
+        page_bytes = frontend_page.load_page()
     except (OSError, UnicodeError, RuntimeError) as exc:
         print(
             f"Cargento: cannot load frontend assets ({type(exc).__name__}: {exc}).",

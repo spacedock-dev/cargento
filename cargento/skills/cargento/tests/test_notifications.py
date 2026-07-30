@@ -80,7 +80,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 )
                 + "\n"
             )
-            httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            httpd = dashboard.LoopbackHTTPServer(
+                ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+            )
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             try:
@@ -105,7 +107,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # Claude re-emits the same notification while a session stays blocked;
         # only the first within the suppression window may popup. A different
         # message from the same session still pops.
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
 
@@ -249,7 +253,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
             )
             old = now - 600
             dashboard.os.utime(fp, (old, old))
-            httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            httpd = dashboard.LoopbackHTTPServer(
+                ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+            )
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             try:
@@ -292,7 +298,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 thread.join(timeout=2)
 
     def test_structured_notification_type_overrides_message_text(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -377,7 +385,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 "ts": dashboard.time.time() - 30,
                 "message": "MCP input requested",
             }
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -404,7 +414,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 "message": "permission needed",
             }
             dashboard._last_state["deadbeef"] = "needs_input"
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -550,7 +562,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             )
-            httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+            httpd = dashboard.LoopbackHTTPServer(
+                ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+            )
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             try:
@@ -1152,7 +1166,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             conn.close()
 
     def test_session_end_cannot_be_undone_by_a_slow_notification(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = serve_until_closed(httpd)
         entered = threading.Event()
         release = threading.Event()

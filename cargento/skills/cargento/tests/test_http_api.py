@@ -194,7 +194,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
         self.assertEqual("RuntimeError: broken store", result["harnesses"][0]["error"])
 
     def test_health_reports_identity_without_scanning_any_store(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -220,7 +222,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
         self.assertIsInstance(payload["started"], (int, float))
 
     def test_health_is_refused_from_a_non_local_host_header(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -590,6 +594,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                             self.assertIsNone(headers.get("Cache-Control"))
                         else:
                             self.assertEqual("no-store", headers["Cache-Control"])
+                        if path == "/":
+                            self.assertEqual(PAGE_BYTES, received)
                         if keys is not None:
                             self.assertEqual(keys, set(json.loads(received)))
                 code, headers, received = self._response(
@@ -692,7 +698,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             thread.join(timeout=5)
 
     def test_health_performs_no_harness_store_reads(self) -> None:
-        httpd = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        httpd = dashboard.LoopbackHTTPServer(
+            ("127.0.0.1", 0), dashboard.Handler, page_bytes=PAGE_BYTES
+        )
         thread = serve_until_closed(httpd)
         try:
             # These are the store-access primitives used by collectors. Health
