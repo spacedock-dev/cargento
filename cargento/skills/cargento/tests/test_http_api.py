@@ -10,6 +10,7 @@ import json
 import os
 import socket
 import threading
+import unittest
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest import mock
@@ -227,7 +228,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             thread.join(timeout=2)
 
 
-class HostAndSocketTest(LegacyDashboardTestCase):
+class HostAndSocketTest(unittest.TestCase):
     def test_host_header_forms_that_are_all_loopback(self) -> None:
         # rsplit(":", 1) mangled the bracketed IPv6 form into "[:" and never
         # folded case, so both were rejected as non-local.
@@ -309,7 +310,7 @@ class HostAndSocketTest(LegacyDashboardTestCase):
             thread.join(timeout=2)
 
 
-class ReviewFixTest(LegacyDashboardTestCase):
+class ReviewFixTest(unittest.TestCase):
     """Regressions found by the adversarial review passes on PR #7."""
 
     NOW = 1_700_000_000.0
@@ -440,7 +441,7 @@ class ReviewFixTest(LegacyDashboardTestCase):
             thread.join(timeout=2)
 
 
-class VerificationFixTest(LegacyDashboardTestCase):
+class VerificationFixTest(unittest.TestCase):
     """Regressions found by the adversarial pass that tried to refute the fixes."""
 
     NOW = 1_700_000_000.0

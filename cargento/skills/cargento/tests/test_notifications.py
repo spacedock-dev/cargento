@@ -612,7 +612,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 thread.join(timeout=2)
 
 
-class NotifyHookTest(LegacyDashboardTestCase):
+class NotifyHookTest(unittest.TestCase):
     """The forwarder replaces a curl one-liner that only worked in POSIX shells."""
 
     HOOK = str(HOOK_PATH)
@@ -769,7 +769,7 @@ class NotifyHookTest(LegacyDashboardTestCase):
         self.assertFalse(delivered, "a refused redirect must not report success")
 
 
-class HookOrderingTest(LegacyDashboardTestCase):
+class HookOrderingTest(unittest.TestCase):
     def setUp(self) -> None:
         # This class does not inherit CargentoServerTest's shared reset, and
         # these tests mutate process-wide hook state.
@@ -1067,7 +1067,7 @@ class NativeNotifierTest(unittest.TestCase):
             self.assertEqual("", dashboard.collect(24, False)["native_notify"])
 
 
-class GlobUnderTest(LegacyDashboardTestCase):
+class GlobUnderTest(unittest.TestCase):
     HOSTILE = "A [Contractor]"
 
     def test_notify_session_id_cannot_inject_a_glob_pattern(self) -> None:

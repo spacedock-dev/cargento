@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import unittest
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -262,7 +263,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         self.assertEqual(["019fa752"] * 2, [s["session"] for s in sessions])
 
 
-class DurationAndEpochTest(LegacyDashboardTestCase):
+class DurationAndEpochTest(unittest.TestCase):
     """`fmt_duration` and `norm_epoch` render on every card and had no tests at
     all. Mutation-checked: each boundary below fails a real off-by-one that the
     suite previously missed."""
@@ -358,7 +359,7 @@ class DurationAndEpochTest(LegacyDashboardTestCase):
                 self.assertEqual(0, dashboard.norm_epoch(bad))
 
 
-class ClockSkewTest(LegacyDashboardTestCase):
+class ClockSkewTest(unittest.TestCase):
     # A future timestamp satisfies every `now - ts <= threshold` test, so before
     # age()/is_fresh() a clock-skewed store pinned its session to Working
     # permanently and kept feeding its tokens into the output rate.
@@ -412,7 +413,7 @@ class ClockSkewTest(LegacyDashboardTestCase):
         self.assertEqual("idle", sessions[0]["state"])
 
 
-class ReviewFixTest(LegacyDashboardTestCase):
+class ReviewFixTest(unittest.TestCase):
     """Regressions found by the adversarial review passes on PR #7."""
 
     NOW = 1_700_000_000.0
@@ -431,7 +432,7 @@ class ReviewFixTest(LegacyDashboardTestCase):
         self.assertEqual(99.0, opencode["last_activity"], "kept the staler copy")
 
 
-class VerificationFixTest(LegacyDashboardTestCase):
+class VerificationFixTest(unittest.TestCase):
     """Regressions found by the adversarial pass that tried to refute the fixes."""
 
     NOW = 1_700_000_000.0

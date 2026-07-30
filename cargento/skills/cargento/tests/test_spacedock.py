@@ -10,16 +10,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 from unittest import mock
 
-from .support import (
-    LegacyDashboardTestCase,
-    dashboard,
-)
+from .support import dashboard
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class SpacedockParserTest(LegacyDashboardTestCase):
+class SpacedockParserTest(unittest.TestCase):
     """Pure parsers, so every branch runs on every OS runner (decision D-4)."""
 
     DEBUG_FLYWHEEL: ClassVar[list[str]] = [
@@ -224,7 +221,7 @@ class SpacedockParserTest(LegacyDashboardTestCase):
         self.assertEqual(["/abs/ok"], dashboard.sd_workflow_dirs(records))
 
 
-class SpacedockReadContractTest(LegacyDashboardTestCase):
+class SpacedockReadContractTest(unittest.TestCase):
     """The one project read Cargento performs, and its refusals."""
 
     README = (

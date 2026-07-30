@@ -56,7 +56,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         bind.assert_not_called()
 
 
-class StoreRootsTest(LegacyDashboardTestCase):
+class StoreRootsTest(unittest.TestCase):
     """resolve_store_roots is pure, so every platform's layout is checked here
     regardless of which runner is executing."""
 
@@ -269,7 +269,7 @@ class StoreRootsTest(LegacyDashboardTestCase):
         self.assertEqual({"11111111", "22222222"}, {s["session"] for s in sessions})
 
 
-class DiagnoseTest(LegacyDashboardTestCase):
+class DiagnoseTest(unittest.TestCase):
     def test_report_names_every_candidate_and_what_was_found(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
@@ -362,7 +362,7 @@ class DiagnoseTest(LegacyDashboardTestCase):
         self.assertEqual("/sessions", report["stores"]["pi.sessions"]["candidates"][0]["path"])
 
 
-class OperatingSystemExpectationTest(LegacyDashboardTestCase):
+class OperatingSystemExpectationTest(unittest.TestCase):
     """What Cargento should do per OS, stated as expectations rather than
     derived from bugs. Every case is exercised on every runner by passing the
     platform in, so Linux CI checks the Windows behaviour too."""
@@ -558,7 +558,7 @@ class OperatingSystemExpectationTest(LegacyDashboardTestCase):
                 self.assertTrue(all("\\" not in r for r in roots), roots)
 
 
-class TextIoTest(LegacyDashboardTestCase):
+class TextIoTest(unittest.TestCase):
     def test_task_json_is_read_as_utf8_regardless_of_locale(self) -> None:
         # The locale default is cp1252 on Windows, which mojibakes this subject
         # and raises on the bytes that code page leaves undefined.
@@ -622,7 +622,7 @@ class TextIoTest(LegacyDashboardTestCase):
         self.assertEqual("written after the failure\n", recovered.getvalue())
 
 
-class ReviewFixTest(LegacyDashboardTestCase):
+class ReviewFixTest(unittest.TestCase):
     """Regressions found by the adversarial review passes on PR #7."""
 
     NOW = 1_700_000_000.0
@@ -670,7 +670,7 @@ class ReviewFixTest(LegacyDashboardTestCase):
         self.assertEqual("/h/.local/share/opencode", blank["opencode.data"][0])
 
 
-class VerificationFixTest(LegacyDashboardTestCase):
+class VerificationFixTest(unittest.TestCase):
     """Regressions found by the adversarial pass that tried to refute the fixes."""
 
     NOW = 1_700_000_000.0
@@ -690,7 +690,7 @@ class VerificationFixTest(LegacyDashboardTestCase):
             self.assertEqual("special file", dashboard.candidate_report(str(fifo))["kind"])
 
 
-class GlobUnderTest(LegacyDashboardTestCase):
+class GlobUnderTest(unittest.TestCase):
     HOSTILE = "A [Contractor]"
 
     def test_metacharacters_in_the_root_are_treated_literally(self) -> None:

@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unicodedata
+import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, ClassVar
@@ -63,7 +64,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         self.assertEqual(["cccc", ""], misaligned)
 
 
-class ReverseLinesTest(LegacyDashboardTestCase):
+class ReverseLinesTest(unittest.TestCase):
     """Replaces the reverse mmap scans. A mapped region whose file is truncated
     underneath it raises SIGBUS on POSIX (uncatchable) and blocks the writer's
     truncate on Windows; these are transcripts a live agent may rotate."""
@@ -283,7 +284,7 @@ class ReverseLinesTest(LegacyDashboardTestCase):
                 self.assertEqual("u-new", dashboard.claude_last_user_event(path))
 
 
-class PromptTitleTest(LegacyDashboardTestCase):
+class PromptTitleTest(unittest.TestCase):
     """A session with no generated title falls back to its first prompt, and
     the harness wraps some prompts in markup. Measured over 248 real
     transcripts, 138 titles rendered as raw tags before this."""
@@ -411,7 +412,7 @@ class PromptTitleTest(LegacyDashboardTestCase):
         self.assertEqual("bc", dashboard.shorten_paths(just_over), "not collapsed at floor")
 
 
-class MalformedRecordTest(LegacyDashboardTestCase):
+class MalformedRecordTest(unittest.TestCase):
     """Every harness payload is untyped JSON read off disk. `x.get("k") or {}`
     is not a guard: any truthy non-dict passes the `or` and the next .get()
     raises, killing the collector for that refresh."""
@@ -544,7 +545,7 @@ class MalformedRecordTest(LegacyDashboardTestCase):
         self.assertEqual([1, 2], dashboard.as_list([1, 2]))
 
 
-class ReviewFixTest(LegacyDashboardTestCase):
+class ReviewFixTest(unittest.TestCase):
     """Regressions found by the adversarial review passes on PR #7."""
 
     NOW = 1_700_000_000.0
