@@ -14,6 +14,7 @@ from unittest import mock
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime.collectors import cursor as cursor_collector
+from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 
 from .support import SERVER_PATH, LegacyDashboardTestCase, dashboard, make_runtime
@@ -22,11 +23,11 @@ from .support import SERVER_PATH, LegacyDashboardTestCase, dashboard, make_runti
 class SqliteCollectorTest(LegacyDashboardTestCase):
     def test_goose_tool_response_is_not_a_user_prompt(self) -> None:
         self.assertFalse(
-            dashboard.goose_user_prompt(
+            goose_collector._user_prompt(
                 [{"type": "toolResponse", "toolResult": {"status": "success"}}]
             )
         )
-        self.assertTrue(dashboard.goose_user_prompt([{"type": "text", "text": "hello"}]))
+        self.assertTrue(goose_collector._user_prompt([{"type": "text", "text": "hello"}]))
 
     @staticmethod
     def _opencode_db(
@@ -396,6 +397,50 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("working", sessions[0]["state"])
         self.assertEqual("My Refactor Chat", sessions[0]["title"])
 
+    @staticmethod
+    def _goose_db(path: Path, sid: str, description: str, stamp: str) -> None:
+        con = sqlite3.connect(path)
+        con.execute(
+            "CREATE TABLE sessions (id TEXT, description TEXT,"
+            " working_dir TEXT, updated_at TEXT, session_type TEXT,"
+            " parent_session_id TEXT, archived_at TEXT)"
+        )
+        con.execute(
+            "INSERT INTO sessions VALUES (?,?,?,?,?,?,?)",
+            (sid, description, "/w/proj", stamp, None, None, None),
+        )
+        con.execute(
+            "CREATE TABLE messages (session_id TEXT, role TEXT,"
+            " created_timestamp INTEGER, content_json TEXT)"
+        )
+        con.execute(
+            "CREATE TABLE usage_ledger (session_id TEXT,"
+            " created_timestamp INTEGER, output_tokens INTEGER)"
+        )
+        con.commit()
+        con.close()
+
+    def test_every_candidate_goose_database_is_scanned(self) -> None:
+        # Goose moved its store between XDG and two Windows AppData locations,
+        # so the resolver keeps several candidates and all of them are read.
+        # Mutation-checked: scanning only the first candidate passed the suite.
+        now = dashboard.time.time()
+        stamp = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            first, second = Path(tmp) / "one.db", Path(tmp) / "two.db"
+            self._goose_db(first, "from-first", "First store", stamp)
+            self._goose_db(second, "from-second", "Second store", stamp)
+            with (
+                mock.patch.object(dashboard, "GOOSE_DB", str(first)),
+                mock.patch.dict(dashboard.STORE_ROOTS, {"goose.db": [str(first), str(second)]}),
+            ):
+                config, state = dashboard._legacy_runtime()
+                rows = goose_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual({"from-first", "from-second"}, {row["sid"] for row in rows})
+
     def test_goose_sessions_from_shared_db(self) -> None:
         now = dashboard.time.time()
         stamp = dashboard.datetime.fromtimestamp(now - 10, dashboard.UTC).strftime(
@@ -435,7 +480,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             con.close()
 
             with mock.patch.object(dashboard, "GOOSE_DB", str(db)):
-                sessions = dashboard.collect_goose(now, 24, False)
+                config, state = dashboard._legacy_runtime()
+                sessions = goose_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))  # subagent/infra/archived filtered
         s = sessions[0]
@@ -508,7 +554,7 @@ class SqliteOptionalTest(unittest.TestCase):
             collectors = (
                 ("opencode", lambda: opencode_collector.collect(config, state, now, 24, False)),
                 ("cursor", lambda: cursor_collector.collect(config, state, now, 24, False)),
-                ("goose", lambda: dashboard.collect_goose(now, 24, False)),
+                ("goose", lambda: goose_collector.collect(config, state, now, 24, False)),
                 ("antigravity", lambda: dashboard.collect_antigravity(now, 24, False)),
             )
             for name, run in collectors:
@@ -575,9 +621,8 @@ builtins.__import__ = real_import
 assert not m.runtime_io.sqlite_available(), "sqlite_available() should be False"
 now = 1_700_000_000.0
 cfg, st = m._legacy_runtime()
-for name in ("opencode_collector", "cursor_collector"):
+for name in ("opencode_collector", "cursor_collector", "goose_collector"):
     assert getattr(m, name).collect(cfg, st, now, 24, True) == [], name
-assert m.collect_goose(now, 24, True) == [], "collect_goose"
 # Antigravity is discovered from store mtime and CLI logs, so it survives
 # without sqlite3 — only its rate and ETA degrade. Give it a real store so
 # this exercises the database-backed path instead of an empty glob.
