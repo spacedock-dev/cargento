@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import notifications
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import RuntimeState, build_runtime_state
 
@@ -122,7 +123,7 @@ class LegacyDashboardTestCase(unittest.TestCase):
             state.collect_memo.clear()
         # No test may fire a real macOS popup ("[sample] permission" spam
         # during dev runs). Tests asserting popups use their own nested patch.
-        notify_patcher = mock.patch.object(dashboard, "notify_mac")
+        notify_patcher = mock.patch.object(notifications, "notify_mac")
         notify_patcher.start()
         self.addCleanup(notify_patcher.stop)
 
@@ -161,7 +162,7 @@ class HarnessContractTestCase(unittest.TestCase):
             with contextlib.ExitStack() as stack:
                 for name, value in patches.items():
                     stack.enter_context(mock.patch.object(dashboard, name, value))
-                stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                stack.enter_context(mock.patch.object(notifications, "notify_mac"))
                 stack.enter_context(mock.patch.object(dashboard.time, "time", lambda: self.NOW))
                 collected: dict[str, Any] = dashboard.collect(24, show_all=True)
                 return collected

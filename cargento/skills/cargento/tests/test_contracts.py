@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate
+from cargento_runtime import aggregate, notifications, records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
@@ -446,6 +446,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",
         },
+        "cargento_runtime.notifications": {
+            "cargento_runtime.claude_data",
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.state",
+        },
         "cargento_runtime.spacedock": {
             "cargento_runtime.config",
             "cargento_runtime.sessions",
@@ -640,6 +647,25 @@ from . import page as sibling_page
             "rate_from",
             "working_detail",
         )
+        notification_symbols = (
+            "normalized_notification_type",
+            "notification_disposition",
+            "native_notifier",
+            "notify_mac",
+            "hook_generation",
+            "current_hook",
+            "maybe_popup",
+            "IDLE_NOTIFICATION_TYPES",
+            "CLEARING_NOTIFICATION_TYPES",
+        )
+        spacedock_symbols = (
+            "sd_frontmatter_lines",
+            "sd_read_workflow",
+            "sd_read_entities",
+            "sd_session_workflows",
+            "SPACEDOCK_FO",
+            "SD_STAGE_RE",
+        )
         claude_data_symbols = (
             "claude_session_title",
             "claude_last_user_event",
@@ -680,11 +706,13 @@ from . import page as sibling_page
             *transcript_symbols,
             *turn_symbols,
             *claude_data_symbols,
+            *notification_symbols,
+            *spacedock_symbols,
         ):
             with self.subTest(symbol=symbol):
                 self.assertFalse(hasattr(dashboard, symbol))
         self.assertTrue(all(hasattr(dashboard.runtime_io, symbol) for symbol in io_symbols))
-        self.assertTrue(all(hasattr(dashboard.records, symbol) for symbol in record_symbols))
+        self.assertTrue(all(hasattr(records, symbol) for symbol in record_symbols))
         # HOME_PREFIX is deliberately gone rather than relocated: project_label
         # derives the encoded prefix from config.home on every call.
         self.assertTrue(
@@ -697,7 +725,7 @@ from . import page as sibling_page
         self.assertFalse(hasattr(runtime_sessions, "HOME_PREFIX"))
         self.assertTrue(all(hasattr(runtime_transcripts, symbol) for symbol in transcript_symbols))
         self.assertIs(sys.modules["cargento_runtime.io"], dashboard.runtime_io)
-        self.assertIs(sys.modules["cargento_runtime.records"], dashboard.records)
+        self.assertIs(sys.modules["cargento_runtime.records"], records)
         self.assertIs(sys.modules["cargento_runtime.sessions"], runtime_sessions)
         self.assertTrue(all(hasattr(runtime_turns, s) for s in turn_symbols))
         self.assertIs(sys.modules["cargento_runtime.transcripts"], runtime_transcripts)
@@ -927,7 +955,7 @@ class HarnessContractTest(HarnessContractTestCase):
                         {"opencode.data": [str(first), str(second)]},
                     )
                 )
-                stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                stack.enter_context(mock.patch.object(notifications, "notify_mac"))
                 stack.enter_context(mock.patch.object(dashboard.time, "time", lambda: self.NOW))
                 data = dashboard.collect(24, show_all=True)
 
@@ -955,7 +983,7 @@ class HarnessContractTest(HarnessContractTestCase):
                 with contextlib.ExitStack() as stack:
                     for name, value in patches.items():
                         stack.enter_context(mock.patch.object(dashboard, name, value))
-                    stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                    stack.enter_context(mock.patch.object(notifications, "notify_mac"))
                     data = dashboard.collect(24, show_all=True)  # must not raise
                 self.assertIsInstance(data["sessions"], list)
 
@@ -994,7 +1022,7 @@ class HostilePathContractTest(unittest.TestCase):
                         with contextlib.ExitStack() as stack:
                             for name, value in patches.items():
                                 stack.enter_context(mock.patch.object(dashboard, name, value))
-                            stack.enter_context(mock.patch.object(dashboard, "notify_mac"))
+                            stack.enter_context(mock.patch.object(notifications, "notify_mac"))
                             stack.enter_context(
                                 mock.patch.object(dashboard.time, "time", lambda: self.NOW)
                             )

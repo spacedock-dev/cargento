@@ -16,6 +16,7 @@ from typing import Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
+from cargento_runtime import notifications
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import bounded_put, build_runtime_state
@@ -886,10 +887,10 @@ class OperatingSystemExpectationTest(unittest.TestCase):
     def test_notification_ownership_per_platform(self) -> None:
         # Exactly one layer notifies. macOS has a native backend, so the page
         # must stay silent there; the others have none yet, so the page owns it.
-        self.assertEqual("osascript", dashboard.native_notifier("darwin"))
+        self.assertEqual("osascript", notifications.native_notifier("darwin"))
         for platform_name in ("linux", "win32", "cygwin", "freebsd14"):
             with self.subTest(platform=platform_name):
-                self.assertEqual("", dashboard.native_notifier(platform_name))
+                self.assertEqual("", notifications.native_notifier(platform_name))
 
     def test_port_sharing_policy_per_platform(self) -> None:
         # POSIX: SO_REUSEADDR only bypasses TIME_WAIT, so restarts work.

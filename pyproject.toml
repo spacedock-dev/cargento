@@ -54,6 +54,10 @@ max-args = 8
 # The Spacedock frontmatter and boot-envelope parsers keep the launcher's
 # reviewed shape: one arm per frontmatter spelling, and one bound per read.
 "cargento/skills/cargento/cargento_runtime/spacedock.py" = ["C901", "PLR0912"]
+# handle_payload keeps the launcher's ordering: SessionEnd retirement, the
+# generation guard, subagent suppression, the clear decision and three
+# cooldowns, all inside one reviewed critical section.
+"cargento/skills/cargento/cargento_runtime/notifications.py" = ["C901"]
 # Pi's projection and incremental scanner keep the branch shape they had in
 # the launcher: one arm per JSONL entry kind, and one early return per way a
 # partial write can interrupt a scan.

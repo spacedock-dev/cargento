@@ -38,7 +38,7 @@ from types import MappingProxyType, ModuleType
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
-from cargento_runtime import aggregate, claude_data, records, spacedock
+from cargento_runtime import aggregate, claude_data, notifications, spacedock
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
@@ -292,23 +292,6 @@ def _install_legacy_state(state: runtime_state.RuntimeState) -> None:
 # accepted as a compatibility alias, while current payloads use
 # ``idle_prompt``. Unknown structured values remain actionable so a newly
 # introduced prompt type does not silently disappear.
-IDLE_NOTIFICATION_TYPES = {"idle_prompt", "idle_timeout"}
-INFORMATIONAL_NOTIFICATION_TYPES = {
-    "agent_completed",
-    "auth_success",
-    "elicitation_complete",
-    "elicitation_response",
-}
-ACTIONABLE_NOTIFICATION_TYPES = {
-    "agent_needs_input",
-    "elicitation_dialog",
-    "permission_prompt",
-}
-CLEARING_NOTIFICATION_TYPES = IDLE_NOTIFICATION_TYPES | {
-    "agent_completed",
-    "elicitation_complete",
-    "elicitation_response",
-}
 
 _lock = _LEGACY_STATE.hook_lock
 # session prefix -> {"ts": epoch, "message": str, "user_event"?: str | None}
@@ -340,31 +323,6 @@ def bounded_put(cache: dict[Any, Any], key: Any, value: Any) -> None:
     Callers must hold the lock that protects ``cache``.
     """
     runtime_state.bounded_put(cache, key, value, limit=MAX_CACHE_ENTRIES)
-
-
-def normalized_notification_type(value: Any) -> str:
-    """Return a normalized structured notification type, if present."""
-    return value.strip().lower() if isinstance(value, str) and value.strip() else ""
-
-
-def notification_disposition(notification_type: Any, message: str) -> tuple[bool, bool]:
-    """Return ``(needs_input, popup)`` for a Notification-hook payload.
-
-    Structured Claude Code payloads are authoritative. Text matching remains
-    only as a compatibility fallback for older hooks that omitted
-    ``notification_type``.
-    """
-    kind = normalized_notification_type(notification_type)
-    if kind in IDLE_NOTIFICATION_TYPES:
-        return (False, True)
-    if kind in INFORMATIONAL_NOTIFICATION_TYPES:
-        return (False, False)
-    if kind in ACTIONABLE_NOTIFICATION_TYPES:
-        return (True, True)
-    if kind:
-        return (True, True)  # future/unknown structured prompt: fail visible
-    idle_nudge = message.strip().lower().startswith("claude is waiting for your input")
-    return (not idle_nudge, True)
 
 
 def normalize_host(value: str) -> str:
@@ -598,105 +556,6 @@ def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, 
 # Notifications
 
 
-def native_notifier(platform_name: str) -> str:
-    """Name of the OS-level notification backend for a platform, "" if none.
-
-    Pure in ``platform_name`` so both branches run on every CI runner and mypy
-    checks them all, rather than treating the non-host branch as unreachable
-    (design decision D-4 in docs/design-cross-platform.md).
-
-    The page reads this through ``/api/data`` to decide whether to raise its
-    own browser notification. Exactly one layer notifies for a given
-    transition: the server when it has a backend here, the browser when it does
-    not. Linux and Windows have no backend yet (tracked in
-    docs/plans/native-notifications.md) — so today the
-    browser covers them and macOS behavior is unchanged.
-    """
-    return "osascript" if platform_name == "darwin" else ""
-
-
-def notify_mac(title: Any, message: Any) -> None:
-    if not native_notifier(sys.platform):
-        return
-
-    def esc(s: str) -> str:
-        return str(s).replace("\\", "\\\\").replace('"', '\\"')
-
-    safe_message = records.safe_text(message, 180)
-    safe_title = records.safe_text(title, 60)
-    script = f'display notification "{esc(safe_message)}" with title "{esc(safe_title)}" sound name "Glass"'
-    try:
-        result = subprocess.run(  # noqa: S603 — fixed binary, esc()-sanitized args
-            ["/usr/bin/osascript", "-e", script],
-            timeout=5,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode:
-            detail = (result.stderr or result.stdout or "unknown error").strip()
-            runtime_io.diag(f"[notify] osascript failed: {detail[:300]}", print)
-    except (OSError, subprocess.SubprocessError, ValueError) as exc:
-        runtime_io.diag(f"[notify] osascript failed: {type(exc).__name__}: {exc}", print)
-
-
-def hook_generation(prefix: str) -> int:
-    """Current generation for a session's hook state (see ``_hook_generation``)."""
-    with _lock:
-        return _hook_generation.get(prefix, 0)
-
-
-def current_hook(
-    prefix: str, last_user_event: str | None, last_event_ts: float
-) -> dict[str, Any] | None:
-    """Return an uncleared hook notification for a session.
-
-    Hooks with a user-event marker clear when the newest user record changes
-    (clock-independent). Hooks without one (payloads lacking transcript_path:
-    the documented curl simulation, older Claude Code versions) fall back to
-    the parsed-timestamp rule so they cannot stick forever.
-    """
-    with _lock:
-        hook = _hook_notifs.get(prefix)
-        if not hook:
-            return None
-        if "user_event" in hook:
-            if last_user_event != hook["user_event"]:
-                _hook_notifs.pop(prefix, None)
-                return None
-        elif last_event_ts > hook["ts"]:
-            _hook_notifs.pop(prefix, None)
-            return None
-        return hook
-
-
-def maybe_popup(
-    prefix: str, state: str, detail: str | None, *, expect_generation: int | None = None
-) -> None:
-    """Popup when a session transitions into a needs-input state.
-
-    ``expect_generation`` is re-checked under the same lock that guards
-    ``_last_state``. Checking it in the caller leaves a window in which a
-    SessionEnd commits first, and this would then re-create the state it just
-    cleared and fire a popup for a session that has already exited.
-    """
-    now = time.time()
-    with _lock:
-        if expect_generation is not None and _hook_generation.get(prefix, 0) != expect_generation:
-            return
-        prev = _last_state.get(prefix)
-        bounded_put(_last_state, prefix, state)
-        if state != "needs_input" or prev == "needs_input":
-            return
-        if now - _last_popup.get(prefix, 0) < POPUP_COOLDOWN_SEC:
-            return
-        if now - _last_popup.get("_global", 0) < GLOBAL_POPUP_COOLDOWN_SEC:
-            return
-        bounded_put(_last_popup, prefix, now)
-        bounded_put(_last_popup, "_global", now)
-    notify_mac("Claude is waiting on you", detail or f"Session {prefix} needs your input")
-
-
 # ---------------------------------------------------------------------------
 # Session assembly helpers
 
@@ -861,7 +720,7 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         )
         # Sampled before analyze_transcript: that scan is the slow part, and a
         # SessionEnd landing during it must invalidate everything derived here.
-        seen_generation = hook_generation(prefix)
+        seen_generation = notifications.hook_generation(runtime_state_value, prefix)
         info = (
             claude_data.analyze_transcript(config, runtime_state_value, transcript)
             if (transcript and active)
@@ -875,7 +734,9 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
         parsed_last_event = info["last_event_ts"] if info else 0
         last_event_sources = (parsed_last_event, transcript_mtime)
         hook = (
-            current_hook(prefix, (info or {}).get("last_user_event"), parsed_last_event)
+            notifications.current_hook(
+                runtime_state_value, prefix, (info or {}).get("last_user_event"), parsed_last_event
+            )
             if active
             else None
         )
@@ -905,18 +766,24 @@ def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict
             state = "needs_input"
             blocked_since = hook["ts"]
             state_detail = hook["message"] or "waiting for your input"
-        if state == "needs_input" and hook_generation(prefix) != seen_generation:
+        if (
+            state == "needs_input"
+            and notifications.hook_generation(runtime_state_value, prefix) != seen_generation
+        ):
             # The session exited while this snapshot was being built. Applies to
             # the transcript-detected case too: an unanswered AskUserQuestion in
             # a session the user has quit is moot, not blocking.
             state, blocked_since = "idle", None
             state_detail = "awaiting your message"
         if active:
-            maybe_popup(
+            notifications.maybe_popup(
+                config,
+                runtime_state_value,
                 prefix,
                 state,
                 f"[{project}] {state_detail}" if state == "needs_input" else None,
                 expect_generation=seen_generation,
+                popup_notifier=_bound_popup_notifier(config),
             )
 
         total = len(tasks)
@@ -1166,6 +1033,17 @@ def _harness_specs(
 HARNESSES: tuple[aggregate.HarnessSpec, ...] = _harness_specs(_LEGACY_STATE.config, _LEGACY_STATE)
 
 
+def _bound_popup_notifier(
+    config: runtime_config.RuntimeConfig,
+) -> Callable[[str, str], None]:
+    """The application's popup notifier: config and sink bound, two arguments left."""
+
+    def notify(title: str, message: str) -> None:
+        notifications.notify_mac(config, title, message, diagnostic_sink=print)
+
+    return notify
+
+
 def _legacy_application(window_hours: float) -> aggregate.Application:
     """The one transitional application, built over the legacy globals."""
     config, state = _legacy_runtime()
@@ -1178,8 +1056,8 @@ def _legacy_application(window_hours: float) -> aggregate.Application:
         config,
         state,
         _harness_specs(config, state),
-        native_notifier=native_notifier,
-        popup_notifier=notify_mac,
+        native_notifier=notifications.native_notifier,
+        popup_notifier=_bound_popup_notifier(config),
         diagnostic_sink=print,
         # Passed explicitly rather than left to the default: the default binds
         # time.time once at import, and the tests still patch the time module.
@@ -1928,75 +1806,17 @@ class Handler(BaseHTTPRequestHandler):
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        session_id = payload.get("session_id")
-        prefix = session_id[:8] if isinstance(session_id, str) else ""
-        hook_event_name = payload.get("hook_event_name")
-        if isinstance(hook_event_name, str) and hook_event_name.lower() == "sessionend":
-            if prefix:
-                with _lock:
-                    _hook_notifs.pop(prefix, None)
-                    _last_state.pop(prefix, None)
-                    bounded_put(_hook_generation, prefix, _hook_generation.get(prefix, 0) + 1)
-            self._send(b'{"ok":true,"cleared":"session_end"}', "application/json")
-            return
-        raw_message = payload.get("message")
-        message = records.safe_text(
-            raw_message
-            if isinstance(raw_message, str) and raw_message
-            else "Claude is waiting for your input",
-            500,
-        )
-        kind = normalized_notification_type(payload.get("notification_type"))
-        needs_input, popup = notification_disposition(kind, message)
-        # Sampled before the transcript lookups below, which are slow enough
-        # for a SessionEnd to land in between and be silently undone.
-        with _lock:
-            generation = _hook_generation.get(prefix, 0)
         config, runtime_state_value = _legacy_runtime()
-        # Subagent sessions also emit Notification-hook events (permission
-        # prompts inside agents). They are not user-facing sessions — a popup
-        # about them is noise the human cannot act on from the dashboard.
-        if prefix and claude_data.prefix_is_agent(config, runtime_state_value, prefix):
-            self._send(b'{"ok":true,"suppressed":"subagent"}', "application/json")
-            return
-        now = time.time()
-        hook = {"ts": now, "message": message}
-        transcript_path = payload.get("transcript_path")
-        if prefix and isinstance(transcript_path, str):
-            found, user_event = claude_data.hook_user_event(
-                config, runtime_state_value, transcript_path, prefix
-            )
-            if found:
-                hook["user_event"] = user_event
-        with _lock:
-            if prefix and _hook_generation.get(prefix, 0) != generation:
-                # The session ended while this notification was being processed.
-                self._send(b'{"ok":true,"superseded":true}', "application/json")
-                return
-            if prefix:
-                clears_input = kind in CLEARING_NOTIFICATION_TYPES or (not kind and not needs_input)
-                if clears_input:
-                    _hook_notifs.pop(prefix, None)
-                    _last_state.pop(prefix, None)
-                elif needs_input:
-                    bounded_put(_hook_notifs, prefix, hook)
-            popup_key = prefix or "_anonymous"
-            session_ready = now - _last_popup.get(popup_key, 0) >= POPUP_COOLDOWN_SEC
-            global_ready = now - _last_popup.get("_global", 0) >= GLOBAL_POPUP_COOLDOWN_SEC
-            # Claude re-emits the same idle/permission notification for as
-            # long as the session stays blocked; repeating the popup adds no
-            # information. One popup per distinct message per session within
-            # POPUP_REPEAT_SUPPRESS_SEC.
-            prev_msg, prev_ts = _last_popup_message.get(popup_key, ("", 0.0))
-            repeat = message == prev_msg and now - prev_ts < POPUP_REPEAT_SUPPRESS_SEC
-            fire = popup and session_ready and global_ready and not repeat
-            if fire:
-                bounded_put(_last_popup, popup_key, now)
-                bounded_put(_last_popup, "_global", now)
-                bounded_put(_last_popup_message, popup_key, (message, now))
-        if fire:
-            notify_mac("Claude is waiting on you", message)
-        self._send(b'{"ok":true}', "application/json")
+        response = notifications.handle_payload(
+            config,
+            runtime_state_value,
+            payload,
+            now=time.time(),
+            popup_notifier=_bound_popup_notifier(config),
+        )
+        # Compact separators: the wire format is byte-for-byte what the
+        # handler emitted as literals before the policy moved out.
+        self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
 
     def log_message(self, *args: Any) -> None:
         pass  # keep stdout quiet

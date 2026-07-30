@@ -64,7 +64,7 @@ moving off the end of a 12-row cap, leaving a strip that is technically complete
 useless.
 
 So the state directory contributes only entities on a stage that is neither initial nor terminal,
-which is why `sd_read_workflow` returns a `resting` set alongside the ordered stages. Live workers
+which is why `spacedock.read_workflow` returns a `resting` set alongside the ordered stages. Live workers
 and `dispatchable` entries bypass the filter. Both are positive evidence that a specific entity is
 moving *now*, whatever stage it sits on.
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import claude_data, records
+from cargento_runtime import claude_data, notifications, records
 
 from .support import (
     HOOK_PATH,
@@ -22,6 +22,7 @@ from .support import (
     LegacyDashboardTestCase,
     dashboard,
     dashboard_hook,
+    make_config,
     serve_until_closed,
 )
 
@@ -36,15 +37,78 @@ class CargentoServerTest(LegacyDashboardTestCase):
             # session2 lands inside the 15s global floor and is dropped;
             # session3 lands after it and fires.
             mock.patch.object(dashboard.time, "time", side_effect=[100.0, 101.0, 120.0]),
-            mock.patch.object(dashboard, "notify_mac") as notify,
         ):
-            dashboard.maybe_popup("session1", "needs_input", "one")
-            dashboard.maybe_popup("session2", "needs_input", "two")
-            dashboard.maybe_popup("session3", "needs_input", "three")
+            config, state = dashboard._legacy_runtime()
+            fired: list[tuple[str, str]] = []
 
-        self.assertEqual(2, notify.call_count)
+            def notifier(title: str, message: str) -> None:
+                fired.append((title, message))
+
+            for sid, detail in (("session1", "one"), ("session2", "two"), ("session3", "three")):
+                notifications.maybe_popup(
+                    config, state, sid, "needs_input", detail, popup_notifier=notifier
+                )
+
+        self.assertEqual(2, len(fired))
         self.assertLessEqual(len(dashboard._last_state), 2)
         self.assertLessEqual(len(dashboard._last_popup), 2)
+
+    def test_hook_popups_respect_both_cooldown_floors(self) -> None:
+        # Every existing cooldown test expires the floors first to isolate some
+        # other rule, so the two floors themselves went unpinned. Distinct
+        # messages here keep the repeat-suppression window out of the result.
+        config, state = dashboard._legacy_runtime()
+        fired: list[str] = []
+
+        def payload(sid: str, message: str, now: float) -> dict[str, Any]:
+            return notifications.handle_payload(
+                config,
+                state,
+                {"session_id": sid, "message": message},
+                now=now,
+                popup_notifier=lambda _title, body: fired.append(body),
+            )
+
+        # Same session inside the 60s per-session cooldown, but past the 15s
+        # global floor, so only the per-session rule can stop the second one.
+        # A 1s gap here would prove nothing: the global floor would mask it.
+        payload("aaaaaaaa", "permission one", 1000.0)
+        payload("aaaaaaaa", "permission two", 1000.0 + config.global_popup_cooldown_sec + 1)
+        self.assertEqual(["permission one"], fired)
+        payload("aaaaaaaa", "permission three", 1000.0 + config.popup_cooldown_sec)
+        self.assertEqual(["permission one", "permission three"], fired)
+
+        # A different session has its own cooldown key, so only the 15s global
+        # floor can stop it.
+        fired.clear()
+        base = 5000.0
+        payload("bbbbbbbb", "b one", base)
+        payload("cccccccc", "c one", base + 1)
+        self.assertEqual(["b one"], fired)
+        payload("dddddddd", "d one", base + config.global_popup_cooldown_sec)
+        self.assertEqual(["b one", "d one"], fired)
+
+    def test_hook_popup_runs_with_the_hook_lock_released(self) -> None:
+        # hook_lock is a plain Lock. Notifying inside the critical section would
+        # hold it for the notifier's whole duration -- up to osascript's 5s
+        # timeout -- stalling every other hook POST and every collection.
+        config, state = dashboard._legacy_runtime()
+        held: list[bool] = []
+
+        def notifier(_title: str, _message: str) -> None:
+            acquired = state.hook_lock.acquire(blocking=False)
+            held.append(acquired)
+            if acquired:
+                state.hook_lock.release()
+
+        notifications.handle_payload(
+            config,
+            state,
+            {"session_id": "eeeeeeee", "message": "permission needed"},
+            now=9000.0,
+            popup_notifier=notifier,
+        )
+        self.assertEqual([True], held, "popup fired while still holding hook_lock")
 
     def _post_notify(self, port: int, body: dict[str, Any]) -> bytes:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
@@ -90,7 +154,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             try:
                 with (
                     mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                    mock.patch.object(dashboard, "notify_mac") as notify,
+                    mock.patch.object(notifications, "notify_mac") as notify,
                 ):
                     data = self._post_notify(
                         httpd.server_port,
@@ -121,7 +185,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 dashboard._last_popup["_global"] = dashboard.time.time() - 120
 
         try:
-            with mock.patch.object(dashboard, "notify_mac") as notify:
+            with mock.patch.object(notifications, "notify_mac") as notify:
                 self._post_notify(
                     httpd.server_port,
                     {"session_id": "fedcba98", "message": "permission needed"},
@@ -148,10 +212,11 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # Payloads without transcript_path (the documented curl simulation,
         # older Claude Code versions) get no user-event marker; they must
         # fall back to the parsed-timestamp rule instead of sticking forever.
+        _config, state = dashboard._legacy_runtime()
         with dashboard._lock:
             dashboard._hook_notifs["cafe1234"] = {"ts": 1000.0, "message": "hi"}
-        self.assertIsNotNone(dashboard.current_hook("cafe1234", None, 999.0))
-        self.assertIsNone(dashboard.current_hook("cafe1234", None, 1001.0))
+        self.assertIsNotNone(notifications.current_hook(state, "cafe1234", None, 999.0))
+        self.assertIsNone(notifications.current_hook(state, "cafe1234", None, 1001.0))
         with dashboard._lock:
             self.assertNotIn("cafe1234", dashboard._hook_notifs)
 
@@ -264,7 +329,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 with (
                     mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                     mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
-                    mock.patch.object(dashboard, "notify_mac") as notify,
+                    mock.patch.object(notifications, "notify_mac") as notify,
                 ):
                     # Idle nudge: pops once, no blocked state, no stored hook.
                     self._post_notify(
@@ -306,7 +371,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
-            with mock.patch.object(dashboard, "notify_mac") as notify:
+            with mock.patch.object(notifications, "notify_mac") as notify:
                 # Informational notifications neither block nor claim that
                 # Claude is waiting on the human.
                 self._post_notify(
@@ -378,7 +443,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             with self.subTest(notification_type=notification_type):
                 self.assertEqual(
                     disposition,
-                    dashboard.notification_disposition(notification_type, "variant text"),
+                    notifications.notification_disposition(notification_type, "variant text"),
                 )
 
     def test_elicitation_completion_clears_dialog_hook(self) -> None:
@@ -656,7 +721,7 @@ class NotifyHookTest(unittest.TestCase):
         thread.start()
         url = f"http://127.0.0.1:{httpd.server_port}/api/notify"
         try:
-            with mock.patch.object(dashboard, "notify_mac"):
+            with mock.patch.object(notifications, "notify_mac"):
                 result = self.run_hook(
                     json.dumps(
                         {
@@ -828,7 +893,7 @@ class HookOrderingTest(unittest.TestCase):
         session = "deadbeef-0000-0000-0000-000000000000"
         with (
             mock.patch.object(claude_data, "prefix_is_agent", slow_lookup),
-            mock.patch.object(dashboard, "notify_mac"),
+            mock.patch.object(notifications, "notify_mac"),
         ):
             notification = request(
                 {
@@ -856,10 +921,10 @@ class HookOrderingTest(unittest.TestCase):
         with dashboard._lock:
             dashboard._hook_notifs[prefix] = {"ts": now, "message": "permission"}
         popups: list[Any] = []
-        original = dashboard.current_hook
+        original = notifications.current_hook
 
-        def session_ends_mid_collection(pfx: str, event: str | None, ts: float) -> Any:
-            hook = original(pfx, event, ts)
+        def session_ends_mid_collection(st: Any, pfx: str, event: str | None, ts: float) -> Any:
+            hook = original(st, pfx, event, ts)
             with dashboard._lock:  # SessionEnd lands exactly here
                 dashboard._hook_notifs.pop(pfx, None)
                 dashboard._last_state.pop(pfx, None)
@@ -875,8 +940,8 @@ class HookOrderingTest(unittest.TestCase):
             with (
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
-                mock.patch.object(dashboard, "current_hook", session_ends_mid_collection),
-                mock.patch.object(dashboard, "notify_mac", lambda *a: popups.append(a)),
+                mock.patch.object(notifications, "current_hook", session_ends_mid_collection),
+                mock.patch.object(notifications, "notify_mac", lambda *a: popups.append(a)),
             ):
                 sessions = dashboard.collect_claude(now, 24, True)
 
@@ -907,7 +972,9 @@ class HookOrderingTest(unittest.TestCase):
             transcript.write_text("\n".join(json.dumps(r) for r in records) + "\n")
             os.utime(transcript, (now - 300, now - 300))  # quiet, so state is decided above
 
-            patches: dict[str, Any] = {"notify_mac": lambda *a: popups.append(a)}
+            notif_patches: dict[str, Any] = {
+                "notify_mac": lambda *a, **_k: popups.append(a),
+            }
             data_patches: dict[str, Any] = {}
             if at == "analyze":
                 real_analyze = claude_data.analyze_transcript
@@ -918,18 +985,18 @@ class HookOrderingTest(unittest.TestCase):
 
                 data_patches["analyze_transcript"] = analyze
             elif at == "popup":
-                real_popup = dashboard.maybe_popup
+                real_popup = notifications.maybe_popup
 
                 def popup(*args: Any, **kwargs: Any) -> None:
                     end_session()
                     real_popup(*args, **kwargs)
 
-                patches["maybe_popup"] = popup
+                notif_patches["maybe_popup"] = popup
 
             with (
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
-                mock.patch.multiple(dashboard, **patches),
+                mock.patch.multiple(notifications, **notif_patches),
                 # patch.multiple rejects an empty mapping, so re-patch the real
                 # function when this variant does not intercept it.
                 mock.patch.multiple(
@@ -1008,7 +1075,7 @@ class HookOrderingTest(unittest.TestCase):
         )
         with (
             mock.patch.object(claude_data, "prefix_is_agent", slow_lookup),
-            mock.patch.object(dashboard, "notify_mac"),
+            mock.patch.object(notifications, "notify_mac"),
         ):
             thread = threading.Thread(target=first.do_POST)
             thread.start()
@@ -1061,7 +1128,7 @@ class HookOrderingTest(unittest.TestCase):
         handler._send = lambda *_a, **_k: None
         with (
             mock.patch.object(claude_data, "prefix_is_agent", lambda *_a: False),
-            mock.patch.object(dashboard, "notify_mac"),
+            mock.patch.object(notifications, "notify_mac"),
         ):
             handler.do_POST()
         self.assertIn("cafebabe", dashboard._hook_notifs)
@@ -1072,20 +1139,19 @@ class NativeNotifierTest(unittest.TestCase):
     only the host's (design decision D-4 in docs/design-cross-platform.md)."""
 
     def test_backend_per_platform(self) -> None:
-        self.assertEqual("osascript", dashboard.native_notifier("darwin"))
+        self.assertEqual("osascript", notifications.native_notifier("darwin"))
         # No native backend yet on these (tracked in
         # docs/plans/native-notifications.md). Until then the
         # empty string tells the page to raise the notification itself.
         for platform_name in ("linux", "win32", "freebsd14", "cygwin"):
             with self.subTest(platform=platform_name):
-                self.assertEqual("", dashboard.native_notifier(platform_name))
+                self.assertEqual("", notifications.native_notifier(platform_name))
 
     def test_notify_mac_is_a_no_op_without_a_backend(self) -> None:
-        with (
-            mock.patch.object(dashboard.sys, "platform", "linux"),
-            mock.patch.object(dashboard.subprocess, "run") as run,
-        ):
-            dashboard.notify_mac("title", "message")
+        # The backend comes from config.platform_name, not ambient sys.platform.
+        linux = make_config(platform_name="linux")
+        with mock.patch("cargento_runtime.notifications.subprocess.run") as run:
+            notifications.notify_mac(linux, "title", "message")
         run.assert_not_called()
 
     def test_api_data_reports_who_owns_popups(self) -> None:
@@ -1208,7 +1274,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         try:
             with (
                 mock.patch.object(claude_data, "hook_user_event", side_effect=slow_lookup),
-                mock.patch.object(dashboard, "notify_mac"),
+                mock.patch.object(notifications, "notify_mac"),
             ):
                 worker = threading.Thread(target=post_notification)
                 worker.start()

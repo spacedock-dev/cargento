@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate
+from cargento_runtime import aggregate, notifications
 
 from .support import (
     PAGE_BYTES,
@@ -42,7 +42,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             (b"[" * 1200) + b"0" + (b"]" * 1200),
         ]
         try:
-            with mock.patch.object(dashboard, "notify_mac") as notify:
+            with mock.patch.object(notifications, "notify_mac") as notify:
                 for body in bodies:
                     conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
                     conn.request(

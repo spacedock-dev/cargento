@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cargento_runtime import claude_data, records, spacedock
+from cargento_runtime import claude_data, notifications, records, spacedock
 from cargento_runtime import sessions as runtime_sessions
 
 from .support import LegacyDashboardTestCase, dashboard, make_runtime
@@ -138,6 +138,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("user-before-hook", user_event)
 
     def test_new_user_event_clears_hook_without_comparing_clocks(self) -> None:
+        _config, state = dashboard._legacy_runtime()
         with dashboard._lock:
             dashboard._hook_notifs["12345678"] = {
                 "ts": 10_000.0,
@@ -145,8 +146,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 "user_event": "before",
             }
 
-        self.assertIsNotNone(dashboard.current_hook("12345678", "before", 0.0))
-        self.assertIsNone(dashboard.current_hook("12345678", "after", 0.0))
+        self.assertIsNotNone(notifications.current_hook(state, "12345678", "before", 0.0))
+        self.assertIsNone(notifications.current_hook(state, "12345678", "after", 0.0))
         self.assertNotIn("12345678", dashboard._hook_notifs)
 
     def test_untimestamped_user_record_clears_hook_notification(self) -> None:
@@ -188,7 +189,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             ]
 
         self.assertNotEqual(before, after)
-        self.assertIsNone(dashboard.current_hook("12345678", after, 0.0))
+        self.assertIsNone(notifications.current_hook(state, "12345678", after, 0.0))
 
     def test_assistant_only_tail_does_not_change_hook_user_event(self) -> None:
         records = [
@@ -279,7 +280,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             with (
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
                 mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
-                mock.patch.object(dashboard, "notify_mac"),
+                mock.patch.object(notifications, "notify_mac"),
             ):
                 sessions = dashboard.collect_claude(now, 24, False)
 

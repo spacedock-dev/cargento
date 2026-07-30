@@ -99,7 +99,7 @@ The payoff is testing: the Linux CI runner executes the Windows and macOS branch
 that gates the merge. Write new platform-dependent code this way by default.
 
 *Status note:* the `platform = "darwin"` pin in `[tool.mypy]` predates this decision. `notify_mac`'s
-guard now goes through `native_notifier(sys.platform)`, which mypy does not narrow, so the pin's
+guard now goes through `native_notifier(config.platform_name)`, which mypy does not narrow, so the pin's
 stated justification no longer holds and `mypy --platform linux` passes clean. It is left in place
 pending a deliberate decision; see [`plans/native-notifications.md`](plans/native-notifications.md).
 
