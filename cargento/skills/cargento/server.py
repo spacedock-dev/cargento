@@ -49,6 +49,7 @@ from cargento_runtime import state as runtime_state
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import codex as codex_collector
+from cargento_runtime.collectors import copilot as copilot_collector
 from cargento_runtime.collectors import pi as pi_collector
 from cargento_runtime.web import page as frontend_page
 
@@ -2581,78 +2582,6 @@ def collect_gemini(now: float, window_hours: float, show_all: bool) -> list[dict
     return out
 
 
-def collect_copilot(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    files: dict[
-        str, tuple[float, str]
-    ] = {}  # session uuid -> newest events.jsonl (dir tie: current)
-    # history-session-state is assumed to share the <uuid>/events.jsonl
-    # layout — unverified legacy format; a mismatch just means those old
-    # sessions stay invisible.
-    config, runtime_state_value = _legacy_runtime()
-    for base in ("session-state", "history-session-state"):
-        for fp in runtime_io.glob_stores(
-            config,
-            "copilot.root",
-            base,
-            "*",
-            "events.jsonl",
-        ):
-            sid = os.path.basename(os.path.dirname(fp))
-            try:
-                mtime = os.path.getmtime(fp)
-            except OSError:
-                continue
-            if sid not in files or mtime > files[sid][0]:
-                files[sid] = (mtime, fp)
-
-    out: list[dict[str, Any]] = []
-    for sid, (mtime, fp) in files.items():
-        active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
-        if not (active or show_all):
-            continue
-        info = runtime_transcripts.analyze_copilot_events(config, fp) if active else None
-        last_event_sources = (info["last_event_ts"] if info else 0, mtime)
-        state, state_detail = "idle", "awaiting your message"
-        subagents: list[str] = []
-        if runtime_sessions.is_fresh(
-            config,
-            now,
-            runtime_sessions.newest_plausible(config, now, last_event_sources),
-            WORKING_THRESHOLD_SEC,
-        ):
-            state = "working"
-            subagents = list((info or {}).get("pending_agents", {}).values())
-            state_detail = runtime_sessions.working_detail(info, subagents)
-
-        cwd = (info or {}).get("cwd") or runtime_transcripts.copilot_meta(
-            config, runtime_state_value, fp
-        ).get("cwd")
-        s = runtime_sessions.base_session(
-            "copilot", sid, runtime_sessions.project_from_cwd(config, cwd or "") or "copilot"
-        )
-        s.update(
-            {
-                "title": (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-                "state": state,
-                "state_detail": state_detail,
-                "active": active,
-                "last_activity": mtime,
-                "turn": runtime_turns.turn_progress(
-                    runtime_turns.scan_turns(config, runtime_state_value, fp, "copilot")
-                    if info
-                    else None,
-                    state,
-                    now,
-                    config,
-                ),
-                "subagents": subagents,
-            }
-        )
-        out.append(s)
-    return out
-
-
 def collect_opencode(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
     if not runtime_io.sqlite_available():
         return []
@@ -3224,17 +3153,7 @@ _HARNESS_ROWS: tuple[tuple[str, str, _Legacy | ModuleType], ...] = (
     # Predicate matches both supported Gemini stores: legacy Gemini CLI
     # JSONL and current Antigravity CLI per-conversation SQLite databases.
     ("gemini", "Gemini", _Legacy(_discover_gemini, collect_gemini)),
-    (
-        "copilot",
-        "Copilot",
-        _Legacy(
-            lambda: (
-                _store_dir_exists("copilot.root", "session-state")
-                or _store_dir_exists("copilot.root", "history-session-state")
-            ),
-            collect_copilot,
-        ),
-    ),
+    ("copilot", "Copilot", copilot_collector),
     (
         "opencode",
         "OpenCode",
