@@ -50,6 +50,7 @@ from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import copilot as copilot_collector
+from cargento_runtime.collectors import droid as droid_collector
 from cargento_runtime.collectors import pi as pi_collector
 from cargento_runtime.web import page as frontend_page
 
@@ -3009,57 +3010,6 @@ def collect_goose_db(
         con.close()
 
 
-def collect_droid(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    config, runtime_state_value = _legacy_runtime()
-    for fp in runtime_io.glob_stores(config, "droid.projects", "*", "*.jsonl"):
-        try:
-            mtime = os.path.getmtime(fp)
-        except OSError:
-            continue
-        active = runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600)
-        if not (active or show_all):
-            continue
-        meta = runtime_transcripts.droid_meta(config, runtime_state_value, fp)
-        sid = str(meta.get("session_id") or os.path.basename(fp)[: -len(".jsonl")])
-        info = runtime_transcripts.analyze_droid_transcript(config, fp) if active else None
-        last_event_sources = (info["last_event_ts"] if info else 0, mtime)
-        state, state_detail = "idle", "awaiting your message"
-        if runtime_sessions.is_fresh(
-            config,
-            now,
-            runtime_sessions.newest_plausible(config, now, last_event_sources),
-            WORKING_THRESHOLD_SEC,
-        ):
-            state = "working"
-            state_detail = runtime_sessions.working_detail(info, [])
-
-        project = runtime_sessions.project_from_cwd(
-            config, meta.get("cwd") or ""
-        ) or runtime_sessions.project_label(config, os.path.basename(os.path.dirname(fp)))
-        s = runtime_sessions.base_session("droid", sid, project)
-        s.update(
-            {
-                "title": (meta.get("title") or "").strip()[:80] or (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-                "state": state,
-                "state_detail": state_detail,
-                "active": active,
-                "last_activity": mtime,
-                "turn": runtime_turns.turn_progress(
-                    runtime_turns.scan_turns(config, runtime_state_value, fp, "droid")
-                    if info
-                    else None,
-                    state,
-                    now,
-                    config,
-                ),
-            }
-        )
-        out.append(s)
-    return out
-
-
 # ---------------------------------------------------------------------------
 # Harness registry — a harness appears in the dashboard only if discovered
 
@@ -3184,11 +3134,7 @@ _HARNESS_ROWS: tuple[tuple[str, str, _Legacy | ModuleType], ...] = (
             collect_goose,
         ),
     ),
-    (
-        "droid",
-        "Droid",
-        _Legacy(lambda: _store_glob_exists("droid.projects", "*", "*.jsonl"), collect_droid),
-    ),
+    ("droid", "Droid", droid_collector),
 )
 
 

@@ -9,11 +9,51 @@ from unittest import mock
 
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import codex as codex_collector
+from cargento_runtime.collectors import droid as droid_collector
 
 from .support import LegacyDashboardTestCase, dashboard, make_runtime
 
 
 class DroidCollectorTest(LegacyDashboardTestCase):
+    NOW = 1_700_000_000.0
+
+    @staticmethod
+    def _transcript(root: Path, project: str, name: str, header: dict[str, object]) -> Path:
+        fp = root / project / f"{name}.jsonl"
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.write_text(json.dumps({"type": "session_start", **header}) + "\n")
+        return fp
+
+    def test_the_session_start_id_beats_the_filename(self) -> None:
+        # Droid names the file and the session independently, and the client
+        # keys per-session state on the sid. Mutation-checked: falling back to
+        # the filename unconditionally passed the whole suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._transcript(
+                Path(tmp),
+                "proj-y",
+                "renamed-file",
+                {"id": "real-session-id", "cwd": "/w/thing"},
+            )
+            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
+                config, state = dashboard._legacy_runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(["real-session-id"], [row["sid"] for row in rows])
+
+    def test_a_transcript_without_a_cwd_labels_from_its_project_directory(self) -> None:
+        # A header can omit cwd, and the encoded project directory is the only
+        # label left. Mutation-checked: dropping that fallback left the row
+        # labelled "" and passed the whole suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._transcript(Path(tmp), "-w-droidwork", "s1", {"id": "s1"})
+            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
+                config, state = dashboard._legacy_runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("w-droidwork", rows[0]["project"])
+
     def test_droid_sessions_from_project_transcripts(self) -> None:
         now = dashboard.time.time()
         iso = dashboard.datetime.fromtimestamp(now - 5, dashboard.UTC).isoformat()
@@ -47,7 +87,8 @@ class DroidCollectorTest(LegacyDashboardTestCase):
             )
 
             with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
-                sessions = dashboard.collect_droid(now, 24, False)
+                config, state = dashboard._legacy_runtime()
+                sessions = droid_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         s = sessions[0]
@@ -81,9 +122,10 @@ class DroidReviewFixTest(unittest.TestCase):
             )
             os.utime(transcript, (self.NOW, self.NOW))  # written right now
             with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
-                fresh = dashboard.collect_droid(self.NOW, 24, False)
+                config, state = dashboard._legacy_runtime()
+                fresh = droid_collector.collect(config, state, self.NOW, 24, False)
                 os.utime(transcript, (self.NOW - 100_000, self.NOW - 100_000))
-                stale = dashboard.collect_droid(self.NOW, 24, True)
+                stale = droid_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual("working", fresh[0]["state"], "fresh mtime was masked")
         self.assertEqual("idle", stale[0]["state"], "future record invented activity")
