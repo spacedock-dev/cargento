@@ -188,7 +188,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # report the window it was asked for, not the configured default.
         # Mutation-checked: dropping the override in _legacy_application, so
         # every request silently used the configured window, passed the suite.
-        with mock.patch.object(dashboard, "_HARNESS_ROWS", ()):
+        with mock.patch.object(aggregate, "default_harnesses", lambda _notifier: ()):
             requested = json.loads(dashboard.collect_json(6, False))
             default = json.loads(dashboard.collect_json(24, False))
 
@@ -201,9 +201,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
         def fail(*_args: object) -> list[dict[str, Any]]:
             raise RuntimeError("broken store")
 
-        harnesses = (("test", "Test", dashboard._Legacy(lambda: True, fail)),)
+        harnesses = (aggregate.HarnessSpec("test", "Test", lambda _config, _state: True, fail),)
         with (
-            mock.patch.object(dashboard, "_HARNESS_ROWS", harnesses),
+            mock.patch.object(aggregate, "default_harnesses", lambda _notifier: harnesses),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             result = dashboard.collect(24, False)

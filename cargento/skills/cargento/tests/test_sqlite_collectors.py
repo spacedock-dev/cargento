@@ -18,7 +18,7 @@ from cargento_runtime.collectors import gemini as gemini_collector
 from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 
-from .support import SERVER_PATH, LegacyDashboardTestCase, dashboard, make_runtime
+from .support import SERVER_PATH, LegacyDashboardTestCase, collect_claude, dashboard, make_runtime
 
 
 class SqliteCollectorTest(LegacyDashboardTestCase):
@@ -597,7 +597,7 @@ class SqliteOptionalTest(unittest.TestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
 
         self.assertEqual(1, len(sessions))
 
@@ -622,12 +622,19 @@ spec = importlib.util.spec_from_file_location("srv", {path!r})
 m = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = m          # dataclasses resolves annotations via sys.modules
 spec.loader.exec_module(m)          # must not raise
+# The launcher no longer imports a collector, so import the database-backed
+# ones here, still under the blocked import, to keep proving they load.
+from cargento_runtime.collectors import cursor as cursor_collector
+from cargento_runtime.collectors import gemini as gemini_collector
+from cargento_runtime.collectors import goose as goose_collector
+from cargento_runtime.collectors import opencode as opencode_collector
 builtins.__import__ = real_import
 assert not m.runtime_io.sqlite_available(), "sqlite_available() should be False"
 now = 1_700_000_000.0
 cfg, st = m._legacy_runtime()
-for name in ("opencode_collector", "cursor_collector", "goose_collector"):
-    assert getattr(m, name).collect(cfg, st, now, 24, True) == [], name
+for name, mod in (("opencode", opencode_collector), ("cursor", cursor_collector),
+                  ("goose", goose_collector)):
+    assert mod.collect(cfg, st, now, 24, True) == [], name
 # Antigravity is discovered from store mtime and CLI logs, so it survives
 # without sqlite3 — only its rate and ETA degrade. Give it a real store so
 # this exercises the database-backed path instead of an empty glob.
@@ -640,7 +647,7 @@ os.utime(store, (now, now))
 m.ANTIGRAVITY_CLI_DIR = ag
 m.STORE_ROOTS["antigravity.root"] = [ag]
 cfg2, st2 = m._legacy_runtime()
-found_ag = m.gemini_collector._collect_antigravity(cfg2, st2, now, 24, True)
+found_ag = gemini_collector._collect_antigravity(cfg2, st2, now, 24, True)
 assert len(found_ag) == 1, found_ag
 assert found_ag[0]["rate_per_min"] == 0, "rate should degrade to zero"
 assert found_ag[0]["turn"] is None, "no ETA without the database"

@@ -206,27 +206,23 @@ grep -oE '(url\.path|urlparse\(self\.path\)\.path) [!=]= "[^"]+"' "$S" | grep -o
 # CLI flags and their defaults
 grep -E -A4 'ap\.add_argument\(' "$S" | grep -E '"--|default='
 # The harness registry: one row per supported harness, in the order the page
-# renders its chips. Read it from the registry itself rather than by matching
-# source text, because the rows are multi-line and a row's source is either a
-# collector module already speaking the runtime contract or a `_Legacy` pair
-# still reading module globals. The third column tells you which, so this is
-# also the progress readout for the remaining extraction tasks.
-python3 - "$S" <<'PY'
-import importlib.util, pathlib, sys
+# renders its chips. Read it from `aggregate.default_harnesses` rather than by
+# matching source text, because the rows are multi-line. The third column is
+# each callback's defining module. Every row must resolve under
+# `cargento_runtime.collectors`; Claude's is the one wrapper the registry builds
+# itself, to bind the popup notifier its collector needs.
+python3 - "$A" <<'PY'
+import pathlib, sys
 
-path = pathlib.Path(sys.argv[1])
-sys.path.insert(0, str(path.parent))
-spec = importlib.util.spec_from_file_location("cargento_probe", path)
-module = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = module          # dataclasses resolves annotations here
-spec.loader.exec_module(module)
-for key, label, source in module._HARNESS_ROWS:
-    kind = "legacy (server.py)" if isinstance(source, module._Legacy) else source.__name__
-    print(f"{key:10} {label:10} {kind}")
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]).parents[1]))
+from cargento_runtime import aggregate
+
+for spec in aggregate.default_harnesses(lambda _title, _message: None):
+    print(f"{spec.key:10} {spec.label:10} {spec.collect.__module__}")
 PY
 # The application boundary and the registry contract it consumes
-grep -nE '^(class Application|class HarnessSpec)|^    def collect' "$A"
-grep -nE '^(HARNESSES|_HARNESS_ROWS)|^def (_legacy_application|_harness_specs)|^class _Legacy' "$S"
+grep -nE '^(class Application|class HarnessSpec)|^def default_harnesses|^    def collect' "$A"
+grep -nE '^HARNESSES|^def (_legacy_application|_bound_popup_notifier)' "$S"
 # Store-relocation environment variables the resolver advertises
 grep -nE '^(STORE_ENV_VARS|CARGENTO_HOME_ENV) = ' "$C"
 # Immutable configuration fields, builders, and locked defaults

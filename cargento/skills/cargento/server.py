@@ -30,28 +30,18 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from types import MappingProxyType, ModuleType
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
-from cargento_runtime import aggregate, claude_data, notifications, spacedock
+from cargento_runtime import aggregate, notifications
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
-from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
-from cargento_runtime import turns as runtime_turns
-from cargento_runtime.collectors import codex as codex_collector
-from cargento_runtime.collectors import copilot as copilot_collector
-from cargento_runtime.collectors import cursor as cursor_collector
-from cargento_runtime.collectors import droid as droid_collector
-from cargento_runtime.collectors import gemini as gemini_collector
-from cargento_runtime.collectors import goose as goose_collector
-from cargento_runtime.collectors import opencode as opencode_collector
-from cargento_runtime.collectors import pi as pi_collector
 from cargento_runtime.web import page as frontend_page
 
 sqlite3 = runtime_io.sqlite_module
@@ -451,108 +441,6 @@ _scan_lock = _LEGACY_STATE.scanner_lock
 
 
 # ---------------------------------------------------------------------------
-# Claude task files + subagents
-
-
-def load_tasks() -> dict[str, list[dict[str, Any]]]:
-    """session prefix -> list of task dicts."""
-    by_session: dict[str, list[dict[str, Any]]] = {}
-    config, _ = _legacy_runtime()
-    for fp in runtime_io.glob_stores(config, "claude.tasks", "*", "*.json"):
-        if os.path.basename(fp).startswith("."):
-            continue
-        try:
-            # Explicit UTF-8: the locale default is cp1252 on Windows, which
-            # silently mojibakes non-ASCII task subjects and raises
-            # UnicodeDecodeError on the bytes that code page leaves undefined.
-            # That is a ValueError but not a JSONDecodeError, so it escaped the
-            # handler below and errored the whole Claude collector for a pass.
-            with open(fp, encoding="utf-8") as f:
-                task = json.load(f)
-            st = os.stat(fp)
-        except (OSError, ValueError):
-            continue
-        if not isinstance(task, dict):
-            continue
-        dirname = os.path.basename(os.path.dirname(fp))
-        dirname = dirname.removeprefix("session-")
-        prefix = dirname[:8]
-        if not prefix:
-            continue
-        created = getattr(st, "st_birthtime", st.st_mtime)
-        # Field types are unvalidated JSON from disk — coerce non-strings so
-        # one malformed record cannot TypeError the whole Claude collector.
-        subject = task.get("subject")
-        active_form = task.get("activeForm")
-        status = task.get("status")
-        by_session.setdefault(prefix, []).append(
-            {
-                "id": task.get("id"),
-                "subject": subject if isinstance(subject, str) and subject else "(untitled)",
-                "activeForm": active_form if isinstance(active_form, str) else "",
-                "status": status if isinstance(status, str) and status else "pending",
-                "created": created,
-                "updated": st.st_mtime,
-            }
-        )
-    return by_session
-
-
-# Subagent transcripts sit beneath the session directory in two layouts. A
-# plain Task subagent lands directly in subagents/; a workflow fan-out nests
-# one level deeper, under the run that owns it. Missing the second layout hid
-# every workflow agent, which is how a session driving ten of them read Idle.
-CLAUDE_SUBAGENT_GLOBS = (
-    ("subagents", "agent-*.jsonl"),
-    ("subagents", "workflows", "*", "agent-*.jsonl"),
-)
-
-
-def claude_agent_transcripts(transcript: str | None) -> list[tuple[str, float]]:
-    """(path, mtime) for every subagent transcript belonging to a session."""
-    if not transcript:
-        return []
-    sess_dir = os.path.join(
-        os.path.dirname(transcript), os.path.basename(transcript)[: -len(".jsonl")]
-    )
-    found: list[tuple[str, float]] = []
-    for pattern in CLAUDE_SUBAGENT_GLOBS:
-        for fp in runtime_io.glob_under(sess_dir, *pattern):
-            try:
-                found.append((fp, os.path.getmtime(fp)))
-            except OSError:
-                continue  # transcript rotated/deleted between glob and stat
-    return found
-
-
-def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, Any]]:
-    """Running Claude subagents beneath the session directory; fresh mtime =
-    running. Covers both layouts in ``CLAUDE_SUBAGENT_GLOBS``."""
-    agents: list[dict[str, Any]] = []
-    config, _ = _legacy_runtime()
-    for fp, mtime in claude_agent_transcripts(transcript):
-        if not runtime_sessions.is_fresh(config, now, mtime, WORKING_THRESHOLD_SEC):
-            continue
-        label = None
-        try:
-            with open(fp[: -len(".jsonl")] + ".meta.json", encoding="utf-8") as f:
-                meta = json.load(f)
-        except (OSError, ValueError):  # ValueError covers UnicodeDecodeError
-            meta = None
-        # Meta values are untyped JSON — a non-string name must not
-        # TypeError the whole Claude collector.
-        if isinstance(meta, dict):
-            for key in ("name", "description", "agentType"):
-                value = meta.get(key)
-                if isinstance(value, str) and value:
-                    label = value
-                    break
-        agents.append({"label": (label or "subagent")[:70], "mtime": mtime})
-    agents.sort(key=lambda a: -a["mtime"])
-    return agents
-
-
-# ---------------------------------------------------------------------------
 # Notifications
 
 
@@ -623,281 +511,6 @@ def load_claude_subagents(transcript: str | None, now: float) -> list[dict[str, 
 _agent_class_cache = _LEGACY_STATE.agent_class_cache
 
 
-def collect_claude(now: float, window_hours: float, show_all: bool) -> list[dict[str, Any]]:
-    tasks_by_session = load_tasks()
-    transcripts: dict[str, str] = {}  # prefix -> newest transcript path
-    agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
-    config, runtime_state_value = _legacy_runtime()
-    for fp in runtime_io.glob_stores(config, "claude.projects", "*", "*.jsonl"):
-        base = os.path.basename(fp)
-        if "-agent-" in base or base.startswith("agent-"):
-            continue  # legacy subagent transcripts aren't top-level sessions
-        try:
-            mtime = os.path.getmtime(fp)
-        except OSError:
-            continue  # transcript rotated/deleted between glob and stat
-        if show_all or runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600):
-            is_agent, agent_name, parent_prefix = claude_data.agent_identity(
-                config, runtime_state_value, fp
-            )
-            if is_agent:
-                # Fold into the parent session; never a standalone session.
-                # Without a parent prefix there is nothing to attach to.
-                if parent_prefix and runtime_sessions.is_fresh(
-                    config, now, mtime, window_hours * 3600
-                ):
-                    agent_children.setdefault(parent_prefix, []).append(
-                        {
-                            "path": fp,
-                            "mtime": mtime,
-                            "label": (agent_name or "subagent")[:70],
-                        }
-                    )
-                continue
-        prefix = base[:8]
-        try:
-            if prefix not in transcripts or mtime > os.path.getmtime(transcripts[prefix]):
-                transcripts[prefix] = fp
-        except OSError:
-            continue  # transcript rotated/deleted between glob and stat
-
-    out: list[dict[str, Any]] = []
-    for prefix in set(transcripts) | set(tasks_by_session):
-        transcript = transcripts.get(prefix)
-        tasks = sorted(
-            tasks_by_session.get(prefix, []),
-            key=lambda t: int(t["id"]) if str(t["id"]).isdigit() else 0,
-        )
-        try:
-            transcript_mtime = os.path.getmtime(transcript) if transcript else 0
-        except OSError:
-            transcript_mtime = 0
-        latest_task_mtime = max((t["updated"] for t in tasks), default=0)
-        agent_files = claude_agent_transcripts(transcript)
-        subagents = load_claude_subagents(transcript, now)
-        children = agent_children.get(prefix, [])
-        subagents += [
-            {"label": c["label"], "mtime": c["mtime"]}
-            for c in children
-            if runtime_sessions.is_fresh(
-                config, now, c["mtime"], WORKING_THRESHOLD_SEC
-            )  # fresh = running
-        ]
-        latest_agent_mtime = max(
-            (a["mtime"] for a in subagents),
-            default=0,
-        )
-        latest_child_mtime = max((c["mtime"] for c in children), default=0)
-        # Every subagent write, not just the ones fresh enough to read as
-        # running: a workflow that has been going for hours parks its parent
-        # transcript, and without this the session ages out of the window.
-        latest_agent_file_mtime = max((m for _, m in agent_files), default=0)
-        activity_sources = (
-            latest_task_mtime,
-            transcript_mtime,
-            latest_agent_mtime,
-            latest_agent_file_mtime,
-            latest_child_mtime,
-        )
-        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
-        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
-        if not (active or show_all):
-            continue
-
-        project = (
-            (
-                runtime_sessions.project_from_cwd(
-                    config, claude_data.session_cwd(config, runtime_state_value, transcript)
-                )
-                # Lossy fallback: the encoded name cannot be split back into
-                # segments, so it stays whole rather than guessing at a split.
-                or runtime_sessions.project_label(
-                    config, os.path.basename(os.path.dirname(transcript))
-                )
-            )
-            if transcript
-            else "unknown"
-        )
-        # Sampled before analyze_transcript: that scan is the slow part, and a
-        # SessionEnd landing during it must invalidate everything derived here.
-        seen_generation = notifications.hook_generation(runtime_state_value, prefix)
-        info = (
-            claude_data.analyze_transcript(config, runtime_state_value, transcript)
-            if (transcript and active)
-            else None
-        )
-
-        state, state_detail = "idle", "awaiting your message"
-        blocked_since = None
-        # mtime floor: match the other collectors when the newest write has
-        # no parseable timestamp (partial line, untimestamped record)
-        parsed_last_event = info["last_event_ts"] if info else 0
-        last_event_sources = (parsed_last_event, transcript_mtime)
-        hook = (
-            notifications.current_hook(
-                runtime_state_value, prefix, (info or {}).get("last_user_event"), parsed_last_event
-            )
-            if active
-            else None
-        )
-        if info and info["pending_input_tool"]:
-            p = info["pending_input_tool"]
-            state = "needs_input"
-            blocked_since = p["ts"] or last_activity
-            state_detail = f"open question ({p['name']}), waiting {runtime_sessions.fmt_duration(runtime_sessions.age(config, now, p['ts'])) if p['ts'] else '?'}"
-        # Fresh activity beats a hook: Claude Code emits "waiting for your
-        # input" notifications for sessions that keep running via background
-        # tasks and will resume on their own. A hook only surfaces as
-        # needs-input once the session actually goes quiet; permission-prompt
-        # popups are unaffected (they fire on the POST itself).
-        elif subagents or runtime_sessions.is_fresh(
-            config,
-            now,
-            runtime_sessions.newest_plausible(config, now, last_event_sources),
-            WORKING_THRESHOLD_SEC,
-        ):
-            state = "working"
-            in_prog = next((t for t in tasks if t["status"] == "in_progress"), None)
-            if in_prog:
-                state_detail = (in_prog["activeForm"] or in_prog["subject"]) + "…"
-            else:
-                state_detail = runtime_sessions.working_detail(info, subagents)
-        elif hook:
-            state = "needs_input"
-            blocked_since = hook["ts"]
-            state_detail = hook["message"] or "waiting for your input"
-        if (
-            state == "needs_input"
-            and notifications.hook_generation(runtime_state_value, prefix) != seen_generation
-        ):
-            # The session exited while this snapshot was being built. Applies to
-            # the transcript-detected case too: an unanswered AskUserQuestion in
-            # a session the user has quit is moot, not blocking.
-            state, blocked_since = "idle", None
-            state_detail = "awaiting your message"
-        if active:
-            notifications.maybe_popup(
-                config,
-                runtime_state_value,
-                prefix,
-                state,
-                f"[{project}] {state_detail}" if state == "needs_input" else None,
-                expect_generation=seen_generation,
-                popup_notifier=_bound_popup_notifier(config),
-            )
-
-        total = len(tasks)
-        done = sum(1 for t in tasks if t["status"] == "completed")
-        open_count = total - done
-        durations = [
-            t["updated"] - t["created"]
-            for t in tasks
-            if t["status"] == "completed" and (t["updated"] - t["created"]) >= 30
-        ]
-        eta_sec = (
-            (sum(durations) / len(durations)) * open_count if durations and open_count else None
-        )
-
-        for t in tasks:
-            elapsed = (
-                (t["updated"] - t["created"])
-                if t["status"] == "completed"
-                else runtime_sessions.age(config, now, t["created"])
-            )
-            t["elapsed_h"] = runtime_sessions.fmt_duration(elapsed)
-            t["updated_ago"] = (
-                runtime_sessions.fmt_duration(runtime_sessions.age(config, now, t["updated"]))
-                + " ago"
-            )
-
-        s = runtime_sessions.base_session("claude", prefix, project)
-        s.update(
-            {
-                "title": (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
-                "state": state,
-                "state_detail": state_detail,
-                "blocked_since": blocked_since,
-                "active": active,
-                "last_activity": last_activity,
-                # Subagent output now lives in the children's own transcripts;
-                # fold it in so the session's rate reflects all its work.
-                "rate_per_min": runtime_sessions.rate_from(info, now, config)
-                + sum(
-                    runtime_sessions.rate_from(
-                        claude_data.analyze_transcript(config, runtime_state_value, path),
-                        now,
-                        config,
-                    )
-                    for path, mtime in agent_files
-                    if runtime_sessions.is_fresh(config, now, mtime, RATE_WINDOW_SEC)
-                )
-                + sum(
-                    runtime_sessions.rate_from(
-                        claude_data.analyze_transcript(config, runtime_state_value, c["path"]),
-                        now,
-                        config,
-                    )
-                    for c in children
-                    if runtime_sessions.is_fresh(config, now, c["mtime"], RATE_WINDOW_SEC)
-                ),
-                "total": total,
-                "done": done,
-                "open": open_count,
-                "progress_pct": round(done * 100 / total) if total else 0,
-                "eta_h": runtime_sessions.fmt_duration(eta_sec) if eta_sec else None,
-                "turn": runtime_turns.turn_progress(
-                    runtime_turns.scan_turns(config, runtime_state_value, transcript, "claude")
-                    if (info and transcript)
-                    else None,
-                    state,
-                    now,
-                    config,
-                ),
-                "subagents": [a["label"] for a in subagents],
-                "tasks": tasks,
-                "spacedock": claude_spacedock(transcript, subagents, now, window_hours * 3600),
-            }
-        )
-        out.append(s)
-    return out
-
-
-def claude_spacedock(
-    transcript: str | None,
-    subagents: list[dict[str, Any]],
-    now: float,
-    window_sec: float,
-) -> dict[str, Any] | None:
-    """Spacedock role and workflow strips for one Claude session, or None.
-
-    Gated on the session declaring a Spacedock ``agentSetting``, so a session
-    that has nothing to do with Spacedock costs one cached lookup and opens no
-    project file. Only a first officer gets strips: an ensign is a single worker
-    whose own stage is already the parent's strip.
-    """
-    if not transcript:
-        return None
-    config, runtime_state_value = _legacy_runtime()
-    setting = claude_data.agent_setting(config, runtime_state_value, transcript)
-    if setting == spacedock.SPACEDOCK_ENSIGN:
-        return {"role": "ensign", "workflows": []}
-    if setting != spacedock.SPACEDOCK_FO:
-        return None
-    if not SPACEDOCK_ENABLED:
-        # The switch withdraws the project reads, not the role: the badge comes
-        # from the transcript head, which is a store path either way.
-        return {"role": "first-officer", "workflows": []}
-    boot = spacedock.transcript_boot(config, runtime_state_value, transcript)
-    names = [str(a.get("label") or "") for a in subagents]
-    return {
-        "role": "first-officer",
-        "workflows": spacedock.session_workflows(
-            config, runtime_state_value, boot, names, now, window_sec
-        ),
-    }
-
-
 # db path -> (mtime, title, cwd)
 _cursor_meta_cache = _LEGACY_STATE.cursor_metadata_cache
 
@@ -917,122 +530,6 @@ _cursor_meta_cache = _LEGACY_STATE.cursor_metadata_cache
 # Harness registry — a harness appears in the dashboard only if discovered
 
 
-def _store_dir_exists(key: str, *parts: str) -> bool:
-    config, _ = _legacy_runtime()
-    return runtime_io.any_store_dir(config, key, *parts)
-
-
-def _store_glob_exists(key: str, *pattern: str) -> bool:
-    config, _ = _legacy_runtime()
-    return bool(runtime_io.glob_stores(config, key, *pattern))
-
-
-def _store_file_exists(key: str) -> bool:
-    config, _ = _legacy_runtime()
-    return bool(runtime_io.existing_stores(config, key))
-
-
-@dataclass(frozen=True)
-class _Legacy:
-    """Marks a registry row whose callables still read module globals."""
-
-    discover: Callable[[], bool]
-    collect: Callable[[float, float, bool], list[dict[str, Any]]]
-
-
-@dataclass(frozen=True)
-class _LegacyHarnessAdapter:
-    """Presents a global-reading collector under the runtime harness contract.
-
-    The wrapped functions still read module aliases, so the adapter refuses to
-    run for anything other than the one runtime those aliases describe. It never
-    installs config or state by mutating a global, which is what would let a
-    second application quietly drive this one's collectors.
-
-    It accepts only the config and state OBJECT IDENTITIES it was bound to,
-    which are the application's own and which the application hands back on
-    every call. It deliberately does not key off ``state.config``: the wrapped
-    functions call ``_legacy_runtime()`` re-entrantly while they run and
-    reassign ``state.config`` to a freshly built object, so a live lookup there
-    would reject every harness after the first.
-    """
-
-    config: runtime_config.RuntimeConfig
-    state: runtime_state.RuntimeState
-    legacy: _Legacy
-
-    def _require(
-        self,
-        config: runtime_config.RuntimeConfig,
-        state: runtime_state.RuntimeState,
-    ) -> None:
-        if config is not self.config or state is not self.state:
-            raise RuntimeError("legacy harness used by another application")
-
-    def discover(
-        self,
-        config: runtime_config.RuntimeConfig,
-        state: runtime_state.RuntimeState,
-    ) -> bool:
-        self._require(config, state)
-        return bool(self.legacy.discover())
-
-    def collect(
-        self,
-        config: runtime_config.RuntimeConfig,
-        state: runtime_state.RuntimeState,
-        now: float,
-        window_hours: float,
-        show_all: bool,
-    ) -> list[dict[str, Any]]:
-        self._require(config, state)
-        return self.legacy.collect(now, window_hours, show_all)
-
-
-# The one registry. Its order is the collection order and the order the response
-# lists harnesses in, so it stays in one place. A row's source is either a
-# collector module already speaking the runtime contract, or a `_Legacy` pair
-# still reading module globals; each remaining extraction task flips one row.
-_HARNESS_ROWS: tuple[tuple[str, str, _Legacy | ModuleType], ...] = (
-    ("claude", "Claude", _Legacy(lambda: _store_dir_exists("claude.projects"), collect_claude)),
-    ("codex", "Codex", codex_collector),
-    ("pi", "Pi", pi_collector),
-    ("gemini", "Gemini", gemini_collector),
-    ("copilot", "Copilot", copilot_collector),
-    ("opencode", "OpenCode", opencode_collector),
-    ("cursor", "Cursor", cursor_collector),
-    ("goose", "Goose", goose_collector),
-    ("droid", "Droid", droid_collector),
-)
-
-
-def _harness_specs(
-    config: runtime_config.RuntimeConfig,
-    state: runtime_state.RuntimeState,
-) -> tuple[aggregate.HarnessSpec, ...]:
-    """Build the registry for exactly one config and state, in registry order."""
-    specs = []
-    for key, label, source in _HARNESS_ROWS:
-        if isinstance(source, _Legacy):
-            adapter = _LegacyHarnessAdapter(config, state, source)
-            discover, collect = adapter.discover, adapter.collect
-        else:
-            discover, collect = source.discover, source.collect
-        specs.append(
-            aggregate.HarnessSpec(key=key, label=label, discover=discover, collect=collect)
-        )
-    return tuple(specs)
-
-
-# The registry as the runtime sees it. Read it for keys and labels only: its
-# legacy adapters are bound to the import-time config object, which
-# `_legacy_runtime()` replaces on its first call, so no later caller can satisfy
-# their identity check. Anything that needs to CALL a spec should build a live
-# one with `_harness_specs(*_legacy_runtime())`, which is what the application
-# below does.
-HARNESSES: tuple[aggregate.HarnessSpec, ...] = _harness_specs(_LEGACY_STATE.config, _LEGACY_STATE)
-
-
 def _bound_popup_notifier(
     config: runtime_config.RuntimeConfig,
 ) -> Callable[[str, str], None]:
@@ -1044,6 +541,16 @@ def _bound_popup_notifier(
     return notify
 
 
+# The registry as the runtime sees it. Every row is a collector module under
+# `cargento_runtime.collectors`; nothing here reads a module global. Read this
+# one for keys and labels: its Claude row notifies through a notifier bound to
+# the import-time config, so anything that CALLS a spec should build a live
+# registry the way the application below does.
+HARNESSES: tuple[aggregate.HarnessSpec, ...] = aggregate.default_harnesses(
+    _bound_popup_notifier(_LEGACY_STATE.config)
+)
+
+
 def _legacy_application(window_hours: float) -> aggregate.Application:
     """The one transitional application, built over the legacy globals."""
     config, state = _legacy_runtime()
@@ -1052,12 +559,15 @@ def _legacy_application(window_hours: float) -> aggregate.Application:
         # Kept local on purpose: publishing it onto the process-lifetime state
         # would race between concurrent requests, and nothing reads it there.
         config = replace(config, window_hours=window_hours)
+    popup_notifier = _bound_popup_notifier(config)
     return aggregate.Application(
         config,
         state,
-        _harness_specs(config, state),
+        aggregate.default_harnesses(popup_notifier),
         native_notifier=notifications.native_notifier,
-        popup_notifier=_bound_popup_notifier(config),
+        # The same callable the Claude collector notifies through, so the
+        # transcript path and the hook path cannot diverge.
+        popup_notifier=popup_notifier,
         diagnostic_sink=print,
         # Passed explicitly rather than left to the default: the default binds
         # time.time once at import, and the tests still patch the time module.

@@ -11,9 +11,11 @@ from unittest import mock
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import turns as runtime_turns
+from cargento_runtime.collectors import claude as claude_collector
 
 from .support import (
     LegacyDashboardTestCase,
+    collect_claude,
     dashboard,
     make_config,
     make_runtime,
@@ -360,10 +362,12 @@ class DurationAndEpochTest(unittest.TestCase):
             observed = {}
             for took in (29, 30, 60):
                 with (
-                    mock.patch.object(dashboard, "load_tasks", lambda t=took: tasks(t)),
+                    mock.patch.object(
+                        claude_collector, "load_tasks", lambda _config, t=took: tasks(t)
+                    ),
                     mock.patch.object(dashboard, "PROJECTS_DIR", empty),
                 ):
-                    observed[took] = dashboard.collect_claude(now, 24, True)[0]["eta_h"]
+                    observed[took] = collect_claude(now, 24, True)[0]["eta_h"]
 
         self.assertIsNone(observed[29], "29s of evidence is not enough for an ETA")
         # One open task times the 30s average.
@@ -433,7 +437,7 @@ class ClockSkewTest(unittest.TestCase):
             ):
                 # A day-ahead mtime previously made `now - mtime` negative, so
                 # the session reported "working" for the whole day of skew.
-                sessions = dashboard.collect_claude(self.NOW, 24, True)
+                sessions = collect_claude(self.NOW, 24, True)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("idle", sessions[0]["state"])

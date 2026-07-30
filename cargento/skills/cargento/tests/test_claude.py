@@ -9,8 +9,9 @@ from unittest import mock
 
 from cargento_runtime import claude_data, notifications, records, spacedock
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime.collectors import claude as claude_collector
 
-from .support import LegacyDashboardTestCase, dashboard, make_runtime
+from .support import LegacyDashboardTestCase, collect_claude, dashboard, make_runtime
 
 
 class ClaudeDataBoundTest(unittest.TestCase):
@@ -105,7 +106,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
 
             with mock.patch.object(dashboard, "TASKS_DIR", str(root)):
-                tasks = dashboard.load_tasks()
+                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
 
         self.assertEqual({"12345678", "abcdef12"}, set(tasks))
         self.assertEqual("Current", tasks["12345678"][0]["subject"])
@@ -282,7 +283,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
                 mock.patch.object(notifications, "notify_mac"),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
 
         # Fresh activity now takes display precedence (the hook only
         # surfaces once the session goes quiet) — but the property this test
@@ -446,7 +447,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
                 mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
                 config, state = dashboard._legacy_runtime()
                 classified_as_subagent = claude_data.prefix_is_agent(config, state, session_id[:8])
 
@@ -619,7 +620,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
                 mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
             ):
-                sessions = dashboard.collect_claude(dashboard.time.time(), 24, True)
+                sessions = collect_claude(dashboard.time.time(), 24, True)
 
         self.assertEqual(["12345678"], [session["session"] for session in sessions])
 
@@ -685,7 +686,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
 
         self.assertEqual(1, len(sessions))
         parent = sessions[0]
@@ -693,6 +694,61 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("working", parent["state"])
         self.assertEqual(["spark-reviewer"], parent["subagents"])
         self.assertGreater(parent["rate_per_min"], 0)
+
+    def test_a_quiet_child_transcript_stops_counting_as_a_running_subagent(self) -> None:
+        # A child that has gone quiet is finished work, not running work: it must
+        # drop off the parent's subagent pills and stop holding it in Working.
+        # The parent still stays in the window, because a child write is real
+        # activity even when it is too old to read as running.
+        # Mutation-checked: dropping the child freshness filter passed the suite.
+        now = dashboard.time.time()
+        stale_iso = dashboard.datetime.fromtimestamp(now - 600, dashboard.UTC).isoformat()
+        parent_id = "aaaa1111-0000-0000-0000-000000000000"
+        child_id = "bbbb2222-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            proj.mkdir(parents=True)
+            parent_fp = proj / f"{parent_id}.jsonl"
+            parent_fp.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": parent_id,
+                        "timestamp": stale_iso,
+                        "message": {"role": "user", "content": "build the feature"},
+                    }
+                )
+                + "\n"
+            )
+            child_fp = proj / f"{child_id}.jsonl"
+            child_fp.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": child_id,
+                        "agentName": "spark-reviewer",
+                        "teamName": f"session-{parent_id[:8]}",
+                        "timestamp": stale_iso,
+                        "message": {"role": "user", "content": "review the sparkline"},
+                    }
+                )
+                + "\n"
+            )
+            old = now - 600
+            dashboard.os.utime(parent_fp, (old, old))
+            dashboard.os.utime(child_fp, (old, old))
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+            ):
+                sessions = collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(sessions), "the child must still not be a standalone session")
+        parent = sessions[0]
+        self.assertEqual(parent_id[:8], parent["session"])
+        self.assertEqual([], parent["subagents"])
+        self.assertEqual("idle", parent["state"])
+        self.assertTrue(parent["active"], "a child write keeps the session in the window")
 
     def test_load_tasks_coerces_malformed_field_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -704,7 +760,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             (root / "2.json").write_text(json.dumps(["not", "a", "task"]))
 
             with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
-                tasks = dashboard.load_tasks()
+                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
 
         rows = tasks["12345678"]
         self.assertEqual(1, len(rows))  # the non-dict record is skipped
@@ -726,10 +782,35 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             (sub / "agent-2.jsonl").write_text("{}\n")
             (sub / "agent-2.meta.json").write_text("42")  # non-dict meta
 
-            agents = dashboard.load_claude_subagents(str(sess), dashboard.time.time())
+            agents = claude_collector.load_subagents(
+                dashboard._legacy_runtime()[0], str(sess), dashboard.time.time()
+            )
 
         # Both agents survive with the fallback label instead of TypeError.
         self.assertEqual(["subagent", "subagent"], [a["label"] for a in agents])
+
+    def test_a_quiet_subagent_transcript_is_not_a_running_subagent(self) -> None:
+        # "Running" is inferred from mtime, and a subagent pill is the reason a
+        # parent session reads Working. Without the freshness filter a session
+        # would list every subagent it ever ran and never leave Working.
+        # Mutation-checked: dropping the filter passed the whole suite.
+        now = 1_700_000_000.0
+        config = dashboard._legacy_runtime()[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            sess = Path(tmp) / "abc.jsonl"
+            sess.write_text("{}\n")
+            sub = Path(tmp) / "abc" / "subagents"
+            sub.mkdir(parents=True)
+            for name, age in (("agent-live", 5.0), ("agent-quiet", 600.0)):
+                path = sub / f"{name}.jsonl"
+                path.write_text("{}\n")
+                (sub / f"{name}.meta.json").write_text(json.dumps({"name": name}))
+                os.utime(path, (now - age, now - age))
+
+            agents = claude_collector.load_subagents(config, str(sess), now)
+
+        self.assertGreater(600.0, config.working_threshold_sec, "the quiet agent must be stale")
+        self.assertEqual(["agent-live"], [a["label"] for a in agents])
 
     def test_workflow_subagents_count_as_running_subagents(self) -> None:
         # Workflow fan-outs write one directory deeper than a plain Task
@@ -749,7 +830,9 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             # The run's bookkeeping file sits beside its agents and is not one.
             (run / "journal.jsonl").write_text("{}\n")
 
-            agents = dashboard.load_claude_subagents(str(sess), dashboard.time.time())
+            agents = claude_collector.load_subagents(
+                dashboard._legacy_runtime()[0], str(sess), dashboard.time.time()
+            )
 
         self.assertEqual({"plain-task", "review:bugs"}, {a["label"] for a in agents})
 
@@ -801,7 +884,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             ):
-                session = dashboard.collect_claude(now, 24, False)[0]
+                session = collect_claude(now, 24, False)[0]
 
         self.assertEqual("working", session["state"])
         self.assertEqual(["detect:backend"], session["subagents"])
@@ -832,7 +915,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertAlmostEqual(recent, sessions[0]["last_activity"], delta=2)
@@ -881,7 +964,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
                 mock.patch.object(dashboard, "HOME", home),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
 
         self.assertEqual("git-spacedock-subspace", sessions[0]["project"])
 
@@ -917,7 +1000,7 @@ class ClaudeReviewFixTest(unittest.TestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)  # must not raise
+                sessions = collect_claude(now, 24, False)  # must not raise
                 everything = dashboard.collect(24, True)
 
         self.assertEqual(1, len(sessions))
@@ -952,7 +1035,7 @@ class ClaudeGlobTest(unittest.TestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("hostile path prompt", sessions[0]["title"])

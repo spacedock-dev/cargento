@@ -20,6 +20,7 @@ from .support import (
     HOOK_PATH,
     PAGE_BYTES,
     LegacyDashboardTestCase,
+    collect_claude,
     dashboard,
     dashboard_hook,
     make_config,
@@ -271,7 +272,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                     mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
                 ):
-                    sessions = dashboard.collect_claude(now, 24, False)
+                    sessions = collect_claude(now, 24, False)
                 return next(s for s in sessions if s["session"] == session_id[:8])
 
             fresh = collect_with(5)  # events still flowing -> working
@@ -290,7 +291,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
             quiet = next(s for s in sessions if s["session"] == session_id[:8])
             self.assertEqual("needs_input", quiet["state"])
 
@@ -343,7 +344,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     self.assertEqual(1, notify.call_count)
                     with dashboard._lock:
                         self.assertNotIn(session_id[:8], dashboard._hook_notifs)
-                    sessions = dashboard.collect_claude(now, 24, False)
+                    sessions = collect_claude(now, 24, False)
                     target = next(s for s in sessions if s["session"] == session_id[:8])
                     self.assertEqual("idle", target["state"])
 
@@ -356,7 +357,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                             "transcript_path": str(fp),
                         },
                     )
-                    sessions = dashboard.collect_claude(now, 24, False)
+                    sessions = collect_claude(now, 24, False)
                     target = next(s for s in sessions if s["session"] == session_id[:8])
                     self.assertEqual("needs_input", target["state"])
             finally:
@@ -536,8 +537,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             ):
-                active = dashboard.collect_claude(now, 24, False)[0]
-                inactive = dashboard.collect_claude(now, 0.1, True)[0]
+                active = collect_claude(now, 24, False)[0]
+                inactive = collect_claude(now, 0.1, True)[0]
 
         self.assertEqual("needs_input", active["state"])
         self.assertEqual(hook_time, active["blocked_since"])
@@ -575,7 +576,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
             ):
-                session = dashboard.collect_claude(now, 24, False)[0]
+                session = collect_claude(now, 24, False)[0]
 
         self.assertEqual("needs_input", session["state"])
         self.assertEqual(records.parse_ts(question_time), session["blocked_since"])
@@ -650,7 +651,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                         )
 
                     def state() -> str:
-                        result = dashboard.collect_claude(now, 24, False)
+                        result = collect_claude(now, 24, False)
                         return str(
                             next(s for s in result if s["session"] == session_id[:8])["state"]
                         )
@@ -943,7 +944,7 @@ class HookOrderingTest(unittest.TestCase):
                 mock.patch.object(notifications, "current_hook", session_ends_mid_collection),
                 mock.patch.object(notifications, "notify_mac", lambda *a: popups.append(a)),
             ):
-                sessions = dashboard.collect_claude(now, 24, True)
+                sessions = collect_claude(now, 24, True)
 
         self.assertEqual("idle", sessions[0]["state"], "exited session shown as blocked")
         self.assertEqual([], popups, "popped for a session that had already ended")
@@ -1004,7 +1005,7 @@ class HookOrderingTest(unittest.TestCase):
                     **(data_patches or {"analyze_transcript": claude_data.analyze_transcript}),
                 ),
             ):
-                sessions = dashboard.collect_claude(now, 24, True)
+                sessions = collect_claude(now, 24, True)
         return sessions[0]["state"], len(popups)
 
     ASK_USER_QUESTION: ClassVar[list[dict[str, Any]]] = [

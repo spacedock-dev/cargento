@@ -18,11 +18,13 @@ from unittest import mock
 from cargento_runtime import io as runtime_io
 from cargento_runtime import notifications
 from cargento_runtime import sessions as runtime_sessions
+from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import bounded_put, build_runtime_state
 
 from .support import (
     LegacyDashboardTestCase,
+    collect_claude,
     dashboard,
     make_config,
     make_runtime,
@@ -620,7 +622,7 @@ class StoreRootsTest(unittest.TestCase):
                 mock.patch.object(dashboard, "PROJECTS_DIR", str(first)),
                 mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
             ):
-                sessions = dashboard.collect_claude(now, 24, False)
+                sessions = collect_claude(now, 24, False)
 
         self.assertEqual({"11111111", "22222222"}, {s["session"] for s in sessions})
 
@@ -878,7 +880,7 @@ class OperatingSystemExpectationTest(unittest.TestCase):
                 mock.patch.object(dashboard, "TASKS_DIR", str(tmp)),
                 mock.patch.object(dashboard.os, "stat", lambda p: NoBirthtime(real_stat(p))),
             ):
-                tasks = dashboard.load_tasks()
+                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
 
         task = tasks["abcdef12"][0]
         self.assertEqual(now, task["created"], "created should fall back to mtime")
@@ -945,7 +947,7 @@ class TextIoTest(unittest.TestCase):
                 encoding="utf-8",
             )
             with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
-                tasks = dashboard.load_tasks()
+                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
 
         self.assertEqual([subject], [t["subject"] for t in tasks["abcdef12"]])
 
@@ -961,7 +963,7 @@ class TextIoTest(unittest.TestCase):
                 encoding="utf-8",
             )
             with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
-                tasks = dashboard.load_tasks()
+                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
 
         self.assertEqual(["good"], [t["subject"] for t in tasks["abcdef12"]])
 

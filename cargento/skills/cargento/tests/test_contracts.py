@@ -16,6 +16,7 @@ from cargento_runtime import aggregate, notifications, records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
+from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.collectors import codex as codex_collector
 
 from . import test_claude, test_codex, test_copilot, test_droid, test_pi
@@ -26,8 +27,10 @@ from .fixtures import (
     build_pi,
 )
 from .support import (
+    SERVER_PATH,
     HarnessContractTestCase,
     LegacyDashboardTestCase,
+    collect_claude,
     dashboard,
     make_runtime,
 )
@@ -284,61 +287,14 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
 
 
-class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
-    """The transitional adapter must refuse to serve a second application.
-
-    Its wrapped collectors still read module globals, so running them for
-    another application's config and state would silently produce that
-    application's rows from this one's stores.
-    """
-
-    def test_a_foreign_application_cannot_drive_the_legacy_harnesses(self) -> None:
-        config, state = dashboard._legacy_runtime()
-        spec = dashboard._harness_specs(config, state)[0]
-        foreign_config, foreign_state = make_runtime(home="/home/foreign")
-
-        # The bound pair is accepted.
-        self.assertIsInstance(spec.discover(config, state), bool)
-
-        for label, wrong_config, wrong_state in (
-            ("foreign config", foreign_config, state),
-            ("foreign state", config, foreign_state),
-            ("both foreign", foreign_config, foreign_state),
-        ):
-            with self.subTest(mismatch=label):
-                with self.assertRaisesRegex(RuntimeError, "another application"):
-                    spec.discover(wrong_config, wrong_state)
-                with self.assertRaisesRegex(RuntimeError, "another application"):
-                    spec.collect(wrong_config, wrong_state, 1.0, 24.0, False)
-
-    def test_a_wrapped_call_reassigning_state_config_does_not_lock_out_the_spec(self) -> None:
-        # The wrapped collectors call _legacy_runtime() re-entrantly, which
-        # rebinds state.config. Keying the check off state.config instead of the
-        # bound object would therefore reject every harness after the first, and
-        # only 156 unrelated collector tests would notice.
-        config, state = dashboard._legacy_runtime()
-        seen: list[bool] = []
-
-        def legacy_collect(_now: float, _window: float, _show_all: bool) -> list[dict[str, Any]]:
-            dashboard._legacy_runtime()  # rebinds state.config, as the real ones do
-            seen.append(state.config is not config)
-            return []
-
-        registry = (("probe", "Probe", dashboard._Legacy(lambda: True, legacy_collect)),)
-        with mock.patch.object(dashboard, "_HARNESS_ROWS", registry):
-            spec = dashboard._harness_specs(config, state)[0]
-            spec.collect(config, state, 1.0, 24.0, False)
-            # The bound pair still works after state.config moved underneath it.
-            spec.collect(config, state, 2.0, 24.0, False)
-            self.assertTrue(spec.discover(config, state))
-
-        self.assertEqual([True, True], seen, "the probe did not rebind state.config")
+class HarnessRegistryTest(LegacyDashboardTestCase):
+    """The registry is nine collector modules and nothing else."""
 
     def test_the_registry_order_is_pinned(self) -> None:
         # Registry order is the collection order AND the order /api/data lists
         # harnesses in, which is the order the page renders its harness chips.
         # Mutation-checked: moving a row silently reordered the chips and passed
-        # the whole suite, and each remaining extraction task flips one row.
+        # the whole suite.
         self.assertEqual(
             [
                 "claude",
@@ -354,26 +310,89 @@ class LegacyHarnessAdapterTest(LegacyDashboardTestCase):
             [spec.key for spec in dashboard.HARNESSES],
         )
 
-    def test_a_moved_collector_is_wired_natively_not_re_wrapped(self) -> None:
-        # Once a collector speaks the runtime contract its row must stop going
-        # through the legacy adapter, or the extraction bought nothing.
-        native = {
-            key
-            for key, _label, source in dashboard._HARNESS_ROWS
-            if not isinstance(source, dashboard._Legacy)
-        }
-        self.assertEqual(
-            {"codex", "copilot", "cursor", "droid", "gemini", "goose", "opencode", "pi"}, native
-        )
+    def test_no_registry_callback_resolves_into_the_launcher(self) -> None:
+        # The whole point of the split. A callback defined in server.py would
+        # still work and would still be reachable, so nothing else catches it.
+        # Claude's is the one wrapper, built by the registry itself to bind the
+        # popup notifier, so it is allowed to live in aggregate.
+        for spec in dashboard.HARNESSES:
+            with self.subTest(harness=spec.key):
+                for role, fn in (("discover", spec.discover), ("collect", spec.collect)):
+                    module = getattr(fn, "__module__", "")
+                    self.assertNotEqual(
+                        dashboard.__name__, module, f"{spec.key}.{role} is defined in the launcher"
+                    )
+                    allowed = module.startswith("cargento_runtime.collectors.") or (
+                        spec.key == "claude"
+                        and role == "collect"
+                        and module == "cargento_runtime.aggregate"
+                    )
+                    self.assertTrue(allowed, f"{spec.key}.{role} resolves to {module!r}")
+        # Every unwrapped callback is the module attribute itself, not a copy.
         self.assertIs(
             codex_collector.collect,
             next(s.collect for s in dashboard.HARNESSES if s.key == "codex"),
         )
 
-    def test_the_registry_keys_and_labels_survive_the_adapter(self) -> None:
-        # The adapter changes the calling convention, not the registry itself.
+    def test_the_claude_wrapper_delegates_to_the_claude_collector(self) -> None:
+        # The one wrapped row: prove the wrapper is a binding and not a
+        # reimplementation, by checking what its closure actually calls.
+        spec = next(s for s in dashboard.HARNESSES if s.key == "claude")
+        closed_over = [cell.cell_contents for cell in (spec.collect.__closure__ or ())]
+        self.assertIn(claude_collector, closed_over)
+
+    def test_the_launcher_defines_no_harness_collector(self) -> None:
+        # A collector left behind in server.py would still work, and would still
+        # be reachable, so only reading the source catches it.
+        source = SERVER_PATH.read_text(encoding="utf-8")
+        for key in [spec.key for spec in dashboard.HARNESSES]:
+            with self.subTest(harness=key):
+                self.assertNotIn(f"def collect_{key}(", source)
+        self.assertNotIn("class _LegacyHarnessAdapter", source)
+        self.assertNotIn("_HARNESS_ROWS", source)
+
+    def test_the_claude_row_notifies_through_the_registrys_own_notifier(self) -> None:
+        # Claude is the only collector that notifies during collection, so its
+        # notifier is bound when the registry is built. Mutation-checked: handing
+        # the collector a silent notifier instead passed the whole suite, because
+        # every other popup test patches notify_mac underneath the binding and so
+        # cannot tell which callable the registry actually passed down.
+        now = 1_700_000_000.0
+        prefix = "abcdef12"
+        fired: list[tuple[str, str]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / f"{prefix}-0000-0000-0000-000000000000.jsonl"
+            transcript.write_text(json.dumps({"type": "user", "uuid": "u"}) + "\n")
+            # Quiet, so the standing hook decides the state rather than activity.
+            os.utime(transcript, (now - 300, now - 300))
+            with (
+                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
+                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+            ):
+                config, state = dashboard._legacy_runtime()
+                with state.hook_lock:
+                    state.hook_notifications[prefix] = {"ts": now, "message": "permission"}
+                spec = next(
+                    s
+                    for s in aggregate.default_harnesses(
+                        lambda title, message: fired.append((title, message))
+                    )
+                    if s.key == "claude"
+                )
+                found = spec.collect(config, state, now, 24, True)
+
+        self.assertEqual(["needs_input"], [s["state"] for s in found])
+        self.assertEqual(1, len(fired), "the registry's notifier was not the one used")
+        self.assertIn("permission", fired[0][1])
+
+    def test_the_registry_keys_and_labels_match_the_runtime_default(self) -> None:
+        # The launcher binds Claude's notifier; it must not otherwise rewrite the
+        # registry the runtime declares.
+        runtime_registry = aggregate.default_harnesses(lambda _title, _message: None)
         self.assertEqual(
-            [(key, label) for key, label, _source in dashboard._HARNESS_ROWS],
+            [(spec.key, spec.label) for spec in runtime_registry],
             [(spec.key, spec.label) for spec in dashboard.HARNESSES],
         )
 
@@ -384,12 +403,23 @@ class RuntimeImportGraphTest(unittest.TestCase):
     EXPECTED: ClassVar[dict[str, set[str]]] = {
         "cargento_runtime": set(),
         "cargento_runtime.aggregate": {
+            "cargento_runtime.collectors",
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
         "cargento_runtime.collectors": set(),
+        "cargento_runtime.collectors.claude": {
+            "cargento_runtime.claude_data",
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.notifications",
+            "cargento_runtime.sessions",
+            "cargento_runtime.spacedock",
+            "cargento_runtime.state",
+            "cargento_runtime.turns",
+        },
         "cargento_runtime.collectors.copilot": {
             "cargento_runtime.config",
             "cargento_runtime.io",
@@ -666,6 +696,14 @@ from . import page as sibling_page
             "SPACEDOCK_FO",
             "SD_STAGE_RE",
         )
+        claude_collector_symbols = (
+            "load_tasks",
+            "claude_agent_transcripts",
+            "load_claude_subagents",
+            "collect_claude",
+            "claude_spacedock",
+            "CLAUDE_SUBAGENT_GLOBS",
+        )
         claude_data_symbols = (
             "claude_session_title",
             "claude_last_user_event",
@@ -707,6 +745,7 @@ from . import page as sibling_page
             *turn_symbols,
             *claude_data_symbols,
             *notification_symbols,
+            *claude_collector_symbols,
             *spacedock_symbols,
         ):
             with self.subTest(symbol=symbol):
@@ -861,7 +900,7 @@ class CollectorAgreementTest(LegacyDashboardTestCase):
                 ),
                 mock.patch.object(dashboard, "HOME", home),
             ):
-                claude = dashboard.collect_claude(now, 24, False)
+                claude = collect_claude(now, 24, False)
                 config, state = dashboard._legacy_runtime()
                 codex = codex_collector.collect(config, state, now, 24, False)
 

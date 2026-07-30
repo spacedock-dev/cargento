@@ -34,6 +34,52 @@ class HarnessSpec:
     collect: Collector
 
 
+def default_harnesses(popup_notifier: Callable[[str, str], None]) -> tuple[HarnessSpec, ...]:
+    """Every supported harness, in display order.
+
+    Claude is the one collector that notifies during collection, because a
+    transcript-detected transition into needs-input has no HTTP request behind
+    it. Binding its notifier here keeps ``Collector`` a single five-argument
+    contract for all nine harnesses instead of widening every collector with a
+    dependency only one of them has. Pass the same bound callable given to
+    ``Application.popup_notifier`` so both paths notify identically.
+    """
+    from .collectors import (  # noqa: PLC0415 — deferred to keep import order acyclic
+        claude,
+        codex,
+        copilot,
+        cursor,
+        droid,
+        gemini,
+        goose,
+        opencode,
+        pi,
+    )
+
+    def collect_claude(
+        config: RuntimeConfig,
+        state: RuntimeState,
+        now: float,
+        window_hours: float,
+        show_all: bool,
+    ) -> list[Session]:
+        return claude.collect(
+            config, state, now, window_hours, show_all, popup_notifier=popup_notifier
+        )
+
+    return (
+        HarnessSpec("claude", "Claude", claude.discover, collect_claude),
+        HarnessSpec("codex", "Codex", codex.discover, codex.collect),
+        HarnessSpec("pi", "Pi", pi.discover, pi.collect),
+        HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect),
+        HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect),
+        HarnessSpec("opencode", "OpenCode", opencode.discover, opencode.collect),
+        HarnessSpec("cursor", "Cursor", cursor.discover, cursor.collect),
+        HarnessSpec("goose", "Goose", goose.discover, goose.collect),
+        HarnessSpec("droid", "Droid", droid.discover, droid.collect),
+    )
+
+
 class Application:
     """One dashboard process's collection surface.
 

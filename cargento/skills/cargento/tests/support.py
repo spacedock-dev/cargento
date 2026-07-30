@@ -9,14 +9,18 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 from cargento_runtime import notifications
+from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import RuntimeState, build_runtime_state
 
 from .fixtures import STORE_CONSTANTS
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
 sys.path.insert(0, str(SERVER_PATH.parent))
@@ -56,6 +60,31 @@ def make_runtime(
 ) -> tuple[RuntimeConfig, RuntimeState]:
     config = make_config(**changes)
     return config, build_runtime_state(config, started=started)
+
+
+def collect_claude(
+    now: float,
+    window_hours: float,
+    show_all: bool,
+    *,
+    popup_notifier: Callable[[str, str], None] | None = None,
+) -> list[dict[str, Any]]:
+    """Run the Claude collector over the legacy runtime this suite resets.
+
+    The collector takes its popup notifier as an argument rather than reaching
+    for a module global, so the default here is the same binding the launcher
+    hands the application. Tests that assert on popups keep patching
+    ``notifications.notify_mac`` underneath it.
+    """
+    config, state = dashboard._legacy_runtime()
+    return claude_collector.collect(
+        config,
+        state,
+        now,
+        window_hours,
+        show_all,
+        popup_notifier=popup_notifier or dashboard._bound_popup_notifier(config),
+    )
 
 
 def serve_until_closed(httpd: Any) -> threading.Thread:

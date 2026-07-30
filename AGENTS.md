@@ -24,7 +24,7 @@ cargento/                           # plugin root
         ├── cargento_runtime/       # importable dashboard runtime package
         │   ├── aggregate.py        # harness registry, failure boundary, and the application
         │   ├── claude_data.py      # Claude transcript reads shared by the collector and hooks
-        │   ├── collectors/         # one harness collector per file (populated task by task)
+        │   ├── collectors/         # one harness collector per file, one per supported harness
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
