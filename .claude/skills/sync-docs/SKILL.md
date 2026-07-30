@@ -200,6 +200,7 @@ A=cargento/skills/cargento/cargento_runtime/aggregate.py
 C=cargento/skills/cargento/cargento_runtime/config.py
 R=cargento/skills/cargento/cargento_runtime/state.py
 W=cargento/skills/cargento/cargento_runtime/web
+G=cargento/skills/cargento/cargento_runtime/diagnostics.py
 
 # HTTP routes the server actually serves
 grep -oE '(url\.path|urlparse\(self\.path\)\.path) [!=]= "[^"]+"' "$S" | grep -oE '"/[^"]*"' | sort -u
@@ -223,6 +224,8 @@ PY
 # The application boundary and the registry contract it consumes
 grep -nE '^(class Application|class HarnessSpec)|^def default_harnesses|^    def collect' "$A"
 grep -nE '^HARNESSES|^def (_legacy_application|_bound_popup_notifier)' "$S"
+# What --diagnose reports, and the pinned order it reports stores in
+grep -nE '^(_REPORT_KEY_ORDER|def (store_primaries|candidate_report|diagnose|render_diagnosis))' "$G"
 # Store-relocation environment variables the resolver advertises
 grep -nE '^(STORE_ENV_VARS|CARGENTO_HOME_ENV) = ' "$C"
 # Immutable configuration fields, builders, and locked defaults

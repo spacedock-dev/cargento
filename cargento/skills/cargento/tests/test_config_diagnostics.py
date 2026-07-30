@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
+from cargento_runtime import aggregate, diagnostics, notifications
 from cargento_runtime import io as runtime_io
-from cargento_runtime import notifications
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.config import build_runtime_config
@@ -678,7 +678,7 @@ class DiagnoseTest(unittest.TestCase):
             locked.mkdir()
             locked.chmod(0o000)
             try:
-                report = dashboard.candidate_report(str(locked))
+                report = diagnostics.candidate_report(str(locked))
             finally:
                 locked.chmod(0o700)  # or TemporaryDirectory cannot clean up
 
@@ -690,7 +690,7 @@ class DiagnoseTest(unittest.TestCase):
     def test_rendering_is_ascii_only(self) -> None:
         # This output gets pasted into issues from consoles whose encoding we
         # do not control.
-        text = dashboard.render_diagnosis(dashboard.diagnose(24))
+        text = diagnostics.render_diagnosis(dashboard.diagnose(24))
         text.encode("ascii")  # must not raise
         self.assertIn("Stores searched", text)
         self.assertIn("Harnesses", text)
@@ -715,6 +715,63 @@ class DiagnoseTest(unittest.TestCase):
         for harness in report["harnesses"]:
             with self.subTest(harness=harness["key"]):
                 self.assertLessEqual({"key", "label", "discovered", "error"}, set(harness))
+
+    def test_per_harness_session_counts_are_reported(self) -> None:
+        # "discovered" only says a store exists. The session count is what
+        # separates "found the store, read nothing" from "working", and it is
+        # the first number anyone looks at in a bug report.
+        # Mutation-checked: reporting a flat zero passed the whole suite.
+        counted = [
+            {"harness": "claude", "state": "idle"},
+            {"harness": "claude", "state": "idle"},
+            {"harness": "codex", "state": "idle"},
+        ]
+
+        def collect(_self: Any, *, show_all: bool) -> dict[str, Any]:
+            assert show_all, "diagnose must ask for every session, not just active ones"
+            return {
+                "sessions": counted,
+                "harnesses": [
+                    {"key": "claude", "label": "Claude", "discovered": True, "error": None},
+                    {"key": "codex", "label": "Codex", "discovered": True, "error": None},
+                    {"key": "goose", "label": "Goose", "discovered": False, "error": None},
+                ],
+            }
+
+        with mock.patch.object(aggregate.Application, "collect", collect):
+            report = dashboard.diagnose(24)
+
+        self.assertEqual(
+            {"claude": 2, "codex": 1, "goose": 0},
+            {h["key"]: h["sessions"] for h in report["harnesses"]},
+        )
+        text = diagnostics.render_diagnosis(report)
+        self.assertIn("2 session(s)", text)
+        self.assertIn("1 session(s)", text)
+
+    def test_store_report_order_is_pinned_not_inherited_from_the_resolver(self) -> None:
+        # --diagnose output is diffed between machines and pasted into issues, so
+        # the store order is part of the contract. The resolver groups Claude's
+        # two stores the other way round, so taking its order would silently
+        # swap two lines. Mutation-checked: both halves of this passed before.
+        config = make_config(
+            store_roots=types.MappingProxyType(
+                {
+                    "claude.tasks": ("/t",),
+                    "claude.projects": ("/p",),
+                    "goose.db": ("/g",),
+                    "brand.new": ("/n",),
+                }
+            )
+        )
+        primaries = diagnostics.store_primaries(config)
+
+        self.assertEqual(
+            ["claude.projects", "claude.tasks", "goose.db", "brand.new"], list(primaries)
+        )
+        # A store the resolver knows about but this module has never heard of is
+        # still reported. Dropping it would hide the one path a user needs.
+        self.assertEqual("/n", primaries["brand.new"])
 
     def test_env_overrides_are_surfaced(self) -> None:
         with mock.patch.dict(os.environ, {"CODEX_HOME": "/opt/cx"}):
@@ -1012,7 +1069,7 @@ class ReviewFixTest(unittest.TestCase):
             (parent / "inner").mkdir(parents=True)
             parent.chmod(0o000)
             try:
-                report = dashboard.candidate_report(str(parent / "inner"))
+                report = diagnostics.candidate_report(str(parent / "inner"))
             finally:
                 parent.chmod(0o700)
 
@@ -1026,7 +1083,7 @@ class ReviewFixTest(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(dashboard.os, "scandir", side_effect=PermissionError("locked")),
         ):
-            report = dashboard.candidate_report(tmp)
+            report = diagnostics.candidate_report(tmp)
         self.assertEqual("directory", report["kind"])
         self.assertFalse(report["readable"])
         self.assertIn("PermissionError", report["error"])
@@ -1062,8 +1119,8 @@ class VerificationFixTest(unittest.TestCase):
             dangling.symlink_to(Path(tmp) / "nowhere")
             fifo = Path(tmp) / "pipe"
             os.mkfifo(fifo)
-            self.assertEqual("broken symlink", dashboard.candidate_report(str(dangling))["kind"])
-            self.assertEqual("special file", dashboard.candidate_report(str(fifo))["kind"])
+            self.assertEqual("broken symlink", diagnostics.candidate_report(str(dangling))["kind"])
+            self.assertEqual("special file", diagnostics.candidate_report(str(fifo))["kind"])
 
 
 class GlobUnderTest(unittest.TestCase):

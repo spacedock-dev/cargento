@@ -410,6 +410,11 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.state",
         },
         "cargento_runtime.collectors": set(),
+        "cargento_runtime.diagnostics": {
+            "cargento_runtime.aggregate",
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+        },
         "cargento_runtime.collectors.claude": {
             "cargento_runtime.claude_data",
             "cargento_runtime.config",
@@ -696,6 +701,11 @@ from . import page as sibling_page
             "SPACEDOCK_FO",
             "SD_STAGE_RE",
         )
+        diagnostics_symbols = (
+            "store_primaries",
+            "candidate_report",
+            "render_diagnosis",
+        )
         claude_collector_symbols = (
             "load_tasks",
             "claude_agent_transcripts",
@@ -746,6 +756,7 @@ from . import page as sibling_page
             *claude_data_symbols,
             *notification_symbols,
             *claude_collector_symbols,
+            *diagnostics_symbols,
             *spacedock_symbols,
         ):
             with self.subTest(symbol=symbol):

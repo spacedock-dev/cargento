@@ -26,6 +26,7 @@ cargento/                           # plugin root
         │   ├── claude_data.py      # Claude transcript reads shared by the collector and hooks
         │   ├── collectors/         # one harness collector per file, one per supported harness
         │   ├── config.py           # immutable process configuration and store roots
+        │   ├── diagnostics.py      # store-path reporting for --diagnose
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
         │   ├── records.py          # untrusted-record parsing and normalization

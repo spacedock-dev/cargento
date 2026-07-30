@@ -25,7 +25,6 @@ import math
 import os
 import select
 import socket
-import stat as stat_module
 import subprocess
 import sys
 import threading
@@ -38,7 +37,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
-from cargento_runtime import aggregate, notifications
+from cargento_runtime import aggregate, diagnostics, notifications
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
@@ -1332,152 +1331,9 @@ class Handler(BaseHTTPRequestHandler):
         pass  # keep stdout quiet
 
 
-def store_primaries() -> dict[str, str]:
-    """Current primary root per store, read from the module constants so a
-    patched constant is reflected here too."""
-    return {
-        "claude.projects": PROJECTS_DIR,
-        "claude.tasks": TASKS_DIR,
-        "codex.sessions": CODEX_SESSIONS_DIR,
-        "pi.sessions": PI_SESSIONS_DIR,
-        "gemini.tmp": GEMINI_TMP,
-        "antigravity.root": ANTIGRAVITY_CLI_DIR,
-        "copilot.root": COPILOT_DIR,
-        "opencode.data": OPENCODE_DATA,
-        "cursor.chats": CURSOR_CHATS,
-        "goose.db": GOOSE_DB,
-        "droid.projects": FACTORY_PROJECTS,
-    }
-
-
-def candidate_report(path: str) -> dict[str, Any]:
-    """What a single candidate store path actually is on disk."""
-    entry: dict[str, Any] = {"path": path, "kind": "missing", "readable": False, "entries": None}
-    # stat(), not isdir()/isfile(): those swallow OSError and return False, so
-    # a candidate under an unreadable parent reported "missing" — the exact
-    # confusion between "absent" and "inaccessible" this exists to remove.
-    try:
-        stat_result = os.stat(path)
-    except FileNotFoundError:
-        # stat() follows symlinks, so a dangling one lands here. Say so rather
-        # than calling it absent — the target is what the user needs to fix.
-        if os.path.islink(path):
-            entry["kind"] = "broken symlink"
-        return entry
-    except OSError as exc:
-        entry["kind"] = "inaccessible"
-        entry["error"] = f"{type(exc).__name__}: {exc}"
-        return entry
-    if stat_module.S_ISDIR(stat_result.st_mode):
-        entry["kind"] = "directory"
-        try:
-            with os.scandir(path) as scan:
-                entry["entries"] = sum(1 for _ in scan)  # streamed, not materialised
-            entry["readable"] = True
-        except OSError as exc:
-            entry["error"] = f"{type(exc).__name__}: {exc}"
-    elif stat_module.S_ISREG(stat_result.st_mode):
-        entry["kind"] = "file"
-        entry["readable"] = os.access(path, os.R_OK)
-    else:
-        # A FIFO or socket at a store path is never a usable store; reporting
-        # it as a readable file would send someone looking in the wrong place.
-        entry["kind"] = "special file"
-    return entry
-
-
 def diagnose(window_hours: float) -> dict[str, Any]:
-    """Everything needed to explain a harness that is not showing up.
-
-    Collectors swallow their errors so one broken store cannot take down the
-    dashboard, which means a wrong path looks exactly like an idle machine.
-    This is the counterweight: it names every location searched and what was
-    found there. Local only — nothing is transmitted anywhere.
-    """
-    with _cache_lock:
-        _store_errors.clear()  # this run's failures only
-    data = collect(window_hours, show_all=True)
-    with _cache_lock:
-        store_errors = dict(_store_errors)
-    sessions_by_harness: dict[str, int] = {}
-    for session in data["sessions"]:
-        key = str(session["harness"])
-        sessions_by_harness[key] = sessions_by_harness.get(key, 0) + 1
-    return {
-        "platform": sys.platform,
-        "python": sys.version.split()[0],
-        "executable": sys.executable,
-        "home": HOME,
-        "sqlite": {
-            "available": runtime_io.sqlite_available(),
-            "error": runtime_io.SQLITE_IMPORT_ERROR,
-            "version": sqlite3.sqlite_version if runtime_io.sqlite_available() else None,
-        },
-        "env": {name: os.environ[name] for name in STORE_ENV_VARS if os.environ.get(name)},
-        # Failures the collectors swallowed. Without these a corrupt database
-        # reads as a healthy store with no sessions.
-        "store_errors": store_errors,
-        "stores": {
-            key: {
-                "primary": primary,
-                "candidates": [candidate_report(root) for root in store_roots(key, primary)],
-            }
-            for key, primary in store_primaries().items()
-        },
-        "harnesses": [
-            {**harness, "sessions": sessions_by_harness.get(str(harness["key"]), 0)}
-            for harness in data["harnesses"]
-        ],
-    }
-
-
-def render_diagnosis(report: dict[str, Any]) -> str:
-    """ASCII-only rendering — this output gets pasted into bug reports from
-    consoles whose encoding we do not control."""
-    sqlite_info = report["sqlite"]
-    lines = [
-        "Cargento diagnostics",
-        f"  platform   {report['platform']} (python {report['python']})",
-        f"  python at  {report['executable']}",
-        f"  home       {report['home']}",
-        f"  sqlite3    {sqlite_info['version'] or 'UNAVAILABLE: ' + str(sqlite_info['error'])}",
-    ]
-    env = report["env"]
-    lines.append(
-        "  overrides  " + (", ".join(f"{k}={v}" for k, v in env.items()) if env else "none")
-    )
-
-    lines.append("")
-    lines.append("Harnesses")
-    for harness in report["harnesses"]:
-        mark = "ok  " if harness["discovered"] else "  --"
-        detail = f"{harness['sessions']} session(s)" if harness["discovered"] else "not discovered"
-        lines.append(f"  [{mark}] {harness['label']!s:<10} {detail}")
-        if harness["error"]:
-            lines.append(f"           error: {harness['error']}")
-
-    if report["store_errors"]:
-        lines.append("")
-        lines.append("Stores that failed to open or query")
-        for path, message in report["store_errors"].items():
-            lines.append(f"  [  --] {path}")
-            lines.append(f"           {message}")
-
-    lines.append("")
-    lines.append("Stores searched (in order)")
-    for key, store in report["stores"].items():
-        lines.append(f"  {key}")
-        for candidate in store["candidates"]:
-            mark = "ok  " if candidate["kind"] != "missing" else "  --"
-            detail = candidate["kind"]
-            if candidate["entries"] is not None:
-                detail += f", {candidate['entries']} entries"
-            if not candidate["readable"] and candidate["kind"] != "missing":
-                detail += ", NOT READABLE"
-            if candidate.get("error"):
-                detail += f", {candidate['error']}"
-            lines.append(f"    [{mark}] {candidate['path']}  ({detail})")
-    return "\n".join(lines)
+    """Diagnose the transitional application, for the CLI's --diagnose path."""
+    return diagnostics.diagnose(_legacy_application(window_hours))
 
 
 def main() -> None:
@@ -1538,7 +1394,7 @@ def main() -> None:
     if args.diagnose:
         report = diagnose(args.window_hours)
         runtime_io.diag(
-            json.dumps(report, indent=2) if args.json else render_diagnosis(report),
+            json.dumps(report, indent=2) if args.json else diagnostics.render_diagnosis(report),
             print,
         )
         return

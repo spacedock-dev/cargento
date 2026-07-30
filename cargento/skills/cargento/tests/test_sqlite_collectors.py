@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import diagnostics
 from cargento_runtime import io as runtime_io
 from cargento_runtime.collectors import cursor as cursor_collector
 from cargento_runtime.collectors import gemini as gemini_collector
@@ -512,7 +513,28 @@ class SqliteDiagnosticTest(unittest.TestCase):
 
         self.assertIn(str(broken), report["store_errors"])
         self.assertIn("not a database", report["store_errors"][str(broken)])
-        self.assertIn("failed to open", dashboard.render_diagnosis(report))
+        self.assertIn("failed to open", diagnostics.render_diagnosis(report))
+
+    def test_diagnose_reports_this_runs_store_errors_not_accumulated_ones(self) -> None:
+        # store_errors is process-lifetime state, so a long-running dashboard
+        # accumulates every store that ever failed. --diagnose exists to answer
+        # "what is broken now", and a store fixed an hour ago must not still be
+        # listed. Mutation-checked: dropping the clear passed the whole suite.
+        _, state = dashboard._legacy_runtime()
+        stale = "/nonexistent/store/fixed-an-hour-ago.db"
+        with state.cache_lock:
+            state.store_errors[stale] = "DatabaseError: file is not a database"
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "sessions.db"
+            broken.write_text("definitely not a database")
+            with (
+                mock.patch.dict(dashboard.STORE_ROOTS, {"goose.db": [str(broken)]}),
+                mock.patch.object(dashboard, "GOOSE_DB", str(broken)),
+            ):
+                report = dashboard.diagnose(24)
+
+        self.assertIn(str(broken), report["store_errors"], "this run's failure must be reported")
+        self.assertNotIn(stale, report["store_errors"])
 
     def test_query_failures_are_recorded_not_just_connection_failures(self) -> None:
         # A file that opens as a database but fails every query is the common
@@ -624,6 +646,7 @@ sys.modules[spec.name] = m          # dataclasses resolves annotations via sys.m
 spec.loader.exec_module(m)          # must not raise
 # The launcher no longer imports a collector, so import the database-backed
 # ones here, still under the blocked import, to keep proving they load.
+from cargento_runtime import diagnostics as diagnostics_module
 from cargento_runtime.collectors import cursor as cursor_collector
 from cargento_runtime.collectors import gemini as gemini_collector
 from cargento_runtime.collectors import goose as goose_collector
@@ -656,7 +679,12 @@ found = {{h["key"]: h["discovered"] for h in data["harnesses"]}}
 assert found["opencode"] is False and found["goose"] is False and found["cursor"] is False
 report = m.diagnose(24)             # --diagnose must work too
 assert report["sqlite"]["available"] is False
-m.render_diagnosis(report)
+# A version string here would read as a working sqlite3 in a bug report.
+assert report["sqlite"]["version"] is None, report["sqlite"]
+assert report["sqlite"]["error"], "the import error is what explains the absence"
+rendered = diagnostics_module.render_diagnosis(report)
+assert "UNAVAILABLE" in rendered, rendered.splitlines()[:6]
+diagnostics_module.render_diagnosis(report)
 print("OK")
 """
 
