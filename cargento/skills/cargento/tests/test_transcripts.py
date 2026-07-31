@@ -12,7 +12,6 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, ClassVar
-from unittest import mock
 
 from cargento_runtime import claude_data, records
 from cargento_runtime import io as runtime_io
@@ -20,9 +19,10 @@ from cargento_runtime import transcripts as runtime_transcripts
 
 from .support import (
     LegacyDashboardTestCase,
-    dashboard,
+    config_patch,
     make_config,
     make_runtime,
+    runtime,
 )
 
 CONFIG, STATE = make_runtime()
@@ -361,9 +361,9 @@ class ReverseLinesTest(unittest.TestCase):
                 )
                 + b"\r\n"
             )
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             self.assertEqual("CRLF title", claude_data.session_title(config, state, str(path)))
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             self.assertEqual("u-crlf", claude_data.last_user_event(config, state, str(path)))
 
     def test_end_pos_limits_the_scan(self) -> None:
@@ -429,10 +429,10 @@ class ReverseLinesTest(unittest.TestCase):
                 )
                 + "\n",
             )
-            with mock.patch.object(dashboard, "REVERSE_CHUNK_BYTES", 128):
-                config, state = dashboard._legacy_runtime()
+            with config_patch(reverse_chunk_bytes=128):
+                config, state = runtime()
                 self.assertEqual("Newest title", claude_data.session_title(config, state, path))
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 self.assertEqual("u-new", claude_data.last_user_event(config, state, path))
 
 

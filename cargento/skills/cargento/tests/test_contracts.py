@@ -5,23 +5,25 @@ import contextlib
 import http.client
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, http_api, notifications, records
+from cargento_runtime import aggregate, cli, http_api, notifications, records
+from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.collectors import codex as codex_collector
 
-from . import test_claude, test_codex, test_copilot, test_droid, test_pi
 from .fixtures import (
     HARNESSES,
     STORE_CONSTANTS,
@@ -29,13 +31,18 @@ from .fixtures import (
     build_pi,
 )
 from .support import (
+    REGISTRY,
     SERVER_PATH,
+    STORE_OVERRIDES,
     HarnessContractTestCase,
     LegacyDashboardTestCase,
+    collect,
     collect_claude,
-    dashboard,
+    config_patch,
     make_runtime,
+    runtime,
     serve_until_closed,
+    store_patch,
 )
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
@@ -408,6 +415,118 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
 
 
+class LauncherContractTest(unittest.TestCase):
+    """server.py is the stable entry point and owns nothing else."""
+
+    def test_the_launcher_is_only_a_call_into_the_cli(self) -> None:
+        # This file is what users and every harness manifest point at, so its
+        # shape is a contract: one import, one call, no re-exports. Anything
+        # else living here is something the runtime should own instead.
+        source = SERVER_PATH.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imports = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom | ast.Import)]
+        self.assertEqual(1, len(imports), "the launcher imports more than the CLI")
+        only = imports[0]
+        assert isinstance(only, ast.ImportFrom)
+        self.assertEqual("cargento_runtime.cli", only.module)
+        self.assertEqual(["main"], [alias.name for alias in only.names])
+        # No definitions, and no assignments that would re-export a symbol.
+        for node in tree.body:
+            with self.subTest(node=type(node).__name__):
+                self.assertNotIsInstance(
+                    node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Assign
+                )
+
+    def test_running_the_launcher_calls_the_cli_exactly_once(self) -> None:
+        # runpy executes the real file under __main__, which is the only way to
+        # prove the `if __name__` guard wires through to cli.main and that the
+        # exit code is the one main returned.
+        calls: list[object] = []
+
+        def fake_main(*args: object, **kwargs: object) -> int:
+            calls.append((args, kwargs))
+            return 7
+
+        with (
+            mock.patch.object(cli, "main", fake_main),
+            self.assertRaises(SystemExit) as caught,
+        ):
+            runpy.run_path(str(SERVER_PATH), run_name="__main__")
+
+        self.assertEqual(7, caught.exception.code)
+        self.assertEqual(1, len(calls))
+
+    def test_importing_the_runtime_opens_no_store_socket_or_subprocess(self) -> None:
+        # Import must be inert: --diagnose, --status and --stop all assemble a
+        # runtime first, and a module that scanned a store or bound a port at
+        # import time would make those unusable exactly when they are needed.
+        probe = (
+            "import sys, socket, subprocess, sqlite3, pkgutil, importlib\n"
+            "sys.path.insert(0, '__ROOT__')\n"
+            "import cargento_runtime\n"
+            "def boom(*a, **k):\n"
+            "    raise AssertionError('side effect at import')\n"
+            "socket.socket.bind = boom\n"
+            "socket.socket.connect = boom\n"
+            "subprocess.Popen.__init__ = boom\n"
+            "sqlite3.connect = boom\n"
+            "names = [m.name for m in pkgutil.walk_packages(\n"
+            "    cargento_runtime.__path__, 'cargento_runtime.')]\n"
+            "for name in names:\n"
+            "    importlib.import_module(name)\n"
+            "assert len(names) >= 20, names\n"
+            "print('OK', len(names))\n".replace("__ROOT__", str(SERVER_PATH.parent))
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("OK", result.stdout)
+
+    def test_every_runtime_module_resolves_inside_the_skill_directory(self) -> None:
+        # A copied plugin has no repository around it. Walking the package and
+        # checking each module's __file__ proves nothing resolved back to a
+        # checkout, and it inspects every module rather than a maintained list.
+        probe = (
+            "import sys, pkgutil, importlib\n"
+            "sys.path.insert(0, '__ROOT__')\n"
+            "import cargento_runtime\n"
+            "from cargento_runtime.web import page\n"
+            "root = '__ROOT__'\n"
+            "names = [m.name for m in pkgutil.walk_packages(\n"
+            "    cargento_runtime.__path__, 'cargento_runtime.')]\n"
+            "for name in names:\n"
+            "    mod = importlib.import_module(name)\n"
+            "    assert mod.__file__ and mod.__file__.startswith(root), (name, mod.__file__)\n"
+            "for asset in ('index.html', 'styles.css', 'app.js'):\n"
+            "    resolved = str(page.asset_path(asset))\n"
+            "    assert resolved.startswith(root), (asset, resolved)\n"
+            "print('OK', len(names))\n".replace("__ROOT__", str(SERVER_PATH.parent))
+        )
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"PYTHONPATH", "PYTHONHOME"}
+        }
+        env["PYTHONNOUSERSITE"] = "1"
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+            # An unrelated working directory: nothing may resolve via ".".
+            cwd=tempfile.gettempdir(),
+            env=env,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("OK", result.stdout)
+
+
 class HarnessRegistryTest(LegacyDashboardTestCase):
     """The registry is nine collector modules and nothing else."""
 
@@ -428,7 +547,7 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
                 "goose",
                 "droid",
             ],
-            [spec.key for spec in dashboard.HARNESSES],
+            [spec.key for spec in REGISTRY],
         )
 
     def test_no_registry_callback_resolves_into_the_launcher(self) -> None:
@@ -436,12 +555,14 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
         # still work and would still be reachable, so nothing else catches it.
         # Claude's is the one wrapper, built by the registry itself to bind the
         # popup notifier, so it is allowed to live in aggregate.
-        for spec in dashboard.HARNESSES:
+        for spec in REGISTRY:
             with self.subTest(harness=spec.key):
                 for role, fn in (("discover", spec.discover), ("collect", spec.collect)):
                     module = getattr(fn, "__module__", "")
                     self.assertNotEqual(
-                        dashboard.__name__, module, f"{spec.key}.{role} is defined in the launcher"
+                        "cargento_runtime.cli",
+                        module,
+                        f"{spec.key}.{role} is defined in the launcher",
                     )
                     allowed = module.startswith("cargento_runtime.collectors.") or (
                         spec.key == "claude"
@@ -452,13 +573,13 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
         # Every unwrapped callback is the module attribute itself, not a copy.
         self.assertIs(
             codex_collector.collect,
-            next(s.collect for s in dashboard.HARNESSES if s.key == "codex"),
+            next(s.collect for s in REGISTRY if s.key == "codex"),
         )
 
     def test_the_claude_wrapper_delegates_to_the_claude_collector(self) -> None:
         # The one wrapped row: prove the wrapper is a binding and not a
         # reimplementation, by checking what its closure actually calls.
-        spec = next(s for s in dashboard.HARNESSES if s.key == "claude")
+        spec = next(s for s in REGISTRY if s.key == "claude")
         closed_over = [cell.cell_contents for cell in (spec.collect.__closure__ or ())]
         self.assertIn(claude_collector, closed_over)
 
@@ -466,7 +587,7 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
         # A collector left behind in server.py would still work, and would still
         # be reachable, so only reading the source catches it.
         source = SERVER_PATH.read_text(encoding="utf-8")
-        for key in [spec.key for spec in dashboard.HARNESSES]:
+        for key in [spec.key for spec in REGISTRY]:
             with self.subTest(harness=key):
                 self.assertNotIn(f"def collect_{key}(", source)
         self.assertNotIn("class _LegacyHarnessAdapter", source)
@@ -489,10 +610,10 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
             # Quiet, so the standing hook decides the state rather than activity.
             os.utime(transcript, (now - 300, now - 300))
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 with state.hook_lock:
                     state.hook_notifications[prefix] = {"ts": now, "message": "permission"}
                 spec = next(
@@ -514,7 +635,7 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
         runtime_registry = aggregate.default_harnesses(lambda _title, _message: None)
         self.assertEqual(
             [(spec.key, spec.label) for spec in runtime_registry],
-            [(spec.key, spec.label) for spec in dashboard.HARNESSES],
+            [(spec.key, spec.label) for spec in REGISTRY],
         )
 
 
@@ -529,6 +650,18 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
+        },
+        # The CLI is the assembly point, so it may import any runtime module.
+        "cargento_runtime.cli": {
+            "cargento_runtime.aggregate",
+            "cargento_runtime.config",
+            "cargento_runtime.diagnostics",
+            "cargento_runtime.http_api",
+            "cargento_runtime.io",
+            "cargento_runtime.lifecycle",
+            "cargento_runtime.notifications",
+            "cargento_runtime.state",
+            "cargento_runtime.web",
         },
         "cargento_runtime.collectors": set(),
         "cargento_runtime.diagnostics": {
@@ -783,6 +916,7 @@ from . import page as sibling_page
         self.assertEqual(self.EXPECTED, actual)
 
     def test_moved_symbols_exist_only_on_their_runtime_owner(self) -> None:
+        launcher_source = SERVER_PATH.read_text(encoding="utf-8")
         io_symbols = (
             "glob_stores",
             "read_tail",
@@ -924,8 +1058,10 @@ from . import page as sibling_page
             *spacedock_symbols,
         ):
             with self.subTest(symbol=symbol):
-                self.assertFalse(hasattr(dashboard, symbol))
-        self.assertTrue(all(hasattr(dashboard.runtime_io, symbol) for symbol in io_symbols))
+                # The launcher has no namespace to check any more, so the
+                # contract is on its source: none of these may reappear there.
+                self.assertNotIn(symbol, launcher_source)
+        self.assertTrue(all(hasattr(runtime_io, symbol) for symbol in io_symbols))
         self.assertTrue(all(hasattr(records, symbol) for symbol in record_symbols))
         # HOME_PREFIX is deliberately gone rather than relocated: project_label
         # derives the encoded prefix from config.home on every call.
@@ -938,7 +1074,7 @@ from . import page as sibling_page
         )
         self.assertFalse(hasattr(runtime_sessions, "HOME_PREFIX"))
         self.assertTrue(all(hasattr(runtime_transcripts, symbol) for symbol in transcript_symbols))
-        self.assertIs(sys.modules["cargento_runtime.io"], dashboard.runtime_io)
+        self.assertIs(sys.modules["cargento_runtime.io"], runtime_io)
         self.assertIs(sys.modules["cargento_runtime.records"], records)
         self.assertIs(sys.modules["cargento_runtime.sessions"], runtime_sessions)
         self.assertTrue(all(hasattr(runtime_turns, s) for s in turn_symbols))
@@ -1029,7 +1165,7 @@ class CollectorAgreementTest(LegacyDashboardTestCase):
         # different project strings — Claude showed the whole encoded path
         # ("git-spacedock-research-spacedock-subspace") while Codex showed a
         # bare basename. Same directory has to read the same on every row.
-        now = dashboard.time.time()
+        now = time.time()
         home = "/Users/cl"
         cwd = f"{home}/git/spacedock-research/spacedock/subspace"
         iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
@@ -1062,21 +1198,21 @@ class CollectorAgreementTest(LegacyDashboardTestCase):
                 + "\n"
             )
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
-                mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(Path(tmp) / "codex")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+                store_patch(CODEX_SESSIONS_DIR=str(Path(tmp) / "codex")),
                 mock.patch.dict(
-                    dashboard.STORE_ROOTS,
+                    STORE_OVERRIDES,
                     {
                         "claude.projects": [str(Path(tmp) / "projects")],
                         "claude.tasks": [str(Path(tmp) / "no-tasks")],
                         "codex.sessions": [str(Path(tmp) / "codex")],
                     },
                 ),
-                mock.patch.object(dashboard, "HOME", home),
+                config_patch(home=home),
             ):
                 claude = collect_claude(now, 24, False)
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 codex = codex_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(claude))
@@ -1095,15 +1231,9 @@ class HarnessContractTest(HarnessContractTestCase):
 
     def test_pi_store_is_registered_as_a_harness(self) -> None:
         # Removing Pi from the registry would make a valid store invisible.
-        self.assertIs(sys.modules["cargento_server"], dashboard)
+        # One runtime package, imported by its own name. A namespace-qualified
+        # copy would give every module a second identity and a second cache.
         self.assertNotIn("cargento.skills.cargento.cargento_runtime", sys.modules)
-        self.assertEqual(
-            {id(dashboard)},
-            {
-                id(module.dashboard)
-                for module in (test_claude, test_codex, test_copilot, test_droid, test_pi)
-            },
-        )
         data = self.collect(build_pi, when=self.NOW)
         self.assertTrue(
             any(harness["key"] == "pi" for harness in data["harnesses"]),
@@ -1160,18 +1290,18 @@ class HarnessContractTest(HarnessContractTestCase):
             patches: dict[str, str] = {n: str(empty / n) for n in STORE_CONSTANTS}
             patches["OPENCODE_DATA"] = str(first)
             with contextlib.ExitStack() as stack:
-                for name, value in patches.items():
-                    stack.enter_context(mock.patch.object(dashboard, name, value))
-                # primary == candidates[0], so the whole list is scanned.
+                stack.enter_context(store_patch(**patches))
+                # primary == candidates[0], so the whole list is scanned. This
+                # override carries BOTH roots, which store_patch cannot express.
                 stack.enter_context(
                     mock.patch.dict(
-                        dashboard.STORE_ROOTS,
-                        {"opencode.data": [str(first), str(second)]},
+                        STORE_OVERRIDES,
+                        {"opencode.data": str(first)},
                     )
                 )
                 stack.enter_context(mock.patch.object(notifications, "notify_mac"))
-                stack.enter_context(mock.patch.object(dashboard.time, "time", lambda: self.NOW))
-                data = dashboard.collect(24, show_all=True)
+                stack.enter_context(mock.patch.object(time, "time", lambda: self.NOW))
+                data = collect(24, show_all=True)
 
         opencode = [s for s in data["sessions"] if s["harness"] == "opencode"]
         self.assertEqual(1, len(opencode), f"duplicate rows: {opencode}")
@@ -1195,10 +1325,9 @@ class HarnessContractTest(HarnessContractTestCase):
                     if path.is_file():
                         path.write_bytes(b"\x00\xff not a valid store at all \xfe")
                 with contextlib.ExitStack() as stack:
-                    for name, value in patches.items():
-                        stack.enter_context(mock.patch.object(dashboard, name, value))
+                    stack.enter_context(store_patch(**patches))
                     stack.enter_context(mock.patch.object(notifications, "notify_mac"))
-                    data = dashboard.collect(24, show_all=True)  # must not raise
+                    data = collect(24, show_all=True)  # must not raise
                 self.assertIsInstance(data["sessions"], list)
 
 
@@ -1234,12 +1363,9 @@ class HostilePathContractTest(unittest.TestCase):
                             build(Path(tmp) / component / "store", self.NOW, self.SID, "T")
                         )
                         with contextlib.ExitStack() as stack:
-                            for name, value in patches.items():
-                                stack.enter_context(mock.patch.object(dashboard, name, value))
+                            stack.enter_context(store_patch(**patches))
                             stack.enter_context(mock.patch.object(notifications, "notify_mac"))
-                            stack.enter_context(
-                                mock.patch.object(dashboard.time, "time", lambda: self.NOW)
-                            )
-                            data = dashboard.collect(24, show_all=True)
+                            stack.enter_context(mock.patch.object(time, "time", lambda: self.NOW))
+                            data = collect(24, show_all=True)
                     found = [s for s in data["sessions"] if s["harness"] == key]
                     self.assertEqual(1, len(found), f"{key} lost its session under {component!r}")

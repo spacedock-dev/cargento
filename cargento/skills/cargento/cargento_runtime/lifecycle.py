@@ -633,8 +633,8 @@ def prepare_daemon_home(
     log_file: str,
     *,
     diagnostic_sink: Callable[[str], None] = print,
-) -> None:
-    """Prove the state home and log are usable before anything detaches.
+) -> bool:
+    """Whether the state home and log are usable. Reports why if they are not.
 
     Explains a home that cannot be used, rather than tracebacking out of the
     documented start command. write_state() already degrades this way for a
@@ -659,7 +659,8 @@ def prepare_daemon_home(
             f"writable directory, or drop --daemon to run in the foreground.",
             diagnostic_sink,
         )
-        raise SystemExit(1) from exc
+        return False
+    return True
 
 
 def serve(

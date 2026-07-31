@@ -12,20 +12,24 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, http_api, lifecycle, notifications
+from cargento_runtime import aggregate, cli, http_api, lifecycle, notifications
+from cargento_runtime import io as runtime_io
 
 from .support import (
     PAGE_BYTES,
     LegacyDashboardTestCase,
-    dashboard,
+    collect,
+    collect_json,
     make_runtime,
     make_server,
     serve_until_closed,
+    state_of,
 )
 
 
@@ -182,19 +186,19 @@ class CargentoServerTest(LegacyDashboardTestCase):
         def fake_collect(app: aggregate.Application, *, show_all: bool) -> dict[str, Any]:
             with calls_lock:
                 calls.append((app.config.window_hours, show_all))
-            dashboard.time.sleep(0.02)
+            time.sleep(0.02)
             return {"window_hours": app.config.window_hours, "show_all": show_all}
 
         with mock.patch.object(aggregate.Application, "collect", fake_collect):
             with ThreadPoolExecutor(max_workers=12) as pool:
-                bodies = list(pool.map(lambda _: dashboard.collect_json(24, False), range(24)))
-            alternate = dashboard.collect_json(24, True)
+                bodies = list(pool.map(lambda _: collect_json(24, False), range(24)))
+            alternate = collect_json(24, True)
 
         self.assertEqual(1, calls.count((24, False)))
         self.assertEqual(1, calls.count((24, True)))
         self.assertEqual(1, len(set(bodies)))
         self.assertNotEqual(bodies[0], alternate)
-        self.assertEqual(2, len(dashboard._collect_memo))
+        self.assertEqual(2, len(state_of().collect_memo))
 
     def test_a_requested_window_reaches_the_collection_and_its_memo_key(self) -> None:
         # The window is a request-time argument: /api/data must collect and
@@ -202,13 +206,13 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # Mutation-checked: dropping the override in _legacy_application, so
         # every request silently used the configured window, passed the suite.
         with mock.patch.object(aggregate, "default_harnesses", lambda _notifier: ()):
-            requested = json.loads(dashboard.collect_json(6, False))
-            default = json.loads(dashboard.collect_json(24, False))
+            requested = json.loads(collect_json(6, False))
+            default = json.loads(collect_json(24, False))
 
             self.assertEqual(6, requested["window_hours"])
             self.assertEqual(24, default["window_hours"])
-            self.assertIn((6, False), dashboard._collect_memo)
-            self.assertIn((24, False), dashboard._collect_memo)
+            self.assertIn((6, False), state_of().collect_memo)
+            self.assertIn((24, False), state_of().collect_memo)
 
     def test_collector_failure_is_exposed_in_harness_status(self) -> None:
         def fail(*_args: object) -> list[dict[str, Any]]:
@@ -219,7 +223,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             mock.patch.object(aggregate, "default_harnesses", lambda _notifier: harnesses),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            result = dashboard.collect(24, False)
+            result = collect(24, False)
 
         self.assertTrue(result["harnesses"][0]["discovered"])
         self.assertEqual("RuntimeError: broken store", result["harnesses"][0]["error"])
@@ -408,7 +412,7 @@ class ReviewFixTest(unittest.TestCase):
             mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", exclusive_option, create=True),
             # The fake option number is rejected by the OS; that path warns,
             # which is correct behaviour but noise in the test output.
-            mock.patch.object(dashboard.runtime_io, "diag"),
+            mock.patch.object(runtime_io, "diag"),
         ):
             httpd = make_server(application=_application(os_name))
             httpd.server_close()
@@ -456,7 +460,7 @@ class ReviewFixTest(unittest.TestCase):
             mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", 0xFFFB, create=True),
             # The fake option number is rejected by the OS; that path warns,
             # which is correct behaviour but noise in the test output.
-            mock.patch.object(dashboard.runtime_io, "diag"),
+            mock.patch.object(runtime_io, "diag"),
         ):
             httpd = make_server(application=_application("nt"))
             httpd.server_close()
@@ -548,16 +552,14 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
 
     def setUp(self) -> None:
-        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
-        self._server_started = dashboard.__dict__["SERVER_STARTED"]
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().hook_lock:
+            state_of().hook_notifications.clear()
+            state_of().last_popup.clear()
+            state_of().last_popup_message.clear()
+            state_of().last_session_state.clear()
+            state_of().hook_generation.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
@@ -580,10 +582,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         self.addCleanup(notify_patcher.stop)
 
     def tearDown(self) -> None:
-        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
-        dashboard.__dict__["SERVER_STARTED"] = self._server_started
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
 
     @staticmethod
     def _response(
@@ -696,10 +696,10 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             mock.patch.object(http_api, "CargentoHTTPServer", CapturingServer),
             mock.patch.object(lifecycle, "write_state"),
             mock.patch.object(lifecycle, "remove_state"),
-            mock.patch.object(dashboard.runtime_io, "diag"),
+            mock.patch.object(runtime_io, "diag"),
             self.assertRaises(StopServingError),
         ):
-            dashboard.main()
+            cli.main()
         self.assertEqual([("127.0.0.1", 4553)], captured_addresses)
         self.assertEqual([PAGE_BYTES], captured_pages)
 
@@ -761,7 +761,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 mock.patch.object(aggregate.Application, "collect") as collect,
                 mock.patch("builtins.open", side_effect=AssertionError("health read a file")),
                 mock.patch.object(
-                    dashboard.os,
+                    os,
                     "scandir",
                     side_effect=AssertionError("health scanned a directory"),
                 ),
@@ -770,7 +770,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                     side_effect=AssertionError("health globbed a store"),
                 ),
                 mock.patch.object(
-                    dashboard.sqlite3,
+                    runtime_io.sqlite_module,
                     "connect",
                     side_effect=AssertionError("health opened SQLite"),
                 ),
@@ -795,13 +795,11 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             return {"generated": 1.0, "sessions": [], "harnesses": []}
 
         def second_request() -> None:
-            bodies.append(dashboard.collect_json(24, False))
+            bodies.append(collect_json(24, False))
             second_done.set()
 
         with mock.patch.object(aggregate.Application, "collect", side_effect=scan) as collect:
-            first = threading.Thread(
-                target=lambda: bodies.append(dashboard.collect_json(24, False))
-            )
+            first = threading.Thread(target=lambda: bodies.append(collect_json(24, False)))
             second = threading.Thread(target=second_request)
             first.start()
             self.assertTrue(entered.wait(timeout=5), "first scan did not begin")
@@ -822,5 +820,5 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             aggregate.Application, "collect", side_effect=(RuntimeError("broken store"), good)
         ):
             with self.assertRaisesRegex(RuntimeError, "broken store"):
-                dashboard.collect_json(24, False)
-            self.assertEqual(good, json.loads(dashboard.collect_json(24, False)))
+                collect_json(24, False)
+            self.assertEqual(good, json.loads(collect_json(24, False)))

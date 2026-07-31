@@ -7,6 +7,8 @@ import io
 import json
 import ntpath
 import os
+import socket
+import subprocess
 import sys
 import tempfile
 import types
@@ -15,7 +17,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, diagnostics, http_api, lifecycle, notifications
+from cargento_runtime import aggregate, cli, diagnostics, http_api, lifecycle, notifications
+from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import claude as claude_collector
@@ -23,13 +26,17 @@ from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import bounded_put, build_runtime_state
 
 from .support import (
+    REGISTRY,
     SERVER_PATH,
+    STORE_OVERRIDES,
     LegacyDashboardTestCase,
     cfg,
     collect_claude,
-    dashboard,
+    diagnose,
     make_config,
     make_runtime,
+    runtime,
+    store_patch,
 )
 
 
@@ -62,16 +69,14 @@ class CargentoServerTest(LegacyDashboardTestCase):
             self.assertEqual("/tmp/elsewhere", os.path.dirname(lifecycle.state_path(cfg(), 4553)))
         environ = {k: v for k, v in os.environ.items() if k != "CARGENTO_HOME"}
         with mock.patch.dict(os.environ, environ, clear=True):
-            self.assertEqual(
-                os.path.join(dashboard.HOME, ".cargento"), lifecycle.cargento_home(cfg())
-            )
+            self.assertEqual(os.path.join(cfg().home, ".cargento"), lifecycle.cargento_home(cfg()))
         for blank in ("", " ", "\t\r\n"):
             with (
                 self.subTest(blank=repr(blank)),
                 mock.patch.dict(os.environ, {"CARGENTO_HOME": blank}),
             ):
                 self.assertEqual(
-                    os.path.join(dashboard.HOME, ".cargento"),
+                    os.path.join(cfg().home, ".cargento"),
                     lifecycle.cargento_home(cfg()),
                 )
 
@@ -86,48 +91,41 @@ class CargentoServerTest(LegacyDashboardTestCase):
             mock.patch.object(sys, "argv", ["server.py", "--port", "0"]),
             mock.patch.object(sys, "stderr", io.StringIO()),
             mock.patch.object(http_api, "CargentoHTTPServer") as bind,
+            # argparse still owns its own usage errors, so this one exits rather
+            # than returning a code.
             self.assertRaises(SystemExit) as caught,
         ):
-            dashboard.main()
+            cli.main()
         self.assertEqual(2, caught.exception.code)
         bind.assert_not_called()
 
-    def test_legacy_runtime_refreshes_patched_root_and_limit_into_one_state(self) -> None:
-        # A stale adapter config makes moved helpers ignore existing patch seams.
+    def test_build_runtime_freezes_the_parsed_launch_options(self) -> None:
+        # The CLI is the only place these three reach configuration. Rebuilding
+        # from defaults anywhere downstream would discard the port, window and
+        # Spacedock choices the user actually asked for.
+        args = cli.build_parser().parse_args(
+            ["--port", "6789", "--window-hours", "7.5", "--no-spacedock"]
+        )
+        config, state = cli.build_runtime(args, started=1234.5, launcher_path=SERVER_PATH)
+
+        self.assertEqual((6789, 7.5, False), (config.port, config.window_hours, False))
+        self.assertFalse(config.spacedock_enabled)
+        self.assertIs(config, state.config)
+        self.assertEqual(1234.5, state.server_started)
+
+    def test_build_runtime_has_no_operational_side_effects(self) -> None:
+        # --diagnose, --status and --stop are the recovery commands, so assembly
+        # must not open a store, a socket or a log on the way to them.
+        args = cli.build_parser().parse_args([])
         with (
-            mock.patch.object(dashboard, "OPENCODE_DATA", "/fixture/opencode"),
-            mock.patch.object(dashboard, "MAX_CACHE_ENTRIES", 17),
+            mock.patch.object(socket.socket, "bind", side_effect=AssertionError("bound")),
+            mock.patch.object(subprocess, "Popen", side_effect=AssertionError("spawned")),
         ):
-            config, state = dashboard._legacy_runtime()
+            config, state = cli.build_runtime(args, started=1.0, launcher_path=SERVER_PATH)
 
-        self.assertEqual(("/fixture/opencode",), config.store_roots["opencode.data"])
-        self.assertEqual(17, config.max_cache_entries)
-        self.assertIs(config, state.config)
-        _, same_state = dashboard._legacy_runtime()
-        self.assertIs(state, same_state)
-
-    def test_legacy_runtime_preserves_installed_launch_options(self) -> None:
-        # Rebuilding from defaults after main() discards the active listener,
-        # collection window, host, and Spacedock choices.
-        previous_state = dashboard._LEGACY_STATE
-        self.addCleanup(dashboard._install_legacy_state, previous_state)
-        _, launched_state = make_runtime(
-            started=1234.5,
-            host="127.0.0.9",
-            port=6789,
-            window_hours=7.5,
-            spacedock_enabled=False,
-        )
-        dashboard._install_legacy_state(launched_state)
-
-        config, state = dashboard._legacy_runtime()
-
-        self.assertIs(launched_state, state)
-        self.assertIs(config, state.config)
-        self.assertEqual(
-            ("127.0.0.9", 6789, 7.5, False),
-            (config.host, config.port, config.window_hours, config.spacedock_enabled),
-        )
+        self.assertEqual({}, dict(state.store_errors))
+        self.assertEqual({}, dict(state.metadata_cache))
+        self.assertTrue(config.store_roots)
 
 
 class RuntimeConfigTest(unittest.TestCase):
@@ -245,7 +243,7 @@ class RuntimeConfigTest(unittest.TestCase):
                 '{"sessionDir": "history"}',
                 encoding="utf-8",
             )
-            settings = dashboard.load_pi_settings(str(config_dir))
+            settings = runtime_config.load_pi_settings(str(config_dir))
 
         cases = (
             ("linux", "/opt/pi", "/home/ada", "/opt/pi/history"),
@@ -253,7 +251,7 @@ class RuntimeConfigTest(unittest.TestCase):
         )
         for platform_name, config_root, home, expected in cases:
             with self.subTest(platform=platform_name):
-                roots = dashboard.resolve_store_roots(
+                roots = runtime_config.resolve_store_roots(
                     platform_name=platform_name,
                     environ={"PI_CODING_AGENT_DIR": config_root},
                     home=home,
@@ -440,7 +438,7 @@ class StoreRootsTest(unittest.TestCase):
     def resolve(
         self, platform_name: str, environ: dict[str, str], home: str
     ) -> dict[str, list[str]]:
-        roots: dict[str, list[str]] = dashboard.resolve_store_roots(
+        roots: dict[str, list[str]] = runtime_config.resolve_store_roots(
             platform_name=platform_name, environ=environ, home=home
         )
         return roots
@@ -469,7 +467,7 @@ class StoreRootsTest(unittest.TestCase):
         # A user may relocate sessions independently of Pi's configuration;
         # searching the configured or default directory as well risks stale
         # sessions appearing in the dashboard.
-        roots = dashboard.resolve_store_roots(
+        roots = runtime_config.resolve_store_roots(
             platform_name="linux",
             environ={
                 "PI_CODING_AGENT_DIR": "/opt/pi",
@@ -483,7 +481,7 @@ class StoreRootsTest(unittest.TestCase):
     def test_pi_global_session_directory_precedes_the_default(self) -> None:
         # Ignoring Pi's global setting would scan the wrong store after a user
         # changes the history location without setting the session env var.
-        roots = dashboard.resolve_store_roots(
+        roots = runtime_config.resolve_store_roots(
             platform_name="linux",
             environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
             home=self.POSIX_HOME,
@@ -494,13 +492,13 @@ class StoreRootsTest(unittest.TestCase):
     def test_pi_session_setting_expands_home_and_accepts_absolute_paths(self) -> None:
         # Treating either setting as relative would redirect an intentional
         # custom location underneath Pi's configuration directory.
-        tilde = dashboard.resolve_store_roots(
+        tilde = runtime_config.resolve_store_roots(
             platform_name="linux",
             environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
             home=self.POSIX_HOME,
             pi_settings={"sessionDir": "~/pi-history"},
         )
-        absolute = dashboard.resolve_store_roots(
+        absolute = runtime_config.resolve_store_roots(
             platform_name="linux",
             environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
             home=self.POSIX_HOME,
@@ -515,7 +513,7 @@ class StoreRootsTest(unittest.TestCase):
         invalid_values: tuple[Any, ...] = ("", "   ", None, 42, [])
         for value in invalid_values:
             with self.subTest(value=value):
-                roots = dashboard.resolve_store_roots(
+                roots = runtime_config.resolve_store_roots(
                     platform_name="linux",
                     environ={"PI_CODING_AGENT_DIR": "/opt/pi"},
                     home=self.POSIX_HOME,
@@ -530,18 +528,20 @@ class StoreRootsTest(unittest.TestCase):
             config = Path(tmp) / "agent"
             config.mkdir()
             (config / "settings.json").write_text('{"sessionDir":"history"}')
-            self.assertEqual({"sessionDir": "history"}, dashboard.load_pi_settings(str(config)))
+            self.assertEqual(
+                {"sessionDir": "history"}, runtime_config.load_pi_settings(str(config))
+            )
             (config / "settings.json").write_text("[]")
-            self.assertEqual({}, dashboard.load_pi_settings(str(config)))
+            self.assertEqual({}, runtime_config.load_pi_settings(str(config)))
             (config / "settings.json").write_text("{")
-            self.assertEqual({}, dashboard.load_pi_settings(str(config)))
+            self.assertEqual({}, runtime_config.load_pi_settings(str(config)))
 
-        self.assertEqual({}, dashboard.load_pi_settings("/not/a/pi/config"))
+        self.assertEqual({}, runtime_config.load_pi_settings("/not/a/pi/config"))
 
     def test_pi_uses_target_windows_path_rules(self) -> None:
         # A POSIX host resolving a Windows Pi path must not produce mixed
         # separators, which Windows then interprets as a different location.
-        roots = dashboard.resolve_store_roots(
+        roots = runtime_config.resolve_store_roots(
             platform_name="win32",
             environ={"PI_CODING_AGENT_DIR": r"D:\Pi"},
             home=self.WIN_HOME,
@@ -600,22 +600,19 @@ class StoreRootsTest(unittest.TestCase):
         roots = self.resolve("linux", {"CLAUDE_CONFIG_DIR": "   "}, self.POSIX_HOME)
         self.assertEqual(["/home/u/.claude/projects"], roots["claude.projects"])
 
-    def test_a_patched_constant_suppresses_the_other_candidates(self) -> None:
-        # The override seam: pointing a constant at a fixture must scan that
-        # and nothing else, or a test could pick up a real store on the box.
-        with mock.patch.object(dashboard, "OPENCODE_DATA", "/fixture"):
-            self.assertEqual(
-                ["/fixture"], dashboard.store_roots("opencode.data", dashboard.OPENCODE_DATA)
-            )
-        # Matching primary means "no override", so every candidate is searched.
-        # Asserting against STORE_ROOTS itself would be circular, since
-        # `store_roots` returns that list and both sides would move together.
-        # The candidates are patched to literals instead, which also makes the
-        # multi-root case run on every platform: on macOS the real table holds
-        # exactly one candidate per key, so the distinction is invisible there.
-        with mock.patch.dict(dashboard.STORE_ROOTS, {"opencode.data": ["/head", "/legacy"]}):
-            self.assertEqual(["/head", "/legacy"], dashboard.store_roots("opencode.data", "/head"))
-            self.assertEqual(["/fixture"], dashboard.store_roots("opencode.data", "/fixture"))
+    def test_an_override_suppresses_the_other_candidates(self) -> None:
+        # The override seam: pointing a store at a fixture must scan that and
+        # nothing else, or a test could pick up a real store on the box.
+        with store_patch(OPENCODE_DATA="/fixture"):
+            config = cfg()
+            self.assertEqual(("/fixture",), runtime_config.store_roots(config, "opencode.data"))
+            self.assertEqual("/fixture", runtime_config.primary_store(config, "opencode.data"))
+        # With no override, every resolved candidate is searched, and the
+        # primary is the first of them.
+        config = cfg()
+        candidates = runtime_config.store_roots(config, "opencode.data")
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertEqual(candidates[0], runtime_config.primary_store(config, "opencode.data"))
 
     def test_sessions_from_two_candidate_roots_are_merged(self) -> None:
         now = 1_700_000_000.0
@@ -627,12 +624,13 @@ class StoreRootsTest(unittest.TestCase):
                 transcript.write_text(json.dumps({"type": "user", "uuid": "u"}) + "\n")
                 os.utime(transcript, (now, now))
             with (
+                # One seam now: the override IS the candidate list, so naming
+                # the primary separately would just overwrite it with one root.
                 mock.patch.dict(
-                    dashboard.STORE_ROOTS,
+                    STORE_OVERRIDES,
                     {"claude.projects": [str(first), str(second)]},
                 ),
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(first)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
             ):
                 sessions = collect_claude(now, 24, False)
 
@@ -649,12 +647,11 @@ class StoreRootsTest(unittest.TestCase):
             second_file.write_text("{}\n")
             with (
                 mock.patch.dict(
-                    dashboard.STORE_ROOTS,
+                    STORE_OVERRIDES,
                     {"claude.projects": [str(first), str(second)]},
                 ),
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(first)),
             ):
-                config, _ = dashboard._legacy_runtime()
+                config, _ = runtime()
                 found = runtime_io.glob_stores(config, "claude.projects", "*.jsonl")
 
         self.assertEqual([str(first_file), str(second_file)], found)
@@ -666,10 +663,10 @@ class DiagnoseTest(unittest.TestCase):
             projects = Path(tmp) / "projects"
             (projects / "proj").mkdir(parents=True)
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "absent")),
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "absent")),
             ):
-                report = dashboard.diagnose(24)
+                report = diagnose(24)
 
         claude = report["stores"]["claude.projects"]["candidates"]
         self.assertEqual("directory", claude[0]["kind"])
@@ -702,7 +699,7 @@ class DiagnoseTest(unittest.TestCase):
     def test_rendering_is_ascii_only(self) -> None:
         # This output gets pasted into issues from consoles whose encoding we
         # do not control.
-        text = diagnostics.render_diagnosis(dashboard.diagnose(24))
+        text = diagnostics.render_diagnosis(diagnose(24))
         text.encode("ascii")  # must not raise
         self.assertIn("Stores searched", text)
         self.assertIn("Harnesses", text)
@@ -711,7 +708,7 @@ class DiagnoseTest(unittest.TestCase):
         """`--diagnose --json` is what a user pastes into an issue, so the
         contract is that it round-trips and still carries the fields that make
         it diagnostic. "Did not raise" would also be satisfied by `{}`."""
-        report = dashboard.diagnose(24)
+        report = diagnose(24)
 
         self.assertEqual(report, json.loads(json.dumps(report)))
         self.assertLessEqual(
@@ -721,7 +718,7 @@ class DiagnoseTest(unittest.TestCase):
         # Every registered harness is accounted for, present or not: a missing
         # row is indistinguishable from a harness that was never checked.
         self.assertEqual(
-            {spec.key for spec in dashboard.HARNESSES},
+            {spec.key for spec in REGISTRY},
             {h["key"] for h in report["harnesses"]},
         )
         for harness in report["harnesses"]:
@@ -751,7 +748,7 @@ class DiagnoseTest(unittest.TestCase):
             }
 
         with mock.patch.object(aggregate.Application, "collect", collect):
-            report = dashboard.diagnose(24)
+            report = diagnose(24)
 
         self.assertEqual(
             {"claude": 2, "codex": 1, "goose": 0},
@@ -787,7 +784,7 @@ class DiagnoseTest(unittest.TestCase):
 
     def test_env_overrides_are_surfaced(self) -> None:
         with mock.patch.dict(os.environ, {"CODEX_HOME": "/opt/cx"}):
-            report = dashboard.diagnose(24)
+            report = diagnose(24)
         self.assertEqual("/opt/cx", report["env"]["CODEX_HOME"])
 
     def test_pi_overrides_and_session_candidate_are_surfaced(self) -> None:
@@ -801,9 +798,9 @@ class DiagnoseTest(unittest.TestCase):
                     "PI_CODING_AGENT_SESSION_DIR": "/sessions",
                 },
             ),
-            mock.patch.object(dashboard, "PI_SESSIONS_DIR", "/sessions"),
+            store_patch(PI_SESSIONS_DIR="/sessions"),
         ):
-            report = dashboard.diagnose(24)
+            report = diagnose(24)
 
         self.assertEqual("/opt/pi", report["env"]["PI_CODING_AGENT_DIR"])
         self.assertEqual("/sessions", report["env"]["PI_CODING_AGENT_SESSION_DIR"])
@@ -946,10 +943,10 @@ class OperatingSystemExpectationTest(unittest.TestCase):
                     return getattr(self._wrapped, name)
 
             with (
-                mock.patch.object(dashboard, "TASKS_DIR", str(tmp)),
-                mock.patch.object(dashboard.os, "stat", lambda p: NoBirthtime(real_stat(p))),
+                store_patch(TASKS_DIR=str(tmp)),
+                mock.patch.object(os, "stat", lambda p: NoBirthtime(real_stat(p))),
             ):
-                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
+                tasks = claude_collector.load_tasks(runtime()[0])
 
         task = tasks["abcdef12"][0]
         self.assertEqual(now, task["created"], "created should fall back to mtime")
@@ -993,11 +990,13 @@ class OperatingSystemExpectationTest(unittest.TestCase):
                     httpd.server_close()
 
     def test_store_locations_per_platform(self) -> None:
-        posix = dashboard.resolve_store_roots(platform_name="darwin", environ={}, home="/Users/u")
-        linux = dashboard.resolve_store_roots(
+        posix = runtime_config.resolve_store_roots(
+            platform_name="darwin", environ={}, home="/Users/u"
+        )
+        linux = runtime_config.resolve_store_roots(
             platform_name="linux", environ={"XDG_DATA_HOME": "/xdg"}, home="/home/u"
         )
-        windows = dashboard.resolve_store_roots(
+        windows = runtime_config.resolve_store_roots(
             platform_name="win32",
             environ={
                 "LOCALAPPDATA": r"C:\Users\j\AppData\Local",
@@ -1038,8 +1037,8 @@ class TextIoTest(unittest.TestCase):
                 json.dumps({"id": "1", "subject": subject, "status": "pending"}),
                 encoding="utf-8",
             )
-            with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
-                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
+            with store_patch(TASKS_DIR=str(tmp)):
+                tasks = claude_collector.load_tasks(runtime()[0])
 
         self.assertEqual([subject], [t["subject"] for t in tasks["abcdef12"]])
 
@@ -1054,8 +1053,8 @@ class TextIoTest(unittest.TestCase):
                 json.dumps({"id": "2", "subject": "good", "status": "pending"}),
                 encoding="utf-8",
             )
-            with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
-                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
+            with store_patch(TASKS_DIR=str(tmp)):
+                tasks = claude_collector.load_tasks(runtime()[0])
 
         self.assertEqual(["good"], [t["subject"] for t in tasks["abcdef12"]])
 
@@ -1116,7 +1115,7 @@ class ReviewFixTest(unittest.TestCase):
         # Defender lock, which surfaces as listdir raising, not as a mode bit.
         with (
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(dashboard.os, "scandir", side_effect=PermissionError("locked")),
+            mock.patch.object(os, "scandir", side_effect=PermissionError("locked")),
         ):
             report = diagnostics.candidate_report(tmp)
         self.assertEqual("directory", report["kind"])
@@ -1127,12 +1126,12 @@ class ReviewFixTest(unittest.TestCase):
         # Trailing whitespace is legal in a POSIX path, and XDG_DATA_HOME was
         # honoured before this resolver existed — stripping it would move an
         # existing store out from under a macOS or Linux user.
-        roots = dashboard.resolve_store_roots(
+        roots = runtime_config.resolve_store_roots(
             platform_name="darwin", environ={"XDG_DATA_HOME": "/data/Agent Data "}, home="/h"
         )
         self.assertEqual("/data/Agent Data /opencode", roots["opencode.data"][0])
         # Whitespace-only still counts as unset.
-        blank = dashboard.resolve_store_roots(
+        blank = runtime_config.resolve_store_roots(
             platform_name="darwin", environ={"XDG_DATA_HOME": "   "}, home="/h"
         )
         self.assertEqual("/h/.local/share/opencode", blank["opencode.data"][0])

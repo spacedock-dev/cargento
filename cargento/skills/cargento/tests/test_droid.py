@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +13,13 @@ from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import droid as droid_collector
 
-from .support import LegacyDashboardTestCase, dashboard, make_runtime
+from .support import (
+    STORE_OVERRIDES,
+    LegacyDashboardTestCase,
+    make_runtime,
+    runtime,
+    store_patch,
+)
 
 
 class DroidCollectorTest(LegacyDashboardTestCase):
@@ -36,8 +43,8 @@ class DroidCollectorTest(LegacyDashboardTestCase):
                 "renamed-file",
                 {"id": "real-session-id", "cwd": "/w/thing"},
             )
-            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
                 rows = droid_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual(["real-session-id"], [row["sid"] for row in rows])
@@ -48,15 +55,15 @@ class DroidCollectorTest(LegacyDashboardTestCase):
         # labelled "" and passed the whole suite.
         with tempfile.TemporaryDirectory() as tmp:
             self._transcript(Path(tmp), "-w-droidwork", "s1", {"id": "s1"})
-            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
                 rows = droid_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual(1, len(rows))
         self.assertEqual("w-droidwork", rows[0]["project"])
 
     def test_droid_sessions_from_project_transcripts(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             fp = Path(tmp) / "proj-x" / "d1d2d3d4.jsonl"
@@ -87,8 +94,8 @@ class DroidCollectorTest(LegacyDashboardTestCase):
                 + "\n"
             )
 
-            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
                 sessions = droid_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
@@ -122,8 +129,8 @@ class DroidReviewFixTest(unittest.TestCase):
                 + "\n"
             )
             os.utime(transcript, (self.NOW, self.NOW))  # written right now
-            with mock.patch.object(dashboard, "FACTORY_PROJECTS", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
                 fresh = droid_collector.collect(config, state, self.NOW, 24, False)
                 os.utime(transcript, (self.NOW - 100_000, self.NOW - 100_000))
                 stale = droid_collector.collect(config, state, self.NOW, 24, True)
@@ -164,10 +171,10 @@ class DroidVerificationFixTest(unittest.TestCase):
             )
             os.utime(child, (self.NOW, self.NOW))
             with (
-                mock.patch.dict(dashboard.STORE_ROOTS, {"codex.sessions": [str(tmp)]}),
-                mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(tmp)),
+                mock.patch.dict(STORE_OVERRIDES, {"codex.sessions": [str(tmp)]}),
+                store_patch(CODEX_SESSIONS_DIR=str(tmp)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = codex_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual("working", sessions[0]["state"])

@@ -1,3 +1,12 @@
+"""Shared test runtime.
+
+The suite used to load ``server.py`` dynamically and patch its module globals.
+The launcher owns nothing now, so the seam those tests need lives here instead:
+one shared ``RuntimeState``, and one mutable store-override mapping that
+``runtime()`` folds into a freshly built config. Redirecting a store is
+``mock.patch.dict(STORE_OVERRIDES, {...})``.
+"""
+
 from __future__ import annotations
 
 import contextlib
@@ -6,16 +15,18 @@ import importlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import http_api, notifications
+from cargento_runtime import aggregate, cli, diagnostics, http_api, notifications
 from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import RuntimeState, build_runtime_state
@@ -30,13 +41,6 @@ sys.path.insert(0, str(SERVER_PATH.parent))
 frontend_page = importlib.import_module("cargento_runtime.web.page")
 PAGE_BYTES = frontend_page.load_page()
 
-SPEC = importlib.util.spec_from_file_location("cargento_server", SERVER_PATH)
-assert SPEC is not None
-assert SPEC.loader is not None
-dashboard = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = dashboard
-SPEC.loader.exec_module(dashboard)
-
 HOOK_PATH = SERVER_PATH.parent / "notify_hook.py"
 HOOK_SPEC = importlib.util.spec_from_file_location("cargento_notify_hook", HOOK_PATH)
 assert HOOK_SPEC is not None
@@ -44,6 +48,106 @@ assert HOOK_SPEC.loader is not None
 dashboard_hook = importlib.util.module_from_spec(HOOK_SPEC)
 sys.modules[HOOK_SPEC.name] = dashboard_hook
 HOOK_SPEC.loader.exec_module(dashboard_hook)
+
+# Store key -> path. Patch with mock.patch.dict; runtime() folds it into config.
+STORE_OVERRIDES: dict[str, Any] = {}  # str, or a tuple/list of candidates
+# RuntimeConfig field -> value, applied by runtime() after the build. This is how
+# a test lowers a threshold or a cap that used to be a launcher constant.
+CONFIG_OVERRIDES: dict[str, Any] = {}
+
+# Constant name (as the launcher used to spell it) -> store key. Kept so the
+# harness-contract fixtures can go on naming stores the way they always have.
+STORE_KEYS: dict[str, str] = {
+    "PROJECTS_DIR": "claude.projects",
+    "TASKS_DIR": "claude.tasks",
+    "CODEX_SESSIONS_DIR": "codex.sessions",
+    "PI_SESSIONS_DIR": "pi.sessions",
+    "GEMINI_TMP": "gemini.tmp",
+    "ANTIGRAVITY_CLI_DIR": "antigravity.root",
+    "COPILOT_DIR": "copilot.root",
+    "OPENCODE_DATA": "opencode.data",
+    "CURSOR_CHATS": "cursor.chats",
+    "GOOSE_DB": "goose.db",
+    "FACTORY_PROJECTS": "droid.projects",
+}
+assert set(STORE_KEYS) == set(STORE_CONSTANTS), "store name map drifted from the fixtures"
+
+SERVER_STARTED = 1_700_000_000.0
+_STATE: RuntimeState | None = None
+
+
+def store_patch(**by_constant: str) -> Any:
+    """Redirect stores named the way the launcher's constants used to be.
+
+    ``store_patch(PROJECTS_DIR=path)`` reads like the patch it replaces and is a
+    context manager in the same way, so it drops into existing ``with`` tuples.
+    """
+    return mock.patch.dict(
+        STORE_OVERRIDES, {STORE_KEYS[name]: value for name, value in by_constant.items()}
+    )
+
+
+def config_patch(**fields: Any) -> Any:
+    """Override RuntimeConfig fields for the shared runtime, as a context manager."""
+    return mock.patch.dict(CONFIG_OVERRIDES, fields)
+
+
+def state_of() -> RuntimeState:
+    """The shared runtime's state, which the launcher used to alias per cache."""
+    return runtime()[1]
+
+
+def runtime() -> tuple[RuntimeConfig, RuntimeState]:
+    """The shared test runtime: a fresh config, and the one state per test.
+
+    The config is rebuilt on every call so a store override or a CARGENTO_HOME
+    patch applied after setUp is still seen. The state is not, because tests seed
+    hook and cache entries and then expect a collection to observe them.
+    """
+    global _STATE  # noqa: PLW0603 — one shared state per test process
+    single = {k: v for k, v in STORE_OVERRIDES.items() if isinstance(v, str)}
+    multi = {k: tuple(v) for k, v in STORE_OVERRIDES.items() if not isinstance(v, str)}
+    config = build_runtime_config(
+        environ=os.environ,
+        platform_name=sys.platform,
+        os_name=os_name(),
+        launcher_path=SERVER_PATH,
+        store_root_overrides=single,
+    )
+    if multi:
+        # build_runtime_config takes one root per key; a test pinning several
+        # candidates replaces the resolved tuple outright.
+        roots = dict(config.store_roots)
+        roots.update(multi)
+        config = dataclasses.replace(config, store_roots=MappingProxyType(roots))
+    if CONFIG_OVERRIDES:
+        config = dataclasses.replace(config, **CONFIG_OVERRIDES)
+    if _STATE is None:
+        _STATE = build_runtime_state(config, started=SERVER_STARTED)
+    _STATE.config = config
+    return config, _STATE
+
+
+def os_name() -> str:
+    """``os.name``, read through a function so a test can patch the module."""
+    return os.name
+
+
+def reset_runtime() -> RuntimeState:
+    """Drop the shared state so the next runtime() call builds a clean one."""
+    global _STATE  # noqa: PLW0603 — one shared state per test process
+    _STATE = None
+    return runtime()[1]
+
+
+def cfg() -> RuntimeConfig:
+    """The shared runtime's config.
+
+    Lifecycle helpers read the state home, timeouts and os_name off a config
+    instead of the ambient environment, so a test that patches CARGENTO_HOME has
+    to call this INSIDE the patch to get a config that sees it.
+    """
+    return runtime()[0]
 
 
 def make_config(**changes: Any) -> RuntimeConfig:
@@ -65,6 +169,29 @@ def make_runtime(
     return config, build_runtime_state(config, started=started)
 
 
+def build_app(window_hours: float = 24) -> aggregate.Application:
+    """An application over the shared runtime, built the way the CLI builds one."""
+    config, state = runtime()
+    if window_hours != config.window_hours:
+        config = dataclasses.replace(config, window_hours=window_hours)
+    return cli.build_application(config, state, clock=time.time)
+
+
+def collect(window_hours: float = 24, show_all: bool = False) -> dict[str, Any]:
+    """One full collection over the shared runtime."""
+    return build_app(window_hours).collect(show_all=show_all)
+
+
+def collect_json(window_hours: float = 24, show_all: bool = False) -> bytes:
+    """The memoized JSON body for one collection over the shared runtime."""
+    return build_app(window_hours).collect_json(show_all=show_all)
+
+
+def diagnose(window_hours: float = 24) -> dict[str, Any]:
+    """The diagnostics report for the shared runtime."""
+    return diagnostics.diagnose(build_app(window_hours))
+
+
 def collect_claude(
     now: float,
     window_hours: float,
@@ -72,33 +199,22 @@ def collect_claude(
     *,
     popup_notifier: Callable[[str, str], None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Run the Claude collector over the legacy runtime this suite resets.
+    """Run the Claude collector over the shared runtime.
 
     The collector takes its popup notifier as an argument rather than reaching
-    for a module global, so the default here is the same binding the launcher
-    hands the application. Tests that assert on popups keep patching
+    for a module global, so the default here is the same binding the CLI hands
+    the application. Tests that assert on popups keep patching
     ``notifications.notify_mac`` underneath it.
     """
-    config, state = dashboard._legacy_runtime()
+    config, state = runtime()
     return claude_collector.collect(
         config,
         state,
         now,
         window_hours,
         show_all,
-        popup_notifier=popup_notifier or dashboard._bound_popup_notifier(config),
+        popup_notifier=popup_notifier or cli.bound_popup_notifier(config, print),
     )
-
-
-def cfg() -> RuntimeConfig:
-    """The transitional runtime's config, which lifecycle operations now take.
-
-    Lifecycle helpers read the state home, timeouts and os_name off a config
-    instead of the ambient environment, so a test that patches CARGENTO_HOME has
-    to call this INSIDE the patch to get a config that sees it.
-    """
-    config: RuntimeConfig = dashboard._legacy_runtime()[0]
-    return config
 
 
 def make_server(
@@ -108,15 +224,15 @@ def make_server(
     page_bytes: bytes | None = None,
     window_hours: float = 24,
 ) -> Any:
-    """A CargentoHTTPServer over the legacy runtime this suite resets.
+    """A CargentoHTTPServer over the shared runtime.
 
     The server takes its application and page as arguments now, so every test
     that used to rely on module state passes them here instead. Defaults
-    reproduce what the launcher builds.
+    reproduce what the CLI builds.
     """
     return http_api.CargentoHTTPServer(
         ("127.0.0.1", port),
-        application if application is not None else dashboard._legacy_application(window_hours),
+        application if application is not None else build_app(window_hours),
         PAGE_BYTES if page_bytes is None else page_bytes,
     )
 
@@ -135,7 +251,7 @@ def notify_handler(payload: dict[str, Any], *, application: Any = None) -> Any:
     handler.path = "/api/notify"
     handler.rfile = io.BytesIO(body)
     handler.server = SimpleNamespace(
-        application=application if application is not None else dashboard._legacy_application(24)
+        application=application if application is not None else build_app()
     )
     handler._local_ok = lambda **_kw: True
     handler._send = lambda *_a, **_k: None
@@ -145,10 +261,10 @@ def notify_handler(payload: dict[str, Any], *, application: Any = None) -> Any:
 def serve_until_closed(httpd: Any) -> threading.Thread:
     """Serve on a thread that closes the listening socket when the loop exits.
 
-    Mirrors what ``main()`` does in its ``try/finally``. Serving without the
-    close leaves the port bound after the accept loop has gone — a state
-    ``main()`` never produces, and one that makes anything waiting for the port
-    to come free (``--stop``, and therefore any restart) wait for nothing.
+    Mirrors what the serve path does in its ``try/finally``. Serving without the
+    close leaves the port bound after the accept loop has gone — a state the CLI
+    never produces, and one that makes anything waiting for the port to come free
+    (``--stop``, and therefore any restart) wait for nothing.
     """
 
     def serve() -> None:
@@ -162,60 +278,59 @@ def serve_until_closed(httpd: Any) -> threading.Thread:
     return thread
 
 
-class LegacyDashboardTestCase(unittest.TestCase):
+def clear_state(state: RuntimeState) -> None:
+    """Empty every cache, hook and memo on one state."""
+    with state.hook_lock:
+        state.hook_notifications.clear()
+        state.last_popup.clear()
+        state.last_popup_message.clear()
+        state.last_session_state.clear()
+        state.hook_generation.clear()
+    with state.cache_lock:
+        state.store_errors.clear()
+        state.metadata_cache.clear()
+        state.claude_title_cache.clear()
+        state.claude_user_event_cache.clear()
+        state.cwd_cache.clear()
+        state.agent_class_cache.clear()
+        state.spacedock_role_cache.clear()
+        state.spacedock_boot_cache.clear()
+        state.spacedock_workflow_cache.clear()
+        state.spacedock_entity_cache.clear()
+        state.cursor_metadata_cache.clear()
+    with state.scanner_lock:
+        state.pi_scan.clear()
+        state.turn_scan.clear()
+    with state.collect_memo_lock:
+        state.collect_memo.clear()
+
+
+class RuntimeTestCase(unittest.TestCase):
+    """A clean shared runtime, and no test may fire a real popup."""
+
     def setUp(self) -> None:
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-        with dashboard._cache_lock:
-            dashboard._meta_cache.clear()
-            dashboard._cwd_cache.clear()
-            dashboard._cursor_meta_cache.clear()
-            dashboard._agent_class_cache.clear()
-            dashboard._claude_title_cache.clear()
-            dashboard._claude_user_event_cache.clear()
-        with dashboard._scan_lock:
-            dashboard._turn_scan.clear()
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
-        _, state = dashboard._legacy_runtime()
-        with state.hook_lock:
-            state.hook_notifications.clear()
-            state.last_popup.clear()
-            state.last_popup_message.clear()
-            state.last_session_state.clear()
-            state.hook_generation.clear()
-        with state.cache_lock:
-            state.store_errors.clear()
-            state.metadata_cache.clear()
-            state.claude_title_cache.clear()
-            state.claude_user_event_cache.clear()
-            state.cwd_cache.clear()
-            state.agent_class_cache.clear()
-            state.spacedock_role_cache.clear()
-            state.spacedock_boot_cache.clear()
-            state.spacedock_workflow_cache.clear()
-            state.spacedock_entity_cache.clear()
-            state.cursor_metadata_cache.clear()
-        with state.scanner_lock:
-            state.pi_scan.clear()
-            state.turn_scan.clear()
-        with state.collect_memo_lock:
-            state.collect_memo.clear()
+        STORE_OVERRIDES.clear()
+        CONFIG_OVERRIDES.clear()
+        clear_state(reset_runtime())
         # No test may fire a real macOS popup ("[sample] permission" spam
         # during dev runs). Tests asserting popups use their own nested patch.
         notify_patcher = mock.patch.object(notifications, "notify_mac")
         notify_patcher.start()
         self.addCleanup(notify_patcher.stop)
+        self.addCleanup(STORE_OVERRIDES.clear)
+        self.addCleanup(CONFIG_OVERRIDES.clear)
+
+
+# The historical name, kept so the suite reads consistently while the classes
+# that used it are migrated file by file.
+LegacyDashboardTestCase = RuntimeTestCase
 
 
 class PiScanTestCase(unittest.TestCase):
     def setUp(self) -> None:
-        with dashboard._scan_lock:
-            dashboard._pi_scan.clear()
+        _, state = runtime()
+        with state.scanner_lock:
+            state.pi_scan.clear()
 
 
 class HarnessContractTestCase(unittest.TestCase):
@@ -225,14 +340,13 @@ class HarnessContractTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         # collect() updates transition/cooldown state. Without clearing it here,
-        # a shuffled run can inherit a prior test's _last_state and suppress or
-        # invent the transition this contract is meant to observe.
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
+        # a shuffled run can inherit a prior test's last_session_state and
+        # suppress or invent the transition this contract is meant to observe.
+        STORE_OVERRIDES.clear()
+        CONFIG_OVERRIDES.clear()
+        clear_state(reset_runtime())
+        self.addCleanup(STORE_OVERRIDES.clear)
+        self.addCleanup(CONFIG_OVERRIDES.clear)
 
     def collect(self, build: Any, *, when: float, subdir: str = "store") -> dict[str, Any]:
         """Build one harness's store in isolation and run a full collection."""
@@ -244,12 +358,16 @@ class HarnessContractTestCase(unittest.TestCase):
             patches: dict[str, str] = {name: str(empty / name) for name in STORE_CONSTANTS}
             patches.update(build(Path(tmp) / subdir, when, self.SID, self.TITLE))
             with contextlib.ExitStack() as stack:
-                for name, value in patches.items():
-                    stack.enter_context(mock.patch.object(dashboard, name, value))
+                stack.enter_context(store_patch(**patches))
                 stack.enter_context(mock.patch.object(notifications, "notify_mac"))
-                stack.enter_context(mock.patch.object(dashboard.time, "time", lambda: self.NOW))
-                collected: dict[str, Any] = dashboard.collect(24, show_all=True)
+                stack.enter_context(mock.patch.object(time, "time", lambda: self.NOW))
+                collected: dict[str, Any] = collect(24, show_all=True)
                 return collected
 
     def sessions_for(self, data: dict[str, Any], key: str) -> list[dict[str, Any]]:
         return [session for session in data["sessions"] if session["harness"] == key]
+
+
+# The registry as the runtime declares it, for tests that only read keys/labels.
+# Named distinctly from fixtures.HARNESSES, which is (key, builder) pairs.
+REGISTRY = aggregate.default_harnesses(lambda _title, _message: None)

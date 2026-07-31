@@ -17,14 +17,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import http_api, lifecycle
+from cargento_runtime import cli, diagnostics, http_api, lifecycle
+from cargento_runtime import io as runtime_io
 
 from .page_harness import APP_JS, PAGE_TEXT, PageJsHarness
 from .support import (
-    dashboard,
     frontend_page,
     make_server,
     serve_until_closed,
+    state_of,
 )
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
@@ -163,21 +164,25 @@ class FrontendAssetContractTest(unittest.TestCase):
                 with (
                     mock.patch.object(frontend_page, "load_page", side_effect=record_load),
                     mock.patch.object(sys, "argv", ["server.py", *args]),
-                    mock.patch.object(dashboard, "diagnose", return_value={}),
+                    mock.patch.object(diagnostics, "diagnose", return_value={}),
+                    mock.patch.object(diagnostics, "render_diagnosis", return_value=""),
                     mock.patch.object(
                         lifecycle, "instance_status", return_value={"state": "running"}
                     ),
                     mock.patch.object(lifecycle, "render_status", return_value="running"),
                     mock.patch.object(lifecycle, "stop_instance", return_value=("stopped", 0)),
-                    mock.patch.object(dashboard.runtime_io, "diag"),
+                    mock.patch.object(runtime_io, "diag"),
                     mock.patch.object(sys, "stdout", io.StringIO()),
                 ):
-                    if expected_exit is None:
-                        dashboard.main()
-                    else:
+                    if label == "help":
+                        # argparse prints usage and exits itself.
                         with self.assertRaises(SystemExit) as caught:
-                            dashboard.main()
+                            cli.main()
                         self.assertEqual(expected_exit, caught.exception.code)
+                    else:
+                        code = cli.main()
+                        if expected_exit is not None:
+                            self.assertEqual(expected_exit, code)
                 self.assertEqual([], calls, f"{label} read frontend assets")
 
     def test_serving_uses_the_canonical_loader_before_binding(self) -> None:
@@ -196,7 +201,7 @@ class FrontendAssetContractTest(unittest.TestCase):
             mock.patch.object(sys, "stderr", io.StringIO()) as stderr,
         ):
             try:
-                dashboard.main()
+                cli.main()
             except SystemExit as exc:
                 self.assertEqual(1, exc.code)
             except AssertionError as exc:
@@ -274,16 +279,14 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
 
     def setUp(self) -> None:
-        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
-        self._server_started = dashboard.__dict__["SERVER_STARTED"]
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().hook_lock:
+            state_of().hook_notifications.clear()
+            state_of().last_popup.clear()
+            state_of().last_popup_message.clear()
+            state_of().last_session_state.clear()
+            state_of().hook_generation.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
@@ -306,10 +309,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         self.addCleanup(notify_patcher.stop)
 
     def tearDown(self) -> None:
-        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
-        dashboard.__dict__["SERVER_STARTED"] = self._server_started
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
 
     @staticmethod
     def _response(

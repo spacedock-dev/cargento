@@ -3,9 +3,10 @@ from __future__ import annotations
 import re
 import unittest
 
+from cargento_runtime import config as runtime_config
+
 from .support import (
     SERVER_PATH,
-    dashboard,
 )
 
 
@@ -16,7 +17,7 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
     SKILL = (SERVER_PATH.parent / "SKILL.md").read_text(encoding="utf-8")
 
     def posix_roots(self) -> dict[str, list[str]]:
-        roots: dict[str, list[str]] = dashboard.resolve_store_roots(
+        roots: dict[str, list[str]] = runtime_config.resolve_store_roots(
             platform_name="darwin", environ={}, home="/HOME"
         )
         return roots
@@ -58,7 +59,7 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
             )
             if f"`{name}`" in self.SKILL
         }
-        self.assertEqual(set(dashboard.STORE_ENV_VARS), documented)
+        self.assertEqual(set(runtime_config.STORE_ENV_VARS), documented)
         # And each one actually redirects its store.
         for name, key, expected in (
             ("CLAUDE_CONFIG_DIR", "claude.projects", "/opt/x/projects"),
@@ -69,7 +70,7 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
             ("PI_CODING_AGENT_SESSION_DIR", "pi.sessions", "/opt/x"),
         ):
             with self.subTest(env=name):
-                roots = dashboard.resolve_store_roots(
+                roots = runtime_config.resolve_store_roots(
                     platform_name="linux", environ={name: "/opt/x"}, home="/HOME"
                 )
                 self.assertEqual([expected], roots[key])

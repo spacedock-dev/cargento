@@ -5,10 +5,12 @@ import json
 import os
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import io as runtime_io
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
@@ -20,7 +22,17 @@ from .fixtures import (
     protobuf_int_field,
     write_antigravity_metadata,
 )
-from .support import LegacyDashboardTestCase, dashboard, make_config, make_runtime
+from .support import (
+    REGISTRY,
+    LegacyDashboardTestCase,
+    cfg,
+    config_patch,
+    make_config,
+    make_runtime,
+    runtime,
+    state_of,
+    store_patch,
+)
 
 
 class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
@@ -73,38 +85,26 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "cli.log"
             path.write_bytes(prefix + b"-continued")
-            with mock.patch.object(
-                dashboard,
-                "ANTIGRAVITY_LOG_HEAD_BYTES",
-                len(prefix),
-            ):
-                config, _state = dashboard._legacy_runtime()
+            with config_patch(antigravity_log_head_bytes=len(prefix)):
+                config, _state = runtime()
                 lines = gemini_collector._log_head_lines(config, str(path))
 
         self.assertEqual([*complete, "partial"], lines)
 
-    def test_antigravity_combined_read_uses_one_runtime_snapshot(self) -> None:
-        first_runtime = make_runtime(
-            antigravity_log_head_bytes=13,
-            tail_bytes=10,
-        )
-        second_runtime = make_runtime(
-            antigravity_log_head_bytes=5,
-            tail_bytes=10,
-        )
+    def test_antigravity_combined_read_uses_one_config_for_head_and_tail(self) -> None:
+        # The head and tail bounds have to come from the SAME config. They used
+        # to be two ambient lookups, so a bound changing between them produced a
+        # head and a tail that did not describe one file. Passing config in makes
+        # that structural; this pins the behaviour it buys.
+        config, _ = make_runtime(antigravity_log_head_bytes=13, tail_bytes=10)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "cli.log"
             path.write_bytes(b"first-header\nmiddle\nlast-tail\n")
-            with mock.patch.object(
-                dashboard,
-                "_legacy_runtime",
-                side_effect=[first_runtime, second_runtime],
-            ) as legacy_runtime:
-                config, _state = dashboard._legacy_runtime()
-                lines = gemini_collector._log_lines(config, str(path))
+            lines = gemini_collector._log_lines(config, str(path))
 
+        # 13 head bytes cover "first-header\n"; 10 tail bytes cover "last-tail\n".
+        # "middle" falls in neither window, so it is absent rather than counted twice.
         self.assertEqual(["first-header", "last-tail", ""], lines)
-        self.assertEqual(1, legacy_runtime.call_count)
 
     def test_gemini_set_snapshot_updates_summary_and_turns(self) -> None:
         messages = [
@@ -178,7 +178,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertEqual([5.0], turns["durations"])
 
     def test_antigravity_sessions_are_discovered_and_collected(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "c38d2d70-a01e-46f8-9286-60493c4c0e7e"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "antigravity-cli"
@@ -204,15 +204,15 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 # Reach the predicate through a live registry spec, so this
                 # still pins that the "gemini" row is wired to the right
                 # predicate and not merely that the key is present.
-                runtime = dashboard._legacy_runtime()
-                spec = next(s for s in dashboard.HARNESSES if s.key == "gemini")
-                discovered = spec.discover(*runtime)
-                config, state = dashboard._legacy_runtime()
+                runtime_pair = runtime()
+                spec = next(s for s in REGISTRY if s.key == "gemini")
+                discovered = spec.discover(*runtime_pair)
+                config, state = runtime()
                 sessions = gemini_collector.collect(config, state, now, 24, False)
 
         self.assertTrue(discovered)
@@ -224,7 +224,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("working", sessions[0]["state"])
 
     def test_antigravity_cache_primary_workspace_beats_added_directories(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         session_ids = (
             "deadbeef-a01e-46f8-9286-60493c4c0e7e",
             "deadbeef-b01e-46f8-9286-60493c4c0e7e",
@@ -251,9 +251,9 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual(2, len(sessions))
@@ -263,7 +263,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertTrue(all(len(session["session"]) > 8 for session in sessions))
 
     def test_antigravity_unusable_cache_workspace_does_not_block_log_fallback(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "c38d2d70-a01e-46f8-9286-60493c4c0e7e"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "antigravity-cli"
@@ -285,16 +285,16 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("fallback/solo", sessions[0]["project"])
 
     def test_antigravity_stale_log_can_anchor_active_workspace_context(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         active_sid = "11111111-a01e-46f8-9286-60493c4c0e7e"
         cached_sid = "22222222-b01e-46f8-9286-60493c4c0e7e"
         with tempfile.TemporaryDirectory() as tmp:
@@ -325,16 +325,16 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             os.utime(conversations / f"{cached_sid}.db", (stale, stale))
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual([active_sid], [session["sid"] for session in sessions])
         self.assertEqual("acme/proj", sessions[0]["project"])
 
     def test_antigravity_stale_log_can_anchor_an_additional_context(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         active_sid = "33333333-a01e-46f8-9286-60493c4c0e7e"
         cached_sid = "44444444-b01e-46f8-9286-60493c4c0e7e"
         with tempfile.TemporaryDirectory() as tmp:
@@ -364,16 +364,16 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             os.utime(stale_log, (stale, stale))
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, _state = dashboard._legacy_runtime()
+                config, _state = runtime()
                 metadata = gemini_collector._session_metadata(config, now, 24, False)
 
         self.assertEqual("/work/acme/proj", metadata[active_sid]["cwd"])
         self.assertEqual("/work/acme/proj", metadata[cached_sid]["cwd"])
 
     def test_antigravity_steps_supply_rate_action_and_turn_progress(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "c38d2d70-a01e-46f8-9286-60493c4c0e7e"
 
         def varint(value: int) -> bytes:
@@ -461,9 +461,9 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
@@ -472,7 +472,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("1m", sessions[0]["turn"]["elapsed_h"])
 
     def test_antigravity_subagents_are_folded_under_parent(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         parent_sid = "11111111-1111-1111-1111-111111111111"
         sub_sid = "22222222-2222-2222-2222-222222222222"
 
@@ -499,9 +499,9 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
@@ -509,7 +509,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertEqual(["Research Auditor"], sessions[0]["subagents"])
 
     def test_antigravity_folded_subagent_rate_reaches_parent(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         parent_sid = "11111111-1111-1111-1111-111111111111"
         sub_sid = "22222222-2222-2222-2222-222222222222"
 
@@ -539,16 +539,16 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                 connection.commit()
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual([parent_sid], [session["sid"] for session in sessions])
         self.assertEqual(60, sessions[0]["rate_per_min"])
 
     def test_antigravity_nested_subagent_activity_reaches_root(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         root_sid = "11111111-1111-1111-1111-111111111111"
         child_sid = "22222222-2222-2222-2222-222222222222"
         grandchild_sid = "33333333-3333-3333-3333-333333333333"
@@ -578,9 +578,9 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                 os.utime(conversations / f"{sid}.db", (stale, stale))
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual([root_sid], [session["sid"] for session in sessions])
@@ -590,24 +590,24 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertEqual(grandchild_mtime, sessions[0]["last_activity"])
 
     def test_antigravity_future_wal_does_not_hide_fresh_store(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         with tempfile.TemporaryDirectory() as tmp:
             database = Path(tmp) / "conversation.db"
             database.touch()
             os.utime(database, (now, now))
             wal = Path(f"{database}-wal")
             wal.write_bytes(b"\0" * 33)
-            future = now + dashboard.FUTURE_SKEW_TOLERANCE_SEC + 60
+            future = now + cfg().future_skew_tolerance_sec + 60
             os.utime(wal, (future, future))
 
-            config, _state = dashboard._legacy_runtime()
+            config, _state = runtime()
             mtime = gemini_collector._store_mtime(config, str(database), now)
 
         self.assertEqual(now, mtime)
 
     def test_antigravity_empty_wal_does_not_invent_activity(self) -> None:
-        now = dashboard.time.time()
-        database_mtime = now - dashboard.WORKING_THRESHOLD_SEC - 1
+        now = time.time()
+        database_mtime = now - cfg().working_threshold_sec - 1
         with tempfile.TemporaryDirectory() as tmp:
             database = Path(tmp) / "conversation.db"
             database.touch()
@@ -616,13 +616,13 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             wal.touch()
             os.utime(wal, (now, now))
 
-            config, _state = dashboard._legacy_runtime()
+            config, _state = runtime()
             mtime = gemini_collector._store_mtime(config, str(database), now)
 
         self.assertEqual(database_mtime, mtime)
 
     def test_antigravity_stale_subagents_do_not_get_running_pills(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         parent_sid = "11111111-1111-1111-1111-111111111111"
         fresh_sid = "22222222-2222-2222-2222-222222222222"
         stale_sid = "33333333-3333-3333-3333-333333333333"
@@ -641,20 +641,20 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                     8, protobuf_bytes_field(2, label)
                 )
                 write_antigravity_metadata(conversations / f"{sid}.db", blob)
-            stale = now - dashboard.WORKING_THRESHOLD_SEC - 1
+            stale = now - cfg().working_threshold_sec - 1
             os.utime(conversations / f"{stale_sid}.db", (stale, stale))
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual(["Fresh Auditor"], sessions[0]["subagents"])
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
 
     def test_antigravity_skips_unrelated_stale_metadata_stores(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         parent_sid = "11111111-1111-1111-1111-111111111111"
         sub_sid = "22222222-2222-2222-2222-222222222222"
         unrelated_sid = "33333333-3333-3333-3333-333333333333"
@@ -688,17 +688,17 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                 return result
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
                 mock.patch.object(gemini_collector, "_session_info", side_effect=inspect),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual({parent_sid, sub_sid}, set(inspected))
         self.assertEqual([parent_sid], [session["sid"] for session in sessions])
 
     def test_antigravity_running_subagent_precedes_parent_tool_action(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         parent_sid = "11111111-1111-1111-1111-111111111111"
         sub_sid = "22222222-2222-2222-2222-222222222222"
 
@@ -727,15 +727,15 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
 
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
 
     def test_antigravity_blank_subagent_label_uses_session_prefix(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         parent_sid = "11111111-1111-1111-1111-111111111111"
         sub_sid = "22222222-2222-2222-2222-222222222222"
 
@@ -753,9 +753,9 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                 + protobuf_bytes_field(8, protobuf_bytes_field(2, b"\x00\n")),
             )
             with (
-                mock.patch.object(dashboard, "ANTIGRAVITY_CLI_DIR", str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
 
         self.assertEqual(["subagent 22222222"], sessions[0]["subagents"])
@@ -775,7 +775,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / f"{sub_sid}.db"
             write_antigravity_metadata(path, blob)
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = gemini_collector._session_info(config, state, str(path), sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
@@ -792,7 +792,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / f"{sub_sid}.db"
             write_antigravity_metadata(path, blob)
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = gemini_collector._session_info(config, state, str(path), sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
@@ -809,20 +809,20 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         immutable = mock.MagicMock(spec=sqlite3.Connection)
         immutable.execute.return_value.fetchone.return_value = (blob,)
         with mock.patch.object(
-            dashboard.sqlite3,
+            runtime_io.sqlite_module,
             "connect",
             side_effect=(plain, immutable),
         ) as connect:
-            with dashboard._cache_lock:
-                dashboard._store_errors.clear()
-            config, state = dashboard._legacy_runtime()
+            with state_of().cache_lock:
+                state_of().store_errors.clear()
+            config, state = runtime()
             info = gemini_collector._session_info(config, state, "/tmp/session.db", sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
         self.assertEqual("Research Auditor", info["subagent_label"])
         self.assertEqual(2, connect.call_count)
         self.assertIn("immutable=1", connect.call_args_list[1].args[0])
-        self.assertNotIn("/tmp/session.db", dashboard._store_errors)
+        self.assertNotIn("/tmp/session.db", state_of().store_errors)
         plain.close.assert_called_once_with()
         immutable.close.assert_called_once_with()
 
@@ -831,11 +831,13 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         connection.execute.side_effect = sqlite3.OperationalError("database is locked")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(dashboard.sqlite3, "connect", return_value=connection) as connect,
+            mock.patch.object(
+                runtime_io.sqlite_module, "connect", return_value=connection
+            ) as connect,
         ):
             database = Path(tmp) / "session.db"
             Path(f"{database}-wal").write_bytes(b"\0" * 33)
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = gemini_collector._session_info(config, state, str(database), "session")
 
         self.assertEqual({"parent_id": None, "subagent_label": None}, info)
@@ -865,7 +867,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
                 with contextlib.suppress(FileNotFoundError):
                     sidecar.unlink()
 
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = gemini_collector._session_info(config, state, str(database), sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
@@ -877,11 +879,11 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         immutable = mock.MagicMock(spec=sqlite3.Connection)
         immutable.execute.side_effect = sqlite3.OperationalError("database is malformed")
         with mock.patch.object(
-            dashboard.sqlite3,
+            runtime_io.sqlite_module,
             "connect",
             side_effect=(plain, immutable),
         ) as connect:
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = gemini_collector._session_info(config, state, "/tmp/session.db", "session")
 
         self.assertEqual({"parent_id": None, "subagent_label": None}, info)
@@ -894,7 +896,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             next(gemini_collector.protobuf_fields(8))
 
     def test_antigravity_activity_sees_uncheckpointed_wal_frames(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "live.db"
             writer = sqlite3.connect(db)
@@ -926,7 +928,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
             )
             writer.commit()  # committed to the WAL; not yet checkpointed
             try:
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 activity = gemini_collector._step_activity(config, state, str(db), now)
             finally:
                 writer.close()
@@ -935,7 +937,7 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertEqual(50, activity["rate_per_min"])
 
     def test_antigravity_activity_does_not_report_recovered_reader_error(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         timestamp = protobuf_int_field(1, int(now - 30))
         usage = protobuf_int_field(3, 500)
         metadata = protobuf_bytes_field(1, timestamp) + protobuf_bytes_field(9, usage)
@@ -944,17 +946,17 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         immutable = mock.MagicMock(spec=sqlite3.Connection)
         immutable.execute.return_value.fetchall.return_value = [(15, metadata)]
 
-        with dashboard._cache_lock:
-            dashboard._store_errors.clear()
+        with state_of().cache_lock:
+            state_of().store_errors.clear()
         with mock.patch.object(
-            dashboard.sqlite3,
+            runtime_io.sqlite_module,
             "connect",
             side_effect=(plain, immutable),
         ):
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             activity = gemini_collector._step_activity(config, state, "/tmp/clean-wal.db", now)
 
         self.assertEqual(50, activity["rate_per_min"])
-        self.assertNotIn("/tmp/clean-wal.db", dashboard._store_errors)
+        self.assertNotIn("/tmp/clean-wal.db", state_of().store_errors)
         plain.close.assert_called_once_with()
         immutable.close.assert_called_once_with()

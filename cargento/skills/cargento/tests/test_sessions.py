@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,11 +16,13 @@ from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
 
 from .support import (
+    STORE_OVERRIDES,
     LegacyDashboardTestCase,
+    collect,
     collect_claude,
-    dashboard,
     make_config,
     make_runtime,
+    store_patch,
 )
 
 
@@ -241,7 +244,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
     def test_collect_widens_colliding_display_ids_end_to_end(self) -> None:
         # The widening is only worth anything if collect() actually applies
         # it: deleting the call leaves every unit test green.
-        now = dashboard.time.time()
+        now = time.time()
         iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         sids = (
             "019fa752-a888-7fe3-a529-ebd8042771c1",
@@ -262,12 +265,10 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     + "\n"
                 )
             with (
-                mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(Path(tmp) / "codex")),
-                mock.patch.dict(
-                    dashboard.STORE_ROOTS, {"codex.sessions": [str(Path(tmp) / "codex")]}
-                ),
+                store_patch(CODEX_SESSIONS_DIR=str(Path(tmp) / "codex")),
+                mock.patch.dict(STORE_OVERRIDES, {"codex.sessions": [str(Path(tmp) / "codex")]}),
             ):
-                data = dashboard.collect(24, False)
+                data = collect(24, False)
 
         codex = [s for s in data["sessions"] if s["harness"] == "codex"]
         self.assertEqual(2, len(codex))
@@ -366,7 +367,7 @@ class DurationAndEpochTest(unittest.TestCase):
                     mock.patch.object(
                         claude_collector, "load_tasks", lambda _config, t=took: tasks(t)
                     ),
-                    mock.patch.object(dashboard, "PROJECTS_DIR", empty),
+                    store_patch(PROJECTS_DIR=empty),
                 ):
                     observed[took] = collect_claude(now, 24, True)[0]["eta_h"]
 
@@ -433,8 +434,8 @@ class ClockSkewTest(unittest.TestCase):
             future = self.NOW + self.SKEW
             os.utime(transcript, (future, future))
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
             ):
                 # A day-ahead mtime previously made `now - mtime` negative, so
                 # the session reported "working" for the whole day of skew.

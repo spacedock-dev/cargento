@@ -35,10 +35,13 @@ ignore = [
 max-args = 8
 
 [tool.ruff.lint.per-file-ignores]
-# Two user-facing command/status expressions read more clearly inline, and the
-# defensive harness collectors are inherently branchy; refactoring them to
-# satisfy complexity limits would trade real robustness for score.
-"cargento/skills/cargento/server.py" = ["E501", "C901", "PLR0911", "PLR0912", "PLR0915"]
+# The launcher is seven lines and needs no exemptions. The runtime modules below
+# keep only the ones their reviewed shape actually requires; the defensive
+# harness collectors are inherently branchy, and refactoring them to satisfy
+# complexity limits would trade real robustness for score.
+# main() branches once per CLI verb and once per serve mode, each with its own
+# early return, which is the shape the three distinct serve paths require.
+"cargento/skills/cargento/cargento_runtime/cli.py" = ["C901", "PLR0911"]
 "cargento/skills/cargento/cargento_runtime/config.py" = ["C901", "PLR0913"]
 # `_turn_signal` retains the server's reviewed branch shape after extraction.
 "cargento/skills/cargento/cargento_runtime/records.py" = ["C901", "PLR0911", "PLR0912"]

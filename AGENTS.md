@@ -19,11 +19,12 @@ cargento/                           # plugin root
 └── skills/
     └── cargento/                   # the dashboard skill
         ├── SKILL.md                # shared skill body (all harnesses)
-        ├── server.py               # stdlib-only dashboard server
+        ├── server.py               # the stable launcher: calls cargento_runtime.cli.main
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
         ├── cargento_runtime/       # importable dashboard runtime package
         │   ├── aggregate.py        # harness registry, failure boundary, and the application
         │   ├── claude_data.py      # Claude transcript reads shared by the collector and hooks
+        │   ├── cli.py              # argument parsing, runtime assembly, and the serve branches
         │   ├── collectors/         # one harness collector per file, one per supported harness
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── diagnostics.py      # store-path reporting for --diagnose

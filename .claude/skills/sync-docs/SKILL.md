@@ -203,14 +203,18 @@ W=cargento/skills/cargento/cargento_runtime/web
 G=cargento/skills/cargento/cargento_runtime/diagnostics.py
 H=cargento/skills/cargento/cargento_runtime/http_api.py
 L=cargento/skills/cargento/cargento_runtime/lifecycle.py
+I=cargento/skills/cargento/cargento_runtime/cli.py
 
 # HTTP routes the server actually serves, and who owns the listener. The
 # pattern matches the local `path` too: do_POST binds it once and compares that,
 # so an `urlparse(...)`-only pattern silently missed both POST routes.
 grep -oE '\b(url\.path|path) [!=]= "/[^"]*"' "$H" | grep -oE '"/[^"]*"' | sort -u
 grep -nE '^(class CargentoHTTPServer|class _RequestHandler)|^def (normalize_host|reuse_address_allowed|bind_error_message)' "$H"
-# CLI flags and their defaults
-grep -E -A4 'ap\.add_argument\(' "$S" | grep -E '"--|default='
+# CLI flags and their defaults. These live in cli.build_parser now, not in the
+# launcher: `server.py` is seven lines and greps of it silently find nothing.
+grep -E -A4 'add_argument\(' "$I" | grep -E '"--|default='
+# The launcher contract: one import of cli.main and nothing else.
+cat "$S"
 # The harness registry: one row per supported harness, in the order the page
 # renders its chips. Read it from `aggregate.default_harnesses` rather than by
 # matching source text, because the rows are multi-line. The third column is

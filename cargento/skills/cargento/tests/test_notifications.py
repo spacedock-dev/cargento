@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,13 +20,17 @@ from cargento_runtime import claude_data, notifications, records
 from .support import (
     HOOK_PATH,
     LegacyDashboardTestCase,
+    collect,
     collect_claude,
-    dashboard,
+    config_patch,
     dashboard_hook,
     make_config,
     make_server,
     notify_handler,
+    runtime,
     serve_until_closed,
+    state_of,
+    store_patch,
 )
 
 if TYPE_CHECKING:
@@ -35,12 +40,12 @@ if TYPE_CHECKING:
 class CargentoServerTest(LegacyDashboardTestCase):
     def test_popup_caches_are_bounded_and_globally_rate_limited(self) -> None:
         with (
-            mock.patch.object(dashboard, "MAX_CACHE_ENTRIES", 2),
+            config_patch(max_cache_entries=2),
             # session2 lands inside the 15s global floor and is dropped;
             # session3 lands after it and fires.
-            mock.patch.object(dashboard.time, "time", side_effect=[100.0, 101.0, 120.0]),
+            mock.patch.object(time, "time", side_effect=[100.0, 101.0, 120.0]),
         ):
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             fired: list[tuple[str, str]] = []
 
             def notifier(title: str, message: str) -> None:
@@ -52,14 +57,14 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 )
 
         self.assertEqual(2, len(fired))
-        self.assertLessEqual(len(dashboard._last_state), 2)
-        self.assertLessEqual(len(dashboard._last_popup), 2)
+        self.assertLessEqual(len(state_of().last_session_state), 2)
+        self.assertLessEqual(len(state_of().last_popup), 2)
 
     def test_hook_popups_respect_both_cooldown_floors(self) -> None:
         # Every existing cooldown test expires the floors first to isolate some
         # other rule, so the two floors themselves went unpinned. Distinct
         # messages here keep the repeat-suppression window out of the result.
-        config, state = dashboard._legacy_runtime()
+        config, state = runtime()
         fired: list[str] = []
 
         def payload(sid: str, message: str, now: float) -> dict[str, Any]:
@@ -94,7 +99,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # hook_lock is a plain Lock. Notifying inside the critical section would
         # hold it for the notifier's whole duration -- up to osascript's 5s
         # timeout -- stalling every other hook POST and every collection.
-        config, state = dashboard._legacy_runtime()
+        config, state = runtime()
         held: list[bool] = []
 
         def notifier(_title: str, _message: str) -> None:
@@ -129,7 +134,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
     def test_notify_from_subagent_session_is_suppressed(self) -> None:
         # Subagent sessions emit Notification-hook events too (permission
         # prompts inside agents); they must not raise popups or hook state.
-        now = dashboard.time.time()
+        now = time.time()
         child_id = "cccc3333-0000-0000-0000-000000000000"
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "projects" / "-Users-test-repo"
@@ -149,7 +154,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
             # The store patch has to be in place BEFORE the server is built: the
             # application captures its config once, at construction, so a patch
             # applied afterwards would not reach the running instance.
-            with mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")):
+            with store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")):
                 httpd = make_server()
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
@@ -161,8 +166,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     )
                 self.assertIn(b"suppressed", data)
                 notify.assert_not_called()
-                with dashboard._lock:
-                    self.assertNotIn(child_id[:8], dashboard._hook_notifs)
+                with state_of().hook_lock:
+                    self.assertNotIn(child_id[:8], state_of().hook_notifications)
             finally:
                 httpd.shutdown()
                 httpd.server_close()
@@ -177,9 +182,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
         thread.start()
 
         def expire_cooldowns() -> None:
-            with dashboard._lock:
-                dashboard._last_popup["fedcba98"] = dashboard.time.time() - 120
-                dashboard._last_popup["_global"] = dashboard.time.time() - 120
+            with state_of().hook_lock:
+                state_of().last_popup["fedcba98"] = time.time() - 120
+                state_of().last_popup["_global"] = time.time() - 120
 
         try:
             with mock.patch.object(notifications, "notify_mac") as notify:
@@ -209,20 +214,20 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # Payloads without transcript_path (the documented curl simulation,
         # older Claude Code versions) get no user-event marker; they must
         # fall back to the parsed-timestamp rule instead of sticking forever.
-        _config, state = dashboard._legacy_runtime()
-        with dashboard._lock:
-            dashboard._hook_notifs["cafe1234"] = {"ts": 1000.0, "message": "hi"}
+        _config, state = runtime()
+        with state_of().hook_lock:
+            state_of().hook_notifications["cafe1234"] = {"ts": 1000.0, "message": "hi"}
         self.assertIsNotNone(notifications.current_hook(state, "cafe1234", None, 999.0))
         self.assertIsNone(notifications.current_hook(state, "cafe1234", None, 1001.0))
-        with dashboard._lock:
-            self.assertNotIn("cafe1234", dashboard._hook_notifs)
+        with state_of().hook_lock:
+            self.assertNotIn("cafe1234", state_of().hook_notifications)
 
     def test_hook_does_not_mark_actively_working_session_blocked(self) -> None:
         # Claude Code emits "waiting for your input" notifications for
         # sessions that keep running via background tasks (live case
         # 936f2c2b). While the transcript still receives events, the session
         # reads Working; the hook only surfaces once the session goes quiet.
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "dddd4444-0000-0000-0000-000000000000"
 
         def transcript(last_offset: float) -> str:
@@ -256,15 +261,15 @@ class CargentoServerTest(LegacyDashboardTestCase):
 
             def collect_with(last_offset: float) -> dict[str, Any]:
                 fp.write_text(transcript(last_offset))
-                with dashboard._lock:
-                    dashboard._hook_notifs[session_id[:8]] = {
+                with state_of().hook_lock:
+                    state_of().hook_notifications[session_id[:8]] = {
                         "ts": now - 60,
                         "message": "Claude is waiting for your input",
                         "user_event": "u-1",  # marker unchanged: hook uncleared
                     }
                 with (
-                    mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                    mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                    store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                    store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
                 ):
                     sessions = collect_claude(now, 24, False)
                 return next(s for s in sessions if s["session"] == session_id[:8])
@@ -274,16 +279,16 @@ class CargentoServerTest(LegacyDashboardTestCase):
             # NOTE: os.utime so mtime matches the stale story
             fp.write_text(transcript(600))
             old = now - 600
-            dashboard.os.utime(fp, (old, old))
-            with dashboard._lock:
-                dashboard._hook_notifs[session_id[:8]] = {
+            os.utime(fp, (old, old))
+            with state_of().hook_lock:
+                state_of().hook_notifications[session_id[:8]] = {
                     "ts": now - 60,
                     "message": "Claude is waiting for your input",
                     "user_event": "u-1",
                 }
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             ):
                 sessions = collect_claude(now, 24, False)
             quiet = next(s for s in sessions if s["session"] == session_id[:8])
@@ -294,7 +299,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # completed turn. That is the dashboard's own definition of idle —
         # it may popup once as a nudge but must never flip a session to
         # needs_input. Permission prompts (different message) still do.
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "ffff6666-0000-0000-0000-000000000000"
         old_iso = datetime.fromtimestamp(now - 600, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
@@ -314,14 +319,14 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 + "\n"
             )
             old = now - 600
-            dashboard.os.utime(fp, (old, old))
+            os.utime(fp, (old, old))
             httpd = make_server()
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
             thread.start()
             try:
                 with (
-                    mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                    mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                    store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                    store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
                     mock.patch.object(notifications, "notify_mac") as notify,
                 ):
                     # Idle nudge: pops once, no blocked state, no stored hook.
@@ -334,8 +339,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
                         },
                     )
                     self.assertEqual(1, notify.call_count)
-                    with dashboard._lock:
-                        self.assertNotIn(session_id[:8], dashboard._hook_notifs)
+                    with state_of().hook_lock:
+                        self.assertNotIn(session_id[:8], state_of().hook_notifications)
                     sessions = collect_claude(now, 24, False)
                     target = next(s for s in sessions if s["session"] == session_id[:8])
                     self.assertEqual("idle", target["state"])
@@ -375,17 +380,17 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     },
                 )
                 self.assertEqual(0, notify.call_count)
-                self.assertNotIn("aaaa1111", dashboard._hook_notifs)
+                self.assertNotIn("aaaa1111", state_of().hook_notifications)
 
                 # Structured idle type wins even when the message is a
                 # version/localization variant that lacks the old prefix, and
                 # clears any older standing prompt for this session.
-                with dashboard._lock:
-                    dashboard._hook_notifs["bbbb2222"] = {
-                        "ts": dashboard.time.time() - 60,
+                with state_of().hook_lock:
+                    state_of().hook_notifications["bbbb2222"] = {
+                        "ts": time.time() - 60,
                         "message": "older permission prompt",
                     }
-                    dashboard._last_state["bbbb2222"] = "needs_input"
+                    state_of().last_session_state["bbbb2222"] = "needs_input"
                 self._post_notify(
                     httpd.server_port,
                     {
@@ -396,11 +401,11 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     },
                 )
                 self.assertEqual(1, notify.call_count)
-                self.assertNotIn("bbbb2222", dashboard._hook_notifs)
-                self.assertNotIn("bbbb2222", dashboard._last_state)
+                self.assertNotIn("bbbb2222", state_of().hook_notifications)
+                self.assertNotIn("bbbb2222", state_of().last_session_state)
 
-                with dashboard._lock:
-                    dashboard._last_popup["_global"] = dashboard.time.time() - 120
+                with state_of().hook_lock:
+                    state_of().last_popup["_global"] = time.time() - 120
 
                 # Structured permission type also wins over misleading text.
                 self._post_notify(
@@ -413,7 +418,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     },
                 )
                 self.assertEqual(2, notify.call_count)
-                self.assertIn("cccc3333", dashboard._hook_notifs)
+                self.assertIn("cccc3333", state_of().hook_notifications)
         finally:
             httpd.shutdown()
             httpd.server_close()
@@ -438,9 +443,9 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 )
 
     def test_elicitation_completion_clears_dialog_hook(self) -> None:
-        with dashboard._lock:
-            dashboard._hook_notifs["feed1234"] = {
-                "ts": dashboard.time.time() - 30,
+        with state_of().hook_lock:
+            state_of().hook_notifications["feed1234"] = {
+                "ts": time.time() - 30,
                 "message": "MCP input requested",
             }
         httpd = make_server()
@@ -456,20 +461,20 @@ class CargentoServerTest(LegacyDashboardTestCase):
                     "message": "MCP elicitation completed",
                 },
             )
-            with dashboard._lock:
-                self.assertNotIn("feed1234", dashboard._hook_notifs)
+            with state_of().hook_lock:
+                self.assertNotIn("feed1234", state_of().hook_notifications)
         finally:
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=2)
 
     def test_session_end_hook_clears_standing_permission_state(self) -> None:
-        with dashboard._lock:
-            dashboard._hook_notifs["deadbeef"] = {
-                "ts": dashboard.time.time() - 60,
+        with state_of().hook_lock:
+            state_of().hook_notifications["deadbeef"] = {
+                "ts": time.time() - 60,
                 "message": "permission needed",
             }
-            dashboard._last_state["deadbeef"] = "needs_input"
+            state_of().last_session_state["deadbeef"] = "needs_input"
         httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -483,16 +488,16 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 },
             )
             self.assertIn(b'"cleared":"session_end"', data)
-            with dashboard._lock:
-                self.assertNotIn("deadbeef", dashboard._hook_notifs)
-                self.assertNotIn("deadbeef", dashboard._last_state)
+            with state_of().hook_lock:
+                self.assertNotIn("deadbeef", state_of().hook_notifications)
+                self.assertNotIn("deadbeef", state_of().last_session_state)
         finally:
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=2)
 
     def test_hook_block_uses_hook_time_and_inactive_sessions_are_idle(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "abcd1234-0000-0000-0000-000000000000"
         event_time = datetime.fromtimestamp(now - 600, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
@@ -511,17 +516,17 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 + "\n"
             )
             old = now - 600
-            dashboard.os.utime(transcript, (old, old))
+            os.utime(transcript, (old, old))
             hook_time = now - 45
-            with dashboard._lock:
-                dashboard._hook_notifs[session_id[:8]] = {
+            with state_of().hook_lock:
+                state_of().hook_notifications[session_id[:8]] = {
                     "ts": hook_time,
                     "message": "permission needed",
                     "user_event": "user-before-hook",
                 }
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             ):
                 active = collect_claude(now, 24, False)[0]
                 inactive = collect_claude(now, 0.1, True)[0]
@@ -531,7 +536,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         self.assertEqual("idle", inactive["state"])
 
     def test_transcript_open_question_outranks_fresh_activity(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "face9999-0000-0000-0000-000000000000"
         question_time = datetime.fromtimestamp(now - 5, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
@@ -559,8 +564,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 + "\n"
             )
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             ):
                 session = collect_claude(now, 24, False)[0]
 
@@ -575,7 +580,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
         # needs_input flapping), clear the hook when the session self-resumes
         # with a new user record, and only surface needs_input once the
         # session is genuinely quiet with a standing hook.
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "eeee5555-0000-0000-0000-000000000000"
 
         def iso(age: float) -> str:
@@ -613,8 +618,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
             proj.mkdir(parents=True)
             fp = proj / f"{session_id}.jsonl"
             patches = (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             )
             # Built inside the store patches: the application captures its config
             # once, at construction, so the POSTs this test makes must reach a
@@ -666,8 +671,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
                         + user_rec("u-2", 10, "task-notification: reviews done")
                     )
                     self.assertEqual("working", state())
-                    with dashboard._lock:
-                        self.assertNotIn(session_id[:8], dashboard._hook_notifs)
+                    with state_of().hook_lock:
+                        self.assertNotIn(session_id[:8], state_of().hook_notifications)
 
                     # Final turn ends for real: standing hook + genuinely
                     # quiet transcript (old record timestamps AND old mtime)
@@ -678,7 +683,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
                         + user_rec("u-2", 600, "task-notification: reviews done")
                     )
                     old = now - 600
-                    dashboard.os.utime(fp, (old, old))
+                    os.utime(fp, (old, old))
                     post_hook()
                     self.assertEqual("needs_input", state())
             finally:
@@ -726,7 +731,7 @@ class NotifyHookTest(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         # The server recorded the hook, which is the whole point of the script.
-        self.assertIn("abcd1234", dashboard._hook_notifs)
+        self.assertIn("abcd1234", state_of().hook_notifications)
 
     def test_never_fails_the_agent_that_invoked_it(self) -> None:
         # A hook that exits non-zero disturbs the session it reports on, and
@@ -848,12 +853,12 @@ class HookOrderingTest(unittest.TestCase):
     def setUp(self) -> None:
         # This class does not inherit CargentoServerTest's shared reset, and
         # these tests mutate process-wide hook state.
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
+        with state_of().hook_lock:
+            state_of().hook_notifications.clear()
+            state_of().last_session_state.clear()
+            state_of().hook_generation.clear()
+            state_of().last_popup.clear()
+            state_of().last_popup_message.clear()
 
     def test_session_end_is_not_undone_by_a_slow_notification(self) -> None:
         # Notification handling does transcript lookups outside the lock. A
@@ -890,7 +895,7 @@ class HookOrderingTest(unittest.TestCase):
             release.set()
             thread.join(timeout=5)
 
-        self.assertEqual({}, dashboard._hook_notifs, "SessionEnd was undone")
+        self.assertEqual({}, state_of().hook_notifications, "SessionEnd was undone")
 
     def test_session_end_during_a_collection_neither_blocks_nor_pops(self) -> None:
         # The POST-side generation guard does not help a collection that
@@ -898,17 +903,17 @@ class HookOrderingTest(unittest.TestCase):
         # still announced as blocked and burned the global popup cooldown.
         now = 1_700_000_000.0
         prefix = "abcdef12"
-        with dashboard._lock:
-            dashboard._hook_notifs[prefix] = {"ts": now, "message": "permission"}
+        with state_of().hook_lock:
+            state_of().hook_notifications[prefix] = {"ts": now, "message": "permission"}
         popups: list[Any] = []
         original = notifications.current_hook
 
         def session_ends_mid_collection(st: Any, pfx: str, event: str | None, ts: float) -> Any:
             hook = original(st, pfx, event, ts)
-            with dashboard._lock:  # SessionEnd lands exactly here
-                dashboard._hook_notifs.pop(pfx, None)
-                dashboard._last_state.pop(pfx, None)
-                dashboard._hook_generation[pfx] = dashboard._hook_generation.get(pfx, 0) + 1
+            with state_of().hook_lock:  # SessionEnd lands exactly here
+                state_of().hook_notifications.pop(pfx, None)
+                state_of().last_session_state.pop(pfx, None)
+                state_of().hook_generation[pfx] = state_of().hook_generation.get(pfx, 0) + 1
             return hook
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -918,8 +923,8 @@ class HookOrderingTest(unittest.TestCase):
             transcript.write_text(json.dumps({"type": "user", "uuid": "u"}) + "\n")
             os.utime(transcript, (now - 200, now - 200))  # quiet, so the hook decides
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
                 mock.patch.object(notifications, "current_hook", session_ends_mid_collection),
                 mock.patch.object(notifications, "notify_mac", lambda *a: popups.append(a)),
             ):
@@ -935,15 +940,15 @@ class HookOrderingTest(unittest.TestCase):
         now = 1_700_000_000.0
         prefix = "abcdef12"
         if standing_hook:
-            with dashboard._lock:
-                dashboard._hook_notifs[prefix] = {"ts": now, "message": "permission"}
+            with state_of().hook_lock:
+                state_of().hook_notifications[prefix] = {"ts": now, "message": "permission"}
         popups: list[Any] = []
 
         def end_session() -> None:
-            with dashboard._lock:
-                dashboard._hook_notifs.pop(prefix, None)
-                dashboard._last_state.pop(prefix, None)
-                dashboard._hook_generation[prefix] = dashboard._hook_generation.get(prefix, 0) + 1
+            with state_of().hook_lock:
+                state_of().hook_notifications.pop(prefix, None)
+                state_of().last_session_state.pop(prefix, None)
+                state_of().hook_generation[prefix] = state_of().hook_generation.get(prefix, 0) + 1
 
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "projects" / "-w-proj"
@@ -974,8 +979,8 @@ class HookOrderingTest(unittest.TestCase):
                 notif_patches["maybe_popup"] = popup
 
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
                 mock.patch.multiple(notifications, **notif_patches),
                 # patch.multiple rejects an empty mapping, so re-patch the real
                 # function when this variant does not intercept it.
@@ -1057,7 +1062,7 @@ class HookOrderingTest(unittest.TestCase):
                 request(second).do_POST()
             release.set()
             thread.join(timeout=5)
-        return dict(dashboard._hook_notifs)
+        return dict(state_of().hook_notifications)
 
     def test_a_clearing_notification_does_not_drop_a_racing_permission_prompt(self) -> None:
         # Only SessionEnd means "this session is gone". agent_completed and
@@ -1098,7 +1103,7 @@ class HookOrderingTest(unittest.TestCase):
             mock.patch.object(notifications, "notify_mac"),
         ):
             handler.do_POST()
-        self.assertIn("cafebabe", dashboard._hook_notifs)
+        self.assertIn("cafebabe", state_of().hook_notifications)
 
 
 class NativeNotifierTest(unittest.TestCase):
@@ -1124,10 +1129,10 @@ class NativeNotifierTest(unittest.TestCase):
     def test_api_data_reports_who_owns_popups(self) -> None:
         # The page reads this to decide whether to notify; if it went missing,
         # macOS would double-notify and Linux would notify not at all.
-        with mock.patch.object(dashboard.sys, "platform", "darwin"):
-            self.assertEqual("osascript", dashboard.collect(24, False)["native_notify"])
-        with mock.patch.object(dashboard.sys, "platform", "win32"):
-            self.assertEqual("", dashboard.collect(24, False)["native_notify"])
+        with mock.patch.object(sys, "platform", "darwin"):
+            self.assertEqual("osascript", collect(24, False)["native_notify"])
+        with mock.patch.object(sys, "platform", "win32"):
+            self.assertEqual("", collect(24, False)["native_notify"])
 
 
 class GlobUnderTest(unittest.TestCase):
@@ -1143,10 +1148,10 @@ class GlobUnderTest(unittest.TestCase):
                 json.dumps({"type": "user", "agentName": "worker", "teamName": "session-bbbbbbbb"})
                 + "\n"
             )
-            with mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(PROJECTS_DIR=str(projects)):
+                config, state = runtime()
                 self.assertFalse(claude_data.prefix_is_agent(config, state, "[a-z]*"))
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 self.assertTrue(claude_data.prefix_is_agent(config, state, "aaaaaaaa"))
 
 
@@ -1154,16 +1159,14 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
 
     def setUp(self) -> None:
-        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
-        self._server_started = dashboard.__dict__["SERVER_STARTED"]
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().hook_lock:
+            state_of().hook_notifications.clear()
+            state_of().last_popup.clear()
+            state_of().last_popup_message.clear()
+            state_of().last_session_state.clear()
+            state_of().hook_generation.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
@@ -1186,10 +1189,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         self.addCleanup(notify_patcher.stop)
 
     def tearDown(self) -> None:
-        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
-        dashboard.__dict__["SERVER_STARTED"] = self._server_started
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
 
     @staticmethod
     def _response(
@@ -1254,7 +1255,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 worker.join(timeout=5)
             self.assertFalse(worker.is_alive())
             self.assertEqual([(200, b'{"ok":true,"superseded":true}')], notification)
-            self.assertNotIn("12345678", dashboard._hook_notifs)
+            self.assertNotIn("12345678", state_of().hook_notifications)
         finally:
             release.set()
             httpd.shutdown()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +13,18 @@ from cargento_runtime import claude_data, notifications, records, spacedock
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import claude as claude_collector
 
-from .support import LegacyDashboardTestCase, collect_claude, dashboard, make_runtime
+from . import support
+from .support import (
+    LegacyDashboardTestCase,
+    cfg,
+    collect,
+    collect_claude,
+    config_patch,
+    make_runtime,
+    runtime,
+    state_of,
+    store_patch,
+)
 
 
 class ClaudeDataBoundTest(unittest.TestCase):
@@ -81,8 +93,8 @@ class ClaudeDataBoundTest(unittest.TestCase):
             outside = Path(tmp) / f"{prefix}-0000-0000-0000-000000000000.jsonl"
             outside.write_text(record + "\n")
 
-            with mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")):
+                config, state = runtime()
 
                 self.assertTrue(claude_data.hook_user_event(config, state, str(inside), prefix)[0])
                 self.assertEqual(
@@ -106,8 +118,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 json.dumps({"id": "2", "subject": "Legacy", "status": "completed"})
             )
 
-            with mock.patch.object(dashboard, "TASKS_DIR", str(root)):
-                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
+            with store_patch(TASKS_DIR=str(root)):
+                tasks = claude_collector.load_tasks(runtime()[0])
 
         self.assertEqual({"12345678", "abcdef12"}, set(tasks))
         self.assertEqual("Current", tasks["12345678"][0]["subject"])
@@ -130,8 +142,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 )
                 + "\n"
             )
-            with mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(PROJECTS_DIR=str(projects)):
+                config, state = runtime()
                 found, user_event = claude_data.hook_user_event(
                     config, state, str(transcript), session_id[:8]
                 )
@@ -140,9 +152,9 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("user-before-hook", user_event)
 
     def test_new_user_event_clears_hook_without_comparing_clocks(self) -> None:
-        _config, state = dashboard._legacy_runtime()
-        with dashboard._lock:
-            dashboard._hook_notifs["12345678"] = {
+        _config, state = runtime()
+        with state_of().hook_lock:
+            state_of().hook_notifications["12345678"] = {
                 "ts": 10_000.0,
                 "message": "permission",
                 "user_event": "before",
@@ -150,7 +162,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
 
         self.assertIsNotNone(notifications.current_hook(state, "12345678", "before", 0.0))
         self.assertIsNone(notifications.current_hook(state, "12345678", "after", 0.0))
-        self.assertNotIn("12345678", dashboard._hook_notifs)
+        self.assertNotIn("12345678", state_of().hook_notifications)
 
     def test_untimestamped_user_record_clears_hook_notification(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,12 +177,12 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 )
                 + "\n"
             )
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             before = claude_data.analyze_transcript(config, state, str(transcript))[
                 "last_user_event"
             ]
-            with dashboard._lock:
-                dashboard._hook_notifs["12345678"] = {
+            with state_of().hook_lock:
+                state_of().hook_notifications["12345678"] = {
                     "ts": 10_000.0,
                     "message": "permission",
                     "user_event": before,
@@ -185,7 +197,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                     )
                     + "\n"
                 )
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             after = claude_data.analyze_transcript(config, state, str(transcript))[
                 "last_user_event"
             ]
@@ -202,13 +214,13 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             },
             {
                 "type": "assistant",
-                "message": {"content": "x" * (dashboard.TAIL_BYTES + 100)},
+                "message": {"content": "x" * (cfg().tail_bytes + 100)},
             },
         ]
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "12345678-session.jsonl"
             transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             user_event = claude_data.analyze_transcript(config, state, str(transcript))[
                 "last_user_event"
             ]
@@ -242,19 +254,19 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # The only possible split in append-only JSONL puts the older
         # tool_use outside the tail and its later answer inside it. The answer
         # cannot age out before the question that precedes it.
-        filler = {"type": "assistant", "message": {"content": "x" * dashboard.TAIL_BYTES}}
+        filler = {"type": "assistant", "message": {"content": "x" * cfg().tail_bytes}}
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "session.jsonl"
             transcript.write_text(
                 "\n".join(json.dumps(record) for record in (question, filler, answer)) + "\n"
             )
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = claude_data.analyze_transcript(config, state, str(transcript))
 
         self.assertIsNone(info["pending_input_tool"])
 
     def test_transcript_mtime_alone_does_not_clear_newer_hook(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         event_time = datetime.fromtimestamp(now - 10, UTC).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
@@ -273,15 +285,15 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 )
                 + "\n"
             )
-            with dashboard._lock:
-                dashboard._hook_notifs["12345678"] = {
+            with state_of().hook_lock:
+                state_of().hook_notifications["12345678"] = {
                     "ts": now - 1,
                     "message": "permission",
                 }
 
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(tasks)),
                 mock.patch.object(notifications, "notify_mac"),
             ):
                 sessions = collect_claude(now, 24, False)
@@ -290,7 +302,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # surfaces once the session goes quiet) — but the property this test
         # protects still holds: mtime alone must NOT clear the stored hook.
         self.assertEqual("working", sessions[0]["state"])
-        self.assertIn("12345678", dashboard._hook_notifs)
+        self.assertIn("12345678", state_of().hook_notifications)
 
     def test_claude_agent_identity_reads_only_a_bounded_prefix(self) -> None:
         record = json.dumps(
@@ -301,17 +313,17 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             }
         )
         source = mock.mock_open(read_data=(record + "\n" + ("x" * 100_000)).encode())
-        runtime = dashboard._legacy_runtime()
+        runtime_pair = runtime()
         with (
             mock.patch("builtins.open", source),
-            mock.patch.object(dashboard.os.path, "getsize", return_value=1_000_000),
-            mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
+            mock.patch.object(os.path, "getsize", return_value=1_000_000),
+            mock.patch.object(support, "runtime", return_value=runtime_pair),
         ):
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime_pair
             identity = claude_data.agent_identity(config, state, "/fake/transcript.jsonl")
 
         self.assertEqual((True, "reviewer", "12345678"), identity)
-        source().read.assert_called_once_with(runtime[0].claude_agent_scan_bytes)
+        source().read.assert_called_once_with(runtime_pair[0].claude_agent_scan_bytes)
 
     def test_claude_agent_identity_drops_a_partial_final_prefix_record(self) -> None:
         apparent_record = b'{"agentName":"reviewer","teamName":"session-badbad00"}'
@@ -319,14 +331,10 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             path = Path(tmp) / "agent.jsonl"
             path.write_bytes(apparent_record + b"-continued-without-newline")
             with (
-                mock.patch.object(dashboard, "_AGENT_SCAN_BYTES", len(apparent_record)),
-                mock.patch.object(
-                    dashboard,
-                    "_AGENT_CACHE_NEGATIVE_MIN_BYTES",
-                    len(apparent_record) * 10,
-                ),
+                config_patch(claude_agent_scan_bytes=len(apparent_record)),
+                config_patch(claude_agent_cache_negative_min_bytes=len(apparent_record) * 10),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 identity = claude_data.agent_identity(config, state, str(path))
 
         self.assertEqual((False, "", ""), identity)
@@ -340,7 +348,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             }
         )
         source = mock.mock_open(read_data=(record + "\n").encode())
-        runtime = dashboard._legacy_runtime()
+        runtime_pair = runtime()
         path = "/fake/transient-agent.jsonl"
         with (
             mock.patch(
@@ -348,15 +356,15 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 side_effect=[PermissionError("temporarily locked"), source.return_value],
             ),
             mock.patch.object(
-                dashboard.os.path,
+                os.path,
                 "getsize",
-                return_value=runtime[0].claude_agent_cache_negative_min_bytes,
+                return_value=runtime_pair[0].claude_agent_cache_negative_min_bytes,
             ),
-            mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
+            mock.patch.object(support, "runtime", return_value=runtime_pair),
         ):
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime_pair
             self.assertEqual((False, "", ""), claude_data.agent_identity(config, state, path))
-            self.assertNotIn(path, dashboard._agent_class_cache)
+            self.assertNotIn(path, state_of().agent_class_cache)
             self.assertEqual(
                 (True, "reviewer", "12345678"),
                 claude_data.agent_identity(config, state, path),
@@ -365,7 +373,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
     def test_transient_agent_setting_read_failure_is_not_negative_cached(self) -> None:
         record = json.dumps({"agentSetting": spacedock.SPACEDOCK_ENSIGN})
         source = mock.mock_open(read_data=(record + "\n").encode())
-        runtime = dashboard._legacy_runtime()
+        runtime_pair = runtime()
         path = "/fake/transient-setting.jsonl"
         with (
             mock.patch(
@@ -373,13 +381,13 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 side_effect=[PermissionError("temporarily locked"), source.return_value],
             ),
             mock.patch.object(
-                dashboard.os.path,
+                os.path,
                 "getsize",
-                return_value=runtime[0].claude_agent_cache_negative_min_bytes,
+                return_value=runtime_pair[0].claude_agent_cache_negative_min_bytes,
             ),
-            mock.patch.object(dashboard, "_legacy_runtime", return_value=runtime),
+            mock.patch.object(support, "runtime", return_value=runtime_pair),
         ):
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime_pair
             self.assertEqual("", claude_data.agent_setting(config, state, path))
             self.assertNotIn(path, state.spacedock_role_cache)
             self.assertEqual(
@@ -400,22 +408,22 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             self.assertEqual(payload, path.read_bytes())
             self.assertEqual(payload, short_scan.read_bytes())
             with (
-                mock.patch.object(dashboard, "_CWD_SCAN_LINES", 2),
-                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first_line)),
+                config_patch(claude_cwd_scan_lines=2),
+                config_patch(claude_cwd_line_bytes=len(first_line)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 self.assertEqual(
                     "/wanted/project", claude_data.session_cwd(config, state, str(path))
                 )
             with (
-                mock.patch.object(dashboard, "_CWD_SCAN_LINES", 1),
-                mock.patch.object(dashboard, "CLAUDE_CWD_LINE_BYTES", len(first_line)),
+                config_patch(claude_cwd_scan_lines=1),
+                config_patch(claude_cwd_line_bytes=len(first_line)),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 self.assertEqual("", claude_data.session_cwd(config, state, str(short_scan)))
 
     def test_configured_agent_transcript_remains_a_top_level_session(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         timestamp = datetime.fromtimestamp(now - 5, UTC).isoformat()
         session_id = "c0ffee25-0000-0000-0000-000000000000"
         with tempfile.TemporaryDirectory() as tmp:
@@ -445,11 +453,11 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 + "\n"
             )
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(tasks)),
             ):
                 sessions = collect_claude(now, 24, False)
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 classified_as_subagent = claude_data.prefix_is_agent(config, state, session_id[:8])
 
         self.assertEqual([session_id[:8]], [session["session"] for session in sessions])
@@ -460,7 +468,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         )
 
     def test_young_agent_identity_can_gain_a_parent_relation(self) -> None:
-        config, state = dashboard._legacy_runtime()
+        config, state = runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "young-agent.jsonl"
             transcript.write_text(
@@ -489,7 +497,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
 
     def test_young_agent_identity_can_gain_a_name_after_parent_relation(self) -> None:
-        config, state = dashboard._legacy_runtime()
+        config, state = runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "young-agent.jsonl"
             transcript.write_text(
@@ -506,7 +514,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 (True, "", "12345678"),
                 claude_data.agent_identity(config, state, str(transcript)),
             )
-            self.assertNotIn(str(transcript), dashboard._agent_class_cache)
+            self.assertNotIn(str(transcript), state_of().agent_class_cache)
 
             with transcript.open("a") as stream:
                 stream.write(
@@ -525,7 +533,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
 
     def test_parent_relation_without_agent_name_is_still_a_subagent(self) -> None:
-        config, state = dashboard._legacy_runtime()
+        config, state = runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "unnamed-agent.jsonl"
             transcript.write_text(
@@ -544,7 +552,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
 
     def test_claude_agent_negative_cache_waits_for_conclusive_prefix(self) -> None:
-        config, state = dashboard._legacy_runtime()
+        config, state = runtime()
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "young.jsonl"
             transcript.write_text("{}\n")
@@ -552,7 +560,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 (False, "", ""),
                 claude_data.agent_identity(config, state, str(transcript)),
             )
-            self.assertNotIn(str(transcript), dashboard._agent_class_cache)
+            self.assertNotIn(str(transcript), state_of().agent_class_cache)
 
             transcript.write_text("{}\n" * 50)
             self.assertEqual(
@@ -560,7 +568,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 claude_data.agent_identity(config, state, str(transcript)),
             )
 
-        self.assertIn(str(transcript), dashboard._agent_class_cache)
+        self.assertIn(str(transcript), state_of().agent_class_cache)
 
     def test_claude_title_prefers_newest_ai_title_outside_tail(self) -> None:
         records = [
@@ -574,13 +582,13 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             {
                 "type": "assistant",
                 "timestamp": "2026-01-01T00:00:01Z",
-                "message": {"content": "x" * (dashboard.TAIL_BYTES + 100)},
+                "message": {"content": "x" * (cfg().tail_bytes + 100)},
             },
         ]
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "session.jsonl"
             transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = claude_data.analyze_transcript(config, state, str(transcript))
 
         self.assertEqual("Current generated title", info["title"])
@@ -602,7 +610,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "session.jsonl"
             transcript.write_text("\n".join(json.dumps(record) for record in records) + "\n")
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             info = claude_data.analyze_transcript(config, state, str(transcript))
 
         self.assertEqual("First useful prompt", info["title"])
@@ -618,10 +626,10 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             (project / "12345678-session.jsonl").write_text("{}\n")
 
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(tasks)),
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(tasks)),
             ):
-                sessions = collect_claude(dashboard.time.time(), 24, True)
+                sessions = collect_claude(time.time(), 24, True)
 
         self.assertEqual(["12345678"], [session["session"] for session in sessions])
 
@@ -631,7 +639,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # teamName "session-<parent prefix>". They must NOT surface as
         # standalone sessions; they attach to the parent as named running
         # subagents, keep it working, and contribute to its output rate.
-        now = dashboard.time.time()
+        now = time.time()
         iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
         stale_iso = datetime.fromtimestamp(now - 600, UTC).isoformat()
         parent_id = "aaaa1111-0000-0000-0000-000000000000"
@@ -682,10 +690,10 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
             # Parent quiet for 10 minutes; child fresh.
             old = now - 600
-            dashboard.os.utime(parent_fp, (old, old))
+            os.utime(parent_fp, (old, old))
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             ):
                 sessions = collect_claude(now, 24, False)
 
@@ -702,7 +710,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # The parent still stays in the window, because a child write is real
         # activity even when it is too old to read as running.
         # Mutation-checked: dropping the child freshness filter passed the suite.
-        now = dashboard.time.time()
+        now = time.time()
         stale_iso = datetime.fromtimestamp(now - 600, UTC).isoformat()
         parent_id = "aaaa1111-0000-0000-0000-000000000000"
         child_id = "bbbb2222-0000-0000-0000-000000000000"
@@ -736,11 +744,11 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 + "\n"
             )
             old = now - 600
-            dashboard.os.utime(parent_fp, (old, old))
-            dashboard.os.utime(child_fp, (old, old))
+            os.utime(parent_fp, (old, old))
+            os.utime(child_fp, (old, old))
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             ):
                 sessions = collect_claude(now, 24, False)
 
@@ -760,8 +768,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
             (root / "2.json").write_text(json.dumps(["not", "a", "task"]))
 
-            with mock.patch.object(dashboard, "TASKS_DIR", str(tmp)):
-                tasks = claude_collector.load_tasks(dashboard._legacy_runtime()[0])
+            with store_patch(TASKS_DIR=str(tmp)):
+                tasks = claude_collector.load_tasks(runtime()[0])
 
         rows = tasks["12345678"]
         self.assertEqual(1, len(rows))  # the non-dict record is skipped
@@ -783,9 +791,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             (sub / "agent-2.jsonl").write_text("{}\n")
             (sub / "agent-2.meta.json").write_text("42")  # non-dict meta
 
-            agents = claude_collector.load_subagents(
-                dashboard._legacy_runtime()[0], str(sess), dashboard.time.time()
-            )
+            agents = claude_collector.load_subagents(runtime()[0], str(sess), time.time())
 
         # Both agents survive with the fallback label instead of TypeError.
         self.assertEqual(["subagent", "subagent"], [a["label"] for a in agents])
@@ -796,7 +802,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # would list every subagent it ever ran and never leave Working.
         # Mutation-checked: dropping the filter passed the whole suite.
         now = 1_700_000_000.0
-        config = dashboard._legacy_runtime()[0]
+        config = runtime()[0]
         with tempfile.TemporaryDirectory() as tmp:
             sess = Path(tmp) / "abc.jsonl"
             sess.write_text("{}\n")
@@ -831,9 +837,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             # The run's bookkeeping file sits beside its agents and is not one.
             (run / "journal.jsonl").write_text("{}\n")
 
-            agents = claude_collector.load_subagents(
-                dashboard._legacy_runtime()[0], str(sess), dashboard.time.time()
-            )
+            agents = claude_collector.load_subagents(runtime()[0], str(sess), time.time())
 
         self.assertEqual({"plain-task", "review:bugs"}, {a["label"] for a in agents})
 
@@ -841,7 +845,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # The live 5cb7c95e case: the main loop is parked awaiting a background
         # workflow, so its transcript goes quiet while ten workflow agents burn
         # tokens. The session read Idle with its task list hidden.
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "5cb7c95e-0000-0000-0000-000000000000"
         stale = now - 400  # well past WORKING_THRESHOLD_SEC
         with tempfile.TemporaryDirectory() as tmp:
@@ -858,7 +862,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
                 )
                 + "\n"
             )
-            dashboard.os.utime(transcript, (stale, stale))
+            os.utime(transcript, (stale, stale))
             run = project / session_id / "subagents" / "workflows" / "wf_506d8d41-ba5"
             run.mkdir(parents=True)
             agent = run / "agent-a88a43dd9.jsonl"
@@ -878,8 +882,8 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             )
             (run / "agent-a88a43dd9.meta.json").write_text('{"name":"detect:backend"}')
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             ):
                 session = collect_claude(now, 24, False)[0]
 
@@ -893,7 +897,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # last_activity drives both the freshness window and the "idle 23h"
         # age. A stale parent whose workflow agents wrote a minute ago has to
         # count as a minute old, or a long run ages out of the dashboard.
-        now = dashboard.time.time()
+        now = time.time()
         session_id = "d0d0d0d0-0000-0000-0000-000000000000"
         ancient = now - 30 * 3600  # older than the 24h window
         with tempfile.TemporaryDirectory() as tmp:
@@ -901,16 +905,16 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             project.mkdir(parents=True)
             transcript = project / f"{session_id}.jsonl"
             transcript.write_text("{}\n")
-            dashboard.os.utime(transcript, (ancient, ancient))
+            os.utime(transcript, (ancient, ancient))
             run = project / session_id / "subagents" / "workflows" / "wf_1"
             run.mkdir(parents=True)
             agent = run / "agent-1.jsonl"
             agent.write_text("{}\n")
             recent = now - 300  # quiet enough not to read Working
-            dashboard.os.utime(agent, (recent, recent))
+            os.utime(agent, (recent, recent))
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             ):
                 sessions = collect_claude(now, 24, False)
 
@@ -926,22 +930,22 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             filler = "\n".join(json.dumps({"type": "x", "n": i}) for i in range(60))
             late.write_text(filler + "\n" + json.dumps({"type": "user", "cwd": "/w/late"}) + "\n")
             # Past the 50-line scan bound: not found, and not cached as a miss.
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             self.assertEqual("", claude_data.session_cwd(config, state, str(late)))
-            self.assertNotIn(str(late), dashboard._cwd_cache)
+            self.assertNotIn(str(late), state_of().cwd_cache)
 
             early = Path(tmp) / "early.jsonl"
             early.write_text("{}\n")
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             self.assertEqual("", claude_data.session_cwd(config, state, str(early)))
             # A miss must not be cached, or a transcript whose head is written
             # before its first cwd record keeps the fallback label forever.
             early.write_text(json.dumps({"type": "user", "cwd": "/w/early"}) + "\n")
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             self.assertEqual("/w/early", claude_data.session_cwd(config, state, str(early)))
 
             missing = Path(tmp) / "gone.jsonl"
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             self.assertEqual("", claude_data.session_cwd(config, state, str(missing)))
 
     def test_claude_project_falls_back_when_transcript_has_no_cwd(self) -> None:
@@ -949,7 +953,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # encoded directory name is lossy (Claude replaces every separator
         # with "-", so it cannot be split back apart), so the documented
         # fallback stays whole rather than guessing at a split.
-        now = dashboard.time.time()
+        now = time.time()
         home = "/Users/cl"
         encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
         with tempfile.TemporaryDirectory() as tmp:
@@ -957,9 +961,9 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
             project_dir.mkdir(parents=True)
             (project_dir / "bbbb2222-0000-0000-0000-000000000000.jsonl").write_text("{}\n")
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "no-tasks")),
-                mock.patch.object(dashboard, "HOME", home),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+                config_patch(home=home),
             ):
                 sessions = collect_claude(now, 24, False)
 
@@ -987,18 +991,18 @@ class ClaudeReviewFixTest(unittest.TestCase):
             transcript.write_text("\n".join(json.dumps(r) for r in malformed) + "\n")
             os.utime(transcript, (now, now))
 
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             self.assertIsNone(claude_data.session_title(config, state, str(transcript)))
             self.assertEqual({}, records.message_dict({"message": "str"}))
             self.assertEqual({}, records.message_dict("not-a-record"))
             self.assertEqual({"a": 1}, records.message_dict({"message": {"a": 1}}))
 
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(Path(tmp) / "projects")),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
             ):
                 sessions = collect_claude(now, 24, False)  # must not raise
-                everything = dashboard.collect(24, True)
+                everything = collect(24, True)
 
         self.assertEqual(1, len(sessions))
         claude = next(h for h in everything["harnesses"] if h["key"] == "claude")
@@ -1029,8 +1033,8 @@ class ClaudeGlobTest(unittest.TestCase):
             )
             os.utime(transcript, (now, now))
             with (
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
             ):
                 sessions = collect_claude(now, 24, False)
 

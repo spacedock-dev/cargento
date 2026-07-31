@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import codex as codex_collector
 
-from .support import LegacyDashboardTestCase, dashboard, make_runtime
+from .support import (
+    LegacyDashboardTestCase,
+    make_runtime,
+    runtime,
+    store_patch,
+)
 
 
 class CodexCollectorTest(LegacyDashboardTestCase):
@@ -35,7 +40,7 @@ class CodexCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("parent-thread", meta["parent_session_id"])
 
     def test_codex_subagent_usage_is_added_after_own_start_boundary(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
 
         def timestamp(offset: float) -> str:
             iso = datetime.fromtimestamp(now + offset, UTC).isoformat()
@@ -96,8 +101,8 @@ class CodexCollectorTest(LegacyDashboardTestCase):
                 + "\n"
             )
 
-            with mock.patch.object(dashboard, "CODEX_SESSIONS_DIR", str(Path(tmp))):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(CODEX_SESSIONS_DIR=str(Path(tmp))):
+                config, state = runtime()
                 sessions = codex_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))

@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 from cargento_runtime import records as runtime_records
 from cargento_runtime import transcripts as runtime_transcripts
@@ -15,7 +14,13 @@ from .fixtures import (
     _iso,
     _jsonl,
 )
-from .support import PiScanTestCase, dashboard, make_runtime
+from .support import (
+    PiScanTestCase,
+    cfg,
+    make_runtime,
+    runtime,
+    store_patch,
+)
 
 
 class PiTranscriptTest(unittest.TestCase):
@@ -120,7 +125,7 @@ class PiTranscriptTest(unittest.TestCase):
             "root",
             "2026-07-29T11:59:20Z",
             "assistant",
-            "x" * (dashboard.TAIL_BYTES + 10),
+            "x" * (cfg().tail_bytes + 10),
         )
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pi-session.jsonl"
@@ -455,8 +460,8 @@ class PiCollectorTest(PiScanTestCase):
             root = Path(tmp) / "sessions"
             root.mkdir()
             (root / "not-pi.jsonl").write_text('{"type": "other", "id": "x"}\n')
-            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(PI_SESSIONS_DIR=str(root)):
+                config, state = runtime()
 
                 self.assertFalse(pi_collector.discover(config, state))
 
@@ -493,8 +498,8 @@ class PiCollectorTest(PiScanTestCase):
                 ],
                 self.NOW - 10,
             )
-            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(PI_SESSIONS_DIR=str(root)):
+                config, state = runtime()
                 rows = pi_collector.collect(config, state, self.NOW, 24, False)
 
         by_sid = {row["sid"]: row for row in rows}
@@ -555,8 +560,8 @@ class PiCollectorTest(PiScanTestCase):
                 ],
                 self.NOW - 5,
             )
-            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(PI_SESSIONS_DIR=str(root)):
+                config, state = runtime()
                 rows = pi_collector.collect(config, state, self.NOW, 24, True)
 
         by_sid = {row["sid"]: row for row in rows}
@@ -589,8 +594,8 @@ class PiCollectorTest(PiScanTestCase):
                 ],
                 self.NOW - 20,
             )
-            with mock.patch.object(dashboard, "PI_SESSIONS_DIR", str(root)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(PI_SESSIONS_DIR=str(root)):
+                config, state = runtime()
                 rows = pi_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual(["future"], [row["sid"] for row in rows])

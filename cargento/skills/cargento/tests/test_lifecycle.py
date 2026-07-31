@@ -23,18 +23,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import http_api, lifecycle
+from cargento_runtime import cli, http_api, lifecycle
 from cargento_runtime import io as runtime_io
 
 from .page_harness import PageJsHarness
 from .support import (
     SERVER_PATH,
+    SERVER_STARTED,
     cfg,
-    dashboard,
+    config_patch,
     frontend_page,
     make_runtime,
     make_server,
     serve_until_closed,
+    state_of,
 )
 
 if TYPE_CHECKING:
@@ -47,16 +49,14 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
     OWNED_INSTANCE_READY_TIMEOUT_SEC = 60.0
 
     def setUp(self) -> None:
-        self._spacedock_enabled = dashboard.__dict__["SPACEDOCK_ENABLED"]
-        self._server_started = dashboard.__dict__["SERVER_STARTED"]
-        with dashboard._lock:
-            dashboard._hook_notifs.clear()
-            dashboard._last_popup.clear()
-            dashboard._last_popup_message.clear()
-            dashboard._last_state.clear()
-            dashboard._hook_generation.clear()
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().hook_lock:
+            state_of().hook_notifications.clear()
+            state_of().last_popup.clear()
+            state_of().last_popup_message.clear()
+            state_of().last_session_state.clear()
+            state_of().hook_generation.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
@@ -79,10 +79,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         self.addCleanup(notify_patcher.stop)
 
     def tearDown(self) -> None:
-        dashboard.__dict__["SPACEDOCK_ENABLED"] = self._spacedock_enabled
-        dashboard.__dict__["SERVER_STARTED"] = self._server_started
-        with dashboard._collect_memo_lock:
-            dashboard._collect_memo.clear()
+        with state_of().collect_memo_lock:
+            state_of().collect_memo.clear()
 
     @staticmethod
     def _candidate_port() -> int:
@@ -387,7 +385,7 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
-            mock.patch.object(dashboard.os, "name", "nt"),
+            mock.patch.object(os, "name", "nt"),
             mock.patch.object(
                 sys,
                 "argv",
@@ -403,11 +401,10 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             ),
             mock.patch.object(lifecycle, "spawn_detached", return_value=spawned) as spawn,
             mock.patch.object(lifecycle, "await_spawned", return_value=("started", 0)),
-            mock.patch.object(dashboard.runtime_io, "diag"),
-            self.assertRaises(SystemExit) as caught,
+            mock.patch.object(runtime_io, "diag"),
         ):
-            dashboard.main()
-        self.assertEqual(0, caught.exception.code)
+            code = cli.main()
+        self.assertEqual(0, code)
         # spawn_detached takes (config, args, log_file), and the config it was
         # handed must be the one main built, not a fresh ambient read.
         spawned_config, spawned_args = spawn.call_args.args[0], spawn.call_args.args[1]
@@ -451,8 +448,8 @@ class CargentoServerTest(PageJsHarness):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
         ):
-            lifecycle.write_state(cfg(), 4553, started=dashboard.SERVER_STARTED)
-            lifecycle.write_state(cfg(), 9999, started=dashboard.SERVER_STARTED)
+            lifecycle.write_state(cfg(), 4553, started=SERVER_STARTED)
+            lifecycle.write_state(cfg(), 9999, started=SERVER_STARTED)
             self.assertTrue(os.path.exists(os.path.join(tmp, "cargento-4553.json")))
             state = lifecycle.read_state(cfg(), 4553)
             assert state is not None
@@ -486,8 +483,8 @@ class CargentoServerTest(PageJsHarness):
             blocker = os.path.join(tmp, "home")
             Path(blocker).write_text("not a directory", encoding="utf-8")
             with mock.patch.dict(os.environ, {"CARGENTO_HOME": blocker}):
-                with mock.patch.object(dashboard.runtime_io, "diag") as diag:
-                    lifecycle.write_state(cfg(), 4553, started=dashboard.SERVER_STARTED)
+                with mock.patch.object(runtime_io, "diag") as diag:
+                    lifecycle.write_state(cfg(), 4553, started=SERVER_STARTED)
                 self.assertTrue(diag.called)
 
     def test_probe_port_classifies_cargento_foreign_and_closed(self) -> None:
@@ -564,7 +561,7 @@ class CargentoServerTest(PageJsHarness):
 
             with mock.patch.object(lifecycle, "probe_port", return_value=("closed", None)):
                 self.assertEqual("absent", lifecycle.instance_status(cfg(), 4553)["state"])
-                lifecycle.write_state(cfg(), 4553, started=dashboard.SERVER_STARTED)
+                lifecycle.write_state(cfg(), 4553, started=SERVER_STARTED)
                 stale = lifecycle.instance_status(cfg(), 4553)
             self.assertEqual("stale", stale["state"])
             self.assertEqual(os.getpid(), stale["pid"])
@@ -625,7 +622,7 @@ class CargentoServerTest(PageJsHarness):
         with (
             mock.patch.object(lifecycle, "instance_status", return_value=running),
             mock.patch.object(lifecycle, "port_released", return_value=False) as released,
-            mock.patch.object(dashboard, "STOP_RELEASE_TIMEOUT_SEC", 0.2),
+            config_patch(stop_release_timeout_sec=0.2),
             mock.patch.object(http.client, "HTTPConnection") as conn,
         ):
             conn.return_value.getresponse.return_value.status = 200
@@ -638,7 +635,7 @@ class CargentoServerTest(PageJsHarness):
     def test_await_release_sleeps_between_failed_probes(self) -> None:
         with (
             mock.patch.object(lifecycle, "port_released", side_effect=(False, True)) as released,
-            mock.patch.object(dashboard.time, "sleep") as sleep,
+            mock.patch.object(time, "sleep") as sleep,
         ):
             self.assertTrue(lifecycle.await_release(cfg(), 4553, timeout=1))
         self.assertEqual(2, released.call_count)
@@ -669,11 +666,10 @@ class CargentoServerTest(PageJsHarness):
                     return_value={"state": state, "port": 4553, "pid": 1},
                 ),
                 mock.patch.object(sys, "argv", ["server.py", "--status"]),
-                mock.patch.object(dashboard.runtime_io, "diag"),
-                self.assertRaises(SystemExit) as caught,
+                mock.patch.object(runtime_io, "diag"),
             ):
-                dashboard.main()
-            self.assertEqual(expected, caught.exception.code, state)
+                code = cli.main()
+            self.assertEqual(expected, code, state)
 
     def test_stop_instance_stops_a_running_server_over_http(self) -> None:
         httpd = make_server()
@@ -757,7 +753,7 @@ class CargentoServerTest(PageJsHarness):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
         ):
-            lifecycle.write_state(cfg(), 4553, started=dashboard.SERVER_STARTED)
+            lifecycle.write_state(cfg(), 4553, started=SERVER_STARTED)
             # port_released is mocked alongside probe_port because the stale
             # branch now waits for the port too. Left live it asks the real
             # 4553, so the result would depend on what the machine is running.
@@ -782,11 +778,11 @@ class CargentoServerTest(PageJsHarness):
                 mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
             ):
                 if probe:
-                    lifecycle.write_state(cfg(), 4553, started=dashboard.SERVER_STARTED)
+                    lifecycle.write_state(cfg(), 4553, started=SERVER_STARTED)
                 with (
                     mock.patch.object(lifecycle, "probe_port", return_value=("closed", None)),
                     mock.patch.object(lifecycle, "port_released", return_value=False),
-                    mock.patch.object(dashboard, "STOP_RELEASE_TIMEOUT_SEC", 0.1),
+                    config_patch(stop_release_timeout_sec=0.1),
                 ):
                     message, code = lifecycle.stop_instance(cfg(), 4553)
                 self.assertEqual(1, code)
@@ -807,7 +803,7 @@ class CargentoServerTest(PageJsHarness):
                 self.subTest(released=released),
                 mock.patch.object(lifecycle, "instance_status", return_value=running),
                 mock.patch.object(lifecycle, "port_released", return_value=released),
-                mock.patch.object(dashboard, "STOP_RELEASE_TIMEOUT_SEC", 0.1),
+                config_patch(stop_release_timeout_sec=0.1),
                 mock.patch.object(http.client, "HTTPConnection") as conn,
             ):
                 conn.return_value.getresponse.side_effect = ConnectionResetError(
@@ -891,10 +887,10 @@ class CargentoServerTest(PageJsHarness):
                 ("truncated", '{"pid": 1'),
                 ("not an object", "[1, 2, 3]"),
                 ("empty", ""),
-                ("oversized", "0" * (dashboard.STATE_READ_CAP_BYTES + 1024)),
+                ("oversized", "0" * (cfg().state_read_cap_bytes + 1024)),
                 (
                     "oversized valid object",
-                    '{"pid": 1}' + " " * dashboard.STATE_READ_CAP_BYTES,
+                    '{"pid": 1}' + " " * cfg().state_read_cap_bytes,
                 ),
                 (
                     "oversized UTF-8 object",
@@ -930,18 +926,17 @@ class CargentoServerTest(PageJsHarness):
                 with (
                     mock.patch.dict(os.environ, {"CARGENTO_HOME": home}),
                     mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
-                    mock.patch.object(dashboard.runtime_io, "diag") as diag,
+                    mock.patch.object(runtime_io, "diag") as diag,
                     mock.patch.object(http_api, "CargentoHTTPServer") as bind,
                     mock.patch.object(lifecycle, "fork_daemon") as fork,
                     mock.patch.object(lifecycle, "spawn_detached") as spawn,
-                    self.assertRaises(SystemExit) as caught,
                 ):
-                    dashboard.main()
+                    code = cli.main()
             finally:
                 # Restore before TemporaryDirectory tries to remove it, and
                 # before this frame can leave a 0o500 directory behind.
                 os.chmod(home, 0o700)
-        self.assertEqual(1, caught.exception.code)
+        self.assertEqual(1, code)
         bind.assert_not_called()
         fork.assert_not_called()
         spawn.assert_not_called()
@@ -960,7 +955,7 @@ class CargentoServerTest(PageJsHarness):
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
-            mock.patch.object(dashboard.os, "name", "nt"),
+            mock.patch.object(os, "name", "nt"),
             mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
             mock.patch.object(
                 http_api,
@@ -970,12 +965,11 @@ class CargentoServerTest(PageJsHarness):
             mock.patch.object(lifecycle, "spawn_detached", return_value=spawned) as spawn,
             mock.patch.object(lifecycle, "await_spawned", return_value=("started", 0)) as awaited,
             mock.patch.object(lifecycle, "fork_daemon") as fork,
-            mock.patch.object(dashboard.runtime_io, "diag"),
-            self.assertRaises(SystemExit) as caught,
+            mock.patch.object(runtime_io, "diag"),
         ):
-            dashboard.main()
+            code = cli.main()
 
-        self.assertEqual(0, caught.exception.code)
+        self.assertEqual(0, code)
         bind.assert_not_called()
         # No POSIX fork either: this branch re-spawns instead.
         fork.assert_not_called()
@@ -989,7 +983,7 @@ class CargentoServerTest(PageJsHarness):
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
         ):
-            lifecycle.write_state(cfg(), 4553, started=dashboard.SERVER_STARTED)
+            lifecycle.write_state(cfg(), 4553, started=SERVER_STARTED)
             with mock.patch.object(lifecycle, "probe_port", return_value=("foreign", None)):
                 message, code = lifecycle.stop_instance(cfg(), 4553)
             self.assertEqual(1, code)
@@ -1012,11 +1006,10 @@ class CargentoServerTest(PageJsHarness):
         with (
             mock.patch.object(lifecycle, "stop_instance", return_value=("nope", 1)) as stop,
             mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--stop"]),
-            mock.patch.object(dashboard.runtime_io, "diag") as diag,
-            self.assertRaises(SystemExit) as caught,
+            mock.patch.object(runtime_io, "diag") as diag,
         ):
-            dashboard.main()
-        self.assertEqual(1, caught.exception.code)
+            code = cli.main()
+        self.assertEqual(1, code)
         self.assertEqual(4553, stop.call_args.args[1])
         diag.assert_called_once_with("nope", print)
 
@@ -1112,10 +1105,11 @@ class CargentoServerTest(PageJsHarness):
         for other in ("--diagnose", "--stop", "--status"):
             with (
                 mock.patch.object(sys, "argv", ["server.py", "--daemon", other]),
+                # parser.error() raises: argparse owns this exit, not main().
                 self.assertRaises(SystemExit) as caught,
                 contextlib.redirect_stderr(io.StringIO()),
             ):
-                dashboard.main()
+                cli.main()
             self.assertEqual(2, caught.exception.code, other)
 
     def test_daemon_explains_a_home_it_cannot_create_instead_of_tracebacking(self) -> None:
@@ -1129,14 +1123,13 @@ class CargentoServerTest(PageJsHarness):
             with (
                 mock.patch.dict(os.environ, {"CARGENTO_HOME": not_a_dir}),
                 mock.patch.object(sys, "argv", ["server.py", "--port", "4553", "--daemon"]),
-                mock.patch.object(dashboard.runtime_io, "diag") as diag,
+                mock.patch.object(runtime_io, "diag") as diag,
                 # A traceback here would escape before either of these is used.
                 mock.patch.object(http_api, "CargentoHTTPServer") as bind,
                 mock.patch.object(lifecycle, "fork_daemon") as fork,
-                self.assertRaises(SystemExit) as caught,
             ):
-                dashboard.main()
-        self.assertEqual(1, caught.exception.code)
+                code = cli.main()
+        self.assertEqual(1, code)
         bind.assert_not_called()
         fork.assert_not_called()
         said = " ".join(str(call.args[0]) for call in diag.call_args_list)

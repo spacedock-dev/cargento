@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,7 +21,18 @@ from cargento_runtime.collectors import gemini as gemini_collector
 from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 
-from .support import SERVER_PATH, LegacyDashboardTestCase, collect_claude, dashboard, make_runtime
+from .support import (
+    SERVER_PATH,
+    STORE_OVERRIDES,
+    LegacyDashboardTestCase,
+    collect,
+    collect_claude,
+    diagnose,
+    make_runtime,
+    runtime,
+    state_of,
+    store_patch,
+)
 
 
 class SqliteCollectorTest(LegacyDashboardTestCase):
@@ -64,7 +76,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # Archiving bumps time_updated, so an archived session would otherwise
         # read as active the moment it was filed away. Mutation-checked:
         # dropping the time_archived skip passed the whole suite.
-        now = dashboard.time.time()
+        now = time.time()
         millis = int(now * 1000)
         with tempfile.TemporaryDirectory() as tmp:
             self._opencode_db(
@@ -74,8 +86,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
                     ("filed", None, "/w/filed", "Filed", millis, millis),
                 ],
             )
-            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
                 rows = opencode_collector.collect(config, state, now, 24, True)
 
         self.assertEqual(["live"], [row["sid"] for row in rows])
@@ -83,7 +95,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
     def test_a_store_without_time_archived_still_reads(self) -> None:
         # OpenCode added the column, and an older store must not read as empty.
         # Mutation-checked: narrowing the fallback's exception passed the suite.
-        now = dashboard.time.time()
+        now = time.time()
         millis = int(now * 1000)
         with tempfile.TemporaryDirectory() as tmp:
             self._opencode_db(
@@ -91,15 +103,15 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
                 [("old", None, "/w/old", "Old schema", millis)],
                 with_archived=False,
             )
-            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
                 rows = opencode_collector.collect(config, state, now, 24, True)
 
         self.assertEqual(["old"], [row["sid"] for row in rows])
 
     def test_fresh_child_sessions_become_the_parents_subagents(self) -> None:
         # Mutation-checked: dropping the child titles passed the whole suite.
-        now = dashboard.time.time()
+        now = time.time()
         millis = int(now * 1000)
         with tempfile.TemporaryDirectory() as tmp:
             self._opencode_db(
@@ -109,8 +121,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
                     ("kid", "parent", "/w/proj", "researcher", millis, None),
                 ],
             )
-            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
                 rows = opencode_collector.collect(config, state, now, 24, True)
 
         self.assertEqual(1, len(rows), "a child must not become its own row")
@@ -121,15 +133,15 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # Collectors swallow their failures, so a corrupt store reads as an idle
         # machine unless the error reaches diagnostics. Mutation-checked:
         # dropping record_store_error passed the whole suite.
-        now = dashboard.time.time()
+        now = time.time()
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "opencode.db"
             con = sqlite3.connect(db)
             con.execute("CREATE TABLE unrelated (x INTEGER)")  # no session table
             con.commit()
             con.close()
-            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
 
                 self.assertEqual([], opencode_collector.collect(config, state, now, 24, True))
                 self.assertIn(str(db), state.store_errors)
@@ -138,15 +150,15 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # The guard only matters when a store EXISTS and sqlite3 does not; with
         # no store the empty glob hides it. Mutation-checked: removing the guard
         # passed the whole suite.
-        now = dashboard.time.time()
+        now = time.time()
         millis = int(now * 1000)
         with tempfile.TemporaryDirectory() as tmp:
             self._opencode_db(
                 Path(tmp) / "opencode.db",
                 [("s1", None, "/w/proj", "Work", millis, None)],
             )
-            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
                 self.assertEqual(
                     ["s1"],
                     [r["sid"] for r in opencode_collector.collect(config, state, now, 24, True)],
@@ -158,7 +170,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
                     self.assertEqual([], opencode_collector.collect(config, state, now, 24, True))
 
     def test_opencode_show_all_returns_every_session(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         stale = int((now - 48 * 3600) * 1000)  # outside the 24h window
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "opencode.db"
@@ -174,8 +186,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             con.commit()
             con.close()
 
-            with mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(OPENCODE_DATA=str(tmp)):
+                config, state = runtime()
                 everything = opencode_collector.collect(config, state, now, 24, True)
                 windowed = opencode_collector.collect(config, state, now, 24, False)
 
@@ -198,12 +210,12 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
 
     def _collect_cursor(self, tmp: Path) -> list[dict[str, Any]]:
         with (
-            mock.patch.object(dashboard, "CURSOR_CHATS", str(tmp / "chats")),
-            mock.patch.dict(dashboard.STORE_ROOTS, {"cursor.chats": [str(tmp / "chats")]}),
+            store_patch(CURSOR_CHATS=str(tmp / "chats")),
+            mock.patch.dict(STORE_OVERRIDES, {"cursor.chats": [str(tmp / "chats")]}),
         ):
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             sessions: list[dict[str, Any]] = cursor_collector.collect(
-                config, state, dashboard.time.time(), 24, True
+                config, state, time.time(), 24, True
             )
             return sessions
 
@@ -221,7 +233,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             )
             self.assertEqual(1, len(self._collect_cursor(root)))
 
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             db = next(iter(state.cursor_metadata_cache))
             mtime = state.cursor_metadata_cache[db][0]
 
@@ -356,7 +368,7 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         self.assertEqual("Fix the login bug", sessions[0]["title"])
 
     def test_cursor_without_a_workspace_path_keeps_the_harness_name(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         if not runtime_io.sqlite_available():
             self.skipTest("sqlite3 unavailable")
         with tempfile.TemporaryDirectory() as tmp:
@@ -370,18 +382,16 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             finally:
                 con.close()
             with (
-                mock.patch.object(dashboard, "CURSOR_CHATS", str(Path(tmp) / "chats")),
-                mock.patch.dict(
-                    dashboard.STORE_ROOTS, {"cursor.chats": [str(Path(tmp) / "chats")]}
-                ),
+                store_patch(CURSOR_CHATS=str(Path(tmp) / "chats")),
+                mock.patch.dict(STORE_OVERRIDES, {"cursor.chats": [str(Path(tmp) / "chats")]}),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 sessions = cursor_collector.collect(config, state, now, 24, True)
 
         self.assertEqual("cursor", sessions[0]["project"])
 
     def test_cursor_sessions_discovered_with_title(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         with tempfile.TemporaryDirectory() as tmp:
             chat = Path(tmp) / "ws1" / "33334444-bbbb"
             chat.mkdir(parents=True)
@@ -392,8 +402,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             con.commit()
             con.close()
 
-            with mock.patch.object(dashboard, "CURSOR_CHATS", str(tmp)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(CURSOR_CHATS=str(tmp)):
+                config, state = runtime()
                 sessions = cursor_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
@@ -427,23 +437,23 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
         # Goose moved its store between XDG and two Windows AppData locations,
         # so the resolver keeps several candidates and all of them are read.
         # Mutation-checked: scanning only the first candidate passed the suite.
-        now = dashboard.time.time()
+        now = time.time()
         stamp = datetime.fromtimestamp(now - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
         with tempfile.TemporaryDirectory() as tmp:
             first, second = Path(tmp) / "one.db", Path(tmp) / "two.db"
             self._goose_db(first, "from-first", "First store", stamp)
             self._goose_db(second, "from-second", "Second store", stamp)
             with (
-                mock.patch.object(dashboard, "GOOSE_DB", str(first)),
-                mock.patch.dict(dashboard.STORE_ROOTS, {"goose.db": [str(first), str(second)]}),
+                store_patch(GOOSE_DB=str(first)),
+                mock.patch.dict(STORE_OVERRIDES, {"goose.db": [str(first), str(second)]}),
             ):
-                config, state = dashboard._legacy_runtime()
+                config, state = runtime()
                 rows = goose_collector.collect(config, state, now, 24, True)
 
         self.assertEqual({"from-first", "from-second"}, {row["sid"] for row in rows})
 
     def test_goose_sessions_from_shared_db(self) -> None:
-        now = dashboard.time.time()
+        now = time.time()
         stamp = datetime.fromtimestamp(now - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "sessions.db"
@@ -478,8 +488,8 @@ class SqliteCollectorTest(LegacyDashboardTestCase):
             con.commit()
             con.close()
 
-            with mock.patch.object(dashboard, "GOOSE_DB", str(db)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(GOOSE_DB=str(db)):
+                config, state = runtime()
                 sessions = goose_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))  # subagent/infra/archived filtered
@@ -503,10 +513,10 @@ class SqliteDiagnosticTest(unittest.TestCase):
             broken = Path(tmp) / "sessions.db"
             broken.write_text("definitely not a database")
             with (
-                mock.patch.dict(dashboard.STORE_ROOTS, {"goose.db": [str(broken)]}),
-                mock.patch.object(dashboard, "GOOSE_DB", str(broken)),
+                mock.patch.dict(STORE_OVERRIDES, {"goose.db": [str(broken)]}),
+                store_patch(GOOSE_DB=str(broken)),
             ):
-                report = dashboard.diagnose(24)
+                report = diagnose(24)
 
         self.assertIn(str(broken), report["store_errors"])
         self.assertIn("not a database", report["store_errors"][str(broken)])
@@ -517,7 +527,7 @@ class SqliteDiagnosticTest(unittest.TestCase):
         # accumulates every store that ever failed. --diagnose exists to answer
         # "what is broken now", and a store fixed an hour ago must not still be
         # listed. Mutation-checked: dropping the clear passed the whole suite.
-        _, state = dashboard._legacy_runtime()
+        _, state = runtime()
         stale = "/nonexistent/store/fixed-an-hour-ago.db"
         with state.cache_lock:
             state.store_errors[stale] = "DatabaseError: file is not a database"
@@ -525,10 +535,10 @@ class SqliteDiagnosticTest(unittest.TestCase):
             broken = Path(tmp) / "sessions.db"
             broken.write_text("definitely not a database")
             with (
-                mock.patch.dict(dashboard.STORE_ROOTS, {"goose.db": [str(broken)]}),
-                mock.patch.object(dashboard, "GOOSE_DB", str(broken)),
+                mock.patch.dict(STORE_OVERRIDES, {"goose.db": [str(broken)]}),
+                store_patch(GOOSE_DB=str(broken)),
             ):
-                report = dashboard.diagnose(24)
+                report = diagnose(24)
 
         self.assertIn(str(broken), report["store_errors"], "this run's failure must be reported")
         self.assertNotIn(stale, report["store_errors"])
@@ -542,13 +552,13 @@ class SqliteDiagnosticTest(unittest.TestCase):
             cursor = Path(tmp) / "store.db"
             cursor.write_bytes(b"also not a database")
 
-            with dashboard._cache_lock:
-                dashboard._store_errors.clear()
-            config, state = dashboard._legacy_runtime()
+            with state_of().cache_lock:
+                state_of().store_errors.clear()
+            config, state = runtime()
             gemini_collector._step_activity(config, state, str(antigravity), self.NOW)
-            self.assertIn(str(antigravity), dashboard._store_errors)
+            self.assertIn(str(antigravity), state_of().store_errors)
 
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             with state.cache_lock:
                 state.store_errors.clear()
             self.assertEqual((None, ""), cursor_collector._meta(config, state, str(cursor), 1.0))
@@ -569,7 +579,7 @@ class SqliteOptionalTest(unittest.TestCase):
         with self.without_sqlite():
             self.assertFalse(runtime_io.sqlite_available())
             now = 1_700_000_000.0
-            config, state = dashboard._legacy_runtime()
+            config, state = runtime()
             # Moved collectors take the runtime contract; the rest are still
             # launcher-owned. Each entry flips as its extraction task lands.
             collectors: tuple[tuple[str, Any], ...] = (
@@ -593,12 +603,10 @@ class SqliteOptionalTest(unittest.TestCase):
             db.write_bytes(b"")
             with (
                 self.without_sqlite(),
-                mock.patch.object(dashboard, "OPENCODE_DATA", str(tmp)),
-                mock.patch.object(dashboard, "GOOSE_DB", str(db)),
+                store_patch(OPENCODE_DATA=str(tmp)),
+                store_patch(GOOSE_DB=str(db)),
             ):
-                found = {
-                    h["key"]: h["discovered"] for h in dashboard.collect(24, False)["harnesses"]
-                }
+                found = {h["key"]: h["discovered"] for h in collect(24, False)["harnesses"]}
 
         self.assertFalse(found["opencode"])
         self.assertFalse(found["goose"])
@@ -613,8 +621,8 @@ class SqliteOptionalTest(unittest.TestCase):
             os.utime(transcript, (now, now))
             with (
                 self.without_sqlite(),
-                mock.patch.object(dashboard, "PROJECTS_DIR", str(projects)),
-                mock.patch.object(dashboard, "TASKS_DIR", str(Path(tmp) / "tasks")),
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
             ):
                 sessions = collect_claude(now, 24, False)
 
@@ -637,51 +645,65 @@ def blocked(name, *a, **k):
 builtins.__import__ = blocked
 sys.modules.pop("sqlite3", None)
 sys.path.insert(0, str(Path({path!r}).parent))
-spec = importlib.util.spec_from_file_location("srv", {path!r})
-m = importlib.util.module_from_spec(spec)
-sys.modules[spec.name] = m          # dataclasses resolves annotations via sys.modules
-spec.loader.exec_module(m)          # must not raise
-# The launcher no longer imports a collector, so import the database-backed
-# ones here, still under the blocked import, to keep proving they load.
+# The launcher is a thin wrapper now, so the thing that must import without
+# sqlite3 is the runtime package. Import the CLI (which pulls in every module
+# the launcher would) and the database-backed collectors, all still under the
+# blocked import.
+from cargento_runtime import cli
 from cargento_runtime import diagnostics as diagnostics_module
+from cargento_runtime import io as runtime_io
 from cargento_runtime.collectors import cursor as cursor_collector
 from cargento_runtime.collectors import gemini as gemini_collector
 from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 builtins.__import__ = real_import
-assert not m.runtime_io.sqlite_available(), "sqlite_available() should be False"
+assert not runtime_io.sqlite_available(), "sqlite_available() should be False"
 now = 1_700_000_000.0
-cfg, st = m._legacy_runtime()
+import argparse, dataclasses, os, tempfile
+from types import MappingProxyType
+
+
+def runtime_for(**roots):
+    args = cli.build_parser().parse_args([])
+    config, state = cli.build_runtime(args, started=now)
+    if roots:
+        merged = dict(config.store_roots)
+        merged.update({{key: (value,) for key, value in roots.items()}})
+        config = dataclasses.replace(config, store_roots=MappingProxyType(merged))
+    return config, state
+
+
+cfg, st = runtime_for()
 for name, mod in (("opencode", opencode_collector), ("cursor", cursor_collector),
                   ("goose", goose_collector)):
     assert mod.collect(cfg, st, now, 24, True) == [], name
 # Antigravity is discovered from store mtime and CLI logs, so it survives
 # without sqlite3 — only its rate and ETA degrade. Give it a real store so
 # this exercises the database-backed path instead of an empty glob.
-import os, tempfile
 ag = tempfile.mkdtemp()
 os.makedirs(os.path.join(ag, "conversations"))
 store = os.path.join(ag, "conversations", "conv-1.db")
 open(store, "wb").write(b"not a database")
 os.utime(store, (now, now))
-m.ANTIGRAVITY_CLI_DIR = ag
-m.STORE_ROOTS["antigravity.root"] = [ag]
-cfg2, st2 = m._legacy_runtime()
+cfg2, st2 = runtime_for(**{{"antigravity.root": ag}})
 found_ag = gemini_collector._collect_antigravity(cfg2, st2, now, 24, True)
 assert len(found_ag) == 1, found_ag
 assert found_ag[0]["rate_per_min"] == 0, "rate should degrade to zero"
 assert found_ag[0]["turn"] is None, "no ETA without the database"
-data = m.collect(24, True)          # full pass, including discovery predicates
+application = cli.build_application(cfg, st)
+data = application.collect(show_all=True)   # full pass, including discovery
 found = {{h["key"]: h["discovered"] for h in data["harnesses"]}}
 assert found["opencode"] is False and found["goose"] is False and found["cursor"] is False
-report = m.diagnose(24)             # --diagnose must work too
+report = diagnostics_module.diagnose(cli.build_application(*runtime_for()))
 assert report["sqlite"]["available"] is False
 # A version string here would read as a working sqlite3 in a bug report.
 assert report["sqlite"]["version"] is None, report["sqlite"]
 assert report["sqlite"]["error"], "the import error is what explains the absence"
 rendered = diagnostics_module.render_diagnosis(report)
 assert "UNAVAILABLE" in rendered, rendered.splitlines()[:6]
-diagnostics_module.render_diagnosis(report)
+# The shipped entry point still runs: --diagnose is the recovery command a user
+# reaches for when a harness is missing, and it must work without sqlite3.
+assert cli.main(["--diagnose", "--json"]) == 0
 print("OK")
 """
 
@@ -788,8 +810,8 @@ class SqliteUriTest(unittest.TestCase):
             con.commit()
             con.close()
 
-            with mock.patch.object(dashboard, "OPENCODE_DATA", str(data)):
-                config, state = dashboard._legacy_runtime()
+            with store_patch(OPENCODE_DATA=str(data)):
+                config, state = runtime()
                 sessions = opencode_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
