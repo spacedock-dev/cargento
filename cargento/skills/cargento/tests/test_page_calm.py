@@ -184,15 +184,25 @@ out.rows = rows();
 out.perSession = [K("claude", "aaa1"), K("codex", "bbb2"), K("claude", "ccc3")]
   .map(k => (h.match(new RegExp('data-arg="' + k + '"', "g")) || []).length);
 out.note = h.includes("showing all 3");
-out.footer = h.includes("3 sessions · 1 harnesses · 1,234 tok/min");
+// The session count lives once, in the filter-aware `showing …` note. The
+// footer carries what the note does not, and pluralizes.
+out.footer = h.includes("1 harness · 1,234 tok/min");
+out.footerHasNoCount = !h.includes("3 sessions");
 out.legend = [h.includes("1 needs you"), h.includes("1 working"), h.includes("1 idle")];
 // Column values come straight from the payload.
 out.doing = h.includes("open question (AskUserQuestion), waiting 5m");
 // Only the project may be truncated; the session id identifies the row.
 out.where = h.includes('class="cm-proj">repo/other</span><span class="cm-sess">· bbb2<');
-out.metrics = ["5m wait", "2,010 /m", "2h 46m idle"].map(m => h.includes(m));
-// Signal bar only for a working session with a turn percentage.
+// Two columns, one unit each: `rate` for what the request is producing,
+// `idle / wait` for how long the session has sat still. Each is empty on the
+// buckets it does not describe, so neither mixes units down its length.
+out.metrics = [">5m<", ">2,010 /m<", ">2h 46m<"].map(m => h.includes(m));
+out.headings = [">rate<", ">idle / wait<"].map(m => h.includes(m));
+out.noMixedHeading = !h.includes(">signal<") && !h.includes(">turn<");
+// Progress bar only for a working session with a turn percentage, and it now
+// sits inside the rate cell rather than paying for a column of its own.
 out.bars = (h.match(/class="cm-track"/g) || []).length;
+out.barInRateCell = /class="cm-rate">[\\s\\S]*?class="cm-track"/.test(h);
 out.barWidth = h.includes("width:34%");
 // An unrecognised state is still a row, in the idle bucket.
 render(payload([mk({sid: "z", session: "z", state: "banana"})]));
@@ -206,11 +216,15 @@ console.log(JSON.stringify(out));
         self.assertEqual([2, 2, 2], out["perSession"])
         self.assertTrue(out["note"])
         self.assertTrue(out["footer"], "footer counts disagree with the payload")
+        self.assertTrue(out["footerHasNoCount"], "the session count is still duplicated")
         self.assertEqual([True, True, True], out["legend"])
         self.assertTrue(out["doing"])
         self.assertTrue(out["where"])
         self.assertEqual([True, True, True], out["metrics"])
-        self.assertEqual(1, out["bars"], "only a working turn should draw a signal bar")
+        self.assertEqual([True, True], out["headings"])
+        self.assertTrue(out["noMixedHeading"], "a mixed-unit column heading came back")
+        self.assertEqual(1, out["bars"], "only a working turn should draw a progress bar")
+        self.assertTrue(out["barInRateCell"], "the progress bar left the rate cell")
         self.assertTrue(out["barWidth"])
         self.assertEqual(1, out["unknownState"], "a state the page does not know dropped a row")
         self.assertTrue(out["unknownIdle"])
@@ -772,7 +786,7 @@ calmAction("copy", "claude:aaa1");
 await __settle();
 out.wrote = __wrote;
 out.label = __els.app.innerHTML.includes(">copied<");
-out.otherRowsUnchanged = (__els.app.innerHTML.match(/>id</g) || []).length;
+out.otherRowsUnchanged = (__els.app.innerHTML.match(/>copy id</g) || []).length;
 __tick();
 out.reverts = !__els.app.innerHTML.includes(">copied<");
 console.log(JSON.stringify(out));
@@ -801,6 +815,53 @@ console.log(JSON.stringify({lied: h.includes(">copied<"), told: h.includes(">blo
         absent = self.run_calm(checks)
         self.assertFalse(absent["lied"])
         self.assertTrue(absent["told"])
+
+    def test_the_type_scale_is_the_only_source_of_a_font_size(self) -> None:
+        # The stylesheet used to carry twenty ad-hoc px sizes between 8px and
+        # 15px, which is drift rather than hierarchy. One raw px value reopens
+        # that door, and a step nothing references is a rung nobody stands on.
+        raw = re.findall(r"font-size:\s*[\d.]+px", STYLES)
+        self.assertEqual([], raw, "a font-size bypassed the --fs-* scale")
+        steps = re.findall(r"(--fs-[\w-]+)\s*:", STYLES)
+        self.assertEqual(sorted(steps), sorted(set(steps)), "a scale step is declared twice")
+        for step in steps:
+            with self.subTest(step=step):
+                self.assertIn(f"var({step})", STYLES, "declared but never used")
+
+    def test_the_ink_ramp_stays_three_distinct_readable_steps(self) -> None:
+        # --ink3 carries most of the metadata on the board and used to sit at
+        # 3.1:1, below AA for normal text, on the smallest type in the UI. Both
+        # themes are checked against the worst surface each ink can land on.
+        def luminance(value: str) -> float:
+            channels = [int(value[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+            linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        def ratio(a: str, b: str) -> float:
+            high, low = sorted((luminance(a), luminance(b)), reverse=True)
+            return (high + 0.05) / (low + 0.05)
+
+        dark = re.search(r"@media \(prefers-color-scheme:dark\)\{(.*?)\n  \}", STYLES, re.DOTALL)
+        assert dark is not None
+        light = STYLES[: STYLES.index("@media")]
+
+        def token(block: str, name: str) -> str:
+            found = re.search(rf"{name}:(#[0-9a-f]{{6}})", block)
+            assert found is not None, f"{name} is not a hex value"
+            return found.group(1)
+
+        # Light ink sits on --panel at worst in dark; dark ink on --sunk in light.
+        for theme, block, surface in (
+            ("light", light, "--sunk"),
+            ("dark", dark.group(1), "--panel"),
+        ):
+            worst = token(block, surface)
+            ramp = [ratio(token(block, f"--ink{s}"), worst) for s in ("", "2", "3")]
+            with self.subTest(theme=theme):
+                self.assertGreater(ramp[2], 4.5, "--ink3 fails AA against the surface it sits on")
+                # A ramp whose steps converge stops encoding hierarchy at all.
+                self.assertGreater(ramp[0], ramp[1] * 1.25)
+                self.assertGreater(ramp[1], ramp[2] * 1.25)
 
     def test_every_css_variable_the_page_uses_is_declared(self) -> None:
         # A `var(--typo)` renders as nothing at all and no linter here sees it.

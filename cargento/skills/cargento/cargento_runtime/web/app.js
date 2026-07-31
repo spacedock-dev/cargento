@@ -22,6 +22,23 @@ function fmtDur(sec){
 const LONG_TURN_NOTE = "This request is running long (or estimated to). " +
   "Double-check what the agent is doing matches your expectations.";
 
+// MCP tools reach the payload under their wire name — a mangled
+// `mcp` + server + tool triple joined by double underscores. Rendering that raw
+// puts the transport's naming convention on screen where the reader wants to
+// know which service is being called. Rewrite it to "server · tool name" and
+// leave every other tool name exactly as the harness reported it.
+const MCP_TOOL = /\bmcp__([A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*?)__([A-Za-z0-9_-]+)/g;
+// Host prefixes that identify the connection, not the service behind it.
+const MCP_HOST_PREFIX = /^(?:claude_ai_|claude_code_|plugin_)/;
+function humanTool(text){
+  return String(text == null ? "" : text).replace(MCP_TOOL, (whole, server, tool) => {
+    const service = server.replace(MCP_HOST_PREFIX, "").replace(/_+/g, " ").trim();
+    const action = tool.replace(/_+/g, " ").trim();
+    if(!action) return whole;              // nothing left to show — keep the original
+    return (service ? service + " · " : "") + action;
+  });
+}
+
 // Trailing output-rate sparklines: client-side ring buffers that start when
 // the page opens and drop points once they age out of the visual window.
 // Points are stamped with the VIEWER's clock at receipt — the axis and the
@@ -247,12 +264,19 @@ const HARNESS = {
 };
 for(const k in HARNESS){ if(ICON_PATH[k]) HARNESS[k].icon = iconURI(ICON_PATH[k]); }
 
+/* One badge encoding for both states, and the difference is not carried by
+   colour alone: "has data" is a tinted tile behind a solid edge, "no data" is a
+   dashed edge over nothing. A filled-vs-outlined pair at this size read as the
+   same weight, which is how a strip of nine badges became unreadable. */
 function badge(key, active, name, tipSuffix){
   const h = own(HARNESS, key, null) ||
     {code:String(key||"?").slice(0,2).toUpperCase(), name:key};
   const label = name || h.name;
-  const tileStyle = active ? "background:var(--ink)" : "border:1px solid var(--line)";
-  const on = active ? "var(--bg)" : "var(--ink2)";
+  const tileStyle = active
+    ? "background:color-mix(in oklab,var(--accent) 22%,transparent);" +
+      "border:1px solid color-mix(in oklab,var(--accent) 48%,transparent)"
+    : "border:1px dashed var(--line2)";
+  const on = active ? "var(--ink)" : "var(--ink3)";
   const inner = h.icon
     ? `<span class="bico" style="background:${on};-webkit-mask:url('${h.icon}') center/contain no-repeat;mask:url('${h.icon}') center/contain no-repeat"></span>`
     : `<span class="bmono" style="color:${on}">${esc(h.code)}</span>`;
@@ -293,6 +317,32 @@ function rateTile(d){
   return `<div class="tile"><div class="tile-top"><span class="tile-label">Output rate</span>` +
     `<span class="tile-cap">tok / min · 10 min</span></div>` +
     `<div class="tile-val">${total}</div>${heroSpark()}${rows}</div>`;
+}
+
+/* The grid height-matches the two count tiles to the rate tile beside them,
+   which left each with a big empty box under a single numeral. Spend it on the
+   per-harness split of the very sessions the numeral counted — derived from the
+   same list, so the breakdown can never disagree with the total. */
+function countTile(label, sub, sessions, alert){
+  const byH = new Map();
+  for(const x of sessions) byH.set(x.harness, (byH.get(x.harness) || 0) + 1);
+  const rows = Array.from(byH.entries())
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, 4)
+    .map(([key, n]) => {
+      const name = own(HARNESS, key, {}).name || key;
+      return `<div class="tile-brow">${badge(key, true)}` +
+        `<span class="tile-bname">${esc(name)}</span>` +
+        `<span class="tile-bnum">${n}</span></div>`;
+    }).join("");
+  const body = rows
+    ? `<div class="tile-break">${rows}</div>`
+    : `<div class="tile-none">${esc(sub.empty)}</div>`;
+  const val = sessions.length && alert
+    ? `<div class="tile-val alert">${sessions.length}</div>`
+    : `<div class="tile-val">${sessions.length}</div>`;
+  return `<div class="tile"><div class="tile-label">${esc(label)}</div>${val}` +
+    `<div class="tile-sub">${esc(sub.line)}</div>${body}</div>`;
 }
 
 function sdWindow(stages, idx){
@@ -353,16 +403,24 @@ function turnBlock(t){
     ` aria-label="${LONG_TURN_NOTE}">!` +
     `<span class="ltip">${LONG_TURN_NOTE}</span></span>` : "";
   const pct = (t.pct != null) ? `<span class="pct">${t.pct}%</span>` : "";
-  const bar = (t.pct != null) ? `<div class="turnbar"><span class="turnfill" style="width:${t.pct}%"></span></div>` : "";
+  /* Both shapes draw a track. A turn with no estimate used to drop the bar
+     entirely, so two cards stacked in the same column had different anatomy and
+     the reader had to work out which part was missing rather than reading it. */
+  const bar = (t.pct != null)
+    ? `<div class="turnbar"><span class="turnfill" style="width:${t.pct}%"></span></div>`
+    : `<div class="turnbar" title="No past turn ran this long, so there is nothing` +
+      ` to estimate against."><span class="turnfill indeterminate"></span></div>`;
   const eta = t.eta_h ? `~${esc(t.eta_h)} left (est)` : "running longer than recent turns";
   return `<div class="turn"><div class="turn-row">` +
     `<span class="turn-txt">this request · ${esc(t.elapsed_h)} elapsed · ${eta}</span>` +
     `<span class="turn-right">${warn}${pct}</span></div>${bar}</div>`;
 }
 
+/* Silent when the session tracks no tasks. The board already states once, above
+   the fold, that nothing on it uses tracked tasks; repeating the negative on
+   every card was a line of chrome per card that told the reader nothing. */
 function taskBlock(sess){
-  if(!sess.tasks || !sess.tasks.length)
-    return `<div class="no-tasks">no tracked tasks in this session</div>`;
+  if(!sess.tasks || !sess.tasks.length) return "";
   const order = {in_progress:0, pending:1, completed:2};
   const STATUS = {in_progress:"In progress", pending:"Pending", completed:"Completed"};
   const tasks = [...sess.tasks].sort((a,b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
@@ -404,7 +462,8 @@ function workingCard(d, sess){
     `<div class="card-title">${esc(sess.title || sess.project)}</div>` +
     `<div class="card-meta">${esc(sess.project)} · ${esc(sess.session)}</div>${bitsLine}` +
     `</div>${rateMeter}</div>` +
-    `<div class="now"><span class="now-k">now</span>${esc(sess.state_detail)}</div>` +
+    `<div class="now"><span class="now-k">now</span>` +
+    `<span title="${esc(sess.state_detail)}">${esc(humanTool(sess.state_detail))}</span></div>` +
     turnBlock(sess.turn) + subs + sdBlock(sess) + taskBlock(sess) + `</div>`;
 }
 
@@ -413,7 +472,8 @@ function needRow(d, sess){
   return `<div class="need"><div style="min-width:0">` +
     `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)} · ${esc(sess.session)}</div>` +
     `<div class="need-title">${esc(sess.title || sess.last_prompt || sess.project)}</div>` +
-    `<div class="need-detail">${esc(sess.state_detail)}</div></div>` +
+    `<div class="need-detail" title="${esc(sess.state_detail)}">` +
+    `${esc(humanTool(sess.state_detail))}</div></div>` +
     `<div style="flex:none"><div class="blocked-k">blocked</div><div class="blocked-v">${esc(blocked)}</div></div></div>`;
 }
 
@@ -531,9 +591,13 @@ function renderStopped(){
 function modeBar(){
   const btn = k => `<button type="button" class="modebtn${displayMode === k ? " on" : ""}"` +
     ` data-calm="mode" data-arg="${k}" aria-pressed="${displayMode === k}">${k}</button>`;
+  /* `stop` is past a divider on purpose. Two of these three buttons swap a view
+     and the third ends the server, and sitting them in one undifferentiated
+     group put an irreversible action one slip away from a display toggle. */
   return `<div class="modebar"><span class="modebar-k">display</span>` +
     `<div class="modeseg" role="group" aria-label="display mode">` +
-    btn("regular") + btn("calm") + `</div>` + stopControl() + `</div>`;
+    btn("regular") + btn("calm") + `</div>` +
+    `<span class="modebar-split" aria-hidden="true"></span>` + stopControl() + `</div>`;
 }
 
 /* Two flag tones, and only signals the payload actually carries: --alert for
@@ -547,8 +611,22 @@ const CALM_TONE = {
   warn: {rank:1, ink:"var(--warnink)",
          bg:"color-mix(in oklab,var(--warn) 26%,transparent)",
          bd:"color-mix(in oklab,var(--warn) 42%,transparent)"},
-  quiet:{rank:3, ink:"var(--ink3)", bg:"transparent", bd:"var(--line)"}
+  /* A real chip, not grey text on a grey row. `stale` is the quietest of the
+     three flags but it is still a flag, and rendering it at --ink3 with a
+     hairline border made it disappear into the column it sits in. */
+  quiet:{rank:3, ink:"var(--ink2)",
+         bg:"color-mix(in oklab,var(--ink3) 14%,transparent)",
+         bd:"var(--line2)"}
 };
+/* The footer legend is generated from the same table the row chips use, and its
+   labels are the chip labels verbatim. It used to paraphrase them — "you are the
+   blocker" for a chip that reads `your call` — so the legend described flags the
+   reader could not find on any row. */
+const CALM_FLAG_LEGEND = [
+  {label:"your call", tone:"attn"},
+  {label:"long turn", tone:"warn"},
+  {label:"stale", tone:"quiet"}
+];
 const CALM_RAIL = {needs:"var(--alert)", work:"var(--accent)", idle:"var(--line2)"};
 const CALM_TASK = {
   in_progress:{glyph:"▸", ink:"var(--accent-ink)", text:"var(--ink)"},
@@ -593,7 +671,8 @@ function calmRow(d, x){
   return {
     key: sessKey(x), sid: x.sid,
     harness: x.harness, project: x.project, session: x.session,
-    st, title, doing: x.state_detail, ageSec, waitSec, turn, flag, tone, why,
+    st, title, doing: humanTool(x.state_detail), doingRaw: x.state_detail,
+    ageSec, waitSec, turn, flag, tone, why,
     sortAge: st === "work" ? 0 : ageSec,   /* see byAge — a working row's age is noise */
     rail: CALM_RAIL[st] || CALM_RAIL.idle,
     /* The prompt is only worth quoting when the title is not already it. */
@@ -601,10 +680,21 @@ function calmRow(d, x){
     tasks, taskNote: tasks.length ? taskDone + " of " + tasks.length + " done" : "",
     subagents: x.subagents || [], spacedock: x.spacedock || null,
     rank: flag ? CALM_TONE[tone].rank : (st === "work" ? 2 : 4),
-    metric: st === "needs" ? fmtDur(waitSec) + " wait"
-      : (st === "work" ? (rate ? rate.toLocaleString() + " /m" : "—")
-                       : fmtDur(ageSec) + " idle"),
-    metricInk: st === "needs" ? "var(--alert)" : (st === "idle" ? "var(--ink3)" : "var(--ink2)"),
+    /* One column used to carry all three buckets' headline numbers under the
+       single heading `signal` — tokens per minute on one row, hours idle on the
+       next. A column whose unit changes per row cannot be compared down its own
+       length, which is the only thing a ledger column is for. Two columns now,
+       each with one unit: what this request is producing, and how long the
+       session has been sitting still. Both are empty where they do not apply,
+       and an empty cell reads as "not applicable" where a wrong unit does not. */
+    rate: st === "work" ? (rate ? rate.toLocaleString() + " /m" : "—") : "",
+    rateTip: st === "work"
+      ? (rate ? rate.toLocaleString() + " tokens per minute" : "this harness reports no token rate")
+      : "",
+    quiet: st === "needs" ? fmtDur(waitSec) : (st === "idle" ? fmtDur(ageSec) : ""),
+    quietTip: st === "needs" ? "blocked on you for " + fmtDur(waitSec)
+      : (st === "idle" ? "no activity for " + fmtDur(ageSec) : ""),
+    quietInk: st === "needs" ? "var(--alert)" : "var(--ink3)",
     titleInk: st === "idle" ? "var(--ink2)" : "var(--ink)",
     detailAge: st === "needs" ? "blocked " + fmtDur(waitSec)
       : (st === "work" ? "last event " + fmtDur(ageSec) + " ago" : "idle " + fmtDur(ageSec)),
@@ -862,7 +952,10 @@ function calmRowHTML(r, focusSid){
   const focus = r.key === focusSid;
   const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
   const pct = (r.turn && r.turn.pct != null) ? r.turn.pct : null;
-  const signal = (r.st === "work" && pct != null)
+  /* The progress bar lives under the rate, not in a column of its own. As a
+     separate track it was 46px wide and empty on every row that was not both
+     working and estimable — which on a real board is nearly all of them. */
+  const bar = (r.st === "work" && pct != null)
     ? `<span class="cm-track" role="img" aria-label="request ${pct} percent complete">` +
       `<span class="cm-fill" style="width:${pct}%;background:${r.rail}"></span></span>`
     : "";
@@ -883,12 +976,15 @@ function calmRowHTML(r, focusSid){
     `<span class="cm-where" title="${esc(r.project + " · " + r.session)}">` +
     `<span class="cm-proj">${esc(r.project)}</span>` +
     `<span class="cm-sess">· ${esc(r.session)}</span></span>` +
-    `<span class="cm-doing" title="${esc(r.doing)}">${esc(r.doing)}</span>` +
-    `<span>${flag}</span><span>${signal}</span>` +
-    `<span class="cm-metric" style="color:${r.metricInk}">${esc(r.metric)}</span>` +
+    `<span class="cm-doing" title="${esc(r.doingRaw)}">${esc(r.doing)}</span>` +
+    `<span>${flag}</span>` +
+    `<span class="cm-rate"><span class="cm-metric" style="color:var(--ink2)"` +
+    ` title="${esc(r.rateTip)}">${esc(r.rate)}</span>${bar}</span>` +
+    `<span class="cm-metric" style="color:${r.quietInk}"` +
+    ` title="${esc(r.quietTip)}">${esc(r.quiet)}</span>` +
     `<span class="cm-q"><button type="button" class="cm-qb" data-calm="copy"` +
     ` data-arg="${esc(r.key)}" title="copy this session's id">` +
-    `${copied ? esc(calmCopyNote.text) : "id"}</button></span>` +
+    `${copied ? esc(calmCopyNote.text) : "copy id"}</button></span>` +
     `<span class="cm-caret">${open ? "–" : "+"}</span></div>` +
     (open ? calmExpansion(r) : "") + `</div>`;
 }
@@ -953,14 +1049,19 @@ function calmLedger(d){
     `<span class="cm-sp"></span><span class="cm-note">${esc(note)}</span></div>` +
     `<div class="cm-body" id="cm-body">` +
     `<div class="cm-head"><span></span><span></span><span>session</span><span>where</span>` +
-    `<span>doing</span><span>flag</span><span>turn</span><span class="r">signal</span>` +
+    `<span>doing</span><span>flag</span><span class="r">rate</span>` +
+    `<span class="r">idle / wait</span>` +
     `<span></span><span></span></div>${body}</div>` +
-    `<div class="cm-foot"><span>${all.length} sessions · ${found.length} harnesses · ` +
+    /* The session count belongs to the control bar's `showing …` note, which is
+       filter-aware. Repeating it down here was a second number for one fact. */
+    `<div class="cm-foot"><span>${found.length} ` +
+    `${found.length === 1 ? "harness" : "harnesses"} · ` +
     `${(d.summary.rate_per_min || 0).toLocaleString()} tok/min</span>` +
     `<span class="cm-fstrip">${strip}</span><span class="cm-sp"></span>` +
-    `<span class="cm-keys"><span><span style="color:var(--alert)">◆</span>you are the blocker` +
-    `</span><span><span style="color:var(--warnink)">◆</span>running long</span>` +
-    `<span><span>◇</span>gone quiet</span></span><span class="cm-sp"></span>` +
+    `<span class="cm-keys">` +
+    CALM_FLAG_LEGEND.map(f => `<span><span class="cm-legend-f"` +
+      ` style="color:${CALM_TONE[f.tone].ink}">◆</span>${esc(f.label)}</span>`).join("") +
+    `</span><span class="cm-sp"></span>` +
     `<span class="cm-keys"><span>j k move</span><span>⏎ expand</span><span>f flagged</span>` +
     `<span>c mode</span><span>esc clear</span></span></div></div>`;
 }
@@ -1112,23 +1213,20 @@ function render(d){
   const working = d.sessions.filter(x => x.state === "working");
   const idle = d.sessions.filter(x => x.state === "idle");
 
-  const needsVal = needs.length > 0
-    ? `<div class="tile-val alert">${needs.length}</div>`
-    : `<div class="tile-val">0</div>`;
   const tiles =
-    `<div class="tile"><div class="tile-label">Needs you</div>${needsVal}` +
-      `<div class="tile-sub">sessions blocked on you</div></div>` +
-    `<div class="tile"><div class="tile-label">Working now</div>` +
-      `<div class="tile-val">${s.working}</div><div class="tile-sub">sessions generating</div></div>` +
+    countTile("Needs you", {line: "sessions blocked on you",
+      empty: "Nothing is waiting on you."}, needs, true) +
+    countTile("Working now", {line: "sessions generating",
+      empty: "No agent is generating right now."}, working, false) +
     rateTile(d);
 
+  /* Three em-dashes and a sentence saying the same thing is not a summary. When
+     nothing tracks tasks, say that once and stop. */
   const subnote = s.total_tasks
     ? `<span>open tasks <b>${s.open_tasks}</b></span><span class="div"></span>` +
       `<span>progress <b>${s.progress_pct}%</b></span><span class="div"></span>` +
       `<span>${s.total_done}/${s.total_tasks} tracked tasks done</span>`
-    : `<span>open tasks <b>–</b></span><span class="div"></span>` +
-      `<span>progress <b>–</b></span><span class="div"></span>` +
-      `<span>no active session uses tracked tasks</span>`;
+    : `<span>no active session uses tracked tasks</span>`;
 
   const bandHtml = needs.length
     ? `<div class="band"><div class="band-head"><span class="band-dot"></span>` +

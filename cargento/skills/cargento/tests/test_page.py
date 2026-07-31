@@ -55,19 +55,19 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
         script = frontend_page.asset_path("app.js").read_bytes()
-        self.assertEqual(93_713, len(assembled))
+        self.assertEqual(104_781, len(assembled))
         self.assertEqual(
-            "3a2264edda06e9caf1fbd34c0226ad8c3b0b320f206a87676c183492a5241b37",
+            "36df2da2598ae85fc0aa03ed0f965cf4d0265abba81048e283642f1a48b5f60b",
             hashlib.sha256(assembled).hexdigest(),
         )
-        self.assertEqual(27_180, len(styles))
+        self.assertEqual(32_644, len(styles))
         self.assertEqual(
-            "e96a2292642bfc40d4bd40e9c23c733cf8d8ef524f55dfb9328685ac53f02cf1",
+            "492b2f422fc6fbdb93f888e87c84463e445f2d9dee2c81959f377ba070c6b999",
             hashlib.sha256(styles).hexdigest(),
         )
-        self.assertEqual(66_237, len(script))
+        self.assertEqual(71_841, len(script))
         self.assertEqual(
-            "bfe260f4c9807d4a59de41f2a37b3711e76547fc67acc73f9201ff11da4a0e48",
+            "13995ebe16b929e19abb632151ebb5bbe198026bfefbb1b45b1604272612f5f1",
             hashlib.sha256(script).hexdigest(),
         )
 
@@ -478,6 +478,63 @@ console.log(JSON.stringify(out));
         # Viewer-clock stamping: server said 999111, viewer clock said 1010.
         self.assertEqual({"t": 1010, "v": 3, "replayDropped": True}, out["clock"])
         self.assertEqual({"hasLine": True, "finite": True, "single": True}, out["svg"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_mcp_tool_names_reach_the_page_as_a_service_and_an_action(self) -> None:
+        # An MCP tool arrives under its wire name — a mangled triple joined by
+        # double underscores. Printed raw it puts the transport's naming scheme
+        # on screen instead of the service being called. Anything that is not an
+        # MCP wire name must pass through untouched.
+        checks = """
+const out = {};
+out.linear = humanTool("running mcp__claude_ai_Linear__list_issues");
+out.plain = humanTool("running Bash");
+out.github = humanTool("mcp__github__search_code");
+out.hyphenated = humanTool("mcp__claude-in-chrome__computer");
+out.pluginPrefix = humanTool("mcp__plugin_figma_figma__authenticate");
+// Nothing that merely looks similar should be rewritten.
+out.notMcp = humanTool("some__other__thing");
+out.nullish = humanTool(null);
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual("running Linear · list issues", out["linear"])
+        self.assertEqual("running Bash", out["plain"], "rewrote an ordinary tool name")
+        self.assertEqual("github · search code", out["github"])
+        self.assertEqual("claude-in-chrome · computer", out["hyphenated"])
+        self.assertEqual("figma figma · authenticate", out["pluginPrefix"])
+        self.assertEqual("some__other__thing", out["notMcp"])
+        self.assertEqual("", out["nullish"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_every_working_card_draws_the_same_anatomy(self) -> None:
+        # Two cards stacked in one column with different parts present reads as
+        # missing data. A turn with no estimate still draws its track, marked
+        # indeterminate, rather than dropping a row of the card.
+        checks = """
+const base = {
+  harness:"claude", session:"12345678", sid:"12345678", project:"proj",
+  title:"t", last_prompt:"", state:"working", state_detail:"running Bash",
+  active:true, last_activity:990, rate_per_min:100, total:0, done:0, open:0,
+  progress_pct:0, eta_h:null, subagents:[], tasks:[]
+};
+const out = {};
+out.estimated = workingCard({generated:1000},
+  {...base, turn:{elapsed_h:"1m", eta_h:"3m", pct:26, long:false}});
+out.unestimated = workingCard({generated:1000},
+  {...base, turn:{elapsed_h:"1m", eta_h:null, pct:null, long:false}});
+console.log(JSON.stringify({
+  bothHaveTrack: [out.estimated, out.unestimated]
+    .map(h => (h.match(/class="turnbar"/g) || []).length),
+  onlyOneIndeterminate: [out.estimated, out.unestimated]
+    .map(h => h.includes("turnfill indeterminate")),
+  // The negative was stated on every card as well as once above the fold.
+  noTaskFiller: !out.estimated.includes("no tracked tasks")}));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual([1, 1], out["bothHaveTrack"], "a working card dropped its track")
+        self.assertEqual([False, True], out["onlyOneIndeterminate"])
+        self.assertTrue(out["noTaskFiller"], "the empty-task filler line came back")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_browser_notifications_fire_only_on_transitions_the_server_missed(self) -> None:
