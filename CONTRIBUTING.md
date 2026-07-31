@@ -8,6 +8,8 @@ Cargento is an agnostic agent cartography and visualization tool, distributed as
 
 Read [AGENTS.md](AGENTS.md) for the repository architecture and [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract before making changes.
 
+If you are looking for what to work on rather than how, [docs/visibility-2x2](docs/visibility-2x2/README.md) is a local board of candidate signals scored on how much a user could act on them against how hard the information is to get without Cargento. Open it with the `visibility-2x2` skill. It is a working document, so treat it as an argument in progress rather than a committed roadmap.
+
 ## Development setup
 
 Prerequisites: Python 3.11+ (`runtime-floor` checks the shipped entry point on 3.11, while the full
