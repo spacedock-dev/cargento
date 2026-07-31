@@ -57,9 +57,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             state_of().hook_generation.clear()
         with state_of().collect_memo_lock:
             state_of().collect_memo.clear()
-        # Route-shape tests exercise successful /api/notify requests, but do
-        # not assert native delivery. Execute the notification code while
-        # keeping its osascript process off the host.
+        # Route-shape tests run the notification code but do not assert native
+        # delivery, so keep its osascript process off the host.
         original_run = subprocess.run
 
         def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:

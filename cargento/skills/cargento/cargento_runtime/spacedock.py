@@ -22,34 +22,29 @@ if TYPE_CHECKING:
     from cargento_runtime.state import RuntimeState
 
 
-# --- Spacedock workflow cartography ---------------------------------------
-#
 # Spacedock drives work items ("entities") through an ordered list of named
 # stages, with a "first officer" session dispatching "ensign" workers. Four
 # facts make it visible to a passive reader, in decreasing order of authority:
 #
 # 1. The launcher starts the session with `--agent spacedock:first-officer`, so
 #    the transcript's first records carry an ``agentSetting``. That alone proves
-#    the session is Spacedock, and costs nothing — it is in the head bytes the
+#    the session is Spacedock, and costs nothing: it is in the head bytes the
 #    subagent classifier already reads.
 # 2. The first officer runs `spacedock status --boot` at startup and the JSON
-#    envelope lands in the transcript as a tool result. It carries the ABSOLUTE
+#    envelope lands in the transcript as a tool result, carrying the ABSOLUTE
 #    workflow directory and the ABSOLUTE entity-state directory, so nothing has
 #    to be discovered by scanning.
-# 3. The ordered stage list is the one fact that envelope's `dispatchable` view
-#    omits, so it is read from the workflow README's frontmatter, along with
-#    which stages are initial and which are terminal. See SECURITY.md for the
-#    contract these reads operate under.
+# 3. The ordered stage list, and which stages are initial or terminal, is the one
+#    fact that envelope's `dispatchable` view omits, so it is read from the
+#    workflow README's frontmatter. See SECURITY.md for the contract these reads
+#    operate under.
 # 4. The entity-state directory holds one file per entity, whose frontmatter
-#    carries the entity's current ``status`` — the stage it is actually parked
-#    on right now.
+#    ``status`` is the stage it is parked on right now.
 #
-# Fact 4 exists because the boot envelope's ``dispatchable`` list is a snapshot
-# of what was dispatchable AT BOOT, not the entity roster. A long-running first
-# officer that boots an empty queue and intakes work later — the common case —
-# reports `dispatchable: []` forever, so a strip anchored on it alone never
-# renders. The state directory is authoritative and current; boot fills in
-# behind it.
+# Fact 4 exists because ``dispatchable`` is a snapshot of what was dispatchable
+# AT BOOT, not the entity roster. A long-running first officer that boots an
+# empty queue and intakes work later (the common case) reports
+# `dispatchable: []` forever, so a strip anchored on it alone never renders.
 #
 # Every parser here is pure so the whole matrix is exercisable on any runner
 # (design decision D-4 in docs/design-cross-platform.md).
@@ -304,7 +299,7 @@ def boot_entity_dir(envelopes: list[dict[str, Any]], workflow_dir: str) -> str:
     guessing a base, and guessing is what the read contract forbids. A
     ``split-root`` workflow legitimately stores state outside its definition
     directory, so containment is NOT required here; the discriminator is applied
-    per file instead (see :func:`sd_read_entities`).
+    per file instead (see :func:`read_entities`).
     """
     out = ""
     for record in envelopes:
@@ -426,7 +421,7 @@ def read_workflow(
     frontmatter declares ``commissioned-by: spacedock@`` — Spacedock's own
     workflow discriminator. No other file in the workflow directory is read and
     no directory is walked; the entity-state directory the boot output names
-    separately is read by :func:`sd_read_entities`. Only derived scalars leave
+    separately is read by :func:`read_entities`. Only derived scalars leave
     this function; no file text does.
 
     ``resting`` is the subset of stages an entity is not moving through: the
@@ -513,7 +508,7 @@ def entity_files(config: RuntimeConfig, entity_dir: str) -> list[tuple[str, str,
     Every candidate is `lstat`ed for real rather than taking the stat
     ``scandir`` already cached. On Windows that cached result reports
     ``st_ino`` and ``st_dev`` as zero, which can never match the ``fstat`` of an
-    open descriptor — so the identity check in :func:`sd_read_frontmatter`
+    open descriptor — so the identity check in :func:`read_frontmatter`
     would refuse every entity file and the strip would come back empty on that
     platform alone. A silent per-platform false negative is exactly the failure
     mode D-4 in ``docs/design-cross-platform.md`` exists to keep out.

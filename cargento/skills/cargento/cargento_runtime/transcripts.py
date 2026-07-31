@@ -164,15 +164,16 @@ _COMMAND_ARGS_RE = re.compile(r"<command-args>\s*(.*?)\s*</command-args>", re.DO
 _PROMPT_PATH_RE = re.compile(r"(?<!:)(?<![\w/])(?:~|/[^\s/]+)(?:/[^\s/]+)+/?")
 
 
-# Only collapse a path long enough to be the problem this solves. Across the
-# transcripts sampled the median slash-run is 11 characters and the 90th
-# percentile is 140: the short ones are mostly not paths at all, and collapsing
-# them corrupts real content. `^/api/v1/users$` became `^users$` before this.
 def shorten_paths(config: RuntimeConfig, text: str) -> str:
     """Collapse long absolute filesystem paths in a title to their last segment."""
 
     def basename(match: re.Match[str]) -> str:
         path = match.group(0)
+        # Only collapse a path long enough to be the problem this solves. Across
+        # the transcripts sampled the median slash-run is 11 characters and the
+        # 90th percentile is 140: the short ones are mostly not paths at all, and
+        # collapsing them corrupts real content. `^/api/v1/users$` became
+        # `^users$` before this.
         if len(path) < config.prompt_path_collapse_min_length:
             return path
         return path.rstrip("/").rpartition("/")[2] or path

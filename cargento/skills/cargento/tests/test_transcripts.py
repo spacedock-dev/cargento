@@ -556,8 +556,8 @@ class PromptTitleTest(unittest.TestCase):
         self.assertEqual("aaaa…", runtime_transcripts.clip("aaaa.bbbbbbbbbbbb", limit=5))
 
     def test_the_path_floor_is_a_boundary_not_a_vibe(self) -> None:
-        # Mutation-checked: `<` vs `<=` on SD_MIN_COLLAPSED_PATH survived the
-        # suite, so the exact cutover is pinned here.
+        # Mutation-checked: `<` vs `<=` on prompt_path_collapse_min_length
+        # survived the suite, so the exact cutover is pinned here.
         def path_of_length(total: int) -> str:
             return "/" + "a" * (total - 4) + "/bc"  # 1 + (total - 4) + 3
 

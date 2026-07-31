@@ -847,7 +847,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         # tokens. The session read Idle with its task list hidden.
         now = time.time()
         session_id = "5cb7c95e-0000-0000-0000-000000000000"
-        stale = now - 400  # well past WORKING_THRESHOLD_SEC
+        stale = now - 400  # well past working_threshold_sec
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "projects" / "sample"
             project.mkdir(parents=True)
@@ -922,9 +922,7 @@ class ClaudeCollectorTest(LegacyDashboardTestCase):
         self.assertAlmostEqual(recent, sessions[0]["last_activity"], delta=2)
 
     def test_claude_session_cwd_reads_the_head_and_retries_when_absent(self) -> None:
-        # The cwd drives every Claude project label, and none of its
-        # behaviour was pinned: the scan bound, and the deliberate choice not
-        # to cache a miss so a transcript that gains a cwd is picked up.
+        # The cwd drives every Claude project label.
         with tempfile.TemporaryDirectory() as tmp:
             late = Path(tmp) / "late.jsonl"
             filler = "\n".join(json.dumps({"type": "x", "n": i}) for i in range(60))

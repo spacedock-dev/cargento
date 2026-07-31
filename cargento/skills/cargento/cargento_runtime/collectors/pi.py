@@ -14,9 +14,10 @@ if TYPE_CHECKING:
     from cargento_runtime.sessions import Session
     from cargento_runtime.state import RuntimeState
 
-# Pi stores an append-only tree rather than a linear transcript.  The session
-# selector follows the path from the newest entry back to parentId: null, so
-# retaining sibling branches would report tools and tokens the agent abandoned.
+# Pi stores an append-only tree rather than a linear transcript. The scanners
+# below follow the path from the newest entry back to parentId: null, so
+# sibling branches cannot report tools and tokens the agent abandoned.
+
 _PI_NO_NAME = object()
 
 

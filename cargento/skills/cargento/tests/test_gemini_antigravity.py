@@ -92,10 +92,9 @@ class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
         self.assertEqual([*complete, "partial"], lines)
 
     def test_antigravity_combined_read_uses_one_config_for_head_and_tail(self) -> None:
-        # The head and tail bounds have to come from the SAME config. They used
-        # to be two ambient lookups, so a bound changing between them produced a
-        # head and a tail that did not describe one file. Passing config in makes
-        # that structural; this pins the behaviour it buys.
+        # The head and tail bounds have to come from the SAME config: as two
+        # ambient lookups, a bound changing between them produced a head and a
+        # tail that did not describe one file.
         config, _ = make_runtime(antigravity_log_head_bytes=13, tail_bytes=10)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "cli.log"

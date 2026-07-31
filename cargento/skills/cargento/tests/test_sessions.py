@@ -67,8 +67,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "growing.jsonl"
             path.write_text(json.dumps(first_prompt) + "\n")
-            # The scanner takes its state explicitly now, so both calls share
-            # one runtime the way they shared the process-wide cache before.
+            # Both scan calls share one runtime: the scanner is incremental, so
+            # the second must see the state the first recorded.
             config, state = make_runtime(turn_scan_max_bytes=200)
             runtime_turns.scan_turns(config, state, str(path), "claude")
             with path.open("a") as output:

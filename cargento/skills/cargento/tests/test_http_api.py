@@ -203,8 +203,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
     def test_a_requested_window_reaches_the_collection_and_its_memo_key(self) -> None:
         # The window is a request-time argument: /api/data must collect and
         # report the window it was asked for, not the configured default.
-        # Mutation-checked: dropping the override in _legacy_application, so
-        # every request silently used the configured window, passed the suite.
+        # Mutation-checked: dropping build_app()'s window override, so every
+        # request silently used the configured window, passed the suite.
         with mock.patch.object(aggregate, "default_harnesses", lambda _notifier: ()):
             requested = json.loads(collect_json(6, False))
             default = json.loads(collect_json(24, False))
@@ -410,8 +410,8 @@ class ReviewFixTest(unittest.TestCase):
         with (
             mock.patch.object(socket.socket, "setsockopt", traced_setsockopt),
             mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", exclusive_option, create=True),
-            # The fake option number is rejected by the OS; that path warns,
-            # which is correct behaviour but noise in the test output.
+            # The fake option number is rejected by the OS, so that path warns;
+            # silence it here.
             mock.patch.object(runtime_io, "diag"),
         ):
             httpd = make_server(application=_application(os_name))
@@ -458,8 +458,8 @@ class ReviewFixTest(unittest.TestCase):
             mock.patch.object(socket.socket, "setsockopt", traced_setsockopt),
             mock.patch.object(socket.socket, "bind", traced_bind),
             mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", 0xFFFB, create=True),
-            # The fake option number is rejected by the OS; that path warns,
-            # which is correct behaviour but noise in the test output.
+            # The fake option number is rejected by the OS, so that path warns;
+            # silence it here.
             mock.patch.object(runtime_io, "diag"),
         ):
             httpd = make_server(application=_application("nt"))

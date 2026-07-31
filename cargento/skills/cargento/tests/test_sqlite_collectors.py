@@ -580,8 +580,6 @@ class SqliteOptionalTest(unittest.TestCase):
             self.assertFalse(runtime_io.sqlite_available())
             now = 1_700_000_000.0
             config, state = runtime()
-            # Moved collectors take the runtime contract; the rest are still
-            # launcher-owned. Each entry flips as its extraction task lands.
             collectors: tuple[tuple[str, Any], ...] = (
                 ("opencode", lambda: opencode_collector.collect(config, state, now, 24, False)),
                 ("cursor", lambda: cursor_collector.collect(config, state, now, 24, False)),
@@ -631,7 +629,7 @@ class SqliteOptionalTest(unittest.TestCase):
 
 class SqliteTrulyAbsentTest(unittest.TestCase):
     """Patching the flag leaves sqlite3 imported, so it cannot catch an unbound
-    name. This imports server.py in a subprocess where the module genuinely
+    name. This imports the runtime in a subprocess where the module genuinely
     fails to import."""
 
     SCRIPT = """
@@ -645,10 +643,9 @@ def blocked(name, *a, **k):
 builtins.__import__ = blocked
 sys.modules.pop("sqlite3", None)
 sys.path.insert(0, str(Path({path!r}).parent))
-# The launcher is a thin wrapper now, so the thing that must import without
-# sqlite3 is the runtime package. Import the CLI (which pulls in every module
-# the launcher would) and the database-backed collectors, all still under the
-# blocked import.
+# The runtime package is what must import without sqlite3. Importing the CLI
+# reaches every module the dashboard needs; the database-backed collectors are
+# named separately because nothing else imports them. All under the block.
 from cargento_runtime import cli
 from cargento_runtime import diagnostics as diagnostics_module
 from cargento_runtime import io as runtime_io

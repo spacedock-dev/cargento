@@ -155,9 +155,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
-    # Sampled before the combination check, matching the launcher this replaces:
-    # the start stamp names this process, and must not shift depending on which
-    # validation ran first.
+    # Sampled before the combination check: the start stamp names this process,
+    # and must not shift depending on which validation ran first.
     started = time.time()
     if args.daemon and (args.diagnose or args.stop or args.status):
         # Each of those three exits without serving, so --daemon cannot apply.

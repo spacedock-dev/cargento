@@ -152,13 +152,13 @@ def newest_plausible(config: RuntimeConfig, now: float, timestamps: Iterable[flo
 
 
 def base_session(harness: str, sid: Any, project: str) -> Session:
-    # "session" is the display id and starts at the DISPLAY_ID_LEN floor;
-    # assign_display_ids() widens it per harness where that floor collides.
-    # "sid" keeps the full identity so the client can key per-session state
-    # without truncation collisions (e.g. two Gemini "session-*" fallback ids
-    # are one string apart at the floor). Claude passes its 8-char prefix, so
-    # sid == session there — that whole collector is already keyed on the
-    # prefix upstream, and widening is a no-op for it.
+    # "session" is the display id. The 8 below is the floor and must match
+    # config.display_id_len, which assign_display_ids() reads; nothing enforces
+    # that they agree. assign_display_ids() widens it per (harness, project)
+    # group where that floor collides. "sid" keeps the full identity so the client
+    # can key per-session state without truncation collisions (e.g. two Gemini
+    # "session-*" fallback ids are one string apart at the floor). Claude passes
+    # its 8-char prefix, already its key upstream, so sid == session there.
     return {
         "session": str(sid)[:8],
         "sid": str(sid),

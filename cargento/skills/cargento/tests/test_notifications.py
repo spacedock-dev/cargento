@@ -276,7 +276,7 @@ class CargentoServerTest(LegacyDashboardTestCase):
 
             fresh = collect_with(5)  # events still flowing -> working
             self.assertEqual("working", fresh["state"])
-            # NOTE: os.utime so mtime matches the stale story
+            # mtime too: staleness reads it, not only the record timestamps
             fp.write_text(transcript(600))
             old = now - 600
             os.utime(fp, (old, old))
@@ -621,9 +621,8 @@ class CargentoServerTest(LegacyDashboardTestCase):
                 store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
                 store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
             )
-            # Built inside the store patches: the application captures its config
-            # once, at construction, so the POSTs this test makes must reach a
-            # server that already knows about the temporary store.
+            # Built inside the store patches: config is captured at construction,
+            # so the POSTs must reach a server that knows the temporary store.
             with patches[0], patches[1]:
                 httpd = make_server()
             thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -1167,9 +1166,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             state_of().hook_generation.clear()
         with state_of().collect_memo_lock:
             state_of().collect_memo.clear()
-        # Route-shape tests exercise successful /api/notify requests, but do
-        # not assert native delivery. Execute the notification code while
-        # keeping its osascript process off the host.
+        # Route-shape tests run the notification code but do not assert native
+        # delivery, so keep its osascript process off the host.
         original_run = subprocess.run
 
         def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:

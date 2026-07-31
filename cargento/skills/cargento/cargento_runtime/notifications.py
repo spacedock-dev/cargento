@@ -17,11 +17,11 @@ if TYPE_CHECKING:
     from cargento_runtime.state import RuntimeState
 
 
-# Tools that mean Claude is blocked on the human, not just running long.
 # Claude Code's documented Notification matcher values. ``idle_timeout`` is
-# accepted as a compatibility alias, while current payloads use
-# ``idle_prompt``. Unknown structured values remain actionable so a newly
-# introduced prompt type does not silently disappear.
+# accepted as a compatibility alias, while current payloads use ``idle_prompt``.
+# These three sets are deliberately not exhaustive: an unrecognised structured
+# type stays actionable (see notification_disposition), so a type Claude Code
+# adds tomorrow surfaces rather than disappearing.
 IDLE_NOTIFICATION_TYPES = {"idle_prompt", "idle_timeout"}
 
 
@@ -222,7 +222,7 @@ def handle_payload(
 ) -> dict[str, Any]:
     """Apply one Claude hook payload and return the response object.
 
-    Every ordering rule the HTTP layer used to carry lives here: SessionEnd
+    Every ordering rule lives here, not in the HTTP layer: SessionEnd
     retirement, the generation guard around the slow transcript lookups,
     subagent suppression, the clear/needs-input decision, and the three popup
     cooldowns. The caller only encodes the result.

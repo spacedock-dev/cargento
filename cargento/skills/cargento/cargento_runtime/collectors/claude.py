@@ -38,10 +38,10 @@ def load_tasks(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
             continue
         try:
             # Explicit UTF-8: the locale default is cp1252 on Windows, which
-            # silently mojibakes non-ASCII task subjects and raises
-            # UnicodeDecodeError on the bytes that code page leaves undefined.
-            # That is a ValueError but not a JSONDecodeError, so it escaped the
-            # handler below and errored the whole Claude collector for a pass.
+            # mojibakes non-ASCII task subjects and raises UnicodeDecodeError on
+            # the bytes that code page leaves undefined. That is a ValueError but
+            # not a JSONDecodeError, so narrowing the handler below lets it escape
+            # and error the whole Claude collector for a pass.
             with open(fp, encoding="utf-8") as f:
                 task = json.load(f)
             st = os.stat(fp)
@@ -105,8 +105,8 @@ def load_subagents(
                 meta = json.load(f)
         except (OSError, ValueError):  # ValueError covers UnicodeDecodeError
             meta = None
-        # Meta values are untyped JSON — a non-string name must not
-        # TypeError the whole Claude collector.
+        # Meta values are untyped JSON: a non-string name must not TypeError the
+        # whole Claude collector.
         if isinstance(meta, dict):
             for key in ("name", "description", "agentType"):
                 value = meta.get(key)
@@ -182,8 +182,8 @@ def collect(
         if show_all or runtime_sessions.is_fresh(config, now, mtime, window_hours * 3600):
             is_agent, agent_name, parent_prefix = claude_data.agent_identity(config, state, fp)
             if is_agent:
-                # Fold into the parent session; never a standalone session.
-                # Without a parent prefix there is nothing to attach to.
+                # Fold into the parent, never a standalone session; without a
+                # parent prefix there is nothing to attach to.
                 if parent_prefix and runtime_sessions.is_fresh(
                     config, now, mtime, window_hours * 3600
                 ):
@@ -361,8 +361,8 @@ def collect(
                 "blocked_since": blocked_since,
                 "active": active,
                 "last_activity": last_activity,
-                # Subagent output now lives in the children's own transcripts;
-                # fold it in so the session's rate reflects all its work.
+                # Subagent output lives in the children's own transcripts; fold
+                # it in so the session's rate reflects all its work.
                 "rate_per_min": runtime_sessions.rate_from(info, now, config)
                 + sum(
                     runtime_sessions.rate_from(

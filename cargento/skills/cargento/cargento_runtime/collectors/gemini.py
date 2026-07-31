@@ -68,8 +68,8 @@ def _log_lines(config: RuntimeConfig, path: str) -> list[str]:
     """Read the beginning and bounded tail of an Antigravity CLI log.
 
     Workspace and conversation identity are written near the beginning,
-    while the latest user prompt is near the tail. Long-running found can
-    exceed ``TAIL_BYTES``, so reading only one side loses one of those.
+    while the latest user prompt is near the tail. Long-running logs can
+    exceed ``tail_bytes``, so reading only one side loses one of those.
     """
     return _log_head_lines_from(config, path) + runtime_io.read_tail(config, path)
 
@@ -587,10 +587,9 @@ def collect(
     window_hours: float,
     show_all: bool,
 ) -> list[Session]:
-    # Legacy Gemini CLI main found:
-    # <tmp>/<project>/chats/session-*.jsonl. Subagents:
-    # <tmp>/<project>/chats/<safeParentSessionId>/<id>.jsonl — linked to the
-    # parent purely by the directory name. Antigravity CLI found are
+    # Legacy Gemini CLI main sessions: <tmp>/<project>/chats/session-*.jsonl.
+    # Subagents: <tmp>/<project>/chats/<safeParentSessionId>/<id>.jsonl, linked
+    # to the parent purely by the directory name. Antigravity CLI sessions are
     # appended from its per-conversation SQLite stores below.
     # sanitized parent session id -> [(label, mtime)]
     agents_by_parent: dict[str, list[tuple[str, float]]] = {}

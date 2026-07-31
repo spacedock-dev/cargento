@@ -1,10 +1,8 @@
 """Shared test runtime.
 
-The suite used to load ``server.py`` dynamically and patch its module globals.
-The launcher owns nothing now, so the seam those tests need lives here instead:
-one shared ``RuntimeState``, and one mutable store-override mapping that
-``runtime()`` folds into a freshly built config. Redirecting a store is
-``mock.patch.dict(STORE_OVERRIDES, {...})``.
+The seam the suite patches: one shared ``RuntimeState``, and one mutable
+store-override mapping that ``runtime()`` folds into a freshly built config.
+Redirecting a store is ``mock.patch.dict(STORE_OVERRIDES, {...})``.
 """
 
 from __future__ import annotations
@@ -51,12 +49,11 @@ HOOK_SPEC.loader.exec_module(dashboard_hook)
 
 # Store key -> path. Patch with mock.patch.dict; runtime() folds it into config.
 STORE_OVERRIDES: dict[str, Any] = {}  # str, or a tuple/list of candidates
-# RuntimeConfig field -> value, applied by runtime() after the build. This is how
-# a test lowers a threshold or a cap that used to be a launcher constant.
+# RuntimeConfig field -> value, applied by runtime() after the build: how a test
+# lowers a threshold or a cap.
 CONFIG_OVERRIDES: dict[str, Any] = {}
 
-# Constant name (as the launcher used to spell it) -> store key. Kept so the
-# harness-contract fixtures can go on naming stores the way they always have.
+# Constant name as the harness-contract fixtures spell it -> store key.
 STORE_KEYS: dict[str, str] = {
     "PROJECTS_DIR": "claude.projects",
     "TASKS_DIR": "claude.tasks",
@@ -77,10 +74,9 @@ _STATE: RuntimeState | None = None
 
 
 def store_patch(**by_constant: str) -> Any:
-    """Redirect stores named the way the launcher's constants used to be.
+    """Redirect stores by their fixture constant name, as a context manager.
 
-    ``store_patch(PROJECTS_DIR=path)`` reads like the patch it replaces and is a
-    context manager in the same way, so it drops into existing ``with`` tuples.
+    ``store_patch(PROJECTS_DIR=path)`` drops into existing ``with`` tuples.
     """
     return mock.patch.dict(
         STORE_OVERRIDES, {STORE_KEYS[name]: value for name, value in by_constant.items()}
@@ -93,7 +89,7 @@ def config_patch(**fields: Any) -> Any:
 
 
 def state_of() -> RuntimeState:
-    """The shared runtime's state, which the launcher used to alias per cache."""
+    """The shared runtime's state."""
     return runtime()[1]
 
 
@@ -201,10 +197,8 @@ def collect_claude(
 ) -> list[dict[str, Any]]:
     """Run the Claude collector over the shared runtime.
 
-    The collector takes its popup notifier as an argument rather than reaching
-    for a module global, so the default here is the same binding the CLI hands
-    the application. Tests that assert on popups keep patching
-    ``notifications.notify_mac`` underneath it.
+    The default notifier is the same binding the CLI hands the application.
+    Tests that assert on popups patch ``notifications.notify_mac`` underneath it.
     """
     config, state = runtime()
     return claude_collector.collect(
@@ -224,12 +218,7 @@ def make_server(
     page_bytes: bytes | None = None,
     window_hours: float = 24,
 ) -> Any:
-    """A CargentoHTTPServer over the shared runtime.
-
-    The server takes its application and page as arguments now, so every test
-    that used to rely on module state passes them here instead. Defaults
-    reproduce what the CLI builds.
-    """
+    """A CargentoHTTPServer over the shared runtime, with CLI-equivalent defaults."""
     return http_api.CargentoHTTPServer(
         ("127.0.0.1", port),
         application if application is not None else build_app(window_hours),
@@ -242,8 +231,8 @@ def notify_handler(payload: dict[str, Any], *, application: Any = None) -> Any:
 
     Those tests drive ``do_POST`` directly rather than over a socket, because
     they need to suspend it mid-flight and land a second request inside the
-    window. The handler reads its application off the server instance now, so it
-    gets a stand-in carrying exactly that and nothing else.
+    window. The handler reads its application off the server instance, so it gets
+    a stand-in carrying exactly that and nothing else.
     """
     handler: Any = http_api._RequestHandler.__new__(http_api._RequestHandler)
     body = json.dumps(payload).encode()
@@ -321,8 +310,6 @@ class RuntimeTestCase(unittest.TestCase):
         self.addCleanup(CONFIG_OVERRIDES.clear)
 
 
-# The historical name, kept so the suite reads consistently while the classes
-# that used it are migrated file by file.
 LegacyDashboardTestCase = RuntimeTestCase
 
 

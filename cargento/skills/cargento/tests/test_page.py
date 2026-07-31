@@ -408,8 +408,6 @@ class CargentoServerTest(PageJsHarness):
         self.assertEqual({"code": "PI", "name": "Pi"}, rendered)
 
     def test_page_ships_trailing_rate_sparklines(self) -> None:
-        # Overall + per-session trailing sparklines: client-side ring buffers
-        # over a 5-minute window, rendered as SVG in the rate tile and cards.
         self.assertIn("SPARK_WINDOW_SEC = 300", APP_JS)
         self.assertIn("const rateHistory = []", APP_JS)
         self.assertIn("const sessRateHistory = new Map()", APP_JS)
@@ -423,8 +421,6 @@ class CargentoServerTest(PageJsHarness):
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_sparkline_buffers_behave_correctly(self) -> None:
-        # Execute the page's actual JS (ring buffers + SVG generation) under
-        # node with a minimal DOM stub, and assert on observable behavior.
         checks = """
 const out = {};
 {
@@ -677,10 +673,8 @@ console.log(JSON.stringify({
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_sparkline_hover_lifecycle_across_renders_and_window_exit(self) -> None:
-        # Behavioral coverage for the interaction layer: hover shows on
-        # pointermove, survives a full render() DOM swap, is CLEARED when the
-        # pointer leaves the window (no in-document pointermove fires), stays
-        # cleared on later renders, and keyboard focus is restored.
+        # A pointer leaving the window fires no in-document pointermove, so the
+        # crosshair has to be cleared on mouseout instead.
         checks = """
 const out = {};
 const wrap = {

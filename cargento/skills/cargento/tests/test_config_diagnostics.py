@@ -624,8 +624,8 @@ class StoreRootsTest(unittest.TestCase):
                 transcript.write_text(json.dumps({"type": "user", "uuid": "u"}) + "\n")
                 os.utime(transcript, (now, now))
             with (
-                # One seam now: the override IS the candidate list, so naming
-                # the primary separately would just overwrite it with one root.
+                # The override IS the candidate list, so naming the primary
+                # separately would just overwrite it with one root.
                 mock.patch.dict(
                     STORE_OVERRIDES,
                     {"claude.projects": [str(first), str(second)]},
@@ -832,8 +832,8 @@ class OperatingSystemExpectationTest(unittest.TestCase):
     def test_project_from_cwd_is_parent_over_basename(self) -> None:
         # DRC-3963. Bare basename collapses every checkout named "subspace"
         # into one label, so the contract is the last two path segments.
-        # The home and OS name come from an explicit config (D-4) so this
-        # runner exercises both platforms rather than only its own.
+        # The home and OS name come from an explicit config, so this runner
+        # exercises both platforms rather than only its own.
         posix = [
             ("/Users/cl/git/spacedock-research/spacedock/subspace", "spacedock/subspace"),
             ("/Users/cl/repos/recce/cargento", "recce/cargento"),

@@ -420,8 +420,7 @@ class LauncherContractTest(unittest.TestCase):
 
     def test_the_launcher_is_only_a_call_into_the_cli(self) -> None:
         # This file is what users and every harness manifest point at, so its
-        # shape is a contract: one import, one call, no re-exports. Anything
-        # else living here is something the runtime should own instead.
+        # shape is a contract: one import, one call, no re-exports.
         source = SERVER_PATH.read_text(encoding="utf-8")
         tree = ast.parse(source)
         imports = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom | ast.Import)]
@@ -559,10 +558,9 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
         )
 
     def test_no_registry_callback_resolves_into_the_launcher(self) -> None:
-        # The whole point of the split. A callback defined in server.py would
-        # still work and would still be reachable, so nothing else catches it.
-        # Claude's is the one wrapper, built by the registry itself to bind the
-        # popup notifier, so it is allowed to live in aggregate.
+        # Every callback must resolve to a collector module. Claude's is the one
+        # exception: the registry wraps it to bind the popup notifier, so it
+        # resolves to aggregate.
         for spec in REGISTRY:
             with self.subTest(harness=spec.key):
                 for role, fn in (("discover", spec.discover), ("collect", spec.collect)):
@@ -638,8 +636,8 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
         self.assertIn("permission", fired[0][1])
 
     def test_the_registry_keys_and_labels_match_the_runtime_default(self) -> None:
-        # The launcher binds Claude's notifier; it must not otherwise rewrite the
-        # registry the runtime declares.
+        # default_harnesses binds Claude's notifier; nothing downstream may
+        # otherwise rewrite the registry the runtime declares.
         runtime_registry = aggregate.default_harnesses(lambda _title, _message: None)
         self.assertEqual(
             [(spec.key, spec.label) for spec in runtime_registry],
@@ -1066,8 +1064,8 @@ from . import page as sibling_page
             *spacedock_symbols,
         ):
             with self.subTest(symbol=symbol):
-                # The launcher has no namespace to check any more, so the
-                # contract is on its source: none of these may reappear there.
+                # The launcher has no namespace to check, so the contract is on
+                # its source: none of these may reappear there.
                 self.assertNotIn(symbol, launcher_source)
         self.assertTrue(all(hasattr(runtime_io, symbol) for symbol in io_symbols))
         self.assertTrue(all(hasattr(records, symbol) for symbol in record_symbols))
@@ -1233,7 +1231,7 @@ class HarnessContractTest(HarnessContractTestCase):
     """One behavioural contract, asserted against every harness.
 
     The rest of the suite grew out of specific bugs, so it covers Claude deeply
-    and the other seven thinly. This states what the dashboard must do and
+    and the other eight thinly. This states what the dashboard must do and
     checks all of them, on whichever OS the runner is.
     """
 

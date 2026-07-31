@@ -258,7 +258,7 @@ def build_droid(root: Path, when: float, sid: str, title: str) -> dict[str, str]
     return {"FACTORY_PROJECTS": str(root)}
 
 
-# (harness key reported in /api/data, fixture builder, store files to corrupt)
+# (harness key reported in /api/data, fixture builder)
 HARNESSES: tuple[tuple[str, Any], ...] = (
     ("claude", build_claude),
     ("codex", build_codex),

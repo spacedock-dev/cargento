@@ -110,11 +110,10 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         # socket already carrying SO_EXCLUSIVEADDRUSE (WSAEINVAL 10022), so both
         # have to come from one decision. Clearing SO_REUSEADDR stops *us* from
         # hijacking someone else's port; this stops anyone else hijacking ours.
-        # Gated on this application's config for the same reason
-        # allow_reuse_address is — reading the host here instead let a
-        # posix-configured application on a Windows host ask for both and fail
-        # every bind. Still gated on the constant existing, which it does not on
-        # POSIX, where getattr returns None.
+        # Gated on this application's config, not the host: reading the host
+        # here let a posix-configured application on a Windows host ask for both
+        # and fail every bind. Also gated on the constant existing, which it does
+        # not on POSIX, where getattr returns None.
         exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
         if exclusive is not None and not self.allow_reuse_address:
             try:
@@ -258,8 +257,6 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self) -> None:
-        # Ingest Claude Code Notification-hook payloads:
-        # {"session_id": "...", "message": "...", ...}
         if not self._local_ok():
             self.send_error(403)
             return
@@ -270,6 +267,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if path != "/api/notify":
             self.send_error(404)
             return
+        # Claude Code Notification-hook payload: {"session_id": ..., "message": ..., ...}
         application = self.server.application
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -293,9 +291,10 @@ class _RequestHandler(BaseHTTPRequestHandler):
             now=time.time(),
             popup_notifier=application.popup_notifier,
         )
-        # Compact separators: the wire format is byte-for-byte what the
-        # handler emitted as literals before the policy moved out.
+        # Compact separators: the notify response is a fixed wire format, and the
+        # hook and race tests assert the exact bytes. json.dumps' default spaces
+        # would break them.
         self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
 
     def log_message(self, *args: Any) -> None:
-        pass  # keep stdout quiet
+        pass  # keep the terminal quiet

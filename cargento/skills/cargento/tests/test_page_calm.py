@@ -46,8 +46,8 @@ const setTimeout = fn => {{ __timers.push(fn); return __timers.length; }};
 const __tick = () => {{ const t = __timers; __timers = []; t.forEach(f => f()); }};
 """
 
-    # A payload builder shared by the checks below. `mk` fills in every field
-    # base_session() ships so a test only states what it is exercising.
+    # `mk` fills in every field base_session() ships, so a test only states
+    # what it is exercising.
     FIXTURE = """
 let __focused = null;
 // Every [data-calm] control in the rendered markup, as something that answers

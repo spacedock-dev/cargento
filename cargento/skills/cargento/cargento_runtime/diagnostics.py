@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 
 # Report order only. The paths come from the resolved configuration, never from
 # a second table, so a relocated store cannot be reported at a path nothing
-# searches. This exists because the resolver groups Claude's two stores the
-# other way round, and --diagnose output gets diffed between machines.
+# searches. Pinned here so reordering the resolver cannot reshuffle output that
+# gets diffed between machines.
 _REPORT_KEY_ORDER = (
     "claude.projects",
     "claude.tasks",
@@ -69,7 +69,9 @@ def candidate_report(path: str) -> dict[str, Any]:
         entry["kind"] = "directory"
         try:
             with os.scandir(path) as scan:
-                entry["entries"] = sum(1 for _ in scan)  # streamed, not materialised
+                # Streamed, not materialised: this is an arbitrary user store
+                # root, so len(list(...)) would hold every entry in memory.
+                entry["entries"] = sum(1 for _ in scan)
             entry["readable"] = True
         except OSError as exc:
             entry["error"] = f"{type(exc).__name__}: {exc}"

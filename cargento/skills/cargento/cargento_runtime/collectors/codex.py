@@ -48,9 +48,8 @@ def collect(
     window_hours: float,
     show_all: bool,
 ) -> list[Session]:
-    # Resumes and subagent threads write separate rollout files; group by the
-    # session_meta session_id, keep the newest top-level file per session,
-    # and treat fresh subagent-thread files as that session's running agents.
+    # Resumes and subagent threads each write their own rollout file, so group
+    # by the session_meta session_id rather than by file.
     found: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
     # parent session_id -> {"agents": [(label, mtime)], "rate": int}
     agent_data: dict[str, dict[str, Any]] = {}

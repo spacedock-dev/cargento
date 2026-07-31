@@ -145,8 +145,8 @@ def scan_turns(
         if size == st["pos"]:
             return st
         if size - st["pos"] > config.turn_scan_max_bytes:
-            # Locate the active turn boundary in the skipped prefix with a
-            # reverse mmap scan, then process the bounded tail forward.
+            # Locate the active turn boundary in the skipped prefix by reading
+            # backward in chunks, then process the bounded tail forward.
             tail_start = size - config.turn_scan_max_bytes
             st.update(_latest_turn_context(config, path, tail_start, harness))
             st["pos"] = tail_start
