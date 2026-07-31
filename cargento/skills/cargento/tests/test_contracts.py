@@ -461,8 +461,10 @@ class LauncherContractTest(unittest.TestCase):
         # runtime first, and a module that scanned a store or bound a port at
         # import time would make those unusable exactly when they are needed.
         probe = (
-            "import sys, socket, subprocess, sqlite3, pkgutil, importlib\n"
-            "sys.path.insert(0, '__ROOT__')\n"
+            "import importlib, pkgutil, socket, sqlite3, subprocess, sys\n"
+            # The root arrives as argv, never interpolated into this source: a
+            # Windows path's backslashes would be read as escape sequences.
+            "sys.path.insert(0, sys.argv[1])\n"
             "import cargento_runtime\n"
             "def boom(*a, **k):\n"
             "    raise AssertionError('side effect at import')\n"
@@ -475,10 +477,10 @@ class LauncherContractTest(unittest.TestCase):
             "for name in names:\n"
             "    importlib.import_module(name)\n"
             "assert len(names) >= 20, names\n"
-            "print('OK', len(names))\n".replace("__ROOT__", str(SERVER_PATH.parent))
+            "print('OK', len(names))\n"
         )
         result = subprocess.run(
-            [sys.executable, "-c", probe],
+            [sys.executable, "-c", probe, str(SERVER_PATH.parent)],
             capture_output=True,
             text=True,
             timeout=60,
@@ -492,20 +494,26 @@ class LauncherContractTest(unittest.TestCase):
         # checking each module's __file__ proves nothing resolved back to a
         # checkout, and it inspects every module rather than a maintained list.
         probe = (
-            "import sys, pkgutil, importlib\n"
-            "sys.path.insert(0, '__ROOT__')\n"
+            "import importlib, pkgutil, sys\n"
+            "from pathlib import Path\n"
+            # Same rule as the probe above: the root is argv, not source.
+            "root = Path(sys.argv[1]).resolve()\n"
+            "sys.path.insert(0, str(root))\n"
             "import cargento_runtime\n"
             "from cargento_runtime.web import page\n"
-            "root = '__ROOT__'\n"
             "names = [m.name for m in pkgutil.walk_packages(\n"
             "    cargento_runtime.__path__, 'cargento_runtime.')]\n"
+            # is_relative_to, not a string prefix: Windows differs from POSIX in
+            # separator and in drive-letter case, and both would defeat a prefix.
             "for name in names:\n"
             "    mod = importlib.import_module(name)\n"
-            "    assert mod.__file__ and mod.__file__.startswith(root), (name, mod.__file__)\n"
+            "    assert mod.__file__, name\n"
+            "    resolved = Path(mod.__file__).resolve()\n"
+            "    assert resolved.is_relative_to(root), (name, str(resolved))\n"
             "for asset in ('index.html', 'styles.css', 'app.js'):\n"
-            "    resolved = str(page.asset_path(asset))\n"
-            "    assert resolved.startswith(root), (asset, resolved)\n"
-            "print('OK', len(names))\n".replace("__ROOT__", str(SERVER_PATH.parent))
+            "    found = page.asset_path(asset).resolve()\n"
+            "    assert found.is_relative_to(root), (asset, str(found))\n"
+            "print('OK', len(names))\n"
         )
         env = {
             key: value
@@ -514,7 +522,7 @@ class LauncherContractTest(unittest.TestCase):
         }
         env["PYTHONNOUSERSITE"] = "1"
         result = subprocess.run(
-            [sys.executable, "-c", probe],
+            [sys.executable, "-c", probe, str(SERVER_PATH.parent)],
             capture_output=True,
             text=True,
             timeout=60,
