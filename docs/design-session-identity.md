@@ -4,6 +4,12 @@ How Cargento answers "which session am I looking at, and where is it running?" B
 were reported together in DRC-3962 and DRC-3963, because together they made distinct
 sessions render as one.
 
+The code is `cargento_runtime/sessions.py` (identity, shape, freshness, display ids) and
+`cargento_runtime/aggregate.py` (dedup, ordering, the per-harness failure boundary). Collectors
+produce rows; neither of those two files knows which harness a row came from, which is what keeps
+identity one rule rather than ten. See
+[`design-runtime-architecture.md`](design-runtime-architecture.md).
+
 ## The reported symptom
 
 A user running three agents out of one worktree saw two of them. In their words:

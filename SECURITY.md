@@ -3,7 +3,8 @@
 ## Scope
 
 Cargento ships two components that touch the network. The dashboard server
-(`cargento/skills/cargento/server.py`) reads local coding-agent session stores (transcripts, task
+(`cargento/skills/cargento/server.py`, whose code is the `cargento_runtime` package beside it)
+reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. `notify_hook.py` is the small forwarder a user
 wires into their own Claude Code hook settings, and it POSTs hook payloads to the dashboard.
 

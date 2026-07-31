@@ -88,11 +88,12 @@ In Codex, invoke it as `$cargento`. In any harness you can also just ask: "open 
 
 ## 3. How it works
 
-The skill starts a stdlib-only Python server (`cargento/skills/cargento/server.py`). The server reads
-local harness session stores read-only, meaning transcripts, task files, and SQLite databases, and
-assembles the HTML, CSS and JavaScript under `cargento_runtime/web/` into a self-refreshing
-dashboard at `http://127.0.0.1:4553/`. No data leaves your machine; the server binds to 127.0.0.1
-only.
+The skill starts a stdlib-only Python server: `cargento/skills/cargento/server.py` is a small
+launcher, and the dashboard itself lives in the importable `cargento_runtime` package beside it. The
+server reads local harness session stores read-only, meaning transcripts, task files, and SQLite
+databases, and assembles the HTML, CSS and JavaScript under `cargento_runtime/web/` into a
+self-refreshing dashboard at `http://127.0.0.1:4553/`. No data leaves your machine; the server binds
+to 127.0.0.1 only.
 
 The dashboard renders the same data two ways, switched by the `display` control at the top right or
 by pressing `c`. Regular mode is a stack of cards, one per working session. Calm mode is a single

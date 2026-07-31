@@ -7,6 +7,13 @@ The rejected ones are the expensive part, because without them they get re-attem
 The security contract these reads operate under is owned by [`SECURITY.md`](../SECURITY.md), and the
 user-facing behaviour is owned by the skill body. This file explains *why*, not *what*.
 
+The parsers live in `cargento_runtime/spacedock.py`, which knows nothing about Claude. The Claude
+collector calls it: `collectors/claude.py` decides whether a session is a first officer, from the
+`agentSetting` in its transcript head, and only then asks for strips. That boundary is what keeps
+Spacedock cartography testable without a transcript, and it is why `spacedock.py` may import
+`claude_data` for shared reads but never a collector. See
+[`design-runtime-architecture.md`](design-runtime-architecture.md).
+
 Each decision keeps a stable `S-N` anchor, and code comments may cite them by name. Grep the
 identifier across `*.py`, `*.toml` and `*.md` before renumbering anything.
 

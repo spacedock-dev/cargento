@@ -1,0 +1,198 @@
+# Design: the modular dashboard runtime
+
+Owner for how the dashboard's Python is arranged: which file owns what, which direction dependencies
+run, and how one process's configuration, state and services are held. Other design documents own
+their own subject and link here rather than repeating the module map.
+
+The dashboard began as a single `server.py` of 7,357 lines. It is now a launcher of seven lines plus
+an importable `cargento_runtime` package. This document records the arrangement and the reasoning, so
+a later change either follows it or overturns it deliberately.
+
+## The problem these decisions answer
+
+One file that holds configuration, ten harness collectors, notification policy, HTTP handling,
+process lifecycle and the frontend loader has no seams. Three specific costs made it worth fixing:
+
+- Any change had to be reasoned about against everything else in the file.
+- Tests reached for module globals, so a test's setup was coupled to the launcher rather than to the
+  behaviour under test. Patching an alias did not necessarily patch the module that read it.
+- Two dashboards could not run in one interpreter, because the caches, the notification state and the
+  clock were process-wide.
+
+## R-1: One responsibility per file, and the launcher owns none
+
+`server.py` is the stable entry point every harness manifest names, so its content is a contract:
+
+```python
+#!/usr/bin/env python3
+"""Launch the Cargento dashboard."""
+
+from cargento_runtime.cli import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+One import, one call, no re-exports. `LauncherContractTest` parses this file with `ast` and rejects
+any `def`, `class` or assignment, and `runpy` executes it under `__main__` to prove the guard reaches
+`cli.main` and exits with what it returned.
+
+Everything else lives in one file per responsibility:
+
+| Module | Owns |
+|---|---|
+| `config.py` | Immutable process configuration, store-root resolution, every tunable limit. |
+| `state.py` | Mutable caches, locks, bounded-cache helpers, the server start stamp. |
+| `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
+| `records.py` | Parsing and normalizing untrusted records from disk. |
+| `sessions.py` | Session identity and shape, freshness, display ids, deterministic aggregation. |
+| `transcripts.py` | Shared metadata readers, prompt titles, the non-Claude analyzers. |
+| `turns.py` | Generic incremental turn scanning and turn display. |
+| `claude_data.py` | Claude transcript reads shared by the collector and the hook path. |
+| `spacedock.py` | Spacedock workflow and entity cartography. |
+| `notifications.py` | Hook state, popup policy, the native notifier, hook payload handling. |
+| `collectors/*.py` | One harness each: a discovery predicate and a collector. |
+| `aggregate.py` | `HarnessSpec`, the registry, the per-harness failure boundary, `Application`. |
+| `diagnostics.py` | Store-path reporting for `--diagnose`. |
+| `http_api.py` | The loopback server, its request handler, and network helpers. |
+| `lifecycle.py` | State file, port probes, status, stop, and daemon detach. |
+| `cli.py` | Argument parsing, runtime assembly, and the three serve branches. |
+| `web/page.py` | Package-relative frontend loading and byte-preserving assembly. |
+
+## R-2: Dependencies run inward, and the test enforces it
+
+Lower layers never import higher ones. `config` imports no runtime module at all; `cli` may import
+any, because it is the assembly point.
+
+`test_runtime_import_graph_matches_the_reviewed_allowlist` parses every runtime file with `ast`,
+normalizes each import to a top-level runtime module, and compares the result to an explicit
+allowlist. Two rules matter more than the table:
+
+- A collector may not import another collector, or `aggregate`. Collectors take `Session` from
+  `sessions.py`. Nine independent files each testable alone is the property that makes adding a
+  harness cheap.
+- `TYPE_CHECKING` imports count. A dependency that exists only for annotations is still a dependency
+  a reader has to follow, and exempting it would make the allowlist describe less than the truth.
+
+The allowlist changes only in a PR that makes a reviewed ownership decision, never to make the test
+pass.
+
+## R-3: The runtime package is imported by its top-level name
+
+`cargento_runtime.io`, never `cargento.skills.cargento.cargento_runtime.io`. Two spellings would give
+every module two identities in `sys.modules`, and therefore two copies of every cache and lock: a
+write through one spelling would be invisible through the other. The validator rejects the
+namespace-qualified form in any runtime file, and a contract test asserts the qualified package never
+appears in `sys.modules`.
+
+Frontend assets load relative to `web/page.py`, so an installed copy needs no repository and no
+working directory. A contract test walks the package with `pkgutil` from an unrelated directory, with
+`PYTHONPATH` removed and `PYTHONNOUSERSITE=1`, and proves every module's `__file__` and all three
+asset paths resolve inside the skill directory. It inspects every module it finds rather than a
+maintained list.
+
+## R-4: Configuration is frozen, state is mutable, services are injected
+
+Three objects, with deliberately different lifetimes:
+
+- **`RuntimeConfig`** is a frozen dataclass built once at the process boundary. It carries the
+  resolved store roots, the platform and OS names, the state home, and every limit and threshold.
+  Nothing downstream reads the environment, `sys.platform`, or `os.name`.
+- **`RuntimeState`** holds what genuinely changes: bounded caches, scanner offsets, locks, hook and
+  popup state, the collection memo, and the start stamp.
+- **`Application`** binds one config and one state to injected services: the native notifier, the
+  popup notifier, the diagnostic sink, and the clock. It owns the registry and the per-harness
+  failure boundary, so one broken store cannot take the dashboard down.
+
+`CargentoHTTPServer` stores exactly one `Application` and one assembled page, and its handler reads
+both off the server instance. `cli.main` is the only place that assembles all of it.
+
+The payoff is testability of the awkward cases. Platform decisions take their environment as an
+argument (see D-4 in [design-cross-platform.md](design-cross-platform.md)), so one runner exercises
+the Linux, macOS and Windows branches. And two servers can run in one interpreter without crossing: a
+contract test proves `/`, `/api/data`, `/api/health` and notification POSTs each answer only for their
+owner, including that a `SessionEnd` on one leaves the other's standing hook and generation untouched.
+
+`RuntimeConfig` carries `state_home` as a string alongside `state_dir` as a `Path`, because a native
+`Path` rewrites separators on Windows: an override of `C:/plugin/state` would come back as
+`C:\plugin\state`, a different string in `--status` output and in the dirname contract lifecycle
+relies on.
+
+## R-5: The registry is data, and Claude's notifier is bound at assembly
+
+`aggregate.default_harnesses(popup_notifier)` returns nine `HarnessSpec` rows in display order, which
+is also collection order and the order the page renders its harness chips. Each row names a collector
+module's `discover` and `collect`.
+
+`Collector` is one contract for all nine: `(config, state, now, window_hours, show_all)`. Claude is
+the only collector that notifies *during* collection, because a transcript-detected transition into
+needs-input has no HTTP request behind it. Rather than widen the contract for all nine or park a
+callable on `RuntimeState`, `default_harnesses` takes the notifier and binds Claude's row. `cli`
+passes the same callable to `Application.popup_notifier`, so the transcript path and the hook path
+cannot diverge.
+
+Adding a harness is therefore: a module under `collectors/`, and a row. `CONTRIBUTING.md` owns the
+walkthrough.
+
+## R-6: The three serve branches stay distinct
+
+There is deliberately no generic "bind before detach" rule, because the three paths differ in what
+owns the bind:
+
+1. **Windows daemon parent** validates its state home and log, re-spawns a foreground child, and
+   awaits that child's pid. It never constructs a server: the child owns the bind, and therefore owns
+   reporting a bind failure. A test substitutes the server constructor with a failure and proves the
+   parent never reaches it.
+2. **POSIX daemon** binds in the attached process, then forks. Binding first is what lets a busy port
+   explain itself on the terminal that asked, rather than in a log file nobody has been told about.
+3. **Foreground** binds, records state, and serves in the same process.
+
+`cli.main` returns exit codes rather than raising, except where argparse owns `SystemExit` for
+`--help` and its own usage errors. That is why `lifecycle.prepare_daemon_home` reports whether the
+home is usable instead of raising.
+
+## Rejected alternatives worth keeping rejected
+
+### One large package-first change
+
+A single move would have combined module identity changes, hundreds of patch-site updates, asset
+loading, CI discovery, packaging validation and daemon imports. A failure would have been hard to
+locate, and review would have mixed moved code with changed behaviour. The work went out as
+sequential behaviour-preserving PRs instead, each with its own gate.
+
+### Splitting only tests and frontend assets
+
+Quick context-size relief, but it leaves roughly 5,800 lines of unrelated Python in `server.py` and
+postpones the dependency problem entirely.
+
+### A permanent `server.py` re-export facade
+
+Re-exporting every constant and function would have kept tests coupled to the launcher, and patching
+an alias does not necessarily patch the module that reads the value, which is the exact failure the
+split was meant to remove. The facade would have become a second mutable API and an invitation to import
+cycles. A transitional facade did exist *during* the split and was deleted with the last extraction;
+that was scaffolding, not a design.
+
+### Hard line-count enforcement
+
+A numeric gate rewards artificial fragmentation and wrapper files. Responsibility and dependency
+direction are the architectural checks; line count is a review signal. Review a module over about
+1,000 lines by hand, and split it only if it holds more than one responsibility.
+
+### Deriving the shipped-file inventory from a glob
+
+`CARGENTO_RUNTIME_FILES` in `scripts/validate_plugins.py` is an explicit tuple. A glob would describe
+whatever happens to be present and could never notice an omission, which is the only thing the check
+exists to catch. The cost is that the list can fall behind, so a test compares it against what the
+checkout actually ships.
+
+## Testing strategy
+
+Three layers, described in `CONTRIBUTING.md`. Two habits specific to this architecture:
+
+- Prefer pure functions that take their environment as an argument. It is what keeps a new platform
+  branch from being dead code on the runner that gates the merge.
+- Mutation-check a new contract before trusting it. Across this split, mutation testing found real
+  gaps in behaviours the plan explicitly required preserved, including both popup cooldown floors,
+  the clearing of `store_errors` before a diagnosis, and whether the registry's Claude row notified
+  through the notifier it was handed. Each had passed a full green suite.

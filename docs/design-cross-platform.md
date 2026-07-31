@@ -8,6 +8,12 @@ Behavioral detail lives in [`COMPATIBILITY.md`](../COMPATIBILITY.md) (the per-OS
 skill body (the user-facing contract). This file explains *why*, not *what*. Remaining unshipped
 work is in [`plans/native-notifications.md`](plans/native-notifications.md).
 
+Store resolution and every tunable limit are frozen in `cargento_runtime/config.py`; bounded reads,
+safe globbing and read-only SQLite are `cargento_runtime/io.py`; the report is
+`cargento_runtime/diagnostics.py`. How those pieces fit together, and why configuration is frozen
+while state is separate, is owned by
+[`design-runtime-architecture.md`](design-runtime-architecture.md).
+
 Each decision keeps a stable `D-N` anchor, and code comments cite them by name. Grep the identifier
 across `*.py`, `*.toml` and `*.md` before renumbering anything. These numbers carry over from the
 cross-platform plan this file replaced; D-1 through D-6 mean what they meant there.

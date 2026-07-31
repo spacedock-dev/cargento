@@ -8,6 +8,12 @@ Behavioral detail lives in [`COMPATIBILITY.md`](../COMPATIBILITY.md) (the per-OS
 paths and the `/api/shutdown` exposure are owned by [`SECURITY.md`](../SECURITY.md), and the
 user-facing contract is the skill body. This file explains *why*, not *what*.
 
+The code behind all of it is `cargento_runtime/lifecycle.py` (state file, port probes, status, stop,
+fork and re-spawn) driven by `cargento_runtime/cli.py`, which owns the three serve branches.
+`server.py` is a seven-line launcher and holds none of it. Which file owns what, and why the three
+branches stay distinct rather than collapsing into one rule, is owned by
+[`design-runtime-architecture.md`](design-runtime-architecture.md).
+
 Each decision keeps a stable `D-N` anchor, and code comments cite them by name. Grep the identifier
 across `*.py` and `*.md` before renumbering anything.
 

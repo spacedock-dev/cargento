@@ -120,6 +120,12 @@ so re-run the job before investigating, and check the traceback is a timeout and
 
 ### Design constraints for the dashboard implementation
 
+The module map, the inward-only dependency rule, and how one process's configuration, state and
+services are held are owned by
+[docs/design-runtime-architecture.md](docs/design-runtime-architecture.md). Read it before adding
+a runtime file or an import between two of them: the import graph is asserted by a test, and its
+allowlist changes only in a PR that makes a reviewed ownership decision.
+
 - Stdlib only, Python 3.11+. No dependencies, ever. The skill must run on a bare `python3`.
 - Read-only. The server only reads harness session stores. It must never write to them or block a
   live agent's writes, so use `mode=ro` SQLite connections with short timeouts.
