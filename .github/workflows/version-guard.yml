@@ -6,7 +6,7 @@ name: Version Guard
 # escape hatch. Adapted (and simplified for a single plugin) from
 # DataRecce/recce-team.
 #
-# What it compares — the PR HEAD vs merge-base(origin/main, HEAD) — failing
+# What it compares — the PR HEAD vs merge-base(PR base branch, HEAD) — failing
 # on any change to:
 #   - cargento/.claude-plugin/plugin.json  .version
 #   - cargento/.codex-plugin/plugin.json   .version
@@ -16,13 +16,21 @@ name: Version Guard
 # its own, so there is no repository-level marketplace version left to watch.
 #
 # Why merge-base and an explicit head checkout, not the default merge ref:
-# the merge ref is rebuilt against the CURRENT main tip, so a release commit
+# the merge ref is rebuilt against the CURRENT base tip, so a release commit
 # landing on main mid-PR would read as a "version change" on a PR that never
 # touched version files. Comparing the PR head against its merge-base with
-# main attributes only the PR's own changes.
+# the base branch attributes only the PR's own changes.
+#
+# Why no `branches:` filter: a stacked PR targets the branch of the layer
+# below it, not main, but `gh stack merge` lands the whole stack on main in
+# one atomic operation, so main's ruleset requires this check on EVERY layer.
+# With a base filter the workflow never fired on those PRs, the required
+# `version-guard` context never reported, and the stack sat blocked forever.
+# Running on every base keeps each layer honest against its own parent: a bump
+# anywhere in a stack still fails at the layer that introduced it.
 #
 # Deliberately exempt: files that don't exist at the
-# merge-base (initial add), and pushes to main (the release commit lands
+# merge-base (initial add), and pushes to any branch (the release commit lands
 # directly on main via the Actions ruleset bypass, never through a PR).
 #
 # Security model:
@@ -36,8 +44,6 @@ name: Version Guard
 
 on:
   pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
