@@ -105,11 +105,18 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         super().__init__(address, _RequestHandler)
 
     def server_bind(self) -> None:
-        # Windows-only socket option. Clearing SO_REUSEADDR above stops *us*
-        # from hijacking someone else's port; this is what stops anyone else
-        # hijacking ours. Absent on POSIX, where getattr returns None.
+        # Windows-only socket option, and the complement of the reuse policy
+        # rather than an independent switch: Winsock rejects SO_REUSEADDR on a
+        # socket already carrying SO_EXCLUSIVEADDRUSE (WSAEINVAL 10022), so both
+        # have to come from one decision. Clearing SO_REUSEADDR stops *us* from
+        # hijacking someone else's port; this stops anyone else hijacking ours.
+        # Gated on this application's config for the same reason
+        # allow_reuse_address is — reading the host here instead let a
+        # posix-configured application on a Windows host ask for both and fail
+        # every bind. Still gated on the constant existing, which it does not on
+        # POSIX, where getattr returns None.
         exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
-        if exclusive is not None:
+        if exclusive is not None and not self.allow_reuse_address:
             try:
                 self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
             except OSError as exc:

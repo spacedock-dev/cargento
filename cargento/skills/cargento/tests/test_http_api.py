@@ -23,9 +23,27 @@ from .support import (
     PAGE_BYTES,
     LegacyDashboardTestCase,
     dashboard,
+    make_runtime,
     make_server,
     serve_until_closed,
 )
+
+
+def _application(os_name: str) -> Any:
+    """An application whose config claims `os_name`, whatever the host is.
+
+    The port-sharing tests below turn on a config that *disagrees* with the
+    host, which is the only way to tell a config read from an ambient one.
+    """
+    config, state = make_runtime(os_name=os_name)
+    return aggregate.Application(
+        config,
+        state,
+        (),
+        native_notifier=lambda _platform: "",
+        popup_notifier=lambda _title, _message: None,
+        diagnostic_sink=lambda _line: None,
+    )
 
 
 class CargentoServerTest(LegacyDashboardTestCase):
@@ -376,10 +394,50 @@ class ReviewFixTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
+    def _options_requested(self, os_name: str, exclusive_option: int) -> list[int]:
+        """Socket options the listener asks for under a given configured OS."""
+        options: list[int] = []
+        real_setsockopt = socket.socket.setsockopt
+
+        def traced_setsockopt(sock: Any, level: int, option: int, value: Any) -> Any:
+            options.append(option)
+            return real_setsockopt(sock, level, option, value)
+
+        with (
+            mock.patch.object(socket.socket, "setsockopt", traced_setsockopt),
+            mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", exclusive_option, create=True),
+            # The fake option number is rejected by the OS; that path warns,
+            # which is correct behaviour but noise in the test output.
+            mock.patch.object(dashboard.runtime_io, "diag"),
+        ):
+            httpd = make_server(application=_application(os_name))
+            httpd.server_close()
+        return options
+
+    def test_reuse_and_exclusive_options_are_never_both_requested(self) -> None:
+        # Winsock rejects SO_REUSEADDR on a socket that already carries
+        # SO_EXCLUSIVEADDRUSE (WSAEINVAL 10022), so these are complements of one
+        # decision, not independent switches. Taking reuse from the config while
+        # taking exclusivity from the host's socket module set BOTH on a Windows
+        # host running a posix-configured application, and every bind there died
+        # — including the two-server and health-stamp contracts below, which say
+        # nothing about ports and were failing on Windows for this reason alone.
+        exclusive = 0xFFFB
+        posix = self._options_requested("posix", exclusive)
+        windows = self._options_requested("nt", exclusive)
+
+        self.assertIn(socket.SO_REUSEADDR, posix)
+        self.assertNotIn(exclusive, posix)
+
+        self.assertIn(exclusive, windows)
+        self.assertNotIn(socket.SO_REUSEADDR, windows)
+
     def test_exclusive_port_option_is_requested_before_bind(self) -> None:
         # Clearing SO_REUSEADDR stops Cargento hijacking someone else's port;
         # SO_EXCLUSIVEADDRUSE is what stops anyone hijacking Cargento's. Only
-        # meaningful if it is applied before bind().
+        # meaningful if it is applied before bind(). The config has to say "nt"
+        # for the option to be in play at all, so the assertion holds on every
+        # host rather than only on Windows runners.
         order: list[str] = []
         real_setsockopt = socket.socket.setsockopt
         real_bind = socket.socket.bind
@@ -400,7 +458,7 @@ class ReviewFixTest(unittest.TestCase):
             # which is correct behaviour but noise in the test output.
             mock.patch.object(dashboard.runtime_io, "diag"),
         ):
-            httpd = make_server()
+            httpd = make_server(application=_application("nt"))
             httpd.server_close()
 
         self.assertIn("setsockopt:65531", order)
