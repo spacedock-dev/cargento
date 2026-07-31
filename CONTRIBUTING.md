@@ -154,6 +154,17 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
+- Size text through the `--fs-*` scale in `styles.css` and nothing else. A test rejects any raw px
+  `font-size` and any declared step the file never uses, because the stylesheet previously carried
+  twenty ad-hoc values between 8px and 15px, which is drift rather than hierarchy. Adding a rung is
+  fine when a real role needs one. Reaching past the scale for a one-off is how the twenty came back.
+- Keep the three ink steps far enough apart to mean something. A test computes the contrast of
+  `--ink`, `--ink2` and `--ink3` against the worst surface each can land on, in both themes, and
+  requires `--ink3` to clear WCAG AA and each step to beat the next by 25 percent. `--ink3` carries
+  most of the metadata on the board and once sat at 3.1:1, below AA, on the smallest type in the UI.
+- Draw selected state with `--sel-bg` and `--sel-bd`. The display toggle, the order segment, the
+  state filter chips and the flag pill all used to paint selection as `--panel` over `--bg`, a 1.2:1
+  step, so on and off were indistinguishable in either theme.
 - Test the page by running it, not by matching strings against its source. `PageJsHarness` in
   `page_harness.py` executes the real `app.js` under node against a stub DOM, so a test can fire a
   click or a keystroke and assert on what the page did. A source-text assertion passes
