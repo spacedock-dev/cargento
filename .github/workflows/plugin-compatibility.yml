@@ -99,6 +99,9 @@ jobs:
           test -f "$INSTALL_PATH/skills/cargento/agents/openai.yaml"
           test -f "$INSTALL_PATH/skills/cargento/server.py"
 
+          # The later steps validate and launch THIS copy, not the checkout.
+          echo "CARGENTO_INSTALL_PATH=$INSTALL_PATH" >> "$GITHUB_ENV"
+
       - name: Validate and install the plugin with Antigravity CLI
         run: |
           set -euo pipefail
@@ -131,15 +134,69 @@ jobs:
           grep -E '^✓ cargento \([0-9]+\.[0-9]+\.[0-9]+\)' /tmp/cargento-gemini-extensions.txt
           grep -F 'Enabled (User): true' /tmp/cargento-gemini-extensions.txt
 
-      - name: Smoke test the dashboard server end to end
+      - name: Check the installed runtime inventory
+        # Separate from the launch below so a missing file produces the
+        # validator's precise per-path diagnostic instead of a server that
+        # simply fails to start. The inventory lives in
+        # scripts/validate_plugins.py and is deliberately not repeated here:
+        # two copies of a required-file list is how one of them goes stale.
         run: |
           set -euo pipefail
-          python3 cargento/skills/cargento/server.py --port 4553 &
+          python3 -m pip install --quiet -r requirements-validation.txt
+          python3 scripts/validate_plugins.py --runtime-files "$CARGENTO_INSTALL_PATH"
+
+      - name: Smoke test the installed dashboard end to end
+        # The installed copy, from an unrelated directory, with the repository
+        # off sys.path: the only arrangement that proves an install works
+        # without the checkout it was built from.
+        run: |
+          set -euo pipefail
+          STATE_DIR="$RUNNER_TEMP/cargento-smoke"
+          mkdir -p "$STATE_DIR"
+          LAUNCHER="$CARGENTO_INSTALL_PATH/skills/cargento/server.py"
+          test -f "$LAUNCHER"
+
+          # A free port chosen by the kernel, so a parallel job cannot collide.
+          PORT=$(python3 -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', 0)); port = s.getsockname()[1]; s.close(); print(port)")
+
+          unset PYTHONPATH
+          export PYTHONNOUSERSITE=1
+          export CARGENTO_HOME="$STATE_DIR"
+          SERVER_PID=""
+
+          cleanup() {
+            # Only this state directory and this captured pid. Killing by
+            # process name could take out an unrelated python on the runner.
+            python3 "$LAUNCHER" --port "$PORT" --stop >/dev/null 2>&1 || true
+            if [ -n "$SERVER_PID" ] && kill -0 "$SERVER_PID" 2>/dev/null; then
+              kill "$SERVER_PID" 2>/dev/null || true
+              for _ in $(seq 1 20); do
+                kill -0 "$SERVER_PID" 2>/dev/null || break
+                sleep 0.5
+              done
+              kill -9 "$SERVER_PID" 2>/dev/null || true
+              wait "$SERVER_PID" 2>/dev/null || true
+            fi
+            python3 -c "import socket, sys; s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('127.0.0.1', int(sys.argv[1]))); s.close()" "$PORT"
+          }
+          trap cleanup EXIT
+
+          # An unrelated working directory: nothing may resolve through ".".
+          cd "$RUNNER_TEMP"
+          python3 "$LAUNCHER" --port "$PORT" &
           SERVER_PID=$!
+
           for _ in $(seq 1 20); do
-            curl -sf http://127.0.0.1:4553/api/data > /tmp/cargento-api.json && break
+            curl -sf "http://127.0.0.1:$PORT/api/health" > /tmp/cargento-health.json && break
             sleep 0.5
           done
+          # The pid ties the answer to the process this step started, rather
+          # than to whatever else might be listening.
+          jq -e --argjson pid "$SERVER_PID" '.ok == true and .pid == $pid' /tmp/cargento-health.json
+          curl -sf "http://127.0.0.1:$PORT/api/data" > /tmp/cargento-api.json
           jq -e '.harnesses | type == "array"' /tmp/cargento-api.json
-          curl -sf http://127.0.0.1:4553/ | grep -F '<title>Cargento</title>'
-          kill "$SERVER_PID"
+          curl -sf "http://127.0.0.1:$PORT/" | grep -F '<title>Cargento</title>'
+
+          # --stop is the documented way to end it, and has to work against the
+          # installed copy too. The trap still runs afterwards as a backstop.
+          python3 "$LAUNCHER" --port "$PORT" --stop

@@ -83,6 +83,52 @@ UniqueKeyLoader.add_constructor(
 )
 
 
+# Every file the shipped dashboard needs at runtime, relative to the plugin root.
+# The launcher imports cargento_runtime.cli, which reaches all of these, so any
+# one of them missing from an installed copy is a dashboard that cannot start.
+# A packaging step that copies "the skill" without walking subpackages, or an
+# archive that drops a frontend asset, both fail here with the exact path.
+#
+# Kept as an explicit tuple rather than derived from the checkout on purpose: a
+# glob would describe whatever happens to be present and could never notice an
+# omission.
+CARGENTO_RUNTIME_FILES = (
+    "skills/cargento/server.py",
+    "skills/cargento/notify_hook.py",
+    "skills/cargento/cargento_runtime/__init__.py",
+    "skills/cargento/cargento_runtime/cli.py",
+    "skills/cargento/cargento_runtime/config.py",
+    "skills/cargento/cargento_runtime/state.py",
+    "skills/cargento/cargento_runtime/io.py",
+    "skills/cargento/cargento_runtime/records.py",
+    "skills/cargento/cargento_runtime/transcripts.py",
+    "skills/cargento/cargento_runtime/turns.py",
+    "skills/cargento/cargento_runtime/sessions.py",
+    "skills/cargento/cargento_runtime/claude_data.py",
+    "skills/cargento/cargento_runtime/notifications.py",
+    "skills/cargento/cargento_runtime/spacedock.py",
+    "skills/cargento/cargento_runtime/aggregate.py",
+    "skills/cargento/cargento_runtime/diagnostics.py",
+    "skills/cargento/cargento_runtime/lifecycle.py",
+    "skills/cargento/cargento_runtime/http_api.py",
+    "skills/cargento/cargento_runtime/collectors/__init__.py",
+    "skills/cargento/cargento_runtime/collectors/claude.py",
+    "skills/cargento/cargento_runtime/collectors/codex.py",
+    "skills/cargento/cargento_runtime/collectors/pi.py",
+    "skills/cargento/cargento_runtime/collectors/gemini.py",
+    "skills/cargento/cargento_runtime/collectors/copilot.py",
+    "skills/cargento/cargento_runtime/collectors/opencode.py",
+    "skills/cargento/cargento_runtime/collectors/cursor.py",
+    "skills/cargento/cargento_runtime/collectors/goose.py",
+    "skills/cargento/cargento_runtime/collectors/droid.py",
+    "skills/cargento/cargento_runtime/web/__init__.py",
+    "skills/cargento/cargento_runtime/web/index.html",
+    "skills/cargento/cargento_runtime/web/styles.css",
+    "skills/cargento/cargento_runtime/web/app.js",
+    "skills/cargento/cargento_runtime/web/page.py",
+)
+
+
 class Validation:
     def __init__(self) -> None:
         self.errors: list[str] = []
@@ -596,6 +642,21 @@ def validate_description_parity(
         )
 
 
+def validate_runtime_files(plugin_root: Path, validation: Validation) -> None:
+    """Every runtime file the installed dashboard needs is present and is a file.
+
+    is_file() rather than exists(): a directory where a module belongs is a
+    packaging bug that reads as "present" to exists() and then fails at import,
+    which is much harder to diagnose from an installed copy than from here.
+    """
+    for relative in CARGENTO_RUNTIME_FILES:
+        target = plugin_root / relative
+        if target.is_file():
+            continue
+        reason = "must be a file, not a directory" if target.is_dir() else "is missing"
+        validation.error(target, f"required runtime file {reason}")
+
+
 def validate_skills(plugin_root: Path, validation: Validation) -> tuple[set[str], list[str]]:
     skills_root = plugin_root / "skills"
     names: set[str] = set()
@@ -775,7 +836,25 @@ def validate_readme(skill_names: dict[str, set[str]], validation: Validation) ->
         validation.error(path, "Codex installation must install cargento")
 
 
+def check_installed_runtime(plugin_root: Path) -> int:
+    """Report the runtime inventory for one installed plugin copy.
+
+    Exposed as a flag so CI can point it at an installed path without
+    embedding a second copy of the inventory in YAML or shell.
+    """
+    validation = Validation()
+    validate_runtime_files(plugin_root, validation)
+    for error in validation.errors:
+        print(f"::error::{error}")
+    if validation.errors:
+        return 1
+    print(f"Runtime inventory complete: {len(CARGENTO_RUNTIME_FILES)} files under {plugin_root}.")
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "--runtime-files":
+        return check_installed_runtime(Path(sys.argv[2]))
     validation = Validation()
     manifests: dict[str, dict[str, Any] | None] = {}
     gemini_manifests: dict[str, dict[str, Any] | None] = {}
@@ -792,6 +871,7 @@ def main() -> int:
             plugin_root, gemini_manifests[plugin_name], mcp_config, validation
         )
         validate_hooks_adapter(plugin_root, validation)
+        validate_runtime_files(plugin_root, validation)
         skill_names[plugin_name], plugin_catalog_lines = validate_skills(plugin_root, validation)
         catalog_lines.extend(plugin_catalog_lines)
         legacy_commands = list((plugin_root / "commands").glob("*.md"))

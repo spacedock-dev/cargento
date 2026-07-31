@@ -110,6 +110,13 @@ so re-run the job before investigating, and check the traceback is a timeout and
 - Two link forms the checker cannot parse, both avoidable: unbalanced parentheses in a bare
   destination (wrap the target in `<>`), and links inside a four-space-indented code block (use a
   fence instead).
+- Every file the dashboard needs at runtime must be present, and must be a file rather than a
+  directory. The list is `CARGENTO_RUNTIME_FILES` in `scripts/validate_plugins.py`: the launcher, the
+  hook forwarder, all three package initializers, every runtime module and collector, and the three
+  frontend assets. Adding a runtime module means adding it there, and a test compares the list
+  against what the checkout actually ships so it cannot fall behind quietly.
+  `python3 scripts/validate_plugins.py --runtime-files <plugin root>` checks an installed copy, which
+  is what the `Plugin Compatibility` canary runs against the path Codex installed.
 
 ### Design constraints for the dashboard implementation
 

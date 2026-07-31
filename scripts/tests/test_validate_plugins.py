@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 import tempfile
 import unittest
@@ -20,6 +21,79 @@ class ValidatorTests(unittest.TestCase):
         self.addCleanup(directory.rmdir)
         self.addCleanup(lambda: path.unlink(missing_ok=True))
         return path
+
+    def copy_plugin(self) -> Path:
+        """A complete installed copy of the plugin, outside the checkout."""
+        destination = Path(tempfile.mkdtemp(prefix="cargento-installed-")) / "cargento"
+        shutil.copytree(validator.ROOT / "cargento", destination)
+        self.addCleanup(shutil.rmtree, destination.parent, ignore_errors=True)
+        return destination
+
+    def test_a_complete_installed_copy_passes_the_runtime_inventory(self) -> None:
+        validation = validator.Validation()
+
+        validator.validate_runtime_files(self.copy_plugin(), validation)
+
+        self.assertEqual([], validation.errors)
+
+    def test_every_required_runtime_file_category_is_caught_when_missing(self) -> None:
+        # One representative per category the plan names, each deleted only
+        # inside its own temporary copy. The whole point of an explicit
+        # inventory is that an omission is reported rather than inferred, so
+        # each case asserts the precise relative path comes back.
+        categories = {
+            "launcher": "skills/cargento/server.py",
+            "hook forwarder": "skills/cargento/notify_hook.py",
+            "package initializer": "skills/cargento/cargento_runtime/__init__.py",
+            "runtime module": "skills/cargento/cargento_runtime/cli.py",
+            "collector": "skills/cargento/cargento_runtime/collectors/goose.py",
+            "frontend asset": "skills/cargento/cargento_runtime/web/app.js",
+        }
+        for category, relative in categories.items():
+            with self.subTest(category=category):
+                plugin_root = self.copy_plugin()
+                (plugin_root / relative).unlink()
+                validation = validator.Validation()
+
+                validator.validate_runtime_files(plugin_root, validation)
+
+                self.assertTrue(
+                    any(relative in error and "is missing" in error for error in validation.errors),
+                    f"{category} not reported: {validation.errors}",
+                )
+
+    def test_a_directory_where_a_runtime_file_belongs_is_rejected(self) -> None:
+        # exists() would call this present, and the failure would then surface
+        # as an ImportError from an installed copy instead of here.
+        plugin_root = self.copy_plugin()
+        target = plugin_root / "skills/cargento/cargento_runtime/config.py"
+        target.unlink()
+        target.mkdir()
+        validation = validator.Validation()
+
+        validator.validate_runtime_files(plugin_root, validation)
+
+        self.assertTrue(
+            any("must be a file, not a directory" in error for error in validation.errors),
+            validation.errors,
+        )
+
+    def test_the_inventory_covers_every_shipped_runtime_file(self) -> None:
+        # The inventory is hand-written so it can notice an omission, which means
+        # it can also fall behind. Compare it against what the checkout actually
+        # ships: a new runtime module or asset must be added here deliberately.
+        skill = validator.ROOT / "cargento" / "skills" / "cargento"
+        shipped = {
+            path.relative_to(validator.ROOT / "cargento").as_posix()
+            for path in [skill / "server.py", skill / "notify_hook.py"]
+        }
+        for path in (skill / "cargento_runtime").rglob("*"):
+            if not path.is_file() or "__pycache__" in path.parts:
+                continue
+            if path.suffix in {".py", ".html", ".css", ".js"}:
+                shipped.add(path.relative_to(validator.ROOT / "cargento").as_posix())
+
+        self.assertEqual(sorted(shipped), sorted(validator.CARGENTO_RUNTIME_FILES))
 
     def test_frontmatter_rejects_malformed_flow_yaml(self) -> None:
         path = self.write_temp(

@@ -69,7 +69,9 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 
 `scripts/validate_plugins.py` gates the docs as well as the plugin: across the files above it
 resolves every relative Markdown link **and heading anchor**, and rejects the `localhost` spelling of
-the dashboard URL (the server is IPv4-only). Deleting or renaming any of them fails the build.
+the dashboard URL (the server is IPv4-only). Deleting or renaming any of them fails the build. It also
+owns `CARGENTO_RUNTIME_FILES`, the inventory of every file the shipped dashboard needs at runtime;
+`--runtime-files <plugin root>` checks an installed copy without the repository around it.
 
 Run `/sync-docs` before opening a PR (see Pre-PR Checks) so doc updates ride in the PR that changes
 the code. Claude Code discovers it as a skill; on other harnesses, read
