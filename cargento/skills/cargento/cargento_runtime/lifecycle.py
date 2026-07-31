@@ -213,7 +213,7 @@ def port_released(config: RuntimeConfig, port: int) -> bool:
             # admits a plain bind but not an exclusive one, so the probe would
             # report a port released that the real listener cannot take.
             exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
-            if exclusive is not None:
+            if exclusive is not None and not http_api.reuse_address_allowed(config.os_name):
                 sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
             sock.bind(("127.0.0.1", port))
     except OSError as exc:

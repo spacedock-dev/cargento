@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 from cargento_runtime import http_api, lifecycle
+from cargento_runtime import io as runtime_io
 
 from .page_harness import PageJsHarness
 from .support import (
@@ -31,6 +32,7 @@ from .support import (
     cfg,
     dashboard,
     frontend_page,
+    make_runtime,
     make_server,
     serve_until_closed,
 )
@@ -814,6 +816,41 @@ class CargentoServerTest(PageJsHarness):
                 message, code = lifecycle.stop_instance(cfg(), 4553)
             self.assertEqual(expected_code, code, message)
             self.assertIn(expected, message)
+
+    def test_port_released_never_requests_both_reuse_and_exclusive(self) -> None:
+        # The probe answers for the real listener, so it must ask for the same
+        # socket options. Winsock rejects SO_REUSEADDR on a socket already
+        # carrying SO_EXCLUSIVEADDRUSE (WSAEINVAL), so the two are complements
+        # of one decision, never independent switches. Gating exclusive on the
+        # host's getattr instead of this config's os_name made a
+        # posix-configured probe on a Windows host request both and fail every
+        # bind — the same split-source bug the listener already fixed.
+        #
+        # Both branches run on any host: the option is patched into existence,
+        # and the config is what decides, not the machine.
+        requested: list[int] = []
+        real_setsockopt = socket.socket.setsockopt
+
+        def traced(sock: Any, level: int, option: int, value: Any) -> Any:
+            requested.append(option)
+            return real_setsockopt(sock, level, option, value)
+
+        fake_exclusive = 0xFFFB
+        for os_name, wants_reuse in (("posix", True), ("nt", False)):
+            with self.subTest(os_name=os_name):
+                requested.clear()
+                config, _ = make_runtime(os_name=os_name)
+                with (
+                    mock.patch.object(socket.socket, "setsockopt", traced),
+                    mock.patch.object(socket, "SO_EXCLUSIVEADDRUSE", fake_exclusive, create=True),
+                    # The fake option number is rejected by the OS, which warns.
+                    # That is correct behaviour, but noise in test output.
+                    mock.patch.object(runtime_io, "diag"),
+                ):
+                    lifecycle.port_released(config, 9999)
+
+                self.assertEqual(wants_reuse, socket.SO_REUSEADDR in requested)
+                self.assertEqual(not wants_reuse, fake_exclusive in requested)
 
     def test_port_released_only_reads_address_in_use_as_still_held(self) -> None:
         # EACCES on a privileged port says nothing about whether the port is in
