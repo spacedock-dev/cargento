@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .support import LegacyDashboardTestCase
+from .support import RuntimeTestCase
 
 APP_PATH = Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "app.js"
 WEB_DIR = APP_PATH.parent
@@ -21,7 +21,7 @@ PAGE_TEXT = (
 )
 
 
-class PageJsHarness(LegacyDashboardTestCase):
+class PageJsHarness(RuntimeTestCase):
     """Runs the dashboard page's real JS under node against a stub DOM.
 
     Shared by every test that asserts on page *behaviour* rather than on the

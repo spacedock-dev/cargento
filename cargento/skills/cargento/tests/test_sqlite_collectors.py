@@ -24,7 +24,7 @@ from cargento_runtime.collectors import opencode as opencode_collector
 from .support import (
     SERVER_PATH,
     STORE_OVERRIDES,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     collect,
     collect_claude,
     diagnose,
@@ -35,7 +35,7 @@ from .support import (
 )
 
 
-class SqliteCollectorTest(LegacyDashboardTestCase):
+class SqliteCollectorTest(RuntimeTestCase):
     def test_goose_tool_response_is_not_a_user_prompt(self) -> None:
         self.assertFalse(
             goose_collector._user_prompt(

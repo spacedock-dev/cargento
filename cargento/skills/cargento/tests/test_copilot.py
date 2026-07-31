@@ -10,13 +10,13 @@ from pathlib import Path
 from cargento_runtime.collectors import copilot as copilot_collector
 
 from .support import (
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     runtime,
     store_patch,
 )
 
 
-class CopilotCollectorTest(LegacyDashboardTestCase):
+class CopilotCollectorTest(RuntimeTestCase):
     def test_copilot_sessions_are_discovered_and_analyzed(self) -> None:
         now = time.time()
         iso = datetime.fromtimestamp(now - 5, UTC).isoformat()

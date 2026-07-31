@@ -18,7 +18,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import transcripts as runtime_transcripts
 
 from .support import (
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     config_patch,
     make_config,
     make_runtime,
@@ -28,7 +28,7 @@ from .support import (
 CONFIG, STATE = make_runtime()
 
 
-class CargentoServerTest(LegacyDashboardTestCase):
+class CargentoServerTest(RuntimeTestCase):
     def test_metadata_cache_is_safe_under_concurrent_reads(self) -> None:
         config, state = make_runtime()
         with tempfile.TemporaryDirectory() as tmp:

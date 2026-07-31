@@ -15,7 +15,7 @@ from cargento_runtime.collectors import claude as claude_collector
 
 from . import support
 from .support import (
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     cfg,
     collect,
     collect_claude,
@@ -103,7 +103,7 @@ class ClaudeDataBoundTest(unittest.TestCase):
                 )
 
 
-class ClaudeCollectorTest(LegacyDashboardTestCase):
+class ClaudeCollectorTest(RuntimeTestCase):
     def test_load_tasks_supports_current_and_legacy_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

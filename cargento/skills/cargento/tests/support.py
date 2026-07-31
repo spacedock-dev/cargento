@@ -310,9 +310,6 @@ class RuntimeTestCase(unittest.TestCase):
         self.addCleanup(CONFIG_OVERRIDES.clear)
 
 
-LegacyDashboardTestCase = RuntimeTestCase
-
-
 class PiScanTestCase(unittest.TestCase):
     def setUp(self) -> None:
         _, state = runtime()

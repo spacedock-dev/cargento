@@ -11,14 +11,14 @@ from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import codex as codex_collector
 
 from .support import (
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     make_runtime,
     runtime,
     store_patch,
 )
 
 
-class CodexCollectorTest(LegacyDashboardTestCase):
+class CodexCollectorTest(RuntimeTestCase):
     def test_codex_meta_extracts_parent_thread_id(self) -> None:
         record = {
             "type": "session_meta",

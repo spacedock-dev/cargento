@@ -29,7 +29,7 @@ from .support import (
     REGISTRY,
     SERVER_PATH,
     STORE_OVERRIDES,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     cfg,
     collect_claude,
     diagnose,
@@ -40,7 +40,7 @@ from .support import (
 )
 
 
-class CargentoServerTest(LegacyDashboardTestCase):
+class CargentoServerTest(RuntimeTestCase):
     def test_cargento_home_returns_the_authoritative_override_verbatim(self) -> None:
         # Round-tripping an override through a native Path changes its separators
         # on Windows, breaking the documented string and dirname contracts. The

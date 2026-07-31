@@ -19,7 +19,7 @@ from cargento_runtime import claude_data, notifications, records
 
 from .support import (
     HOOK_PATH,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     collect,
     collect_claude,
     config_patch,
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     import email.message
 
 
-class CargentoServerTest(LegacyDashboardTestCase):
+class CargentoServerTest(RuntimeTestCase):
     def test_popup_caches_are_bounded_and_globally_rate_limited(self) -> None:
         with (
             config_patch(max_cache_entries=2),

@@ -24,7 +24,7 @@ from .fixtures import (
 )
 from .support import (
     REGISTRY,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     cfg,
     config_patch,
     make_config,
@@ -35,7 +35,7 @@ from .support import (
 )
 
 
-class GeminiAntigravityCollectorTest(LegacyDashboardTestCase):
+class GeminiAntigravityCollectorTest(RuntimeTestCase):
     def test_record_fingerprint_is_stable_and_bounded(self) -> None:
         self.assertEqual(
             records.record_fingerprint({"a": 1, "b": 2}),

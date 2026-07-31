@@ -17,7 +17,7 @@ from cargento_runtime.collectors import claude as claude_collector
 
 from .support import (
     STORE_OVERRIDES,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     collect,
     collect_claude,
     make_config,
@@ -26,7 +26,7 @@ from .support import (
 )
 
 
-class CargentoServerTest(LegacyDashboardTestCase):
+class CargentoServerTest(RuntimeTestCase):
     def test_large_transcript_recovers_turn_start_before_bounded_tail(self) -> None:
         prompt_time = "2026-01-01T00:00:00Z"
         prompt = {

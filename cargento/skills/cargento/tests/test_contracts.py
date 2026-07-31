@@ -35,7 +35,7 @@ from .support import (
     SERVER_PATH,
     STORE_OVERRIDES,
     HarnessContractTestCase,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     collect,
     collect_claude,
     config_patch,
@@ -429,12 +429,12 @@ class LauncherContractTest(unittest.TestCase):
         assert isinstance(only, ast.ImportFrom)
         self.assertEqual("cargento_runtime.cli", only.module)
         self.assertEqual(["main"], [alias.name for alias in only.names])
-        # No definitions, and no assignments that would re-export a symbol.
-        for node in tree.body:
-            with self.subTest(node=type(node).__name__):
-                self.assertNotIsInstance(
-                    node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Assign
-                )
+        # No definitions and no assignments that could re-export a symbol,
+        # anywhere in the tree rather than only at the top level: `if True:` with
+        # a collector nested under it would pass a tree.body-only check.
+        banned = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Assign
+        offenders = [type(n).__name__ for n in ast.walk(tree) if isinstance(n, banned)]
+        self.assertEqual([], offenders, "the launcher defines or assigns something")
 
     def test_running_the_launcher_calls_the_cli_exactly_once(self) -> None:
         # runpy executes the real file under __main__, which is the only way to
@@ -534,7 +534,7 @@ class LauncherContractTest(unittest.TestCase):
         self.assertIn("OK", result.stdout)
 
 
-class HarnessRegistryTest(LegacyDashboardTestCase):
+class HarnessRegistryTest(RuntimeTestCase):
     """The registry is nine collector modules and nothing else."""
 
     def test_the_registry_order_is_pinned(self) -> None:
@@ -588,16 +588,6 @@ class HarnessRegistryTest(LegacyDashboardTestCase):
         spec = next(s for s in REGISTRY if s.key == "claude")
         closed_over = [cell.cell_contents for cell in (spec.collect.__closure__ or ())]
         self.assertIn(claude_collector, closed_over)
-
-    def test_the_launcher_defines_no_harness_collector(self) -> None:
-        # A collector left behind in server.py would still work, and would still
-        # be reachable, so only reading the source catches it.
-        source = SERVER_PATH.read_text(encoding="utf-8")
-        for key in [spec.key for spec in REGISTRY]:
-            with self.subTest(harness=key):
-                self.assertNotIn(f"def collect_{key}(", source)
-        self.assertNotIn("class _LegacyHarnessAdapter", source)
-        self.assertNotIn("_HARNESS_ROWS", source)
 
     def test_the_claude_row_notifies_through_the_registrys_own_notifier(self) -> None:
         # Claude is the only collector that notifies during collection, so its
@@ -1165,7 +1155,7 @@ import cargento_runtime.turns
         self.assertEqual(0, result.returncode, result.stderr)
 
 
-class CollectorAgreementTest(LegacyDashboardTestCase):
+class CollectorAgreementTest(RuntimeTestCase):
     def test_claude_and_codex_agree_on_one_directory(self) -> None:
         # DRC-3963. The reported case: one worktree, two harnesses, two
         # different project strings — Claude showed the whole encoded path

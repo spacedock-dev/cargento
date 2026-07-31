@@ -23,7 +23,7 @@ from cargento_runtime import io as runtime_io
 
 from .support import (
     PAGE_BYTES,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     collect,
     collect_json,
     make_runtime,
@@ -50,7 +50,7 @@ def _application(os_name: str) -> Any:
     )
 
 
-class CargentoServerTest(LegacyDashboardTestCase):
+class CargentoServerTest(RuntimeTestCase):
     def test_notify_endpoint_accepts_valid_non_object_and_deep_json(self) -> None:
         httpd = make_server()
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)

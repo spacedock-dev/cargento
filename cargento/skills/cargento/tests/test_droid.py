@@ -15,14 +15,14 @@ from cargento_runtime.collectors import droid as droid_collector
 
 from .support import (
     STORE_OVERRIDES,
-    LegacyDashboardTestCase,
+    RuntimeTestCase,
     make_runtime,
     runtime,
     store_patch,
 )
 
 
-class DroidCollectorTest(LegacyDashboardTestCase):
+class DroidCollectorTest(RuntimeTestCase):
     NOW = 1_700_000_000.0
 
     @staticmethod
