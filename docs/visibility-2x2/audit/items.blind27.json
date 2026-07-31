@@ -1,0 +1,220 @@
+{
+ "items": [
+  {
+   "id": "D2",
+   "signal": "One line saying what this session is",
+   "outcome": "recognise it without opening it",
+   "state": "shipped",
+   "column": "open",
+   "archetype": "attention"
+  },
+  {
+   "id": "B8",
+   "signal": "Route a review request into a Spacedock gate",
+   "outcome": "reviews land where reviews live",
+   "state": "new",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "C6",
+   "signal": "Report the irreversible things that happened",
+   "outcome": "find out before the next one",
+   "state": "new",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "C4",
+   "signal": "My goals across sessions",
+   "outcome": "steering",
+   "state": "partial",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "D1",
+   "signal": "Every session across every harness, one screen",
+   "outcome": "spare attention",
+   "state": "shipped",
+   "column": "open",
+   "archetype": "attention"
+  },
+  {
+   "id": "G3",
+   "signal": "Which model each session is running",
+   "outcome": "move cheap work off the expensive model",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "A10",
+   "signal": "Which session is burning fastest right now",
+   "outcome": "pick the right one to stop",
+   "state": "partial",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "E6",
+   "signal": "Mark it handled and clear it",
+   "outcome": "the board reflects reality",
+   "state": "new",
+   "column": "end",
+   "archetype": "forget"
+  },
+  {
+   "id": "A4",
+   "signal": "Capacity across subscriptions and harnesses",
+   "outcome": "move the work to another harness",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "B7",
+   "signal": "Batch the gates into one queue",
+   "outcome": "switch context once, not five times",
+   "state": "new",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "F4",
+   "signal": "Cloud and local on one board",
+   "outcome": "one place, not two",
+   "state": "new",
+   "column": "open",
+   "archetype": "role"
+  },
+  {
+   "id": "A7",
+   "signal": "Which session is eating the quota",
+   "outcome": "kill that one, not all of them",
+   "state": "partial",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "A8",
+   "signal": "Cost per session",
+   "outcome": "know what a run costs",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "B6",
+   "signal": "How long each has been blocked",
+   "outcome": "triage the queue",
+   "state": "shipped",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "A6",
+   "signal": "Overrun likelihood before you start",
+   "outcome": "don't start what you can't finish",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "F1",
+   "signal": "These four are one project, make it a workflow",
+   "outcome": "stop hand-orchestrating",
+   "state": "new",
+   "column": "open",
+   "archetype": "role"
+  },
+  {
+   "id": "D9",
+   "signal": "Quiet hours",
+   "outcome": "protect a block of deep work",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "H1",
+   "signal": "Keep a history of what happened",
+   "outcome": "four other items become possible",
+   "state": "new",
+   "column": "mid",
+   "archetype": "role"
+  },
+  {
+   "id": "B3",
+   "signal": "What it is waiting for, without opening it",
+   "outcome": "answer without the trip",
+   "state": "partial",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "B5",
+   "signal": "Click through to the session in the CLI",
+   "outcome": "get there in one move",
+   "state": "new",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "E5",
+   "signal": "Branch or PR left behind",
+   "outcome": "finish what was started",
+   "state": "new",
+   "column": "end",
+   "archetype": "forget"
+  },
+  {
+   "id": "D10",
+   "signal": "A digest of what happened while you were away",
+   "outcome": "re-enter without re-reading",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "F5",
+   "signal": "Cowork and hosted sessions",
+   "outcome": "cover where the work moved",
+   "state": "new",
+   "column": "open",
+   "archetype": "role"
+  },
+  {
+   "id": "G5",
+   "signal": "Harness versions and health",
+   "outcome": "no decision attached",
+   "state": "partial",
+   "column": "open",
+   "archetype": "attention"
+  },
+  {
+   "id": "F7",
+   "signal": "Across machines, or across a team",
+   "outcome": "see the whole fleet",
+   "state": "new",
+   "column": "open",
+   "archetype": "role"
+  },
+  {
+   "id": "E1",
+   "signal": "Stale, meaning idle two hours or more",
+   "outcome": "notice the ones that went quiet",
+   "state": "shipped",
+   "column": "end",
+   "archetype": "forget"
+  },
+  {
+   "id": "D3",
+   "signal": "ETA and progress for the current turn",
+   "outcome": "know when to come back",
+   "state": "shipped",
+   "column": "mid",
+   "archetype": "attention"
+  }
+ ]
+}

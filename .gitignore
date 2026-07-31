@@ -5,3 +5,7 @@
 __pycache__/
 *.py[cod]
 .coverage
+
+# Visibility 2x2 board: written by its save endpoint, not source
+docs/visibility-2x2/items.bak.json
+docs/visibility-2x2/items.json.tmp

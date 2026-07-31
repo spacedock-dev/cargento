@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cargento — Visibility 2x2</title>
+<style>
+:root{
+  color-scheme: light;
+  --surface-0:#f5f4f1; --surface-1:#fcfcfb; --surface-2:#efeeea;
+  --line:#dedcd6; --line-strong:#c2bfb6;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#7b7a74;
+  --s-shipped:#2a78d6; --s-partial:#eb6834; --s-new:#1baf7a;
+  --accent:#4a3aa7; --warn:#a8620a; --crit:#c0322f;
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme: dark;
+    --surface-0:#111110; --surface-1:#1a1a19; --surface-2:#232322;
+    --line:#33332f; --line-strong:#4c4c46;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#8d8c83;
+    --s-shipped:#3987e5; --s-partial:#d95926; --s-new:#199e70;
+    --accent:#9085e9; --warn:#e0a33c; --crit:#e66767;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --surface-0:#111110; --surface-1:#1a1a19; --surface-2:#232322;
+  --line:#33332f; --line-strong:#4c4c46;
+  --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#8d8c83;
+  --s-shipped:#3987e5; --s-partial:#d95926; --s-new:#199e70;
+  --accent:#9085e9; --warn:#e0a33c; --crit:#e66767;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--surface-0); color:var(--text-primary);
+  font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+header{
+  position:sticky; top:0; z-index:20; background:var(--surface-1);
+  border-bottom:1px solid var(--line); padding:12px 20px;
+  display:flex; gap:16px; align-items:center; flex-wrap:wrap;
+}
+h1{font-size:15px; margin:0; font-weight:650; letter-spacing:-.01em}
+h1 span{color:var(--text-muted); font-weight:400}
+nav{display:flex; gap:2px; background:var(--surface-2); padding:3px; border-radius:8px}
+nav button{
+  border:0; background:transparent; color:var(--text-secondary); cursor:pointer;
+  padding:5px 12px; border-radius:6px; font:inherit; font-size:13px; font-weight:500;
+}
+nav button[aria-selected="true"]{background:var(--surface-1); color:var(--text-primary); box-shadow:0 1px 2px rgba(0,0,0,.10)}
+.spacer{flex:1}
+.ctl{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.ctl label{font-size:12px; color:var(--text-secondary); display:flex; gap:5px; align-items:center; cursor:pointer}
+select,.btn{
+  font:inherit; font-size:12px; padding:5px 9px; border-radius:6px;
+  border:1px solid var(--line-strong); background:var(--surface-1); color:var(--text-primary); cursor:pointer;
+}
+main{padding:20px; max-width:1560px; margin:0 auto}
+.view{display:none} .view.on{display:block}
+
+/* ---- legend ---- */
+.legend{display:flex; gap:18px; align-items:center; flex-wrap:wrap; margin-bottom:14px; font-size:12px; color:var(--text-secondary)}
+.lg{display:flex; gap:6px; align-items:center}
+.sw{width:11px; height:11px; border-radius:50%; box-shadow:0 0 0 2px var(--surface-0)}
+
+/* ---- 2x2 ---- */
+.gridwrap{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; align-items:start}
+@media (max-width:1100px){.gridwrap{grid-template-columns:1fr}}
+.plotbox{background:var(--surface-1); border:1px solid var(--line); border-radius:12px; padding:16px; overflow-x:auto}
+svg{display:block; width:100%; height:auto; min-width:640px}
+.axline{stroke:var(--line-strong); stroke-width:1.5}
+.axlabel{fill:var(--text-secondary); font-size:12px; font-weight:600}
+.quad{fill:var(--text-muted); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase}
+.quadbg{fill:var(--surface-2); opacity:.5}
+.quadbg.on{fill:var(--accent); opacity:.10}
+.quad.focus{fill:var(--accent); font-weight:700}
+.band{fill:var(--warn); opacity:.09}
+.bandnote{font-size:12px; color:var(--text-secondary); line-height:1.55; margin:0 0 14px;
+  border-left:3px solid var(--warn); padding:9px 12px; background:var(--surface-1);
+  border-radius:0 8px 8px 0; max-width:96ch}
+.bandnote b{color:var(--text-primary)}
+.bandid{font:11px ui-monospace,Menlo,monospace; color:var(--accent); cursor:pointer;
+  border:1px solid var(--accent); border-radius:4px; padding:0 4px; margin-right:2px}
+.dot{cursor:pointer}
+.dot circle{stroke:var(--surface-1); stroke-width:2; transition:r .12s}
+.dot text{font-size:9.5px; font-weight:700; fill:#fff; pointer-events:none; text-anchor:middle; dominant-baseline:central}
+.dot:hover circle,.dot.sel circle{stroke:var(--text-primary); stroke-width:2.5}
+.dot.dim{opacity:.16}
+.tip{
+  position:fixed; z-index:60; pointer-events:none; max-width:320px;
+  background:var(--surface-1); border:1px solid var(--line-strong); border-radius:8px;
+  padding:9px 11px; font-size:12px; box-shadow:0 8px 26px rgba(0,0,0,.22); display:none;
+}
+.tip b{display:block; font-size:12.5px; margin-bottom:3px}
+.tip i{font-style:normal; color:var(--text-secondary)}
+
+/* ---- detail ---- */
+.panel{background:var(--surface-1); border:1px solid var(--line); border-radius:12px; padding:16px; position:sticky; top:76px}
+.panel h2{font-size:14px; margin:0 0 3px}
+.pid{font:11px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--text-muted)}
+.arrow{color:var(--text-muted); margin:0 5px}
+.outcome{color:var(--text-primary); font-weight:600}
+.pill{display:inline-block; font-size:10.5px; padding:2px 7px; border-radius:20px; border:1px solid var(--line-strong); color:var(--text-secondary); margin:0 4px 4px 0}
+.pill.hot{border-color:var(--crit); color:var(--crit)}
+.meta{font-size:12px; color:var(--text-secondary); margin:10px 0 0}
+.meta dt{font-weight:650; color:var(--text-primary); font-size:11px; text-transform:uppercase; letter-spacing:.04em; margin-top:11px}
+.meta dd{margin:3px 0 0}
+.needs{border-left:2px solid var(--warn); padding-left:9px}
+.axhint{font-size:10px; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-muted)}
+.qnote{font-size:11.5px; color:var(--text-secondary); margin:8px 0 0; line-height:1.4}
+.pill.link{cursor:pointer; border-color:var(--accent); color:var(--accent)}
+.pill.q-differentiated{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+.pill.q-tablestakes{border-color:var(--s-shipped); color:var(--s-shipped)}
+.pill.q-contested{border-color:var(--s-partial); color:var(--s-partial)}
+.pill.q-costlylowreward,.pill.q-furniture{color:var(--text-muted)}
+
+/* ---- inline editing ---- */
+#saved{font-size:11px; opacity:0; transition:opacity .3s; color:var(--s-new)}
+#saved.bad{color:var(--crit)}
+.edit{margin-top:14px; padding-top:12px; border-top:1px solid var(--line)}
+.ehead{font-size:11px; text-transform:uppercase; letter-spacing:.04em; font-weight:650; margin-bottom:8px}
+.ehead em{font-style:normal; font-weight:400; text-transform:none; letter-spacing:0; color:var(--text-muted)}
+.sl{display:grid; grid-template-columns:66px 30px 1fr; gap:7px; align-items:center; font-size:11.5px; color:var(--text-secondary); margin-bottom:7px}
+.sl output{font:11px ui-monospace,Menlo,monospace; color:var(--text-primary); text-align:right}
+.sl input[type=range]{width:100%; accent-color:var(--accent)}
+.verdicts{display:flex; gap:5px; margin:9px 0}
+.vb{flex:1; font:inherit; font-size:11px; padding:4px 0; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line-strong); background:var(--surface-1); color:var(--text-secondary); text-transform:capitalize}
+.vb.on{color:#fff; font-weight:600; border-color:transparent}
+.vb.on.keep{background:var(--s-new)} .vb.on.park{background:var(--s-partial)} .vb.on.cut{background:var(--crit)}
+.edit textarea{width:100%; font:inherit; font-size:12px; padding:6px 8px; border-radius:6px; resize:vertical;
+  border:1px solid var(--line-strong); background:var(--surface-1); color:var(--text-primary)}
+.dot.cut circle{opacity:.3}
+.vmark{font-size:9px; font-weight:700}
+
+/* ---- outcomes ---- */
+.arch{background:var(--surface-1); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px}
+.arch h3{margin:0; font-size:14px; display:flex; align-items:baseline; gap:9px; flex-wrap:wrap}
+.arch h3 em{font-style:normal; font-size:12px; color:var(--text-muted); font-weight:400}
+.arch .blurb{font-size:12.5px; color:var(--text-secondary); margin:5px 0 12px}
+.rows{display:flex; flex-direction:column; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden}
+.row{display:grid; grid-template-columns:44px minmax(0,1.15fr) minmax(0,1fr) 92px 58px; gap:10px; align-items:center;
+  background:var(--surface-1); padding:8px 11px; cursor:pointer; font-size:13px}
+.row:hover{background:var(--surface-2)}
+.row .rid{font:11px ui-monospace,Menlo,monospace; color:var(--text-muted)}
+.row .rsig{font-weight:550}
+.row .rout{color:var(--text-secondary); font-size:12.5px}
+.row .rst{font-size:11px; display:flex; gap:5px; align-items:center; color:var(--text-secondary)}
+.row .rimp{font:11px ui-monospace,Menlo,monospace; color:var(--text-muted); text-align:right}
+@media (max-width:820px){.row{grid-template-columns:38px 1fr; }.row .rout,.row .rst,.row .rimp{display:none}}
+
+/* ---- journey ---- */
+.jgrid{display:grid; grid-template-columns:112px repeat(var(--jcols,4),minmax(0,1fr)); gap:9px}
+.jhead{font-size:12px; font-weight:650; padding:8px 4px; color:var(--text-secondary); border-bottom:2px solid var(--line-strong)}
+.jrow-label{font-size:12px; font-weight:650; padding:11px 4px; color:var(--text-primary)}
+.jrow-label small{display:block; font-weight:400; color:var(--text-muted); font-size:11px; margin-top:2px}
+.jcell{background:var(--surface-1); border:1px solid var(--line); border-radius:9px; padding:7px; min-height:56px; display:flex; flex-direction:column; gap:5px}
+.jcard{border-left:3px solid var(--line-strong); padding:5px 7px; border-radius:4px; background:var(--surface-2); cursor:pointer; font-size:12px; line-height:1.35}
+.jcard:hover{outline:1px solid var(--text-muted)}
+.jcard .jid{font:10px ui-monospace,Menlo,monospace; color:var(--text-muted); display:block}
+
+/* ---- decisions ---- */
+.dcols{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px}
+@media (max-width:820px){.dcols{grid-template-columns:1fr}}
+.dcol{border-radius:8px; padding:10px 12px; background:var(--surface-2)}
+.dcol h4{margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.05em}
+.dcol.break h4{color:var(--crit)} .dcol.keep h4{color:var(--s-new)}
+.dcol ul{margin:0; padding-left:16px} .dcol li{font-size:12.5px; color:var(--text-secondary); margin-bottom:5px}
+.dcol.keep li{color:var(--text-primary)}
+.opts{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px}
+@media (max-width:980px){.opts{grid-template-columns:1fr}}
+.opt{border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--surface-1)}
+.opt.rec{border-color:var(--s-new); box-shadow:inset 3px 0 0 var(--s-new)}
+.opt h5{margin:0 0 6px; font-size:12.5px; display:flex; gap:7px; align-items:center; flex-wrap:wrap}
+.recbadge{font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--s-new); border:1px solid var(--s-new); border-radius:20px; padding:1px 6px; font-weight:600}
+.opt p{margin:0 0 5px; font-size:12px; line-height:1.45}
+.opt .pro{color:var(--text-primary)} .opt .con{color:var(--text-muted)}
+.opt .con::before{content:"but "; color:var(--warn); font-weight:600}
+.ask{margin:14px 0 0; font-size:12.5px; color:var(--text-secondary); border-top:1px solid var(--line); padding-top:10px}
+
+/* ---- table ---- */
+table{width:100%; border-collapse:collapse; font-size:12.5px; background:var(--surface-1); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+th,td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+th{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); background:var(--surface-2); position:sticky; top:60px}
+tbody tr:hover{background:var(--surface-2); cursor:pointer}
+td.num{font:11px ui-monospace,Menlo,monospace; color:var(--text-muted); text-align:right}
+.note{font-size:12px; color:var(--text-secondary); margin:0 0 14px; max-width:78ch}
+.tick{width:9px; height:9px; border-radius:50%; display:inline-block; flex:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Cargento <span>· Visibility 2×2 working set</span></h1>
+  <nav role="tablist">
+    <button role="tab" data-v="map" aria-selected="true">2×2 map</button>
+    <button role="tab" data-v="out" aria-selected="false">By outcome</button>
+    <button role="tab" data-v="jour" aria-selected="false">Journey</button>
+    <button role="tab" data-v="dec" aria-selected="false">Decisions</button>
+    <button role="tab" data-v="tab" aria-selected="false">Table</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="ctl">
+    <select id="f-state"><option value="">all states</option></select>
+    <select id="f-arch"><option value="">all outcomes</option></select>
+    <select id="f-origin"><option value="">all sources</option></select>
+    <label><input type="checkbox" id="f-high"> high impact only</label>
+    <label><input type="checkbox" id="f-diff"> differentiated only</label>
+    <label><input type="checkbox" id="f-prim"> primaries only</label>
+    <span id="saved"></span>
+    <button class="btn" id="theme">◐</button>
+    <button class="btn" id="export">Export</button>
+  </div>
+</header>
+
+<main>
+  <section class="view on" id="v-map">
+    <p class="note" id="mapnote"></p>
+    <div class="legend" id="legend"></div>
+    <p class="bandnote" id="bandnote"></p>
+    <div class="gridwrap">
+      <div class="plotbox"><svg id="plot" viewBox="0 0 1000 700" role="img" aria-label="Impact versus how hard the information is for a user to obtain, across Cargento visibility signals"></svg></div>
+      <aside class="panel" id="panel"></aside>
+    </div>
+  </section>
+
+  <section class="view" id="v-out">
+    <p class="note">Every signal earns its place by the outcome it unlocks. Six outcomes cover the whole board — and the last one is the only one that changes what the user's job is.</p>
+    <div id="archlist"></div>
+  </section>
+
+  <section class="view" id="v-jour">
+    <p class="note">Columns are the narrative spine already drawn in the Figma story map. Rows are a proposed sequence: each release only depends on the one above it.</p>
+    <div class="jgrid" id="jgrid"></div>
+  </section>
+
+  <section class="view" id="v-dec">
+    <p class="note">Two questions engineering cannot answer for itself. Both gate items in the high-impact half, so the sequencing in <b>Journey</b> depends on how they land.</p>
+    <div id="declist"></div>
+  </section>
+
+  <section class="view" id="v-tab">
+    <p class="note">Everything, sortable. Click a column head to sort; click a row for detail.</p>
+    <table id="table"><thead></thead><tbody></tbody></table>
+  </section>
+</main>
+
+<div class="tip" id="tip"></div>
+
+<script>
+const SC = {shipped:'--s-shipped', partial:'--s-partial', new:'--s-new'};
+const cv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let DATA=null, SEL=null, SORT={k:'impact',d:-1};
+
+const F = () => ({
+  state:  document.getElementById('f-state').value,
+  arch:   document.getElementById('f-arch').value,
+  origin: document.getElementById('f-origin').value,
+  high:   document.getElementById('f-high').checked,
+  diff:   document.getElementById('f-diff').checked,
+  prim:   document.getElementById('f-prim').checked,
+});
+const pass = (it,f) => (!f.state||it.state===f.state) && (!f.arch||it.archetype===f.arch)
+  && (!f.origin||it.origin===f.origin) && (!f.high||it.impact>=70)
+  && (!f.diff||quadOf(it)==='differentiated') && (!f.prim||!it.subsetOf);
+
+// The workshop's reading of the axis: the top right is where the product earns its position
+function quadOf(it){
+  const hi = it.impact>=70, ac = it.access;
+  if(hi && ac>=60) return 'differentiated';
+  if(hi && ac<40)  return 'table stakes';
+  if(hi)           return 'contested';
+  return ac>=60 ? 'costly, low reward' : 'furniture';
+}
+const QLABEL = {
+  'differentiated':    'Differentiated. A user cannot get this quickly today.',
+  'contested':         'Contested. Partly reachable by a determined user.',
+  'table stakes':      'Table stakes. The harness already shows this, so it is convenience.',
+  'costly, low reward':'Hard to get and not worth much. The quadrant to say no in.',
+  'furniture':         'Furniture. Cheap, reachable, and no decision attached.',
+};
+
+const ORIGIN = {workshop:'the workshop board', proposed:'proposed since'};
+
+async function boot(){
+  DATA = await (await fetch('/api/items')).json();
+  const sel=(id,arr,lab)=>{const e=document.getElementById(id);
+    arr.forEach(o=>{const op=document.createElement('option'); op.value=o.id; op.textContent=lab(o); e.appendChild(op);});
+    e.onchange=render;};
+  sel('f-state', DATA.states, o=>o.name);
+  sel('f-arch', DATA.archetypes, o=>o.name);
+  sel('f-origin', Object.entries(ORIGIN).map(([id,name])=>({id,name})), o=>'from '+o.name);
+  document.getElementById('f-high').onchange=render;
+  document.getElementById('f-diff').onchange=render;
+  document.getElementById('f-prim').onchange=render;
+  document.getElementById('mapnote').textContent = DATA.meta.note;
+  render();
+}
+
+/* ================= 2x2 ================= */
+function drawMap(){
+  const f=F(), items=DATA.items;
+  const W=1000,H=700,M={t:48,r:44,b:50,l:56};
+  const px = d => M.l + (d/100)*(W-M.l-M.r);
+  const py = i => M.t + ((100-i)/100)*(H-M.t-M.b);
+
+  const pts = items.map(it=>({it, x:px(it.access), y:py(it.impact), r:15}));
+  // relax overlaps so ids stay readable, keeping dots near their true position
+  for(let k=0;k<160;k++){
+    for(let a=0;a<pts.length;a++) for(let b=a+1;b<pts.length;b++){
+      const A=pts[a],B=pts[b]; let dx=B.x-A.x, dy=B.y-A.y;
+      let d=Math.hypot(dx,dy)||.01; const min=A.r+B.r+2.5;
+      if(d<min){ const s=(min-d)/2/d; dx*=s; dy*=s; A.x-=dx; A.y-=dy; B.x+=dx; B.y+=dy; }
+    }
+  }
+  pts.forEach(p=>{p.x=Math.max(M.l+p.r,Math.min(W-M.r-p.r,p.x)); p.y=Math.max(M.t+p.r,Math.min(H-M.b-p.r,p.y));});
+
+  const mx=px(50), my=py(50);
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let s='';
+  // the top RIGHT is the focus now: high impact and the user cannot get it today
+  s+=`<rect class="quadbg on" x="${mx}" y="${M.t}" width="${W-M.r-mx}" height="${my-M.t}"/>`;
+  s+=`<text class="quad" x="${M.l+10}" y="${M.t+18}">table stakes · they can already get it</text>`;
+  s+=`<text class="quad focus" x="${mx+10}" y="${M.t+18}">differentiated value</text>`;
+  s+=`<text class="quad" x="${M.l+10}" y="${H-M.b-8}">furniture</text>`;
+  s+=`<text class="quad" x="${mx+10}" y="${H-M.b-8}">costly, and low reward</text>`;
+  s+=`<rect class="band" x="${M.l}" y="${py(75)}" width="${W-M.l-M.r}" height="${py(65)-py(75)}"/>`;
+  s+=`<line class="axline" x1="${M.l}" y1="${my}" x2="${W-M.r}" y2="${my}"/>`;
+  s+=`<line class="axline" x1="${mx}" y1="${M.t}" x2="${mx}" y2="${H-M.b}"/>`;
+  s+=`<text class="axlabel" x="${W/2}" y="${26}" text-anchor="middle">actionability: high impact</text>`;
+  s+=`<text class="axlabel" x="${W/2}" y="${H-14}" text-anchor="middle">actionability: low impact</text>`;
+  // below the line: the low-impact half is sparse, so labels there never collide with dots
+  s+=`<text class="axlabel" x="${M.l+4}" y="${my+18}" text-anchor="start">easy to get info</text>`;
+  s+=`<text class="axlabel" x="${W-M.r-4}" y="${my+18}" text-anchor="end">hard to get info</text>`;
+
+  pts.forEach(p=>{
+    const on=pass(p.it,f), c=cv(SC[p.it.state]), v=p.it.verdict;
+    const ring = v ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${p.r+3.5}" fill="none"
+      stroke="${cv(v==='keep'?'--s-new':v==='park'?'--s-partial':'--crit')}" stroke-width="2"
+      ${v==='cut'?'stroke-dasharray="3 2"':''}/>` : '';
+    s+=`<g class="dot${on?'':' dim'}${SEL===p.it.id?' sel':''}${v==='cut'?' cut':''}" data-id="${p.it.id}"
+         tabindex="0" role="button" aria-label="${esc(p.it.id+': '+p.it.signal+(v?', '+v:''))}">
+      ${ring}<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${p.r}" fill="${c}"/>
+      <text x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}">${p.it.id}</text></g>`;
+  });
+  const plot=document.getElementById('plot'); plot.innerHTML=s;
+
+  const tip=document.getElementById('tip');
+  plot.querySelectorAll('.dot').forEach(g=>{
+    const it=DATA.items.find(i=>i.id===g.dataset.id);
+    g.onmousemove=e=>{ tip.style.display='block';
+      tip.innerHTML=`<b>${esc(it.signal)}</b><i>→ ${esc(it.outcome)}</i>`;
+      const r=tip.getBoundingClientRect();
+      tip.style.left=Math.min(e.clientX+14, innerWidth-r.width-10)+'px';
+      tip.style.top=Math.max(8, e.clientY-r.height-12)+'px'; };
+    g.onmouseleave=()=>tip.style.display='none';
+    g.onclick=()=>{SEL=it.id; render();};
+    g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault(); SEL=it.id; render();}};
+  });
+
+  // The 70 cutoff is a convention, not a measurement. Say how much rests on it.
+  const at = t => DATA.items.filter(i=>i.impact>=t && i.access>=60).length;
+  const onTheLine = DATA.items.filter(i=>i.access>=60 && Math.abs(i.impact-70)<=5);
+  document.getElementById('bandnote').innerHTML =
+    `<b>The shaded band is where the scores stop deciding and the cutoff starts.</b> `
+    + `"Differentiated" means impact 70 or more. ${onTheLine.length} items score within 5 points of that line `
+    + `and also sit right of access 60, so which quadrant they land in is set by where the line is drawn rather `
+    + `than by anything the panel measured: `
+    + onTheLine.sort((a,b)=>b.impact-a.impact).map(i=>`<span class="bandid" data-id="${i.id}">${i.id}</span>`).join(' ')
+    + `. Move the line to 65 and the differentiated count goes ${at(70)} → ${at(65)}. Move it to 75 and it goes `
+    + `${at(70)} → ${at(75)}. Treat those ${onTheLine.length} as unsettled rather than as decided either way.`;
+  document.querySelectorAll('.bandid').forEach(b=>b.onclick=()=>{SEL=b.dataset.id; render();});
+
+  document.getElementById('legend').innerHTML = DATA.states.map(st=>
+    `<span class="lg"><span class="sw" style="background:${cv(SC[st.id])}"></span>${st.name} <em style="color:var(--text-muted);font-style:normal">${st.hint}</em></span>`
+  ).join('')
+  + `<span class="lg" style="color:var(--text-muted)">click a dot to move it</span>`;
+}
+
+function drawPanel(){
+  const p=document.getElementById('panel');
+  const it = SEL ? DATA.items.find(i=>i.id===SEL) : null;
+  if(!it){
+    p.innerHTML=`<h2>Pick a signal</h2>
+    <p class="meta">Height is how much the user can <em>do</em> with it. Distance to the right is whether a normal user could get it quickly today without Cargento. Far right means Cargento creates access that did not exist, so the shaded top-right corner is where the product earns its position.</p>
+    <p class="meta"><b>The one-line rule:</b> the fact is easy, the fleet is hard. Whether one session is blocked is on screen already. Which of twelve is blocked is not. Cargento's moat is aggregation, synthesis and memory, never access.</p>
+    <p class="meta">After the blind audit, the four that matter:<br><br>
+    <b>E4</b> ended with uncommitted work. Highest risk-adjusted score, and the one question the pane sweep cannot answer.<br>
+    <b>C5</b> loop and thrash. Outranks C2 because it needs a narrower inference to be right.<br>
+    <b>H2</b> reach the user off the machine. Hardest to get at access 86, and every walk-away promise depends on it.<br>
+    <b>C8</b> two agents in one repo. Cheap, and nothing else covers it.</p>
+    <p class="meta">Ranking is by <b>risk-adjusted impact</b>: panel impact minus a discount where the feature only
+    works if a heuristic is right. C2 carries the largest discount at -30, because a false all-clear sends someone
+    away from a wedged agent.</p>`;
+    return; }
+  const arch=DATA.archetypes.find(a=>a.id===it.archetype);
+  const st=DATA.states.find(s=>s.id===it.state);
+  const col=DATA.columns.find(c=>c.id===it.column);
+  const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const q = quadOf(it);
+  const unlocks = DATA.items.filter(x=>(x.requires||[]).includes(it.id));
+  const chip = id => { const x=DATA.items.find(y=>y.id===id);
+    return x ? `<span class="pill link" data-id="${id}" title="${esc(x.signal)}">${id}</span>` : ''; };
+  // a table-stakes item that feeds differentiated ones is plumbing, not a feature
+  const feeds = unlocks.filter(x=>quadOf(x)==='differentiated');
+  p.innerHTML=`
+    <div class="pid">${it.id} · from ${ORIGIN[it.origin]||it.origin}</div>
+    <h2>${esc(it.signal)}</h2>
+    <div><span class="arrow">→</span><span class="outcome">${esc(it.outcome)}</span></div>
+    <div style="margin-top:9px">
+      <span class="pill q-${q.replace(/[ ,]/g,'')}">${q}</span>
+      <span class="pill"><span class="tick" style="background:${cv(SC[it.state])}"></span> ${st.name}</span>
+      <span class="pill">${arch.name}</span>
+      <span class="pill">${col?col.name:''}</span>
+      ${it.flag?'<span class="pill hot">discuss</span>':''}
+    </div>
+    <p class="qnote">${QLABEL[q]}</p>
+    <dl class="meta">
+      <dt>Impact</dt><dd>${it.impact} / 100${it.detectorRisk?
+        ` <span class="axhint">${it.riskAdjustedImpact} after a -${it.detectorRisk} detector-risk discount</span>`:''}</dd>
+      <dt>Can a user get this today? <span class="axhint">the workshop axis</span></dt>
+        <dd>${it.access} / 100 <span class="axhint">${it.kind==='action'?'read as: how hard to DO today':''}</span></dd>
+      <dt>Build effort <span class="axhint">Cargento's cost, not the user's</span></dt><dd>${it.build??'—'} / 100</dd>
+      ${it.inferred?`<dt>What is being inferred <span class="axhint">${it.detectorConfidence} confidence achievable</span></dt>
+        <dd class="needs">${esc(it.inferred)}</dd>`:''}
+      ${it.subsetOf?`<dt>Subset of</dt><dd>${it.subsetOf.map(chip).join(' ')}
+        <div class="qnote">${esc(it.subsetNote||'')}</div></dd>`:''}
+      ${it.redundantWith?`<dt>Overlaps ${chip(it.redundantWith.primary)}</dt>
+        <dd>Loses about ${it.redundantWith.penalty} impact points once that ships.
+        <div class="qnote">Remaining: ${esc(it.redundantWith.remains)}</div></dd>`:''}
+      ${it.scoreBasis?`<dt>Score basis <span class="axhint">${it.scoreConfidence} confidence</span></dt>
+        <dd>${esc(it.scoreBasis)}</dd>`:''}
+      ${it.requires?`<dt>Needs first</dt><dd>${it.requires.map(chip).join(' ')}</dd>`:''}
+      ${unlocks.length?`<dt>Unlocks</dt><dd>${unlocks.map(x=>chip(x.id)).join(' ')}${
+        feeds.length&&q==='table stakes'
+          ? `<div class="qnote" style="margin-top:6px">Convenience on its own, and the input to ${feeds.length} differentiated item${feeds.length>1?'s':''}. Build it as plumbing and ship it with them.</div>`:''}</dd>`:''}
+      ${it.note?`<dt>Why</dt><dd>${esc(it.note)}</dd>`:''}
+      ${it.needs?`<dt>What it takes</dt><dd class="needs">${esc(it.needs)}</dd>`:''}
+    </dl>
+    <div class="edit">
+      <div class="ehead">Move it <em>— saves to items.json</em></div>
+      <label class="sl">impact <output id="o-imp">${it.impact}</output>
+        <input type="range" id="e-imp" min="0" max="100" step="1" value="${it.impact}"></label>
+      <label class="sl">access <output id="o-dif">${it.access}</output>
+        <input type="range" id="e-dif" min="0" max="100" step="1" value="${it.access}"></label>
+      <div class="verdicts">${['keep','park','cut'].map(v=>
+        `<button class="vb${it.verdict===v?' on '+v:''}" data-v="${v}">${v}</button>`).join('')}</div>
+      <textarea id="e-note" rows="3" placeholder="Notes from the session…">${esc(it.decisionNote||'')}</textarea>
+    </div>`;
+
+  const live=(id,out,key)=>{
+    const el=document.getElementById(id);
+    el.oninput=()=>{document.getElementById(out).textContent=el.value; it[key]=+el.value; drawMap();};
+    el.onchange=save;
+  };
+  live('e-imp','o-imp','impact'); live('e-dif','o-dif','access');
+  p.querySelectorAll('.vb').forEach(b=>b.onclick=()=>{
+    it.verdict = it.verdict===b.dataset.v ? null : b.dataset.v; save(); render();});
+  const ta=document.getElementById('e-note');
+  let t; ta.oninput=()=>{it.decisionNote=ta.value; clearTimeout(t); t=setTimeout(save,600);};
+  p.querySelectorAll('.pill.link').forEach(l=>l.onclick=()=>{SEL=l.dataset.id; render();});
+}
+
+let saveTimer=null;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    const badge=document.getElementById('saved');
+    try{
+      const r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(DATA)});
+      const j=await r.json();
+      badge.textContent = r.ok ? 'saved' : 'save failed: '+(j.error||r.status);
+      badge.className = r.ok ? 'ok' : 'bad';
+    }catch(e){ badge.textContent='save failed'; badge.className='bad'; }
+    badge.style.opacity=1; setTimeout(()=>badge.style.opacity=0, 1800);
+  }, 250);
+}
+
+/* ================= outcomes ================= */
+function drawOut(){
+  const f=F(); const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  document.getElementById('archlist').innerHTML = DATA.archetypes.map(a=>{
+    const its=DATA.items.filter(i=>i.archetype===a.id && pass(i,f)).sort((x,y)=>(y.riskAdjustedImpact??y.impact)-(x.riskAdjustedImpact??x.impact));
+    if(!its.length) return '';
+    return `<div class="arch"><h3>${a.name} <em>— so the user can ${a.verb}</em></h3>
+      <p class="blurb">${esc(a.blurb)}</p>
+      <div class="rows">${its.map(it=>`<div class="row" data-id="${it.id}">
+        <span class="rid">${it.id}</span>
+        <span class="rsig">${esc(it.signal)}</span>
+        <span class="rout">→ ${esc(it.outcome)}</span>
+        <span class="rst"><span class="tick" style="background:${cv(SC[it.state])}"></span>${DATA.states.find(s=>s.id===it.state).name}</span>
+        <span class="rimp">${it.impact}</span></div>`).join('')}</div></div>`;
+  }).join('');
+  document.querySelectorAll('#archlist .row').forEach(r=>r.onclick=()=>{SEL=r.dataset.id; go('map');});
+}
+
+/* ================= journey ================= */
+const RELEASES=[
+  {id:'done', name:'Shipped', sub:'Cargento 0.6.0'},
+  {id:'r1', name:'Release 1', sub:'no new data — turn what we have into decisions'},
+  {id:'r2', name:'Release 2', sub:'new sources: quota, and stuck-detection'},
+  {id:'r3', name:'Release 3', sub:'act, not just observe'},
+  {id:'later', name:'Later', sub:'change the user’s role'},
+];
+function drawJour(){
+  const f=F(); const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  let s=`<div></div>`+DATA.columns.map(c=>`<div class="jhead">${c.name}</div>`).join('');
+  RELEASES.forEach(rel=>{
+    s+=`<div class="jrow-label">${rel.name}<small>${esc(rel.sub)}</small></div>`;
+    DATA.columns.forEach(col=>{
+      const its=DATA.items.filter(i=>i.release===rel.id && i.column===col.id && pass(i,f)).sort((a,b)=>b.impact-a.impact);
+      s+=`<div class="jcell">${its.map(it=>`<div class="jcard" data-id="${it.id}" style="border-left-color:${cv(SC[it.state])}">
+        <span class="jid">${it.id}</span>${esc(it.signal)}</div>`).join('')}</div>`;
+    });
+  });
+  const g=document.getElementById('jgrid');
+  g.style.setProperty('--jcols', DATA.columns.length);
+  g.innerHTML=s;
+  document.querySelectorAll('.jcard').forEach(c=>c.onclick=()=>{SEL=c.dataset.id; go('map');});
+}
+
+/* ================= decisions ================= */
+function drawDec(){
+  const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  if(!DATA.decisions){document.getElementById('declist').innerHTML='';return;}
+  document.getElementById('declist').innerHTML = DATA.decisions.map(d=>{
+    const chips = d.unlocks.map(id=>{
+      const it=DATA.items.find(i=>i.id===id); if(!it) return '';
+      return `<span class="pill unlock" data-id="${id}" title="${esc(it.signal)}">${id}</span>`;
+    }).join('');
+    const rec = o => /^RECOMMENDED/.test(o.pro);
+    return `<div class="arch">
+      <h3>${esc(d.title)} <em>— ${d.id}</em></h3>
+      <p class="blurb">${esc(d.framing)}</p>
+      <div style="margin:-4px 0 14px"><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-right:6px">unlocks</span>${chips}</div>
+      <div class="dcols">
+        <div class="dcol break"><h4>What breaks</h4><ul>${d.breaks.map(b=>`<li>${esc(b)}</li>`).join('')}</ul></div>
+        <div class="dcol keep"><h4>What survives</h4><ul>${d.survives.map(b=>`<li>${esc(b)}</li>`).join('')}</ul></div>
+      </div>
+      <div class="opts">${d.options.map(o=>`<div class="opt${rec(o)?' rec':''}">
+        <h5>${o.id}. ${esc(o.name)}${rec(o)?'<span class="recbadge">recommended</span>':''}</h5>
+        <p class="pro">${esc(o.pro.replace(/^RECOMMENDED( FOR NOW)?\.\s*/,''))}</p>
+        <p class="con">${esc(o.con)}</p></div>`).join('')}</div>
+      <p class="ask"><b>The ask:</b> ${esc(d.ask)}</p>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('.pill.unlock').forEach(p=>{
+    p.style.cursor='pointer'; p.onclick=()=>{SEL=p.dataset.id; go('map');};});
+}
+
+/* ================= table ================= */
+const COLS=[['id','ID'],['signal','Signal'],['outcome','Outcome'],['archetype','Outcome group'],
+  ['state','State'],['release','Release'],['origin','Source'],['impact','Impact'],['access','Info'],['build','Build']];
+function drawTab(){
+  const f=F(); const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const t=document.getElementById('table');
+  t.querySelector('thead').innerHTML='<tr>'+COLS.map(([k,l])=>
+    `<th data-k="${k}" style="cursor:pointer">${l}${SORT.k===k?(SORT.d<0?' ▾':' ▴'):''}</th>`).join('')+'</tr>';
+  const rows=DATA.items.filter(i=>pass(i,f)).sort((a,b)=>{
+    const x=a[SORT.k],y=b[SORT.k];
+    return (typeof x==='number'? x-y : String(x).localeCompare(String(y)))*SORT.d;});
+  t.querySelector('tbody').innerHTML=rows.map(it=>`<tr data-id="${it.id}">
+    <td class="num">${it.id}</td><td>${esc(it.signal)}</td><td style="color:var(--text-secondary)">${esc(it.outcome)}</td>
+    <td>${DATA.archetypes.find(a=>a.id===it.archetype).name}</td>
+    <td><span class="tick" style="background:${cv(SC[it.state])}"></span> ${DATA.states.find(s=>s.id===it.state).name}</td>
+    <td>${it.release}</td><td>${ORIGIN[it.origin]||it.origin}</td>
+    <td class="num">${it.impact}</td><td class="num">${it.access}</td><td class="num">${it.build??'—'}</td></tr>`).join('');
+  t.querySelectorAll('th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k; SORT = SORT.k===k?{k,d:-SORT.d}:{k,d:(k==='impact'||k==='access')?-1:1}; render();});
+  t.querySelectorAll('tbody tr').forEach(r=>r.onclick=()=>{SEL=r.dataset.id; go('map');});
+}
+
+/* ================= shell ================= */
+function go(v){
+  document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected', String(b.dataset.v===v)));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on', s.id==='v-'+v));
+  render(); window.scrollTo({top:0,behavior:'smooth'});
+}
+function render(){ drawMap(); drawPanel(); drawOut(); drawJour(); drawDec(); drawTab(); }
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+document.getElementById('theme').onclick=()=>{
+  const d=document.documentElement;
+  d.dataset.theme = d.dataset.theme==='dark'?'light':'dark'; render();};
+document.getElementById('export').onclick=()=>{
+  const by={}; DATA.items.forEach(i=>(by[i.archetype]=by[i.archetype]||[]).push(i));
+  let md=`# Cargento — Visibility 2x2 candidates\n\n`;
+  DATA.archetypes.forEach(a=>{
+    md+=`## ${a.name} — so the user can ${a.verb}\n${a.blurb}\n\n`;
+    (by[a.id]||[]).sort((x,y)=>y.impact-x.impact).forEach(i=>{
+      md+=`- **${i.id} ${i.signal}** → ${i.outcome}${i.verdict?`  \`${i.verdict.toUpperCase()}\``:''}  \n  impact ${i.impact} · access ${i.access} · build ${i.build??'?'} · ${i.state} · ${i.release} · from ${ORIGIN[i.origin]||i.origin}\n`;
+      if(i.decisionNote) md+=`  - **decided:** ${i.decisionNote}\n`;
+      if(i.note) md+=`  - ${i.note}\n`;
+      if(i.needs) md+=`  - _takes:_ ${i.needs}\n`;
+    }); md+=`\n`;
+  });
+  navigator.clipboard.writeText(md).then(
+    ()=>alert('Markdown copied to clipboard — '+DATA.items.length+' items.'),
+    ()=>alert('Copy failed; see console.') );
+  console.log(md);
+};
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,244 @@
+{
+ "items": [
+  {
+   "id": "C5",
+   "signal": "Loop and thrash detector",
+   "outcome": "intervene before the budget is gone",
+   "state": "new",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "D7",
+   "signal": "Ordered by what needs you most",
+   "outcome": "stop triaging by whatever you saw first",
+   "state": "partial",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "G2",
+   "signal": "Count of active sessions",
+   "outcome": "no decision attached",
+   "state": "shipped",
+   "column": "open",
+   "archetype": "attention"
+  },
+  {
+   "id": "F6",
+   "signal": "Promote a session to a workflow",
+   "outcome": "the first officer takes over",
+   "state": "new",
+   "column": "open",
+   "archetype": "role"
+  },
+  {
+   "id": "E3",
+   "signal": "Died, rather than finished",
+   "outcome": "restart it instead of waiting",
+   "state": "new",
+   "column": "end",
+   "archetype": "forget"
+  },
+  {
+   "id": "A3",
+   "signal": "Per-model sub-limits, Opus against Sonnet",
+   "outcome": "switch model instead of stopping",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "E7",
+   "signal": "Hand-off prompt when the wall is coming",
+   "outcome": "the next session picks up cleanly",
+   "state": "new",
+   "column": "end",
+   "archetype": "forget"
+  },
+  {
+   "id": "G1",
+   "signal": "Token rate sparkline",
+   "outcome": "no decision attached",
+   "state": "shipped",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "C7",
+   "signal": "Plan against work actually done",
+   "outcome": "spot silent scope drift",
+   "state": "new",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "B1",
+   "signal": "Session needs user input",
+   "outcome": "not blocked",
+   "state": "shipped",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "C3",
+   "signal": "Working outside its scope",
+   "outcome": "catch drift early",
+   "state": "new",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "B4",
+   "signal": "Answer it from Cargento",
+   "outcome": "the trip to the tab disappears",
+   "state": "new",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "A9",
+   "signal": "A single safe-to-start light",
+   "outcome": "one glance before a long job",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "B2",
+   "signal": "Needs-input on the other eight harnesses",
+   "outcome": "not blocked, anywhere",
+   "state": "new",
+   "column": "gate",
+   "archetype": "bottleneck"
+  },
+  {
+   "id": "D6",
+   "signal": "Come back at 3:40",
+   "outcome": "one time to remember",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "C8",
+   "signal": "Two agents in the same repo",
+   "outcome": "avoid the collision",
+   "state": "new",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "F3",
+   "signal": "Where your attention actually went",
+   "outcome": "make the case for delegating",
+   "state": "new",
+   "column": "mid",
+   "archetype": "role"
+  },
+  {
+   "id": "E2",
+   "signal": "Finished, and nobody read it",
+   "outcome": "collect work you already paid for",
+   "state": "partial",
+   "column": "end",
+   "archetype": "forget"
+  },
+  {
+   "id": "D8",
+   "signal": "Stake of the task",
+   "outcome": "sort by consequence, not recency",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "A1",
+   "signal": "5h window % used, and when it resets",
+   "outcome": "avoid force-pause",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "H2",
+   "signal": "Reach the user away from the desk",
+   "outcome": "the walk-away actually works",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "C2",
+   "signal": "Stuck, told apart from working",
+   "outcome": "walking away becomes safe",
+   "state": "new",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "F2",
+   "signal": "You have done this five times, make it a skill",
+   "outcome": "remove yourself from the loop",
+   "state": "new",
+   "column": "mid",
+   "archetype": "role"
+  },
+  {
+   "id": "C1",
+   "signal": "Subagent workflow stage, and a tripwire on it",
+   "outcome": "steering",
+   "state": "partial",
+   "column": "mid",
+   "archetype": "steer"
+  },
+  {
+   "id": "G4",
+   "signal": "History, streaks, sessions this week",
+   "outcome": "no decision attached",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "A2",
+   "signal": "Weekly window % used, and when it resets",
+   "outcome": "plan the week, not the hour",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  },
+  {
+   "id": "D4",
+   "signal": "Notify me when the state changes",
+   "outcome": "stop polling the dashboard",
+   "state": "shipped",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "E4",
+   "signal": "Ended with uncommitted work",
+   "outcome": "the work does not evaporate",
+   "state": "new",
+   "column": "end",
+   "archetype": "forget"
+  },
+  {
+   "id": "D5",
+   "signal": "Nothing needs you for the next N minutes",
+   "outcome": "leave the desk",
+   "state": "new",
+   "column": "mid",
+   "archetype": "attention"
+  },
+  {
+   "id": "A5",
+   "signal": "Burn rate projected to the wall",
+   "outcome": "decide now, not at the wall",
+   "state": "new",
+   "column": "usage",
+   "archetype": "capacity"
+  }
+ ]
+}
