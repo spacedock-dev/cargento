@@ -1,15 +1,8 @@
 ---
 name: sync-docs
-description: >-
-  Reconcile Cargento's documentation with the code so the docs never fall behind. Diffs the real
-  HTTP routes, CLI flags, harness registry, relocation env vars, tunable constants, validator rules
-  and CI gate against README.md, AGENTS.md, CONTRIBUTING.md, COMPATIBILITY.md, SECURITY.md and the
-  shipped `cargento` skill body; applies the updates; retires implemented plan docs under
-  `docs/plans/` by folding their durable content into `docs/design-*.md`; holds the human-facing
-  prose it touched to the documented voice standard so the tone does not drift back to
-  model-default; and keeps the AGENTS.md / CLAUDE.md pointers accurate. **Run it as part of the pre-PR gate** — after the validation suite
-  and before `gh pr create`, so every PR carries the doc updates for the code it changes — and also
-  periodically, before a release or whenever the docs feel stale. Invoke with /sync-docs.
+description: Reconcile Cargento's docs with the code and hold the prose to the repo's voice
+  standard. Run as the docs step of the pre-PR gate, after the validation suite and before
+  `gh pr create`, and before a release or whenever the docs feel stale.
 ---
 
 # sync-docs

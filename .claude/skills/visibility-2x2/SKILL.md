@@ -1,6 +1,6 @@
 ---
 name: visibility-2x2
-description: Open the Visibility 2x2 board, a local prioritisation surface holding 57 candidate Cargento signals scored on impact against how hard the information is for a user to get today. Use for "open the visibility board", "what should Cargento build next", "show me the 2x2", or when discussing Cargento's direction and priorities.
+description: Open the Visibility 2x2 board, a local surface ranking 57 candidate Cargento signals. Use when deciding what Cargento should build next, or for "open the visibility board" or "show me the 2x2".
 ---
 
 # Visibility 2x2
