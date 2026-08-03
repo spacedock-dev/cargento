@@ -96,12 +96,12 @@
     "All 57 items were re-scored by three blind lenses across two rounds, 171 independent scores. The author's originals are gone by request; what remains is the vetted consensus.",
     "The audit found the author's bias was on the WRONG AXIS from what anyone suspected. Access inflation was small: +4.4 inside the differentiated quadrant against -3.1 outside. Impact inflation was large and consistent at +10.3, repeating at +6.6 in the second round even after the rubric was corrected. Of the ten items that fell out of the quadrant, eight fell on impact alone and none on access alone. The author was not pushing items sideways into the corner; they were overstating how much anyone would DO with the information.",
     "Two mechanical biases were verified against the raw data rather than taken on trust. The axis realignment was a one-way ratchet: 43 of 57 items moved up by an average of +38.1 points and only 13 moved down, which is a new prior wearing a new definition's clothes. And flagged favourites carried a measurable premium, averaging impact 73.5 against 61.0 for unflagged items, concentrated on impact because that is the axis with no external check.",
-    "The largest structural finding is redundancy. Twenty-one strict subset relationships were found across the board: C5 within C2, B3 and B5 within B4, D6 within D5, A1 and A2 and A5 within A9, E1 within E2 and E3, F1 within F6. The board reads as 57 features and is nearer 47 once duplicates fold in. Redundancy penalties are held as metadata rather than subtracted from impact, because they only bite once the primary ships. Ten of those subsets score HIGHER than the item containing them, including E4 over E5 and C5 over C2, which inverts the usual reading: the narrow slice is the thing to build and the broad version is the thing to defer.",
+    "The largest structural finding is redundancy. Twenty-one strict subset relationships were found across the board: C5 within C2, B3 and B5 within B4, D6 within D5, A1 and A2 and A5 within A9, E1 within E2 and E3, F1 within F6. The board reads as 57 features and is nearer 47 once duplicates fold in. Redundancy penalties are held as metadata rather than subtracted from impact, because they only bite once the primary ships. Nine of those subsets score HIGHER than the item containing them, including E4 over E5 and C5 over C2, which inverts the usual reading: the narrow slice is the thing to build and the broad version is the thing to defer.",
     "Detector risk is now priced separately. Ten items score high on access precisely because no tool anywhere computes the number, which is not access being withheld but a number that does not exist. Their value rests on a heuristic being accurate. C2 takes the largest discount among the strong items at -30, which is the honest cost of the fact that a false all-clear sends someone away from a wedged agent.",
     "Two action items were badly misread as information. D7 was scored 72 for access when it is a sort order that already ships behind a toggle, so its do-access is 12. E7 was scored 62 when it is a sentence the user types, so its do-access is 15. Both corrections are large enough to move them off the board's high-value list.",
     "D1, the disputed placement, is settled and the board was closer than the author. Consensus access is 52 against the author's 65, because tmux list-panes and capture-pane let a competent developer sweep every session in one pass. The author's own principle was too broad: the fleet is a loop, and only correlation over TIME is genuinely beyond reach. Impact came in at 65, above the author's 52, so the error ran in both directions.",
     "E4, ended with uncommitted work, was promoted on a strong twice-confirmed finding. It is the one place the pane sweep has no answer, because an ended session has no pane and no process. That is the general test for future items: does answering it require a session that no longer exists?",
-    "The impact>=70 line is fragile and should not be presented as a hard binary. Seven items sit between 63 and 75, and a five-point move in the threshold roughly doubles the quadrant count. The band is drawn on the map for that reason."
+    "The impact>=70 line is fragile and should not be presented as a hard binary. Twenty items sit between 63 and 75 on impact (twelve of them on the high-access side where the line alone decides the quadrant), and a five-point move in the threshold roughly doubles the quadrant count. The band is drawn on the map for that reason."
   ],
   "items": [
     {
@@ -125,7 +125,7 @@
       "redundantWith": {
         "primary": "A9",
         "penalty": 50,
-        "remains": "The exact percentage and the reset clock, for a user who wants to reason instead of obeying a light: 'red, but it resets in 11 minutes, so I will wait rather than switch model'. That is real and small. A1 remains a mandatory input to A9, A2, A5, A7 and E7, so the penalty is against counting it as a user-facing feature, not against building it. Its own note already says to ship it as plumbing and never alone; at access 12 it is the most commodity item here, and A9 is where its 88 impact actually gets realised."
+        "remains": "The exact percentage and the reset clock, for a user who wants to reason instead of obeying a light: 'red, but it resets in 11 minutes, so I will wait rather than switch model'. That is real and small. A1 remains a mandatory input to A9, A2, A5, A7 and E7, so the penalty is against counting it as a user-facing feature, not against building it. Its own note already says to ship it as plumbing and never alone; at access 24 [stale '12' corrected to the panel median] it is the most commodity item here, and A9 is where its impact [the author's pre-panel 88; panel median for A9 is 68] actually gets realised."
       },
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "furniture",
@@ -196,7 +196,7 @@
       "release": "r3",
       "origin": "workshop",
       "flag": true,
-      "note": "From the workshop board, with a worked example on it: Claude at 95%, Codex at 10%, migrate to Codex and keep going. I previously scored this 72 and called that placement wrong. The realigned axis says he was closer than I was. Every harness does show its own usage, so each piece is accessible to a user and it is the comparison that is tedious, which puts it mid-scale at 50 rather than hard. My 72 was measuring Cargento's build cost, which is real but belongs in the build score, and it is still 70 there.",
+      "note": "From the workshop board, with a worked example on it: Claude at 95%, Codex at 10%, migrate to Codex and keep going. I previously scored this 72 and called that placement wrong. The realigned axis says he was closer than I was. Every harness does show its own usage, so each piece is accessible to a user and it is the comparison that is tedious, which puts it mid-scale at 50 rather than hard [the author's re-score; the blind panel's median subsequently landed at 65, the value shown]. My 72 was measuring Cargento's build cost, which is real but belongs in the build score, and it is still 70 there.",
       "needs": "A separate integration per vendor, each with its own auth. DEC-1 gets amended once, but this work repeats.",
       "requires": [
         "A1"
@@ -208,7 +208,7 @@
       "redundantWith": {
         "primary": "A3",
         "penalty": 40,
-        "remains": "Only the case where the whole account is capped, not just one model: every model at the ceiling, or a single-model harness. Then a fresh vendor is the only hatch left. Everything else about it is A1 replicated per vendor plus a comparison, at build 70 with per-vendor auth, and the user still pays to restate the task in another harness. Its own re-score to access 50 concedes each vendor already shows its own usage."
+        "remains": "Only the case where the whole account is capped, not just one model: every model at the ceiling, or a single-model harness. Then a fresh vendor is the only hatch left. Everything else about it is A1 replicated per vendor plus a comparison, at build 70 with per-vendor auth, and the user still pays to restate the task in another harness. Its own re-score to access 50 [panel median now 65] concedes each vendor already shows its own usage."
       },
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "differentiated",
@@ -269,7 +269,7 @@
       "inferred": "The size of work that has not started yet, matched by shape against similar past sessions (H1), then turned into a probability of overrunning the window. Two stacked guesses: that a prompt's text predicts its duration, and that a past session was 'similar'.",
       "detectorConfidence": "low",
       "subsetOf": [
-        "A9's"
+        "A9"
       ],
       "subsetNote": "A6 subset of A9's question - both answer 'should I start', A6 adding a task-size estimate that needs H1 and stays speculative.",
       "redundantWith": {
