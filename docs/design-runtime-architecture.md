@@ -50,7 +50,7 @@ Everything else lives in one file per responsibility:
 | `turns.py` | Generic incremental turn scanning and turn display. |
 | `claude_data.py` | Claude transcript reads shared by the collector and the hook path. |
 | `spacedock.py` | Spacedock workflow and entity cartography. |
-| `quota.py` | The quota fetch: vendor token read, the one outbound request, its cache and floor. The whole outbound network surface (see [design-usage-quota.md](design-usage-quota.md)). |
+| `quota.py` | Quota acquisition: the per-vendor credential reads and outbound requests, the receipts a harness pushes in, and the shared cache with its per-vendor floor. The whole outbound network surface (see [design-usage-quota.md](design-usage-quota.md)). |
 | `notifications.py` | Hook state, popup policy, the native notifier, hook payload handling. |
 | `collectors/*.py` | One harness each: a discovery predicate and a collector. |
 | `aggregate.py` | `HarnessSpec`, the registry, the per-harness failure boundary, `Application`. |

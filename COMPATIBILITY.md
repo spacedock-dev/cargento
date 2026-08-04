@@ -68,6 +68,7 @@ Other notes:
 - WSL2's `localhostForwarding` defaults on but can be switched off, and mirrored/NAT networking modes or corporate policy can also break host-browser access to `127.0.0.1:4553`. Probe before assuming; the fallback is `ssh -L` or a browser inside WSL.
 - Supported WSL topology is server and agents on the same side of the boundary. Reading a Windows-side store from inside WSL works over `/mnt/c`, but 9p latency and mtime granularity make state detection unreliable, so it is not supported.
 - `sqlite3` is an optional stdlib module. On a build without it (some musl/Alpine images) OpenCode, Cursor and Goose report undiscovered. Antigravity still appears, since its discovery and state come from store mtime and CLI logs, but without a token rate or turn ETA. Copilot also still appears, because it is discovered and read from JSONL events, but its `used` figure in the usage section is absent, since that figure comes from a SQLite store.
+- Quota follows discovery, for every harness. A harness that is not discovered publishes no usage entry and, if it is one of the fetched ones, is never fetched for either. Two consequences are worth knowing because neither is obvious from the quota path itself: on a build with no `sqlite3` Cursor's quota is absent even though the fetch needs no SQLite, and a freshly installed Cursor CLI with no conversation yet is undiscovered, so its quota waits on the first chat. This is deliberate. The alternative is a quota tile for a harness the machine shows no other sign of using.
 - Gemini CLI was replaced by Antigravity CLI in June 2026. They are two harness rows: Antigravity is the current one, and the Gemini row reads legacy `~/.gemini/tmp` stores that nothing writes anymore, so its sessions need `?all=1` to appear. `GEMINI_CLI_HOME` relocates both, since Antigravity's store sits inside the Gemini home.
 - Cursor's quota tile is macOS-only. The Cursor CLI keeps its session token in the macOS Keychain, and where it persists that token on Linux and Windows has not been verified, so those platforms read no credential rather than a guessed path: Cursor's sessions still appear, only its usage entry is absent. Verifying the location on either platform is what lifts this, and it needs the CLI installed there. Every other harness's usage figure is platform-independent.
 
@@ -82,4 +83,4 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 3bd078a (2026-08-04) -->
+<!-- docs-synced-through: 1cfff07 (2026-08-04) -->

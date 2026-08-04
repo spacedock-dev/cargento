@@ -228,6 +228,12 @@ This is the contribution we most want. Each harness is one registry entry: a key
 
 Before writing any of it, settle whether the thing deserves a row of its own: two store formats can be one harness, and one vendor can be two. [`docs/design-harness-registry.md`](docs/design-harness-registry.md) owns that judgement and the one time it had to be revisited.
 
+### Adding a quota source
+
+A harness row can also publish quota, through the optional `usage` provider on `HarnessSpec`. There are three shapes, and which one applies is a question about the vendor rather than a choice: read it from the harness's own store (Codex, Copilot), fetch it with the harness's own credential (Claude, Cursor), or receive it from a harness that pushes its quota to a user-configured command (Antigravity). A fetch also sets `usage_is_fetch`, which is what raises the disclosure modal, and adds a row to `FETCH_VENDORS` in `quota.py`.
+
+Two obligations are not optional. Name the endpoint and the credential location in `SECURITY.md` in the same PR as the code, because that section is the contract the fetch is held to. And capture a real payload from a live install before writing the parser: every quota source added so far had a field name, a unit, or a rendering that the vendor's own documentation got wrong, and the failures were silent ones (a counter reading zero, an amount in cents read as dollars). [`docs/design-usage-quota.md`](docs/design-usage-quota.md) records each of those and the surfaces that were tried and rejected.
+
 ## Releases
 
 Releases are tag-driven and fully automated (maintainers only):
