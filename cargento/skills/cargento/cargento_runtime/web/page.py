@@ -9,7 +9,7 @@ WEB_DIR = Path(__file__).resolve().parent
 APP_PARTS: tuple[str, ...] = (
     "spark.js",  # shared page state, rate buffers, the sparkline
     "regular.js",  # regular-mode components: badges, tiles, cards, rows
-    "mode.js",  # display-mode state and its switch
+    "mode.js",  # display-mode state, its switch, and the calm ledger's mutable state
     "usage.js",  # the usage band, configure, and the disclosure modal
     "controls.js",  # the stop control, stopped panel, and mode bar
     "calm.js",  # the calm ledger: tables, actions, listeners, renderers

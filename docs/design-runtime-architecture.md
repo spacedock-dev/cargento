@@ -71,7 +71,7 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 |---|---|
 | `web/spark.js` | Shared page state, rate buffers, and the sparkline with its hover machinery. |
 | `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows. |
-| `web/mode.js` | Display-mode state and its switch. |
+| `web/mode.js` | Display-mode state, its switch, and the calm ledger's mutable state (sort, filters, open row, cursor, scroll). |
 | `web/usage.js` | The usage band, the configure popover, and the quota disclosure modal. |
 | `web/controls.js` | The stop control, the stopped panel, and the mode bar. |
 | `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. |
