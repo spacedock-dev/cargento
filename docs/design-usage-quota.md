@@ -122,3 +122,52 @@ the query parameter for the first-run case. The parameter alone is the smaller c
 The per-model rows have no rendering yet. Shipping them into `/api/data` early would freeze a
 shape nobody has designed against; the parse point is marked and the field documented here
 instead.
+
+### Antigravity quota, attempted and not feasible (2026-08-04)
+
+Antigravity is the Google authority, and it is the obvious second vendor: Cargento already reads
+its sessions, and its CLI displays quota on a status line. It was attempted with the owner's
+approval, against a live install, and it does not work. Recorded here at length because everything
+about it looks promising until the last step, so the next person will otherwise repeat the work.
+
+What checked out. The endpoint is real and pinned: the `agy` binary carries
+`https://cloudcode-pa.googleapis.com` and the method `v1internal:retrieveUserQuota`, which is the
+same method name the retired Gemini CLI used, so lineage and current binary agree. The refresher is
+real too, and even throttles itself: `quota_manager.go` logs `doRefreshQuota: starting reload`,
+`skipped (throttled)` and `skipped (not logged in)`. The credential's location is real: a macOS
+Keychain generic-password item with service `gemini` and account `antigravity`.
+
+Where it fails, on two independent grounds:
+
+1. **The stored credential is not a usable token.** The Keychain item holds an opaque
+   2246-character string: no `ya29.` or `1//` prefix, not a JWT, not base64, single segment, and
+   containing none of `access_token`, `refresh_token`, `expiry`, `token_type` or `scope` as
+   substrings. Presented as a bearer token it returns HTTP 401 with Google's own text, "Expected
+   OAuth 2 access token, login cookie or other valid authentication credential". Three request
+   bodies were tried (empty, absent, and constants-only metadata) and all three returned the same
+   401, so the failure is authentication rather than request shape. Antigravity evidently keeps its
+   credential in a proprietary form and mints access tokens in process. No `ya29.` token exists in
+   any file under the Gemini home or the usual macOS and Linux config roots.
+2. **Nothing is persisted to read instead.** A disk read was the preferred outcome, since it needs
+   no credential and stays inside the original two invariants, and the binary's
+   `retrieveUserQuotaSummaryCache` symbol made it look likely. Every file under
+   `~/.gemini/antigravity-cli/` below 2 MB was searched for `remainingFraction`, `quotaInfo`,
+   `minutesPerBucket`, `movingWindowSize`, `resetTime` and `userTier`. Zero matches. The logs record
+   that a refresh happened, never what it returned. The cache is in memory.
+
+The opt-in sidecar that DEC-1 kept as a fallback does not rescue this: a sidecar would meet the same
+opaque credential. So the blocker is the credential format, not Cargento's architecture, and no
+option in DEC-1 reaches it.
+
+Two things learned that outlive the attempt. First, Google's quota shape is not this contract's
+shape: the response model is bucketed and moving-window (`remainingFraction`, `minutesPerBucket`,
+`movingWindowSize`, `bucketId`, `resetTime`, `hasQuotaUnavailabilityError`), so `remainingFraction`
+is the inverse of Anthropic's `utilization` and windows are lengths rather than names, which would
+make the mapping follow `codex._usage_window` rather than Claude's. Second, the Code Assist RPCs are
+POSTs carrying a `ClientMetadata` body (`platform`, `ideType`, `ideVersion`, `pluginType`,
+`pluginVersion`, `updateChannel`, `project`), so had authentication worked, there would have been a
+real question about whether sending that breaks this document's own "no machine identifiers" clause.
+Anyone revisiting this inherits that question unanswered.
+
+Revisit only if Antigravity begins persisting quota to disk, or ships a documented local interface.
+The endpoint and method above will still be correct; it is the credential that has to change.
