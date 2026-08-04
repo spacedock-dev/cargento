@@ -47,14 +47,14 @@ class FrontendAssetContractTest(unittest.TestCase):
         self.assertEqual(b"", (SKILL_DIR / "cargento_runtime" / "web" / "__init__.py").read_bytes())
 
     def test_assets_stay_inside_the_installed_skill(self) -> None:
-        for name in ("index.html", "styles.css", "app.js"):
+        for name in ("index.html", "styles.css", *frontend_page.APP_PARTS):
             with self.subTest(asset=name):
                 self.assertTrue(frontend_page.asset_path(name).resolve().is_relative_to(SKILL_DIR))
 
     def test_load_page_preserves_all_three_byte_oracles(self) -> None:
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        script = frontend_page.asset_path("app.js").read_bytes()
+
         self.assertEqual(121_673, len(assembled))
         self.assertEqual(
             "769c6542fbc4f06c82ac1de965a27dfa16e9b9d37e22cba6988411563c1a79d4",
@@ -65,11 +65,37 @@ class FrontendAssetContractTest(unittest.TestCase):
             "10e0cae57a82222bf68b291a985ed91e13110f91a44bd1a3bc5724ac9737f02a",
             hashlib.sha256(styles).hexdigest(),
         )
-        self.assertEqual(83_645, len(script))
-        self.assertEqual(
-            "66f2948dc75909ca1ae8e145e67c1742c2873f444102cbb70bc8e2823a821d32",
-            hashlib.sha256(script).hexdigest(),
-        )
+        expected_parts = {
+            "spark.js": (
+                19_095,
+                "c0d3dabb0b38d2f5f2b81425dd6e078d681862d648a3d22ca81c83246e388df0",
+            ),
+            "regular.js": (
+                11_441,
+                "b545a68dba38442c380a8772237ccb33f630613bdaf0f04ec8f9bbb11d1843c7",
+            ),
+            "mode.js": (1_931, "a88e29034f1f41d93213e4ab1b3bab9b6759869374d6bf391c4d37ef7e433def"),
+            "usage.js": (
+                11_072,
+                "9d20690d6e93a04c037fe7efa0faadfdcb0157fe646c01e91c86c1ca723fa138",
+            ),
+            "controls.js": (
+                3_382,
+                "ca8282870edbf67b14c78e533e1caeb182318632524a6bf6ff3741d78870ffcc",
+            ),
+            "calm.js": (26_503, "f2167d3511715210b01987e03b1d1a5a20bb7b98223bbce8e1a552a32c44e063"),
+            "notify.js": (
+                2_655,
+                "79b0396140c35ad4b34b9656b692ed45855fb04e63a2165610531b5d4aa54984",
+            ),
+            "main.js": (7_566, "2ee61f5138b7e91d6a8cddf6702ca52cbd67695329af8a7bed19610b5d913ede"),
+        }
+        self.assertEqual(tuple(expected_parts), frontend_page.APP_PARTS)
+        for name, (size, digest) in expected_parts.items():
+            with self.subTest(part=name):
+                data = frontend_page.asset_path(name).read_bytes()
+                self.assertEqual(size, len(data))
+                self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
     def test_load_page_names_a_missing_asset(self) -> None:
         with (
@@ -84,7 +110,9 @@ class FrontendAssetContractTest(unittest.TestCase):
             web = Path(tmp)
             (web / "index.html").write_text("{{CARGENTO_STYLES}}{{CARGENTO_APP}}", encoding="utf-8")
             (web / "styles.css").write_text("", encoding="utf-8")
-            (web / "app.js").write_bytes(b"\xff")
+            for name in frontend_page.APP_PARTS:
+                (web / name).write_text("", encoding="utf-8")
+            (web / "main.js").write_bytes(b"\xff")
             with (
                 mock.patch.object(frontend_page, "WEB_DIR", web),
                 self.assertRaises(UnicodeDecodeError),
@@ -105,7 +133,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 web = Path(tmp)
                 (web / "index.html").write_text(template, encoding="utf-8")
                 (web / "styles.css").write_text("css", encoding="utf-8")
-                (web / "app.js").write_text("js", encoding="utf-8")
+                for name in frontend_page.APP_PARTS:
+                    (web / name).write_text("js", encoding="utf-8")
                 with (
                     mock.patch.object(frontend_page, "WEB_DIR", web),
                     self.assertRaisesRegex(RuntimeError, f"^{re.escape(message)}$"),
@@ -122,7 +151,7 @@ class FrontendAssetContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             skill = Path(tmp) / "skill"
             shutil.copytree(SKILL_DIR, skill)
-            for name in ("index.html", "styles.css", "app.js"):
+            for name in ("index.html", "styles.css", *frontend_page.APP_PARTS):
                 (skill / "cargento_runtime" / "web" / name).unlink()
             env = dict(os.environ)
             env.pop("PYTHONPATH", None)
@@ -235,7 +264,7 @@ class FrontendAssetContractTest(unittest.TestCase):
                     (web / "index.html").unlink()
                     (web / "index.html").mkdir()
                 elif mutation == "invalid UTF-8":
-                    (web / "app.js").write_bytes(b"\xff")
+                    (web / "main.js").write_bytes(b"\xff")
                 else:
                     (web / "index.html").write_text("no slots", encoding="utf-8")
                 state = root / "state"

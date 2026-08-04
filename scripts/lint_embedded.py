@@ -38,10 +38,19 @@ WEB_DIR = (
 
 
 def load_frontend(web_dir: Path = WEB_DIR) -> tuple[str, str, str]:
+    """The HTML shell, the stylesheet, and the concatenated script.
+
+    The script ships as ordered parts that page.py concatenates into one
+    script scope. The checks here are order-insensitive — the syntax check
+    accepts any statement sequence and the DOM-id cross-check is a text
+    scan — so the parts are discovered by glob rather than importing the
+    loader; page.py's own tests hold the authoritative part list.
+    """
+    parts = sorted(web_dir.glob("*.js"))
     return (
         (web_dir / "index.html").read_text(encoding="utf-8"),
         (web_dir / "styles.css").read_text(encoding="utf-8"),
-        (web_dir / "app.js").read_text(encoding="utf-8"),
+        "".join(part.read_text(encoding="utf-8") for part in parts),
     )
 
 

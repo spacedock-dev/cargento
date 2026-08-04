@@ -253,7 +253,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             launcher = copied_plugin / "skills" / "cargento" / "server.py"
             copied_skill = launcher.parent.resolve()
             copied_web = copied_skill / "cargento_runtime" / "web"
-            for name in ("index.html", "styles.css", "app.js", "page.py"):
+            for name in ("index.html", "styles.css", "page.py", *frontend_page.APP_PARTS):
                 with self.subTest(shipped_file=name):
                     self.assertTrue((copied_web / name).is_file())
             cwd = root / "unrelated"
@@ -291,7 +291,7 @@ for module in modules:
     origins[module.__name__] = str(Path(module.__file__).resolve())
 assets = {{
     name: str(page.asset_path(name).resolve())
-    for name in ("index.html", "styles.css", "app.js")
+    for name in ("index.html", "styles.css", *page.APP_PARTS)
 }}
 print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.load_page())}}))
 """

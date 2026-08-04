@@ -7,11 +7,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from cargento_runtime.web import page as frontend_page
+
 from .support import RuntimeTestCase
 
-APP_PATH = Path(__file__).resolve().parents[1] / "cargento_runtime" / "web" / "app.js"
-WEB_DIR = APP_PATH.parent
-APP_JS = APP_PATH.read_text(encoding="utf-8")
+WEB_DIR = frontend_page.WEB_DIR
+APP_JS = frontend_page.load_script()
 STYLES = (WEB_DIR / "styles.css").read_text(encoding="utf-8")
 PAGE_TEXT = (
     (WEB_DIR / "index.html")

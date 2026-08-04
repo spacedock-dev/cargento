@@ -245,21 +245,19 @@ grep -nE 'WEB_DIR|load_frontend' scripts/lint_embedded.py
 grep -o '{{CARGENTO_STYLES}}\|{{CARGENTO_APP}}' "$W/index.html" | sort | uniq -c
 python3 - "$W" <<'PY'
 import hashlib
+import importlib.util
 import sys
 from pathlib import Path
 
 web = Path(sys.argv[1])
-for name in ("index.html", "styles.css", "app.js"):
+spec = importlib.util.spec_from_file_location("cargento_web_page", web / "page.py")
+assert spec and spec.loader
+page_mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(page_mod)
+for name in ("index.html", "styles.css", *page_mod.APP_PARTS):
     payload = (web / name).read_bytes()
     print(name, len(payload), hashlib.sha256(payload).hexdigest())
-template = (web / "index.html").read_text(encoding="utf-8")
-styles = (web / "styles.css").read_text(encoding="utf-8")
-script = (web / "app.js").read_text(encoding="utf-8")
-page = (
-    template.replace("{{CARGENTO_STYLES}}", styles)
-    .replace("{{CARGENTO_APP}}", script)
-    .encode("utf-8")
-)
+page = page_mod.load_page()
 print("assembled page", len(page), hashlib.sha256(page).hexdigest())
 PY
 # The real CI command surface

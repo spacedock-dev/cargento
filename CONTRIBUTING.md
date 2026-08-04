@@ -168,7 +168,8 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   state filter chips and the flag pill all used to paint selection as `--panel` over `--bg`, a 1.2:1
   step, so on and off were indistinguishable in either theme.
 - Test the page by running it, not by matching strings against its source. `PageJsHarness` in
-  `page_harness.py` executes the real `app.js` under node against a stub DOM, so a test can fire a
+  `page_harness.py` executes the real dashboard script (the `web/*.js` parts, concatenated in
+  `APP_PARTS` order) under node against a stub DOM, so a test can fire a
   click or a keystroke and assert on what the page did. A source-text assertion passes
   forever after the behavior behind it breaks.
 - Load the frontend before creating the daemon log, binding the socket, forking, or spawning a

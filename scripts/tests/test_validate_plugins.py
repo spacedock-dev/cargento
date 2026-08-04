@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -47,7 +48,7 @@ class ValidatorTests(unittest.TestCase):
             "package initializer": "skills/cargento/cargento_runtime/__init__.py",
             "runtime module": "skills/cargento/cargento_runtime/cli.py",
             "collector": "skills/cargento/cargento_runtime/collectors/goose.py",
-            "frontend asset": "skills/cargento/cargento_runtime/web/app.js",
+            "frontend asset": "skills/cargento/cargento_runtime/web/main.js",
         }
         for category, relative in categories.items():
             with self.subTest(category=category):
@@ -678,10 +679,21 @@ class ValidatorTests(unittest.TestCase):
     def test_root_docs_lists_every_prose_doc_in_the_repository(self) -> None:
         """ROOT_DOCS is what decides coverage; a silent drop must fail here.
 
+        Tracked files only: a gitignored export sitting at the repository
+        root is a local artifact, not a prose doc the sync pass owns, and a
+        filesystem glob failed here on any machine carrying one.
         CODE_OF_CONDUCT.md is excluded deliberately — it is verbatim upstream
         text that no sync pass may edit.
         """
-        expected = {path.name for path in validator.ROOT.glob("*.md")} - {"CODE_OF_CONDUCT.md"}
+        listing = subprocess.run(
+            ["git", "-C", str(validator.ROOT), "ls-files", "*.md"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        expected = {name for name in listing.stdout.splitlines() if name and "/" not in name} - {
+            "CODE_OF_CONDUCT.md"
+        }
         expected.add(".github/PULL_REQUEST_TEMPLATE.md")
 
         self.assertEqual(expected, set(validator.ROOT_DOCS))

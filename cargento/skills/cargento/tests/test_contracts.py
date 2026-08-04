@@ -566,7 +566,7 @@ class LauncherContractTest(unittest.TestCase):
             "    assert mod.__file__, name\n"
             "    resolved = Path(mod.__file__).resolve()\n"
             "    assert resolved.is_relative_to(root), (name, str(resolved))\n"
-            "for asset in ('index.html', 'styles.css', 'app.js'):\n"
+            "for asset in ('index.html', 'styles.css', *page.APP_PARTS):\n"
             "    found = page.asset_path(asset).resolve()\n"
             "    assert found.is_relative_to(root), (asset, str(found))\n"
             "print('OK', len(names))\n"

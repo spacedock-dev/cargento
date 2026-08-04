@@ -57,7 +57,26 @@ Everything else lives in one file per responsibility:
 | `http_api.py` | The loopback server, its request handler, and network helpers. |
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. |
 | `cli.py` | Argument parsing, runtime assembly, and the three serve branches. |
-| `web/page.py` | Package-relative frontend loading and byte-preserving assembly. |
+| `web/page.py` | Package-relative frontend loading, the ordered `APP_PARTS` script list, and byte-preserving assembly. |
+
+The dashboard script is the same kind of split, applied to the frontend once it crossed the same
+threshold the Python did: over a thousand lines holding more than one responsibility. The parts are
+plain concatenated script, not modules: `page.py` joins them in `APP_PARTS` order into the page's
+single script slot, so they share one scope and order carries meaning. Shared state and the
+component tables come before the listeners and the render loop that read them. The cut points are
+the file's own section seams, taken as contiguous byte-exact slices, which made the refactor
+self-proving: the assembled page hash in `test_page.py` did not change.
+
+| Script part | Owns |
+|---|---|
+| `web/spark.js` | Shared page state, rate buffers, and the sparkline with its hover machinery. |
+| `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows. |
+| `web/mode.js` | Display-mode state and its switch. |
+| `web/usage.js` | The usage band, the configure popover, and the quota disclosure modal. |
+| `web/controls.js` | The stop control, the stopped panel, and the mode bar. |
+| `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. |
+| `web/notify.js` | Desktop notifications. |
+| `web/main.js` | `render()`, `refresh()`, and the poll timer. |
 
 ## R-2: Dependencies run inward, and the test enforces it
 
