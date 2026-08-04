@@ -69,6 +69,10 @@ function calmRow(d, x){
   return {
     key: sessKey(x), sid: x.sid,
     harness: x.harness, project: x.project, session: x.session,
+    /* Carried for the detail panel only. The ledger row itself is a fixed grid
+       whose columns are compared down their own length, and `cm-where` already
+       gives up the project name to truncation, so there is no room to spend. */
+    provider: x.provider || null, model: x.model || null,
     st, title, doing: humanTool(x.state_detail), doingRaw: x.state_detail,
     ageSec, waitSec, turn, flag, tone, why,
     sortAge: st === "work" ? 0 : ageSec,   /* see byAge — a working row's age is noise */
@@ -323,6 +327,7 @@ function calmExpansion(r){
     : "";
   const meta = `<div class="cm-meta">` +
     `<span>${esc(own(HARNESS, r.harness, {}).name || r.harness)}</span>` +
+    authorityBit(r) +
     `<span>${esc(r.project)}</span><span>session ${esc(r.session)}</span>` +
     `<span>${esc(r.detailAge)}</span>` +
     (r.tasks.length ? `<span>${esc(r.taskNote)}</span>` : "") + `</div>`;

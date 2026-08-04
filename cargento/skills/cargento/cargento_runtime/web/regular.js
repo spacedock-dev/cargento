@@ -190,7 +190,8 @@ function workingCard(d, sess){
     `<div class="card-headrow"><span class="pill pill-work"><span class="pill-dot"></span>Working</span>` +
     badge(sess.harness, true) + `</div>` +
     `<div class="card-title">${esc(sess.title || sess.project)}</div>` +
-    `<div class="card-meta">${esc(sess.project)} · ${esc(sess.session)}</div>${bitsLine}` +
+    `<div class="card-meta">${esc(sess.project)} · ${esc(sess.session)}` +
+    `${authorityMeta(sess)}</div>${bitsLine}` +
     `</div>${rateMeter}</div>` +
     `<div class="now"><span class="now-k">now</span>` +
     `<span title="${esc(sess.state_detail)}">${esc(humanTool(sess.state_detail))}</span></div>` +
@@ -200,7 +201,8 @@ function workingCard(d, sess){
 function needRow(d, sess){
   const blocked = fmtDur(d.generated - (sess.blocked_since || sess.last_activity));
   return `<div class="need"><div style="min-width:0">` +
-    `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)} · ${esc(sess.session)}</div>` +
+    `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)} · ${esc(sess.session)}` +
+    `${authorityMeta(sess)}</div>` +
     `<div class="need-title">${esc(sess.title || sess.last_prompt || sess.project)}</div>` +
     `<div class="need-detail" title="${esc(sess.state_detail)}">` +
     `${esc(humanTool(sess.state_detail))}</div></div>` +
@@ -212,6 +214,10 @@ function idleRow(d, sess){
   const t = sess.total ? ` · ${sess.done}/${sess.total}` : "";
   return `<div class="idle-row"><span class="idle-dot"></span>${badge(sess.harness, false)}` +
     `<span class="idle-title">${esc(sess.title || sess.last_prompt || sess.project)}</span>` +
+    /* No authority here on purpose. This cell already truncates at a max-width
+       with an ellipsis, so appending would silently swallow it, and an idle
+       session is spending nobody's quota. It shows where consumption is live:
+       the working card, the needs-input row, and the calm detail panel. */
     `<span class="idle-proj">${esc(sess.project)} · ${esc(sess.session)}${t}</span>` +
     `<span class="idle-age">idle ${esc(age)}</span></div>`;
 }

@@ -176,11 +176,24 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
     # can key per-session state without truncation collisions (e.g. two Gemini
     # "session-*" fallback ids are one string apart at the floor). Claude passes
     # its 8-char prefix, already its key upstream, so sid == session there.
+    # `provider` and `model` are the authority a session is spending and the
+    # model it is spending it on. Declared here for every harness, at None, so
+    # the payload's shape does not depend on which collector filled a row: a key
+    # that appears only for some harnesses makes every consumer test for
+    # presence rather than for a value. Only Pi populates them today, because
+    # Pi is the one harness with no authority of its own and therefore the one
+    # where the answer is not already the harness name.
+    #
+    # `provider` is the vendor's own id, unmapped (`openai-codex`, not
+    # `codex`). Naming is presentation and belongs to the page, which has the
+    # harness table; the payload stays the raw reading.
     return {
         "session": str(sid)[:8],
         "sid": str(sid),
         "harness": harness,
         "project": project,
+        "provider": None,
+        "model": None,
         "title": None,
         "last_prompt": "",
         "state": "idle",

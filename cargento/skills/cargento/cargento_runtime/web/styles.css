@@ -129,6 +129,11 @@
   .pill-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.5s infinite}
   .card-title{font-size:var(--fs-2xl);font-weight:600;line-height:1.25;letter-spacing:-.012em}
   .card-meta{font-family:var(--mono);font-size:var(--fs-md);color:var(--ink3)}
+  /* The borrowed-authority note. No colour of its own: it sits inside the
+     metadata lines and inherits their tier, so it cannot drift off the
+     contrast scale. Only kept off wrapping, because "via Codex - model" is
+     one phrase and breaking it mid-way reads as two facts. */
+  .via{white-space:nowrap}
   .card-bits{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink2);margin-top:-4px}
   .rate-meter{text-align:right;flex:none}
   .rate-num{font-family:var(--mono);font-size:var(--fs-num);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}

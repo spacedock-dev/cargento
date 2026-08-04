@@ -234,6 +234,214 @@ class PiTranscriptTest(unittest.TestCase):
             scan["turn"]["turn_start"],
         )
 
+    @staticmethod
+    def _switch(
+        entry_id: str, parent_id: str | None, timestamp: str, provider: Any, model: Any
+    ) -> dict[str, Any]:
+        return {
+            "type": "model_change",
+            "id": entry_id,
+            "parentId": parent_id,
+            "timestamp": timestamp,
+            "provider": provider,
+            "modelId": model,
+        }
+
+    def test_the_newest_authority_wins_whichever_kind_carries_it(self) -> None:
+        # Pi records the provider twice over: on the assistant message that
+        # spent the turn, and on a `model_change` the user has not spent yet.
+        # Recency alone decides, so no precedence rule is needed — but that only
+        # holds if both kinds are consulted. Mutation-checked: ignoring
+        # `model_change` reports the superseded anthropic turn, and walking the
+        # path forwards instead of backwards reports the first entry. The
+        # opposite mutation, ignoring the message provider, is caught by
+        # `test_an_abandoned_branch_never_reports_its_authority` and
+        # `test_switching_branch_does_not_leave_a_stale_authority_cached`, whose
+        # winning provider sits on a message rather than on a switch.
+        records = [
+            {"type": "session", "version": 3, "id": "auth", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Start"),
+            self._message(
+                "turn-a",
+                "root",
+                "2026-07-29T11:00:01Z",
+                "assistant",
+                "one",
+                provider="anthropic",
+                model="claude-opus-5",
+                usage={"output": 5},
+            ),
+            self._switch("sw", "turn-a", "2026-07-29T11:00:02Z", "openai-codex", "gpt-5.6-sol"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-auth.jsonl"
+            self._write(path, records)
+            after_switch = self.scan(path)
+            assert after_switch is not None
+            # A turn on the new provider: now the message is the newest again.
+            with path.open("a") as output:
+                output.write(
+                    json.dumps(
+                        self._message(
+                            "turn-b",
+                            "sw",
+                            "2026-07-29T11:00:03Z",
+                            "assistant",
+                            "two",
+                            provider="openai-codex",
+                            model="gpt-5.6-sol",
+                            usage={"output": 7},
+                        )
+                    )
+                    + "\n"
+                )
+            after_turn = self.scan(path)
+            assert after_turn is not None
+
+        # The unspent switch is newer than the last turn, and is what the next
+        # turn will cost.
+        self.assertEqual("openai-codex", after_switch["provider"])
+        self.assertEqual("gpt-5.6-sol", after_switch["model"])
+        self.assertEqual("openai-codex", after_turn["provider"])
+
+    def test_the_provider_and_model_always_come_from_one_entry(self) -> None:
+        # Pairing them across entries would report a provider that never served
+        # that model.
+        records = [
+            {"type": "session", "version": 3, "id": "pair", "cwd": "/w/proj"},
+            self._message(
+                "root",
+                None,
+                "2026-07-29T11:00:00Z",
+                "assistant",
+                "one",
+                provider="anthropic",
+                model="claude-opus-5",
+            ),
+            # Newest entry names a provider and no model at all.
+            self._switch("sw", "root", "2026-07-29T11:00:01Z", "groq", None),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-pair.jsonl"
+            self._write(path, records)
+            scan = self.scan(path)
+            assert scan is not None
+
+        self.assertEqual("groq", scan["provider"])
+        self.assertIsNone(scan["model"], "the older entry's model leaked across")
+
+    def test_an_abandoned_branch_never_reports_its_authority(self) -> None:
+        # The whole reason this is derived from the branch path rather than a
+        # global reverse scan: `_latest_name` scans globally by design, and
+        # copying that shape would surface a provider the user switched away
+        # from on a branch the agent abandoned.
+        records = [
+            {"type": "session", "version": 3, "id": "abandon", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Start"),
+            self._switch("wrong", "root", "2026-07-29T11:00:01Z", "groq", "llama-4"),
+            self._message("shared", "root", "2026-07-29T11:00:02Z", "user", "Winning prompt"),
+            self._message(
+                "leaf",
+                "shared",
+                "2026-07-29T11:00:03Z",
+                "assistant",
+                "done",
+                provider="anthropic",
+                model="claude-opus-5",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-abandon.jsonl"
+            self._write(path, records)
+            scan = self.scan(path)
+            assert scan is not None
+
+        self.assertEqual("anthropic", scan["provider"])
+        self.assertEqual("claude-opus-5", scan["model"])
+
+    def test_switching_branch_does_not_leave_a_stale_authority_cached(self) -> None:
+        # `_extend` truncates the cached path on a branch switch. A provider
+        # cached as a scalar on the scan state, the way the session name is,
+        # would survive that truncation and keep reporting the abandoned
+        # branch's provider. Deriving from the path each time cannot go stale,
+        # and this is the test that tells the two implementations apart.
+        records = [
+            {"type": "session", "version": 3, "id": "rebranch", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Start"),
+            self._message(
+                "first",
+                "root",
+                "2026-07-29T11:00:01Z",
+                "assistant",
+                "one",
+                provider="groq",
+                model="llama-4",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-rebranch.jsonl"
+            self._write(path, records)
+            before = self.scan(path)
+            assert before is not None
+            # Re-branch from root, discarding "first" and its provider.
+            with path.open("a") as output:
+                output.write(
+                    json.dumps(
+                        self._message(
+                            "second",
+                            "root",
+                            "2026-07-29T11:00:02Z",
+                            "assistant",
+                            "two",
+                            provider="anthropic",
+                            model="claude-opus-5",
+                        )
+                    )
+                    + "\n"
+                )
+            after = self.scan(path)
+            assert after is not None
+
+        self.assertEqual("groq", before["provider"])
+        self.assertEqual("anthropic", after["provider"], "stale provider survived a re-branch")
+        self.assertEqual("claude-opus-5", after["model"])
+
+    def test_a_session_with_no_authority_makes_no_claim(self) -> None:
+        # Not every session names one, and Pi's global default lives in
+        # settings.json, which is *current* state: attributing today's default to
+        # an older session would report a provider it never used.
+        records = [
+            {"type": "session", "version": 3, "id": "silent", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Start"),
+            self._message("leaf", "root", "2026-07-29T11:00:01Z", "assistant", "done"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-silent.jsonl"
+            self._write(path, records)
+            scan = self.scan(path)
+            assert scan is not None
+
+        self.assertIsNone(scan["provider"])
+        self.assertIsNone(scan["model"])
+
+    def test_unusable_authority_values_are_dropped_not_rendered(self) -> None:
+        # These stores are untrusted input like every other. A non-string or an
+        # empty string must not reach the page as a provider name.
+        for provider, model in ((123, ["x"]), ("", ""), (None, None), ({}, True)):
+            with self.subTest(provider=provider):
+                records = [
+                    {"type": "session", "version": 3, "id": "junk", "cwd": "/w/proj"},
+                    self._message("root", None, "2026-07-29T11:00:00Z", "user", "Start"),
+                    self._switch("sw", "root", "2026-07-29T11:00:01Z", provider, model),
+                ]
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "pi-junk.jsonl"
+                    self._write(path, records)
+                    scan = self.scan(path)
+                    assert scan is not None
+                self.assertIsNone(scan["provider"])
+                self.assertIsNone(scan["model"])
+
     def test_initial_rebuild_follows_messages_through_session_info(self) -> None:
         records = [
             {"type": "session", "version": 3, "id": "named-tree", "cwd": "/w/proj"},

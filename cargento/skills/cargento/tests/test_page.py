@@ -56,24 +56,24 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
 
-        self.assertEqual(124_992, len(assembled))
+        self.assertEqual(128_032, len(assembled))
         self.assertEqual(
-            "e77a5a23c1e0f9626d32182acca24b88bacc5a2960dd909ee6e03f90ed261074",
+            "fa56b88d73b519e2519c712e0c9fc9e55d59ffe4f79b46f0dd5954df48f4e7c8",
             hashlib.sha256(assembled).hexdigest(),
         )
-        self.assertEqual(38_008, len(styles))
+        self.assertEqual(38_321, len(styles))
         self.assertEqual(
-            "9bb614dd5c71b621374a95d71090f7f5a323695819ae8027d8cbdb1f3fd547a6",
+            "20a4f2c694e59b01f57767aa8bff857fa79216b54ff612cd76fc80d11b80f962",
             hashlib.sha256(styles).hexdigest(),
         )
         expected_parts = {
             "spark.js": (
-                19_479,
-                "8c958bc8a0899d28cf9a7aac39f86448bd5f6bede1ba0e44c23d3ecf94a8a105",
+                21_511,
+                "51442d07feb7d8d76b88afd40dc71db35f141463898583d5c38f1fdef9ee61b9",
             ),
             "regular.js": (
-                11_441,
-                "b545a68dba38442c380a8772237ccb33f630613bdaf0f04ec8f9bbb11d1843c7",
+                11_815,
+                "2e291c3844c8c97b2ad0b6a4d35bd82841854088182f42c800b9e690d25c2ac3",
             ),
             "mode.js": (1_931, "a88e29034f1f41d93213e4ab1b3bab9b6759869374d6bf391c4d37ef7e433def"),
             "usage.js": (
@@ -84,7 +84,7 @@ class FrontendAssetContractTest(unittest.TestCase):
                 3_382,
                 "ca8282870edbf67b14c78e533e1caeb182318632524a6bf6ff3741d78870ffcc",
             ),
-            "calm.js": (26_503, "f2167d3511715210b01987e03b1d1a5a20bb7b98223bbce8e1a552a32c44e063"),
+            "calm.js": (26_824, "cccfcdfa23e04a175318bc171f9ed1e5e8d5899368893d148120cf090b159548"),
             "notify.js": (
                 2_655,
                 "79b0396140c35ad4b34b9656b692ed45855fb04e63a2165610531b5d4aa54984",
@@ -499,6 +499,61 @@ class CargentoServerTest(PageJsHarness):
         self.assertIn("63%", html)
         self.assertIn("31%", html)
         self.assertNotIn('<span class="u-wlab">used</span>', html)
+
+    def test_a_borrowed_authority_names_the_harness_it_spends(self) -> None:
+        # Pi has no allowance of its own, so a Pi row that says only "Pi" hides
+        # whose quota is going. The provider id arrives raw and the page maps it,
+        # because naming is presentation and the harness table lives here.
+        rendered = self._run_page_js(
+            "const cases = ["
+            " ['mapped codex',   {harness:'pi', provider:'openai-codex', model:'gpt-5.6-sol'}],"
+            " ['mapped claude',  {harness:'pi', provider:'anthropic', model:'claude-opus-5'}],"
+            " ['mapped copilot', {harness:'pi', provider:'github-copilot', model:'x'}],"
+            " ['unmapped key',   {harness:'pi', provider:'groq', model:'llama-4'}],"
+            " ['unknown id',     {harness:'pi', provider:'brand-new-co', model:'x-1'}],"
+            " ['model only',     {harness:'pi', provider:null, model:'gpt-5'}],"
+            " ['neither',        {harness:'claude', provider:null, model:null}],"
+            " ['prototype key',  {harness:'pi', provider:'constructor', model:'m'}]];"
+            # Visible text as well as markup: the wrapper's class is literally
+            # "via", so asserting on the HTML cannot tell the label apart from
+            # the class name.
+            "console.log(JSON.stringify(cases.map(c => [c[0],"
+            " authorityBit(c[1]).replace(/<[^>]*>/g, '')])));"
+        )
+        got = dict(rendered)
+        # A provider Cargento has a row for is named as that harness.
+        self.assertEqual("via Codex · gpt-5.6-sol", got["mapped codex"])
+        self.assertEqual("via Claude · claude-opus-5", got["mapped claude"])
+        self.assertEqual("via Copilot · x", got["mapped copilot"])
+        # One with no row keeps its own name. Claiming a harness that is not
+        # involved would invent a session.
+        self.assertEqual("via groq · llama-4", got["unmapped key"])
+        # An unrecognised id passes through rather than being dropped or guessed.
+        self.assertEqual("via brand-new-co · x-1", got["unknown id"])
+        # "via gpt-5" would read as the model owning the quota.
+        self.assertEqual("gpt-5", got["model only"])
+        # Nothing to say, nothing rendered — no stray separator.
+        self.assertEqual("", got["neither"])
+        # `own()` exists because every plain object inherits `constructor`; a
+        # provider named for an Object.prototype key must not resolve to it.
+        self.assertEqual("via constructor · m", got["prototype key"])
+
+    def test_the_authority_is_never_dressed_as_the_sessions_own_harness(self) -> None:
+        # The icon trap: HARNESS carries an icon for Claude and Codex, so showing
+        # the borrowed one's glyph is easy and wrong — a Claude mark on a Pi row
+        # reads as a Claude session, which is the confusion this removes.
+        rendered = self._run_page_js(
+            "const s = {harness:'pi', provider:'anthropic', model:'claude-opus-5'};"
+            "console.log(JSON.stringify({bit: authorityBit(s),"
+            " meta: authorityMeta(s), empty: authorityMeta({harness:'pi'})}));"
+        )
+        self.assertNotIn("cm-ico", rendered["bit"])
+        self.assertNotIn("mask:url", rendered["bit"])
+        self.assertNotIn("<img", rendered["bit"])
+        # The separator belongs to the helper, so a row with no authority does
+        # not render a dangling " · ".
+        self.assertTrue(rendered["meta"].startswith(" · "))
+        self.assertEqual("", rendered["empty"])
 
     def test_a_monthly_cycle_renders_its_own_gauge_and_its_money(self) -> None:
         # Cursor meters spend against a monthly billing cycle. Exercised by

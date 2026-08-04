@@ -185,6 +185,74 @@ The row's `where` column follows D-3 to its conclusion. `project · session id` 
 column of a dense table, and truncating the tail eats the id, which is the part D-3 widened
 precisely so the row could be told apart. Only the project gives way; the id is never cut.
 
+## D-5: a row names the authority it spends, because one harness does not own its own
+
+Nine of the ten harnesses answer "whose quota is this burning?" with their own name. Pi does not.
+It is a harness over other people's subscriptions: a Pi turn runs on `anthropic` or `openai-codex`
+or a direct API key, the choice can change mid-session, and the row said only "Pi". So a Pi turn
+moved the Codex gauge with nothing on screen connecting the two, which made the Codex tile look
+like Codex was working.
+
+So `base_session` gained `provider` and `model`, and the page renders them as `via Codex ·
+gpt-5.6-sol`. Four things about that are decisions rather than details.
+
+**Both fields sit on every row, at `None`.** Declaring them per harness would make the payload's
+shape depend on which collector filled a row, and every consumer would then test for presence
+rather than for a value. Only Pi populates them today, because Pi is the only harness where the
+answer is not already the harness name. The remaining half of DRC-4050 (the model for the other
+nine) is a per-collector parse: Claude's path, for one, does not read a model anywhere today.
+
+**The payload carries the vendor's own id, unmapped.** `openai-codex`, not `codex`. Naming is
+presentation, and the page already owns the harness table, so `PROVIDER_HARNESS` lives beside it in
+`spark.js`. A provider Cargento has no row for keeps its own name, and an unrecognised id passes
+through unchanged: Pi supports twenty-odd providers and most are direct API keys with no Cargento
+presence, so mapping one to a harness would claim a session that does not exist.
+
+**It is derived from the branch path on every read, never cached.** This is the one that looks like
+a style choice and is not. `_extend` truncates the cached path when the session re-branches:
+
+```python
+scan["path"] = [*path_entries[: index + 1], entry]
+```
+
+A provider cached as a scalar on the scan state, the way the session name is, survives that
+truncation and keeps reporting the abandoned branch's provider. Reading the path each time cannot go
+stale, and it costs nothing extra because the entries are already in it.
+
+**Recency alone decides between the two kinds of entry that carry it.** An assistant message records
+what a turn actually spent; a `model_change` records a switch not yet spent, and is therefore the
+newer of the two immediately after a switch, which is when someone is most likely to be looking.
+Taking the newest of either needs no precedence rule. Both values come from the same entry, so a
+provider is never paired with a different entry's model.
+
+### Rejected
+
+- **Mirroring `_latest_name`.** It looks like the precedent and is the trap. It runs a separate
+  global reverse scan and is deliberately not branch-restricted, because a Pi session name is global
+  state. A provider is not: copying that shape reports one the user switched away from on a branch
+  the agent abandoned.
+- **Reading Pi's `defaultProvider` from `~/.pi/agent/settings.json`** when a session names no
+  provider. That file is current global state, so attributing it to an older session would report
+  today's default as that session's history. A session with no provider makes no claim.
+- **Reading `~/.pi/agent/auth.json`** to tell a subscription from an API key. It is a credential
+  store, and widening Cargento's credential reads for a display nicety is the wrong trade. The
+  provider id carries enough: `openai-codex` and `github-copilot` are inherently subscription
+  routes.
+- **Publishing Pi's cost.** Pi records a dollar `cost` per turn, and on a subscription-routed call
+  it is API list price for something that was billed to a subscription and charged nothing extra.
+  On the machine this was built against, every provider was a subscription login, so the figure
+  would have been false in the only configuration available to test it. Attribution says whose
+  quota; it does not price it.
+- **The borrowed harness's icon.** `HARNESS` has one for Claude and Codex, which makes the wrong
+  thing easy, and a Claude glyph on a Pi row reads as a Claude session. That is the confusion this
+  decision exists to remove.
+- **A column in the calm ledger, and the regular idle row.** The ledger is a fixed grid whose
+  columns are compared down their own length, and its `where` cell already gives up the project name
+  to truncation per D-3, so there is nothing to spend. The idle row's cell truncates at a max-width
+  too, which would have swallowed the label silently. Both show it where consumption is live
+  instead: the working card, the needs-input row, and the calm detail panel. An idle session is
+  spending nobody's quota.
+
 ## What was ruled out along the way
 
 Worth recording, because the issue as filed pointed at collection and the cause was

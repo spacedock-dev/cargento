@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 _PI_NO_NAME = object()
 
 
+def _text(value: Any) -> str | None:
+    """A non-empty string, or nothing."""
+    return value if isinstance(value, str) and value else None
+
+
 def _projection(record: Any) -> dict[str, Any] | None:
     """The bounded subset of a Pi JSONL entry needed by the dashboard."""
     if not isinstance(record, dict):
@@ -36,6 +41,8 @@ def _projection(record: Any) -> dict[str, Any] | None:
     role = message.get("role")
     prompt = None
     tool = None
+    provider = None
+    model = None
     usage_source: Any = record.get("usage")
     if kind == "message":
         usage_source = message.get("usage")
@@ -43,12 +50,22 @@ def _projection(record: Any) -> dict[str, Any] | None:
             text = records.extract_text(message.get("content")).strip()
             prompt = text or None
         if role == "assistant":
+            # The authority that served this turn, recorded on the message that
+            # spent the tokens. That makes it evidence of what was charged,
+            # rather than a setting that may never have been used.
+            provider = _text(message.get("provider"))
+            model = _text(message.get("model"))
             for block in records.as_list(message.get("content")):
                 if not isinstance(block, dict) or block.get("type") != "toolCall":
                     continue
                 tool_name = block.get("name")
                 if isinstance(tool_name, str) and tool_name:
                     tool = tool_name
+    elif kind == "model_change":
+        # A switch the user has made but may not have spent yet. Newer than any
+        # message right after a switch, which is when it matters most.
+        provider = _text(record.get("provider"))
+        model = _text(record.get("modelId"))
     output = records.as_dict(usage_source).get("output")
     usage = output if isinstance(output, (int, float)) and not isinstance(output, bool) else None
     name: Any = _PI_NO_NAME
@@ -64,6 +81,8 @@ def _projection(record: Any) -> dict[str, Any] | None:
         "tool": tool,
         "name": name,
         "kind": kind,
+        "provider": provider,
+        "model": model,
     }
 
 
@@ -237,11 +256,38 @@ def _turn(config: RuntimeConfig, path_entries: list[dict[str, Any]]) -> dict[str
     return {"turn_start": turn_start, "durations": durations[-50:]}
 
 
+def _authority(path_entries: list[dict[str, Any]]) -> tuple[str | None, str | None]:
+    """The (provider, model) the newest entry on the branch names, or nothing.
+
+    Pi has no allowance of its own: every turn spends a provider the user is
+    signed in to, and the choice can change mid-session, so this is the only
+    place the row can say whose quota is going.
+
+    Two kinds of entry carry it, and recency alone decides between them. An
+    assistant message records what a turn actually spent; a `model_change`
+    records a switch that has not been spent yet and is therefore the newer of
+    the two right after a switch. Taking the newest of either needs no
+    precedence rule. Both values come from the same entry so a provider is
+    never paired with another entry's model.
+
+    Derived here rather than cached on the scan state, which is not a style
+    preference: `_extend` truncates the cached path on a branch switch, so a
+    cached scalar would survive the truncation and report the abandoned
+    branch's provider. Reading the path each time cannot go stale, and costs
+    nothing extra because these entries are already in it.
+    """
+    for entry in reversed(path_entries):
+        if entry["provider"] or entry["model"]:
+            return entry["provider"], entry["model"]
+    return None, None
+
+
 def _info(config: RuntimeConfig, scan: dict[str, Any]) -> dict[str, Any] | None:
     """Dashboard analyzer output from the compact active-branch projection."""
     path_entries = scan["path"]
     if not path_entries:
         return None
+    provider, model = _authority(path_entries)
     prompts = [entry["prompt"] for entry in path_entries if entry["prompt"]]
     name = scan["name"]
     title = (
@@ -262,6 +308,8 @@ def _info(config: RuntimeConfig, scan: dict[str, Any]) -> dict[str, Any] | None:
         "last_tool": tools[-1] if tools else None,
         "last_event_ts": max((entry["timestamp"] for entry in path_entries), default=0),
         "turn": _turn(config, path_entries),
+        "provider": provider,
+        "model": model,
     }
 
 
@@ -374,6 +422,8 @@ def collect(
             {
                 "title": (info or {}).get("title"),
                 "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "provider": (info or {}).get("provider"),
+                "model": (info or {}).get("model"),
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,

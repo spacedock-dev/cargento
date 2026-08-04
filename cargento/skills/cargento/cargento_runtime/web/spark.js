@@ -270,6 +270,47 @@ const HARNESS = {
 };
 for(const k in HARNESS){ if(ICON_PATH[k]) HARNESS[k].icon = iconURI(ICON_PATH[k]); }
 
+/* Pi is the one harness with no authority of its own. It spends whichever
+   provider the user is signed in to, and the choice can change mid-session, so
+   a Pi row that said only "Pi" hid whose quota was going: a Pi turn on
+   `openai-codex` moves the Codex gauge without Codex doing any work.
+   The payload carries the vendor's own provider id, so mapping it to a harness
+   name belongs here beside the harness table rather than in `/api/data`.
+   A provider Cargento has no row for keeps its own name. Those are direct API
+   keys (`openai`, `google`, `xai`, `deepseek`, `mistral`, `groq` and the rest of
+   Pi's twenty-odd), and naming a harness for one would claim a session that
+   does not exist. An unrecognised id passes through for the same reason. */
+const PROVIDER_HARNESS = {
+  anthropic: "claude", "openai-codex": "codex", "github-copilot": "copilot"
+};
+
+/* "via" because the authority is borrowed, with the model beside it since the
+   two answer one question together: whose quota, and how expensively. No icon:
+   a Claude glyph on a Pi row reads as a Claude session, which is the confusion
+   this is meant to remove. */
+function authorityBit(sess){
+  const provider = sess && sess.provider;
+  const model = sess && sess.model;
+  if(!provider && !model) return "";
+  const key = provider ? own(PROVIDER_HARNESS, provider, null) : null;
+  const named = key ? (own(HARNESS, key, null) || {}).name : null;
+  /* "via" only when an authority is known. "via gpt-5" would read as the model
+     being the thing that owns the quota. */
+  const text = provider
+    ? "via " + (named || provider) + (model ? " · " + model : "")
+    : model;
+  const title = provider
+    ? "spending " + provider + "'s quota" + (model ? ", model " + model : "")
+    : "model " + model;
+  return `<span class="via" title="${esc(title)}">${esc(text)}</span>`;
+}
+
+/* Separator included, so a row with no authority renders no stray dot. */
+function authorityMeta(sess){
+  const bit = authorityBit(sess);
+  return bit ? " · " + bit : "";
+}
+
 /* One badge encoding for both states, and the difference is not carried by
    colour alone: "has data" is a tinted tile behind a solid edge, "no data" is a
    dashed edge over nothing. A filled-vs-outlined pair at this size read as the
