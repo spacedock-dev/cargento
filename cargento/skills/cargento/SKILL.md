@@ -173,6 +173,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
 | `POST /api/shutdown` | Stop the server. Loopback-only, with the same origin checks as `/api/notify`. |
+| `POST /api/usage` | Receive a harness's own quota, forwarded by its status-line command (see Usage and rate limits). Loopback-only, same origin checks. Stores in memory only. |
 
 ## Interpretation notes (share with the user if asked)
 
