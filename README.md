@@ -8,9 +8,9 @@
 Agnostic agent cartography and visualization.
 
 Cargento maps live coding-agent activity on your machine into a single local dashboard. It shows
-sessions, subagents, task progress, turn ETAs, and token output rate across nine harnesses: Claude
-Code, Codex, Pi, Gemini CLI / Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose,
-and Factory Droid.
+sessions, subagents, task progress, turn ETAs, and token output rate across ten harnesses: Claude
+Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose,
+and Factory Droid. Gemini CLI was retired in June 2026, so that row reads legacy stores only.
 
 This repo contains one plugin, `cargento`, the agent cartography dashboard skill.
 
@@ -82,7 +82,7 @@ Restart Codex after installation.
 
 | Skill | What it does | Standalone invocation |
 |-------|--------------|------------------------|
-| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across nine coding-agent harnesses, with input-wait notifications for Claude (native on macOS, browser notifications elsewhere) | `/cargento:cargento` |
+| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across ten coding-agent harnesses, with input-wait notifications for Claude (native on macOS, browser notifications elsewhere) | `/cargento:cargento` |
 
 In Codex, invoke it as `$cargento`. In any harness you can also just ask: "open cargento" or "monitor my agents".
 

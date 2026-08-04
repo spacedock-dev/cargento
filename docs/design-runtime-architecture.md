@@ -10,7 +10,7 @@ a later change either follows it or overturns it deliberately.
 
 ## The problem these decisions answer
 
-One file that holds configuration, ten harness collectors, notification policy, HTTP handling,
+One file that holds configuration, nine harness collectors, notification policy, HTTP handling,
 process lifecycle and the frontend loader has no seams. Three specific costs made it worth fixing:
 
 - Any change had to be reasoned about against everything else in the file.
@@ -89,7 +89,7 @@ normalizes each import to a top-level runtime module, and compares the result to
 allowlist. Two rules matter more than the table:
 
 - A collector may not import another collector, or `aggregate`. Collectors take `Session` from
-  `sessions.py`. Nine independent files each testable alone is the property that makes adding a
+  `sessions.py`. Ten independent files each testable alone is the property that makes adding a
   harness cheap.
 - `TYPE_CHECKING` imports count. A dependency that exists only for annotations is still a dependency
   a reader has to follow, and exempting it would make the allowlist describe less than the truth.
@@ -140,19 +140,20 @@ relies on.
 
 ## R-5: The registry is data, and Claude's notifier is bound at assembly
 
-`aggregate.default_harnesses(popup_notifier)` returns nine `HarnessSpec` rows in display order, which
+`aggregate.default_harnesses(popup_notifier)` returns ten `HarnessSpec` rows in display order, which
 is also collection order and the order the page renders its harness chips. Each row names a collector
 module's `discover` and `collect`.
 
-`Collector` is one contract for all nine: `(config, state, now, window_hours, show_all)`. Claude is
+`Collector` is one contract for all ten: `(config, state, now, window_hours, show_all)`. Claude is
 the only collector that notifies *during* collection, because a transcript-detected transition into
-needs-input has no HTTP request behind it. Rather than widen the contract for all nine or park a
+needs-input has no HTTP request behind it. Rather than widen the contract for all ten or park a
 callable on `RuntimeState`, `default_harnesses` takes the notifier and binds Claude's row. `cli`
 passes the same callable to `Application.popup_notifier`, so the transcript path and the hook path
 cannot diverge.
 
 Adding a harness is therefore: a module under `collectors/`, and a row. `CONTRIBUTING.md` owns the
-walkthrough.
+walkthrough, and [design-harness-registry.md](design-harness-registry.md) owns the judgement of what
+earns a row of its own, including the one time that judgement had to be revisited.
 
 ## R-6: The three serve branches stay distinct
 

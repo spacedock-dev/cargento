@@ -54,7 +54,7 @@ must expose the effective directory through the session-store override.
 
 `--diagnose [--json]` prints the platform, the interpreter, every candidate root considered, which
 existed, which were readable, and every collector error the refresh path swallowed. It is the only
-realistic way to validate a platform's path table without owning an install of all nine harnesses,
+realistic way to validate a platform's path table without owning an install of all ten harnesses,
 and it is what turns "no sessions" into an answer.
 
 Two standing constraints:
@@ -218,6 +218,6 @@ de-duplication was tested as a function but never as wired into `collect()`, and
 assertion was vacuous.
 
 Honest gap: nothing validates the *Windows store locations* against a real Windows install. That
-needs the nine harnesses actually installed there. The resolver's Windows output is asserted as
+needs the ten harnesses actually installed there. The resolver's Windows output is asserted as
 strings; whether those strings are where the tools really write is what a user's `--diagnose` output
 settles.

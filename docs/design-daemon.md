@@ -25,7 +25,7 @@ Cargento is started by an agent, in that agent's session, as a background child 
 shell. Two consequences, and they pull against each other.
 
 The dashboard dies with the session that opened it. That is wrong on its own terms (a board
-watching nine harnesses is not an artifact of whichever session happened to open it), and it is
+watching ten harnesses is not an artifact of whichever session happened to open it), and it is
 worse for the notification path, whose whole point is to fire with no browser tab open. Detaching
 fixes it.
 

@@ -10,7 +10,9 @@ body:
       options:
         - Claude Code
         - Codex
-        - Gemini CLI / Antigravity CLI
+        - Pi
+        - Gemini CLI (retired; legacy stores)
+        - Antigravity CLI
         - GitHub Copilot CLI
         - OpenCode
         - Cursor CLI

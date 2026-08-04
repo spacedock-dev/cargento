@@ -48,7 +48,7 @@ state flag, which is worth doing alongside the native backends instead of boltin
 - NTFS last-write lag. Windows does not fully update a file's last-write time while a writer holds
   the handle open. Working/Idle is largely mtime-based, so an actively generating Windows session
   could read Idle. The premise is documented by Microsoft but unverified here, and whether it bites
-  depends on how often each harness flushes and closes. Reshaping state detection across eight
+  depends on how often each harness flushes and closes. Reshaping state detection across ten
   collectors on an unverified premise is exactly what D-6 forbids.
   Revisit when a Windows user reports a session stuck on Idle while visibly generating, or when
   `--diagnose` shows a growing store with a stale mtime. The fix is a size/WAL-size delta between
@@ -82,7 +82,7 @@ state flag, which is worth doing alongside the native backends instead of boltin
 2. Whether Codex writes `\` in `cwd` / `agent_path` on Windows.
 3. Goose and OpenCode Windows store paths, confirmed against upstream source rather than blog posts.
 4. Whether `cursor-agent` and Antigravity CLI ship native Windows builds at all. If they do not, the
-   matrix says six harnesses on Windows rather than eight, which is a documentation outcome and not
+   matrix says eight harnesses on Windows rather than ten, which is a documentation outcome and not
    a failure.
 
 ## 5. Open maintainer decisions
