@@ -1,7 +1,7 @@
 # Design: the usage quota surface
 
-Owner for how quota numbers reach the dashboard: the Codex disk reader, the Claude fetcher, the
-consent path, and the exact response fields Cargento reads. The security boundaries themselves
+Owner for how quota numbers reach the dashboard: the disk readers, the Claude and Cursor fetchers,
+the consent path, and the exact response fields Cargento reads. The security boundaries themselves
 live in SECURITY.md ("Usage quota reads"); this document records how the implementation satisfies
 them and which alternatives were rejected. The module map is owned by
 [design-runtime-architecture.md](design-runtime-architecture.md).
@@ -10,28 +10,35 @@ The decision record is DEC-1 (Linear DRC-4053): show quota per harness, Codex fi
 then Claude behind a configurable opt-out, with an opt-in sidecar as the fallback shape if the
 opt-out proves wrong.
 
-## Q-1: Four sources, one payload contract
+## Q-1: Five sources, one payload contract
 
 A usage entry is the same shape whoever produced it:
 
 ```
 {harness, state: "ok" | "expired", asOf,
  fiveH: {pct, reset}, week: {pct, reset},   // a gauge: used out of a limit
- used}                                     // a figure: spend with no limit
+ month: {pct, reset},                       // the same, for a billing cycle
+ used}                                      // a figure: spend
 ```
+
+Every window slot is optional, and a harness fills only the ones it genuinely has. That is the
+whole reason `month` exists rather than Cursor borrowing `week`: the slot names are what the page
+labels the bar, so a monthly cycle rendered as "wk" would put a wrong label on a correct number.
 
 - Codex publishes from disk. The CLI writes a `rate_limits` snapshot beside every token count in
   its rollout files, so `collectors/codex.py` reads the newest one. Windows arrive as durations
   (`window_minutes`), so 300 minutes maps to `fiveH` and anything a day or longer to `week`, which
   keeps a weekly-only plan rendering.
-- Claude publishes from the fetch cache. `quota.py` holds the token read, the one outbound
-  request, and the cache; `collectors/claude.py` only copies entries out of it.
+- Claude publishes from the fetch cache. `quota.py` holds the token read, the outbound request, and
+  the cache; `collectors/claude.py` only copies entries out of it.
+- Cursor publishes from the same fetch cache under its own vendor key, and fills `month` plus
+  `used`. See Q-8.
 - Copilot publishes consumption from disk, and no gauge at all. See Q-6.
 - Antigravity publishes from a pushed receipt, with no credential and no request. See Q-7.
 
 `asOf` is epoch seconds of the moment the numbers were true: the snapshot's own timestamp for
-Codex, the fetch time for Claude, the newest contributing row for Copilot, the receipt time for
-Antigravity. The page refuses to show a percentage without it.
+Codex, the fetch time for Claude and Cursor, the newest contributing row for Copilot, the receipt
+time for Antigravity. The page refuses to show a percentage without it.
 
 ## Q-6: A harness can report spend without reporting a limit
 
@@ -80,6 +87,48 @@ Anything else in the response is ignored. The endpoint is undocumented for third
 parse is defensive throughout: a malformed body or a response with no recognizable window caches
 an empty entry list and a one-word diagnostic, never an error tile.
 
+## Q-8: Cursor meters money, so the honest gauge is spend over a billing cycle
+
+From `POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage`, four fields
+are consumed:
+
+| Field | Used as |
+|---|---|
+| `planUsage.totalSpend` | Spend so far, in integer cents. |
+| `planUsage.limit` | The included allowance, in integer cents. Zero, absent or non-numeric means a plan with no denominator, and then no bar is published at all. |
+| `billingCycleEnd` | The reset stamp. A decimal string of epoch MILLIseconds, which is how protobuf's JSON mapping encodes int64. |
+| `planUsage.*PercentUsed` | Read and deliberately discarded. See below. |
+
+Two things about this payload are traps, and both were only caught by running against a live
+install rather than reasoning from the field names.
+
+**The money is cents.** On a Pro plan `limit` is 2000, meaning the $20.00 of included usage, and a
+spend of 18 is $0.18. Reading these as dollars overstates everything a hundredfold, and a small
+balance hides that rather than revealing it. Confirmed independently against
+`GetAggregatedUsageEvents`, whose `totalCostCents` agreed to the cent. Note which test pins this:
+the percentage cannot, because a ratio is unit-invariant, so only the rendered money can. That is
+why `used` carries "$0.18 of $20.00" rather than the bar alone.
+
+**The payload's own percentage does not describe the included allowance.** With 18 cents of 2000
+spent, `totalPercentUsed` reads 0.0521739, which is neither 0.9 (as a percent) nor 0.009 (as a
+fraction). Its denominator is something else; 18/0.0521739 is 345, which points at the
+bonus-inclusive pool the same response describes through `remainingBonus` and `bonusTooltip`, but
+that was not confirmed and does not need to be. What matters is that spend over limit reproduces
+Cursor's own `displayMessage` ("You've used 1% of your included usage") and the vendor's field does
+not, so the arithmetic is done here and the field is ignored.
+
+The credential is the macOS Keychain session token, and the endpoint is the one Cursor's own CLI
+calls for its `/usage` command. Neither is documented for third parties, so the same defensive posture
+as Claude's parse applies: an unusable spend figure, a malformed body, or an unreadable cycle end
+each degrade to less display rather than to an error, and an unreadable cycle end still publishes the
+percentage, because that figure is true without a reset.
+
+macOS is the only supported platform, and this is a deliberate limit rather than an oversight. The
+Keychain is macOS-only, and where the CLI persists this token on Linux and Windows is unverified.
+Guessing a path would mean reading some other file and calling it a credential, so off macOS the
+reader reports no credential source and Cursor stays out of the band. Installing the CLI on the
+other two platforms is what unblocks them.
+
 ## Q-3: Consent rides on the poll
 
 The fetch trigger lives in `/api/data` handling, not in collection, and fires only for requests
@@ -95,9 +144,11 @@ rather than being scheduled or checked:
 
 The switch itself is browser state (`localStorage`), which the server cannot see except through
 the request. That is why the parameter exists: a bare `curl /api/data` gets whatever is cached and
-triggers nothing. `--no-usage` is the server-side override and acts earlier, at assembly: the
-Claude registry row simply gets no usage provider, so nothing reads the cache and the
-`usage_fetch` capability flag (which wakes the modal) can never appear.
+triggers nothing. `--no-usage` is the server-side override and acts earlier, at assembly: every
+registry row that depends on the fetch simply gets no usage provider, so nothing reads the cache and
+the `usage_fetch` capability flag (which wakes the modal) can never appear. A contract test asserts
+that for the whole set rather than for Claude alone, so a future fetch vendor wired in without the
+gate fails there instead of quietly fetching under `--no-usage`.
 
 ## Q-4: The fetch never blocks a poller
 
@@ -114,10 +165,25 @@ raise a user-facing permission prompt, and killing the prompt mid-answer would r
 
 ## Q-5: Where the token comes from, and what a failure means
 
+Claude:
+
 - macOS: the Keychain generic password with service `Claude Code-credentials`, read with
   `/usr/bin/security find-generic-password -w`.
 - Everywhere else: `.credentials.json` beside the resolved `claude.projects` store, so a
   `CLAUDE_CONFIG_DIR` override moves both together.
+
+Cursor: the Keychain generic password with service `cursor-access-token`, macOS only (Q-8). Both
+vendors go through one `security` helper that takes the service name, so there is a single
+subprocess call site to audit. It is service-scoped on both sides, and the test fake is scoped the
+same way on purpose: a fake that answered every lookup with the same secret handed Claude's
+credentials to Cursor's reader, which made Cursor fetch inside tests written for Claude alone.
+
+Cursor's token is worth one extra sentence, recorded in SECURITY.md as well. It is stored under both
+`cursor-access-token` and `cursor-refresh-token` as the identical value, so it can mint sessions and
+is broader than Claude's quota-scoped token. The never-refresh rule below is what bounds it: the
+value is only ever presented as a bearer token, so the extra capability is never exercised. A
+narrower, user-created API key was considered and set aside because it needs setup and it is
+unverified whether one authenticates this RPC at all.
 
 Failures are deliberately not one bucket. An expired or rejected token (past `expiresAt`, or an
 HTTP 401/403) publishes an `expired` entry, and the page renders the pointer at signing in again
@@ -206,7 +272,43 @@ The per-model rows have no rendering yet. Shipping them into `/api/data` early w
 shape nobody has designed against; the parse point is marked and the field documented here
 instead.
 
-### Antigravity quota, attempted and not feasible (2026-08-04)
+### Cursor's nicer-looking usage endpoint, and its two dead legacy ones
+
+Three Cursor surfaces return HTTP 200 for an individual and were still rejected. Recorded because
+each one looks like the right answer until it is checked.
+
+`GET https://cursor.com/api/usage-summary` has by far the best shape: self-describing
+(`individualUsage.plan.{used,limit,remaining}`), ISO-8601 dates instead of millisecond strings, and
+an `onDemand` block. It rejects a bearer token with 401 and accepts only a forged
+`WorkosCursorSessionToken` cookie, built as `{authId}::{accessToken}`, with `Origin` and `Referer`
+spoofed for anything mutating. That is impersonating a browser session, which is a worse posture
+than using the CLI's own bearer route, and it would put a cookie in the request where the contract
+says the token and nothing else. Shape convenience does not buy that.
+
+`GET https://api2.cursor.sh/auth/usage` and `GET https://cursor.com/api/usage` both answer 200, and
+both answer in the retired premium-request model: every counter zero, `maxRequestUsage` null. Live
+and meaningless on a usage-priced plan. This is precisely Copilot's `totalPremiumRequests` trap from
+Q-6, met a second time in a different vendor, which is the argument for capturing a real payload
+before writing any parser.
+
+The Admin, Analytics and AI Code Tracking APIs are Cursor's only documented ones, and they are
+org-scoped, with the latter two Enterprise-gated. `GetTeamSpend` answers 401 "Team ID is required".
+Cargento serves individuals, so none of them qualify, exactly as the survey behind DEC-1 predicted.
+
+### Rendering Cursor's monthly cycle in the weekly slot
+
+The slot names are what the page prints next to the bar, so a billing cycle labelled "wk" is a wrong
+label on a right number, in the one band whose entire value is being trustable. Adding a `month`
+slot costs a `USAGE_STATS` entry, a default, one line in the renderer and a consent-copy sentence.
+Extras-only (the Q-6 shape, `used` and no bar) was the other candidate and was rejected for the
+opposite reason: Cursor publishes a real limit and a real reset, so suppressing the gauge would
+throw away true information to avoid touching shared UI.
+
+### Antigravity's fetch, attempted and not feasible (2026-08-04)
+
+Scope note before the detail: it is the *fetch* that is rejected here. Antigravity quota does ship,
+by reading what the CLI pushes to its own status-line command, which is Q-7. Nothing below was
+wasted, but none of it is the reason the tile works today.
 
 Antigravity is the Google authority, and it is the obvious second vendor: Cargento already reads
 its sessions, and its CLI displays quota on a status line. It was attempted with the owner's

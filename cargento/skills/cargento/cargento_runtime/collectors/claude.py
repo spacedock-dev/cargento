@@ -175,7 +175,7 @@ def usage(
     row with no provider at all.
     """
     del config, now, window_hours
-    return runtime_quota.cached_entries(state)
+    return runtime_quota.cached_entries(state, "claude")
 
 
 def collect(

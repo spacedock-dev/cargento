@@ -459,18 +459,30 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertTrue(fetcher.collect(show_all=True).get("usage_fetch"))
         self.assertNotIn("usage_fetch", disk_only.collect(show_all=True))
 
-    def test_no_usage_leaves_the_claude_row_without_a_provider(self) -> None:
-        # --no-usage arrives at assembly: the row keeps its fetch marking but
+    def test_no_usage_leaves_every_network_row_without_a_provider(self) -> None:
+        # --no-usage arrives at assembly: each row keeps its fetch marking but
         # loses the provider, so nothing reads the fetch cache and the flag
-        # can never rise.
+        # can never rise. Asserted for every row that is marked as a fetch
+        # rather than for Claude alone, so a second fetch vendor wired in
+        # without the gate fails here instead of quietly fetching under
+        # --no-usage. Antigravity is included by name: its quota is pushed in
+        # rather than fetched, but the flag still drops it, because turning
+        # usage off means the whole section.
         rows = {
             spec.key: spec
             for spec in aggregate.default_harnesses(lambda _t, _m: None, usage_fetch_enabled=False)
         }
-        self.assertIsNone(rows["claude"].usage)
         default_rows = {spec.key: spec for spec in REGISTRY}
-        self.assertIsNotNone(default_rows["claude"].usage)
-        self.assertTrue(default_rows["claude"].usage_is_fetch)
+        gated = {key for key, spec in default_rows.items() if spec.usage_is_fetch} | {"antigravity"}
+        self.assertEqual({"claude", "cursor", "antigravity"}, gated)
+        for key in sorted(gated):
+            with self.subTest(harness=key):
+                self.assertIsNotNone(default_rows[key].usage, "no provider by default")
+                self.assertIsNone(rows[key].usage, "--no-usage left a provider behind")
+        # A disk reader is untouched by --no-usage's network half; the flag only
+        # governs the fetch, and Codex's snapshots were already on this machine.
+        self.assertIsNotNone(rows["codex"].usage)
+        self.assertIsNotNone(rows["copilot"].usage)
 
     def test_a_usage_failure_is_contained_to_diagnostics(self) -> None:
         application, _, _, diagnostics, _ = self._application(
@@ -789,9 +801,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",
         },
+        # `quota` arrived with the Cursor usage provider: Cursor keeps no
+        # allowance on disk and pushes nothing in, so the collector reads back
+        # what the fetch thread cached, exactly as Claude's does.
         "cargento_runtime.collectors.cursor": {
             "cargento_runtime.config",
             "cargento_runtime.io",
+            "cargento_runtime.quota",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },

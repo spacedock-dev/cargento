@@ -67,8 +67,11 @@ def default_harnesses(
     ``Application.popup_notifier`` so both paths notify identically.
 
     ``usage_fetch_enabled`` is ``--no-usage`` arriving at assembly: with the
-    fetch off, the Claude row gets no usage provider at all, so nothing ever
-    reads the fetch cache and the ``usage_fetch`` flag can never rise.
+    fetch off, no row that depends on the fetch keeps a usage provider, so
+    nothing ever reads the fetch cache and the ``usage_fetch`` flag can never
+    rise. That covers Claude and Cursor, which fetch, and Antigravity, whose
+    quota is pushed rather than fetched but which the flag still drops because
+    turning usage off means the whole section.
     """
     from .collectors import (  # noqa: PLC0415 — deferred to keep import order acyclic
         antigravity,
@@ -123,7 +126,17 @@ def default_harnesses(
         ),
         HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect, usage=copilot.usage),
         HarnessSpec("opencode", "OpenCode", opencode.discover, opencode.collect),
-        HarnessSpec("cursor", "Cursor", cursor.discover, cursor.collect),
+        # Cursor's allowance is money against a monthly billing cycle, fetched
+        # from the RPC its own CLI calls, so this is a second `usage_is_fetch`
+        # row: the disclosure modal must cover it exactly as it covers Claude.
+        HarnessSpec(
+            "cursor",
+            "Cursor",
+            cursor.discover,
+            cursor.collect,
+            usage=cursor.usage if usage_fetch_enabled else None,
+            usage_is_fetch=True,
+        ),
         HarnessSpec("goose", "Goose", goose.discover, goose.collect),
         HarnessSpec("droid", "Droid", droid.discover, droid.collect),
     )

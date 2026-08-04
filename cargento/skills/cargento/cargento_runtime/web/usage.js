@@ -1,21 +1,29 @@
 /* ── usage band ────────────────────────────────────────────────────────────
    Quota per harness, in both display modes. Everything here renders only when
-   the payload carries a `usage` array. Two sources feed it: the Codex
-   collector's on-disk rate-limit snapshots, and the server's Claude quota
-   fetch — a configurable opt-out whose consent rides on the poll as the
-   `usage=1` parameter (see refresh()). One entry per harness:
+   the payload carries a `usage` array. Sources feed it from disk (the Codex
+   and Copilot collectors), from the network (the Claude and Cursor fetches, a
+   configurable opt-out whose consent rides on the poll as the `usage=1`
+   parameter — see refresh()), and from a harness pushing its own quota in
+   (Antigravity). One entry per harness:
      {harness,                       // key into HARNESS, like a session's
       state,                        // "ok" | "expired"
       asOf,                         // epoch seconds of the snapshot or fetch
       fiveH: {pct, reset},          // integer percent, short reset text
       week:  {pct, reset},
-      used,                         // consumption with no limit, preformatted
+      month: {pct, reset},
+      used,                         // spend, preformatted
       burn, today, cost}            // optional extras, preformatted strings
-   `used` is for a harness that reports what it spent but not what it is
-   allowed: Copilot bills in AI Units and keeps the entitlement server-side,
-   so there is no denominator and therefore no bar and no percentage. It is
-   always shown when present, because a row whose only figure sits behind
-   `configure` reads as broken.
+   Every window slot is optional and a harness fills only the ones it has.
+   `month` exists because Cursor meters money against a monthly billing cycle
+   rather than a rolling window; borrowing `week` for it would put a wrong
+   label on a real number, which is the one thing this band cannot afford.
+   `used` carries spend, as money or as units. It stands alone for a harness
+   that reports what it spent but not what it is allowed: Copilot bills in AI
+   Units and keeps the entitlement server-side, so there is no denominator and
+   therefore no bar and no percentage. It also accompanies a bar where both
+   are known, because a percentage near zero does not say whether the plan is
+   barely touched or the allowance is tiny. It is always shown when present,
+   because a row whose only figure sits behind `configure` reads as broken.
    The disclosure modal opens once, the first time a payload carries
    `usage_fetch` — the capability flag the server raises exactly when a
    discovered harness's quota comes from the network fetcher. Until it is
@@ -25,14 +33,17 @@ const USAGE_CFG_KEY = "cargento.usageCfg";          /* which stats are shown */
 const USAGE_ENABLED_KEY = "cargento.usageEnabled";  /* the feature switch */
 const USAGE_MODAL_KEY = "cargento.usageModalSeen";
 const USAGE_STATS = [
-  ["fiveH", "5h window"], ["week", "weekly window"], ["burn", "burn rate"],
-  ["today", "tokens today"], ["cost", "cost today"]];
+  ["fiveH", "5h window"], ["week", "weekly window"], ["month", "monthly window"],
+  ["burn", "burn rate"], ["today", "tokens today"], ["cost", "cost today"]];
 
 let usageOpen = true;
 let usageEnabled = true;
 let usageModalSeen = false;
 let usageCfgOpen = false;   /* the popover is transient, never persisted */
-let usageCfg = {fiveH: true, week: true, burn: false, today: false, cost: false};
+/* `month` defaults on for the same reason the window slots do: it is the only
+   gauge Cursor has, and a row whose single figure is hidden reads as broken. */
+let usageCfg = {fiveH: true, week: true, month: true, burn: false, today: false,
+                cost: false};
 try{
   if(localStorage.getItem(USAGE_OPEN_KEY) === "0") usageOpen = false;
   if(localStorage.getItem(USAGE_ENABLED_KEY) === "0") usageEnabled = false;
@@ -113,7 +124,8 @@ function usageEntry(u){
     : `<div class="u-wrow"><span class="u-wlab">used</span>` +
       `<span class="u-used">${esc(String(u.used))}</span></div>`;
   const wins = usedRow + (usageCfg.fiveH ? win("5h", u.fiveH) : "") +
-    (usageCfg.week ? win("wk", u.week) : "");
+    (usageCfg.week ? win("wk", u.week) : "") +
+    (usageCfg.month ? win("mo", u.month) : "");
   const extras = [];
   if(usageCfg.burn && u.burn != null) extras.push(["burn", u.burn]);
   if(usageCfg.today && u.today != null) extras.push(["today", u.today]);
@@ -188,7 +200,8 @@ function usageModal(d){
     ` aria-label="usage disclosure"><div class="u-modal">` +
     `<div class="u-modal-h">Show usage and rate limits?</div>` +
     `<p class="u-modal-p">Cargento can fetch each vendor's quota so the dashboard` +
-    ` shows how much of the 5-hour and weekly windows is used, and when they reset.</p>` +
+    ` shows how much of your allowance is used and when it resets — the 5-hour and` +
+    ` weekly windows, or the monthly billing period for a vendor that meters spend.</p>` +
     `<p class="u-modal-p">What is sent: the vendor's own OAuth access token, and` +
     ` nothing else. No transcript content, no prompts, no paths, no project names,` +
     ` no machine identifiers. What comes back is quota numbers. Session data never` +

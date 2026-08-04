@@ -77,7 +77,8 @@ store paths.
 
 One feature makes outbound network requests. When the usage feature is on, the server polls each
 supported vendor's usage endpoint so the dashboard can show quota windows: how much of the 5-hour
-and weekly limits is used and when they reset.
+and weekly limits is used and when they reset, or for a vendor that meters spend rather than
+requests, how much of the monthly billing period's allowance is used and when the cycle ends.
 
 What is sent: the vendor's own OAuth access token, read from where the harness keeps it (the macOS
 Keychain, or the harness's credential file on other platforms), carried in the request's
@@ -90,8 +91,21 @@ The endpoints, named exactly:
 1. Anthropic (Claude Code, and any harness signed in with the same Claude subscription):
    `GET https://api.anthropic.com/api/oauth/usage` with the `anthropic-beta: oauth-2025-04-20`
    header.
-2. Codex: no endpoint. Codex writes rate-limit snapshots into its own session files, and Cargento
+2. Cursor: `POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage` with an
+   empty JSON body and two headers, the bearer authorization and `Content-Type: application/json`.
+   This is the RPC the Cursor CLI itself calls for its own `/usage` command, against the backend the
+   CLI's config records. The credential is the session token in the macOS Keychain under the service
+   name `cursor-access-token`. Read this next part before trusting the name: Cursor stores the
+   identical value under `cursor-refresh-token`, so unlike Claude's quota-scoped token this one can
+   also mint new sessions. Cargento sends it as a bearer token and never exchanges it, and the
+   never-refreshed rule below is what keeps that true. macOS only, because that is the only platform
+   where the token's location has been verified; elsewhere Cursor is absent from the band rather than
+   read from a guessed path.
+3. Codex: no endpoint. Codex writes rate-limit snapshots into its own session files, and Cargento
    reads them from disk like every other store.
+4. Copilot: no endpoint. Copilot records its own per-request AI Unit consumption in a local session
+   store, and Cargento reads that from disk. Its remaining entitlement is not published locally and
+   is not fetched.
 
 No other vendor is polled. A new vendor's endpoint must be named here before it ships. These
 endpoints are not documented for third-party use: a vendor can change, break, or block them at any
@@ -101,7 +115,9 @@ Token handling is read-only, one way, and never expands:
 
 - The token is never refreshed. Refreshing from outside the harness can race the harness for its
   own session. An expired or rejected token switches that vendor's usage display off, marked with
-  a pointer telling the user to sign in again in the harness itself.
+  a pointer telling the user to sign in again in the harness itself. This rule is what bounds the
+  Cursor credential noted above: a value that could mint sessions is only ever presented as a
+  bearer token, so the extra capability is never exercised.
 - The token is never written to disk, never logged, and never served. `/api/data` and every other
   loopback endpoint must not carry it, in any form.
 - Reading the token adds no write access anywhere. Harness stores stay read-only.

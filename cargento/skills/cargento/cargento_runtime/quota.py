@@ -4,13 +4,18 @@ Two sources fill one cache, and collectors read it back without caring which
 filled it.
 
 **The fetch** is the whole of Cargento's outbound network surface, and it is
-bound by the "Usage quota reads" section of SECURITY.md: the request carries
+bound by the "Usage quota reads" section of SECURITY.md: each request carries
 the vendor's own OAuth token and nothing else, the token is never refreshed,
 never written, never logged and never served, and at most one request per
 vendor leaves every five minutes. A violation of any of those is a security
 bug, not a defect. Diagnostics emitted here are fixed category words plus
 exception type names for that reason — never a value read from a credential
 source or a response.
+
+Two vendors fetch: Claude and Cursor. Each gets its own credential reader,
+endpoint and response parser, and its own pair of gates, so a vendor that is
+slow or broken cannot delay or suppress the other's refresh. `FETCH_VENDORS`
+is the whole list, and every endpoint in it is named in SECURITY.md.
 
 **The receipts** are the opposite direction and involve no credential at all.
 A harness that publishes its own quota to a user-configured command can have
@@ -46,18 +51,41 @@ if TYPE_CHECKING:
     from .config import RuntimeConfig
     from .state import RuntimeState
 
-# The one endpoint this module may call, spelled exactly as SECURITY.md names
-# it. A new vendor's endpoint must be named there before it is added here.
+    # One vendor's credential read plus its outbound request, shaped into
+    # entries: (config, now, opener, runner) -> (entries, problem category).
+    VendorReader = Callable[
+        [RuntimeConfig, float, Callable[..., Any], Callable[..., Any]],
+        tuple[list[dict[str, Any]], str | None],
+    ]
+
+# The endpoints this module may call, spelled exactly as SECURITY.md names
+# them. A new vendor's endpoint must be named there before it is added here.
 USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
 USAGE_BETA_VALUE = "oauth-2025-04-20"
+# Cursor's own CLI calls this RPC for its `/usage` command, against the
+# backend its config records as `serverConfigCache.backendUrl`. Reached with a
+# plain bearer header: no cookie, and no browser-session impersonation.
+CURSOR_USAGE_ENDPOINT = "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
 # Where Claude Code keeps its OAuth credentials: a Keychain generic password
 # on macOS, a JSON file beside the projects store everywhere else.
 KEYCHAIN_SERVICE = "Claude Code-credentials"
 CREDENTIALS_FILENAME = ".credentials.json"
+# Cursor CLI keeps its session token in the macOS Keychain and nowhere else we
+# have verified. Where it lands on Linux and Windows is deliberately not
+# guessed: a wrong path would read some other file and call it a credential,
+# so off macOS the reader reports no credential and Cursor stays out of the
+# band. NOTE for SECURITY.md: Cursor stores the identical value under
+# `cursor-refresh-token`, so this token can also mint sessions. It is sent as
+# a bearer token and never exchanged.
+CURSOR_KEYCHAIN_SERVICE = "cursor-access-token"
 # The first Keychain read can raise a user-facing permission prompt, so the
 # subprocess must be allowed to sit through a human answering it. On timeout
 # the read fails as "unavailable" and the poll floor schedules the retry.
 KEYCHAIN_TIMEOUT_SEC = 120.0
+# Cursor reports money in integer cents. Naming the divisor keeps the unit
+# visible: reading these as dollars overstates every figure a hundredfold,
+# which a small balance hides rather than reveals.
+CENTS_PER_UNIT = 100
 
 
 def credentials_path(config: RuntimeConfig) -> str:
@@ -72,6 +100,32 @@ def credentials_path(config: RuntimeConfig) -> str:
     return join(dirname(primary_store(config, "claude.projects")), CREDENTIALS_FILENAME)
 
 
+def _keychain_secret(
+    runner: Callable[..., Any],
+    service: str,
+) -> tuple[str | None, str | None]:
+    """(secret, problem category) from one macOS Keychain generic password.
+
+    Shared by every vendor that keeps its credential there. The service name
+    is the only thing that varies, and the secret is returned to the caller
+    rather than logged: problem categories are fixed words plus exception type
+    names precisely so that nothing read from the Keychain reaches diagnostics.
+    """
+    try:
+        result = runner(
+            ["/usr/bin/security", "find-generic-password", "-s", service, "-w"],
+            capture_output=True,
+            text=True,
+            timeout=KEYCHAIN_TIMEOUT_SEC,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"keychain {type(exc).__name__}"
+    if result.returncode != 0 or not str(result.stdout).strip():
+        return None, "keychain item unavailable"
+    return str(result.stdout), None
+
+
 def _read_token(
     config: RuntimeConfig,
     runner: Callable[..., Any],
@@ -82,19 +136,10 @@ def _read_token(
     reach diagnostics; no value read from the Keychain or the file ever does.
     """
     if config.platform_name == "darwin":
-        try:
-            result = runner(
-                ["/usr/bin/security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
-                capture_output=True,
-                text=True,
-                timeout=KEYCHAIN_TIMEOUT_SEC,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return None, None, f"keychain {type(exc).__name__}"
-        if result.returncode != 0 or not str(result.stdout).strip():
-            return None, None, "keychain item unavailable"
-        raw = str(result.stdout)
+        secret, problem = _keychain_secret(runner, KEYCHAIN_SERVICE)
+        if problem:
+            return None, None, problem
+        raw = secret or ""
     else:
         try:
             raw = runtime_io.read_prefix_bytes(
@@ -132,6 +177,26 @@ def _epoch(raw: Any) -> float | None:
     return None
 
 
+def _epoch_millis(raw: Any) -> float | None:
+    """A stamp as epoch seconds, given epoch milliseconds.
+
+    Cursor sends these as decimal *strings*, which is how protobuf's JSON
+    mapping encodes 64-bit integers, so `_epoch` cannot read them: it would try
+    ISO parsing and fail. Rejected rather than trusted blindly, because a value
+    already in seconds would otherwise be divided into 1970.
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = int(raw)
+        except ValueError:
+            return None
+    if not isinstance(raw, (int, float)) or raw <= 0:
+        return None
+    return float(raw) / 1000.0
+
+
 def _shape_window(now: float, raw: Any) -> dict[str, Any] | None:
     """One usage window mapped onto the payload contract, or nothing."""
     win = records.as_dict(raw)
@@ -145,8 +210,8 @@ def _shape_window(now: float, raw: Any) -> dict[str, Any] | None:
     return shaped
 
 
-def _expired_entry(now: float) -> dict[str, Any]:
-    return {"harness": "claude", "state": "expired", "asOf": int(now)}
+def _expired_entry(now: float, harness: str) -> dict[str, Any]:
+    return {"harness": harness, "state": "expired", "asOf": int(now)}
 
 
 def _fetch_windows(
@@ -173,7 +238,7 @@ def _fetch_windows(
             # A rejected token gets the same display as an expired one: off,
             # with the pointer at signing in again in the harness. Never a
             # refresh — that could race the harness for its own session.
-            return [_expired_entry(now)], None
+            return [_expired_entry(now, "claude")], None
         return [], f"HTTP {exc.code}"
     except (urllib.error.URLError, OSError, ValueError) as exc:
         return [], type(exc).__name__
@@ -204,20 +269,138 @@ def _claude_entries(
         # again" would be the wrong advice.
         return [], problem
     if expiry is not None and expiry <= now:
-        return [_expired_entry(now)], None
+        return [_expired_entry(now, "claude")], None
     return _fetch_windows(config, token or "", now, opener)
 
 
-def fetch_claude_usage(
+def _cents(amount: Any) -> int | None:
+    """A non-negative integer cent amount, or nothing."""
+    if isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount < 0:
+        return None
+    return int(amount)
+
+
+def _money(cents: int) -> str:
+    return f"${cents / CENTS_PER_UNIT:.2f}"
+
+
+def _cursor_entry(now: float, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Cursor's billing-period usage as one entry, or nothing.
+
+    The percentage is computed from spend against the included limit rather
+    than taken from the payload's own `totalPercentUsed`. That field's
+    denominator is not the included allowance: on a $20 plan with 18 cents
+    spent it reads 0.0521739, which is neither 0.9 (percent) nor 0.009
+    (fraction). Spend over limit reproduces Cursor's own `displayMessage`
+    ("You've used 1% of your included usage"), so it is the honest figure.
+
+    Both amounts are integer cents. `used` carries the money as well, because
+    a lone percentage near zero hides whether the plan is nearly untouched or
+    the allowance is tiny.
+    """
+    plan = records.as_dict(payload.get("planUsage"))
+    spend = _cents(plan.get("totalSpend"))
+    if spend is None:
+        return None
+    entry: dict[str, Any] = {"harness": "cursor", "state": "ok", "asOf": int(now)}
+    limit = _cents(plan.get("limit"))
+    if limit:
+        window: dict[str, Any] = {"pct": max(0, min(100, round(spend * 100 / limit)))}
+        resets = _epoch_millis(payload.get("billingCycleEnd"))
+        if resets:
+            window["reset"] = sessions.format_reset(now, resets)
+        entry["month"] = window
+        entry["used"] = f"{_money(spend)} of {_money(limit)}"
+    else:
+        # An unlimited or limit-less plan spends without a denominator, so
+        # there is nothing for a bar to be a fraction of. Same shape as
+        # Copilot: the money, and no gauge pretending to be one.
+        entry["used"] = _money(spend)
+    return entry
+
+
+def _cursor_token(
+    config: RuntimeConfig,
+    runner: Callable[..., Any],
+) -> tuple[str | None, str | None]:
+    """(session token, problem category) for Cursor.
+
+    Only macOS is supported, because that is the only place the token's
+    location has been verified. Elsewhere this reports no credential source,
+    which keeps Cursor out of the band instead of advising a sign-in that would
+    not help.
+    """
+    if config.platform_name != "darwin":
+        return None, "no credential source on this platform"
+    return _keychain_secret(runner, CURSOR_KEYCHAIN_SERVICE)
+
+
+def _cursor_entries(
+    config: RuntimeConfig,
+    now: float,
+    opener: Callable[..., Any],
+    runner: Callable[..., Any],
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Cursor's quota: one credential read and one outbound POST."""
+    token, problem = _cursor_token(config, runner)
+    if problem:
+        return [], problem
+    request = urllib.request.Request(
+        CURSOR_USAGE_ENDPOINT,
+        data=b"{}",
+        headers={
+            "Authorization": f"Bearer {(token or '').strip()}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with opener(request, timeout=config.usage_fetch_timeout_sec) as response:
+            body = response.read(config.usage_response_cap_bytes)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            # Cursor answers a stale token with 401 and `actionRequired:
+            # "login"`, so the remedy is the harness's, exactly as for Claude.
+            return [_expired_entry(now, "cursor")], None
+        return [], f"HTTP {exc.code}"
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return [], type(exc).__name__
+    return _cursor_parse(now, body)
+
+
+def _cursor_parse(now: float, body: bytes) -> tuple[list[dict[str, Any]], str | None]:
+    """One response body as entries, or a category naming why it was not."""
+    try:
+        payload = records.as_dict(json.loads(body))
+    except ValueError:
+        return [], "malformed response"
+    entry = _cursor_entry(now, payload)
+    if entry is None:
+        return [], "response carried no plan usage"
+    return [entry], None
+
+
+# Every vendor the fetcher knows, paired with the reader that produces its
+# entries. The gates in `request_fetch` are applied per vendor, so one slow or
+# broken vendor cannot delay or suppress another's refresh.
+FETCH_VENDORS: tuple[tuple[str, VendorReader], ...] = (
+    ("claude", _claude_entries),
+    ("cursor", _cursor_entries),
+)
+
+
+def fetch_usage(
     config: RuntimeConfig,
     state: RuntimeState,
+    vendor: str,
+    reader: VendorReader,
     *,
     clock: Callable[[], float] = time.time,
     opener: Callable[..., Any] = urllib.request.urlopen,
     runner: Callable[..., Any] = subprocess.run,
     diagnostic_sink: Callable[[str], object] = print,
 ) -> None:
-    """One fetch, synchronous, ending in a cache write.
+    """One vendor's fetch, synchronous, ending in a cache write.
 
     A failure caches an empty entry list on purpose: the write stamps the
     attempt, and the poll floor reads that stamp, so a broken endpoint or a
@@ -225,11 +408,11 @@ def fetch_claude_usage(
     never in a storm.
     """
     now = clock()
-    entries, note = _claude_entries(config, now, opener, runner)
+    entries, note = reader(config, now, opener, runner)
     if note:
-        runtime_io.diag(f"[claude] usage fetch: {note}", diagnostic_sink)
+        runtime_io.diag(f"[{vendor}] usage fetch: {note}", diagnostic_sink)
     with state.usage_fetch_lock:
-        state.usage_fetch_cache["claude"] = {"ts": clock(), "entries": entries}
+        state.usage_fetch_cache[vendor] = {"ts": clock(), "entries": entries}
 
 
 def _spawn_thread(run: Callable[[], None]) -> None:
@@ -246,7 +429,7 @@ def request_fetch(
     diagnostic_sink: Callable[[str], object] = print,
     spawn: Callable[[Callable[[], None]], None] = _spawn_thread,
 ) -> bool:
-    """Maybe start a background fetch; never block the caller on the network.
+    """Maybe start a background fetch per vendor; never block the caller.
 
     This is the only entry point the serving path calls, and it holds every
     gate of the polling posture: nothing with the feature off, nothing while
@@ -254,34 +437,45 @@ def request_fetch(
     the last attempt. It is invoked only from `/api/data` requests that carry
     the page's consent, which is what makes "no polling while no dashboard
     page is connected" structural rather than scheduled.
+
+    The gates are per vendor, so Cursor still refreshes while a Claude fetch
+    sits in flight, and a vendor whose endpoint is down cannot hold the others
+    off. Returns whether *any* vendor started, which is all the caller uses.
     """
     if not config.usage_fetch_enabled:
         return False
     now = clock()
-    with state.usage_fetch_lock:
-        if "claude" in state.usage_fetch_inflight:
-            return False
-        cached = state.usage_fetch_cache.get("claude")
-        if cached and now - cached["ts"] < config.usage_poll_floor_sec:
-            return False
-        state.usage_fetch_inflight.add("claude")
+    started = False
+    for vendor, reader in FETCH_VENDORS:
+        with state.usage_fetch_lock:
+            if vendor in state.usage_fetch_inflight:
+                continue
+            cached = state.usage_fetch_cache.get(vendor)
+            if cached and now - cached["ts"] < config.usage_poll_floor_sec:
+                continue
+            state.usage_fetch_inflight.add(vendor)
 
-    def run() -> None:
-        try:
-            fetch_claude_usage(
-                config,
-                state,
-                clock=clock,
-                opener=opener,
-                runner=runner,
-                diagnostic_sink=diagnostic_sink,
-            )
-        finally:
-            with state.usage_fetch_lock:
-                state.usage_fetch_inflight.discard("claude")
+        def run(vendor: str = vendor, reader: VendorReader = reader) -> None:
+            # Bound as defaults, not closed over: every thread would otherwise
+            # see the loop's final vendor and one cache key would take them all.
+            try:
+                fetch_usage(
+                    config,
+                    state,
+                    vendor,
+                    reader,
+                    clock=clock,
+                    opener=opener,
+                    runner=runner,
+                    diagnostic_sink=diagnostic_sink,
+                )
+            finally:
+                with state.usage_fetch_lock:
+                    state.usage_fetch_inflight.discard(vendor)
 
-    spawn(run)
-    return True
+        spawn(run)
+        started = True
+    return started
 
 
 def _detached(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -295,10 +489,14 @@ def _detached(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [copy.deepcopy(entry) for entry in entries]
 
 
-def cached_entries(state: RuntimeState) -> list[dict[str, Any]]:
-    """The last fetch's entries, copied so a caller cannot mutate the cache."""
+def cached_entries(state: RuntimeState, vendor: str) -> list[dict[str, Any]]:
+    """One vendor's last fetch, copied so a caller cannot mutate the cache.
+
+    The vendor is required rather than defaulted: a wrong default would quietly
+    publish another vendor's numbers under this harness's name.
+    """
     with state.usage_fetch_lock:
-        cached = state.usage_fetch_cache.get("claude")
+        cached = state.usage_fetch_cache.get(vendor)
         return _detached(cached["entries"]) if cached else []
 
 

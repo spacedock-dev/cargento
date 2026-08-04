@@ -32,6 +32,7 @@ you.
 | Needs-input popup, browser (tab open) | not needed | yes | yes | yes (host browser) |
 | Needs-input popup, native (no tab) | yes (`osascript`) | not yet | not yet | not yet |
 | Claude quota token read (the usage fetch) | Keychain via `security`; the first read can prompt | credential file | credential file | credential file (Linux-side home) |
+| Cursor quota token read (the usage fetch) | Keychain via `security`, service `cursor-access-token` | no (see below) | no (see below) | no (see below) |
 
 Exactly one layer delivers a given popup: the server where it has a native backend, the page otherwise. `/api/data` reports which as `native_notify`.
 
@@ -68,6 +69,7 @@ Other notes:
 - Supported WSL topology is server and agents on the same side of the boundary. Reading a Windows-side store from inside WSL works over `/mnt/c`, but 9p latency and mtime granularity make state detection unreliable, so it is not supported.
 - `sqlite3` is an optional stdlib module. On a build without it (some musl/Alpine images) OpenCode, Cursor and Goose report undiscovered. Antigravity still appears, since its discovery and state come from store mtime and CLI logs, but without a token rate or turn ETA. Copilot also still appears, because it is discovered and read from JSONL events, but its `used` figure in the usage section is absent, since that figure comes from a SQLite store.
 - Gemini CLI was replaced by Antigravity CLI in June 2026. They are two harness rows: Antigravity is the current one, and the Gemini row reads legacy `~/.gemini/tmp` stores that nothing writes anymore, so its sessions need `?all=1` to appear. `GEMINI_CLI_HOME` relocates both, since Antigravity's store sits inside the Gemini home.
+- Cursor's quota tile is macOS-only. The Cursor CLI keeps its session token in the macOS Keychain, and where it persists that token on Linux and Windows has not been verified, so those platforms read no credential rather than a guessed path: Cursor's sessions still appear, only its usage entry is absent. Verifying the location on either platform is what lifts this, and it needs the CLI installed there. Every other harness's usage figure is platform-independent.
 
 ## Validation
 

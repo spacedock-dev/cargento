@@ -23,7 +23,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Self
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, diagnostics, quota
+from cargento_runtime import aggregate, cli, diagnostics, quota, sessions
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -77,13 +77,34 @@ def _keychain_runner(
     stdout: str,
     returncode: int = 0,
     calls: list[list[str]] | None = None,
+    service: str = quota.KEYCHAIN_SERVICE,
 ) -> Any:
+    """A fake `security` that answers for exactly one Keychain service.
+
+    Scoped to a service on purpose. A runner that returned the same secret for
+    every lookup would hand Claude's credentials to Cursor's reader, and Cursor
+    would then fetch inside tests written to exercise Claude alone — the fixture
+    leaking across vendors rather than the code doing anything wrong.
+    """
+
     def runner(argv: list[str], **_kwargs: Any) -> SimpleNamespace:
         if calls is not None:
             calls.append(argv)
+        if service not in argv:
+            return SimpleNamespace(returncode=1, stdout="")
         return SimpleNamespace(returncode=returncode, stdout=stdout)
 
     return runner
+
+
+def _asked_services(calls: list[list[str]]) -> list[str]:
+    """Which Keychain services a run consulted, in order."""
+    return [argv[argv.index("-s") + 1] for argv in calls if "-s" in argv]
+
+
+def _fetch_claude(config: RuntimeConfig, state: RuntimeState, **overrides: Any) -> None:
+    """Drive one Claude fetch through the generic per-vendor driver."""
+    quota.fetch_usage(config, state, "claude", quota._claude_entries, **overrides)
 
 
 class _Response:
@@ -283,7 +304,7 @@ class FetchLifecycleTest(unittest.TestCase):
     def test_a_fetch_caches_entries_and_diagnoses_only_categories(self) -> None:
         config, state = self._darwin()
         diagnostics_log: list[str] = []
-        quota.fetch_claude_usage(
+        _fetch_claude(
             config,
             state,
             clock=lambda: NOW,
@@ -292,10 +313,10 @@ class FetchLifecycleTest(unittest.TestCase):
             diagnostic_sink=diagnostics_log.append,
         )
         self.assertEqual([], diagnostics_log)
-        cached = quota.cached_entries(state)
+        cached = quota.cached_entries(state, "claude")
         self.assertEqual("ok", cached[0]["state"])
 
-        quota.fetch_claude_usage(
+        _fetch_claude(
             config,
             state,
             clock=lambda: NOW,
@@ -303,7 +324,7 @@ class FetchLifecycleTest(unittest.TestCase):
             runner=_keychain_runner(_credentials()),
             diagnostic_sink=diagnostics_log.append,
         )
-        self.assertEqual([], quota.cached_entries(state))
+        self.assertEqual([], quota.cached_entries(state, "claude"))
         self.assertTrue(any("URLError" in line for line in diagnostics_log))
         self.assertFalse(any(TOKEN in line for line in diagnostics_log))
 
@@ -314,8 +335,8 @@ class FetchLifecycleTest(unittest.TestCase):
                 "ts": NOW,
                 "entries": [{"harness": "claude", "state": "ok"}],
             }
-        quota.cached_entries(state)[0]["state"] = "mangled"
-        self.assertEqual("ok", quota.cached_entries(state)[0]["state"])
+        quota.cached_entries(state, "claude")[0]["state"] = "mangled"
+        self.assertEqual("ok", quota.cached_entries(state, "claude")[0]["state"])
 
     def test_request_fetch_holds_every_gate_of_the_polling_posture(self) -> None:
         clock_now = [NOW]
@@ -368,12 +389,18 @@ class FetchLifecycleTest(unittest.TestCase):
                 diagnostic_sink=lambda _line: None,
                 spawn=lambda run: run(),
             )
-        self.assertEqual(1, len(attempts))
+        # Each vendor is attempted exactly once across all three rounds. Counting
+        # per vendor rather than in total is what makes this fail if one vendor's
+        # failure ever stops stamping its own cache entry.
+        self.assertEqual(
+            sorted([quota.KEYCHAIN_SERVICE, quota.CURSOR_KEYCHAIN_SERVICE]),
+            sorted(_asked_services(attempts)),
+        )
 
     def test_a_fetch_already_in_flight_blocks_a_second(self) -> None:
         config, state = self._darwin()
         with state.usage_fetch_lock:
-            state.usage_fetch_inflight.add("claude")
+            state.usage_fetch_inflight.update(vendor for vendor, _ in quota.FETCH_VENDORS)
         self.assertFalse(
             quota.request_fetch(
                 config,
@@ -384,11 +411,38 @@ class FetchLifecycleTest(unittest.TestCase):
             )
         )
 
+    def test_the_gates_are_held_per_vendor_not_globally(self) -> None:
+        # One vendor in flight must not suppress another's refresh, and a
+        # vendor inside its own floor must not hold a fresh one off. A single
+        # shared gate would pass every other test in this class while quietly
+        # starving whichever vendor came second in the registry.
+        config, state = self._darwin()
+        asked: list[list[str]] = []
+        with state.usage_fetch_lock:
+            state.usage_fetch_inflight.add("claude")
+            # Claude also inside its floor, belt and braces.
+            state.usage_fetch_cache["claude"] = {"ts": NOW, "entries": []}
+        started = quota.request_fetch(
+            config,
+            state,
+            clock=lambda: NOW,
+            opener=_opener({}),
+            runner=_keychain_runner("", returncode=1, calls=asked),
+            diagnostic_sink=lambda _line: None,
+            spawn=lambda run: run(),
+        )
+        self.assertTrue(started, "the blocked vendor suppressed the whole round")
+        self.assertEqual([quota.CURSOR_KEYCHAIN_SERVICE], _asked_services(asked))
+        with state.usage_fetch_lock:
+            # Claude's marker is left exactly as it was found; only Cursor ran.
+            self.assertEqual({"claude"}, state.usage_fetch_inflight)
+            self.assertIn("cursor", state.usage_fetch_cache)
+
     def test_the_inflight_marker_clears_even_when_the_fetch_dies(self) -> None:
         config, state = self._darwin()
         boom = RuntimeError("thread death")
         with (
-            mock.patch.object(quota, "fetch_claude_usage", side_effect=boom),
+            mock.patch.object(quota, "fetch_usage", side_effect=boom),
             self.assertRaises(RuntimeError),
         ):
             quota.request_fetch(config, state, clock=lambda: NOW, spawn=lambda run: run())
@@ -406,6 +460,191 @@ class FetchLifecycleTest(unittest.TestCase):
         quota._spawn_thread(probe)
         self.assertTrue(done.wait(timeout=5))
         self.assertEqual([True], seen)
+
+
+class CursorFetchTest(unittest.TestCase):
+    """Cursor's fetch: the request shape, the units, and the honest percentage.
+
+    Field names and shapes come from a payload captured off a live cursor-agent
+    2026.07.23 install on a Pro plan, not from vendor documentation. The captured
+    values were nearly zero (18 cents of 2000), where an arithmetic error is
+    invisible, so the fixtures here deliberately carry a mid-range balance.
+    """
+
+    SPEND = 1350
+    LIMIT = 2000
+
+    @classmethod
+    def _body(cls, **changes: Any) -> dict[str, Any]:
+        plan: dict[str, Any] = {
+            "totalSpend": cls.SPEND,
+            "includedSpend": cls.SPEND,
+            "remaining": cls.LIMIT - cls.SPEND,
+            "limit": cls.LIMIT,
+            # Present and deliberately inconsistent with spend/limit, exactly as
+            # the live payload is. Nothing may read it.
+            "autoPercentUsed": 0.06,
+            "apiPercentUsed": 0,
+            "totalPercentUsed": 0.05217391304347826,
+        }
+        plan.update(changes)
+        return {
+            "billingCycleStart": "1699000000000",
+            "billingCycleEnd": str(int((NOW + 6 * 86400) * 1000)),
+            "planUsage": plan,
+            "spendLimitUsage": {"limitType": "user"},
+            "displayMessage": "You've used 68% of your included usage",
+            "enabled": True,
+        }
+
+    def _entries(self, **kwargs: Any) -> tuple[list[dict[str, Any]], str | None]:
+        opener = kwargs.pop("opener", _opener(self._body()))
+        runner = kwargs.pop(
+            "runner",
+            _keychain_runner(f"{TOKEN}\n", service=quota.CURSOR_KEYCHAIN_SERVICE),
+        )
+        config = kwargs.pop("config", _config(platform_name="darwin"))
+        return quota._cursor_entries(config, NOW, opener, runner)
+
+    def test_the_request_is_a_post_carrying_the_token_and_nothing_else(self) -> None:
+        requests: list[Any] = []
+        entries, note = self._entries(opener=_opener(self._body(), requests=requests))
+        self.assertIsNone(note)
+        (request,) = requests
+        self.assertEqual(quota.CURSOR_USAGE_ENDPOINT, request.full_url)
+        self.assertEqual("POST", request.get_method())
+        self.assertEqual(b"{}", request.data)
+        # Exactly two headers of ours. A cookie here would mean the browser-session
+        # path, which was rejected: this must stay the CLI's own bearer route.
+        self.assertEqual(
+            {"Authorization": f"Bearer {TOKEN}", "Content-type": "application/json"},
+            dict(request.headers),
+        )
+        self.assertEqual(1, len(entries))
+
+    def test_money_is_read_as_cents_and_published_as_dollars(self) -> None:
+        # THE unit assertion. The percentage cannot catch a cents/dollars misread,
+        # because a ratio is unit-invariant; only the rendered money can. Reading
+        # these as dollars would publish "$1350.00 of $2000.00".
+        (entry,), _ = self._entries()
+        self.assertEqual("$13.50 of $20.00", entry["used"])
+
+    def test_the_percentage_comes_from_spend_over_limit_not_the_payloads_own(self) -> None:
+        # `totalPercentUsed` in the fixture is the live value, 0.0521739, and is
+        # inconsistent with spend/limit in both readings: 5 if taken as a
+        # fraction, 0 if taken as a percent. The honest figure is 1350/2000, and
+        # it agrees with Cursor's own displayMessage.
+        (entry,), _ = self._entries()
+        self.assertEqual(68, entry["month"]["pct"])
+        self.assertIn("68%", self._body()["displayMessage"])
+
+    def test_the_cycle_end_is_read_as_millisecond_epoch(self) -> None:
+        # Sent as a decimal string of epoch MILLIseconds, which is how protobuf
+        # JSON encodes int64. Compared against the shared formatter at the
+        # instant the fixture encodes, so this pins the instant rather than the
+        # wording. Dividing a seconds value by 1000 lands in 1970, which renders
+        # differently — asserted, so the test cannot pass on the wrong reading.
+        cycle_end = NOW + 6 * 86400
+        expected = sessions.format_reset(NOW, cycle_end)
+        (entry,), _ = self._entries()
+        self.assertEqual(expected, entry["month"]["reset"])
+        self.assertNotEqual(expected, sessions.format_reset(NOW, cycle_end / 1000))
+
+    def test_an_unreadable_cycle_end_leaves_the_bar_without_a_reset(self) -> None:
+        # The percentage is still true without one; inventing a reset is not.
+        for raw in (None, "not-a-number", 0, -1, True, [1]):
+            with self.subTest(cycle_end=raw):
+                body = self._body()
+                body["billingCycleEnd"] = raw
+                (entry,), note = self._entries(opener=_opener(body))
+                self.assertIsNone(note)
+                self.assertEqual(68, entry["month"]["pct"])
+                self.assertNotIn("reset", entry["month"])
+
+    def test_the_entry_fills_month_and_never_the_rolling_windows(self) -> None:
+        # A monthly billing cycle in a slot labelled "5h" or "wk" would put a
+        # wrong label on a real number.
+        (entry,), _ = self._entries()
+        self.assertEqual("cursor", entry["harness"])
+        self.assertEqual("ok", entry["state"])
+        self.assertEqual(int(NOW), entry["asOf"])
+        self.assertNotIn("fiveH", entry)
+        self.assertNotIn("week", entry)
+
+    def test_a_plan_with_no_limit_publishes_spend_and_no_gauge(self) -> None:
+        # Unlimited and limit-less plans exist; a bar needs a denominator.
+        for limit in (0, None, -5, True, "2000"):
+            with self.subTest(limit=limit):
+                (entry,), note = self._entries(opener=_opener(self._body(limit=limit)))
+                self.assertIsNone(note)
+                self.assertEqual("$13.50", entry["used"])
+                self.assertNotIn("month", entry)
+
+    def test_an_unusable_spend_figure_is_a_miss_not_an_entry(self) -> None:
+        spends: tuple[Any, ...] = (None, "18", -1, True, {})
+        for spend in spends:
+            with self.subTest(spend=spend):
+                entries, note = self._entries(opener=_opener(self._body(totalSpend=spend)))
+                self.assertEqual([], entries)
+                self.assertEqual("response carried no plan usage", note)
+
+    def test_a_rejected_token_is_expired_never_a_refresh(self) -> None:
+        for code in (401, 403):
+            with self.subTest(code=code):
+                (entry,), note = self._entries(opener=_opener(error=_http_error(code, "nope")))
+                self.assertIsNone(note)
+                self.assertEqual({"harness": "cursor", "state": "expired", "asOf": int(NOW)}, entry)
+
+    def test_transport_and_server_failures_stay_categories(self) -> None:
+        cases = (
+            (_opener(error=_http_error(500, "boom")), "HTTP 500"),
+            (_opener(error=urllib.error.URLError("net down")), "URLError"),
+            (_opener(raw=b"not json"), "malformed response"),
+        )
+        for opener, expected in cases:
+            with self.subTest(expected=expected):
+                entries, note = self._entries(opener=opener)
+                self.assertEqual([], entries)
+                self.assertEqual(expected, note)
+
+    def test_off_macos_no_credential_is_read_and_no_request_is_made(self) -> None:
+        # The token's location is verified on macOS only. Guessing a path
+        # elsewhere would read some other file and call it a credential.
+        for platform_name in ("linux", "win32"):
+            with self.subTest(platform=platform_name):
+                entries, note = self._entries(
+                    config=_config(platform_name=platform_name),
+                    opener=_forbidden_opener(),
+                    runner=_no_runner,
+                )
+                self.assertEqual([], entries)
+                self.assertEqual("no credential source on this platform", note)
+
+    def test_an_unavailable_keychain_item_is_a_category_never_a_value(self) -> None:
+        entries, note = self._entries(
+            opener=_forbidden_opener(),
+            runner=_keychain_runner(
+                "secret-looking stdout", returncode=1, service=quota.CURSOR_KEYCHAIN_SERVICE
+            ),
+        )
+        self.assertEqual([], entries)
+        self.assertEqual("keychain item unavailable", note)
+
+    def test_the_reader_asks_for_cursors_own_keychain_service(self) -> None:
+        calls: list[list[str]] = []
+        self._entries(
+            runner=_keychain_runner(
+                f"{TOKEN}\n", calls=calls, service=quota.CURSOR_KEYCHAIN_SERVICE
+            )
+        )
+        self.assertEqual([quota.CURSOR_KEYCHAIN_SERVICE], _asked_services(calls))
+        # Not Claude's item: the two vendors must never read each other's.
+        self.assertNotIn(quota.KEYCHAIN_SERVICE, _asked_services(calls))
+
+    def test_the_token_reaches_neither_the_note_nor_the_entry(self) -> None:
+        (entry,), note = self._entries()
+        self.assertNotIn(TOKEN, json.dumps(entry))
+        self.assertNotIn(TOKEN, str(note))
 
 
 class NoFetchWithoutConsentTest(RuntimeTestCase):
@@ -451,7 +690,7 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
         # network side effect on a path documented to report local paths only.
         with (
             mock.patch.object(quota, "request_fetch") as trigger,
-            mock.patch.object(quota, "fetch_claude_usage") as fetch,
+            mock.patch.object(quota, "fetch_usage") as fetch,
         ):
             diagnostics.diagnose(application)
             application.collect(show_all=True)
@@ -466,7 +705,7 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
             config = _config(home=tmp, platform_name="darwin")
             Path(tmp, ".claude", "projects").mkdir(parents=True)
             state = _state(config)
-            quota.fetch_claude_usage(
+            _fetch_claude(
                 config,
                 state,
                 clock=lambda: NOW,
@@ -694,7 +933,7 @@ class UsageEndpointTest(RuntimeTestCase):
         )
         with (
             mock.patch.object(quota, "request_fetch") as trigger,
-            mock.patch.object(quota, "fetch_claude_usage") as fetch,
+            mock.patch.object(quota, "fetch_usage") as fetch,
         ):
             diagnostics.diagnose(application)
             application.collect(show_all=True)

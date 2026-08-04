@@ -56,9 +56,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
 
-        self.assertEqual(124_055, len(assembled))
+        self.assertEqual(124_992, len(assembled))
         self.assertEqual(
-            "9d00a4e31a849e6babdd3905837d6baebb74bdd45aa637932da65271ef8b89a5",
+            "e77a5a23c1e0f9626d32182acca24b88bacc5a2960dd909ee6e03f90ed261074",
             hashlib.sha256(assembled).hexdigest(),
         )
         self.assertEqual(38_008, len(styles))
@@ -77,8 +77,8 @@ class FrontendAssetContractTest(unittest.TestCase):
             ),
             "mode.js": (1_931, "a88e29034f1f41d93213e4ab1b3bab9b6759869374d6bf391c4d37ef7e433def"),
             "usage.js": (
-                12_335,
-                "ae9d06abc67e489d2574b9b294cc4ddbce02b2c9ff7784a471642b23ddeaf5b5",
+                13_272,
+                "ca7cf190a958e22e988686b0e13bdd72aa6d46bfb7f5501a7e3d6dbe4aff783c",
             ),
             "controls.js": (
                 3_382,
@@ -499,6 +499,53 @@ class CargentoServerTest(PageJsHarness):
         self.assertIn("63%", html)
         self.assertIn("31%", html)
         self.assertNotIn('<span class="u-wlab">used</span>', html)
+
+    def test_a_monthly_cycle_renders_its_own_gauge_and_its_money(self) -> None:
+        # Cursor meters spend against a monthly billing cycle. Exercised by
+        # executing the shipped script rather than reading it, because that is
+        # how Copilot's missing `used` row was found: the entry looked right in
+        # Python and rendered as a name and a timestamp. Both figures must
+        # survive the DEFAULT config, so `month` defaults on.
+        rendered = self._run_page_js(
+            "const e = {harness:'cursor', state:'ok', asOf: 1700000000,"
+            " month:{pct:68, reset:'Sep 04'}, used:'$13.50 of $20.00'};"
+            "console.log(JSON.stringify({cfg: usageCfg, html: usageEntry(e)}));"
+        )
+        self.assertTrue(rendered["cfg"]["month"], "the monthly slot must default to shown")
+        html = rendered["html"]
+        self.assertIn('<span class="u-wlab">mo</span>', html)
+        self.assertIn("68%", html)
+        self.assertIn("Sep 04", html)
+        self.assertIn("cm-track", html)
+        self.assertIn("$13.50 of $20.00", html)
+        # The label says the window it actually is. "5h" or "wk" on a month
+        # would be a wrong label on a real number.
+        self.assertNotIn('<span class="u-wlab">wk</span>', html)
+        self.assertNotIn('<span class="u-wlab">5h</span>', html)
+
+    def test_hiding_the_monthly_slot_leaves_the_money_visible(self) -> None:
+        # `used` is not gated by the stats config, so turning the bar off still
+        # leaves a number rather than a row that reads as broken.
+        rendered = self._run_page_js(
+            "usageCfg.month = false;"
+            "const e = {harness:'cursor', state:'ok', asOf: 1700000000,"
+            " month:{pct:68, reset:'Sep 04'}, used:'$13.50 of $20.00'};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        self.assertNotIn("68%", html)
+        self.assertIn("$13.50 of $20.00", html)
+
+    def test_the_stats_config_offers_every_window_a_harness_can_publish(self) -> None:
+        # The configure popover is hand-written alongside the slots the renderer
+        # reads. A slot with no row here can never be turned back on once off.
+        rendered = self._run_page_js(
+            "console.log(JSON.stringify({stats: USAGE_STATS.map(s => s[0]),"
+            " cfg: Object.keys(usageCfg)}));"
+        )
+        self.assertEqual(rendered["stats"], rendered["cfg"])
+        for slot in ("fiveH", "week", "month"):
+            self.assertIn(slot, rendered["stats"])
 
     def test_every_harness_has_a_two_letter_monogram(self) -> None:
         # The monogram is the icon fallback, so a harness with no ICON_PATH

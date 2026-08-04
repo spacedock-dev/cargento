@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlparse
 
 from cargento_runtime import io as runtime_io
+from cargento_runtime import quota as runtime_quota
 from cargento_runtime import sessions
 from cargento_runtime import state as runtime_state
 
@@ -26,6 +27,28 @@ def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     return runtime_io.sqlite_available() and bool(
         runtime_io.glob_stores(config, "cursor.chats", *_STORE_GLOB)
     )
+
+
+def usage(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    now: float,
+    window_hours: float,
+) -> list[dict[str, Any]]:
+    """The last fetched Cursor quota, read from the quota module's cache.
+
+    Cursor writes no allowance to disk and pushes nothing to a hook, so the
+    only route is the fetch: the CLI's own `GetCurrentPeriodUsage`, reached
+    with the session token it keeps in the macOS Keychain. Like Claude's, this
+    provider never touches the network. It publishes whatever the fetch thread
+    last cached, and the registry wires it in only while the fetch feature is
+    enabled, so `--no-usage` leaves the Cursor row with no provider at all.
+
+    Unlike the other harnesses the figures are money against a monthly billing
+    cycle rather than a rolling window, which is why the entry fills `month`.
+    """
+    del config, now, window_hours
+    return runtime_quota.cached_entries(state, "cursor")
 
 
 _CURSOR_CWD_KEYS = ("workspacePath", "workspace", "rootPath", "projectPath", "folder", "cwd")
