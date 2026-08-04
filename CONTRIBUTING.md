@@ -224,6 +224,9 @@ This is the contribution we most want. Each harness is one registry entry: a key
 - Resolve store roots through the candidate-set resolver rather than a single hardcoded path, and honor the harness's documented relocation variable if it has one.
 - Document the data source and its caveats in `SKILL.md`'s data-sources list. The documentation-matches-code test asserts it.
 - Add tests with a synthetic store fixture, including a hostile-path case.
+- Add the harness to the page's `HARNESS` table in `cargento_runtime/web/spark.js` with a unique two-letter monogram. A contract test compares that table to the registry, so a row added on one side only fails the build.
+
+Before writing any of it, settle whether the thing deserves a row of its own: two store formats can be one harness, and one vendor can be two. [`docs/design-harness-registry.md`](docs/design-harness-registry.md) owns that judgement and the one time it had to be revisited.
 
 ## Releases
 
