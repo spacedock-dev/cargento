@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import claude_data, notifications
 from cargento_runtime import io as runtime_io
+from cargento_runtime import quota as runtime_quota
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import spacedock as runtime_spacedock
 from cargento_runtime import turns as runtime_turns
@@ -157,6 +158,24 @@ def session_spacedock(
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether a Claude projects store is present."""
     return runtime_io.any_store_dir(config, "claude.projects")
+
+
+def usage(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    now: float,
+    window_hours: float,
+) -> list[dict[str, Any]]:
+    """The last fetched Claude quota, read from the quota module's cache.
+
+    This provider never touches the network: the fetch runs on its own thread,
+    triggered by `/api/data` requests carrying the page's consent, and this
+    only publishes whatever that thread last cached. The registry wires it in
+    only when the fetch feature is enabled, so `--no-usage` leaves the Claude
+    row with no provider at all.
+    """
+    del config, now, window_hours
+    return runtime_quota.cached_entries(state)
 
 
 def collect(

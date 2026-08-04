@@ -65,6 +65,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not read Spacedock workflow definitions (drops the stage strips)",
     )
     parser.add_argument(
+        "--no-usage",
+        action="store_true",
+        help=(
+            "never fetch vendor quota over the network for this run, "
+            "regardless of the dashboard's stored setting"
+        ),
+    )
+    parser.add_argument(
         "--status",
         action="store_true",
         help="report whether a Cargento is running on --port, and exit",
@@ -108,6 +116,7 @@ def build_runtime(
         port=args.port,
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
+        usage_fetch_enabled=not args.no_usage,
     )
     return config, runtime_state.build_runtime_state(config, started=started)
 
@@ -138,7 +147,7 @@ def build_application(
         state,
         # The same callable the Claude collector notifies through, so the
         # transcript path and the hook path cannot diverge.
-        aggregate.default_harnesses(popup_notifier),
+        aggregate.default_harnesses(popup_notifier, usage_fetch_enabled=config.usage_fetch_enabled),
         native_notifier=notifications.native_notifier,
         popup_notifier=popup_notifier,
         diagnostic_sink=diagnostic_sink,

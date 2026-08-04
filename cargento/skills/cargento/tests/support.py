@@ -292,6 +292,9 @@ def clear_state(state: RuntimeState) -> None:
         state.turn_scan.clear()
     with state.collect_memo_lock:
         state.collect_memo.clear()
+    with state.usage_fetch_lock:
+        state.usage_fetch_cache.clear()
+        state.usage_fetch_inflight.clear()
 
 
 class RuntimeTestCase(unittest.TestCase):

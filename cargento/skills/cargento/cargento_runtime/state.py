@@ -17,6 +17,11 @@ class CollectMemoEntry(TypedDict):
     body: bytes
 
 
+class UsageFetchEntry(TypedDict):
+    ts: float
+    entries: list[dict[str, Any]]
+
+
 @dataclass
 class RuntimeState:
     config: RuntimeConfig
@@ -46,6 +51,14 @@ class RuntimeState:
     spacedock_entity_cache: dict[tuple[str, int, int], str] = field(default_factory=dict)
     cursor_metadata_cache: dict[str, tuple[float, str | None, str]] = field(default_factory=dict)
     collect_memo: dict[tuple[float, bool], CollectMemoEntry] = field(default_factory=dict)
+    # The quota fetch. One cache entry per vendor key, stamped with the fetch
+    # time so the five-minute floor is a comparison, and one in-flight marker
+    # per vendor so a slow request cannot stack a second behind it. Guarded by
+    # usage_fetch_lock, never cache_lock: the fetch thread holds its lock
+    # across a cache write only, and must not contend with collectors.
+    usage_fetch_lock: LockType = field(default_factory=threading.Lock)
+    usage_fetch_cache: dict[str, UsageFetchEntry] = field(default_factory=dict)
+    usage_fetch_inflight: set[str] = field(default_factory=set)
 
 
 def build_runtime_state(config: RuntimeConfig, *, started: float) -> RuntimeState:

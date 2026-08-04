@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 from . import io as runtime_io
-from . import sessions
+from . import quota, sessions
 
 if TYPE_CHECKING:
     from .config import RuntimeConfig
@@ -35,7 +35,13 @@ class HarnessSpec:
     ``usage`` is the optional quota reader. Most harnesses have none: the
     survey behind DEC-1 found Codex alone writing quota to disk, and every
     other vendor keeping it behind an authenticated API. The field is where
-    a future fetcher plugs in without widening the ``Collector`` contract.
+    a quota source plugs in without widening the ``Collector`` contract.
+
+    ``usage_is_fetch`` marks a provider whose numbers come from the network
+    fetcher rather than from disk. Its presence on a discovered harness is
+    what raises the payload's ``usage_fetch`` capability flag, and that flag
+    is what wakes the page's first-run disclosure modal — a disk reader like
+    Codex's must never raise it.
     """
 
     key: str
@@ -43,9 +49,14 @@ class HarnessSpec:
     discover: Discoverer
     collect: Collector
     usage: UsageProvider | None = None
+    usage_is_fetch: bool = False
 
 
-def default_harnesses(popup_notifier: Callable[[str, str], None]) -> tuple[HarnessSpec, ...]:
+def default_harnesses(
+    popup_notifier: Callable[[str, str], None],
+    *,
+    usage_fetch_enabled: bool = True,
+) -> tuple[HarnessSpec, ...]:
     """Every supported harness, in display order.
 
     Claude is the one collector that notifies during collection, because a
@@ -54,6 +65,10 @@ def default_harnesses(popup_notifier: Callable[[str, str], None]) -> tuple[Harne
     contract for all nine harnesses instead of widening every collector with a
     dependency only one of them has. Pass the same bound callable given to
     ``Application.popup_notifier`` so both paths notify identically.
+
+    ``usage_fetch_enabled`` is ``--no-usage`` arriving at assembly: with the
+    fetch off, the Claude row gets no usage provider at all, so nothing ever
+    reads the fetch cache and the ``usage_fetch`` flag can never rise.
     """
     from .collectors import (  # noqa: PLC0415 — deferred to keep import order acyclic
         claude,
@@ -79,7 +94,14 @@ def default_harnesses(popup_notifier: Callable[[str, str], None]) -> tuple[Harne
         )
 
     return (
-        HarnessSpec("claude", "Claude", claude.discover, collect_claude),
+        HarnessSpec(
+            "claude",
+            "Claude",
+            claude.discover,
+            collect_claude,
+            usage=claude.usage if usage_fetch_enabled else None,
+            usage_is_fetch=True,
+        ),
         HarnessSpec("codex", "Codex", codex.discover, codex.collect, usage=codex.usage),
         HarnessSpec("pi", "Pi", pi.discover, pi.collect),
         HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect),
@@ -125,6 +147,7 @@ class Application:
         harnesses: list[dict[str, Any]] = []
         usage: list[dict[str, Any]] = []
         usage_supported = False
+        usage_fetch_active = False
         for spec in self.harnesses:
             try:
                 found = bool(spec.discover(config, state))
@@ -155,6 +178,7 @@ class Application:
             # session rows above already collected, and a broken tile must
             # not repaint the whole strip red.
             usage_supported = True
+            usage_fetch_active = usage_fetch_active or spec.usage_is_fetch
             try:
                 usage.extend(spec.usage(config, state, now, window_hours))
             except Exception as e:  # noqa: BLE001 — same boundary as the collector above
@@ -197,7 +221,27 @@ class Application:
             # yet" (key with no entries) from "nothing here publishes quota"
             # (no key), and only the former draws the band.
             collection["usage"] = sorted(usage, key=lambda u: str(u.get("harness", "")))
+        if usage_fetch_active:
+            # The fetcher's capability flag: present exactly when a discovered
+            # harness's quota comes from the network fetcher. The page's
+            # first-run disclosure modal keys on it, so it must never rise for
+            # a disk-read provider or with the fetch disabled.
+            collection["usage_fetch"] = True
         return collection
+
+    def request_usage_fetch(self) -> bool:
+        """Maybe start a background quota fetch; the gates live in `quota`.
+
+        Called only from `/api/data` handling for requests that carry the
+        page's consent — never from `collect`, which `--diagnose` also runs
+        and which must stay free of network side effects.
+        """
+        return quota.request_fetch(
+            self.config,
+            self.state,
+            clock=self.clock,
+            diagnostic_sink=self.diagnostic_sink,
+        )
 
     def collect_json(self, *, show_all: bool) -> bytes:
         state = self.state

@@ -123,7 +123,15 @@ async function refresh(){
   if(serverStopped) return;
   const sequence = ++refreshSequence;
   try{
-    const r = await fetch("/api/data" + (showAll ? "?all=1" : ""));
+    /* usage=1 is this page's consent to the server's quota fetch riding on
+       the poll. It is sent only when the feature is on AND the disclosure
+       modal has been answered, so the first fetch can never precede the
+       disclosure. Without it the server answers from cache and fetches
+       nothing. */
+    const params = [];
+    if(showAll) params.push("all=1");
+    if(usageEnabled && usageModalSeen) params.push("usage=1");
+    const r = await fetch("/api/data" + (params.length ? "?" + params.join("&") : ""));
     if(!r.ok) throw new Error("bad status");
     const data = await r.json();
     if(serverStopped) return;

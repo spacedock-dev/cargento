@@ -1,18 +1,19 @@
 /* ── usage band ────────────────────────────────────────────────────────────
    Quota per harness, in both display modes. Everything here renders only when
-   the payload carries a `usage` array. Today the Codex collector publishes
-   one from its on-disk rate-limit snapshots; the Claude fetcher — a
-   configurable opt-out behind the first-run disclosure modal below — is
-   still to come. One entry per harness:
+   the payload carries a `usage` array. Two sources feed it: the Codex
+   collector's on-disk rate-limit snapshots, and the server's Claude quota
+   fetch — a configurable opt-out whose consent rides on the poll as the
+   `usage=1` parameter (see refresh()). One entry per harness:
      {harness,                       // key into HARNESS, like a session's
       state,                        // "ok" | "expired"
       asOf,                         // epoch seconds of the snapshot or fetch
       fiveH: {pct, reset},          // integer percent, short reset text
       week:  {pct, reset},
       burn, today, cost}            // optional extras, preformatted strings
-   The disclosure modal stays dormant until then: it opens once, the first
-   time a payload carries `usage_fetch` — the quota fetcher's capability
-   flag, which ships with the fetcher itself. */
+   The disclosure modal opens once, the first time a payload carries
+   `usage_fetch` — the capability flag the server raises exactly when a
+   discovered harness's quota comes from the network fetcher. Until it is
+   answered, no poll carries consent and nothing is fetched. */
 const USAGE_OPEN_KEY = "cargento.usageOpen";        /* calm band visibility */
 const USAGE_CFG_KEY = "cargento.usageCfg";          /* which stats are shown */
 const USAGE_ENABLED_KEY = "cargento.usageEnabled";  /* the feature switch */
@@ -197,6 +198,9 @@ function usageAction(act, arg){
   } else if(act === "uon"){
     usageEnabled = !usageEnabled;
     usageStore(USAGE_ENABLED_KEY, usageEnabled ? "1" : "0");
+    /* Consent just changed; the next poll would carry it in 5s. Poll now so
+       switching usage back on fills the band without the wait. */
+    if(usageEnabled) refresh();
   } else if(act === "ustat"){
     if(!Object.prototype.hasOwnProperty.call(usageCfg, arg)) return true;
     const shown = USAGE_STATS.filter(([k]) => usageCfg[k]).length;
@@ -209,6 +213,10 @@ function usageAction(act, arg){
     if(arg === "off"){
       usageEnabled = false;
       usageStore(USAGE_ENABLED_KEY, "0");
+    } else {
+      /* "Keep usage on" is the first moment consent exists: poll right away
+         so the first fetch starts now rather than on the next 5s tick. */
+      refresh();
     }
   } else return false;
   if(lastData) render(lastData);

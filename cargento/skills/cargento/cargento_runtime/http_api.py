@@ -247,7 +247,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         url = urlparse(self.path)
         if url.path == "/api/data":
-            show_all = parse_qs(url.query).get("all", ["0"])[0] == "1"
+            query = parse_qs(url.query)
+            show_all = query.get("all", ["0"])[0] == "1"
+            # `usage=1` is the page's consent to the quota fetch riding along
+            # on its poll: the page sends it only with the feature switched on
+            # and the first-run disclosure already shown. The fetch is a
+            # background side effect behind its own floor and in-flight gates;
+            # this request is answered from whatever is already cached. A bare
+            # request without the parameter never triggers network traffic.
+            if query.get("usage", ["0"])[0] == "1":
+                self.server.application.request_usage_fetch()
             self._send(self.server.application.collect_json(show_all=show_all), "application/json")
         elif url.path == "/api/health":
             self._health()

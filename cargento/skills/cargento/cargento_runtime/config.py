@@ -44,6 +44,7 @@ class RuntimeConfig:
     port: int
     window_hours: float
     spacedock_enabled: bool
+    usage_fetch_enabled: bool
     rate_window_sec: float
     working_threshold_sec: float
     turn_gap_reset_sec: float
@@ -83,6 +84,13 @@ class RuntimeConfig:
     prompt_path_collapse_min_length: int
     first_line_json_cap_bytes: int
     notification_body_cap_bytes: int
+    # The quota fetch (SECURITY.md, "Usage quota reads"): the contract's
+    # five-minute floor between requests to one vendor, the request timeout,
+    # and the read caps on the credential file and the response body.
+    usage_poll_floor_sec: float
+    usage_fetch_timeout_sec: float
+    usage_credentials_cap_bytes: int
+    usage_response_cap_bytes: int
 
 
 def resolve_store_roots(
@@ -188,6 +196,7 @@ def build_runtime_config(
     port: int = 4553,
     window_hours: float = 24.0,
     spacedock_enabled: bool = True,
+    usage_fetch_enabled: bool = True,
 ) -> RuntimeConfig:
     """Construct runtime configuration solely from explicit inputs."""
     windows = platform_name == "win32"
@@ -225,6 +234,7 @@ def build_runtime_config(
         port=port,
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,
+        usage_fetch_enabled=usage_fetch_enabled,
         rate_window_sec=600,
         working_threshold_sec=90,
         turn_gap_reset_sec=300,
@@ -264,6 +274,10 @@ def build_runtime_config(
         prompt_path_collapse_min_length=25,
         first_line_json_cap_bytes=200_000,
         notification_body_cap_bytes=65_536,
+        usage_poll_floor_sec=300,
+        usage_fetch_timeout_sec=10,
+        usage_credentials_cap_bytes=65_536,
+        usage_response_cap_bytes=262_144,
     )
 
 

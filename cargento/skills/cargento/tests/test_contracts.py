@@ -72,6 +72,7 @@ class ApplicationIsolationTest(unittest.TestCase):
         sessions: int = 1,
         usage_entries: list[dict[str, Any]] | None = None,
         usage_error: BaseException | None = None,
+        usage_is_fetch: bool = False,
     ) -> aggregate.HarnessSpec:
         """A runtime-native harness: it reads the config and state it is given."""
 
@@ -115,7 +116,12 @@ class ApplicationIsolationTest(unittest.TestCase):
                 return list(usage_entries or [])
 
         return aggregate.HarnessSpec(
-            key=key, label=key.title(), discover=discover, collect=collect, usage=usage
+            key=key,
+            label=key.title(),
+            discover=discover,
+            collect=collect,
+            usage=usage,
+            usage_is_fetch=usage_is_fetch,
         )
 
     def _application(
@@ -430,6 +436,42 @@ class ApplicationIsolationTest(unittest.TestCase):
         # No provider anywhere: the key is absent and the page stays dormant.
         self.assertNotIn("usage", without_provider.collect(show_all=True))
 
+    def test_usage_fetch_flag_rises_only_for_a_discovered_fetch_provider(self) -> None:
+        entry = {"harness": "fetched", "state": "ok", "asOf": 999, "week": {"pct": 10}}
+        fetcher, _, _, _, _ = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(self._spec("fetched", usage_entries=[entry], usage_is_fetch=True),),
+        )
+        disk_only, _, _, _, _ = self._application(
+            home="/home/b",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-b",
+            harnesses=(self._spec("disk", usage_entries=[entry]),),
+        )
+
+        # The flag is what wakes the page's first-run disclosure modal, so a
+        # disk-read provider must never raise it — the modal would then be
+        # disclosing a fetch that does not exist.
+        self.assertTrue(fetcher.collect(show_all=True).get("usage_fetch"))
+        self.assertNotIn("usage_fetch", disk_only.collect(show_all=True))
+
+    def test_no_usage_leaves_the_claude_row_without_a_provider(self) -> None:
+        # --no-usage arrives at assembly: the row keeps its fetch marking but
+        # loses the provider, so nothing reads the fetch cache and the flag
+        # can never rise.
+        rows = {
+            spec.key: spec
+            for spec in aggregate.default_harnesses(lambda _t, _m: None, usage_fetch_enabled=False)
+        }
+        self.assertIsNone(rows["claude"].usage)
+        default_rows = {spec.key: spec for spec in REGISTRY}
+        self.assertIsNotNone(default_rows["claude"].usage)
+        self.assertTrue(default_rows["claude"].usage_is_fetch)
+
     def test_a_usage_failure_is_contained_to_diagnostics(self) -> None:
         application, _, _, diagnostics, _ = self._application(
             home="/home/a",
@@ -701,6 +743,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.collectors",
             "cargento_runtime.config",
             "cargento_runtime.io",
+            "cargento_runtime.quota",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
@@ -727,6 +770,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.notifications",
+            "cargento_runtime.quota",
             "cargento_runtime.sessions",
             "cargento_runtime.spacedock",
             "cargento_runtime.state",
@@ -793,6 +837,16 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.records",
+            "cargento_runtime.state",
+        },
+        # The quota fetch: the whole outbound network surface, kept below the
+        # collectors so the one provider that fetches shares nothing with the
+        # eight that read disk.
+        "cargento_runtime.quota": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
         "cargento_runtime.spacedock": {
