@@ -523,6 +523,214 @@ function setDisplayMode(mode){
   if(lastData) render(lastData);
 }
 
+/* ── usage band ────────────────────────────────────────────────────────────
+   Quota per harness, in both display modes. Everything here renders only when
+   the payload carries a `usage` array — no server sends one yet, so the whole
+   surface stays dormant until the collectors publish it (Codex from disk
+   first, then the Claude fetcher). One entry per harness:
+     {harness,                       // key into HARNESS, like a session's
+      state,                        // "ok" | "expired"
+      asOf,                         // epoch seconds of the snapshot or fetch
+      fiveH: {pct, reset},          // integer percent, short reset text
+      week:  {pct, reset},
+      burn, today, cost}            // optional extras, preformatted strings
+   The disclosure modal is likewise gated: it opens once, the first time a
+   payload carries `usage_fetch` — the quota fetcher's capability flag, which
+   ships with the fetcher itself. */
+const USAGE_OPEN_KEY = "cargento.usageOpen";        /* calm band visibility */
+const USAGE_CFG_KEY = "cargento.usageCfg";          /* which stats are shown */
+const USAGE_ENABLED_KEY = "cargento.usageEnabled";  /* the feature switch */
+const USAGE_MODAL_KEY = "cargento.usageModalSeen";
+const USAGE_STATS = [
+  ["fiveH", "5h window"], ["week", "weekly window"], ["burn", "burn rate"],
+  ["today", "tokens today"], ["cost", "cost today"]];
+
+let usageOpen = true;
+let usageEnabled = true;
+let usageModalSeen = false;
+let usageCfgOpen = false;   /* the popover is transient, never persisted */
+let usageCfg = {fiveH: true, week: true, burn: false, today: false, cost: false};
+try{
+  if(localStorage.getItem(USAGE_OPEN_KEY) === "0") usageOpen = false;
+  if(localStorage.getItem(USAGE_ENABLED_KEY) === "0") usageEnabled = false;
+  if(localStorage.getItem(USAGE_MODAL_KEY) === "1") usageModalSeen = true;
+  const savedCfg = JSON.parse(localStorage.getItem(USAGE_CFG_KEY));
+  /* A torn or all-false value would blank every window; only adopt a saved
+     config that still shows at least one stat. */
+  if(savedCfg && typeof savedCfg === "object" &&
+     USAGE_STATS.some(([k]) => savedCfg[k] === true)){
+    for(const [k] of USAGE_STATS) usageCfg[k] = savedCfg[k] === true;
+  }
+}catch(e){ /* private mode, or a context with no storage — defaults hold */ }
+
+function usagePresent(d){ return !!d && Array.isArray(d.usage); }
+
+function usageStore(key, val){
+  try{ localStorage.setItem(key, val); }catch(e){ /* nothing to persist to */ }
+}
+
+/* The same thresholds both design comps use: 90 is "act now", 70 is "worth a
+   look", mapped onto the board's existing flag tones. */
+function usageTone(pct){
+  if(pct >= 90) return {ink: "var(--alert)", bar: "var(--alert)"};
+  if(pct >= 70) return {ink: "var(--warnink)", bar: "var(--warn)"};
+  return {ink: "var(--ink2)", bar: "var(--line2)"};
+}
+
+/* Every figure carries the moment it was true. A Codex snapshot is only as
+   fresh as the last active turn, and a cached fetch is older than the page —
+   a percentage with no timestamp would claim to be live. */
+function usageAsOf(u){
+  const t = Number(u.asOf);
+  if(!isFinite(t) || t <= 0) return "";
+  return "as of " +
+    new Date(t*1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+}
+
+function usageEntry(u){
+  const h = own(HARNESS, u.harness, null) ||
+    {code: String(u.harness || "?").slice(0, 2).toUpperCase(), name: u.harness};
+  const ico = h.icon
+    ? `<span class="cm-ico" style="-webkit-mask:url('${h.icon}') center/contain no-repeat;` +
+      `mask:url('${h.icon}') center/contain no-repeat"></span>`
+    : `<span class="cm-icot">${esc(h.code)}</span>`;
+  const head = `<div class="u-hrow"><span class="cm-hcell">${ico}</span>` +
+    `<span class="u-hname" title="${esc(h.name || u.harness)}">${esc(h.name || u.harness)}</span></div>`;
+  /* An expired token shows no numbers at all: stale figures presented next to
+     live ones read as live. The remedy belongs to the harness, so the note
+     points there — Cargento never refreshes a token. */
+  if(u.state === "expired"){
+    return `<div class="u-entry">${head}` +
+      `<div class="u-expired"><span class="u-excl" role="img" aria-label="attention">!</span>` +
+      `<span>token expired — sign in again in ${esc(h.name || u.harness)}</span></div></div>`;
+  }
+  const win = (label, w) => {
+    if(!w || w.pct == null) return "";
+    const pct = Math.max(0, Math.min(100, Math.round(Number(w.pct) || 0)));
+    const tone = usageTone(pct);
+    return `<div class="u-wrow"><span class="u-wlab">${label}</span>` +
+      `<span class="cm-track"><span class="cm-fill" style="width:${pct}%;` +
+      `background:${tone.bar}"></span></span>` +
+      `<span class="u-pct" style="color:${tone.ink}">${pct}%</span>` +
+      `<span class="u-reset" title="${esc(String(w.reset || ""))}">↺ ${esc(String(w.reset || "—"))}</span></div>`;
+  };
+  const wins = (usageCfg.fiveH ? win("5h", u.fiveH) : "") +
+    (usageCfg.week ? win("wk", u.week) : "");
+  const extras = [];
+  if(usageCfg.burn && u.burn != null) extras.push(["burn", u.burn]);
+  if(usageCfg.today && u.today != null) extras.push(["today", u.today]);
+  if(usageCfg.cost && u.cost != null) extras.push(["cost", u.cost]);
+  const asOf = usageAsOf(u);
+  const tail = (extras.length || asOf)
+    ? `<div class="u-extras">` +
+      extras.map(([k, v]) => `<span>${k} <b>${esc(String(v))}</b></span>`).join("") +
+      (asOf ? `<span class="u-asof">${esc(asOf)}</span>` : "") + `</div>`
+    : "";
+  return `<div class="u-entry">${head}${wins}${tail}</div>`;
+}
+
+function usageCfgPop(){
+  if(!usageCfgOpen) return "";
+  const shown = USAGE_STATS.filter(([k]) => usageCfg[k]).length;
+  /* The master switch is the modal's off switch, reachable again later — the
+     way back the disclosure promises. It is not part of the stats group and
+     never locks. */
+  const master = `<button type="button" class="u-cfg-row" data-calm="uon"` +
+    ` aria-pressed="${usageEnabled}">` +
+    `<span class="u-cfg-box${usageEnabled ? " on" : ""}">${usageEnabled ? "✓" : ""}</span>` +
+    `usage on</button>`;
+  const rows = USAGE_STATS.map(([k, label]) => {
+    /* The last shown stat cannot be unchecked: a band with every stat hidden
+       is indistinguishable from a broken one. */
+    const locked = usageCfg[k] && shown <= 1;
+    return `<button type="button" class="u-cfg-row${locked ? " locked" : ""}"` +
+      ` data-calm="ustat" data-arg="${k}" aria-pressed="${!!usageCfg[k]}"` +
+      `${locked ? ' aria-disabled="true"' : ""}>` +
+      `<span class="u-cfg-box${usageCfg[k] ? " on" : ""}${locked ? " locked" : ""}">` +
+      `${usageCfg[k] ? "✓" : ""}</span>${esc(label)}</button>`;
+  }).join("");
+  return `<div class="u-cfg"><span class="u-cfg-k">usage</span>${master}` +
+    `<span class="u-cfg-k">show stats</span>${rows}</div>`;
+}
+
+function usageBody(d){
+  if(!usageEnabled){
+    return `<div class="u-note">usage is off — turn it back on under configure</div>`;
+  }
+  if(!d.usage.length){
+    return `<div class="u-note">No quota data yet. Harnesses that publish usage will appear here.</div>`;
+  }
+  return `<div class="u-grid">${d.usage.map(usageEntry).join("")}</div>`;
+}
+
+function usageSectionRegular(d){
+  if(!usagePresent(d)) return "";
+  return `<div class="usec"><div class="sec"><span class="sec-k">Usage · rate limits</span>` +
+    `<span class="sec-rule"></span>` +
+    `<button type="button" class="u-link${usageCfgOpen ? " on" : ""}" data-calm="ucfg"` +
+    ` aria-expanded="${usageCfgOpen}">configure ▾</button></div>` +
+    `<div class="u-panel">${usageBody(d)}</div>${usageCfgPop()}</div>`;
+}
+
+function usageBandCalm(d){
+  if(!usagePresent(d) || !usageOpen) return "";
+  return `<div class="u-band"><div class="u-band-head">` +
+    `<span class="cm-k">usage · rate limits per harness</span><span class="cm-sp"></span>` +
+    `<button type="button" class="u-link${usageCfgOpen ? " on" : ""}" data-calm="ucfg"` +
+    ` aria-expanded="${usageCfgOpen}">configure ▾</button></div>` +
+    usageBody(d) + usageCfgPop() + `</div>`;
+}
+
+/* First-run disclosure. The copy quotes the security contract
+   (docs/plans/quota-fetch-security-scope.md, promoted to SECURITY.md with the
+   fetcher) — it must not promise anything the contract does not say. */
+function usageModal(d){
+  if(!usagePresent(d) || !d.usage_fetch || usageModalSeen) return "";
+  return `<div class="u-overlay" role="dialog" aria-modal="true"` +
+    ` aria-label="usage disclosure"><div class="u-modal">` +
+    `<div class="u-modal-h">Show usage and rate limits?</div>` +
+    `<p class="u-modal-p">Cargento can fetch each vendor's quota so the dashboard` +
+    ` shows how much of the 5-hour and weekly windows is used, and when they reset.</p>` +
+    `<p class="u-modal-p">What is sent: the vendor's own OAuth access token, and` +
+    ` nothing else. No transcript content, no prompts, no paths, no project names,` +
+    ` no machine identifiers. What comes back is quota numbers. Session data never` +
+    ` appears in either direction. The token is never refreshed, never written,` +
+    ` never logged, and never served.</p>` +
+    `<p class="u-modal-p">Usage is on by default. Turn it off here and nothing is` +
+    ` fetched; turn it back on any time under configure.</p>` +
+    `<div class="u-modal-acts">` +
+    `<button type="button" class="u-primary" data-calm="umodal" data-arg="on">Keep usage on</button>` +
+    `<button type="button" class="u-act" data-calm="umodal" data-arg="off">Turn it off</button>` +
+    `</div></div></div>`;
+}
+
+function usageAction(act, arg){
+  if(act === "usage"){
+    usageOpen = !usageOpen; usageCfgOpen = false;
+    usageStore(USAGE_OPEN_KEY, usageOpen ? "1" : "0");
+  } else if(act === "ucfg"){
+    usageCfgOpen = !usageCfgOpen;
+  } else if(act === "uon"){
+    usageEnabled = !usageEnabled;
+    usageStore(USAGE_ENABLED_KEY, usageEnabled ? "1" : "0");
+  } else if(act === "ustat"){
+    if(!Object.prototype.hasOwnProperty.call(usageCfg, arg)) return true;
+    const shown = USAGE_STATS.filter(([k]) => usageCfg[k]).length;
+    if(usageCfg[arg] && shown <= 1) return true;  /* the last stat stays */
+    usageCfg[arg] = !usageCfg[arg];
+    usageStore(USAGE_CFG_KEY, JSON.stringify(usageCfg));
+  } else if(act === "umodal"){
+    usageModalSeen = true;
+    usageStore(USAGE_MODAL_KEY, "1");
+    if(arg === "off"){
+      usageEnabled = false;
+      usageStore(USAGE_ENABLED_KEY, "0");
+    }
+  } else return false;
+  if(lastData) render(lastData);
+  return true;
+}
+
 /* ── stopping the server from the page ─────────────────────────────────────
    Two clicks, because the page cannot undo a stop and the header is a place
    people click. `stopArmed` is a module variable for the documented reason:
@@ -792,6 +1000,7 @@ function calmCopyId(key){
 
 function calmAction(act, arg){
   if(act === "mode"){ setDisplayMode(arg); return; }
+  if(usageAction(act, arg)) return;
   if(act === "stop"){
     if(!stopArmed){
       stopArmed = true; stopError = ""; stopFocusPending = true;
@@ -823,8 +1032,12 @@ function calmAction(act, arg){
 document.addEventListener("click", e => {
   const el = (e.target && e.target.closest) ? e.target.closest("[data-calm]") : null;
   if(!el){
-    /* A click anywhere else is an answer: not that one. */
-    if(disarmStop() && lastData) render(lastData);
+    /* A click anywhere else is an answer: not that one. The configure popover
+       reads the same answer — it floats over content, so a click on that
+       content is a dismissal, not a miss. */
+    let dirty = disarmStop();
+    if(usageCfgOpen){ usageCfgOpen = false; dirty = true; }
+    if(dirty && lastData) render(lastData);
     return;
   }
   /* So is a click on a different control. Otherwise the armed state outlives
@@ -876,9 +1089,11 @@ document.addEventListener("keydown", e => {
     if(sid) calmAction("open", sid);
   }
   else if(k === "f"){ stop(); calmAction("flag", null); }
+  else if(k === "u" && usagePresent(lastData)){ stop(); usageAction("usage", null); }
   else if(k === "Escape"){
     stop();
     calmOpenKey = null; calmFlagOnly = false; calmStateOnly = null;
+    usageCfgOpen = false;
     calmResetScroll = true;
     render(lastData);
   }
@@ -1046,7 +1261,13 @@ function calmLedger(d){
     `<span class="cm-vr"></span>` +
     `<button type="button" class="cm-flagchip${calmFlagOnly ? " on" : ""}" data-calm="flag"` +
     ` aria-pressed="${calmFlagOnly}">◆ ${flagged} flagged</button>${clear}` +
+    (usagePresent(d)
+      ? `<span class="cm-vr"></span><button type="button"` +
+        ` class="cm-flagchip${usageOpen ? " on" : ""}" data-calm="usage"` +
+        ` aria-pressed="${usageOpen}">usage</button>`
+      : "") +
     `<span class="cm-sp"></span><span class="cm-note">${esc(note)}</span></div>` +
+    usageBandCalm(d) +
     `<div class="cm-body" id="cm-body">` +
     `<div class="cm-head"><span></span><span></span><span>session</span><span>where</span>` +
     `<span>doing</span><span>flag</span><span class="r">rate</span>` +
@@ -1063,6 +1284,7 @@ function calmLedger(d){
       ` style="color:${CALM_TONE[f.tone].ink}">◆</span>${esc(f.label)}</span>`).join("") +
     `</span><span class="cm-sp"></span>` +
     `<span class="cm-keys"><span>j k move</span><span>⏎ expand</span><span>f flagged</span>` +
+    (usagePresent(d) ? `<span>u usage</span>` : "") +
     `<span>c mode</span><span>esc clear</span></span></div></div>`;
 }
 
@@ -1197,7 +1419,7 @@ function render(d){
     const focusKey = calmFocusKey();
     renderInProgress = true;
     app.className = "wrap calm";
-    app.innerHTML = modeBar() + calmLedger(d);
+    app.innerHTML = modeBar() + calmLedger(d) + usageModal(d);
     renderInProgress = false;
     calmRestoreScroll();
     calmRestoreFocus(focusKey);
@@ -1263,7 +1485,7 @@ function render(d){
       (d.show_all ? "" : ` <a href="?all=1">Show all sessions</a>`) + `</div>`;
   } else {
     body = `<div class="hero">${tiles}</div><div class="subnote">${subnote}</div>` +
-      bandHtml + workingHtml + idleHtml;
+      usageSectionRegular(d) + bandHtml + workingHtml + idleHtml;
   }
 
   renderInProgress = true;
@@ -1273,7 +1495,7 @@ function render(d){
     `<div class="sub"><span class="live" id="live-dot"></span>` +
     `<span id="live-status">live · updated ${new Date(d.generated*1000).toLocaleTimeString()} · auto-refresh 5s</span>` +
     (d.show_all ? " · showing all" : "") + notifyControl(d) + `</div></div>` +
-    `<div class="hstrip">${harnessStrip(d.harnesses)}</div></div>` + body;
+    `<div class="hstrip">${harnessStrip(d.harnesses)}</div></div>` + body + usageModal(d);
   renderInProgress = false;
 
   restoreSparkState(sparkFocused, savedPointer);

@@ -355,3 +355,53 @@
   .cm-foot .btile{width:22px;height:22px;border-radius:7px}
   .cm-foot .bico{width:13px;height:13px}
   .cm-foot .bmono{font-size:var(--fs-2xs)}
+
+  /* usage band — one grid in both modes: a .u-panel card in regular, a .u-band
+     strip between the calm controls and the ledger body. Dormant until the
+     payload carries `usage`. */
+  .usec{position:relative;display:flex;flex-direction:column;gap:14px}
+  .u-panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px 24px}
+  .u-band{position:relative;flex:none;border-bottom:1px solid var(--line);padding:11px 24px 13px;display:flex;flex-direction:column;gap:10px}
+  .u-band-head{display:flex;align-items:center;gap:10px}
+  .u-link{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;color:var(--ink3);background:transparent;border:0;padding:0;cursor:pointer;transition:color .12s}
+  .u-link:hover,.u-link.on{color:var(--ink)}
+  .u-link:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .u-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 28px}
+  @media (max-width:1000px){.u-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .u-entry{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .u-hrow{display:flex;align-items:center;gap:8px}
+  .u-hname{font-size:var(--fs-xs);font-weight:600;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .u-wrow{display:grid;grid-template-columns:18px minmax(0,1fr) 40px 76px;align-items:center;gap:7px;font-family:var(--mono)}
+  .u-wlab{font-size:var(--fs-2xs);font-weight:700;color:var(--ink3)}
+  .u-pct{font-size:var(--fs-2xs);font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+  .u-reset{font-size:var(--fs-2xs);color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .u-extras{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);flex-wrap:wrap}
+  .u-extras b{color:var(--ink2);font-weight:700}
+  .u-asof{margin-left:auto}
+  .u-expired{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
+  .u-excl{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;flex:none;border-radius:50%;background:color-mix(in oklab,var(--alert) 18%,transparent);color:var(--alert);font-weight:700}
+  .u-note{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
+  .u-cfg{position:absolute;top:34px;right:16px;z-index:30;width:210px;background:var(--panel);border:1px solid var(--line2);border-radius:10px;box-shadow:0 14px 34px -14px rgba(0,0,0,.35);padding:8px;display:flex;flex-direction:column;gap:2px}
+  .usec .u-cfg{top:30px;right:0}
+  .u-cfg-k{font-family:var(--mono);font-size:var(--fs-2xs);font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);padding:5px 8px}
+  .u-cfg-row{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2);padding:6px 8px;border:0;border-radius:6px;background:transparent;cursor:pointer;text-align:left;transition:background .12s}
+  .u-cfg-row:hover{background:var(--sunk)}
+  .u-cfg-row.locked{opacity:.55;cursor:default}
+  .u-cfg-row:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .u-cfg-box{width:15px;height:15px;flex:none;border-radius:4px;border:1.5px solid var(--line2);display:inline-flex;align-items:center;justify-content:center;font-size:var(--fs-2xs);font-weight:700;line-height:1;color:var(--panel)}
+  .u-cfg-box.on{background:var(--accent-ink);border-color:var(--accent-ink)}
+  .u-cfg-box.on.locked{background:var(--line2);border-color:var(--line2)}
+
+  /* usage disclosure modal — opens once, when a payload first carries the
+     fetcher's capability flag. Until the fetcher ships, never. */
+  .u-overlay{position:fixed;inset:0;z-index:60;background:color-mix(in oklab,var(--ink) 32%,transparent);display:flex;align-items:center;justify-content:center;padding:24px}
+  .u-modal{max-width:520px;background:var(--panel);border:1px solid var(--line2);border-radius:16px;box-shadow:0 24px 60px -24px rgba(0,0,0,.5);padding:26px 28px;display:flex;flex-direction:column;gap:14px}
+  .u-modal-h{font-size:var(--fs-xl);font-weight:700;letter-spacing:-.01em}
+  .u-modal-p{margin:0;font-size:var(--fs-sm);line-height:1.65;color:var(--ink2)}
+  .u-modal-acts{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
+  .u-primary{font-family:var(--mono);font-size:var(--fs-sm);font-weight:700;color:var(--bg);background:var(--ink);border:1px solid var(--ink);border-radius:9px;padding:9px 18px;cursor:pointer;transition:opacity .12s}
+  .u-primary:hover{opacity:.86}
+  .u-primary:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .u-act{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink2);background:transparent;border:1px solid var(--line2);border-radius:9px;padding:9px 16px;cursor:pointer;transition:background .12s,color .12s}
+  .u-act:hover{background:var(--bg);color:var(--ink)}
+  .u-act:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
