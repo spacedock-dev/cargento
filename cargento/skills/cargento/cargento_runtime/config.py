@@ -91,6 +91,9 @@ class RuntimeConfig:
     usage_fetch_timeout_sec: float
     usage_credentials_cap_bytes: int
     usage_response_cap_bytes: int
+    # A pushed status-line receipt. Larger than the notification cap because
+    # the payload carries a whole session-state block, not just a message.
+    usage_receipt_cap_bytes: int
 
 
 def resolve_store_roots(
@@ -278,6 +281,7 @@ def build_runtime_config(
         usage_fetch_timeout_sec=10,
         usage_credentials_cap_bytes=65_536,
         usage_response_cap_bytes=262_144,
+        usage_receipt_cap_bytes=131_072,
     )
 
 

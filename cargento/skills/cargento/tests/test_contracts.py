@@ -806,9 +806,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # Antigravity reads protobuf metadata and CLI logs, never transcripts;
         # the legacy Gemini pass reads JSONL transcripts and never the store
         # helpers Antigravity needs. Splitting them apart split their imports too.
+        # `quota` arrived with the status-line usage provider: Antigravity's
+        # quota is pushed in and cached there, so the collector reads it back
+        # rather than parsing anything of its own.
         "cargento_runtime.collectors.antigravity": {
             "cargento_runtime.config",
             "cargento_runtime.io",
+            "cargento_runtime.quota",
             "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
@@ -891,6 +895,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.aggregate",
             "cargento_runtime.io",
             "cargento_runtime.notifications",
+            "cargento_runtime.quota",
         },
         "cargento_runtime.lifecycle": {
             "cargento_runtime.config",

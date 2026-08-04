@@ -1,6 +1,9 @@
-"""The quota fetch: vendor token read, the one outbound request, and its cache.
+"""Quota acquisition: the outbound fetch, the pushed-in receipts, and the cache.
 
-This module is the whole of Cargento's outbound network surface, and it is
+Two sources fill one cache, and collectors read it back without caring which
+filled it.
+
+**The fetch** is the whole of Cargento's outbound network surface, and it is
 bound by the "Usage quota reads" section of SECURITY.md: the request carries
 the vendor's own OAuth token and nothing else, the token is never refreshed,
 never written, never logged and never served, and at most one request per
@@ -8,10 +11,20 @@ vendor leaves every five minutes. A violation of any of those is a security
 bug, not a defect. Diagnostics emitted here are fixed category words plus
 exception type names for that reason — never a value read from a credential
 source or a response.
+
+**The receipts** are the opposite direction and involve no credential at all.
+A harness that publishes its own quota to a user-configured command can have
+that forwarded to `POST /api/usage`, and `receive_statusline` shapes what
+arrives. Antigravity works this way. Nothing here reaches the network, so the
+receipt path is outside the fetch contract above, but it inherits the rule
+that only derived scalars are published: the shaping code builds a fresh
+entry rather than passing a payload through, because these payloads carry an
+account email that must never reach `/api/data`.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import ntpath
 import posixpath
@@ -271,8 +284,117 @@ def request_fetch(
     return True
 
 
+def _detached(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Entries a caller cannot use to reach back into the cache.
+
+    `dict(entry)` is not enough: every entry holds nested window dicts, and a
+    shallow copy leaves those shared, so mutating a published `fiveH` would
+    edit stored state. `deepcopy` is safe here because entries hold only the
+    JSON scalars and dicts the shaping code built.
+    """
+    return [copy.deepcopy(entry) for entry in entries]
+
+
 def cached_entries(state: RuntimeState) -> list[dict[str, Any]]:
     """The last fetch's entries, copied so a caller cannot mutate the cache."""
     with state.usage_fetch_lock:
         cached = state.usage_fetch_cache.get("claude")
-        return [dict(entry) for entry in cached["entries"]] if cached else []
+        return _detached(cached["entries"]) if cached else []
+
+
+# The status-line payload names its windows rather than describing them by
+# length, so the mapping is a suffix match and nothing is inferred. A bucket
+# matching neither suffix is dropped: an unknown future window is better
+# absent than mislabelled as one of these two.
+_RECEIPT_WINDOWS = (("-5h", "fiveH"), ("-weekly", "week"))
+
+
+def _receipt_window(now: float, raw: Any) -> tuple[int, dict[str, Any]] | None:
+    """One status-line bucket as (percent used, shaped window), or nothing."""
+    bucket = records.as_dict(raw)
+    remaining = bucket.get("remaining_fraction")
+    if not isinstance(remaining, (int, float)) or isinstance(remaining, bool):
+        return None
+    # The payload reports what is LEFT; the contract publishes what is USED.
+    pct = max(0, min(100, round((1.0 - float(remaining)) * 100)))
+    shaped: dict[str, Any] = {"pct": pct}
+    resets = _epoch(bucket.get("reset_time"))
+    if resets:
+        shaped["reset"] = sessions.format_reset(now, resets)
+    return pct, shaped
+
+
+def shape_statusline(payload: dict[str, Any], now: float) -> list[dict[str, Any]]:
+    """Antigravity's status-line payload as usage entries, or nothing.
+
+    A fresh entry is built field by field rather than derived from the payload,
+    because the payload also carries an account email and a transcript path,
+    and neither may reach ``/api/data``.
+
+    Two model families report the same two windows (``gemini-*`` and ``3p-*``
+    for third-party models), so each slot has two candidates. The worse of the
+    pair wins: the band exists to answer "am I about to run out", and the
+    binding constraint is the honest number to show. The cost is that the tile
+    does not say which family it came from.
+    """
+    quota = records.as_dict(payload.get("quota"))
+    if not quota:
+        return []
+    best: dict[str, tuple[int, dict[str, Any]]] = {}
+    for key, raw in quota.items():
+        # JSON object keys are always strings, so the suffix match is safe.
+        slot = next((name for suffix, name in _RECEIPT_WINDOWS if key.endswith(suffix)), None)
+        if slot is None:
+            continue
+        mapped = _receipt_window(now, raw)
+        if mapped is None:
+            continue
+        current = best.get(slot)
+        if current is None or mapped[0] > current[0]:
+            best[slot] = mapped
+    if not best:
+        return []
+    entry: dict[str, Any] = {"harness": "antigravity", "state": "ok", "asOf": int(now)}
+    for slot, (_pct, shaped) in best.items():
+        entry[slot] = shaped
+    return [entry]
+
+
+def receive_statusline(
+    state: RuntimeState,
+    payload: dict[str, Any],
+    *,
+    now: float,
+) -> dict[str, Any]:
+    """Store a pushed status-line receipt. Returns the endpoint's wire response.
+
+    Storing an empty entry list on an unusable payload is deliberate: it stamps
+    the arrival, so a harness that stops reporting quota goes stale and drops
+    out of the band rather than showing whatever it last said forever.
+    """
+    entries = shape_statusline(payload, now)
+    with state.usage_fetch_lock:
+        state.usage_receipts["antigravity"] = {"ts": now, "entries": entries}
+    return {"ok": True, "usage": len(entries)}
+
+
+def receipt_entries(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    now: float,
+    window_hours: float,
+) -> list[dict[str, Any]]:
+    """Pushed entries still inside the activity window, copied.
+
+    The receipt only arrives while the harness runs, so a stored figure can be
+    arbitrarily old. Dropping past the window matches the Codex tile: an empty
+    band is more honest than a percentage whose window has itself reset.
+    """
+    with state.usage_fetch_lock:
+        cached = state.usage_receipts.get("antigravity")
+        if not cached:
+            return []
+        stamp, entries = cached["ts"], _detached(cached["entries"])
+    if not sessions.is_fresh(config, now, stamp, window_hours * 3600):
+        return []
+    return entries

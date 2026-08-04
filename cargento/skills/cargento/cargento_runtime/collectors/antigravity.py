@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
+from cargento_runtime import quota as runtime_quota
 from cargento_runtime import records, sessions, turns
 
 if TYPE_CHECKING:
@@ -587,3 +588,22 @@ def collect(
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether Antigravity has written at least one conversation store."""
     return bool(runtime_io.glob_under(_conversations_dir(config), "*.db"))
+
+
+def usage(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    now: float,
+    window_hours: float,
+) -> list[dict[str, Any]]:
+    """Quota the CLI pushed to its status-line command, read back from memory.
+
+    Antigravity keeps no quota on disk and its stored credential is not usable
+    as a bearer token, so neither the Codex nor the Claude approach applies.
+    What it does do is publish a `quota` object to a user-configured status-line
+    command on every state change, which the user forwards to `/api/usage` with
+    the same script the Claude hooks use. This reads what arrived.
+
+    No network and no disk, so `--diagnose` stays clean by construction.
+    """
+    return runtime_quota.receipt_entries(config, state, now, window_hours)

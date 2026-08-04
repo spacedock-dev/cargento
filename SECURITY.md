@@ -16,9 +16,10 @@ The posture rests on two invariants:
    anywhere but loopback, ignores proxy environment variables, and does not follow redirects.
    Session data never leaves the machine. The quota poll is the single outbound exception, and it
    carries a vendor token out and quota numbers back, nothing else.
-2. Read-only against harness stores. They are opened read-only and never written. The one mutating
-   endpoint is `POST /api/notify`, which updates in-memory needs-input state only. It writes nothing
-   to disk.
+2. Read-only against harness stores. They are opened read-only and never written. Two endpoints
+   mutate, and both only in memory: `POST /api/notify` updates needs-input state, and
+   `POST /api/usage` stores a quota figure a harness published to its own status-line command.
+   Neither writes anything to disk.
 
 Anything that weakens either invariant is a security bug: a bind-address escape, file reads outside
 the documented store paths and the project-read contract below (however the path was derived),
@@ -119,6 +120,14 @@ fetch; its output stays a report of local paths only.
 A violation of any boundary in this section is a security bug: a request carrying anything beyond
 the token, a token reaching a log or a loopback response, a refresh attempt, an unlisted endpoint,
 or a fetch with the feature off.
+
+Not every harness needs that request. One publishes its own quota to a user-configured command:
+Antigravity pipes a state payload, including a `quota` object, to whatever its status-line setting
+names, and a user who points that at `POST /api/usage` gets the same display with no credential
+read and no outbound request at all. That payload also carries an account email and a transcript
+path, so the receipt is never stored or served as it arrived: only the derived window percentages
+and reset times are kept, built into a fresh record field by field. Turning usage off stops this
+too, and `--no-usage` covers it.
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 

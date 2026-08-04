@@ -490,3 +490,213 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
         (claude_entry,) = [u for u in data["usage"] if u.get("harness") == "claude"]
         self.assertEqual("ok", claude_entry["state"])
         self.assertEqual(42, claude_entry["fiveH"]["pct"])
+
+
+class StatuslineReceiptTest(unittest.TestCase):
+    """Pushed receipts: shaping, the worst-of-pair rule, and staleness.
+
+    Field names and the two-family shape come from a payload captured off a
+    live agy 1.1.10 install, not from the vendor's documentation.
+    """
+
+    @staticmethod
+    def _payload(**buckets: float | None) -> dict[str, Any]:
+        """A status-line payload carrying the named buckets, plus the noise a
+        real one carries. The email is deliberately present: it must never
+        reach an entry."""
+        quota: dict[str, Any] = {}
+        for key, remaining in buckets.items():
+            name = key.replace("_", "-")
+            quota[name] = (
+                {"remaining_fraction": remaining, "reset_time": "2026-08-04T14:16:36Z"}
+                if remaining is not None
+                else {}
+            )
+        return {
+            "quota": quota,
+            "email": "someone@example.com",
+            "transcript_path": "/Users/someone/secret/path.jsonl",
+            "plan_tier": "Google AI Ultra",
+            "agent_state": "idle",
+        }
+
+    def test_the_captured_shape_becomes_one_entry(self) -> None:
+        # The exact four keys the live capture carried.
+        entries = quota.shape_statusline(
+            self._payload(gemini_5h=1, gemini_weekly=1, **{"3p_5h": 1, "3p_weekly": 1}), NOW
+        )
+        self.assertEqual(1, len(entries))
+        entry = entries[0]
+        self.assertEqual("antigravity", entry["harness"])
+        self.assertEqual("ok", entry["state"])
+        self.assertEqual(int(NOW), entry["asOf"])
+        self.assertEqual(0, entry["fiveH"]["pct"])
+        self.assertEqual(0, entry["week"]["pct"])
+
+    def test_remaining_fraction_is_inverted_to_percent_used(self) -> None:
+        # The live capture was all 1.0, where a wrong inversion is invisible,
+        # so this is the assertion that actually pins the arithmetic.
+        entries = quota.shape_statusline(self._payload(gemini_5h=0.4, gemini_weekly=0.0), NOW)
+        self.assertEqual(60, entries[0]["fiveH"]["pct"])
+        self.assertEqual(100, entries[0]["week"]["pct"])
+
+    def test_the_worse_of_each_family_pair_wins(self) -> None:
+        # Two model families report the same windows. The band answers "am I
+        # about to run out", so the binding constraint is the honest number.
+        entries = quota.shape_statusline(
+            self._payload(gemini_5h=0.4, gemini_weekly=1.0, **{"3p_5h": 0.9, "3p_weekly": 0.0}),
+            NOW,
+        )
+        self.assertEqual(60, entries[0]["fiveH"]["pct"], "gemini-5h is worse than 3p-5h")
+        self.assertEqual(100, entries[0]["week"]["pct"], "3p-weekly is worse than gemini-weekly")
+
+    def test_no_payload_field_beyond_the_windows_is_published(self) -> None:
+        entries = quota.shape_statusline(self._payload(gemini_5h=0.5), NOW)
+        serialized = json.dumps(entries)
+        for leak in ("example.com", "secret/path", "Google AI Ultra", "idle"):
+            self.assertNotIn(leak, serialized)
+        self.assertEqual({"harness", "state", "asOf", "fiveH"}, set(entries[0]))
+
+    def test_unknown_and_malformed_buckets_are_dropped(self) -> None:
+        cases: list[tuple[str, dict[str, Any]]] = [
+            ("no quota key", {}),
+            ("quota not an object", {"quota": "nope"}),
+            ("empty quota", {"quota": {}}),
+            ("unknown suffix", {"quota": {"gemini-monthly": {"remaining_fraction": 0.5}}}),
+            ("fraction missing", {"quota": {"gemini-5h": {}}}),
+            ("fraction not a number", {"quota": {"gemini-5h": {"remaining_fraction": "half"}}}),
+            ("fraction is a bool", {"quota": {"gemini-5h": {"remaining_fraction": True}}}),
+            ("bucket not an object", {"quota": {"gemini-5h": 0.5}}),
+        ]
+        for label, payload in cases:
+            with self.subTest(case=label):
+                self.assertEqual([], quota.shape_statusline(payload, NOW))
+
+    def test_out_of_range_fractions_clamp(self) -> None:
+        entries = quota.shape_statusline(self._payload(gemini_5h=-3, gemini_weekly=42), NOW)
+        self.assertEqual(100, entries[0]["fiveH"]["pct"])
+        self.assertEqual(0, entries[0]["week"]["pct"])
+
+    def test_a_receipt_is_stored_and_read_back(self) -> None:
+        config = _config()
+        state = _state(config)
+        response = quota.receive_statusline(state, self._payload(gemini_5h=0.25), now=NOW)
+        self.assertEqual({"ok": True, "usage": 1}, response)
+        entries = quota.receipt_entries(config, state, NOW, 24)
+        self.assertEqual(75, entries[0]["fiveH"]["pct"])
+        # Copied out, so a caller cannot mutate the stored receipt.
+        entries[0]["fiveH"]["pct"] = 1
+        self.assertEqual(75, quota.receipt_entries(config, state, NOW, 24)[0]["fiveH"]["pct"])
+
+    def test_a_stale_receipt_is_dropped_rather_than_shown(self) -> None:
+        # Receipts only arrive while the harness runs, so a stored figure can
+        # be arbitrarily old. Past the window its own quota windows have reset.
+        config = _config()
+        state = _state(config)
+        quota.receive_statusline(state, self._payload(gemini_5h=0.5), now=NOW)
+        self.assertEqual(1, len(quota.receipt_entries(config, state, NOW + 3600, 24)))
+        self.assertEqual([], quota.receipt_entries(config, state, NOW + 48 * 3600, 24))
+
+    def test_an_unusable_payload_still_stamps_the_arrival(self) -> None:
+        # Storing an empty list matters: a harness that stops reporting quota
+        # must go stale and drop out, not show its last figure forever.
+        config = _config()
+        state = _state(config)
+        quota.receive_statusline(state, self._payload(gemini_5h=0.5), now=NOW)
+        response = quota.receive_statusline(state, {"quota": {}}, now=NOW + 60)
+        self.assertEqual({"ok": True, "usage": 0}, response)
+        self.assertEqual([], quota.receipt_entries(config, state, NOW + 60, 24))
+
+    def test_nothing_is_read_back_before_any_receipt(self) -> None:
+        config = _config()
+        self.assertEqual([], quota.receipt_entries(config, _state(config), NOW, 24))
+
+
+class UsageEndpointTest(RuntimeTestCase):
+    """POST /api/usage: the same guards as /api/notify, and no new exposure."""
+
+    def _post(
+        self, port: int, body: bytes, headers: dict[str, str] | None = None
+    ) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request(
+            "POST",
+            "/api/usage",
+            body=body,
+            headers={"Content-Type": "application/json", **(headers or {})},
+        )
+        response = conn.getresponse()
+        payload = response.read()
+        status = response.status
+        conn.close()
+        return status, payload
+
+    def test_a_receipt_reaches_the_band_through_the_endpoint(self) -> None:
+        application = cli.build_application(*runtime(), clock=time.time)
+        httpd = make_server(application=application)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            body = json.dumps(
+                {
+                    "quota": {
+                        "gemini-5h": {"remaining_fraction": 0.3},
+                        "3p-5h": {"remaining_fraction": 0.8},
+                    },
+                    "email": "someone@example.com",
+                }
+            ).encode()
+            status, response = self._post(httpd.server_port, body)
+            self.assertEqual(200, status)
+            self.assertEqual(b'{"ok":true,"usage":1}', response)
+            entries = quota.receipt_entries(application.config, application.state, time.time(), 24)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+        # Worse of the pair: 1 - 0.3 = 70, not 1 - 0.8 = 20.
+        self.assertEqual(70, entries[0]["fiveH"]["pct"])
+        self.assertNotIn("example.com", json.dumps(entries))
+
+    def test_the_endpoint_rejects_what_notify_rejects(self) -> None:
+        application = cli.build_application(*runtime(), clock=time.time)
+        httpd = make_server(application=application)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            cap = application.config.usage_receipt_cap_bytes
+            # Oversized: refused on the declared length, before any read.
+            status, _ = self._post(httpd.server_port, b"x" * (cap + 1))
+            self.assertEqual(413, status)
+            # Cross-site: the same _local_ok() gate as every other route.
+            status, _ = self._post(httpd.server_port, b"{}", {"Sec-Fetch-Site": "cross-site"})
+            self.assertEqual(403, status)
+            # Malformed and non-object bodies degrade rather than raise.
+            for body in (b"{not json", b"[1,2,3]", b"null", b""):
+                with self.subTest(body=body):
+                    status, response = self._post(httpd.server_port, body)
+                    self.assertEqual(200, status)
+                    self.assertEqual(b'{"ok":true,"usage":0}', response)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_the_receipt_path_never_fetches(self) -> None:
+        # The whole point of this path is that it needs no credential and makes
+        # no request. --diagnose runs collect(), so this must hold there too.
+        application = cli.build_application(*runtime(), clock=time.time)
+        quota.receive_statusline(
+            application.state,
+            {"quota": {"gemini-5h": {"remaining_fraction": 0.5}}},
+            now=time.time(),
+        )
+        with (
+            mock.patch.object(quota, "request_fetch") as trigger,
+            mock.patch.object(quota, "fetch_claude_usage") as fetch,
+        ):
+            diagnostics.diagnose(application)
+            application.collect(show_all=True)
+        trigger.assert_not_called()
+        fetch.assert_not_called()

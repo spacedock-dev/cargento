@@ -10,7 +10,7 @@ The decision record is DEC-1 (Linear DRC-4053): show quota per harness, Codex fi
 then Claude behind a configurable opt-out, with an opt-in sidecar as the fallback shape if the
 opt-out proves wrong.
 
-## Q-1: Three sources, one payload contract
+## Q-1: Four sources, one payload contract
 
 A usage entry is the same shape whoever produced it:
 
@@ -27,10 +27,11 @@ A usage entry is the same shape whoever produced it:
 - Claude publishes from the fetch cache. `quota.py` holds the token read, the one outbound
   request, and the cache; `collectors/claude.py` only copies entries out of it.
 - Copilot publishes consumption from disk, and no gauge at all. See Q-6.
+- Antigravity publishes from a pushed receipt, with no credential and no request. See Q-7.
 
 `asOf` is epoch seconds of the moment the numbers were true: the snapshot's own timestamp for
-Codex, the fetch time for Claude, the newest contributing row for Copilot. The page refuses to show
-a percentage without it.
+Codex, the fetch time for Claude, the newest contributing row for Copilot, the receipt time for
+Antigravity. The page refuses to show a percentage without it.
 
 ## Q-6: A harness can report spend without reporting a limit
 
@@ -124,6 +125,53 @@ in the harness. An unavailable token (denied Keychain prompt, missing file, malf
 Claude out of the band entirely, because "sign in again" is wrong advice when the harness session
 may be fine. Every failure surfaces in diagnostics as a fixed category word plus an exception
 type name; no value read from a credential source or a response is ever interpolated.
+
+## Q-7: A harness can hand its quota over, so nothing needs fetching
+
+Antigravity keeps no quota on disk and its stored credential is not usable as a bearer token, so
+neither the Codex approach nor the Claude one applies. What it does do is invoke a user-configured
+command on every agent-state change and pipe it a JSON state payload, and that payload carries a
+first-class `quota` object. Pointing that command at Cargento is the whole integration.
+
+**No new script ships for this.** `notify_hook.py` was already a stdin-reading loopback forwarder
+that validates its target, disables proxying, refuses redirects and always exits 0, with the URL as
+its first argument. Nothing in it was ever Claude-specific, so the registration is:
+
+```
+python3 <skill-dir>/notify_hook.py http://127.0.0.1:4553/api/usage
+```
+
+`POST /api/usage` mirrors `/api/notify` exactly: the same `_local_ok()` gate, the declared length
+checked before any read, and a malformed or non-object body degraded to `{}` rather than raised.
+Receipts live in memory beside the fetch cache under the same lock, so Cargento's two written paths
+are unchanged and `--diagnose` stays free of side effects by construction.
+
+Three decisions worth keeping:
+
+- **The windows are named, not measured.** The payload keys its buckets `gemini-5h`,
+  `gemini-weekly`, `3p-5h`, `3p-weekly`, so the mapping is a suffix match. Codex's approach of
+  classifying by duration is unnecessary here, and a bucket matching neither suffix is dropped: an
+  unknown future window is better absent than mislabelled as one of these two.
+- **Two model families report the same two windows**, so each slot has two candidates, and the
+  worse of the pair wins. The band exists to answer "am I about to run out", and the binding
+  constraint is the honest number. The cost, accepted, is that the tile does not say which family
+  the figure belongs to.
+- **`remaining_fraction` is what is left, and the contract publishes what is used**, so it inverts.
+  Worth stating because the payload observed on a fresh account reported `1` for every bucket,
+  which renders 0% whether the arithmetic is right or wrong. The tests pin 0.4 and 0.0 instead.
+
+The receipt is stamped and dropped past the activity window, like a Codex snapshot: it only arrives
+while the harness runs, so a stored figure can be arbitrarily old and an empty band beats a
+percentage whose window has itself reset. An unusable payload still stamps its arrival, so a harness
+that stops reporting quota goes stale and drops out rather than showing its last figure forever.
+
+The payload also carries an account email and a transcript path. Entries are therefore built field
+by field rather than derived from the payload, and a test asserts no other field survives shaping.
+
+`usage_is_fetch` stays `False` for this row. There is no outbound request to disclose, so the
+first-run modal must not fire; the user installed the forwarder deliberately, which is the consent.
+`--no-usage` still drops the provider, because a user turning usage off means the section, not just
+its network half.
 
 ## Rejected alternatives worth keeping rejected
 

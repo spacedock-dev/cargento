@@ -69,8 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-usage",
         action="store_true",
         help=(
-            "never fetch vendor quota over the network for this run, "
-            "regardless of the dashboard's stored setting"
+            "for this run, do not fetch vendor quota over the network and do "
+            "not publish quota a harness pushed in, regardless of the "
+            "dashboard's stored setting. Quota a harness writes into its own "
+            "store (Codex, Copilot) still shows"
         ),
     )
     parser.add_argument(

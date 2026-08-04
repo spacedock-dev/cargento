@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import notifications
+from cargento_runtime import notifications, quota
 
 if TYPE_CHECKING:
     from cargento_runtime.aggregate import Application
@@ -265,6 +265,35 @@ class _RequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _usage_receipt(self) -> None:
+        """A harness's own quota, forwarded here by its status-line command.
+
+        Guarded exactly like `/api/notify`: `_local_ok()` has already run, the
+        declared length is checked before any read, a malformed or non-object
+        body degrades to `{}`, and the shaping code publishes derived scalars
+        only. Nothing here touches the network or the disk.
+        """
+        application = self.server.application
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= application.config.usage_receipt_cap_bytes:
+            self.send_error(413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        response = quota.receive_statusline(
+            application.state,
+            payload,
+            now=application.clock(),
+        )
+        self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
+
     def do_POST(self) -> None:
         if not self._local_ok():
             self.send_error(403)
@@ -272,6 +301,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/shutdown":
             self._shutdown()
+            return
+        if path == "/api/usage":
+            self._usage_receipt()
             return
         if path != "/api/notify":
             self.send_error(404)

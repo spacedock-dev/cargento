@@ -109,7 +109,18 @@ def default_harnesses(
         # They shared this row while both were Google's current surface; the
         # legacy row stays so a machine that ran Gemini CLI keeps its history.
         HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect),
-        HarnessSpec("antigravity", "Antigravity", antigravity.discover, antigravity.collect),
+        # Antigravity's quota arrives as a pushed status-line receipt rather
+        # than a fetch, so `usage_is_fetch` stays False: there is no outbound
+        # request to disclose, and the first-run modal must not fire for it.
+        # `--no-usage` still drops the provider, because a user turning usage
+        # off means the whole section, not just the network half.
+        HarnessSpec(
+            "antigravity",
+            "Antigravity",
+            antigravity.discover,
+            antigravity.collect,
+            usage=antigravity.usage if usage_fetch_enabled else None,
+        ),
         HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect, usage=copilot.usage),
         HarnessSpec("opencode", "OpenCode", opencode.discover, opencode.collect),
         HarnessSpec("cursor", "Cursor", cursor.discover, cursor.collect),

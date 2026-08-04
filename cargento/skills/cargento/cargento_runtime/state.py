@@ -59,6 +59,10 @@ class RuntimeState:
     usage_fetch_lock: LockType = field(default_factory=threading.Lock)
     usage_fetch_cache: dict[str, UsageFetchEntry] = field(default_factory=dict)
     usage_fetch_inflight: set[str] = field(default_factory=set)
+    # Receipts pushed in by a harness's own status-line command, keyed the same
+    # way and guarded by the same lock: one cache, two ways to fill it. In
+    # memory only, so Cargento's two written paths are unchanged.
+    usage_receipts: dict[str, UsageFetchEntry] = field(default_factory=dict)
 
 
 def build_runtime_state(config: RuntimeConfig, *, started: float) -> RuntimeState:
