@@ -9,7 +9,13 @@
       asOf,                         // epoch seconds of the snapshot or fetch
       fiveH: {pct, reset},          // integer percent, short reset text
       week:  {pct, reset},
+      used,                         // consumption with no limit, preformatted
       burn, today, cost}            // optional extras, preformatted strings
+   `used` is for a harness that reports what it spent but not what it is
+   allowed: Copilot bills in AI Units and keeps the entitlement server-side,
+   so there is no denominator and therefore no bar and no percentage. It is
+   always shown when present, because a row whose only figure sits behind
+   `configure` reads as broken.
    The disclosure modal opens once, the first time a payload carries
    `usage_fetch` — the capability flag the server raises exactly when a
    discovered harness's quota comes from the network fetcher. Until it is
@@ -99,7 +105,14 @@ function usageEntry(u){
       `<span class="u-pct" style="color:${tone.ink}">${pct}%</span>` +
       `<span class="u-reset" title="${esc(String(w.reset || ""))}">↺ ${esc(String(w.reset || "—"))}</span></div>`;
   };
-  const wins = (usageCfg.fiveH ? win("5h", u.fiveH) : "") +
+  /* No bar and no percentage: there is no limit to be a fraction of. The
+     label says "used" rather than a window name so it cannot be misread as a
+     gauge that happens to be missing its track. */
+  const usedRow = u.used == null
+    ? ""
+    : `<div class="u-wrow"><span class="u-wlab">used</span>` +
+      `<span class="u-used">${esc(String(u.used))}</span></div>`;
+  const wins = usedRow + (usageCfg.fiveH ? win("5h", u.fiveH) : "") +
     (usageCfg.week ? win("wk", u.week) : "");
   const extras = [];
   if(usageCfg.burn && u.burn != null) extras.push(["burn", u.burn]);

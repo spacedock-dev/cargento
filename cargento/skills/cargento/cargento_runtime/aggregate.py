@@ -110,7 +110,7 @@ def default_harnesses(
         # legacy row stays so a machine that ran Gemini CLI keeps its history.
         HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect),
         HarnessSpec("antigravity", "Antigravity", antigravity.discover, antigravity.collect),
-        HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect),
+        HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect, usage=copilot.usage),
         HarnessSpec("opencode", "OpenCode", opencode.discover, opencode.collect),
         HarnessSpec("cursor", "Cursor", cursor.discover, cursor.collect),
         HarnessSpec("goose", "Goose", goose.discover, goose.collect),

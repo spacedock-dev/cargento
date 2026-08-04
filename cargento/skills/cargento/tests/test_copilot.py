@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 import time
 from datetime import UTC, datetime
@@ -132,3 +133,115 @@ class CopilotCollectorTest(RuntimeTestCase):
         self.assertEqual(1, len(sessions))
         self.assertFalse(sessions[0]["active"], "fixture must be outside the window")
         self.assertEqual("w/p", sessions[0]["project"])
+
+
+class CopilotUsageTest(RuntimeTestCase):
+    """Copilot's consumption tile: real spend, no limit, windowed on row time."""
+
+    @staticmethod
+    def _store(root: Path, rows: list[tuple[int, float]]) -> None:
+        """A session-store.db carrying (nano_aiu, epoch) usage rows."""
+        root.mkdir(parents=True, exist_ok=True)
+        con = sqlite3.connect(root / "session-store.db")
+        con.execute(
+            "CREATE TABLE assistant_usage_events ("
+            " id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT,"
+            " model TEXT, total_nano_aiu INTEGER, created_at TEXT)"
+        )
+        con.executemany(
+            "INSERT INTO assistant_usage_events (session_id, model, total_nano_aiu, created_at)"
+            " VALUES ('s', 'gpt-5.6-terra', ?, ?)",
+            [(nano, datetime.fromtimestamp(when, UTC).isoformat()) for nano, when in rows],
+        )
+        con.commit()
+        con.close()
+        # discover() needs a session-state dir to consider the harness present.
+        (root / "session-state" / "abcd").mkdir(parents=True, exist_ok=True)
+
+    def test_aiu_rows_sum_into_one_used_entry(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            # 0.39 AIU + 16.21 AIU, the two models this account actually used.
+            self._store(root, [(393_690_000, now - 600), (16_213_200_000, now - 60)])
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                entries = copilot_collector.usage(config, state, now, 24)
+
+        self.assertEqual(1, len(entries))
+        entry = entries[0]
+        self.assertEqual("copilot", entry["harness"])
+        self.assertEqual("ok", entry["state"])
+        self.assertEqual("16.61 AIU", entry["used"])
+        # asOf is the newest contributing row, not the collection time.
+        self.assertEqual(int(now - 60), entry["asOf"])
+        # Consumption has no limit, so it must never claim a window gauge.
+        self.assertNotIn("fiveH", entry)
+        self.assertNotIn("week", entry)
+
+    def test_rows_outside_the_window_are_excluded(self) -> None:
+        # The figure answers "in the last window_hours", so old spend must not
+        # inflate it. Without this the number would drift with how much history
+        # happened to be retained.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            self._store(root, [(9_000_000_000, now - 8 * 3600), (1_000_000_000, now - 60)])
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                inside = copilot_collector.usage(config, state, now, 24)
+                narrow = copilot_collector.usage(config, state, now, 1)
+
+        self.assertEqual("10.00 AIU", inside[0]["used"])
+        self.assertEqual("1.00 AIU", narrow[0]["used"])
+
+    def test_no_rows_in_the_window_publishes_nothing(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            self._store(root, [(5_000_000_000, now - 48 * 3600)])
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                self.assertEqual([], copilot_collector.usage(config, state, now, 24))
+
+    def test_a_missing_or_schemaless_store_is_a_miss_not_an_error(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            (root / "session-state" / "abcd").mkdir(parents=True)
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                # No database file at all.
+                self.assertEqual([], copilot_collector.usage(config, state, now, 24))
+                # A database with no usage table: schema drift, not a crash.
+                con = sqlite3.connect(root / "session-store.db")
+                con.execute("CREATE TABLE sessions (id TEXT)")
+                con.commit()
+                con.close()
+                self.assertEqual([], copilot_collector.usage(config, state, now, 24))
+
+    def test_malformed_rows_are_skipped_without_poisoning_the_sum(self) -> None:
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 60, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            self._store(root, [(2_000_000_000, now - 60)])
+            con = sqlite3.connect(root / "session-store.db")
+            con.executemany(
+                "INSERT INTO assistant_usage_events (session_id, model, total_nano_aiu, created_at)"
+                " VALUES ('s', 'm', ?, ?)",
+                [
+                    (None, stamp),  # null amount
+                    ("not a number", stamp),  # wrong type
+                    (-5_000_000_000, stamp),  # negative
+                    (1_000_000_000, "not a timestamp"),  # unparseable time
+                ],
+            )
+            con.commit()
+            con.close()
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                entries = copilot_collector.usage(config, state, now, 24)
+
+        # Only the one well-formed row counts.
+        self.assertEqual("2.00 AIU", entries[0]["used"])

@@ -56,14 +56,14 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
 
-        self.assertEqual(122_983, len(assembled))
+        self.assertEqual(124_055, len(assembled))
         self.assertEqual(
-            "d9af702e23d2f35ca7453d688080823c970ed0cc507ecbd2b8ac95ce1f276691",
+            "9d00a4e31a849e6babdd3905837d6baebb74bdd45aa637932da65271ef8b89a5",
             hashlib.sha256(assembled).hexdigest(),
         )
-        self.assertEqual(37_732, len(styles))
+        self.assertEqual(38_008, len(styles))
         self.assertEqual(
-            "10e0cae57a82222bf68b291a985ed91e13110f91a44bd1a3bc5724ac9737f02a",
+            "9bb614dd5c71b621374a95d71090f7f5a323695819ae8027d8cbdb1f3fd547a6",
             hashlib.sha256(styles).hexdigest(),
         )
         expected_parts = {
@@ -77,8 +77,8 @@ class FrontendAssetContractTest(unittest.TestCase):
             ),
             "mode.js": (1_931, "a88e29034f1f41d93213e4ab1b3bab9b6759869374d6bf391c4d37ef7e433def"),
             "usage.js": (
-                11_539,
-                "35ac6cb6ffbf781fbc4e8f24e7679564e7d4b7b543006846124a46f69d2943f3",
+                12_335,
+                "ae9d06abc67e489d2574b9b294cc4ddbce02b2c9ff7784a471642b23ddeaf5b5",
             ),
             "controls.js": (
                 3_382,
@@ -451,6 +451,54 @@ class CargentoServerTest(PageJsHarness):
             [[spec.key, spec.label] for spec in REGISTRY],
             rendered,
         )
+
+    def test_a_consumption_only_entry_shows_its_figure_by_default(self) -> None:
+        # Copilot reports what it spent but not what it is allowed, so its
+        # entry carries `used` and no window gauges. Before `used` existed such
+        # an entry rendered as a harness name and a timestamp with no number at
+        # all, because every extras slot defaults to off — a row that reads as
+        # broken. The figure must survive the DEFAULT config, untouched.
+        rendered = self._run_page_js(
+            "const e = {harness:'copilot', state:'ok', asOf: 1700000000, used:'16.61 AIU'};"
+            "console.log(JSON.stringify({cfg: usageCfg, html: usageEntry(e)}));"
+        )
+        self.assertFalse(
+            any(rendered["cfg"][k] for k in ("burn", "today", "cost")),
+            "this test is only meaningful while the extras default to off",
+        )
+        html = rendered["html"]
+        self.assertIn("16.61 AIU", html)
+        self.assertIn('<span class="u-wlab">used</span>', html)
+
+    def test_a_consumption_figure_is_not_dressed_up_as_a_gauge(self) -> None:
+        # No limit means no fraction, so no track and no percentage. Rendering
+        # one would invite reading an absolute figure as "16% of something".
+        rendered = self._run_page_js(
+            "const e = {harness:'copilot', state:'ok', asOf: 1700000000, used:'16.61 AIU'};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        self.assertNotIn("cm-track", html)
+        self.assertNotIn("cm-fill", html)
+        self.assertNotIn("u-pct", html)
+        # Scoped to the figure's own row: the harness icon is a percent-encoded
+        # data URI, so a bare "%" search over the whole entry always matches.
+        row = html[html.index('<div class="u-wrow">') : html.index("</div>", html.index("u-used"))]
+        self.assertNotIn("%", row)
+
+    def test_windowed_harnesses_keep_their_gauges(self) -> None:
+        # The `used` row is additive, not a replacement: a harness publishing
+        # windows must still render its bars and percentages.
+        rendered = self._run_page_js(
+            "const e = {harness:'codex', state:'ok', asOf: 1700000000,"
+            " fiveH:{pct:63, reset:'14:20'}, week:{pct:31, reset:'Thu'}};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        self.assertIn("cm-track", html)
+        self.assertIn("63%", html)
+        self.assertIn("31%", html)
+        self.assertNotIn('<span class="u-wlab">used</span>', html)
 
     def test_every_harness_has_a_two_letter_monogram(self) -> None:
         # The monogram is the icon fallback, so a harness with no ICON_PATH

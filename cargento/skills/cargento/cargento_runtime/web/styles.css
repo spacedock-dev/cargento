@@ -375,6 +375,9 @@
   .u-wlab{font-size:var(--fs-2xs);font-weight:700;color:var(--ink3)}
   .u-pct{font-size:var(--fs-2xs);font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
   .u-reset{font-size:var(--fs-2xs);color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Spans the track, percent and reset columns: a used figure has no bar to
+     sit beside and no reset time, so it gets the width instead of a gap. */
+  .u-used{grid-column:2 / -1;font-size:var(--fs-2xs);font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums}
   .u-extras{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);flex-wrap:wrap}
   .u-extras b{color:var(--ink2);font-weight:700}
   .u-asof{margin-left:auto}

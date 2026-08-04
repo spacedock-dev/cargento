@@ -10,13 +10,14 @@ The decision record is DEC-1 (Linear DRC-4053): show quota per harness, Codex fi
 then Claude behind a configurable opt-out, with an opt-in sidecar as the fallback shape if the
 opt-out proves wrong.
 
-## Q-1: Two sources, one payload contract
+## Q-1: Three sources, one payload contract
 
 A usage entry is the same shape whoever produced it:
 
 ```
 {harness, state: "ok" | "expired", asOf,
- fiveH: {pct, reset}, week: {pct, reset}}
+ fiveH: {pct, reset}, week: {pct, reset},   // a gauge: used out of a limit
+ used}                                     // a figure: spend with no limit
 ```
 
 - Codex publishes from disk. The CLI writes a `rate_limits` snapshot beside every token count in
@@ -25,9 +26,43 @@ A usage entry is the same shape whoever produced it:
   keeps a weekly-only plan rendering.
 - Claude publishes from the fetch cache. `quota.py` holds the token read, the one outbound
   request, and the cache; `collectors/claude.py` only copies entries out of it.
+- Copilot publishes consumption from disk, and no gauge at all. See Q-6.
 
 `asOf` is epoch seconds of the moment the numbers were true: the snapshot's own timestamp for
-Codex, the fetch time for Claude. The page refuses to show a percentage without it.
+Codex, the fetch time for Claude, the newest contributing row for Copilot. The page refuses to show
+a percentage without it.
+
+## Q-6: A harness can report spend without reporting a limit
+
+GitHub bills Copilot in AI Units, and the CLI records its own consumption per model request in
+`session-store.db`'s `assistant_usage_events` table: `total_nano_aiu`, `request_multiplier`, the
+token breakdown, and a `created_at` per row. That is real spend rather than an estimate, and reading
+it needs no credential, so it ships under the original two invariants like the Codex tile.
+
+The entitlement is the part that does not exist locally. GitHub keeps it server-side and the CLI
+never writes it down, which was confirmed by searching every file under `~/.copilot`: `entitlement`
+and `allowance` appear in none of them, though both are strings inside the CLI binary. So there is a
+numerator and no denominator, and no honest percentage can be derived.
+
+Hence `used`: a preformatted figure, rendered as a labelled row with no track and no percent sign,
+because a bar implies a fraction of something. Three consequences worth stating:
+
+- **It is always shown when present.** The extras (`burn`, `today`, `cost`) default to off in
+  `usageCfg`, and a consumption-only entry whose single figure sat behind `configure` rendered as a
+  harness name and a timestamp with no number, which reads as a broken row rather than a hidden
+  setting. A contract test executes the page script and fails if the figure stops surviving the
+  default config.
+- **It is windowed on each row's own timestamp**, so the number answers "in the last
+  `window_hours`" rather than "since however much session history happens to be retained", which
+  would drift as old session directories accumulate or get cleaned.
+- **Premium requests are the wrong target.** The survey behind DEC-1 described per-session
+  premium-request estimates, but on an AI-Credits account `totalPremiumRequests` reads 0 while real
+  spend flows through the AIU fields. The legacy counter is deliberately not read.
+
+The alternative shapes considered were reusing the `today` extra and force-showing it for
+window-less harnesses, which makes `usageCfg`'s meaning depend on the payload, and deriving a burn
+rate to give the figure context, which is a heuristic over however few rows exist. A first-class
+field says exactly what it is and needs neither.
 
 ## Q-2: The response fields Cargento reads
 

@@ -777,9 +777,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.state",
             "cargento_runtime.turns",
         },
+        # `records` and `config` arrived with the AIU usage tile: the store
+        # timestamps need SQL-shaped parsing, and the session-store database
+        # sits at the store root rather than under a globbed subdirectory.
         "cargento_runtime.collectors.copilot": {
             "cargento_runtime.config",
             "cargento_runtime.io",
+            "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
             "cargento_runtime.transcripts",
