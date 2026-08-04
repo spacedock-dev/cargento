@@ -13,24 +13,55 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import lint_embedded
 
 
+def write_page_module(web: Path, parts: tuple[str, ...]) -> None:
+    """A minimal page.py exposing APP_PARTS, the way the real loader does."""
+    names = "".join(f'"{name}", ' for name in parts)
+    (web / "page.py").write_text(f"APP_PARTS = ({names})\n", encoding="utf-8")
+
+
 class LoadFrontendTest(unittest.TestCase):
-    def test_load_frontend_reads_each_direct_source(self) -> None:
+    def test_load_frontend_concatenates_the_named_parts_in_app_parts_order(self) -> None:
+        # "zz.js" before "aa.js" proves the order comes from APP_PARTS,
+        # not from a sorted directory listing.
         with tempfile.TemporaryDirectory() as tmp:
             web = Path(tmp)
             (web / "index.html").write_text('<main id="app"></main>', encoding="utf-8")
             (web / "styles.css").write_text(".a{color:red}\n", encoding="utf-8")
-            (web / "app.js").write_text("const x = 1;\n", encoding="utf-8")
+            (web / "zz.js").write_text("const first = 1;\n", encoding="utf-8")
+            (web / "aa.js").write_text("const second = 2;\n", encoding="utf-8")
+            write_page_module(web, ("zz.js", "aa.js"))
             self.assertEqual(
-                ('<main id="app"></main>', ".a{color:red}\n", "const x = 1;\n"),
+                (
+                    '<main id="app"></main>',
+                    ".a{color:red}\n",
+                    "const first = 1;\nconst second = 2;\n",
+                ),
                 lint_embedded.load_frontend(web),
             )
 
-    def test_load_frontend_names_a_missing_source(self) -> None:
+    def test_load_frontend_names_a_missing_page_module(self) -> None:
         with (
             tempfile.TemporaryDirectory() as tmp,
-            self.assertRaisesRegex(FileNotFoundError, "index.html"),
+            self.assertRaisesRegex(FileNotFoundError, "page.py"),
         ):
             lint_embedded.load_frontend(Path(tmp))
+
+    def test_load_frontend_names_a_missing_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "app.js").write_text("const x = 1;\n", encoding="utf-8")
+            write_page_module(web, ("app.js",))
+            with self.assertRaisesRegex(FileNotFoundError, "index.html"):
+                lint_embedded.load_frontend(web)
+
+    def test_a_part_named_but_missing_on_disk_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "index.html").write_text("<main></main>", encoding="utf-8")
+            (web / "styles.css").write_text("", encoding="utf-8")
+            write_page_module(web, ("ghost.js",))
+            with self.assertRaisesRegex(FileNotFoundError, "ghost.js"):
+                lint_embedded.load_frontend(web)
 
     def test_load_frontend_rejects_invalid_utf8(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -38,8 +69,45 @@ class LoadFrontendTest(unittest.TestCase):
             (web / "index.html").write_bytes(b"\xff")
             (web / "styles.css").write_text("", encoding="utf-8")
             (web / "app.js").write_text("", encoding="utf-8")
+            write_page_module(web, ("app.js",))
             with self.assertRaises(UnicodeDecodeError):
                 lint_embedded.load_frontend(web)
+
+
+class LoadAppPartsTest(unittest.TestCase):
+    def test_an_empty_part_list_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            write_page_module(web, ())
+            with self.assertRaisesRegex(ValueError, "APP_PARTS"):
+                lint_embedded.load_app_parts(web)
+
+    def test_a_malformed_part_list_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "page.py").write_text('APP_PARTS = ["app.js"]\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "APP_PARTS"):
+                lint_embedded.load_app_parts(web)
+
+
+class CheckStrayScriptsTest(unittest.TestCase):
+    def test_a_script_not_named_in_app_parts_is_a_finding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "app.js").write_text("const x = 1;\n", encoding="utf-8")
+            (web / "stray.js").write_text('const id = `<i id="ghost"></i>`;\n', encoding="utf-8")
+            write_page_module(web, ("app.js",))
+            problems = lint_embedded.check_stray_scripts(web)
+        self.assertEqual(1, len(problems))
+        self.assertIn("stray.js", problems[0])
+
+    def test_a_fully_registered_directory_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "a.js").write_text("const a = 1;\n", encoding="utf-8")
+            (web / "b.js").write_text("const b = 2;\n", encoding="utf-8")
+            write_page_module(web, ("b.js", "a.js"))
+            self.assertEqual([], lint_embedded.check_stray_scripts(web))
 
 
 class CheckCssTest(unittest.TestCase):

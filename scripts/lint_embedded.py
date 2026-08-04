@@ -5,7 +5,9 @@ The Cargento dashboard ships its HTML, CSS, and JavaScript as direct source
 files. Python linters cannot see inside those assets, so this script checks
 them:
 
-- JavaScript: syntax-checked with ``node --check`` (hard requirement; pass
+- JavaScript: the shipped script — the parts named in page.py's
+  ``APP_PARTS``, concatenated in that order, exactly as the page serves
+  them — syntax-checked with ``node --check`` (hard requirement; pass
   ``--allow-missing-node`` to degrade to a warning for local machines
   without node).
 - CSS: structural checks — balanced braces, no empty rules, no stray ``<``
@@ -13,6 +15,10 @@ them:
 - HTML shell: every ``id=`` referenced from the JS via
   ``getElementById`` exists either in the static HTML or is created by the
   JS itself (catches renamed-element regressions the unit tests may miss).
+- Part inventory: a ``.js`` file on disk that ``APP_PARTS`` does not name is
+  a finding (the page never serves it, so linting it as if shipped could
+  mask a real regression), and a part named but missing on disk raises the
+  same ``FileNotFoundError`` the server would.
 
 Exit code 0 when clean; 1 with a findings listing otherwise.
 """
@@ -20,6 +26,7 @@ Exit code 0 when clean; 1 with a findings listing otherwise.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import re
 import shutil
 import subprocess
@@ -37,21 +44,68 @@ WEB_DIR = (
 )
 
 
-def load_frontend(web_dir: Path = WEB_DIR) -> tuple[str, str, str]:
-    """The HTML shell, the stylesheet, and the concatenated script.
+def load_app_parts(web_dir: Path = WEB_DIR) -> tuple[str, ...]:
+    """The ordered script-part list, read from page.py itself.
 
-    The script ships as ordered parts that page.py concatenates into one
-    script scope. The checks here are order-insensitive — the syntax check
-    accepts any statement sequence and the DOM-id cross-check is a text
-    scan — so the parts are discovered by glob rather than importing the
-    loader; page.py's own tests hold the authoritative part list.
+    page.py owns ``APP_PARTS``; importing it by path keeps this script
+    standalone (no package on sys.path) while guaranteeing the linter and
+    the server agree on what ships. A missing page.py raises
+    ``FileNotFoundError``; an empty or malformed part list raises
+    ``ValueError`` rather than letting a zero-part web dir lint clean.
     """
-    parts = sorted(web_dir.glob("*.js"))
+    loader_path = web_dir / "page.py"
+    spec = importlib.util.spec_from_file_location("cargento_lint_page", loader_path)
+    if spec is None or spec.loader is None:
+        msg = f"cannot build an import spec for {loader_path}"
+        raise ImportError(msg)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    parts = getattr(module, "APP_PARTS", None)
+    if (
+        not isinstance(parts, tuple)
+        or not parts
+        or not all(isinstance(name, str) for name in parts)
+    ):
+        msg = f"{loader_path} must define APP_PARTS as a non-empty tuple of file names"
+        raise ValueError(msg)
+    return parts
+
+
+def load_frontend(
+    web_dir: Path = WEB_DIR, parts: tuple[str, ...] | None = None
+) -> tuple[str, str, str]:
+    """The HTML shell, the stylesheet, and the shipped script.
+
+    The script is the same artifact page.py serves: the parts named in
+    ``APP_PARTS``, concatenated in ``APP_PARTS`` order. A part named in the
+    list but missing on disk raises ``FileNotFoundError`` here, exactly as
+    it would at serve time.
+    """
+    if parts is None:
+        parts = load_app_parts(web_dir)
     return (
         (web_dir / "index.html").read_text(encoding="utf-8"),
         (web_dir / "styles.css").read_text(encoding="utf-8"),
-        "".join(part.read_text(encoding="utf-8") for part in parts),
+        "".join((web_dir / name).read_text(encoding="utf-8") for name in parts),
     )
+
+
+def check_stray_scripts(web_dir: Path = WEB_DIR, parts: tuple[str, ...] | None = None) -> list[str]:
+    """Every ``.js`` on disk must be named in ``APP_PARTS``.
+
+    A stray script is served by nothing, and linting it as if shipped would
+    let its ``id="…"`` strings mask a missing-DOM-id regression in the code
+    the page actually runs.
+    """
+    if parts is None:
+        parts = load_app_parts(web_dir)
+    named = set(parts)
+    return [
+        f"{path.name} is not named in page.py's APP_PARTS — the page never "
+        "serves it; register it or remove it"
+        for path in sorted(web_dir.glob("*.js"))
+        if path.name not in named
+    ]
 
 
 def check_js(js: str, *, allow_missing_node: bool) -> list[str]:
@@ -120,19 +174,21 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    page, css, js = load_frontend()
+    parts = load_app_parts()
+    page, css, js = load_frontend(parts=parts)
 
     problems = (
         check_js(js, allow_missing_node=args.allow_missing_node)
         + check_css(css)
         + check_dom_ids(page, js)
+        + check_stray_scripts(parts=parts)
     )
     if problems:
         for problem in problems:
             print(f"error: {problem}")
         print(f"{len(problems)} frontend problem(s) found.")
         return 1
-    print("Frontend assets clean (JS syntax, CSS structure, DOM id references).")
+    print("Frontend assets clean (JS syntax, CSS structure, DOM id references, part inventory).")
     return 0
 
 
