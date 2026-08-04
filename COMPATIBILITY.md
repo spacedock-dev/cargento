@@ -31,6 +31,7 @@ you.
 | Task age from file birthtime | yes | falls back to mtime | Python 3.12+ only | falls back to mtime |
 | Needs-input popup, browser (tab open) | not needed | yes | yes | yes (host browser) |
 | Needs-input popup, native (no tab) | yes (`osascript`) | not yet | not yet | not yet |
+| Claude quota token read (the usage fetch) | Keychain via `security`; the first read can prompt | credential file | credential file | credential file (Linux-side home) |
 
 Exactly one layer delivers a given popup: the server where it has a native backend, the page otherwise. `/api/data` reports which as `native_notify`.
 
@@ -78,4 +79,4 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: 151d179 (2026-08-04) -->
+<!-- docs-synced-through: 98cfd14 (2026-08-04) -->

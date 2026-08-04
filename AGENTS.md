@@ -32,6 +32,7 @@ cargento/                           # plugin root
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── lifecycle.py       # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
+        │   ├── quota.py            # the quota fetch: token read, the one outbound request, cache
         │   ├── records.py          # untrusted-record parsing and normalization
         │   ├── sessions.py         # session identity, shape, and deterministic aggregation
         │   ├── spacedock.py        # Spacedock workflow and entity cartography
