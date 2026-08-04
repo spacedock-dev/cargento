@@ -5,6 +5,7 @@ from __future__ import annotations
 import ntpath
 import posixpath
 import re
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 if TYPE_CHECKING:
@@ -131,6 +132,22 @@ def is_fresh(config: RuntimeConfig, now: float, timestamp: float, window_sec: fl
     """Whether ``timestamp`` is a plausible time within ``window_sec`` of now."""
     seconds = age(config, now, timestamp)
     return seconds is not None and seconds <= window_sec
+
+
+def format_reset(now: float, epoch: float) -> str:
+    """Short local-time reset text for a quota window.
+
+    Today reads as "14:00", within the coming week as "Thu 09:00", and anything
+    further out as a date, because a weekly window can reset up to seven days
+    away and an hour-of-day alone would name the wrong day.
+    """
+    then = datetime.fromtimestamp(epoch, tz=UTC).astimezone()
+    ref = datetime.fromtimestamp(now, tz=UTC).astimezone()
+    if then.date() == ref.date():
+        return then.strftime("%H:%M")
+    if 0 <= (then - ref).total_seconds() < 7 * 86400:
+        return then.strftime("%a %H:%M")
+    return then.strftime("%b %d")
 
 
 def newest_plausible(config: RuntimeConfig, now: float, timestamps: Iterable[float]) -> float:

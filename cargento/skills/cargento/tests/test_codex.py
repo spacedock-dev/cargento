@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import time
 from datetime import UTC, datetime
@@ -137,3 +138,151 @@ class CodexCollectorTest(RuntimeTestCase):
         self.assertEqual("s1", meta_b["session_id"])
         self.assertIsNone(meta_b["agent_label"])
         self.assertIsNone(meta_b["parent_session_id"])
+
+
+def _token_count(when: float, limits: dict[str, Any] | Any) -> dict[str, Any]:
+    return {
+        "timestamp": datetime.fromtimestamp(when, tz=UTC).isoformat().replace("+00:00", "Z"),
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "info": {"last_token_usage": {"output_tokens": 5}},
+            "rate_limits": limits,
+        },
+    }
+
+
+def _limits(
+    *windows: tuple[int, float, float],
+) -> dict[str, Any]:
+    """A rate_limits block from (window_minutes, used_percent, resets_at) triples."""
+    slots = ["primary", "secondary"]
+    block: dict[str, Any] = {"limit_id": "codex", "plan_type": "test"}
+    for slot, (minutes, pct, resets) in zip(slots, windows, strict=False):
+        block[slot] = {"used_percent": pct, "window_minutes": minutes, "resets_at": resets}
+    return block
+
+
+class CodexUsageTest(RuntimeTestCase):
+    """The Codex quota tile: rate_limits snapshots read from rollout files."""
+
+    def _rollout(self, root: Path, name: str, when: float, records: list[dict[str, Any]]) -> Path:
+        path = root / "2026" / "08" / "04" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(json.dumps(r) + "\n" for r in records))
+        os.utime(path, (when, when))
+        return path
+
+    def test_analyzer_captures_the_newest_rate_limits_snapshot(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._rollout(
+                Path(tmp),
+                "rollout-a.jsonl",
+                now,
+                [
+                    _token_count(now - 60, _limits((10080, 41.0, now + 900))),
+                    _token_count(now - 5, _limits((10080, 62.0, now + 900))),
+                ],
+            )
+            config, _ = make_runtime()
+            info = runtime_transcripts.analyze_codex_transcript(config, str(path))
+
+        epoch, limits = info["rate_limits"]
+        self.assertAlmostEqual(now - 5, epoch, delta=1.5)
+        self.assertEqual(62.0, limits["primary"]["used_percent"])
+
+    def test_analyzer_tolerates_malformed_rate_limits(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._rollout(
+                Path(tmp),
+                "rollout-a.jsonl",
+                now,
+                [_token_count(now - 5, "not-a-dict"), _token_count(now - 2, None)],
+            )
+            config, _ = make_runtime()
+            info = runtime_transcripts.analyze_codex_transcript(config, str(path))
+
+        self.assertIsNone(info["rate_limits"])
+
+    def test_usage_maps_windows_by_minutes_and_bounds_percent(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            self._rollout(
+                Path(tmp),
+                "rollout-a.jsonl",
+                now,
+                [
+                    _token_count(
+                        now - 5, _limits((300, 63.4, now + 3600), (10080, 141.0, now + 90000))
+                    )
+                ],
+            )
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                entries = codex_collector.usage(config, state, now, 24)
+
+        (entry,) = entries
+        self.assertEqual("codex", entry["harness"])
+        self.assertEqual("ok", entry["state"])
+        self.assertAlmostEqual(now - 5, entry["asOf"], delta=1.5)
+        self.assertEqual(63, entry["fiveH"]["pct"])
+        self.assertEqual(100, entry["week"]["pct"])
+        self.assertRegex(entry["fiveH"]["reset"], r"^\d{2}:\d{2}$")
+
+    def test_usage_publishes_a_weekly_only_plan(self) -> None:
+        # A prolite account writes only the weekly window (secondary is null).
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            self._rollout(
+                Path(tmp),
+                "rollout-a.jsonl",
+                now,
+                [_token_count(now - 5, _limits((10080, 62.0, now + 3 * 86400)))],
+            )
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                entries = codex_collector.usage(config, state, now, 24)
+
+        (entry,) = entries
+        self.assertNotIn("fiveH", entry)
+        self.assertEqual(62, entry["week"]["pct"])
+        self.assertRegex(entry["week"]["reset"], r"^[A-Z][a-z]{2} \d{2}:\d{2}$")
+
+    def test_usage_newest_snapshot_wins_across_files(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            self._rollout(
+                Path(tmp),
+                "rollout-old.jsonl",
+                now - 600,
+                [_token_count(now - 600, _limits((10080, 30.0, now + 900)))],
+            )
+            self._rollout(
+                Path(tmp),
+                "rollout-new.jsonl",
+                now,
+                [_token_count(now - 5, _limits((10080, 70.0, now + 900)))],
+            )
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                entries = codex_collector.usage(config, state, now, 24)
+
+        self.assertEqual(70, entries[0]["week"]["pct"])
+
+    def test_usage_is_empty_without_a_snapshot_or_past_the_window(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                self.assertEqual([], codex_collector.usage(config, state, now, 24))
+            self._rollout(
+                Path(tmp),
+                "rollout-stale.jsonl",
+                now - 30 * 86400,
+                [_token_count(now - 30 * 86400, _limits((10080, 55.0, now + 900)))],
+            )
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                self.assertEqual([], codex_collector.usage(config, state, now, 24))

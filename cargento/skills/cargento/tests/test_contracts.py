@@ -70,6 +70,8 @@ class ApplicationIsolationTest(unittest.TestCase):
         discover_error: BaseException | None = None,
         collect_error: BaseException | None = None,
         sessions: int = 1,
+        usage_entries: list[dict[str, Any]] | None = None,
+        usage_error: BaseException | None = None,
     ) -> aggregate.HarnessSpec:
         """A runtime-native harness: it reads the config and state it is given."""
 
@@ -98,7 +100,23 @@ class ApplicationIsolationTest(unittest.TestCase):
                 rows.append(row)
             return rows
 
-        return aggregate.HarnessSpec(key=key, label=key.title(), discover=discover, collect=collect)
+        usage: aggregate.UsageProvider | None = None
+        if usage_entries is not None or usage_error is not None:
+
+            def usage(
+                config: RuntimeConfig,
+                state: RuntimeState,
+                now: float,
+                window_hours: float,
+            ) -> list[dict[str, Any]]:
+                del config, state, now, window_hours
+                if usage_error is not None:
+                    raise usage_error
+                return list(usage_entries or [])
+
+        return aggregate.HarnessSpec(
+            key=key, label=key.title(), discover=discover, collect=collect, usage=usage
+        )
 
     def _application(
         self,
@@ -390,6 +408,45 @@ class ApplicationIsolationTest(unittest.TestCase):
         # An absent store is not an error, so nothing is reported.
         self.assertEqual([], diagnostics)
         self.assertEqual(["healthy"], [s["harness"] for s in data["sessions"]])
+
+    def test_usage_key_appears_only_when_a_provider_is_discovered(self) -> None:
+        entry = {"harness": "quota", "state": "ok", "asOf": 999, "week": {"pct": 62}}
+        with_provider, _, _, _, _ = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(self._spec("plain"), self._spec("quota", usage_entries=[entry])),
+        )
+        without_provider, _, _, _, _ = self._application(
+            home="/home/b",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-b",
+            harnesses=(self._spec("plain"),),
+        )
+
+        self.assertEqual([entry], with_provider.collect(show_all=True)["usage"])
+        # No provider anywhere: the key is absent and the page stays dormant.
+        self.assertNotIn("usage", without_provider.collect(show_all=True))
+
+    def test_a_usage_failure_is_contained_to_diagnostics(self) -> None:
+        application, _, _, diagnostics, _ = self._application(
+            home="/home/a",
+            started=11.0,
+            clock=1000.0,
+            notifier="notifier-a",
+            harnesses=(self._spec("quota", usage_error=RuntimeError("torn snapshot")),),
+        )
+
+        data = application.collect(show_all=True)
+
+        # The harness's session rows survive, its strip shows no error, and the
+        # band gets an empty list rather than disappearing.
+        self.assertEqual(["quota"], [s["harness"] for s in data["sessions"]])
+        self.assertIsNone(data["harnesses"][0]["error"])
+        self.assertEqual([], data["usage"])
+        self.assertTrue(any("torn snapshot" in line for line in diagnostics))
 
     def test_a_collector_failure_sets_only_its_own_error(self) -> None:
         application, _, _, diagnostics, _ = self._application(
@@ -753,6 +810,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         "cargento_runtime.collectors.codex": {
             "cargento_runtime.config",
             "cargento_runtime.io",
+            "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
             "cargento_runtime.transcripts",

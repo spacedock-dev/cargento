@@ -55,9 +55,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
         script = frontend_page.asset_path("app.js").read_bytes()
-        self.assertEqual(121_200, len(assembled))
+        self.assertEqual(121_673, len(assembled))
         self.assertEqual(
-            "d767757b6b97223fe0273769461c5864f8f4fea251b7c9716c81428ecc0e1e63",
+            "769c6542fbc4f06c82ac1de965a27dfa16e9b9d37e22cba6988411563c1a79d4",
             hashlib.sha256(assembled).hexdigest(),
         )
         self.assertEqual(37_732, len(styles))
@@ -65,9 +65,9 @@ class FrontendAssetContractTest(unittest.TestCase):
             "10e0cae57a82222bf68b291a985ed91e13110f91a44bd1a3bc5724ac9737f02a",
             hashlib.sha256(styles).hexdigest(),
         )
-        self.assertEqual(83_172, len(script))
+        self.assertEqual(83_645, len(script))
         self.assertEqual(
-            "07747b08107480a3e62fd149d09efd096355780b6a09190e7ef1e1a93baafe44",
+            "66f2948dc75909ca1ae8e145e67c1742c2873f444102cbb70bc8e2823a821d32",
             hashlib.sha256(script).hexdigest(),
         )
 

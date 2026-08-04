@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 # Absolute on the canonical top-level package: a sub-package cannot use
 # parent-relative imports without tripping the repository's own TID252 rule.
 from cargento_runtime import io as runtime_io
-from cargento_runtime import sessions, transcripts, turns
+from cargento_runtime import records, sessions, transcripts, turns
 
 if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
@@ -19,6 +19,81 @@ if TYPE_CHECKING:
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether a Codex sessions store is present."""
     return runtime_io.any_store_dir(config, "codex.sessions")
+
+
+# Rollout tails examined for a quota snapshot, newest mtime first. Token
+# events are frequent, so the snapshot is almost always in the newest file;
+# the rest of the budget covers a file that was only just created.
+_USAGE_FILE_CAP = 8
+
+
+def _usage_window(now: float, raw: Any) -> tuple[str, dict[str, Any]] | None:
+    """One rate_limits window mapped onto the payload contract, or nothing."""
+    win = records.as_dict(raw)
+    pct = win.get("used_percent")
+    minutes = win.get("window_minutes")
+    if not isinstance(pct, (int, float)) or isinstance(pct, bool):
+        return None
+    if not isinstance(minutes, (int, float)) or isinstance(minutes, bool):
+        return None
+    # Codex names no windows, only durations: 300 minutes is the 5-hour
+    # window, 10080 the weekly. Classify by length so a plan that carries
+    # only one of them (prolite writes just the weekly) still maps.
+    key = "fiveH" if minutes < 1440 else "week"
+    shaped: dict[str, Any] = {"pct": max(0, min(100, round(pct)))}
+    resets = win.get("resets_at")
+    if isinstance(resets, (int, float)) and not isinstance(resets, bool) and resets > 0:
+        shaped["reset"] = sessions.format_reset(now, resets)
+    return key, shaped
+
+
+def usage(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    now: float,
+    window_hours: float,
+) -> list[dict[str, Any]]:
+    """The newest quota snapshot Codex left on disk, as one usage entry.
+
+    Codex writes ``rate_limits`` beside every token count, so this is a read
+    of what is already there: no network, no credential, and a snapshot only
+    as fresh as the last active turn, which is why the entry carries ``asOf``.
+    One entry for the whole store — the CLI reports account quota, not
+    per-session quota.
+    """
+    del state
+    files: list[tuple[float, str]] = []
+    for fp in runtime_io.glob_stores(
+        config,
+        "codex.sessions",
+        "*",
+        "*",
+        "*",
+        "rollout-*.jsonl",
+    ):
+        try:
+            files.append((os.path.getmtime(fp), fp))
+        except OSError:
+            continue
+    best: tuple[float, dict[str, Any]] | None = None
+    for _, fp in sorted(files, reverse=True)[:_USAGE_FILE_CAP]:
+        snap = transcripts.analyze_codex_transcript(config, fp)["rate_limits"]
+        if snap and (best is None or snap[0] > best[0]):
+            best = snap
+    # A snapshot older than the dashboard's own activity window describes
+    # quota windows that have themselves reset; the band's empty state is
+    # more honest than a number that old.
+    if not best or not sessions.is_fresh(config, now, best[0], window_hours * 3600):
+        return []
+    epoch, limits = best
+    entry: dict[str, Any] = {"harness": "codex", "state": "ok", "asOf": int(epoch)}
+    for raw in (limits.get("primary"), limits.get("secondary")):
+        mapped = _usage_window(now, raw)
+        if mapped:
+            entry.setdefault(mapped[0], mapped[1])
+    if "fiveH" not in entry and "week" not in entry:
+        return []
+    return [entry]
 
 
 def _subagent_rate(

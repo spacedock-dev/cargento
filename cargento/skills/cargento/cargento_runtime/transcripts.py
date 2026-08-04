@@ -240,6 +240,7 @@ def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
         "usage_events": [],
         "last_tool": None,
         "last_event_ts": 0,
+        "rate_limits": None,  # newest in the tail: (epoch, the raw rate_limits dict)
     }
     for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
@@ -266,6 +267,11 @@ def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
                 )
                 if ep and out:
                     info["usage_events"].append((ep, out))
+                # Quota snapshot, written by the CLI beside the token figures.
+                limits = records.as_dict(p.get("rate_limits"))
+                held = info["rate_limits"]
+                if ep and limits and (held is None or ep >= held[0]):
+                    info["rate_limits"] = (ep, limits)
         elif t == "response_item" and p.get("type") in ("function_call", "custom_tool_call"):
             info["last_tool"] = p.get("name")
     return info

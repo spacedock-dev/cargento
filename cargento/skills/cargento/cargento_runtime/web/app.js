@@ -579,12 +579,20 @@ function usageTone(pct){
 
 /* Every figure carries the moment it was true. A Codex snapshot is only as
    fresh as the last active turn, and a cached fetch is older than the page —
-   a percentage with no timestamp would claim to be live. */
+   a percentage with no timestamp would claim to be live. A bare time only
+   says "today", so any older snapshot names its day, and past a week the
+   date: "as of 05:29 PM" from four days ago is a lie of omission. */
 function usageAsOf(u){
   const t = Number(u.asOf);
   if(!isFinite(t) || t <= 0) return "";
-  return "as of " +
-    new Date(t*1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  const then = new Date(t*1000);
+  const ref = new Date();
+  const time = then.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  if(then.toDateString() === ref.toDateString()) return "as of " + time;
+  if(ref - then < 6*86400*1000){
+    return "as of " + then.toLocaleDateString([], {weekday: "short"}) + " " + time;
+  }
+  return "as of " + then.toLocaleDateString([], {month: "short", day: "numeric"});
 }
 
 function usageEntry(u){

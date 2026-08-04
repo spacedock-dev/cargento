@@ -22,16 +22,27 @@ Collector: TypeAlias = Callable[
     ["RuntimeConfig", "RuntimeState", float, float, bool],
     "list[Session]",
 ]
+UsageProvider: TypeAlias = Callable[
+    ["RuntimeConfig", "RuntimeState", float, float],
+    "list[dict[str, Any]]",
+]
 
 
 @dataclass(frozen=True)
 class HarnessSpec:
-    """One supported harness: how to discover its store and how to read it."""
+    """One supported harness: how to discover its store and how to read it.
+
+    ``usage`` is the optional quota reader. Most harnesses have none: the
+    survey behind DEC-1 found Codex alone writing quota to disk, and every
+    other vendor keeping it behind an authenticated API. The field is where
+    a future fetcher plugs in without widening the ``Collector`` contract.
+    """
 
     key: str
     label: str
     discover: Discoverer
     collect: Collector
+    usage: UsageProvider | None = None
 
 
 def default_harnesses(popup_notifier: Callable[[str, str], None]) -> tuple[HarnessSpec, ...]:
@@ -69,7 +80,7 @@ def default_harnesses(popup_notifier: Callable[[str, str], None]) -> tuple[Harne
 
     return (
         HarnessSpec("claude", "Claude", claude.discover, collect_claude),
-        HarnessSpec("codex", "Codex", codex.discover, codex.collect),
+        HarnessSpec("codex", "Codex", codex.discover, codex.collect, usage=codex.usage),
         HarnessSpec("pi", "Pi", pi.discover, pi.collect),
         HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect),
         HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect),
@@ -112,6 +123,8 @@ class Application:
         now = self.clock()
         out_sessions: list[Session] = []
         harnesses: list[dict[str, Any]] = []
+        usage: list[dict[str, Any]] = []
+        usage_supported = False
         for spec in self.harnesses:
             try:
                 found = bool(spec.discover(config, state))
@@ -134,6 +147,21 @@ class Application:
                     f"[{spec.key}] collector error: {harness['error']}",
                     self.diagnostic_sink,
                 )
+            if spec.usage is None:
+                continue
+            # The `usage` key exists exactly when a discovered harness can
+            # publish quota; the page keeps its band hidden otherwise. A
+            # failed quota read is a diagnostic, never a harness error — the
+            # session rows above already collected, and a broken tile must
+            # not repaint the whole strip red.
+            usage_supported = True
+            try:
+                usage.extend(spec.usage(config, state, now, window_hours))
+            except Exception as e:  # noqa: BLE001 — same boundary as the collector above
+                runtime_io.diag(
+                    f"[{spec.key}] usage error: {type(e).__name__}: {e}",
+                    self.diagnostic_sink,
+                )
 
         out_sessions = sessions.dedupe_sessions(out_sessions)
         sessions.assign_display_ids(config, out_sessions)
@@ -144,7 +172,7 @@ class Application:
         active_sessions = [x for x in out_sessions if x["active"]]
         total_tasks = sum(x["total"] for x in out_sessions)
         total_done = sum(x["done"] for x in out_sessions)
-        return {
+        collection: Collection = {
             "generated": now,
             "window_hours": window_hours,
             "show_all": show_all,
@@ -164,6 +192,12 @@ class Application:
             },
             "sessions": out_sessions,
         }
+        if usage_supported:
+            # Present even when empty: the page distinguishes "no quota data
+            # yet" (key with no entries) from "nothing here publishes quota"
+            # (no key), and only the former draws the band.
+            collection["usage"] = sorted(usage, key=lambda u: str(u.get("harness", "")))
+        return collection
 
     def collect_json(self, *, show_all: bool) -> bytes:
         state = self.state
