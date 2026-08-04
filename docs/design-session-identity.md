@@ -2,7 +2,8 @@
 
 How Cargento answers "which session am I looking at, and where is it running?" Both halves
 were reported together in DRC-3962 and DRC-3963, because together they made distinct
-sessions render as one.
+sessions render as one. D-5 adds a third question to the same file, "and whose quota is it
+spending?", which only one harness cannot answer with its own name.
 
 The code is `cargento_runtime/sessions.py` (identity, shape, freshness, display ids) and
 `cargento_runtime/aggregate.py` (dedup, ordering, the per-harness failure boundary). Collectors

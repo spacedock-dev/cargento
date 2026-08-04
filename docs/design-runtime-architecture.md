@@ -45,7 +45,7 @@ Everything else lives in one file per responsibility:
 | `state.py` | Mutable caches, locks, bounded-cache helpers, the server start stamp. |
 | `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
 | `records.py` | Parsing and normalizing untrusted records from disk. |
-| `sessions.py` | Session identity and shape, freshness, display ids, deterministic aggregation. |
+| `sessions.py` | Session identity and shape (including the row's declared field set, `base_session`), freshness, display ids, deterministic aggregation. |
 | `transcripts.py` | Shared metadata readers, prompt titles, the non-Claude analyzers. |
 | `turns.py` | Generic incremental turn scanning and turn display. |
 | `claude_data.py` | Claude transcript reads shared by the collector and the hook path. |

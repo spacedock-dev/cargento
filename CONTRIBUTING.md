@@ -225,6 +225,7 @@ This is the contribution we most want. Each harness is one registry entry: a key
 - Document the data source and its caveats in `SKILL.md`'s data-sources list. The documentation-matches-code test asserts it.
 - Add tests with a synthetic store fixture, including a hostile-path case.
 - Add the harness to the page's `HARNESS` table in `cargento_runtime/web/spark.js` with a unique two-letter monogram. A contract test compares that table to the registry, so a row added on one side only fails the build.
+- Every row's field set is declared once, in `base_session` in `cargento_runtime/sessions.py`, at `None`. Populate the fields your store can answer and leave the rest; do not add a key that only your harness sets, because then every consumer has to test for presence instead of for a value. `provider` and `model` are there for the same reason and only Pi fills them today, since Pi is the one harness that spends another product's allowance rather than its own.
 
 Before writing any of it, settle whether the thing deserves a row of its own: two store formats can be one harness, and one vendor can be two. [`docs/design-harness-registry.md`](docs/design-harness-registry.md) owns that judgement and the one time it had to be revisited.
 
