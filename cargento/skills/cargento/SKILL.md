@@ -61,6 +61,12 @@ Three flags appear in the `flag` column, and only these three — each is a sign
 | **long turn** (amber) | Working, and this request has run or is estimated to run ≥15 min (`LONG_TURN_WARN_SEC`) — the same signal as the regular view's ⚠️. |
 | **stale** (gray) | Idle with no activity for ≥2h. Either it finished quietly and nobody read the result, or it is waiting on a reply that never came. |
 
+## Usage and rate limits
+
+A `Usage · rate limits` section appears when a machine has a harness that writes its own quota to disk. Today that is Codex only: its CLI records rate-limit snapshots inside its session files, and Cargento reads them the way it reads everything else — no network request, no credential. Machines without such a harness show no section at all.
+
+Per harness it shows the 5-hour and weekly windows as bars with reset times (amber from 70% used, red from 90%) and an `as of` timestamp — the snapshot is only as fresh as the last active turn, so the stamp names its day when it is not from today. Snapshots older than the dashboard's activity window are dropped entirely; the section then reads "No quota data yet" rather than showing percentages whose windows have already reset. In regular mode the section sits between the tiles and the needs-input band; in calm mode it is a strip above the ledger, toggled by the `usage` chip or the `u` key. `configure ▾` picks which stats are shown, remembered per browser; the last remaining stat cannot be unchecked.
+
 ## Start
 
 Stdlib-only, Python 3.11+, no dependencies. Resolve `server.py` relative to this `SKILL.md` in the
