@@ -89,6 +89,32 @@ function usageAsOf(u){
   return "as of " + then.toLocaleDateString([], {month: "short", day: "numeric"});
 }
 
+/* A countdown, not a clock time. Two reasons, one measured and one about what
+   the reader actually wants to know. "↺ Thu 02:00" needs 92px in a 76px column,
+   so it rendered as "↺ Thu 02:…" and named neither the day nor the hour. And
+   the question a quota window raises is "how long until I get it back", which a
+   wall-clock time makes the reader work out by hand. The absolute time is not
+   lost: it stays on the row as its tooltip.
+   Built from `resetAt` (epoch seconds) so it stays true between polls, with the
+   server's own words as the fallback if a producer sends no instant. */
+function usageReset(w){
+  const at = Number(w.resetAt);
+  if(!isFinite(at) || at <= 0) return String(w.reset || "—");
+  const left = at - nowSec();
+  /* Past its reset means the window has rolled and this figure is the old one.
+     "due" says that without pretending to know the new number. */
+  if(left <= 0) return "due";
+  if(left < 60) return "<1m";
+  const days = Math.floor(left / 86400);
+  const hours = Math.floor((left % 86400) / 3600);
+  const mins = Math.floor((left % 3600) / 60);
+  /* Two units at most, largest first: "1d 5h" and "2h 16m" both fit the column,
+     and a third unit is noise at this precision. */
+  if(days) return days + "d " + hours + "h";
+  if(hours) return hours + "h " + mins + "m";
+  return mins + "m";
+}
+
 function usageEntry(u){
   const h = own(HARNESS, u.harness, null) ||
     {code: String(u.harness || "?").slice(0, 2).toUpperCase(), name: u.harness};
@@ -114,7 +140,10 @@ function usageEntry(u){
       `<span class="cm-track"><span class="cm-fill" style="width:${pct}%;` +
       `background:${tone.bar}"></span></span>` +
       `<span class="u-pct" style="color:${tone.ink}">${pct}%</span>` +
-      `<span class="u-reset" title="${esc(String(w.reset || ""))}">↺ ${esc(String(w.reset || "—"))}</span></div>`;
+      /* The tooltip keeps the wall-clock time the countdown replaced, so the
+         exact moment is still one hover away. */
+      `<span class="u-reset" title="resets ${esc(String(w.reset || "at an unknown time"))}">` +
+      `↺ ${esc(usageReset(w))}</span></div>`;
   };
   /* No bar and no percentage: there is no limit to be a fraction of. The
      label says "used" rather than a window name so it cannot be misread as a

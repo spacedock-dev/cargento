@@ -262,6 +262,11 @@ class FetchRequestTest(unittest.TestCase):
         self.assertEqual(63, entry["fiveH"]["pct"])
         self.assertEqual(100, entry["week"]["pct"])
         self.assertTrue(entry["fiveH"]["reset"])
+        # Every window carries the instant as well as the words: the page renders
+        # a countdown from the instant, so a producer that ships only the words
+        # regresses the display to an absolute time that does not fit its column.
+        for slot, offset in (("fiveH", 3600), ("week", 4 * 86400)):
+            self.assertEqual(int(NOW + offset), entry[slot]["resetAt"], slot)
 
     def test_iso_reset_stamps_parse_like_epoch_ones(self) -> None:
         iso = datetime.fromtimestamp(NOW + 3600, tz=UTC).isoformat()
@@ -549,6 +554,10 @@ class CursorFetchTest(unittest.TestCase):
         (entry,), _ = self._entries()
         self.assertEqual(expected, entry["month"]["reset"])
         self.assertNotEqual(expected, sessions.format_reset(NOW, cycle_end / 1000))
+        # The instant travels too, because the page counts down from it rather
+        # than from the words. Same reading, so a millisecond misparse fails here
+        # as well as in the wording above.
+        self.assertEqual(int(cycle_end), entry["month"]["resetAt"])
 
     def test_an_unreadable_cycle_end_leaves_the_bar_without_a_reset(self) -> None:
         # The percentage is still true without one; inventing a reset is not.
@@ -560,6 +569,9 @@ class CursorFetchTest(unittest.TestCase):
                 self.assertIsNone(note)
                 self.assertEqual(68, entry["month"]["pct"])
                 self.assertNotIn("reset", entry["month"])
+                # Neither half of the pair may appear alone: a countdown with no
+                # instant would silently fall back to absent words.
+                self.assertNotIn("resetAt", entry["month"])
 
     def test_the_entry_fills_month_and_never_the_rolling_windows(self) -> None:
         # A monthly billing cycle in a slot labelled "5h" or "wk" would put a

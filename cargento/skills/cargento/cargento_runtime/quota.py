@@ -206,7 +206,7 @@ def _shape_window(now: float, raw: Any) -> dict[str, Any] | None:
     shaped: dict[str, Any] = {"pct": max(0, min(100, round(pct)))}
     resets = _epoch(win.get("resets_at"))
     if resets:
-        shaped["reset"] = sessions.format_reset(now, resets)
+        shaped.update(sessions.reset_fields(now, resets))
     return shaped
 
 
@@ -308,7 +308,7 @@ def _cursor_entry(now: float, payload: dict[str, Any]) -> dict[str, Any] | None:
         window: dict[str, Any] = {"pct": max(0, min(100, round(spend * 100 / limit)))}
         resets = _epoch_millis(payload.get("billingCycleEnd"))
         if resets:
-            window["reset"] = sessions.format_reset(now, resets)
+            window.update(sessions.reset_fields(now, resets))
         entry["month"] = window
         entry["used"] = f"{_money(spend)} of {_money(limit)}"
     else:
@@ -518,7 +518,7 @@ def _receipt_window(now: float, raw: Any) -> tuple[int, dict[str, Any]] | None:
     shaped: dict[str, Any] = {"pct": pct}
     resets = _epoch(bucket.get("reset_time"))
     if resets:
-        shaped["reset"] = sessions.format_reset(now, resets)
+        shaped.update(sessions.reset_fields(now, resets))
     return pct, shaped
 
 

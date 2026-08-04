@@ -376,16 +376,26 @@
   .u-entry{display:flex;flex-direction:column;gap:6px;min-width:0}
   .u-hrow{display:flex;align-items:center;gap:8px}
   .u-hname{font-size:var(--fs-xs);font-weight:600;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .u-wrow{display:grid;grid-template-columns:18px minmax(0,1fr) 40px 76px;align-items:center;gap:7px;font-family:var(--mono)}
+  /* Column one holds the row label, and the widest is `used` at 28px measured
+     in this font: at 18px it overflowed its cell and collided with the figure
+     beside it, which is what `used16.61 AIU` was. Column four holds the reset
+     countdown, whose widest form (`10d 22h`) measures 75px, so 84px leaves
+     headroom rather than sitting a pixel inside the ellipsis. */
+  .u-wrow{display:grid;grid-template-columns:30px minmax(0,1fr) 40px 84px;align-items:center;gap:7px;font-family:var(--mono)}
   .u-wlab{font-size:var(--fs-2xs);font-weight:700;color:var(--ink3)}
   .u-pct{font-size:var(--fs-2xs);font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
   .u-reset{font-size:var(--fs-2xs);color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* Spans the track, percent and reset columns: a used figure has no bar to
      sit beside and no reset time, so it gets the width instead of a gap. */
   .u-used{grid-column:2 / -1;font-size:var(--fs-2xs);font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums}
-  .u-extras{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);flex-wrap:wrap}
+  /* Left-aligned under the rows it belongs to. `as of` used to carry
+     `margin-left:auto`, which with no other extras present computed to a
+     164px shove and left the stamp floating at the tile's right edge, read as
+     belonging to the neighbouring harness. The gap alone separates it from the
+     extras when there are any. */
+  .u-extras{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);flex-wrap:wrap;margin-top:3px}
   .u-extras b{color:var(--ink2);font-weight:700}
-  .u-asof{margin-left:auto}
+  .u-asof{color:var(--ink3)}
   .u-expired{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
   .u-excl{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;flex:none;border-radius:50%;background:color-mix(in oklab,var(--alert) 18%,transparent);color:var(--alert);font-weight:700}
   .u-note{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}

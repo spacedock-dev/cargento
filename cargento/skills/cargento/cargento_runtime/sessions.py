@@ -134,6 +134,19 @@ def is_fresh(config: RuntimeConfig, now: float, timestamp: float, window_sec: fl
     return seconds is not None and seconds <= window_sec
 
 
+def reset_fields(now: float, epoch: float) -> dict[str, Any]:
+    """Both forms of one reset stamp, so they cannot drift apart.
+
+    `reset` is the wall-clock words and `resetAt` is the instant. The page shows
+    a countdown built from `resetAt` and keeps the words for the tooltip: "Thu
+    02:00" answers "when", but the question a quota window actually raises is
+    "how long until I get it back", and the reader should not have to subtract.
+    Sending the instant rather than a server-rendered countdown also keeps the
+    figure true between polls instead of ageing by up to the poll interval.
+    """
+    return {"reset": format_reset(now, epoch), "resetAt": int(epoch)}
+
+
 def format_reset(now: float, epoch: float) -> str:
     """Short local-time reset text for a quota window.
 

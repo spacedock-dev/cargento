@@ -56,14 +56,14 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
 
-        self.assertEqual(128_032, len(assembled))
+        self.assertEqual(130_266, len(assembled))
         self.assertEqual(
-            "fa56b88d73b519e2519c712e0c9fc9e55d59ffe4f79b46f0dd5954df48f4e7c8",
+            "989ad9d7d1b7374ba7615c4878ca13cc36eb2070baef7cd77a92c758ad0a8f26",
             hashlib.sha256(assembled).hexdigest(),
         )
-        self.assertEqual(38_321, len(styles))
+        self.assertEqual(39_054, len(styles))
         self.assertEqual(
-            "20a4f2c694e59b01f57767aa8bff857fa79216b54ff612cd76fc80d11b80f962",
+            "360a210c7125701d495d1ab07a28b8bc722e0fbbdbad3a8d414e879d56725fc7",
             hashlib.sha256(styles).hexdigest(),
         )
         expected_parts = {
@@ -75,21 +75,30 @@ class FrontendAssetContractTest(unittest.TestCase):
                 11_815,
                 "2e291c3844c8c97b2ad0b6a4d35bd82841854088182f42c800b9e690d25c2ac3",
             ),
-            "mode.js": (1_931, "a88e29034f1f41d93213e4ab1b3bab9b6759869374d6bf391c4d37ef7e433def"),
+            "mode.js": (
+                1_931,
+                "a88e29034f1f41d93213e4ab1b3bab9b6759869374d6bf391c4d37ef7e433def",
+            ),
             "usage.js": (
-                13_272,
-                "ca7cf190a958e22e988686b0e13bdd72aa6d46bfb7f5501a7e3d6dbe4aff783c",
+                14_773,
+                "0d7db08f93e91e944989b1a44c587a3fadce368ac4ce7c0d3f1d1d449c7652a6",
             ),
             "controls.js": (
                 3_382,
                 "ca8282870edbf67b14c78e533e1caeb182318632524a6bf6ff3741d78870ffcc",
             ),
-            "calm.js": (26_824, "cccfcdfa23e04a175318bc171f9ed1e5e8d5899368893d148120cf090b159548"),
+            "calm.js": (
+                26_824,
+                "cccfcdfa23e04a175318bc171f9ed1e5e8d5899368893d148120cf090b159548",
+            ),
             "notify.js": (
                 2_655,
                 "79b0396140c35ad4b34b9656b692ed45855fb04e63a2165610531b5d4aa54984",
             ),
-            "main.js": (8_025, "0890ca1a3c6ca4233edd66e4e69a42617369c3371ad434dce1fa148e1f287f6f"),
+            "main.js": (
+                8_025,
+                "0890ca1a3c6ca4233edd66e4e69a42617369c3371ad434dce1fa148e1f287f6f",
+            ),
         }
         self.assertEqual(tuple(expected_parts), frontend_page.APP_PARTS)
         for name, (size, digest) in expected_parts.items():
@@ -499,6 +508,68 @@ class CargentoServerTest(PageJsHarness):
         self.assertIn("63%", html)
         self.assertIn("31%", html)
         self.assertNotIn('<span class="u-wlab">used</span>', html)
+
+    def test_a_reset_reads_as_a_countdown_not_a_clock_time(self) -> None:
+        # "Thu 02:00" measured 92px in a 76px column, so it rendered as
+        # "Thu 02:…" and named neither the day nor the hour. A countdown is
+        # shorter and answers the question the window actually raises.
+        rendered = self._run_page_js(
+            "const t = nowSec();"
+            "const cases = ["
+            " ['minutes',   {resetAt: t + 16*60}],"
+            " ['hours',     {resetAt: t + 2*3600 + 16*60}],"
+            " ['days',      {resetAt: t + 86400 + 5*3600}],"
+            " ['far',       {resetAt: t + 30*86400 + 21*3600}],"
+            # Inexact remainders, so the truncation is actually exercised. With
+            # whole multiples only, rounding and flooring agree and a countdown
+            # that rounds UP passes: it would promise time the user has not got.
+            " ['part hour', {resetAt: t + 86400 + 5*3600 + 31*60}],"
+            " ['part min',  {resetAt: t + 2*3600 + 16*60 + 45}],"
+            " ['under a min', {resetAt: t + 30}],"
+            " ['exactly now', {resetAt: t}],"
+            # The harness pins the page clock near zero, so a past instant is
+            # expressed as a small step back: a large one would go negative and
+            # be rejected as "no instant at all", which a real epoch never can.
+            " ['past',      {resetAt: t - 300}],"
+            " ['no instant', {reset: 'Thu 02:00'}],"
+            " ['neither',   {}],"
+            " ['junk',      {resetAt: 'soon', reset: 'Thu 02:00'}],"
+            " ['zero',      {resetAt: 0, reset: 'Thu 02:00'}]];"
+            "console.log(JSON.stringify(cases.map(c => [c[0], usageReset(c[1])])));"
+        )
+        got = dict(rendered)
+        self.assertEqual("16m", got["minutes"])
+        self.assertEqual("2h 16m", got["hours"])
+        self.assertEqual("1d 5h", got["days"])
+        self.assertEqual("30d 21h", got["far"])
+        # Truncated down, never up: a countdown that rounds up overstates the
+        # time left, which is the direction that misleads.
+        self.assertEqual("1d 5h", got["part hour"])
+        self.assertEqual("2h 16m", got["part min"])
+        self.assertEqual("<1m", got["under a min"])
+        # At or past the reset the window has rolled, so the percentage beside it
+        # is the old one. "due" says so without inventing the new number.
+        self.assertEqual("due", got["exactly now"])
+        self.assertEqual("due", got["past"])
+        # A producer that ships only the words still renders them.
+        self.assertEqual("Thu 02:00", got["no instant"])
+        self.assertEqual("Thu 02:00", got["junk"])
+        self.assertEqual("Thu 02:00", got["zero"])
+        self.assertEqual("—", got["neither"])
+
+    def test_the_reset_row_keeps_the_absolute_time_in_its_tooltip(self) -> None:
+        # The countdown replaces the clock time on screen; it must not lose it.
+        rendered = self._run_page_js(
+            "const e = {harness:'claude', state:'ok', asOf: 1700000000,"
+            " week:{pct:77, reset:'Thu 02:00', resetAt: nowSec() + 86400 + 5*3600}};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        self.assertIn('title="resets Thu 02:00"', html)
+        self.assertIn("↺ 1d 5h", html)
+        # The clock time is not also printed as the label, or the column is back
+        # to the width that truncated.
+        self.assertNotIn(">↺ Thu 02:00<", html)
 
     def test_a_borrowed_authority_names_the_harness_it_spends(self) -> None:
         # Pi has no allowance of its own, so a Pi row that says only "Pi" hides

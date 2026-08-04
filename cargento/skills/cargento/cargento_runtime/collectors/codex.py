@@ -43,7 +43,7 @@ def _usage_window(now: float, raw: Any) -> tuple[str, dict[str, Any]] | None:
     shaped: dict[str, Any] = {"pct": max(0, min(100, round(pct)))}
     resets = win.get("resets_at")
     if isinstance(resets, (int, float)) and not isinstance(resets, bool) and resets > 0:
-        shaped["reset"] = sessions.format_reset(now, resets)
+        shaped.update(sessions.reset_fields(now, resets))
     return key, shaped
 
 

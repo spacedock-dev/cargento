@@ -230,6 +230,9 @@ class CodexUsageTest(RuntimeTestCase):
         self.assertEqual(63, entry["fiveH"]["pct"])
         self.assertEqual(100, entry["week"]["pct"])
         self.assertRegex(entry["fiveH"]["reset"], r"^\d{2}:\d{2}$")
+        # The disk reader ships the instant too, same as the fetchers, so the
+        # page can count down instead of printing a clock time.
+        self.assertAlmostEqual(now + 3600, entry["fiveH"]["resetAt"], delta=1.5)
 
     def test_usage_publishes_a_weekly_only_plan(self) -> None:
         # A prolite account writes only the weekly window (secondary is null).
@@ -249,6 +252,7 @@ class CodexUsageTest(RuntimeTestCase):
         self.assertNotIn("fiveH", entry)
         self.assertEqual(62, entry["week"]["pct"])
         self.assertRegex(entry["week"]["reset"], r"^[A-Z][a-z]{2} \d{2}:\d{2}$")
+        self.assertAlmostEqual(now + 3 * 86400, entry["week"]["resetAt"], delta=1.5)
 
     def test_usage_newest_snapshot_wins_across_files(self) -> None:
         now = time.time()
