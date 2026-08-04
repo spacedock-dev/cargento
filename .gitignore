@@ -9,3 +9,9 @@ __pycache__/
 # Visibility 2x2 board: written by its save endpoint, not source
 docs/visibility-2x2/items.bak.json
 docs/visibility-2x2/items.json.tmp
+
+# Visibility 2x2 template exports: session artifacts, not source
+/visibility-2x2-template/
+/visibility-2x2-template-alt/
+/visibility-2x2-template.zip
+/VISIBILITY_2X2_TEMPLATE_SUMMARY.md
