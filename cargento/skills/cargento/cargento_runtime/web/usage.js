@@ -1,17 +1,18 @@
 /* ── usage band ────────────────────────────────────────────────────────────
    Quota per harness, in both display modes. Everything here renders only when
-   the payload carries a `usage` array — no server sends one yet, so the whole
-   surface stays dormant until the collectors publish it (Codex from disk
-   first, then the Claude fetcher). One entry per harness:
+   the payload carries a `usage` array. Today the Codex collector publishes
+   one from its on-disk rate-limit snapshots; the Claude fetcher — a
+   configurable opt-out behind the first-run disclosure modal below — is
+   still to come. One entry per harness:
      {harness,                       // key into HARNESS, like a session's
       state,                        // "ok" | "expired"
       asOf,                         // epoch seconds of the snapshot or fetch
       fiveH: {pct, reset},          // integer percent, short reset text
       week:  {pct, reset},
       burn, today, cost}            // optional extras, preformatted strings
-   The disclosure modal is likewise gated: it opens once, the first time a
-   payload carries `usage_fetch` — the quota fetcher's capability flag, which
-   ships with the fetcher itself. */
+   The disclosure modal stays dormant until then: it opens once, the first
+   time a payload carries `usage_fetch` — the quota fetcher's capability
+   flag, which ships with the fetcher itself. */
 const USAGE_OPEN_KEY = "cargento.usageOpen";        /* calm band visibility */
 const USAGE_CFG_KEY = "cargento.usageCfg";          /* which stats are shown */
 const USAGE_ENABLED_KEY = "cargento.usageEnabled";  /* the feature switch */
