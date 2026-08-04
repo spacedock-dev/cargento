@@ -166,9 +166,9 @@ function usageBandCalm(d){
     usageBody(d) + usageCfgPop() + `</div>`;
 }
 
-/* First-run disclosure. The copy quotes the security contract
-   (docs/plans/quota-fetch-security-scope.md, promoted to SECURITY.md with the
-   fetcher) — it must not promise anything the contract does not say. */
+/* First-run disclosure. The copy quotes the security contract (SECURITY.md,
+   "Usage quota reads") — it must not promise anything the contract does not
+   say. */
 function usageModal(d){
   if(!usagePresent(d) || !d.usage_fetch || usageModalSeen) return "";
   return `<div class="u-overlay" role="dialog" aria-modal="true"` +

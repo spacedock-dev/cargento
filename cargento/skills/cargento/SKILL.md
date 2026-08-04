@@ -158,6 +158,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
+| `--no-usage` | Never fetch vendor quota over the network for this run, regardless of the setting stored in the dashboard. Quota read from local disk (Codex) still shows. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |

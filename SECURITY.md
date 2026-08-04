@@ -5,14 +5,17 @@
 Cargento ships two components that touch the network. The dashboard server
 (`cargento/skills/cargento/server.py`, whose code is the `cargento_runtime` package beside it)
 reads local coding-agent session stores (transcripts, task
-files, SQLite databases) and serves them over HTTP. `notify_hook.py` is the small forwarder a user
+files, SQLite databases) and serves them over HTTP. When the usage feature is on, the server also
+makes one kind of outbound request, the quota poll described in Usage quota reads (the quota
+fetcher); it carries no session data. `notify_hook.py` is the small forwarder a user
 wires into their own Claude Code hook settings, and it POSTs hook payloads to the dashboard.
 
 The posture rests on two invariants:
 
 1. Localhost only. The server binds `127.0.0.1` exclusively, and `notify_hook.py` refuses to POST
    anywhere but loopback, ignores proxy environment variables, and does not follow redirects.
-   Session data never leaves the machine.
+   Session data never leaves the machine. The quota poll is the single outbound exception, and it
+   carries a vendor token out and quota numbers back, nothing else.
 2. Read-only against harness stores. They are opened read-only and never written. The one mutating
    endpoint is `POST /api/notify`, which updates in-memory needs-input state only. It writes nothing
    to disk.
@@ -68,6 +71,54 @@ Only derived scalars reach `/api/data`: stage names (each validated against Spac
 frontmatter body and no filesystem path is ever published, and the page HTML-escapes every value.
 Pass `--no-spacedock` to switch the feature off. The read surface is then exactly the documented
 store paths.
+
+## Usage quota reads (the quota fetcher)
+
+One feature makes outbound network requests. When the usage feature is on, the server polls each
+supported vendor's usage endpoint so the dashboard can show quota windows: how much of the 5-hour
+and weekly limits is used and when they reset.
+
+What is sent: the vendor's own OAuth access token, read from where the harness keeps it (the macOS
+Keychain, or the harness's credential file on other platforms), carried in the request's
+authorization header. Nothing else. No transcript content, no prompts, no paths, no project names,
+no machine identifiers. What comes back is quota numbers: window utilization, reset times, and
+per-limit entries. Session data never appears in either direction.
+
+The endpoints, named exactly:
+
+1. Anthropic (Claude Code, and any harness signed in with the same Claude subscription):
+   `GET https://api.anthropic.com/api/oauth/usage` with the `anthropic-beta: oauth-2025-04-20`
+   header.
+2. Codex: no endpoint. Codex writes rate-limit snapshots into its own session files, and Cargento
+   reads them from disk like every other store.
+
+No other vendor is polled. A new vendor's endpoint must be named here before it ships. These
+endpoints are not documented for third-party use: a vendor can change, break, or block them at any
+time, and a failed poll means an empty tile, never a retry storm.
+
+Token handling is read-only, one way, and never expands:
+
+- The token is never refreshed. Refreshing from outside the harness can race the harness for its
+  own session. An expired or rejected token switches that vendor's usage display off, marked with
+  a pointer telling the user to sign in again in the harness itself.
+- The token is never written to disk, never logged, and never served. `/api/data` and every other
+  loopback endpoint must not carry it, in any form.
+- Reading the token adds no write access anywhere. Harness stores stay read-only.
+
+Consent and the off switch: the feature is on by default and disclosed before it acts. The first
+time the dashboard opens with the feature available, a modal explains the token read and the
+request above, and carries the switch that turns the feature off. The setting can be changed later
+from the dashboard's configure panel, and `--no-usage` disables the feature for a run regardless
+of the stored setting. With the feature off, Cargento's network surface is exactly the two
+loopback-bound components described above, and nothing is fetched.
+
+Polling posture: responses are cached, and at most one request per vendor is made every five
+minutes. No polling happens while no dashboard page is connected. `--diagnose` never triggers a
+fetch; its output stays a report of local paths only.
+
+A violation of any boundary in this section is a security bug: a request carrying anything beyond
+the token, a token reaching a log or a loopback response, a refresh attempt, an unlisted endpoint,
+or a fetch with the feature off.
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
