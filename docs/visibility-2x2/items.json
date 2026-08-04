@@ -1077,7 +1077,7 @@
       "signal": "Reach the user away from the desk",
       "outcome": "the walk-away actually works",
       "archetype": "attention",
-      "impact": 78,
+      "impact": 84,
       "build": 55,
       "state": "new",
       "column": "mid",
@@ -1647,16 +1647,14 @@
         "A5",
         "A7",
         "A9",
-        "E7",
-        "G1",
-        "G3"
+        "E7"
       ],
-      "framing": "The board's highest-value cluster needs a number that exists in no local harness store. Worth being precise about what actually breaks, because it is narrower than it first sounds.",
+      "framing": "The board's highest-value cluster needs quota numbers. Codex writes its own rate-limit snapshots (5-hour and weekly used_percent, resets_at, plan, credits) into session JSONL that Cargento already reads; checked on disk 2026-08-04. Claude Code stores nothing quota-shaped locally, and a survey of all nine buckets (in DRC-4053) found every other harness either fetches quota over an authenticated API or has no quota of its own. So the Codex slice ships under the existing promises, and the decision is how Cargento gets Claude's numbers, and any other vendor's that live only behind an API.",
       "breaks": [
         "A third network behaviour appears. SECURITY.md today describes exactly two components that touch the network, both bound to loopback.",
-        "It needs a credential, and that is the real escalation rather than the network call. Cargento would read the harness's own OAuth token, which is a different class of access from reading transcripts.",
-        "The --diagnose flag currently promises that it reads local paths only and transmits nothing. That line stops being true.",
-        "The cost repeats per harness. The promise gets amended once, but A4 needs the same problem solved again for every vendor, and only Codex has an obvious answer."
+        "It needs a credential, and that is the real escalation rather than the network call. Cargento would read the harness's own OAuth token: a macOS Keychain item that can prompt on first read, or a file under ~/.claude on Linux. A different class of access from reading transcripts.",
+        "The quota endpoint is undocumented. Calling it with the harness's token from outside the harness is tolerated today but unsupported, and an expired token forces a choice: show stale data, or attempt a refresh and risk racing the harness for its own session. Never refresh; stale beats a broken login.",
+        "The cost repeats per quota authority, not per harness. Goose, OpenCode and Pi borrow their provider's quota, so one Claude fetcher answers for every harness on the same subscription; Gemini, Antigravity, Cursor, Droid and Copilot's allowance each need their own authenticated integration."
       ],
       "survives": [
         "Session data never leaves the machine, unchanged. The request carries a credential and returns quota numbers. No transcript content, no prompts, no paths, no project names.",
@@ -1664,25 +1662,31 @@
       ],
       "options": [
         {
+          "id": "D",
+          "name": "Read the quota harnesses already write to disk (do first; needs no decision)",
+          "pro": "Codex publishes rate-limit snapshots into session files Cargento already parses. Both invariants intact, no credential, nothing to install, a small parsing job, and it settles the display questions (staleness, as-of timestamps) before any credential is touched.",
+          "con": "Covers exactly one harness: the survey found nobody else writing quota to disk. The snapshot is only as fresh as the last active turn, so the tile must carry an as-of timestamp."
+        },
+        {
           "id": "A",
-          "name": "The server fetches it, behind an opt-in flag",
-          "pro": "Highest fidelity, works for every user, one code path.",
-          "con": "Puts credential access and outbound networking inside the dashboard server, the component whose purity is the entire trust story."
+          "name": "The server fetches it, behind a configurable opt-out flag",
+          "pro": "RECOMMENDED (owner's lean, 2026-08-04). Highest fidelity, works for every user out of the box, one code path. A user who installs a visibility dashboard has already decided they want to see what their harnesses are doing, and quota is part of that. The trust story survives: what users rely on is that session data stays on the machine and Cargento sends nothing it gathers to any other service, and a quota request that carries a credential out and brings numbers back moves none of it.",
+          "con": "The server gains credential access and its first outbound call, so SECURITY.md's scope must be rewritten before the code lands, and default-on means the amendment applies to everyone rather than only to users who asked."
         },
         {
           "id": "B",
           "name": "Read a cache another tool already maintains",
-          "pro": "The no-network promise stays literally true, and Barista already writes exactly the fields we need.",
-          "con": "A dependency we do not control, an undocumented format, and it only works for people who run Barista. Cargento has precedent for parsing undocumented stores defensively, as it does with Cursor, but none for requiring a third-party tool to be installed."
+          "pro": "The no-network promise stays literally true, and Barista already writes the 5-hour and weekly figures.",
+          "con": "Not a third architecture: it is C with a sidecar we neither version nor control, and Barista's cache lacks A3's per-model sub-limits. Keep it only as an opportunistic read, never a required dependency."
         },
         {
           "id": "C",
           "name": "An opt-in sidecar writes a local cache the server reads",
-          "pro": "RECOMMENDED. It matches an architecture Cargento already has. notify_hook.py is exactly this shape: a small, separately invoked, user-installed component with its own narrow network contract. The dashboard server keeps both invariants and reads one more local file, which is what it already does for nine harnesses. The amendment lands on a component the user installs deliberately rather than on the server itself.",
-          "con": "Two things to install instead of one, and the usage tile stays empty until the user opts in."
+          "pro": "It matches an architecture Cargento already has. notify_hook.py is exactly this shape: a small, separately invoked, user-installed component with its own narrow network contract. The dashboard server keeps both invariants and reads one more local file, which is what it already does for nine harnesses.",
+          "con": "Two things to install and an empty tile until opt-in; every credential hazard from A moves into the sidecar rather than disappearing; and nothing naturally triggers polling quota, so it needs an invocation design and a staleness contract."
         }
       ],
-      "ask": "The question is not whether we may break the promise, it is which promise we want to be making. Option C keeps the sentence users actually care about, that session data never leaves the machine, completely intact."
+      "ask": "Two calls, not one. First, D was never gated: ship the Codex tile. Second, pick the fetch's home for Claude's numbers: in the server behind a configurable opt-out (A, the owner's lean) or in an opt-in sidecar (C). Whichever ships: the request carries the credential and nothing else, the token is never refreshed, and the SECURITY.md scope lands in the same PR as the code."
     },
     {
       "id": "DEC-2",
