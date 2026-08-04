@@ -22,6 +22,7 @@ from cargento_runtime import io as runtime_io
 
 from .page_harness import APP_JS, PAGE_TEXT, PageJsHarness
 from .support import (
+    REGISTRY,
     frontend_page,
     make_server,
     serve_until_closed,
@@ -55,9 +56,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
 
-        self.assertEqual(122_599, len(assembled))
+        self.assertEqual(122_983, len(assembled))
         self.assertEqual(
-            "bdd41af81bce8cf5736eb255805dcbe6dac2f7a115ebe3d858bebe60d497b26f",
+            "d9af702e23d2f35ca7453d688080823c970ed0cc507ecbd2b8ac95ce1f276691",
             hashlib.sha256(assembled).hexdigest(),
         )
         self.assertEqual(37_732, len(styles))
@@ -67,8 +68,8 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
         expected_parts = {
             "spark.js": (
-                19_095,
-                "c0d3dabb0b38d2f5f2b81425dd6e078d681862d648a3d22ca81c83246e388df0",
+                19_479,
+                "8c958bc8a0899d28cf9a7aac39f86448bd5f6bede1ba0e44c23d3ecf94a8a105",
             ),
             "regular.js": (
                 11_441,
@@ -435,6 +436,37 @@ class CargentoServerTest(PageJsHarness):
         # A generic fallback monogram hides a missing harness presentation entry.
         rendered = self._run_page_js("console.log(JSON.stringify(HARNESS.pi));")
         self.assertEqual({"code": "PI", "name": "Pi"}, rendered)
+
+    def test_the_harness_table_matches_the_registry_in_key_order_and_label(self) -> None:
+        # The page's HARNESS table and the Python registry are two hand-written
+        # lists of the same thing, and nothing else compares them: renaming a
+        # harness on one side only used to pass the entire suite, which is how
+        # Antigravity sessions could keep rendering under Gemini's name and
+        # icon after Gemini CLI was retired. Order matters too — registry order
+        # is the order the page draws its chips.
+        rendered = self._run_page_js(
+            "console.log(JSON.stringify(Object.keys(HARNESS).map(k => [k, HARNESS[k].name])));"
+        )
+        self.assertEqual(
+            [[spec.key, spec.label] for spec in REGISTRY],
+            rendered,
+        )
+
+    def test_every_harness_has_a_two_letter_monogram(self) -> None:
+        # The monogram is the icon fallback, so a harness with no ICON_PATH
+        # entry (Pi, Antigravity, Droid) shows it and a blank one shows nothing.
+        rendered = self._run_page_js(
+            "console.log(JSON.stringify(Object.keys(HARNESS).map(k => [k, HARNESS[k].code])));"
+        )
+        self.assertEqual([spec.key for spec in REGISTRY], [key for key, _ in rendered])
+        for key, code in rendered:
+            with self.subTest(harness=key):
+                self.assertRegex(code, r"^[A-Z]{2}$")
+        self.assertEqual(
+            len({code for _, code in rendered}),
+            len(rendered),
+            "two harnesses share a monogram, so their badges are ambiguous",
+        )
 
     def test_page_ships_trailing_rate_sparklines(self) -> None:
         self.assertIn("SPARK_WINDOW_SEC = 300", APP_JS)

@@ -26,9 +26,10 @@ if TYPE_CHECKING:
 DESCRIPTION = """Cargento: live coding-agent session activity across harnesses.
 
 Stdlib-only local server. Supported harnesses (each shown only if its local
-data is discovered): Claude Code, Codex, Pi, Gemini CLI / Antigravity CLI,
-GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid. Serves a
-summary UI at http://127.0.0.1:<port>/ and JSON at /api/data.
+data is discovered): Claude Code, Codex, Pi, Gemini CLI (retired, legacy
+stores only), Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI,
+Goose, Factory Droid. Serves a summary UI at http://127.0.0.1:<port>/ and
+JSON at /api/data.
 """
 
 LAUNCHER_PATH = Path(__file__).resolve().parents[1] / "server.py"

@@ -634,7 +634,7 @@ class LauncherContractTest(unittest.TestCase):
 
 
 class HarnessRegistryTest(RuntimeTestCase):
-    """The registry is nine collector modules and nothing else."""
+    """The registry is ten collector modules and nothing else."""
 
     def test_the_registry_order_is_pinned(self) -> None:
         # Registry order is the collection order AND the order /api/data lists
@@ -647,6 +647,7 @@ class HarnessRegistryTest(RuntimeTestCase):
                 "codex",
                 "pi",
                 "gemini",
+                "antigravity",
                 "copilot",
                 "opencode",
                 "cursor",
@@ -796,6 +797,17 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.sessions",
             "cargento_runtime.state",
             "cargento_runtime.transcripts",
+            "cargento_runtime.turns",
+        },
+        # Antigravity reads protobuf metadata and CLI logs, never transcripts;
+        # the legacy Gemini pass reads JSONL transcripts and never the store
+        # helpers Antigravity needs. Splitting them apart split their imports too.
+        "cargento_runtime.collectors.antigravity": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.sessions",
+            "cargento_runtime.state",
             "cargento_runtime.turns",
         },
         "cargento_runtime.collectors.gemini": {

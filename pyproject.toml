@@ -101,11 +101,15 @@ max-args = 8
 # The Antigravity log scanner, protobuf reader and step activity keep the
 # launcher's reviewed shape: several log formats, a cache fallback, and a
 # wire-format walk with one arm per wire type.
-"cargento/skills/cargento/cargento_runtime/collectors/gemini.py" = [
+"cargento/skills/cargento/cargento_runtime/collectors/antigravity.py" = [
   "C901",
   "PLR0912",
   "PLR0915",
 ]
+# The legacy Gemini pass keeps the branch shape it had before Antigravity was
+# split out of this module, one arm per way a retired store can read. It needs
+# only the complexity exemption now, not the branch and statement ones.
+"cargento/skills/cargento/cargento_runtime/collectors/gemini.py" = ["C901"]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]

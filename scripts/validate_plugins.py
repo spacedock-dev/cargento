@@ -117,6 +117,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/collectors/codex.py",
     "skills/cargento/cargento_runtime/collectors/pi.py",
     "skills/cargento/cargento_runtime/collectors/gemini.py",
+    "skills/cargento/cargento_runtime/collectors/antigravity.py",
     "skills/cargento/cargento_runtime/collectors/copilot.py",
     "skills/cargento/cargento_runtime/collectors/opencode.py",
     "skills/cargento/cargento_runtime/collectors/cursor.py",

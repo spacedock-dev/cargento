@@ -255,10 +255,16 @@ const ICON_PATH = {
 };
 const iconURI = d => "data:image/svg+xml," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#000"><path d="' + d + '"/></svg>');
+/* Keys and names must match the Python registry exactly — a contract test
+   compares the two, because a label changed on one side only is invisible.
+   Antigravity has no ICON_PATH entry on purpose: it falls back to its "AG"
+   monogram, the same way Pi and Droid do, rather than borrowing Gemini's star
+   for a different product. */
 const HARNESS = {
   claude:{code:"CL",name:"Claude"}, codex:{code:"CX",name:"Codex"},
   pi:{code:"PI",name:"Pi"},
-  gemini:{code:"GE",name:"Gemini"}, copilot:{code:"CP",name:"Copilot"},
+  gemini:{code:"GE",name:"Gemini"}, antigravity:{code:"AG",name:"Antigravity"},
+  copilot:{code:"CP",name:"Copilot"},
   opencode:{code:"OC",name:"OpenCode"}, cursor:{code:"CU",name:"Cursor"},
   goose:{code:"GO",name:"Goose"}, droid:{code:"DR",name:"Droid"}
 };
@@ -267,4 +273,4 @@ for(const k in HARNESS){ if(ICON_PATH[k]) HARNESS[k].icon = iconURI(ICON_PATH[k]
 /* One badge encoding for both states, and the difference is not carried by
    colour alone: "has data" is a tinted tile behind a solid edge, "no data" is a
    dashed edge over nothing. A filled-vs-outlined pair at this size read as the
-   same weight, which is how a strip of nine badges became unreadable. */
+   same weight, which is how a strip of ten badges became unreadable. */

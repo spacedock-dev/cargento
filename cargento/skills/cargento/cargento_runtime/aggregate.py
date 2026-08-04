@@ -62,7 +62,7 @@ def default_harnesses(
     Claude is the one collector that notifies during collection, because a
     transcript-detected transition into needs-input has no HTTP request behind
     it. Binding its notifier here keeps ``Collector`` a single five-argument
-    contract for all nine harnesses instead of widening every collector with a
+    contract for all ten harnesses instead of widening every collector with a
     dependency only one of them has. Pass the same bound callable given to
     ``Application.popup_notifier`` so both paths notify identically.
 
@@ -71,6 +71,7 @@ def default_harnesses(
     reads the fetch cache and the ``usage_fetch`` flag can never rise.
     """
     from .collectors import (  # noqa: PLC0415 — deferred to keep import order acyclic
+        antigravity,
         claude,
         codex,
         copilot,
@@ -104,7 +105,11 @@ def default_harnesses(
         ),
         HarnessSpec("codex", "Codex", codex.discover, codex.collect, usage=codex.usage),
         HarnessSpec("pi", "Pi", pi.discover, pi.collect),
+        # Gemini CLI was retired on 2026-06-18 and Antigravity replaced it.
+        # They shared this row while both were Google's current surface; the
+        # legacy row stays so a machine that ran Gemini CLI keeps its history.
         HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect),
+        HarnessSpec("antigravity", "Antigravity", antigravity.discover, antigravity.collect),
         HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect),
         HarnessSpec("opencode", "OpenCode", opencode.discover, opencode.collect),
         HarnessSpec("cursor", "Cursor", cursor.discover, cursor.collect),

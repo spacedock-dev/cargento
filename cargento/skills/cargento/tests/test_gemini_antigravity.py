@@ -15,6 +15,7 @@ from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
+from cargento_runtime.collectors import antigravity as agy_collector
 from cargento_runtime.collectors import gemini as gemini_collector
 
 from .fixtures import (
@@ -36,6 +37,49 @@ from .support import (
 
 
 class GeminiAntigravityCollectorTest(RuntimeTestCase):
+    def test_the_legacy_gemini_row_still_reads_its_own_store_alone(self) -> None:
+        # Gemini CLI is retired, so this store is only ever legacy — but the row
+        # stays so a machine that ran it keeps its history. Splitting Antigravity
+        # out must not have taken the legacy arm with it, and the two predicates
+        # must not both claim one store: that overlap is what put a retired
+        # product's name on live Antigravity sessions in the first place.
+        now = time.time()
+        sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = Path(tmp) / "gemini-tmp"
+            chats = legacy / "proj" / "chats"
+            chats.mkdir(parents=True)
+            (chats / f"session-{sid}.jsonl").write_text(
+                json.dumps({"sessionId": sid, "kind": "main", "directories": ["/w/proj"]})
+                + "\n"
+                + json.dumps(
+                    {
+                        "type": "user",
+                        "timestamp": "2026-08-04T00:00:00.000Z",
+                        "content": "audit the retired store",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            os.utime(chats / f"session-{sid}.jsonl", (now - 30, now - 30))
+            empty = Path(tmp) / "no-antigravity"
+            empty.mkdir()
+            with store_patch(GEMINI_TMP=str(legacy), ANTIGRAVITY_CLI_DIR=str(empty)):
+                runtime_pair = runtime()
+                gemini_spec = next(s for s in REGISTRY if s.key == "gemini")
+                agy_spec = next(s for s in REGISTRY if s.key == "antigravity")
+                discovered = gemini_spec.discover(*runtime_pair)
+                agy_claimed = agy_spec.discover(*runtime_pair)
+                config, state = runtime()
+                sessions = gemini_collector.collect(config, state, now, 24, False)
+
+        self.assertTrue(discovered)
+        self.assertFalse(agy_claimed)
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("gemini", sessions[0]["harness"])
+        self.assertEqual(sid[:8], sessions[0]["session"])
+
     def test_record_fingerprint_is_stable_and_bounded(self) -> None:
         self.assertEqual(
             records.record_fingerprint({"a": 1, "b": 2}),
@@ -87,7 +131,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             path.write_bytes(prefix + b"-continued")
             with config_patch(antigravity_log_head_bytes=len(prefix)):
                 config, _state = runtime()
-                lines = gemini_collector._log_head_lines(config, str(path))
+                lines = agy_collector._log_head_lines(config, str(path))
 
         self.assertEqual([*complete, "partial"], lines)
 
@@ -99,7 +143,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "cli.log"
             path.write_bytes(b"first-header\nmiddle\nlast-tail\n")
-            lines = gemini_collector._log_lines(config, str(path))
+            lines = agy_collector._log_lines(config, str(path))
 
         # 13 head bytes cover "first-header\n"; 10 tail bytes cover "last-tail\n".
         # "middle" falls in neither window, so it is absent rather than counted twice.
@@ -203,20 +247,26 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             )
 
             with (
-                store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
+                store_patch(ANTIGRAVITY_CLI_DIR=str(root), GEMINI_TMP=str(legacy)),
             ):
                 # Reach the predicate through a live registry spec, so this
-                # still pins that the "gemini" row is wired to the right
+                # still pins that the "antigravity" row is wired to the right
                 # predicate and not merely that the key is present.
                 runtime_pair = runtime()
-                spec = next(s for s in REGISTRY if s.key == "gemini")
+                spec = next(s for s in REGISTRY if s.key == "antigravity")
                 discovered = spec.discover(*runtime_pair)
                 config, state = runtime()
-                sessions = gemini_collector.collect(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
+                # The legacy Gemini row must not claim this store: the two were
+                # one bucket until Gemini CLI was retired, and a predicate left
+                # matching both is exactly how the old label came back.
+                gemini_spec = next(s for s in REGISTRY if s.key == "gemini")
+                gemini_claimed = gemini_spec.discover(*runtime_pair)
 
         self.assertTrue(discovered)
+        self.assertFalse(gemini_claimed)
         self.assertEqual(1, len(sessions))
-        self.assertEqual("gemini", sessions[0]["harness"])
+        self.assertEqual("antigravity", sessions[0]["harness"])
         self.assertEqual(session_id[:8], sessions[0]["session"])
         self.assertEqual("recce/bridge", sessions[0]["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("show my assigned issues", sessions[0]["title"])
@@ -253,7 +303,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(2, len(sessions))
         self.assertEqual({"acme/proj"}, {session["project"] for session in sessions})
@@ -287,7 +337,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("fallback/solo", sessions[0]["project"])
@@ -327,7 +377,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual([active_sid], [session["sid"] for session in sessions])
         self.assertEqual("acme/proj", sessions[0]["project"])
@@ -366,7 +416,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, _state = runtime()
-                metadata = gemini_collector._session_metadata(config, now, 24, False)
+                metadata = agy_collector._session_metadata(config, now, 24, False)
 
         self.assertEqual("/work/acme/proj", metadata[active_sid]["cwd"])
         self.assertEqual("/work/acme/proj", metadata[cached_sid]["cwd"])
@@ -463,7 +513,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector.collect(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(150, sessions[0]["rate_per_min"])
@@ -501,7 +551,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(parent_sid, sessions[0]["sid"])
@@ -541,7 +591,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual([parent_sid], [session["sid"] for session in sessions])
         self.assertEqual(60, sessions[0]["rate_per_min"])
@@ -580,7 +630,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual([root_sid], [session["sid"] for session in sessions])
         self.assertEqual(["Nested Auditor"], sessions[0]["subagents"])
@@ -600,7 +650,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             os.utime(wal, (future, future))
 
             config, _state = runtime()
-            mtime = gemini_collector._store_mtime(config, str(database), now)
+            mtime = agy_collector._store_mtime(config, str(database), now)
 
         self.assertEqual(now, mtime)
 
@@ -616,7 +666,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             os.utime(wal, (now, now))
 
             config, _state = runtime()
-            mtime = gemini_collector._store_mtime(config, str(database), now)
+            mtime = agy_collector._store_mtime(config, str(database), now)
 
         self.assertEqual(database_mtime, mtime)
 
@@ -647,7 +697,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(["Fresh Auditor"], sessions[0]["subagents"])
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
@@ -679,7 +729,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 os.utime(conversations / f"{sid}.db", (stale, stale))
 
             inspected: list[str] = []
-            real_session_info = gemini_collector._session_info
+            real_session_info = agy_collector._session_info
 
             def inspect(cfg: Any, st: Any, path: str, sid: str) -> dict[str, Any]:
                 inspected.append(sid)
@@ -688,10 +738,10 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
             with (
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
-                mock.patch.object(gemini_collector, "_session_info", side_effect=inspect),
+                mock.patch.object(agy_collector, "_session_info", side_effect=inspect),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual({parent_sid, sub_sid}, set(inspected))
         self.assertEqual([parent_sid], [session["sid"] for session in sessions])
@@ -729,7 +779,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
 
@@ -755,7 +805,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 store_patch(ANTIGRAVITY_CLI_DIR=str(root)),
             ):
                 config, state = runtime()
-                sessions = gemini_collector._collect_antigravity(config, state, now, 24, False)
+                sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(["subagent 22222222"], sessions[0]["subagents"])
 
@@ -775,7 +825,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             path = Path(tmp) / f"{sub_sid}.db"
             write_antigravity_metadata(path, blob)
             config, state = runtime()
-            info = gemini_collector._session_info(config, state, str(path), sub_sid)
+            info = agy_collector._session_info(config, state, str(path), sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
         self.assertEqual("reviewer", info["subagent_label"])
@@ -792,7 +842,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             path = Path(tmp) / f"{sub_sid}.db"
             write_antigravity_metadata(path, blob)
             config, state = runtime()
-            info = gemini_collector._session_info(config, state, str(path), sub_sid)
+            info = agy_collector._session_info(config, state, str(path), sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
         self.assertEqual("reviewer", info["subagent_label"])
@@ -815,7 +865,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             with state_of().cache_lock:
                 state_of().store_errors.clear()
             config, state = runtime()
-            info = gemini_collector._session_info(config, state, "/tmp/session.db", sub_sid)
+            info = agy_collector._session_info(config, state, "/tmp/session.db", sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
         self.assertEqual("Research Auditor", info["subagent_label"])
@@ -837,7 +887,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             database = Path(tmp) / "session.db"
             Path(f"{database}-wal").write_bytes(b"\0" * 33)
             config, state = runtime()
-            info = gemini_collector._session_info(config, state, str(database), "session")
+            info = agy_collector._session_info(config, state, str(database), "session")
 
         self.assertEqual({"parent_id": None, "subagent_label": None}, info)
         self.assertEqual(1, connect.call_count)
@@ -867,7 +917,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                     sidecar.unlink()
 
             config, state = runtime()
-            info = gemini_collector._session_info(config, state, str(database), sub_sid)
+            info = agy_collector._session_info(config, state, str(database), sub_sid)
 
         self.assertEqual(parent_sid, info["parent_id"])
         self.assertEqual("Research Auditor", info["subagent_label"])
@@ -883,7 +933,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             side_effect=(plain, immutable),
         ) as connect:
             config, state = runtime()
-            info = gemini_collector._session_info(config, state, "/tmp/session.db", "session")
+            info = agy_collector._session_info(config, state, "/tmp/session.db", "session")
 
         self.assertEqual({"parent_id": None, "subagent_label": None}, info)
         self.assertEqual(2, connect.call_count)
@@ -892,7 +942,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
     def test_protobuf_fields_rejects_non_blob_payloads_before_conversion(self) -> None:
         with self.assertRaisesRegex(TypeError, "bytes-like"):
-            next(gemini_collector.protobuf_fields(8))
+            next(agy_collector.protobuf_fields(8))
 
     def test_antigravity_activity_sees_uncheckpointed_wal_frames(self) -> None:
         now = time.time()
@@ -928,7 +978,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             writer.commit()  # committed to the WAL; not yet checkpointed
             try:
                 config, state = runtime()
-                activity = gemini_collector._step_activity(config, state, str(db), now)
+                activity = agy_collector._step_activity(config, state, str(db), now)
             finally:
                 writer.close()
 
@@ -953,7 +1003,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             side_effect=(plain, immutable),
         ):
             config, state = runtime()
-            activity = gemini_collector._step_activity(config, state, "/tmp/clean-wal.db", now)
+            activity = agy_collector._step_activity(config, state, "/tmp/clean-wal.db", now)
 
         self.assertEqual(50, activity["rate_per_min"])
         self.assertNotIn("/tmp/clean-wal.db", state_of().store_errors)

@@ -16,8 +16,8 @@ from unittest import mock
 
 from cargento_runtime import diagnostics
 from cargento_runtime import io as runtime_io
+from cargento_runtime.collectors import antigravity as agy_collector
 from cargento_runtime.collectors import cursor as cursor_collector
-from cargento_runtime.collectors import gemini as gemini_collector
 from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 
@@ -555,7 +555,7 @@ class SqliteDiagnosticTest(unittest.TestCase):
             with state_of().cache_lock:
                 state_of().store_errors.clear()
             config, state = runtime()
-            gemini_collector._step_activity(config, state, str(antigravity), self.NOW)
+            agy_collector._step_activity(config, state, str(antigravity), self.NOW)
             self.assertIn(str(antigravity), state_of().store_errors)
 
             config, state = runtime()
@@ -586,7 +586,7 @@ class SqliteOptionalTest(unittest.TestCase):
                 ("goose", lambda: goose_collector.collect(config, state, now, 24, False)),
                 (
                     "antigravity",
-                    lambda: gemini_collector._collect_antigravity(config, state, now, 24, False),
+                    lambda: agy_collector.collect(config, state, now, 24, False),
                 ),
             )
             for name, run in collectors:
@@ -650,7 +650,7 @@ from cargento_runtime import cli
 from cargento_runtime import diagnostics as diagnostics_module
 from cargento_runtime import io as runtime_io
 from cargento_runtime.collectors import cursor as cursor_collector
-from cargento_runtime.collectors import gemini as gemini_collector
+from cargento_runtime.collectors import antigravity as agy_collector
 from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
 builtins.__import__ = real_import
@@ -683,7 +683,7 @@ store = os.path.join(ag, "conversations", "conv-1.db")
 open(store, "wb").write(b"not a database")
 os.utime(store, (now, now))
 cfg2, st2 = runtime_for(**{{"antigravity.root": ag}})
-found_ag = gemini_collector._collect_antigravity(cfg2, st2, now, 24, True)
+found_ag = agy_collector.collect(cfg2, st2, now, 24, True)
 assert len(found_ag) == 1, found_ag
 assert found_ag[0]["rate_per_min"] == 0, "rate should degrade to zero"
 assert found_ag[0]["turn"] is None, "no ETA without the database"

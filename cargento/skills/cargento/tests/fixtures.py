@@ -264,7 +264,7 @@ HARNESSES: tuple[tuple[str, Any], ...] = (
     ("codex", build_codex),
     ("pi", build_pi),
     ("gemini", build_gemini),
-    ("gemini", build_antigravity),
+    ("antigravity", build_antigravity),
     ("copilot", build_copilot),
     ("opencode", build_opencode),
     ("cursor", build_cursor),
