@@ -8,6 +8,10 @@ The dashboard began as a single `server.py` of 7,357 lines. It is now a launcher
 an importable `cargento_runtime` package. This document records the arrangement and the reasoning, so
 a later change either follows it or overturns it deliberately.
 
+An unshipped proposal to add event ingress, a materialized snapshot and SSE delivery would need new
+modules and an amendment to the reviewed import allowlist below; it is in
+[`plans/event-driven-session-observation.md`](plans/event-driven-session-observation.md).
+
 ## The problem these decisions answer
 
 One file that holds configuration, nine harness collectors, notification policy, HTTP handling,
