@@ -14,11 +14,6 @@ if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
 
 
-class CollectMemoEntry(TypedDict):
-    ts: float
-    body: bytes
-
-
 class UsageFetchEntry(TypedDict):
     ts: float
     entries: list[dict[str, Any]]
@@ -37,6 +32,10 @@ class RuntimeState:
     hook_lock: LockType = field(default_factory=threading.Lock)
     cache_lock: LockType = field(default_factory=threading.Lock)
     scanner_lock: LockType = field(default_factory=threading.Lock)
+    # Named for the memo it used to guard, and still doing that memo's real job:
+    # held across collection so concurrent readers share one filesystem and
+    # SQLite scan. The published bytes moved to `snapshot`, which has its own
+    # lock and never holds it across a collection or a socket write.
     collect_memo_lock: LockType = field(default_factory=threading.Lock)
     hook_notifications: dict[str, dict[str, Any]] = field(default_factory=dict)
     last_popup: dict[str, float] = field(default_factory=dict)
@@ -67,7 +66,6 @@ class RuntimeState:
     )
     spacedock_entity_cache: dict[tuple[str, int, int], str] = field(default_factory=dict)
     cursor_metadata_cache: dict[str, tuple[float, str | None, str]] = field(default_factory=dict)
-    collect_memo: dict[tuple[float, bool], CollectMemoEntry] = field(default_factory=dict)
     # The quota fetch. One cache entry per vendor key, stamped with the fetch
     # time so the five-minute floor is a comparison, and one in-flight marker
     # per vendor so a slow request cannot stack a second behind it. Guarded by

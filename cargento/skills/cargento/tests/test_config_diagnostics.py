@@ -396,7 +396,6 @@ class RuntimeConfigTest(unittest.TestCase):
             "spacedock_workflow_cache",
             "spacedock_entity_cache",
             "cursor_metadata_cache",
-            "collect_memo",
         )
         lock_fields = ("hook_lock", "cache_lock", "scanner_lock", "collect_memo_lock")
         for name in (*dict_fields, *lock_fields):
