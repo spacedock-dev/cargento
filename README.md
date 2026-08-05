@@ -10,7 +10,9 @@ Agnostic agent cartography and visualization.
 Cargento maps live coding-agent activity on your machine into a single local dashboard. It shows
 sessions, subagents, task progress, turn ETAs, and token output rate across ten harnesses: Claude
 Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose,
-and Factory Droid. Gemini CLI was retired in June 2026, so that row reads legacy stores only.
+and Factory Droid. Gemini CLI stopped serving consumer accounts in June 2026 and Antigravity CLI
+succeeds it there, but enterprise and API-key use continues, so that row reads either historical or
+live sessions depending on the account.
 
 This repo contains one plugin, `cargento`, the agent cartography dashboard skill.
 

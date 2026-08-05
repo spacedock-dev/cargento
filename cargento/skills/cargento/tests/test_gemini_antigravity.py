@@ -38,11 +38,12 @@ from .support import (
 
 class GeminiAntigravityCollectorTest(RuntimeTestCase):
     def test_the_legacy_gemini_row_still_reads_its_own_store_alone(self) -> None:
-        # Gemini CLI is retired, so this store is only ever legacy — but the row
-        # stays so a machine that ran it keeps its history. Splitting Antigravity
-        # out must not have taken the legacy arm with it, and the two predicates
-        # must not both claim one store: that overlap is what put a retired
-        # product's name on live Antigravity sessions in the first place.
+        # Gemini CLI lost its consumer tiers, not its enterprise and API-key
+        # ones, so this store is historical on some machines and live on others.
+        # Either way the row stays. Splitting Antigravity out must not have taken
+        # the Gemini arm with it, and the two predicates must not both claim one
+        # store: that overlap is what put Gemini's name on live Antigravity
+        # sessions in the first place.
         now = time.time()
         sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         with tempfile.TemporaryDirectory() as tmp:

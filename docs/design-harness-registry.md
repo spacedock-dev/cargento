@@ -31,10 +31,17 @@ Under H-1 that was defensible while both were Google's current coding-agent surf
 to Google, saw one vendor, and the two formats were an implementation detail of that vendor's
 migration. The clause that carried it was "they share a display label".
 
-Gemini CLI was replaced by Antigravity CLI on 2026-06-18. The shared label stopped being true at that
-moment, and the failure was not subtle: every live Antigravity session rendered under the name and
-logo of a product that no longer exists. The legacy half was the harmless half, because nothing
-writes those stores anymore, so they only appear under `?all=1`.
+Gemini CLI stopped serving consumer accounts on 2026-06-18, and Antigravity CLI succeeds it for those
+users. The shared label stopped being true at that moment, and the failure was not subtle: every live
+Antigravity session rendered under the name and logo of the product it had replaced. The Gemini half
+was the quieter half, because a consumer machine's stores stop growing and so surface only under
+`?all=1`.
+
+That is not the same as the harness being gone, and the distinction matters here rather than only in
+`COMPATIBILITY.md`, which owns it: enterprise Code Assist and API-key authentication were explicitly
+unaffected, so Gemini CLI still writes `~/.gemini/tmp` for those users. The split below is therefore
+better justified than a pure-history reading suggests. One row would mislabel not just old
+transcripts but live enterprise sessions.
 
 They are now two rows, `gemini` and `antigravity`, with two collector modules. Three things made the
 split cheap, and they are worth noticing because they are the shape of a good seam:
@@ -47,8 +54,9 @@ split cheap, and they are worth noticing because they are the shape of a good se
   made the shipped description true rather than requiring the byte-identical five-way edit that
   changing it would have meant.
 
-The legacy row stays rather than being deleted. A machine that ran Gemini CLI keeps its history, and
-deleting a collector is the one change in this area that cannot be undone by a user.
+The Gemini row stays rather than being deleted. A machine that ran Gemini CLI keeps its history, an
+enterprise or API-key machine is still writing to it, and deleting a collector is the one change in
+this area that cannot be undone by a user.
 
 ### Why not relabel the single row instead
 
