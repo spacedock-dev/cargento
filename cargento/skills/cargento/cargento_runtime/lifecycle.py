@@ -736,8 +736,13 @@ def serve(
         producer.join(timeout=2)
         # Converge every exit path on the same cleanup: --stop, a signal, and an
         # exception all have to release the streams, not just the endpoint.
-        with contextlib.suppress(Exception):
-            server.application.state.streams.close_all()
+        # getattr rather than a bare attribute: a test double may stand in for
+        # the server without carrying an application, and cleanup must not be
+        # the thing that raises on the way out.
+        application = getattr(server, "application", None)
+        if application is not None:
+            with contextlib.suppress(Exception):
+                application.state.streams.close_all()
         remove_state(config, port)
         with contextlib.suppress(OSError):
             server.server_close()

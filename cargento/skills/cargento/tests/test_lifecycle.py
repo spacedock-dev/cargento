@@ -1408,6 +1408,22 @@ class ProducerTest(support.RuntimeTestCase):
     """The producer keeps the snapshot warm, but only for a connected stream."""
 
     @staticmethod
+    def _wait_for(predicate: Any, *, timeout: float = 10.0) -> bool:
+        """Poll until true, or give up.
+
+        Never a fixed sleep. A loaded CI runner can starve a 20 ms loop for a
+        quarter second, which made "at least two iterations" fail on macOS while
+        passing locally. Waiting on the condition tests the behaviour; sleeping
+        tests the runner.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.01)
+        return False
+
+    @staticmethod
     def _server() -> Any:
         return support.make_server()
 
@@ -1434,6 +1450,8 @@ class ProducerTest(support.RuntimeTestCase):
                 daemon=True,
             )
             thread.start()
+            # A fixed window is right for an absence: there is no condition to
+            # wait for, and 10 intervals is ample opportunity to misbehave.
             time.sleep(0.2)
             stop.set()
             thread.join(timeout=2)
@@ -1462,11 +1480,11 @@ class ProducerTest(support.RuntimeTestCase):
                 daemon=True,
             )
             thread.start()
-            time.sleep(0.2)
+            fed = self._wait_for(lambda: len(calls) > 0)
             stop.set()
             thread.join(timeout=2)
         httpd.server_close()
-        self.assertGreater(len(calls), 0, "a connected stream must be fed")
+        self.assertTrue(fed, "a connected stream must be fed")
 
     def test_the_stop_event_ends_the_producer_well_inside_one_interval(self) -> None:
         httpd = self._server()
@@ -1509,8 +1527,8 @@ class ProducerTest(support.RuntimeTestCase):
                 daemon=True,
             )
             thread.start()
-            time.sleep(0.25)
+            survived = self._wait_for(lambda: len(calls) > 1)
             stop.set()
             thread.join(timeout=2)
         httpd.server_close()
-        self.assertGreater(len(calls), 1, "the loop must survive a failed collection")
+        self.assertTrue(survived, "the loop must survive a failed collection")
