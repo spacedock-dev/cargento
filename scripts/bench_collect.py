@@ -22,6 +22,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+# The bar the event-driven plan sets for building per-harness dirty invalidation.
+# Owned by docs/plans/event-driven-session-observation.md; change it there first.
+SELECTIVE_REUSE_BAR = 0.25
+
 # The dashboard runtime is not an installed package. server.py imports it with
 # the skill directory as sys.path[0], and this script has to arrange the same.
 SKILL_DIR = Path(__file__).resolve().parents[1] / "cargento" / "skills" / "cargento"
@@ -98,6 +102,27 @@ def measure(app: Any, *, repeat: int) -> dict[str, Any]:
     }
 
 
+def selective_reuse(result: dict[str, Any]) -> dict[str, Any]:
+    """What per-harness dirty invalidation could save on this machine.
+
+    The dirty harness is the one whose cost cannot be skipped, so the saving
+    available to reuse is the total minus the largest single harness. That makes
+    the whole question one number: reuse clears a 25% bar whenever the largest
+    harness is at most 75% of collection time.
+
+    Absolute milliseconds are not comparable across machines, and one machine's
+    absolute figures are what made this question look settled when it was not.
+    The share is comparable, which is why the report leads with it.
+    """
+    per = {k: float(v) for k, v in result["per_harness_ms"].items()}
+    total = float(result["total_ms"])
+    if not per or total <= 0:
+        return {"largest": None, "share": None, "saving": None}
+    largest = max(per, key=lambda k: per[k])
+    share = per[largest] / total
+    return {"largest": largest, "share": share, "saving": 1.0 - share}
+
+
 def format_report(result: dict[str, Any]) -> str:
     lines = [
         f"repeat: {result['repeat']}",
@@ -106,6 +131,22 @@ def format_report(result: dict[str, Any]) -> str:
     ]
     for name, value in sorted(result["per_harness_ms"].items(), key=lambda kv: -float(kv[1])):
         lines.append(f"  {name}: {value} ms")
+    reuse = selective_reuse(result)
+    if reuse["share"] is not None:
+        verdict = "clears" if reuse["saving"] >= SELECTIVE_REUSE_BAR else "below"
+        lines += [
+            "",
+            f"largest harness: {reuse['largest']} at {reuse['share']:.1%} of collection time",
+            (
+                f"selective-reuse saving: {reuse['saving']:.1%} "
+                f"({verdict} the {SELECTIVE_REUSE_BAR:.0%} bar)"
+            ),
+            "",
+            "One machine cannot settle this: the figure is a property of how your history is",
+            "distributed across harnesses, not of the product. A store dominated by one harness",
+            "reports a low saving; a balanced multi-harness store reports a high one. If you run",
+            "several harnesses, the share above is worth reporting on DRC-4080.",
+        ]
     return "\n".join(lines)
 
 

@@ -1133,22 +1133,48 @@ against the published contract.
 
 The gates are independent. Verdicts, one per gate:
 
-- **Selective reuse, MEASURED AND FAILED.** If per-harness reuse saves less than 25% of post-fix
-  collection time, keep the coordinator but run one full aggregate collection per floor. This gate
-  does not remove event ordering, coalescing or serialization. The saving available to reuse is
-  the total minus the largest single harness, as a fraction of the total, because Claude is dirty in
-  nearly every window and reuse can only skip the others. On the post-fix warm figures:
+- **Selective reuse: NOT DECIDABLE from the profile measured. Do not treat it as failed.** The rule
+  is that if per-harness reuse saves less than 25% of post-fix collection time, keep the coordinator
+  but run one full aggregate collection per floor. The saving available to reuse is the total minus
+  the largest single harness, as a fraction of the total, since the dirty harness is the one whose
+  cost cannot be skipped. That makes the criterion a single number:
+
+  > Selective reuse clears the 25% bar whenever the largest harness is at most 75% of collection
+  > time. It fails only when one harness dominates.
+
+  The one machine measured is an extreme outlier and cannot answer this. Its Claude store holds
+  25,483 files against Codex's 349, a 71x skew, so Claude is 92.8% of collection time and the saving
+  computes to 7.2%. That is a fact about one store, not about the product.
+
+  Extrapolating from measured cost per store file makes the direction clear, and it points the other
+  way. Claude is now the *cheapest* collector per file, at 0.0039 ms, precisely because Phase 0
+  optimised it; every other collector currently costs between 1.5x and 11x more per file. So at equal
+  history volumes Claude does not dominate at all:
 
   ```
-  run 1: (120.137 total - 100.612 claude) / 120.137 = 19.525 / 120.137 = 0.1625 -> 16.3%
-  run 2: (118.485 total -  98.492 claude) / 118.485 = 19.993 / 118.485 = 0.1687 -> 16.9%
+  measured ms/file:  claude 0.0039  cursor 0.0059  codex 0.0118  antigravity 0.0178
+                     copilot 0.0200  pi 0.0427
+
+  this machine, 71x Claude skew      largest 92.8%  saving  7.2%   fails
+  10k Claude + 1k each x4            largest 41.6%  saving 58.4%   passes
+  two harnesses, 5k files each       largest 74.9%  saving 25.1%   passes
+  five harnesses, 3k files each      largest 33.6%  saving 66.4%   passes
   ```
 
-  Both are below 25%, so the verdict is: keep the coordinator, run one full aggregate collection per
-  floor, and do not build the per-harness dirty queue. Phase 1's publish protocol should be written
-  for one full aggregate, not for per-harness merges. One machine measured it; a machine whose Claude
-  store is small enough that another harness becomes the largest would move the fraction, so re-run
-  `scripts/bench_collect.py --repeat 7` before treating the verdict as settled for another profile.
+  Every balanced profile clears the bar, and the largest harness in those profiles is Copilot, not
+  Claude. Cargento's intended users run several harnesses, so the balanced rows describe them better
+  than the machine that produced the measurement does.
+
+  Treat the extrapolation as establishing that the question is open, not as a new verdict. Cost per
+  file is crude: collectors read different formats with different fixed overheads, the file counts
+  are whole store trees rather than in-window sessions, and the other collectors have not had the
+  optimisation pass Claude just had, so their per-file cost may also fall.
+
+  What this gate needs is `scripts/bench_collect.py --repeat 7` output from several genuinely
+  multi-harness machines, reported as largest-harness share rather than as absolute milliseconds so
+  the figures are comparable across hardware. Until then Phase 1 should keep the publish protocol
+  behind an interface that can serve either one full aggregate or per-harness merges, and should not
+  hard-code the full-aggregate assumption that a single-machine reading would have justified.
 - **Coarse probe: not yet measured, blocks the phase it gates.** Do not use it to reduce scans until
   its mutation corpus has no false negatives on supported local filesystems and its CPU/I/O budget
   passes on all three OSes. WSL, remote, bind and network stores retain the current cadence unless

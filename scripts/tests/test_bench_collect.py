@@ -159,3 +159,56 @@ class RegistryTimingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SelectiveReuseTest(unittest.TestCase):
+    """The share is the comparable figure; absolute milliseconds are not.
+
+    A single machine's absolute timings are what made this question look settled
+    when it was not, so these tests pin the share and the bar rather than any
+    duration.
+    """
+
+    def test_one_dominant_harness_reports_a_small_saving(self) -> None:
+        r = bench_collect.selective_reuse(
+            {"total_ms": 108.4, "per_harness_ms": {"claude": 100.6, "codex": 4.1}}
+        )
+        self.assertEqual(r["largest"], "claude")
+        self.assertAlmostEqual(r["share"], 100.6 / 108.4, places=6)
+        self.assertLess(r["saving"], bench_collect.SELECTIVE_REUSE_BAR)
+
+    def test_a_balanced_store_clears_the_bar(self) -> None:
+        r = bench_collect.selective_reuse(
+            {"total_ms": 100.0, "per_harness_ms": {"a": 30.0, "b": 25.0, "c": 25.0, "d": 20.0}}
+        )
+        self.assertEqual(r["largest"], "a")
+        self.assertAlmostEqual(r["saving"], 0.70, places=6)
+        self.assertGreaterEqual(r["saving"], bench_collect.SELECTIVE_REUSE_BAR)
+
+    def test_the_bar_is_exactly_at_a_75_percent_largest_share(self) -> None:
+        # The documented criterion: reuse clears 25% iff the largest harness is
+        # at most 75% of collection time. Pin the boundary, not a rounded number.
+        r = bench_collect.selective_reuse(
+            {"total_ms": 100.0, "per_harness_ms": {"big": 75.0, "rest": 25.0}}
+        )
+        self.assertAlmostEqual(r["saving"], 0.25, places=6)
+        self.assertGreaterEqual(r["saving"], bench_collect.SELECTIVE_REUSE_BAR)
+
+    def test_no_discovered_harness_reports_nothing_rather_than_zero(self) -> None:
+        r = bench_collect.selective_reuse({"total_ms": 0.5, "per_harness_ms": {}})
+        self.assertIsNone(r["largest"])
+        self.assertIsNone(r["share"])
+
+    def test_the_report_leads_with_the_share_and_says_one_machine_cannot_settle_it(self) -> None:
+        report = bench_collect.format_report(
+            {
+                "total_ms": 108.4,
+                "per_harness_ms": {"claude": 100.6, "codex": 4.1},
+                "discovery_ms": 0.34,
+                "repeat": 7,
+            }
+        )
+        self.assertIn("largest harness: claude", report)
+        self.assertIn("92.8%", report)
+        self.assertIn("below the 25% bar", report)
+        self.assertIn("One machine cannot settle this", report)
