@@ -122,6 +122,13 @@ OVERLAY_NEEDS_INPUT: Final = "needs_input"
 OVERLAY_IDLE: Final = "idle"
 OVERLAY_SUBAGENT: Final = "subagent"
 
+# Kinds whose arrival means the session is not waiting for a person. A needs-input
+# overlay older than the newest of these is over, permanently, however long the
+# overlay that ended it stays live. `idle` is here for completeness rather than
+# necessity: it carries no deadline today, so it already wins forever, and listing
+# it means giving it one later cannot quietly reintroduce DRC-4095 by another door.
+ENDS_A_WAIT: Final = frozenset({OVERLAY_WORKING, OVERLAY_IDLE})
+
 # Claude's session id is a UUID. Anything outside this alphabet is not one, and a
 # forged value with a path separator in it must not reach a prefix lookup.
 _UUID_CHARS: Final = frozenset("0123456789abcdefABCDEF-")
@@ -455,9 +462,27 @@ def reduce_overlays(overlays: Iterable[Overlay], *, now: float) -> dict[str, Any
     stopping does not change what the parent is doing, and the parent's subagent
     list is reconstructed by the collector, which is the only thing that knows
     the whole tree.
+
+    A needs-input overlay is superseded permanently once a later overlay says the
+    session is no longer waiting, and the check deliberately ignores whether that
+    later overlay is still live. Outranking alone was not enough (DRC-4095): a
+    needs-input overlay has no deadline, so when the working overlay that outranked
+    it lapsed, the wait applied again carrying its original `blocked_since`, and a
+    turn still running past `overlay_working_ttl_sec` reverted to "waiting for you"
+    while claiming to have been waiting the whole time. Once a turn has started the
+    earlier wait is over as a matter of history, and history does not lapse.
     """
+    ordered = sorted(overlays, key=lambda item: item.arrival_seq)
+    # The latest point at which this session was known not to be waiting. Computed
+    # over every such overlay regardless of expiry, which is the whole fix.
+    not_waiting_since = max(
+        (overlay.arrival_seq for overlay in ordered if overlay.kind in ENDS_A_WAIT),
+        default=-1,
+    )
     patch: dict[str, Any] = {}
-    for overlay in sorted(overlays, key=lambda item: item.arrival_seq):
+    for overlay in ordered:
+        if overlay.kind == OVERLAY_NEEDS_INPUT and overlay.arrival_seq < not_waiting_since:
+            continue
         if not overlay.applies(now=now):
             continue
         if overlay.kind == OVERLAY_WORKING:
