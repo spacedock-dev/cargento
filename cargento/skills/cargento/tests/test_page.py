@@ -56,9 +56,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
 
-        self.assertEqual(136_414, len(assembled))
+        self.assertEqual(136_944, len(assembled))
         self.assertEqual(
-            "ca32abf983d4f80d7438e4464229d80dace6eb08491498d6a7a09fedc095f353",
+            "881aca4db12e035a4d732cc98512272759fb5d8dc601ad344f2d1fcc1b13b5f5",
             hashlib.sha256(assembled).hexdigest(),
         )
         self.assertEqual(39_054, len(styles))
@@ -92,8 +92,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "80f1419bf531f2ddb0e5fa3a49a13e62e3e9a311d7ab8301b2a95194de5fbd94",
             ),
             "notify.js": (
-                2_655,
-                "79b0396140c35ad4b34b9656b692ed45855fb04e63a2165610531b5d4aa54984",
+                3_185,
+                "afd7a8ff735ea52b95e31a22f60f024d0bb752b7063860abc0e7bb1ae1c0fcae",
             ),
             "main.js": (
                 7_985,
@@ -900,6 +900,57 @@ console.log(JSON.stringify(out));
         self.assertEqual(0, out["primed"], "popped for a pre-existing block on first paint")
         self.assertEqual(0, out["ungranted"])
         self.assertEqual(0, out["inactive"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_notification_title_names_the_harness_that_is_waiting(self) -> None:
+        # It said "Claude is waiting on you" for every row, which was harmless
+        # while Claude was the only harness that could report needs-input and a
+        # lie the moment a second one could.
+        checks = """
+__els.app = {innerHTML:""};
+const row = (harness) => ({
+  harness, session:"12345678", sid:"12345678", project:"proj",
+  title:null, last_prompt:"", state:"needs_input", state_detail:"open question",
+  active:true, last_activity:100, blocked_since:970, rate_per_min:0,
+  total:0, done:0, open:0, progress_pct:0, eta_h:null, turn:null,
+  subagents:[], tasks:[]
+});
+const payload = (sessions, harnesses) => ({
+  generated:1000, window_hours:24, show_all:false, native_notify:"",
+  harnesses, sessions,
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:1,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+});
+const registry = [{key:"claude", label:"Claude", discovered:true, error:null},
+                  {key:"antigravity", label:"Antigravity", discovered:true, error:null}];
+const reset = () => {
+  __notifications = []; __notifyPermission = "granted";
+  notifyState = new Map(); notifyPrimed = false;
+};
+const out = {};
+
+reset();
+render(payload([{...row("claude"), state:"idle"}], registry));
+render(payload([row("claude")], registry));
+out.claude = __notifications[0] && __notifications[0].title;
+
+reset();
+render(payload([{...row("antigravity"), state:"idle"}], registry));
+render(payload([row("antigravity")], registry));
+out.antigravity = __notifications[0] && __notifications[0].title;
+
+// An unknown key falls back to the key rather than to a hardcoded name, so it
+// reads oddly instead of reading wrongly.
+reset();
+render(payload([{...row("newharness"), state:"idle"}], registry));
+render(payload([row("newharness")], registry));
+out.unknown = __notifications[0] && __notifications[0].title;
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual("Claude is waiting on you", out["claude"])
+        self.assertEqual("Antigravity is waiting on you", out["antigravity"])
+        self.assertEqual("newharness is waiting on you", out["unknown"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_notification_permission_control_reflects_state(self) -> None:

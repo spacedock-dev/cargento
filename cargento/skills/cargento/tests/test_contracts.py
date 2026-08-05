@@ -743,6 +743,10 @@ class HarnessRegistryTest(RuntimeTestCase):
         self.assertEqual(["needs_input"], [s["state"] for s in found])
         self.assertEqual(1, len(fired), "the registry's notifier was not the one used")
         self.assertIn("permission", fired[0][1])
+        # The title too, not only the body. The label is now an argument this
+        # collector passes, so a wrong one would raise a truthful-looking popup
+        # naming the wrong harness, and the body assertion above cannot see that.
+        self.assertEqual("Claude is waiting on you", fired[0][0])
 
     def test_the_registry_keys_and_labels_match_the_runtime_default(self) -> None:
         # default_harnesses binds Claude's notifier; nothing downstream may

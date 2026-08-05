@@ -423,6 +423,10 @@ def collect(
                 prefix,
                 session_state,
                 f"[{project}] {state_detail}" if session_state == "needs_input" else None,
+                # This collector's own label, passed explicitly. The registry owns
+                # the display label, and a collector that could omit this would be
+                # a collector able to raise a popup naming the wrong harness.
+                harness_label=notifications.NOTIFY_HARNESS_LABEL,
                 expect_generation=seen_generation,
                 popup_notifier=popup_notifier,
             )

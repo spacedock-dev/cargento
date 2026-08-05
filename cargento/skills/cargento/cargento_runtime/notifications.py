@@ -156,6 +156,26 @@ def current_hook(
         return hook
 
 
+# `/api/notify` is Claude's own hook forwarder: the payload shape is Claude
+# Code's `Notification` hook and nothing else posts there. So this label is a
+# property of the route rather than something to look up, and a second harness
+# gets its own ingress rather than a `harness` field in this body that the server
+# would then have to trust.
+NOTIFY_HARNESS_LABEL = "Claude"
+
+
+def waiting_title(harness_label: str) -> str:
+    """The popup title for a harness that needs the human.
+
+    One function rather than an f-string at each site, because the native
+    notifier and the browser both render this sentence and they drifted apart the
+    moment there was more than one harness able to raise it. The label is the
+    registry's own display label, so a row badged Antigravity cannot produce a
+    popup that says Claude.
+    """
+    return f"{harness_label} is waiting on you"
+
+
 def maybe_popup(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -163,6 +183,7 @@ def maybe_popup(
     session_state: str,
     detail: str | None,
     *,
+    harness_label: str,
     expect_generation: int | None = None,
     popup_notifier: Callable[[str, str], None],
 ) -> None:
@@ -172,6 +193,11 @@ def maybe_popup(
     last-session-state map. Checking it in the caller leaves a window in which a
     SessionEnd commits first, and this would then re-create the state it just
     cleared and fire a popup for a session that has already exited.
+
+    ``harness_label`` is required rather than defaulted to Claude. A default would
+    let a second harness's collector wire itself in and silently claim to be
+    Claude, which is the failure this generalization exists to prevent, and the
+    compiler cannot catch a wrong string but it can catch a missing argument.
     """
     now = time.time()
     with state.hook_lock:
@@ -192,7 +218,7 @@ def maybe_popup(
             return
         runtime_state.bounded_put(state.last_popup, prefix, now, limit=config.max_cache_entries)
         runtime_state.bounded_put(state.last_popup, "_global", now, limit=config.max_cache_entries)
-    popup_notifier("Claude is waiting on you", detail or f"Session {prefix} needs your input")
+    popup_notifier(waiting_title(harness_label), detail or f"Session {prefix} needs your input")
 
 
 def clear_session(state: RuntimeState, config: RuntimeConfig, prefix: str) -> None:
@@ -293,5 +319,5 @@ def handle_payload(
                 state.last_popup_message, popup_key, (message, now), limit=config.max_cache_entries
             )
     if fire:
-        popup_notifier("Claude is waiting on you", message)
+        popup_notifier(waiting_title(NOTIFY_HARNESS_LABEL), message)
     return {"ok": True}

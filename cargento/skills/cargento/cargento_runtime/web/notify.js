@@ -24,6 +24,16 @@ function requestNotifyPermission(){
   if(result && typeof result.then === "function") result.then(done, done);
 }
 
+/* The registry's display label for a harness key, falling back to the key.
+   The title used to say "Claude" for every row, which was harmless while Claude
+   was the only harness that could report needs-input and a lie the moment a
+   second one could. The fallback is the key rather than a hardcoded name, so an
+   unknown harness reads oddly instead of reading wrongly. */
+function harnessLabel(d, key){
+  const row = (d.harnesses || []).find(h => h.key === key);
+  return (row && row.label) || key;
+}
+
 function syncNotifications(d){
   const seen = new Map();
   const fire = browserNotifyOwns(d) && notifyPermission() === "granted";
@@ -36,7 +46,7 @@ function syncNotifications(d){
     if(!s.active || s.state !== "needs_input") continue;
     if(notifyState.get(key) === "needs_input") continue;
     try{
-      new Notification("Claude is waiting on you",
+      new Notification(harnessLabel(d, s.harness) + " is waiting on you",
         {body: "[" + s.project + "] " + (s.state_detail || "needs your input"),
          tag: key});  /* tag replaces a stale popup instead of stacking */
     }catch(e){ /* permission revoked mid-session, or a headless browser */ }

@@ -317,7 +317,7 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             discovered = json.loads(origin_probe.stdout)
             for origin in [*discovered["origins"].values(), *discovered["assets"].values()]:
                 self.assertTrue(Path(origin).is_relative_to(copied_skill), origin)
-            self.assertEqual(136_414, discovered["page_size"])
+            self.assertEqual(136_944, discovered["page_size"])
             state_path = cargento_home / f"cargento-{port}.json"
             proc = subprocess.Popen(
                 [sys.executable, str(launcher), "--port", str(port)],

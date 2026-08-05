@@ -474,6 +474,37 @@ snapshots while the TUI runs, but does not document a guaranteed start, end or f
 collectors and reconciliation remain authoritative for definitive session lifecycle. The hooks are
 what can be installed without separate user configuration.
 
+#### The Antigravity adapter is blocked on one capture, and it is a small one
+
+The notification prerequisite has shipped: both the native notifier and the browser now take their
+title from the matched row's harness label, so a second harness can raise a truthful alert. What is
+missing is the identity mapping, and it cannot be reasoned out.
+
+The Antigravity collector keys on the **conversation id**: its `sid` is the stem of
+`conversations/<id>.db`, and `cache/last_conversations.json` maps each workspace to that same id.
+The status-line payload documents both a `session_id` and a `conversation_id`. An overlay keyed on
+the wrong one of those two never matches its row, so the adapter would install, report success, and
+change nothing. That is the failure mode this project has already paid for once.
+
+What exists as evidence today: one live status-line capture, which carried `quota`, `email`,
+`transcript_path`, `plan_tier` and `agent_state`. It is the fixture `test_quota.py` is built from.
+`agent_state` is therefore verified, and the `agy` binary carries an internal `agent_state_component`
+package consistent with it. Everything else in the field list above is read from Google's
+documentation, and desk-read field names for this harness have a poor record here.
+
+Not verified, and each one changes the adapter:
+
+- whether the payload carries `conversation_id`, and whether its value equals the `.db` stem the
+  collector keys on;
+- whether `tool_confirmation_pending` and `task_count` appear under those names;
+- which `agent_state` values occur in practice, against the five the docs list.
+
+The capture that settles all of it is one `agy` session with `/statusline <command>` pointed at a
+recording script, which is the same shape as `scripts/capture_hook.py`. Until then the adapter stays
+unwritten rather than written on guesses, and `IDENTITY_NORMALIZERS` deliberately holds Claude alone,
+so the ingress answers 404 for `/api/events/antigravity` rather than accepting events it cannot
+attach.
+
 ### Gemini CLI, Copilot, and Factory Droid
 
 All three document command-based lifecycle hooks:

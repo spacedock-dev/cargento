@@ -25,6 +25,7 @@ from .support import (
     config_patch,
     dashboard_hook,
     make_config,
+    make_runtime,
     make_server,
     notify_handler,
     runtime,
@@ -53,7 +54,13 @@ class CargentoServerTest(RuntimeTestCase):
 
             for sid, detail in (("session1", "one"), ("session2", "two"), ("session3", "three")):
                 notifications.maybe_popup(
-                    config, state, sid, "needs_input", detail, popup_notifier=notifier
+                    config,
+                    state,
+                    sid,
+                    "needs_input",
+                    detail,
+                    harness_label="Claude",
+                    popup_notifier=notifier,
                 )
 
         self.assertEqual(2, len(fired))
@@ -1258,3 +1265,54 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             release.set()
             httpd.shutdown()
             thread.join(timeout=5)
+
+
+class HarnessNeutralTitleTest(unittest.TestCase):
+    """The native popup names the harness, not always Claude.
+
+    The design makes this the prerequisite for a second harness reporting Needs
+    input: both the native notifier and the browser hardcoded Claude, so no other
+    harness could raise a truthful alert.
+    """
+
+    def test_the_title_names_the_harness(self) -> None:
+        self.assertEqual("Claude is waiting on you", notifications.waiting_title("Claude"))
+        self.assertEqual(
+            "Antigravity is waiting on you", notifications.waiting_title("Antigravity")
+        )
+
+    def test_the_popup_uses_the_label_it_was_given(self) -> None:
+        config, state = make_runtime()
+        fired: list[tuple[str, str]] = []
+        notifications.maybe_popup(
+            config,
+            state,
+            "abcdef12",
+            "needs_input",
+            "[proj] a question",
+            harness_label="Antigravity",
+            popup_notifier=lambda title, message: fired.append((title, message)),
+        )
+        self.assertEqual([("Antigravity is waiting on you", "[proj] a question")], fired)
+
+    def test_the_label_has_no_default(self) -> None:
+        # A default would let a second harness's collector wire itself in and
+        # silently claim to be Claude, which is the exact failure this exists to
+        # prevent. mypy catches it, and so does this.
+        config, state = make_runtime()
+        with self.assertRaises(TypeError):
+            notifications.maybe_popup(  # type: ignore[call-arg]
+                config,
+                state,
+                "abcdef12",
+                "needs_input",
+                None,
+                popup_notifier=lambda _title, _message: None,
+            )
+
+    def test_the_notify_route_label_is_a_property_of_the_route(self) -> None:
+        # /api/notify is Claude Code's own Notification hook and nothing else
+        # posts there, so the label is fixed rather than read from the body: a
+        # `harness` field in that payload would be a value the server had to
+        # trust from an unauthenticated caller.
+        self.assertEqual("Claude", notifications.NOTIFY_HARNESS_LABEL)
