@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from cargento_runtime import snapshot as runtime_snapshot
+from cargento_runtime import stream as runtime_stream
 
 if TYPE_CHECKING:
     from _thread import LockType
@@ -29,6 +30,9 @@ class RuntimeState:
     # stampeding a cold entry, and it is a property of the runtime, not of the
     # object that happens to serve a request.
     snapshot: runtime_snapshot.Snapshot = field(init=False)
+    # Connected SSE clients, owned here for the same reason the snapshot is:
+    # they belong to the runtime, not to whichever object serves a request.
+    streams: runtime_stream.StreamRegistry = field(init=False)
     hook_lock: LockType = field(default_factory=threading.Lock)
     cache_lock: LockType = field(default_factory=threading.Lock)
     scanner_lock: LockType = field(default_factory=threading.Lock)
@@ -83,6 +87,7 @@ class RuntimeState:
         # Built here rather than by a default_factory because it needs
         # server_started, which is a field of this same dataclass.
         self.snapshot = runtime_snapshot.Snapshot(server_started=self.server_started)
+        self.streams = runtime_stream.StreamRegistry()
 
 
 def build_runtime_state(config: RuntimeConfig, *, started: float) -> RuntimeState:
