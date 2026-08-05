@@ -142,8 +142,13 @@ Antigravity pipes a state payload, including a `quota` object, to whatever its s
 names, and a user who points that at `POST /api/usage` gets the same display with no credential
 read and no outbound request at all. That payload also carries an account email and a transcript
 path, so the receipt is never stored or served as it arrived: only the derived window percentages
-and reset times are kept, built into a fresh record field by field. Turning usage off stops this
-too, and `--no-usage` covers it.
+and reset times are kept, built into a fresh record field by field. `--no-usage` stops this too: the
+quota fields are dropped before storage, so nothing is retained and nothing reaches the band, and
+the request still succeeds so a status line never sees an error. The dashboard's own switch is
+narrower, and deliberately so. It governs the outbound fetch and the display, which is all it can
+govern for a harness that publishes its quota locally: with it off, a pushed receipt is still kept
+and still served on the loopback port, exactly as a disk-read tile (Codex, Copilot) is. Withdrawing
+retention for a run is what `--no-usage` is for.
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
