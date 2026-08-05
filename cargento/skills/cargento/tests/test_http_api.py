@@ -273,6 +273,44 @@ class CargentoServerTest(RuntimeTestCase):
             thread.join(timeout=2)
 
 
+class UsageReceiptOptOutTest(RuntimeTestCase):
+    """POST /api/usage honours the server-side usage opt-out.
+
+    `test_quota.PushedReceiptOptOutTest` covers the gate itself. This covers the
+    wiring, which is the half a refactor drops without any unit test noticing:
+    the handler has to hand its application's config to the shaping call.
+    """
+
+    def _post(self, port: int, body: bytes) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request(
+                "POST", "/api/usage", body=body, headers={"Content-Type": "application/json"}
+            )
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def test_pushed_quota_is_discarded_when_usage_is_disabled(self) -> None:
+        config, state = make_runtime(usage_fetch_enabled=False)
+        application = cli.build_application(config, state, clock=time.time)
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            status, body = self._post(
+                httpd.server_port,
+                json.dumps({"quota": {"gemini-5h": {"remaining_fraction": 0.3}}}).encode(),
+            )
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+        # 200 on purpose: a status-line command must never see an error.
+        self.assertEqual(200, status)
+        self.assertEqual(b'{"ok":true,"usage":0}', body)
+        self.assertEqual([], state.usage_receipts["antigravity"]["entries"])
+
+
 class HostAndSocketTest(unittest.TestCase):
     def test_host_header_forms_that_are_all_loopback(self) -> None:
         # rsplit(":", 1) mangled the bracketed IPv6 form into "[:" and never

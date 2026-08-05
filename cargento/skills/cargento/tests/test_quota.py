@@ -863,6 +863,56 @@ class StatuslineReceiptTest(unittest.TestCase):
         self.assertEqual([], quota.receipt_entries(config, _state(config), NOW, 24))
 
 
+class PushedReceiptOptOutTest(unittest.TestCase):
+    """--no-usage means no quota is retained, pushed or fetched.
+
+    SECURITY.md publishes that with the feature off nothing is fetched or
+    retained. A pushed receipt is a second way in, so it needs the same gate.
+    """
+
+    @staticmethod
+    def _payload() -> dict[str, Any]:
+        # The bucket keys a live agy status line sends; anything else shapes to
+        # nothing and would make the enabled case vacuous.
+        return {
+            "quota": {
+                "gemini-5h": {"remaining_fraction": 0.42, "reset_time": "2026-08-04T14:16:36Z"},
+                "gemini-weekly": {"remaining_fraction": 0.9},
+            }
+        }
+
+    def test_a_receipt_is_stored_when_usage_is_enabled(self) -> None:
+        config = _config(usage_fetch_enabled=True)
+        state = _state(config)
+        response = quota.receive_statusline(state, self._payload(), now=NOW, config=config)
+        self.assertGreater(response["usage"], 0)
+        self.assertTrue(state.usage_receipts["antigravity"]["entries"])
+
+    def test_quota_is_dropped_before_storage_when_usage_is_disabled(self) -> None:
+        config = _config(usage_fetch_enabled=False)
+        state = _state(config)
+        response = quota.receive_statusline(state, self._payload(), now=NOW, config=config)
+        self.assertEqual(0, response["usage"])
+        self.assertEqual([], state.usage_receipts["antigravity"]["entries"])
+        # The arrival is still stamped, so the disabled path stays consistent
+        # with the unusable-payload path rather than inventing a third state.
+        self.assertEqual(NOW, state.usage_receipts["antigravity"]["ts"])
+        self.assertEqual([], quota.receipt_entries(config, state, NOW, 24))
+
+    def test_the_endpoint_still_reports_success_when_disabled(self) -> None:
+        """A status-line command must never see an error from Cargento."""
+        config = _config(usage_fetch_enabled=False)
+        state = _state(config)
+        response = quota.receive_statusline(state, self._payload(), now=NOW, config=config)
+        self.assertTrue(response["ok"])
+
+    def test_without_a_config_the_behaviour_is_unchanged(self) -> None:
+        # Callers outside a runtime keep working: no config means no gate.
+        state = _state(_config())
+        response = quota.receive_statusline(state, self._payload(), now=NOW)
+        self.assertEqual({"ok": True, "usage": 1}, response)
+
+
 class UsageEndpointTest(RuntimeTestCase):
     """POST /api/usage: the same guards as /api/notify, and no new exposure."""
 

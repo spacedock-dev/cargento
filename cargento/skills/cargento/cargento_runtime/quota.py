@@ -563,14 +563,21 @@ def receive_statusline(
     payload: dict[str, Any],
     *,
     now: float,
+    config: RuntimeConfig | None = None,
 ) -> dict[str, Any]:
     """Store a pushed status-line receipt. Returns the endpoint's wire response.
 
     Storing an empty entry list on an unusable payload is deliberate: it stamps
     the arrival, so a harness that stops reporting quota goes stale and drops
     out of the band rather than showing whatever it last said forever.
+
+    With server-side usage disabled the quota fields are dropped before storage,
+    not rejected at the door: SECURITY.md promises nothing is retained with the
+    feature off, and the response still reports success so a harness's status
+    line never surfaces a Cargento error.
     """
-    entries = shape_statusline(payload, now)
+    enabled = True if config is None else config.usage_fetch_enabled
+    entries = shape_statusline(payload, now) if enabled else []
     with state.usage_fetch_lock:
         state.usage_receipts["antigravity"] = {"ts": now, "entries": entries}
     return {"ok": True, "usage": len(entries)}

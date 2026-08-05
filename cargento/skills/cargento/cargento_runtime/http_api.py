@@ -291,6 +291,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             application.state,
             payload,
             now=application.clock(),
+            config=application.config,
         )
         self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
 
