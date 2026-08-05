@@ -163,6 +163,13 @@ def _limits(
     return block
 
 
+def _local_noon() -> float:
+    """Today at 12:00 local, so a reset a few hours out stays on the same date."""
+    return (
+        datetime.now().astimezone().replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
+    )
+
+
 class CodexUsageTest(RuntimeTestCase):
     """The Codex quota tile: rate_limits snapshots read from rollout files."""
 
@@ -207,7 +214,12 @@ class CodexUsageTest(RuntimeTestCase):
         self.assertIsNone(info["rate_limits"])
 
     def test_usage_maps_windows_by_minutes_and_bounds_percent(self) -> None:
-        now = time.time()
+        # Anchored to local noon rather than the wall clock. `format_reset` prints a
+        # bare "HH:MM" only when the reset falls on the same LOCAL date, and this
+        # pins a reset one hour out -- so between 23:00 and midnight it crossed
+        # midnight and came back as "Thu 00:06". CI runs in UTC, which made it a
+        # one-hour-a-day failure for everybody.
+        now = _local_noon()
         with tempfile.TemporaryDirectory() as tmp:
             self._rollout(
                 Path(tmp),

@@ -643,12 +643,16 @@ class CodexAdapterTest(unittest.TestCase):
         # double every tool call for no gain.
         self.assertIsNone(self.envelope("PreToolUse"))
 
-    def test_the_permission_hook_stays_unmapped_while_the_evidence_disagrees(self) -> None:
-        # Two methods disagree about whether Codex has one at all. No
-        # `permission_request` key has ever appeared in config.toml's registration
-        # state, yet the 0.146.0 binary's hook-event enum contains
-        # `PermissionRequest`. Nothing maps it until that is settled: a wrong
-        # input_requested is the overlay with no dedicated clearing event.
+    def test_the_permission_hook_stays_unmapped_because_exec_cannot_fire_it(self) -> None:
+        """Measured, and the reason changed without the outcome changing.
+
+        The event is real and the name registers: a hooks file listing it beside the
+        five mapped names left all five firing normally, twice. But `codex exec`
+        pins `approval_policy` to `never`, so no approval is ever requested and the
+        hook has nothing to be asked about. Its payload is unmeasured, and
+        `input_requested` is the overlay with no dedicated clearing event, so a
+        guessed mapping is the most expensive kind to get wrong.
+        """
         self.assertIsNone(self.envelope("PermissionRequest"))
         self.assertNotIn("PermissionRequest", event_hook.CODEX_EVENTS)
 

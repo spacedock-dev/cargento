@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
+import event_hook
 from cargento_runtime import events
 
 from . import support
@@ -460,6 +461,71 @@ class ReduceTest(unittest.TestCase):
             self.overlay(events.OVERLAY_SUBAGENT, seq=2, subagent_id="child-1"),
         ]
         self.assertEqual("needs_input", events.reduce_overlays(ledger, now=NOW)["state"])
+
+
+class NeedsInputResurfacingTest(unittest.TestCase):
+    """Characterisation of a known defect. This pins what happens, not what should.
+
+    `input_requested` deliberately has no expiry, because a real permission wait must
+    not be timed out. The intended clear is `input_resolved`, and nothing anywhere
+    produces it: it is the only `EVENT_NAMES` member with no producer. So the
+    fallback is that a later `turn_started` outranks the needs-input overlay by
+    `arrival_seq` -- but only while its own `overlay_working_ttl_sec` deadline holds.
+    When that lapses, the needs-input overlay applies again, carrying its ORIGINAL
+    `blocked_since`.
+
+    The user-visible effect: a turn still running 90 seconds after its permission was
+    granted reverts to "waiting for you", and claims to have been waiting the whole
+    time. Filed as DRC-4095. When that is fixed these assertions should be inverted
+    deliberately rather than discovered by surprise, which is why they are written
+    down rather than left as prose in a design document.
+    """
+
+    def setUp(self) -> None:
+        self.config = support.make_config()
+
+    def _event(self, name: str, *, at: float, seq: int) -> events.Event:
+        return events.Event(
+            harness="claude",
+            event=name,
+            sid=PREFIX,
+            session_id=SESSION,
+            timestamp=at,
+            arrival_seq=seq,
+        )
+
+    def _reduce(self, now: float) -> dict[str, Any]:
+        # Built through overlay_for rather than by hand, so this covers the deadline
+        # each overlay is really given. Constructing Overlays directly would leave the
+        # construction path unpinned, and the deadline IS the defect.
+        built = [
+            events.overlay_for(self._event("input_requested", at=NOW, seq=1), config=self.config),
+            events.overlay_for(self._event("turn_started", at=NOW + 10, seq=2), config=self.config),
+        ]
+        self.assertTrue(all(o is not None for o in built), "both events must make overlays")
+        return events.reduce_overlays([o for o in built if o is not None], now=now)
+
+    def test_working_outranks_a_standing_permission_wait_while_it_is_live(self) -> None:
+        patch = self._reduce(NOW + 15)
+        self.assertEqual("working", patch["state"])
+        self.assertIsNone(patch["blocked_since"])
+
+    def test_but_the_permission_wait_returns_when_working_expires(self) -> None:
+        # The defect. A durable clear would leave this working, or idle, or anything
+        # other than a revived wait.
+        patch = self._reduce(NOW + 10 + self.config.overlay_working_ttl_sec + 1)
+        self.assertEqual("needs_input", patch["state"])
+        self.assertEqual(NOW, patch["blocked_since"], "and it claims the original stamp")
+
+    def test_nothing_produces_the_event_that_would_clear_it_properly(self) -> None:
+        # The root cause, pinned so that adding a producer is a deliberate act.
+        self.assertIn("input_resolved", events.EVENT_NAMES)
+        produced = (
+            set(event_hook.CLAUDE_EVENTS.values())
+            | set(event_hook.CODEX_EVENTS.values())
+            | set(event_hook.GEMINI_EVENTS.values())
+        )
+        self.assertNotIn("input_resolved", produced)
 
 
 class ApplyPatchTest(unittest.TestCase):

@@ -107,9 +107,14 @@ CLAUDE_EVENTS = {
 # `agent_id` to `subagent_id` rename is all that was needed. One subagent produced
 # exactly one start and one stop.
 #
-# `PermissionRequest` remains absent, and see the design doc: the binary's hook
-# enum contains the name, which contradicts the negative recorded from a live
-# install. That contradiction is open rather than resolved, so nothing maps it.
+# `PermissionRequest` remains absent, and the reason is now measured rather than
+# contradictory. The event is real and the name registers: a hooks file listing it
+# beside these five left all five firing normally. But `codex exec` pins
+# `approval_policy` to `never`, measured from a session's own `turn_context` while
+# `-c approval_policy=untrusted` was passed and overridden, so no approval is ever
+# requested and the hook has nothing to be asked about. Enabling the
+# `exec_permission_approvals` feature changed nothing. Its payload is therefore
+# unmeasured, which is the same reason Gemini's `Notification` is unmapped.
 CODEX_EVENTS = {
     "SessionStart": "session_started",
     "UserPromptSubmit": "turn_started",

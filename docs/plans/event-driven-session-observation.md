@@ -701,24 +701,128 @@ row mid-turn, which is the rule this document already sets for this harness.
 So the two Antigravity paths divide cleanly: **hooks give freshness and install
 with the plugin; the status line gives state and is opt-in.**
 
-#### Codex has no permission hook, and its subagent hooks stay unmapped
+#### Codex's permission hook exists and cannot fire in `exec`, and its subagent hooks are mapped
 
-A negative result worth recording so nobody looks for it twice. This document
-previously said Codex hooks "expose session start/end, prompt submission, pre- and
-post-tool events, permission requests, stops, and subagent lifecycle". The
-permission half is wrong.
+Two negatives, and the first one was recorded wrongly twice before it was measured
+properly. Evidence:
+[`docs/captures/codex/permission-hook-0.146.0-macos.jsonl`](../captures/codex/permission-hook-0.146.0-macos.jsonl).
 
-Evidence from a live install rather than a reading: `~/.codex/config.toml`
-accumulates a `trusted_hash` under
+**No task-completed event. That half holds.** `TaskCompleted` is absent from the
+0.146.0 binary's hook-event enum, which reads `PreToolUse`, `PermissionRequest`,
+`PostToolUse`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`,
+`UserPromptSubmit`, `SubagentStart`, `SubagentStop`, `Stop`.
+
+**A permission event does exist, and the earlier claim that it does not was drawn
+from evidence that could not support it.** That claim rested on
+`~/.codex/config.toml`, which accumulates a `trusted_hash` under
 `[hooks.state."<source>:<snake_case_event>:<group>:<index>"]` for every hook Codex
-has actually registered. Across two independent hooks files, one from a plugin and
-one user-written, the events recorded are `session_start`, `user_prompt_submit`,
-`pre_tool_use`, `post_tool_use`, `subagent_start`, `subagent_stop`, `stop`,
-`pre_compact` and `post_compact`. **There is no permission event and no
-task-completed event.** Registering a name Codex does not know appears to
-invalidate the whole file: a nine-event file including invented names produced zero
-hook invocations, where a five-event file of proven names had worked moments
-before.
+has actually registered, and on the observation that no permission event appeared
+there. What was missed is that nothing had ever *asked* for one. Seven independent
+hook sources have registered on the development machine, and the union of every
+event name they requested is exactly the nine that were found. Absence from
+registration state was absence of attempt. A negative needs the attempt to have
+been made.
+
+The vendor documents it, and has for months. OpenAI's Codex documentation (now on
+`learn.chatgpt.com`; the `developers.openai.com/codex/*` paths 308-redirect there)
+describes `PermissionRequest` as a shipped hook that runs before Codex asks for
+approval and may allow, deny or decline. It landed in `rust-v0.122.0` on 2026-04-20
+and was extended in `rust-v0.145.0` on 2026-07-21. Nothing removed it. So the
+negative was not merely unsupported by its evidence, it was contradicted by the
+vendor's own documentation for the whole time it stood.
+
+Registering it directly settles the name: a hooks file listing `PermissionRequest`
+alongside seven proven names installed without complaint and left all seven firing
+normally, twice. So the name is accepted, and the recorded gotcha that an unknown
+name invalidates a whole file does not apply to it. That gotcha still stands for
+genuinely invented names, and it is the observable that separates the two cases:
+an unknown name silences the file, a known one does not.
+
+**It cannot fire under `codex exec`, and the reason is not a feature flag.**
+`codex exec` pins `approval_policy` to `never`, which by the CLI's own definition
+means "never ask for user approval; execution failures are immediately returned to
+the model". Measured from the session's own `turn_context` record while
+`-c approval_policy=untrusted` was passed explicitly. That override is parsed and
+valid, since an invalid value is rejected with `expected one of untrusted,
+on-failure, on-request, granular, never`, and it was still overridden to `never`.
+
+Two runs, identical outcomes, differing only in the flags:
+
+| Run | Requested | Effective | `exec_permission_approvals` | `PermissionRequest` fired |
+|---|---|---|---|---|
+| A | `untrusted` | `never` | false | no |
+| B | `untrusted` | `never` | **true** | no |
+
+Both runs asked for a write under a read-only sandbox. The sandbox refused it at
+the OS level and the failure went back to the model, which is precisely what
+`never` prescribes. No approval was ever requested, so there was nothing for a
+permission hook to be asked about. Enabling `exec_permission_approvals` and
+`request_permissions_tool`, both marked *under development* and both false by
+default, changed nothing.
+
+So `PermissionRequest` stays out of `CODEX_EVENTS`, for a better reason than the
+one previously recorded: not because the hook does not exist, but because the only
+mode this project can drive non-interactively cannot produce the event, leaving its
+payload unmeasured. That is the same rule that keeps Gemini's `Notification` out.
+Capturing it needs an interactive session, or an `exec` mode that stops pinning the
+policy.
+
+The validator's permitted vocabulary for the Codex hooks file now includes
+`PermissionRequest`, because that list records what the harness *accepts* and this
+work measured that it does. What the adapter *maps* is the separate question, and
+the answer there is still no.
+
+**Its payload is nevertheless fully known, from the binary rather than from a
+capture.** 0.146.0 embeds draft-07 schemas for all eleven hook events, and
+`permission-request.command.input` is `additionalProperties: false` with nine
+required fields: `cwd`, `hook_event_name` (const `PermissionRequest`), `model`,
+`permission_mode`, `session_id`, `tool_input`, `tool_name`, `transcript_path` and
+`turn_id`, plus optional `agent_id` and `agent_type`. Nothing there is new: the
+adapter's allowlist already drops `tool_name` and `tool_input`, and `session_id` is
+the same id the collector keys on. So the mapping is writable today. What is missing
+is not the shape but the confirmation that the event ever arrives, which is the
+whole reason it stays unmapped. Static reads have been wrong in this project before,
+and the rule is that a mapping ships on a capture.
+
+**And a hazard that has to be settled before this event is ever registered, whatever
+the mapping.** Alone among Codex's hooks, a permission hook gets to *decide*:
+`hookSpecificOutput.decision.behavior` accepts `allow` or `deny`, and a denial
+surfaces as "PermissionRequest hook denied approval". That is strictly more authority
+than `PreToolUse` has, which rejects both `decision: approve` and
+`permissionDecision: allow` as unsupported. A cartography tool must never be able to
+approve a tool call, and the documented resolution order makes that sharper than it
+sounds: a permission hook resolves *before* both the auto-review guardian and the
+user, so its answer is not a suggestion that a human then confirms. `event_hook.py` writes nothing to stdout and exits 0 on every
+path, which is almost certainly read as "no opinion", but *almost certainly* is not
+the standard the rest of this document holds itself to. Before `PermissionRequest`
+appears in any bundled hooks file, the no-output path must be shown not to be read as
+a decision. Registering it for observability alone would otherwise put a dashboard in
+the approval path.
+
+The dispatch site is narrower than the event name suggests:
+`Approvable::permission_request_payload` is implemented for the shell, apply-patch and
+unified-exec runtimes only, not for MCP tools. So even once it fires, it would not
+report an MCP permission wait.
+
+**A measurement made while chasing this, which matters more than the hook does.**
+The argument for wanting a permission signal is that `input_requested` is the
+overlay with no dedicated clearing event: `EVENT_NAMES` carries `input_resolved` and
+nothing anywhere produces it. That much was already recorded. What was not is how
+badly the fallback behaves. A later `turn_started` does not durably clear a
+needs-input overlay, it only outranks it for `overlay_working_ttl_sec`, and when
+that working overlay expires the needs-input overlay applies again with its
+*original* `blocked_since`:
+
+| `now` | patch `reduce_overlays` produces |
+|---|---|
+| working overlay live | `state: working` |
+| 90 seconds later | `state: needs_input`, `blocked_since` back at the original stamp |
+
+So a turn still running 90 seconds after its permission was granted reverts to a
+false "waiting for you", and claims to have been waiting the whole time. The durable
+clears are only `turn_stopped`, `session_ended` and the pending TTL. That is a
+user-visible defect in its own right rather than a gap in this harness's coverage,
+and it is filed separately.
 
 `subagent_start` and `subagent_stop` are real, and are now **measured** as well.
 Evidence: [`docs/captures/codex/subagents-0.146.0-macos.jsonl`](../captures/codex/subagents-0.146.0-macos.jsonl).
@@ -756,16 +860,10 @@ existing `agent_id` to `subagent_id` rename is the whole adapter change.
 `stop_hook_active`; `SubagentStart` carries only `agent_id`, `agent_type` and
 `turn_id` beyond the common base. `agent_type` was `default` here.
 
-**One negative above is now in doubt, and is left open rather than quietly fixed.**
-This section's heading says Codex has no permission hook, on the evidence that no
-`permission_request` key ever appeared in `config.toml`'s registration state. The
-0.146.0 binary's own hook-event enum reads
-`PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, SessionStart,
-SessionEnd, UserPromptSubmit, SubagentStart, SubagentStop, Stop` -- `PermissionRequest`
-is in it, and `TaskCompleted` is not, so the task-completed half of the negative
-holds and the permission half does not. Two methods disagree: absence from
-registration state, against presence in the binary. Nothing maps it either way
-until that is settled, and it is worth its own issue rather than a guess here.
+**The permission-hook doubt this work raised has since been settled**, and the
+heading above is the corrected version. The short form: the event exists, the name
+registers, and `codex exec` pins `approval_policy` to `never` so it can never be
+asked. It stays unmapped for want of a payload rather than for want of an event.
 
 #### Antigravity status-line semantics: MEASURED, and the documented field list was wrong
 
@@ -884,9 +982,10 @@ invocations. Linux and Windows remain unmeasured.
 
 **The one thing still unmeasured, and it is the one worth wanting.** `Notification` is documented as
 carrying `notification_type: "ToolPermission"`, which would be a first-class permission signal, better
-than Claude's ambiguous notification and better than Codex, which has no permission hook at all. It
-could not be captured, and not for want of trying: non-interactive Gemini offers no tool that needs
-approval. The advertised set was `glob`, `grep_search`, `list_directory`, `read_file`,
+than Claude's ambiguous notification and better than Codex, whose permission hook exists but cannot be
+reached in the only mode this project drives non-interactively. It could not be captured either, and
+not for want of trying: non-interactive Gemini offers no tool that needs approval. The advertised set
+was `glob`, `grep_search`, `list_directory`, `read_file`,
 `google_web_search`, `invoke_agent`, `update_topic` and `enter_plan_mode`, with no shell and no write
 tool, so no approval prompt can arise. It is therefore absent from `GEMINI_EVENTS`, on the same rule
 that keeps unmeasured Codex subagent events out. Capturing it needs an interactive session.

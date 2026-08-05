@@ -723,6 +723,13 @@ HOOK_FILE_VOCABULARY = {
                 "SubagentStop",
                 "PreCompact",
                 "PostCompact",
+                # Recognised, and measured as such: a hooks file listing it beside
+                # the seven mapped names installed cleanly and left all seven
+                # firing. This set is what the harness *accepts*, which is a
+                # different question from what the adapter maps -- `CODEX_EVENTS`
+                # omits it because `codex exec` pins `approval_policy` to `never`
+                # so its payload could not be captured.
+                "PermissionRequest",
             }
         ),
     ),
