@@ -32,15 +32,25 @@ No prompt text, no tool input, no tool output, no file path. `PreToolUse` record
 |---|---|
 | `codex/hooks-0.146.0-macos.jsonl` | One `codex exec` turn containing one shell tool call. codex-cli 0.146.0, macOS, run against an isolated `CODEX_HOME` so no user configuration was touched, with `--dangerously-bypass-hook-trust` because Codex skips untrusted hooks silently. |
 | `antigravity/statusline-macos.jsonl` | Two `agy --print` sessions, 37 status-line pushes. macOS. Recorded through a `statusLine` entry in the real `settings.json`, backed up and restored in the same script, because Antigravity's status line cannot be plugin-bundled. |
+| `claude/hooks-2.1.222-macos.jsonl` | Five headless `claude -p` turns, 38 hook invocations: one turn with three tool calls, one that dispatches a subagent which itself calls a tool, and three that pursued a permission prompt. Claude Code 2.1.222, macOS. Recorded through `--plugin-dir` against a copy of the plugin whose hook commands were repointed at the recorder, so no settings file was edited. **Not** through an isolated `CLAUDE_CONFIG_DIR`: that changes the credential's keychain account name and loses the subscription login. |
+| `claude/identity-2.1.222-macos.jsonl` | The identity question for the same five sessions, as verdicts, covering both `session_id` and the subagent `agent_id`. |
 | `gemini/hooks-0.53.1-macos.jsonl` | Four headless `gemini -p` turns, 56 hook invocations, each turn containing one `list_directory` tool call. Gemini CLI 0.53.1, macOS, against an isolated `GEMINI_CLI_HOME`. No credential was involved: the CLI ran against a loopback stand-in for the Gemini API, which is what made a real session reachable at all, since consumer accounts have not been served since 2026-06-18 and the auth check happens before any hook fires. |
 | `gemini/identity-0.53.1-macos.jsonl` | The identity question for the same five sessions, as verdicts rather than values, in the shape the Antigravity file established. |
 
-The Gemini identity file exists because a shape-only record cannot answer the question the gate asks.
-`capture_hook.py` truncates a session id to eight characters on purpose, and the question was whether
-the hook's *whole* id equals the `sessionId` on line 1 of the `chats/session-*.jsonl` the same session
-wrote, which is what `collectors/gemini.py` keys on. Five sessions, five exact matches, all 36
-characters. The store *filename* carries only the first eight, which is the trap: keying on the name
-would key on a prefix the collector never uses.
+The two identity files exist because a shape-only record cannot answer the question the gate asks.
+`capture_hook.py` truncates a session id to eight characters on purpose, and the question in both cases
+was whether the hook's *whole* id is the value the collector keys on.
+
+For Gemini it is the `sessionId` on line 1 of the `chats/session-*.jsonl` the same session wrote. Five
+sessions, five exact matches, all 36 characters. The store *filename* carries only the first eight,
+which is the trap: keying on the name would key on a prefix the collector never uses.
+
+For Claude the file answers two questions rather than one. `session_id` is the whole 36-character UUID
+and the transcript filename stem *is* that value, five times out of five, so the collector taking
+`basename(fp)[:8]` and the adapter taking `session_id[:8]` agree by construction rather than by luck.
+The subagent `agent_id` is a separate 17-character value that is **not** UUID-shaped, which is worth
+recording as a constraint: anything that validated `subagent_id` the way `session_id` is validated
+would drop every Claude subagent overlay.
 
 The Antigravity file has a different shape from the Codex one, because it answers a different
 question. Its records carry `keys`, the observed `agent_state`, and `id_verdicts`: for each candidate

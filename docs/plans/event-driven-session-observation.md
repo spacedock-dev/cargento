@@ -438,9 +438,9 @@ when Cargento is not running. For a future managed mode, native app-server expos
 thread status and is preferable to scraping rollouts; compare it with the ACP adapter using fixtures
 before choosing between those managed transports.
 
-#### Claude hook distribution: MEASURED. Semantics: still waived
+#### Claude hook distribution and semantics: both MEASURED
 
-Two separate questions, and only one of them is now answered.
+Two separate questions. Both are now answered, the second one late.
 
 **Distribution is verified.** Claude Code loads a plugin's bundled hooks from
 `hooks/hooks.json` at the plugin root, by convention, with no manifest key. Confirmed by running
@@ -459,13 +459,71 @@ Two things that misled the verification, worth writing down because both look li
 2. The adapter exits 0 on every failure by design, so nothing distinguishes "posted" from "gave up".
    Diagnosing this needed the guards instrumented from inside a real hook invocation.
 
-**Semantics remain waived.** What this exercise measured is that the hooks arrive and are accepted,
-not that the vocabulary is right. The payload observed for `UserPromptSubmit` carried `cwd`,
-`hook_event_name`, `permission_mode`, `prompt`, `prompt_id`, `session_id` and `transcript_path`,
-which is consistent with `event_hook.py`'s allowlist. But no subagent ran, no permission was
-requested, and no hook cost was sampled, so cardinality, ordering and the p99 budget are still
-unmeasured, and `SubagentStart`, `SubagentStop`, `TaskCompleted` and `PermissionRequest` are still
-mappings taken on trust. Closing that is its own piece of work.
+**Semantics are now measured too, for everything a headless turn reaches.** Evidence:
+[`docs/captures/claude/`](../captures/claude/), from Claude Code 2.1.222 on macOS. Five sessions, 38
+hook invocations, five complete turns.
+
+The route matters, because the one this document originally proposed would have failed. Isolating the
+store with `CLAUDE_CONFIG_DIR` **loses the subscription login**: the credential's keychain account
+name is suffixed with the first eight hex characters of `sha256(config dir)`, and is unsuffixed only
+when the variable is unset. So the capture used `--plugin-dir` against a copy of the plugin whose
+`hooks/hooks.json` commands were repointed at `scripts/capture_hook.py`. No settings file was edited,
+no isolated config directory was needed, and the login was untouched. That is the recipe to reuse.
+
+**Ordering and cardinality.** `UserPromptSubmit` exactly once, `Stop` exactly once, in that order,
+with `SessionStart` before the turn and `SessionEnd` after it. `PreToolUse` and `PostToolUse` pair up,
+once per tool call, three pairs in a three-tool turn. So the two guesses that mattered most, that a
+prompt hook means Working and `Stop` means Idle once per turn, hold.
+
+**The subagent turn, which is the one that settled the open question:**
+
+```text
+UserPromptSubmit -> PreToolUse -> SubagentStart -> PreToolUse -> PostToolUse -> SubagentStop
+                 -> PostToolUse -> Stop
+```
+
+The subagent's lifecycle nests inside the parent's Agent-tool `PreToolUse` and `PostToolUse` pair, and
+the inner pair is the *child's* own tool call. All ten events of that turn carried **one**
+`session_id`, equal to the parent's. `agent_id` was a single distinct value, 17 characters and **not
+UUID-shaped**, and it appeared on the child's `PreToolUse` and `PostToolUse` as well as on
+`SubagentStart` and `SubagentStop`, because it lives in the common hook base rather than only in the
+subagent events.
+
+Two consequences worth writing down, because both look like bugs and neither is:
+
+1. A `store_changed` originating inside a subagent arrives carrying `subagent_id`, since
+   `event_hook.py` maps `agent_id` unconditionally. Harmless: `overlay_for` reads `subagent_id` only
+   for `subagent_started` and `subagent_stopped`, so every other overlay keys on `(kind, None)`.
+2. Nothing validates `subagent_id`'s shape, and nothing may start to. Claude's `agent_id` is 17
+   characters, so a UUID check of the kind `session_id` gets would drop every Claude subagent overlay.
+
+**Identity, re-verified.** Five sessions, five exact matches: the transcript filename stem *is* the
+`session_id`, all 36 characters, so `collectors/claude.py` taking `basename(fp)[:8]` and `_claude_sid`
+taking `session_id[:8]` agree by construction rather than by luck.
+
+**Cost.** p50 0.12 ms, p95 0.16 ms, p99 **0.18 ms**, macOS, hook self-cost across 38 invocations.
+Linux and Windows remain unmeasured. This is the hook's own work; the interpreter startup that
+dominates it is measured separately by `scripts/bench_collect.py`.
+
+**Where the capture disagreed with the published documentation.** The docs are wrong or stale on
+several payloads, which is the fourth time desk-read field names have been wrong in this project:
+`SessionEnd` sends `reason`, not `end_reason`; `SubagentStop` carries an undocumented
+`agent_transcript_path`; `PostToolUse` carries `duration_ms`; `Stop` and `SubagentStop` both carry
+`background_tasks` and `session_crons`; and `effort` and `tool_use_id` appear throughout. A static
+read of the binary also predicted `session_title` on `UserPromptSubmit`, and the real payload does not
+carry it, so the field list already recorded above is correct and the static read was not. None of
+this changes the adapter, which builds its envelope from an allowlist, but it is the reason the
+allowlist exists.
+
+**Three mapped events still have not fired, and one of them matters.** `PermissionRequest`,
+`TaskCompleted` and `PostCompact` never occurred, so their payloads remain unmeasured.
+`PermissionRequest` was pursued rather than skipped: a shell command was requested with the tool
+absent from `--allowedTools`, and then again under `--permission-mode manual` and
+`--permission-mode default`. In all three cases the tool simply ran and no permission event fired, so
+a headless print-mode session cannot produce one. `--permission-prompt-tool` exists precisely to serve
+prompts non-interactively and is the likely route; an interactive session is the other. Until then the
+`input_requested` mapping is the one Claude claim still resting on documentation, and
+`overlay_working_ttl_sec` remains what bounds the damage.
 
 #### Codex adapter semantics: MEASURED, and the gate is cleared
 
@@ -1477,41 +1535,49 @@ The gates are independent. Verdicts, one per gate:
 
   Reconciliation therefore stays, and this is the concrete reason rather than a general caution. WSL,
   remote, bind and network stores are still unproven and retain the current cadence.
-- **Adapter semantics: MEASURED for Codex, Antigravity and Gemini CLI, still WAIVED for Claude.**
+- **Adapter semantics: MEASURED for every harness with an adapter.**
   Codex's evidence is under [Codex](#codex): cardinality, ordering, per-event payload fields, a p99
   hook cost of 0.47 ms, and an identity mapping verified against the rollout the same session wrote.
   Antigravity's is under [Antigravity](#antigravity), and it corrected three field names this document
   had taken from vendor documentation. Gemini's is under
   [Gemini CLI](#gemini-cli-copilot-and-factory-droid), and it corrected something larger than a field
-  name: the premise that the harness was legacy. Claude is the one harness still shipping on
-  unmeasured semantics, which is the irony worth noting: it is the harness this project runs inside.
+  name: the premise that the harness was legacy. Claude's is under
+  [Claude hook distribution and semantics](#claude-hook-distribution-and-semantics-both-measured), and
+  it was the last gate waived rather than cleared. Three of its ten mapped events have still not
+  fired, `PermissionRequest` among them, which is recorded there rather than counted as measured.
 
-- **Claude adapter semantics: WAIVED by the maintainer, not cleared by evidence.** The gate asked for
-  contract or real-CLI fixtures proving event meaning, cardinality and order, plus a p99 hook budget
-  per OS. `scripts/capture_hook.py` exists to collect exactly that and reports its own cardinality,
-  per-event payload shape, turn orderings and self-cost. No captures were ever taken: the recording
-  hook writes a merged `settings_with_hooks.json` for review and deliberately never edits the real
-  settings file, and nobody swapped it in, so `~/.cargento/captures` stayed empty. Phase 2 proceeds
-  on the maintainer's decision to accept unproven event semantics rather than on measurement.
+- **Claude adapter semantics: WAIVED at the time, CLEARED afterwards by capture.** The history is
+  kept because it is the more useful record. The gate asked for contract or real-CLI fixtures proving
+  event meaning, cardinality and order, plus a p99 hook budget per OS. `scripts/capture_hook.py`
+  existed to collect exactly that from the start. No captures were taken for a whole phase, and not
+  for want of tooling: the recording hook writes a merged `settings_with_hooks.json` for review and
+  deliberately never edits the real settings file, and nobody swapped it in, so
+  `~/.cargento/captures` stayed empty. Phase 2 shipped on a decision to accept unproven event
+  semantics rather than on measurement.
 
-  What that costs, stated plainly so it is not rediscovered as a bug. Every semantic mapping in
-  `events.py` is a reasoned guess: that a prompt hook means Working, that a permission request means
-  Needs input, that one turn emits the events in the order the reducer assumes. A wrong guess shows
-  as a row stuck in the wrong state, and the deadline on the Working overlay is what bounds the
-  damage. The p99 hook budget per OS is also unmeasured, so the claim that a synchronous shim fits
-  inside it is untested. The envelope layer itself is not affected: it publishes no transition, and a
-  reducer with no ingress wired to it cannot patch a row.
+  The lesson is about the route, not the diligence. The proposed route was itself unusable: isolating
+  the store with `CLAUDE_CONFIG_DIR` loses the subscription login, because the credential's keychain
+  account name is suffixed with `sha256(config dir)` and unsuffixed only when the variable is unset.
+  A gate whose only documented method does not work is a gate that stays waived. The method that does
+  work is `--plugin-dir` against a copy of the plugin with the hook commands repointed, which touches
+  no settings file at all.
 
-  Take the captures before trusting the transitions in anger. The gate is recorded as waived rather
-  than deleted so that remains findable.
+  What it cost while waived, stated plainly so the shape of the risk stays visible: every semantic
+  mapping was a reasoned guess, a wrong one shows as a row stuck in the wrong state, and the deadline
+  on the Working overlay is what bounded the damage. When the capture finally ran, the two guesses
+  that mattered most were right, and the published field names were wrong on five payloads. Both
+  halves of that are the argument for measuring.
+
+  See [Claude hook distribution and semantics](#claude-hook-distribution-and-semantics-both-measured)
+  for the evidence, including the three mapped events that still have not fired.
 - **Operational rollout: not yet measured, blocks the phase it gates.** Retain abort thresholds for
   CPU duty, memory, handler/thread ceilings, p95 render latency and missed-event repair rate. A 25%
   collection threshold alone cannot protect the user experience. There is no render path to measure
   against until Phase 1 delivers one.
 
 Phase 1 may proceed: its inputs from Phase 0 are the post-fix collection time and the selective-reuse
-verdict, and both now exist. Phase 2's probe gate is cleared. Its adapter gate is waived rather than
-cleared, so its adapters proceed with unproven event semantics, which the waiver above records.
+verdict, and both now exist. Phase 2's probe gate is cleared, and its adapter gate is now cleared by
+capture for every harness with an adapter, Claude last.
 
 ### Phase 1: materialized snapshot and SSE
 

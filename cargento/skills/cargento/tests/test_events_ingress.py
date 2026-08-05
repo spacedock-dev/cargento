@@ -727,6 +727,55 @@ class CodexAdapterTest(unittest.TestCase):
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", command)
         self.assertTrue(command.endswith(" claude"), command)
 
+    def test_a_child_tool_call_is_attributed_to_the_parent_row(self) -> None:
+        """Measured, and it is the reason the Claude sid path is sound.
+
+        A subagent's own `PreToolUse` and `PostToolUse` fire with the *parent's*
+        `session_id` and an added `agent_id`. All ten events of the captured
+        subagent turn shared one session id, and `agent_id` was a distinct
+        17-character value. So a child's tool call lands on the parent's row,
+        which is the only row that exists: the collector keys on the transcript
+        filename, and a subagent has no transcript of its own under that name.
+        """
+        built = event_hook.envelope(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": SESSION,
+                "agent_id": "agent_01HZ8QRS9",
+                "agent_type": "general-purpose",
+                "cwd": "/tmp/project",
+                "tool_name": "Read",
+                "tool_input": {"file_path": "/secret"},
+                "tool_response": "contents that must never be sent",
+            },
+            "claude",
+        )
+        assert built is not None
+        self.assertEqual("store_changed", built["event"])
+        self.assertEqual(SESSION, built["session_id"], "the parent's id, not the child's")
+        self.assertEqual("agent_01HZ8QRS9", built["subagent_id"])
+        for forbidden in ("tool_name", "tool_input", "tool_response", "agent_type"):
+            self.assertNotIn(forbidden, built)
+
+    def test_a_subagent_id_that_is_not_uuid_shaped_still_carries(self) -> None:
+        # Claude's `agent_id` is 17 characters and not a UUID, so anything that
+        # validated it the way session ids are validated would drop every Claude
+        # subagent overlay. Nothing does, and this pins that.
+        overlay = events.overlay_for(
+            events.Event(
+                harness="claude",
+                event="subagent_started",
+                sid=PREFIX,
+                session_id=SESSION,
+                timestamp=100.0,
+                arrival_seq=1,
+                subagent_id="agent_01HZ8QRS9",
+            ),
+            config=support.build_app().config,
+        )
+        assert overlay is not None
+        self.assertEqual("agent_01HZ8QRS9", overlay.subagent_id)
+
     @staticmethod
     def _gemini_hooks() -> dict[str, Any]:
         path = Path(__file__).resolve().parents[4] / "cargento-gemini" / "hooks" / "hooks.json"
