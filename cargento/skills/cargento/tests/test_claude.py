@@ -1225,10 +1225,22 @@ class SubagentWorkflowCacheTest(RuntimeTestCase):
     def _names(self, found: list[tuple[str, float]]) -> list[str]:
         return sorted(os.path.basename(path) for path, _ in found)
 
+    def _park(self, directory: str) -> None:
+        """Age a directory's mtime before it is first listed.
+
+        The signal under test is a real file creation moving a real directory
+        mtime, so nothing here forges the change itself. Parking the starting
+        value a minute back is only what keeps a filesystem with coarse
+        timestamps from reporting the before and after as the same instant.
+        """
+        parked = time.time() - 60
+        os.utime(directory, (parked, parked))
+
     def test_the_first_agent_in_a_known_empty_run_directory_is_seen(self) -> None:
         config, state = runtime()
         with tempfile.TemporaryDirectory() as root:
             parent, run = self._fixture(root)
+            self._park(run)
             self.assertEqual(
                 [], claude_collector.agent_transcripts(parent, config=config, state=state)
             )
@@ -1246,6 +1258,7 @@ class SubagentWorkflowCacheTest(RuntimeTestCase):
             parent, run = self._fixture(root)
             first = os.path.join(run, "agent-alpha.jsonl")
             Path(first).write_text("{}\n", encoding="utf-8")
+            self._park(run)
             self.assertEqual(
                 ["agent-alpha.jsonl"],
                 self._names(claude_collector.agent_transcripts(parent, config=config, state=state)),
@@ -1292,6 +1305,7 @@ class SubagentWorkflowCacheTest(RuntimeTestCase):
             sub = os.path.join(root, "abcd1234-session", "subagents")
             os.makedirs(sub)
             Path(os.path.join(sub, "agent-a.jsonl")).write_text("{}\n", encoding="utf-8")
+            self._park(sub)
             late = os.path.join(sub, "agent-b.jsonl")
             real_glob = runtime_io.glob_under
 
