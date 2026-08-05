@@ -1,0 +1,74 @@
+"""The published dashboard snapshot: one built response per variant, versioned.
+
+The revision is a pair, not an integer. A counter alone restarts at zero with
+the process, so a tab frozen at revision 512 across a dashboard restart would
+treat every later revision as older and never refetch again. Pairing it with
+the server start stamp makes a restart visibly discontinuous, and a client
+discards its cursor when the first element changes.
+
+The counter is per process rather than per variant, so it orders every
+published state a client could hold a cursor against.
+"""
+
+from __future__ import annotations
+
+import threading
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from _thread import LockType
+
+# Keyed as the memo keyed it: window hours paired with the show-all flag, so the
+# two response variants stay separate.
+SnapshotKey = tuple[float, bool]
+# The server start stamp paired with a per-process counter. See the module
+# docstring for why a bare counter is not enough.
+Revision = tuple[float, int]
+
+
+def format_revision(revision: Revision) -> str:
+    """The wire form: restart stamp, a dot, the counter."""
+    started, counter = revision
+    return f"{started:.0f}.{counter}"
+
+
+class Snapshot:
+    """One process's published responses, guarded by its own lock.
+
+    The lock is held only across a dict read or write, never across collection
+    and never across a socket write. A published entry is an immutable tuple, so
+    a reader that has taken one cannot be torn by a concurrent publish.
+    """
+
+    def __init__(self, *, server_started: float) -> None:
+        self.server_started = server_started
+        self._lock: LockType = threading.Lock()
+        self._counter = 0
+        self._entries: dict[SnapshotKey, tuple[Revision, bytes, float]] = {}
+
+    def publish(self, key: SnapshotKey, body: bytes, *, now: float = 0.0) -> Revision:
+        with self._lock:
+            self._counter += 1
+            revision = (self.server_started, self._counter)
+            self._entries[key] = (revision, body, now)
+            return revision
+
+    def current(self, key: SnapshotKey) -> tuple[Revision, bytes] | None:
+        with self._lock:
+            entry = self._entries.get(key)
+        if entry is None:
+            return None
+        revision, body, _published_at = entry
+        return revision, body
+
+    def age(self, key: SnapshotKey, *, now: float) -> float | None:
+        """Seconds since this variant was published, or None if it never was.
+
+        None rather than zero: zero reads as fresh, which would let a cold GET
+        skip the collection it needs.
+        """
+        with self._lock:
+            entry = self._entries.get(key)
+        if entry is None:
+            return None
+        return now - entry[2]

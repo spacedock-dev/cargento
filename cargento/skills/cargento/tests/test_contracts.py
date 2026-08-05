@@ -924,6 +924,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
         },
         "cargento_runtime.records": set(),
         "cargento_runtime.sessions": {"cargento_runtime.config"},
+        # The published snapshot is a passive container: it holds bytes and a
+        # revision and takes a lock. It imports no runtime module, which is what
+        # lets both aggregate and the HTTP layer depend on it without a cycle.
+        "cargento_runtime.snapshot": set(),
         "cargento_runtime.state": {"cargento_runtime.config"},
         "cargento_runtime.transcripts": {
             "cargento_runtime.config",
