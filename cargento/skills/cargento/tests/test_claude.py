@@ -1199,3 +1199,159 @@ class SubagentListingCacheTest(RuntimeTestCase):
             found = claude_collector.agent_transcripts(parent, config=config, state=state)
             self.assertEqual(len(found), 1)
             self.assertGreater(found[0][1], stale)
+
+
+class SubagentWorkflowCacheTest(RuntimeTestCase):
+    """The nested layout invalidates too, from the moment a run exists.
+
+    A workflow run directory is created a beat before its first agent
+    transcript, and a file appearing inside it moves no other directory's
+    mtime. An entry cached in that window has to expire anyway, or every agent
+    of that run stays invisible for the life of the process and its parked
+    parent ages out of the window entirely.
+    """
+
+    def _fixture(self, root: str) -> tuple[str, str]:
+        """A parent transcript and one empty workflow run directory."""
+        parent = os.path.join(root, "abcd1234-session.jsonl")
+        Path(parent).write_text("{}\n", encoding="utf-8")
+        run = os.path.join(root, "abcd1234-session", "subagents", "workflows", "wf_1")
+        os.makedirs(run)
+        # Every real run directory holds a journal, which no glob pattern
+        # matches: the directory is non-empty and the listing is still empty.
+        Path(os.path.join(run, "journal.jsonl")).write_text("{}\n", encoding="utf-8")
+        return parent, run
+
+    def _names(self, found: list[tuple[str, float]]) -> list[str]:
+        return sorted(os.path.basename(path) for path, _ in found)
+
+    def test_the_first_agent_in_a_known_empty_run_directory_is_seen(self) -> None:
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent, run = self._fixture(root)
+            self.assertEqual(
+                [], claude_collector.agent_transcripts(parent, config=config, state=state)
+            )
+
+            Path(os.path.join(run, "agent-alpha.jsonl")).write_text("{}\n", encoding="utf-8")
+
+            self.assertEqual(
+                ["agent-alpha.jsonl"],
+                self._names(claude_collector.agent_transcripts(parent, config=config, state=state)),
+            )
+
+    def test_a_replacement_agent_in_a_known_run_directory_is_seen(self) -> None:
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent, run = self._fixture(root)
+            first = os.path.join(run, "agent-alpha.jsonl")
+            Path(first).write_text("{}\n", encoding="utf-8")
+            self.assertEqual(
+                ["agent-alpha.jsonl"],
+                self._names(claude_collector.agent_transcripts(parent, config=config, state=state)),
+            )
+
+            os.remove(first)
+            Path(os.path.join(run, "agent-beta.jsonl")).write_text("{}\n", encoding="utf-8")
+
+            self.assertEqual(
+                ["agent-beta.jsonl"],
+                self._names(claude_collector.agent_transcripts(parent, config=config, state=state)),
+            )
+
+    def test_a_run_directory_created_after_the_first_listing_is_seen(self) -> None:
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent = os.path.join(root, "abcd1234-session.jsonl")
+            Path(parent).write_text("{}\n", encoding="utf-8")
+            os.makedirs(os.path.join(root, "abcd1234-session", "subagents"))
+            self.assertEqual(
+                [], claude_collector.agent_transcripts(parent, config=config, state=state)
+            )
+
+            run = os.path.join(root, "abcd1234-session", "subagents", "workflows", "wf_2")
+            os.makedirs(run)
+            Path(os.path.join(run, "agent-alpha.jsonl")).write_text("{}\n", encoding="utf-8")
+
+            self.assertEqual(
+                ["agent-alpha.jsonl"],
+                self._names(claude_collector.agent_transcripts(parent, config=config, state=state)),
+            )
+
+    def test_a_transcript_written_during_the_glob_is_not_cached_away(self) -> None:
+        """The stamp has to be taken before the listing, never after it.
+
+        A stamp taken after the glob records the directory move the new
+        transcript caused as already accounted for, so the listing that missed
+        it looks current and is served for the life of the process.
+        """
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent = os.path.join(root, "abcd1234-session.jsonl")
+            Path(parent).write_text("{}\n", encoding="utf-8")
+            sub = os.path.join(root, "abcd1234-session", "subagents")
+            os.makedirs(sub)
+            Path(os.path.join(sub, "agent-a.jsonl")).write_text("{}\n", encoding="utf-8")
+            late = os.path.join(sub, "agent-b.jsonl")
+            real_glob = runtime_io.glob_under
+
+            def racing(base: str, *pattern: str) -> list[str]:
+                listed = real_glob(base, *pattern)
+                if not os.path.exists(late):
+                    Path(late).write_text("{}\n", encoding="utf-8")
+                return listed
+
+            with mock.patch.object(runtime_io, "glob_under", side_effect=racing):
+                claude_collector.agent_transcripts(parent, config=config, state=state)
+
+            self.assertEqual(
+                ["agent-a.jsonl", "agent-b.jsonl"],
+                self._names(claude_collector.agent_transcripts(parent, config=config, state=state)),
+            )
+
+
+class SubagentScanCountTest(RuntimeTestCase):
+    """The collector itself scans a session's subagents once per collection.
+
+    Both of the call site's guarantees are load-bearing and neither is visible
+    from ``agent_transcripts`` alone: handing the listing to
+    ``load_subagents`` is what makes it one scan instead of two, and passing
+    the runtime is what lets the second collection skip the glob.
+    """
+
+    def test_one_collection_costs_one_scan_and_the_next_costs_none(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp) / "projects"
+            project = projects / "-w-proj"
+            project.mkdir(parents=True)
+            transcript = project / "abcd1234-3456-7890-abcd-ef1234567890.jsonl"
+            transcript.write_text("{}\n", encoding="utf-8")
+            sess_dir = project / "abcd1234-3456-7890-abcd-ef1234567890"
+            (sess_dir / "subagents").mkdir(parents=True)
+            (sess_dir / "subagents" / "agent-a.jsonl").write_text("{}\n", encoding="utf-8")
+            real_glob = runtime_io.glob_under
+            scans: list[str] = []
+
+            def counting(base: str, *pattern: str) -> list[str]:
+                if base == str(sess_dir):
+                    scans.append(os.path.join(base, *pattern))
+                return real_glob(base, *pattern)
+
+            with (
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
+                mock.patch.object(runtime_io, "glob_under", side_effect=counting),
+            ):
+                first = collect_claude(now, 24, False)
+                after_one = len(scans)
+                second = collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(first), "fixture must produce exactly one session")
+        self.assertEqual(1, len(second))
+        self.assertEqual(
+            len(claude_collector.SUBAGENT_GLOBS),
+            after_one,
+            f"one collection should list the subagent tree once, listed: {scans}",
+        )
+        self.assertEqual(after_one, len(scans), "an unchanged tree was listed again")

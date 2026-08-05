@@ -75,19 +75,28 @@ def load_tasks(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
     return by_session
 
 
-def subagent_tree_stamp(sess_dir: str, paths: list[str]) -> tuple[float, ...]:
-    """The mtimes of every directory that could gain or lose one of ``paths``.
+def subagent_tree_stamp(sess_dir: str) -> tuple[float, ...]:
+    """The mtimes of every directory a ``SUBAGENT_GLOBS`` pattern can reach.
 
     A file appears in or leaves a directory only by changing that directory's
     mtime, so this tuple is a complete change detector for the listing: the two
     container directories catch a first flat subagent and a first workflow run,
-    and the parents of the known paths catch a later agent inside a run that
-    already has one. Absent directories stamp as -1 so the tuple keeps its
-    shape and length across calls.
+    and every existing run directory catches an agent landing inside a run that
+    the glob has already walked. Watching the run directories by listing them,
+    rather than by taking the parents of an existing listing, is what makes the
+    empty case safe: a run directory is created a beat before its first agent
+    transcript, and a run watched only once it holds one would never notice the
+    file that put it there. Absent directories stamp as -1 rather than dropping
+    out, so a directory appearing changes the tuple instead of shifting it.
     """
     subagents = os.path.join(sess_dir, "subagents")
-    watched = {sess_dir, subagents, os.path.join(subagents, "workflows")}
-    watched.update(os.path.dirname(path) for path in paths)
+    workflows = os.path.join(subagents, "workflows")
+    watched = {sess_dir, subagents, workflows}
+    try:
+        with os.scandir(workflows) as entries:
+            watched.update(entry.path for entry in entries if entry.is_dir())
+    except OSError:
+        pass  # no workflows directory: the two containers are the whole tree
     stamp: list[float] = []
     for directory in sorted(watched):
         try:
@@ -122,16 +131,18 @@ def agent_transcripts(
     if not os.path.isdir(sess_dir):
         return []
     cache = None if state is None or config is None else state.claude_subagent_cache
+    # Stamped before the listing, never after it. A transcript written while the
+    # tree is being walked moves a directory mtime, and a stamp taken afterwards
+    # would record that move as already accounted for, pinning the listing that
+    # missed the file. Stamping first can only cost one extra glob next time.
+    stamp = None if cache is None else subagent_tree_stamp(sess_dir)
     hit = None if cache is None else cache.get(sess_dir)
-    if hit is not None and hit[0] == subagent_tree_stamp(sess_dir, hit[1]):
+    if hit is not None and hit[0] == stamp:
         return stamped(hit[1])
     paths = [fp for pattern in SUBAGENT_GLOBS for fp in runtime_io.glob_under(sess_dir, *pattern)]
-    if cache is not None and config is not None:
+    if cache is not None and config is not None and stamp is not None:
         runtime_state.bounded_put(
-            cache,
-            sess_dir,
-            (subagent_tree_stamp(sess_dir, paths), list(paths)),
-            limit=config.max_cache_entries,
+            cache, sess_dir, (stamp, list(paths)), limit=config.max_cache_entries
         )
     return stamped(paths)
 
