@@ -8,6 +8,8 @@ import unittest
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
 
+from . import support
+
 
 class StreamClientTest(unittest.TestCase):
     def test_wait_returns_the_offered_revision(self) -> None:
@@ -99,6 +101,25 @@ class RevisionShapeTest(unittest.TestCase):
     def test_the_stream_revision_matches_the_snapshot_revision(self) -> None:
         """stream.py deliberately does not import snapshot, so pin the shape."""
         self.assertEqual(runtime_snapshot.Revision, runtime_stream.Revision)
+
+
+class PublishNotifiesStreamsTest(support.RuntimeTestCase):
+    def test_a_fresh_collection_reaches_a_connected_client(self) -> None:
+        app = support.build_app()
+        client = app.state.streams.register(limit=4)
+        assert client is not None
+        revision, _body = app.collect_json(show_all=False)
+        self.assertEqual(revision, client.wait(timeout=0.01))
+
+    def test_a_reused_snapshot_does_not_wake_a_client(self) -> None:
+        # Nothing changed, so there is nothing to tell a client about. Waking it
+        # would make every warm GET cost every stream a needless refetch.
+        app = support.build_app()
+        app.collect_json(show_all=False)
+        client = app.state.streams.register(limit=4)
+        assert client is not None
+        app.collect_json(show_all=False)
+        self.assertIsNone(client.wait(timeout=0.01))
 
 
 if __name__ == "__main__":

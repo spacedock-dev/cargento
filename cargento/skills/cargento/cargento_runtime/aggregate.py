@@ -303,6 +303,10 @@ class Application:
                 return published
             body = json.dumps(self.collect(show_all=show_all)).encode()
             revision = self.snapshot.publish(key, body, now=self.clock())
+            # Only a freshly minted revision is worth announcing. A warm reuse
+            # returns above without reaching this line, so a connected client is
+            # never woken for a state it already has.
+            self.state.streams.publish(revision)
             return revision, body
 
     def _fresh_snapshot(
