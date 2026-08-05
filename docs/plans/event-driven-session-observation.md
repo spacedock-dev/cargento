@@ -1206,7 +1206,16 @@ Split into 1a and 1b. 1a is shipped: see [`event-driven-phase-1a.md`](event-driv
   freshness floor stays at `collect_memo_sec` rather than being retuned, so worst-case staleness for
   `curl` and the headless path is unchanged and the change is provable as a refactor. The payload was
   verified byte-identical against the pre-snapshot branch.
-- Start its services only after daemonization and implement the shutdown order above.
+- **Shipped in 1b.** `GET /api/stream`, strictly same-origin rather than inheriting the
+  document-navigation relaxation, with restart-qualified ids, immediate current-state delivery, a
+  server-wide client budget answering 503 past the cap, a socket write timeout, one-slot mailboxes
+  and heartbeats. `stream.py` imports no runtime module and `state` owns the registry.
+- **Shipped in 1b.** Shutdown wakes sleeping streams. `server.shutdown()` stops the accept loop and
+  never touches handler threads, so both `/api/shutdown` and `serve()`'s finally close the registry.
+- **Shipped in 1b.** A demand-scoped producer that collects on an interval only while a stream is
+  connected, started inside `serve()` so the daemon path creates it after the fork. Verified on a
+  real daemon: 14 seconds idle with no reader and the first GET still reports revision counter 1.
+- Start its remaining services only after daemonization and implement the shutdown order above.
 - Add the SSE revision stream with restart-qualified IDs, immediate current-state delivery, server-wide
   and stream connection budgets, read/write timeouts, one-slot queues, heartbeats, leader-tab election
   and browser reconnect behavior.

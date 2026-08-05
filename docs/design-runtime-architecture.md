@@ -8,8 +8,9 @@ The dashboard began as a single `server.py` of 7,357 lines. It is now a launcher
 an importable `cargento_runtime` package. This document records the arrangement and the reasoning, so
 a later change either follows it or overturns it deliberately.
 
-An unshipped proposal to add event ingress, a materialized snapshot and SSE delivery would need new
-modules and an amendment to the reviewed import allowlist below; it is in
+The materialized snapshot and the SSE stream have since landed as `snapshot.py` and `stream.py`, each
+importing no runtime module so that `state` can own them without inverting R-2. The event ingress
+that would feed them is still a proposal, and the whole design lives in
 [`plans/event-driven-session-observation.md`](plans/event-driven-session-observation.md).
 
 ## The problem these decisions answer
@@ -48,6 +49,7 @@ Everything else lives in one file per responsibility:
 | `config.py` | Immutable process configuration, store-root resolution, every tunable limit. |
 | `state.py` | Mutable caches, locks, bounded-cache helpers, the server start stamp, and the runtime's published snapshot. |
 | `snapshot.py` | The published response bytes per variant, and the restart-qualified revision that versions them. Imports no runtime module, which is what lets `state`, `aggregate` and `http_api` all depend on it without a cycle. |
+| `stream.py` | Connected SSE clients and their one-slot revision mailboxes, with the connection budget. Imports no runtime module, for the same reason `snapshot.py` does not. `state` owns the registry because a connected stream belongs to the runtime, not to whichever object serves a request. |
 | `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
 | `records.py` | Parsing and normalizing untrusted records from disk. |
 | `sessions.py` | Session identity and shape (including the row's declared field set, `base_session`), freshness, display ids, deterministic aggregation. |
