@@ -687,7 +687,12 @@ def run_producer(
     died on one bad read would leave every connected dashboard frozen with no
     indication why.
     """
-    application = server.application
+    application = getattr(server, "application", None)
+    if application is None:
+        # A server double without an application: nothing to collect for, and a
+        # thread that raised here would surface as an unhandled exception from a
+        # daemon thread, which is noise rather than a signal.
+        return
     period = application.config.stream_producer_interval_sec if interval is None else interval
     while not stop.wait(period):
         if application.state.streams.count == 0:

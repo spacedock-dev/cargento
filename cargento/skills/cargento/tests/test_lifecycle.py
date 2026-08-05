@@ -1501,6 +1501,28 @@ class ProducerTest(support.RuntimeTestCase):
         httpd.server_close()
         self.assertFalse(thread.is_alive(), "stop must not wait out the interval")
 
+    def test_a_server_without_an_application_ends_the_producer_quietly(self) -> None:
+        """A server double is a real caller: cli.main's bind test uses one.
+
+        Reaching for server.application unguarded raised inside the producer
+        thread, which surfaced as an unhandled daemon-thread exception in the CI
+        log without failing anything: noise that hides real signal.
+        """
+
+        class Bare:
+            pass
+
+        stop = threading.Event()
+        thread = threading.Thread(
+            target=lifecycle.run_producer,
+            args=(Bare(),),
+            kwargs={"stop": stop, "interval": 0.01},
+            daemon=True,
+        )
+        thread.start()
+        thread.join(timeout=2)
+        self.assertFalse(thread.is_alive(), "it must return, not spin or raise")
+
     def test_a_collection_error_does_not_kill_the_producer(self) -> None:
         """A dead producer is a silently frozen dashboard."""
         httpd = self._server()
