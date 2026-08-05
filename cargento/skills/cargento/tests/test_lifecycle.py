@@ -237,7 +237,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                     server.stderr.close()
 
     def test_daemon_respawn_uses_the_absolute_stable_launcher(self) -> None:
-        args = argparse.Namespace(port=4553, window_hours=24.0, no_spacedock=False, daemon=True)
+        args = argparse.Namespace(
+            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+        )
         with tempfile.TemporaryDirectory() as tmp:
             log_file = str(Path(tmp) / "cargento.log")
             with mock.patch.object(subprocess, "Popen") as popen:
@@ -364,7 +366,9 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
         # and checking one element could not see it.
         windows_launcher = "C:\\plugin\\server.py"
         config = dataclasses.replace(cfg(), launcher_path=Path(windows_launcher))
-        args = argparse.Namespace(port=4553, window_hours=24.0, no_spacedock=False, daemon=True)
+        args = argparse.Namespace(
+            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+        )
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(subprocess, "DETACHED_PROCESS", 8, create=True),
@@ -1141,7 +1145,9 @@ class CargentoServerTest(PageJsHarness):
         # a caller that prefixes an interpreter and a script: the assertion below
         # covers the thing that actually runs.
         config = cfg()
-        args = argparse.Namespace(port=4553, window_hours=12.0, no_spacedock=True, daemon=True)
+        args = argparse.Namespace(
+            port=4553, window_hours=12.0, no_spacedock=True, no_usage=False, daemon=True
+        )
         argv = lifecycle.spawn_argv(config, args)
         self.assertEqual(
             [
@@ -1160,7 +1166,10 @@ class CargentoServerTest(PageJsHarness):
         # forever.
         self.assertNotIn("--daemon", argv)
         plain = lifecycle.spawn_argv(
-            config, argparse.Namespace(port=1, window_hours=24.0, no_spacedock=False, daemon=True)
+            config,
+            argparse.Namespace(
+                port=1, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+            ),
         )
         self.assertEqual(
             [sys.executable, str(config.launcher_path), "--port", "1", "--window-hours", "24.0"],
@@ -1171,7 +1180,9 @@ class CargentoServerTest(PageJsHarness):
         self.assertEqual(1, argv.count(sys.executable))
 
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
-        args = argparse.Namespace(port=4553, window_hours=24.0, no_spacedock=False, daemon=True)
+        args = argparse.Namespace(
+            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+        )
         with tempfile.TemporaryDirectory() as tmp:
             log_file = os.path.join(tmp, "c.log")
             with mock.patch.object(subprocess, "Popen") as popen:
@@ -1356,3 +1367,37 @@ class DaemonLifecycleTest(unittest.TestCase):
             thread.join(timeout=5)
             with contextlib.suppress(OSError):
                 httpd.server_close()
+
+
+class SpawnArgvOptOutTest(unittest.TestCase):
+    """Every opt-out the parent was given has to reach the respawned child.
+
+    Windows has no fork, so the daemon is always a respawn. A flag dropped here
+    is a flag silently ignored for every Windows daemon user.
+    """
+
+    def _args(self, **overrides: object) -> argparse.Namespace:
+        base: dict[str, object] = {
+            "port": 4553,
+            "window_hours": 24.0,
+            "no_spacedock": False,
+            "no_usage": False,
+        }
+        base.update(overrides)
+        return argparse.Namespace(**base)
+
+    def test_no_usage_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_usage=True))
+        self.assertIn("--no-usage", argv)
+
+    def test_no_usage_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_usage=False))
+        self.assertNotIn("--no-usage", argv)
+
+    def test_daemon_is_never_forwarded(self) -> None:
+        """Forwarding --daemon would respawn forever."""
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_usage=True))
+        self.assertNotIn("--daemon", argv)

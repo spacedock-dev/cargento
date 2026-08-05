@@ -519,11 +519,14 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     interpreter and a script: the whole list lives here, so a Windows-path
     assertion can check the thing that actually runs.
 
-    ``config.launcher_path`` is the only respawn target. --daemon is
-    deliberately absent: the child is an ordinary foreground run that happens to
-    own no console, and forwarding the flag would re-spawn forever. Rebuilding
-    from the namespace rather than filtering argv means a future flag has to be
-    added here consciously.
+    ``config.launcher_path`` is the only respawn target. Every opt-out the
+    parent was given is forwarded, because Windows has no fork and so a daemon
+    is always a respawn: a flag dropped here is a flag silently ignored for
+    every Windows daemon user. --daemon is the one deliberate omission, since
+    the child is an ordinary foreground run that happens to own no console and
+    forwarding the flag would re-spawn forever. Rebuilding from the namespace
+    rather than filtering argv means a future flag has to be added here
+    consciously.
     """
     argv = [
         sys.executable,
@@ -535,6 +538,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     ]
     if args.no_spacedock:
         argv.append("--no-spacedock")
+    if args.no_usage:
+        argv.append("--no-usage")
     return argv
 
 
