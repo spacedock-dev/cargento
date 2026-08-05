@@ -46,7 +46,8 @@ Everything else lives in one file per responsibility:
 | Module | Owns |
 |---|---|
 | `config.py` | Immutable process configuration, store-root resolution, every tunable limit. |
-| `state.py` | Mutable caches, locks, bounded-cache helpers, the server start stamp. |
+| `state.py` | Mutable caches, locks, bounded-cache helpers, the server start stamp, and the runtime's published snapshot. |
+| `snapshot.py` | The published response bytes per variant, and the restart-qualified revision that versions them. Imports no runtime module, which is what lets `state`, `aggregate` and `http_api` all depend on it without a cycle. |
 | `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
 | `records.py` | Parsing and normalizing untrusted records from disk. |
 | `sessions.py` | Session identity and shape (including the row's declared field set, `base_session`), freshness, display ids, deterministic aggregation. |

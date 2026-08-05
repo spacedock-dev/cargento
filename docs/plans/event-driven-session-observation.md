@@ -1195,10 +1195,18 @@ those steps depend on are unreached.
 
 ### Phase 1: materialized snapshot and SSE
 
-- Introduce a versioned snapshot, revision pair, and publish protocol in the modules named above.
+Split into 1a and 1b. 1a is shipped: see [`event-driven-phase-1a.md`](event-driven-phase-1a.md).
+
+- **Shipped in 1a.** A versioned snapshot, revision pair, and publish protocol, in a new
+  `snapshot.py` that imports no runtime module. It is owned by `RuntimeState` rather than by the
+  `Application`, because the memo it replaces lived there and two applications over one state must
+  share one scan; putting it per-instance broke that single-flight property outright.
+- **Shipped in 1a.** `/api/data` serves the snapshot, initialized lazily on first demand, and names
+  the revision it served in an `X-Cargento-Revision` header so a client can hold a cursor. The
+  freshness floor stays at `collect_memo_sec` rather than being retuned, so worst-case staleness for
+  `curl` and the headless path is unchanged and the change is provable as a refactor. The payload was
+  verified byte-identical against the pre-snapshot branch.
 - Start its services only after daemonization and implement the shutdown order above.
-- Make `/api/data` serve the snapshot with the independent 2.5-second-or-better direct-GET freshness
-  rule; initialize lazily on first demand.
 - Add the SSE revision stream with restart-qualified IDs, immediate current-state delivery, server-wide
   and stream connection budgets, read/write timeouts, one-slot queues, heartbeats, leader-tab election
   and browser reconnect behavior.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from cargento_runtime import snapshot as runtime_snapshot
@@ -113,6 +114,19 @@ class ApplicationSnapshotTest(support.RuntimeTestCase):
         self.assertNotEqual(default_rev, all_rev)
         self.assertIsNotNone(app.snapshot.current((app.config.window_hours, False)))
         self.assertIsNotNone(app.snapshot.current((app.config.window_hours, True)))
+
+    def test_the_payload_is_unchanged_apart_from_its_generated_stamp(self) -> None:
+        """The snapshot is a delivery change, not a payload change.
+
+        Verified byte-for-byte against the pre-snapshot branch by hand as well;
+        this keeps the guarantee in the suite so a later change cannot drift it.
+        """
+        first = json.loads(support.collect_json())
+        support.state_of().snapshot.clear()
+        second = json.loads(support.collect_json())
+        first.pop("generated", None)
+        second.pop("generated", None)
+        self.assertEqual(first, second)
 
     def test_a_stale_snapshot_recollects_and_mints_a_new_revision(self) -> None:
         app = support.build_app()
