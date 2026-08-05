@@ -34,14 +34,34 @@ whole reason the probe was allowed near the live path.
 
 ## What this phase does not do
 
-An `input_requested` is exempt from the coalescing delay but still respects the
-collection floor, so a permission alert publishes at the next allowed collection
-instant rather than instantly. Publishing an overlay-only revision without
-collecting would be faster, and the design describes it, but it means
-re-serializing a retained collection whose session dicts the collectors mutate
-during row construction. Making those retained results genuinely immutable is
-its own change. Until then the worst case is the floor, which is still better
-than the poll it replaces.
+An `input_requested` is exempt from the coalescing delay, and now really is:
+`_record` sets `_urgent` for a needs-input overlay and `_due` honours it. It was
+documented here for two phases before anything implemented it, which was
+invisible because `event_coalesce_sec` is 0.1 and `collect_memo_sec` is 2.5, so
+the window it skips was 4% of the wait.
+
+It still respects the collection floor, so a permission alert publishes at the
+next allowed collection instant: measured at 2864 ms worst case, against 177 ms
+when the floor is already open, and against the 5 second poll it replaced.
+
+Publishing an overlay-only revision would remove even that, and the design
+describes it, but it means retaining a live collection rather than the bytes
+retained today, and that is a larger change than the earlier note here suggested.
+The accurate obstacle, since the wrong one was named for two phases:
+
+- `assign_display_ids` is *not* it. It derives `session["session"]` from `sid`
+  every time and never from its own previous output, so it is idempotent over a
+  fixed row set and re-running it is safe.
+- `events.apply_patch` is. It overwrites `state`, `state_detail`, `active`,
+  `blocked_since` and `acquisition` in place with no unpatched base kept, so the
+  collector's own values are gone and an expiring overlay cannot be undone.
+- Two things would also have to be redone per republish: the Claude collector
+  writes clock-derived `elapsed_h` and `updated_ago` into the task dicts embedded
+  in a row, and `collect()` both sorts on `state` and counts its summary from
+  already-patched rows.
+
+`scripts/bench_event_latency.py` measures what the floor actually costs, so that
+trade is decided by a number rather than by this paragraph.
 """
 
 from __future__ import annotations
@@ -122,6 +142,15 @@ class Observation:
         self._last_collect_at = 0.0
         self._last_reconcile_at = 0.0
         self._coalesce_until: float | None = None
+        # Set by a needs-input overlay, cleared by the collection that carries it.
+        # A permission alert is the one transition a person is actively waiting on,
+        # so it does not wait out a window whose whole purpose is to batch the
+        # events nobody is watching.
+        self._urgent = False
+        # The last revision this coordinator's own collection produced. A
+        # repeat means the application's floor served the read from bytes it
+        # serialized before the event arrived.
+        self._last_revision: tuple[float, int] | None = None
         self._probe_stamp: runtime_probe.Stamp | None = None
         self.counters: dict[str, int] = {}
 
@@ -227,6 +256,13 @@ class Observation:
                 self._last_reconcile_at = 0.0
                 self._probe_stamp = None
             self._dirty[event.harness] = self._dirty.get(event.harness, 0) + 1
+            if overlay is not None and overlay.kind == runtime_events.OVERLAY_NEEDS_INPUT:
+                # The exemption this module's docstring has always claimed, and
+                # which nothing implemented until it was measured for DRC-4092.
+                # It bypasses the coalescing window only. The floor still gates
+                # the collection, because the floor is the store-protection
+                # guarantee and may not become a derived side effect.
+                self._urgent = True
             deadline = now + self.config.event_coalesce_sec
             if self._coalesce_until is None:
                 # Fixed, not sliding. A sliding window never closes under a
@@ -350,7 +386,7 @@ class Observation:
         if now - self._last_collect_at < self.config.collect_memo_sec:
             return False, ""
         dirty = any(self._dirty.get(key, 0) != self._collected.get(key, 0) for key in self._dirty)
-        if dirty and (self._coalesce_until is None or now >= self._coalesce_until):
+        if dirty and (self._urgent or self._coalesce_until is None or now >= self._coalesce_until):
             return True, "event"
         if self.application.state.streams.count and (
             now - self._last_collect_at >= self.config.stream_producer_interval_sec
@@ -369,6 +405,10 @@ class Observation:
         with self._lock:
             observed = dict(self._dirty)
             self._coalesce_until = None
+            # Cleared here rather than after the read, so a needs-input overlay
+            # that arrives *during* this collection still forces the next one:
+            # this read may have started before its event was recorded.
+            self._urgent = False
         now = self.clock()
         if reason == "tick" and not self._worth_collecting(now):
             with self._lock:
@@ -376,13 +416,40 @@ class Observation:
                 self._bump("skipped.probe")
             return
         try:
-            self.application.collect_json(show_all=False)
+            # The revision, not the body: comparing it is how this tells a real
+            # collection from one the application's own floor satisfied, and it
+            # needs no access to the snapshot the application owns.
+            revision, _ = self.application.collect_json(show_all=False)
         except Exception as exc:  # noqa: BLE001 (a bad read must not stop the loop)
             runtime_io.diag(f"Cargento: coordinator collection failed: {exc}", self.diagnostic_sink)
             return
         finally:
             with self._lock:
                 self._last_collect_at = self.clock()
+        reused = revision == self._last_revision
+        self._last_revision = revision
+        if reused:
+            # The floor is enforced twice, by two clocks: this coordinator's
+            # `_last_collect_at` and the application's own snapshot age. A fresh
+            # coordinator has never collected, so its floor is open while the
+            # application's is not, and `collect_json` then returns the revision it
+            # published *before* this event existed. Marking the generation done
+            # here would retire the event against a read that predates it, and
+            # nothing would republish: measured for DRC-4092, a permission alert
+            # arriving in that gap never rendered at all until an unrelated event
+            # or a five-second stream tick came along.
+            #
+            # So leave it dirty. `_last_collect_at` is already advanced above, so
+            # the retry is one floor away rather than a spin, and the wake is
+            # scheduled for exactly then: `_sleep_for` consults only
+            # `_coalesce_until`, so without this the worker would sleep a whole
+            # `stream_producer_interval_sec` and the retry would land at five
+            # seconds rather than at the floor. Measured at 5.2 s before this line
+            # existed and 2.5 s after it.
+            with self._lock:
+                self._bump("reused.floor")
+                self._coalesce_until = self._last_collect_at + self.config.collect_memo_sec
+            return
         with self._lock:
             self._bump(f"collected.{reason}")
             # Only the generations captured before the read are marked done. A

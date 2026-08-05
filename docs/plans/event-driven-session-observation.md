@@ -525,6 +525,58 @@ prompts non-interactively and is the likely route; an interactive session is the
 `input_requested` mapping is the one Claude claim still resting on documentation, and
 `overlay_working_ttl_sec` remains what bounds the damage.
 
+#### Permission alert latency: MEASURED, and the floor was never the real problem
+
+`scripts/bench_event_latency.py` measures the gap between an adapter posting an event and a revision
+being published, which is the thing a person actually waits through. Three cases, because the trade
+depends on all three. macOS, one machine, six samples each:
+
+| Case | p50 | What it is |
+|---|---|---|
+| ordinary | 294 ms | a `store_changed`, which waits out the coalescing window |
+| urgent | 177 ms | an `input_requested`, which is exempt from that window |
+| floored | 2864 ms | the same event arriving just after a collection, so the floor is the whole wait |
+
+The measurement found two defects that mattered far more than the floor it was pointed at.
+
+**The documented coalescing exemption did not exist.** `observation.py` has said since Phase 2b that a
+matched `input_requested` is exempt from the coalescing delay. Nothing implemented it: `_record` opened
+`_coalesce_until` for every dirty event and `_due` gated on it unconditionally. It was invisible
+because the window is 0.1 s against a 2.5 s floor, so the thing not happening was 4% of the wait. Now
+implemented, and worth the 117 ms between ordinary and urgent above.
+
+**The floor is enforced twice, and an event landing between the two enforcements was dropped.** The
+coordinator has its own `_last_collect_at`, and `Application.collect_json` separately refuses to
+re-serialize inside `collect_memo_sec`. A coordinator that has never collected has an open floor while
+the application's is closed, so `collect_json` returns the revision it published *before* the event
+arrived, and the coordinator then marked the dirty generation collected against that read. Nothing
+republished. A permission alert arriving in that gap did not render at all until an unrelated event or
+a five-second stream tick happened along.
+
+Fixed by comparing the revision `collect_json` returns against the last one this coordinator produced:
+an unchanged revision is not progress, so the generation stays dirty. And the retry is scheduled at the
+floor, because `_sleep_for` consults only `_coalesce_until` and without that the retry landed at
+`stream_producer_interval_sec`. Measured at 5194 ms before both fixes and 2864 ms after.
+
+**Verdict on overlay-only republication: not worth building, and the earlier note pointed at the wrong
+obstacle.** Two corrections to what this document and the ticket both said:
+
+- Nothing retains a live collection today. `collect_json` serializes inline and retains only bytes in
+  an immutable `(revision, body, published_at)` tuple, so there is no existing mutability hazard to
+  remove. The immutability work is the price of *starting* to retain a dict.
+- `assign_display_ids` is not the blocker it was named as. It derives `session["session"]` from `sid`
+  every time and never from its own previous output, so it is idempotent over a fixed row set. The real
+  blocker is `events.apply_patch`, which overwrites five display fields in place with no unpatched base
+  kept, so an expiring overlay cannot be undone. A republish would also have to redo the Claude
+  collector's clock-derived `elapsed_h` and `updated_ago` writes into embedded task dicts, the
+  state-ranked sort, and the summary counted from patched rows.
+
+So the remaining prize is the 2.7 s between `urgent` and `floored`, bought with a retention refactor
+whose own risk is the display-id double-render hazard this document warns about under
+[Event overlays versus store truth](#event-overlays-versus-store-truth). A correctness risk traded for
+under three seconds on one transition is the wrong trade while the floor still protects the stores.
+Revisit it if the floor itself ever moves.
+
 #### Codex adapter semantics: MEASURED, and the gate is cleared
 
 The first adapter gate in this project to be cleared by evidence rather than waived. Captured from a

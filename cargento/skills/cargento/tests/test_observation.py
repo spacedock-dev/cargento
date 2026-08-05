@@ -39,18 +39,25 @@ class FakeState:
 class FakeApplication:
     """Just enough application for the coordinator: a config, streams, a collect."""
 
-    def __init__(self, config: Any, *, streams: int = 0, fail: bool = False) -> None:
+    def __init__(
+        self, config: Any, *, streams: int = 0, fail: bool = False, reuse: bool = False
+    ) -> None:
         self.config = config
         self.state = FakeState(FakeStreams(streams))
         self.collected = 0
         self.fail = fail
+        # Stand in for the application's own collection floor: a real
+        # `collect_json` inside `collect_memo_sec` returns the revision it already
+        # published rather than minting a new one.
+        self.reuse = reuse
         self.diagnostic_sink: Any = lambda _message: None
 
     def collect_json(self, *, show_all: bool) -> tuple[tuple[float, int], bytes]:
         assert show_all is False, "the coordinator only maintains the default variant"
-        self.collected += 1
         if self.fail:
             raise OSError("store exploded")
+        if not self.reuse:
+            self.collected += 1
         return (NOW, self.collected), b"{}"
 
 
@@ -62,9 +69,9 @@ class ObservationTestCase(unittest.TestCase):
     def clock(self) -> float:
         return self.now
 
-    def build(self, **changes: Any) -> observation.Observation:
+    def build(self, *, reuse: bool = False, **changes: Any) -> observation.Observation:
         config = dataclasses.replace(self.config, **changes) if changes else self.config
-        self.app = FakeApplication(config)
+        self.app = FakeApplication(config, reuse=reuse)
         return observation.Observation(
             self.app,  # type: ignore[arg-type]
             clock=self.clock,
@@ -337,6 +344,99 @@ class DueTest(ObservationTestCase):
         coordinator.submit("claude", self.envelope())
         self.now += self.config.event_coalesce_sec
         self.assertEqual((True, "event"), coordinator._due())
+
+
+class UrgencyTest(ObservationTestCase):
+    """A permission alert does not wait out a window meant for batching."""
+
+    def test_a_needs_input_event_skips_the_coalescing_window(self) -> None:
+        # The exemption this module documented for two phases without
+        # implementing it. Measured worth about 117 ms of the wait.
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now - 3600
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.assertEqual((True, "event"), coordinator._due())
+
+    def test_an_ordinary_event_still_waits_out_the_window(self) -> None:
+        # The other half: without this the exemption is indistinguishable from
+        # deleting the window.
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now - 3600
+        coordinator.submit("claude", self.envelope(event="store_changed"))
+        self.assertEqual((False, ""), coordinator._due())
+
+    def test_urgency_does_not_lift_the_floor(self) -> None:
+        # The floor is the store-protection guarantee, so it may not become a
+        # derived side effect of anything.
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.assertEqual((False, ""), coordinator._due())
+        self.now += self.config.collect_memo_sec
+        self.assertEqual((True, "event"), coordinator._due())
+
+
+class FloorReuseTest(ObservationTestCase):
+    """A collection the application's own floor satisfied is not progress.
+
+    The floor is enforced twice, by two clocks: this coordinator's
+    `_last_collect_at`, and the application's snapshot age. A fresh coordinator
+    has never collected, so its floor is open while the application's is not, and
+    `collect_json` then returns the body it serialized before the event existed.
+
+    Measured before this was fixed: an `input_requested` arriving in that gap was
+    retired against a read that predated it and never rendered at all, until an
+    unrelated event or a five-second stream tick happened along.
+    """
+
+    def _reusing(self) -> observation.Observation:
+        coordinator = self.build(reuse=True)
+        # The application has already published, and its floor now serves this
+        # read from those bytes while the coordinator's own floor is still open.
+        coordinator._last_revision = (NOW, 0)
+        coordinator._last_collect_at = self.now - 3600
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        return coordinator
+
+    def _dirty(self, coordinator: observation.Observation) -> bool:
+        return any(
+            coordinator._dirty.get(key, 0) != coordinator._collected.get(key, 0)
+            for key in coordinator._dirty
+        )
+
+    def test_a_reused_publication_leaves_the_event_dirty(self) -> None:
+        coordinator = self._reusing()
+        due, reason = coordinator._due()
+        self.assertTrue(due)
+        coordinator._collect(reason)
+        self.assertTrue(
+            self._dirty(coordinator),
+            "the event was retired against a read that predates it",
+        )
+        self.assertEqual(1, coordinator.counters.get("reused.floor"))
+
+    def test_the_retry_is_scheduled_at_the_floor_not_a_producer_interval(self) -> None:
+        # `_sleep_for` consults only `_coalesce_until`, so without scheduling the
+        # wake the retry lands at stream_producer_interval_sec. Measured 5.2 s
+        # before, 2.5 s after.
+        coordinator = self._reusing()
+        coordinator._collect(coordinator._due()[1])
+        self.assertIsNotNone(coordinator._coalesce_until)
+        self.assertLessEqual(
+            coordinator._sleep_for(),
+            self.config.collect_memo_sec,
+            "the worker must wake at the floor rather than at the producer interval",
+        )
+
+    def test_a_real_publication_still_marks_the_event_collected(self) -> None:
+        # The control. If this failed, the fix above would simply have stopped the
+        # coordinator ever making progress.
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now - 3600
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        coordinator._collect(coordinator._due()[1])
+        self.assertFalse(self._dirty(coordinator))
+        self.assertIsNone(coordinator.counters.get("reused.floor"))
 
 
 class CollectTest(ObservationTestCase):

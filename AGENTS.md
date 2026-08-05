@@ -126,7 +126,7 @@ coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
 coverage run -a -m unittest \
   scripts.tests.test_validate_plugins scripts.tests.test_bump_version \
   scripts.tests.test_lint_embedded scripts.tests.test_bench_collect \
-  scripts.tests.test_capture_hook
+  scripts.tests.test_capture_hook scripts.tests.test_bench_event_latency
 coverage report   # enforces the fail_under threshold from pyproject.toml
 # Native validators, if the CLIs are installed (they are not available on stock runners):
 claude plugin validate ./cargento --strict
