@@ -720,14 +720,52 @@ invalidate the whole file: a nine-event file including invented names produced z
 hook invocations, where a five-event file of proven names had worked moments
 before.
 
-`subagent_start` and `subagent_stop` are real, but their payloads are still
-unmeasured and so stay out of `CODEX_EVENTS`. Capturing them needs a session that
-actually spawns a subagent, and `codex exec` exposes no way to do that: a prompt
-asking for one hangs until the timeout, because the model has no subagent tool in
-that mode. What the overlay needs from those payloads is specifically whether the
-id is the parent's or the child's, since a subagent overlay attaches to the
-parent's row and carries the child in `subagent_id`. Guessing that wrong attaches
-child activity to a row that does not exist.
+`subagent_start` and `subagent_stop` are real, and are now **measured** as well.
+Evidence: [`docs/captures/codex/subagents-0.146.0-macos.jsonl`](../captures/codex/subagents-0.146.0-macos.jsonl).
+
+The claim above this paragraph used to read that `codex exec` exposes no way to
+spawn a subagent, and that a prompt asking for one hangs until the timeout. That
+was wrong, and the store said so before the capture did: of 175 subagent rollouts
+on the development machine, 24 carry originator `codex_exec`. The tool set is
+`spawn_agent` and `wait_agent`, `multi_agent` is stable at 0.146.0, and a prompt
+naming those tools directly produced one subagent on the first attempt.
+
+One turn, ten hook invocations:
+
+```text
+SessionStart -> UserPromptSubmit -> PreToolUse -> PostToolUse -> SubagentStart
+             -> PreToolUse -> SubagentStop -> PostToolUse -> Stop -> SessionEnd
+```
+
+`SubagentStart` fires after the spawning tool call completes and `SubagentStop`
+during the `wait_agent` call, so the pair nests between the two parent tool calls
+rather than around them. One subagent produced exactly one start and one stop,
+which is what the ledger needs, since it keys subagent overlays by child id and two
+children are two facts rather than one superseding the other.
+
+**The question that decided the mapping, answered: `session_id` is the parent's.**
+It equalled the `UserPromptSubmit` session id of the same turn. `agent_id` is a
+different 36-character UUID, and three things line up around it: it appears in the
+child's own rollout filename, the child's `session_meta` records the parent id
+rather than its own, and the child's `source.subagent.thread_spawn.parent_thread_id`
+equals the hook's `session_id`. So the hook agrees with what `transcripts.codex_meta`
+already reconstructs from the store, and the envelope maps straight through: the
+existing `agent_id` to `subagent_id` rename is the whole adapter change.
+
+`SubagentStop` also carries `agent_transcript_path`, `last_assistant_message` and
+`stop_hook_active`; `SubagentStart` carries only `agent_id`, `agent_type` and
+`turn_id` beyond the common base. `agent_type` was `default` here.
+
+**One negative above is now in doubt, and is left open rather than quietly fixed.**
+This section's heading says Codex has no permission hook, on the evidence that no
+`permission_request` key ever appeared in `config.toml`'s registration state. The
+0.146.0 binary's own hook-event enum reads
+`PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, SessionStart,
+SessionEnd, UserPromptSubmit, SubagentStart, SubagentStop, Stop` -- `PermissionRequest`
+is in it, and `TaskCompleted` is not, so the task-completed half of the negative
+holds and the permission half does not. Two methods disagree: absence from
+registration state, against presence in the binary. Nothing maps it either way
+until that is settled, and it is worth its own issue rather than a guess here.
 
 #### Antigravity status-line semantics: MEASURED, and the documented field list was wrong
 

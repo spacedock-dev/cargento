@@ -97,16 +97,27 @@ CLAUDE_EVENTS = {
 # tool is about to run, which `PostToolUse` reports better once the store has
 # actually changed, and forwarding both would double every tool call for no gain.
 #
-# Codex documents subagent and permission hooks as well, and its config records
-# `subagent_start`, `subagent_stop` and `pre_tool_use` state keys. They are absent
-# here because the captured turn used no subagent and needed no permission, so
-# their payload shape is unmeasured. They go in when a capture shows them.
+# The subagent pair is measured too, from a second capture that did spawn one:
+# see `docs/captures/codex/subagents-0.146.0-macos.jsonl`. The question that
+# decided the mapping was whose id `session_id` carries, and it is the parent's.
+# Measured, not read: it equalled the `UserPromptSubmit` session id of the same
+# turn, while `agent_id` was a different 36-character UUID which appears in the
+# child's own rollout filename, and the child's rollout records that same parent
+# id as `parent_thread_id`. So the envelope maps straight through and the existing
+# `agent_id` to `subagent_id` rename is all that was needed. One subagent produced
+# exactly one start and one stop.
+#
+# `PermissionRequest` remains absent, and see the design doc: the binary's hook
+# enum contains the name, which contradicts the negative recorded from a live
+# install. That contradiction is open rather than resolved, so nothing maps it.
 CODEX_EVENTS = {
     "SessionStart": "session_started",
     "UserPromptSubmit": "turn_started",
     "Stop": "turn_stopped",
     "PostToolUse": "store_changed",
     "PostCompact": "reconcile_required",
+    "SubagentStart": "subagent_started",
+    "SubagentStop": "subagent_stopped",
 }
 
 # Gemini CLI. Measured from five real 0.53.1 sessions driven against a local

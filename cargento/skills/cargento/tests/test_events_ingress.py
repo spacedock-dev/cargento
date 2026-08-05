@@ -643,13 +643,62 @@ class CodexAdapterTest(unittest.TestCase):
         # double every tool call for no gain.
         self.assertIsNone(self.envelope("PreToolUse"))
 
-    def test_unmeasured_codex_hooks_are_not_mapped(self) -> None:
-        # Codex documents subagent and permission hooks, and its config records
-        # state keys for them, but the captured turn used neither so their payload
-        # shape is unknown. They go in when a capture shows them.
-        for native in ("SubagentStart", "SubagentStop", "PermissionRequest"):
+    def test_the_permission_hook_stays_unmapped_while_the_evidence_disagrees(self) -> None:
+        # Two methods disagree about whether Codex has one at all. No
+        # `permission_request` key has ever appeared in config.toml's registration
+        # state, yet the 0.146.0 binary's hook-event enum contains
+        # `PermissionRequest`. Nothing maps it until that is settled: a wrong
+        # input_requested is the overlay with no dedicated clearing event.
+        self.assertIsNone(self.envelope("PermissionRequest"))
+        self.assertNotIn("PermissionRequest", event_hook.CODEX_EVENTS)
+
+    def test_the_subagent_pair_maps_because_it_was_measured(self) -> None:
+        # Measured for DRC-4093 from a `codex exec` turn that really did spawn one.
+        for native, normalized in (
+            ("SubagentStart", "subagent_started"),
+            ("SubagentStop", "subagent_stopped"),
+        ):
             with self.subTest(native):
-                self.assertIsNone(self.envelope(native))
+                built = self.envelope(native)
+                assert built is not None
+                self.assertEqual(normalized, built["event"])
+
+    def test_a_codex_subagent_hook_carries_the_parent_id_and_the_child_id(self) -> None:
+        """The mapping's whole premise, and it was measured rather than assumed.
+
+        `session_id` on both subagent hooks equalled the `UserPromptSubmit` session
+        id of the same turn, while `agent_id` was a different UUID that appears in
+        the child's own rollout filename. So the overlay attaches to the parent's
+        row, which is the row that exists, and names the child in `subagent_id`.
+        Reversing these two attaches child activity to a row nothing collected.
+        """
+        built = event_hook.envelope(
+            {
+                "hook_event_name": "SubagentStop",
+                "session_id": CODEX_SESSION,
+                "agent_id": "019fd1c3-0000-7000-8000-0000233a7f00",
+                "agent_type": "default",
+                "agent_transcript_path": "/tmp/rollout-child.jsonl",
+                "last_assistant_message": "this must never be sent",
+            },
+            "codex",
+        )
+        assert built is not None
+        self.assertEqual(CODEX_SESSION, built["session_id"], "the parent's id")
+        self.assertEqual("019fd1c3-0000-7000-8000-0000233a7f00", built["subagent_id"])
+        for forbidden in ("agent_type", "agent_transcript_path", "last_assistant_message"):
+            self.assertNotIn(forbidden, built)
+
+    def test_the_bundled_codex_hooks_register_the_subagent_pair(self) -> None:
+        # The adapter mapping and the shipped registration have to agree, or a
+        # mapped event nothing registers never fires.
+        bundled = json.loads(
+            (Path(__file__).resolve().parents[3] / "hooks" / "codex-hooks.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn("SubagentStart", bundled["hooks"])
+        self.assertIn("SubagentStop", bundled["hooks"])
 
     def test_a_codex_hook_posts_to_the_codex_route_with_the_codex_token(self) -> None:
         # Both halves, because both were hardcoded to Claude at one point and
