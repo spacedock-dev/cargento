@@ -128,6 +128,8 @@ _UUID_CHARS: Final = frozenset("0123456789abcdefABCDEF-")
 # The collector keys on the first eight characters of the transcript filename,
 # so a shorter id cannot be mapped to exactly one row.
 _CLAUDE_SID_LEN: Final = 8
+# Codex and Antigravity both key on the whole 36-character id, dashes included.
+_WHOLE_UUID_LEN: Final = 36
 
 
 @dataclass(frozen=True)
@@ -246,11 +248,39 @@ def _claude_sid(session_id: str) -> str | None:
     return session_id[:_CLAUDE_SID_LEN]
 
 
+def _whole_uuid_sid(session_id: str) -> str | None:
+    """The collector key for a harness that keys on the whole id, unchanged.
+
+    Codex and Antigravity both do, and both were measured rather than assumed:
+
+    - Codex's hook payload carries its own `session_id`, and that value matched
+      the `session_meta` id of the rollout file the same session wrote, which is
+      what `collectors/codex.py` keys on.
+    - Antigravity's status-line payload carries `session_id` and
+      `conversation_id` holding the same value, and that value matched the stem
+      of a real `conversations/<id>.db`, which is what `collectors/antigravity.py`
+      keys on.
+
+    So no truncation, unlike Claude. The shape is still validated: a value that is
+    not UUID-shaped is not one of these ids, and must not reach a lookup. The
+    length is checked exactly rather than as a floor, because both harnesses write
+    36-character ids and a longer string that merely starts like one is not a
+    near miss to be tolerated.
+    """
+    if len(session_id) != _WHOLE_UUID_LEN:
+        return None
+    if any(char not in _UUID_CHARS for char in session_id):
+        return None
+    return session_id
+
+
 # One normalizer per harness whose adapter has shipped. A harness absent here is
 # refused: the design requires the identity mapping to be established per harness
 # before its adapter ships, and a default passthrough would quietly skip that.
 IDENTITY_NORMALIZERS: Final[dict[str, Any]] = {
     "claude": _claude_sid,
+    "codex": _whole_uuid_sid,
+    "antigravity": _whole_uuid_sid,
 }
 
 

@@ -23,13 +23,31 @@ No prompt text, no tool input, no tool output, no file path. `PreToolUse` record
 
 | File | Provenance |
 |---|---|
-| `codex-hooks-0.146.0-macos.jsonl` | One `codex exec` turn containing one shell tool call. codex-cli 0.146.0, macOS, run against an isolated `CODEX_HOME` so no user configuration was touched, with `--dangerously-bypass-hook-trust` because Codex skips untrusted hooks silently. |
+| `codex/hooks-0.146.0-macos.jsonl` | One `codex exec` turn containing one shell tool call. codex-cli 0.146.0, macOS, run against an isolated `CODEX_HOME` so no user configuration was touched, with `--dangerously-bypass-hook-trust` because Codex skips untrusted hooks silently. |
+| `antigravity/statusline-macos.jsonl` | Two `agy --print` sessions, 37 status-line pushes. macOS. Recorded through a `statusLine` entry in the real `settings.json`, backed up and restored in the same script, because Antigravity's status line cannot be plugin-bundled. |
+
+The Antigravity file has a different shape from the Codex one, because it answers a different
+question. Its records carry `keys`, the observed `agent_state`, and `id_verdicts`: for each candidate
+id field, its length, whether it named a real `conversations/<id>.db`, and whether it equalled
+`session_id`. **Verdicts rather than values** is the point: the question was whether the ids match
+what the collector keys on, and that can be answered without recording an id at all.
 
 ## Reading one
 
+One directory per harness, because the reporter summarises a whole directory and two harnesses with
+different record schemas in one directory produce a report that reads as a single confused harness:
+
 ```bash
-CARGENTO_CAPTURE_DIR=docs/captures python3 scripts/capture_hook.py --report
+CARGENTO_CAPTURE_DIR=docs/captures/codex python3 scripts/capture_hook.py --report
 ```
 
 That prints cardinality, per-event field shape, turn orderings and the hook-cost distribution: the
 four things the gate asks for.
+
+The Antigravity records were written by a purpose-built recorder rather than by `capture_hook.py`,
+because the question there was whether an id *value* matched a conversation database and a
+shape-only recorder cannot answer that. Read them directly:
+
+```bash
+python3 -c "import json,sys; [print(json.loads(l)['agent_state'], json.loads(l)['id_verdicts']['conversation_id']) for l in open('docs/captures/antigravity/statusline-macos.jsonl')]"
+```

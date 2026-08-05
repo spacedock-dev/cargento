@@ -7,19 +7,26 @@ Cargento ships two components that touch the network. The dashboard server
 reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. When the usage feature is on, the server also
 makes one kind of outbound request, the quota poll described in Usage quota reads (the quota
-fetcher); it carries no session data. `notify_hook.py` is the small forwarder a user
-wires into their own Claude Code hook settings, and it POSTs hook payloads to the dashboard.
+fetcher); it carries no session data. Three small forwarders ship beside it, each wired into a
+harness's own configuration by the user or by the plugin: `notify_hook.py` POSTs a Claude
+`Notification` payload to the dashboard, `event_hook.py` posts command-hook lifecycle events for
+Claude and Codex, and `statusline_hook.py` posts Antigravity's status-line state. All three share one
+transport, so the loopback check, the proxy suppression and the redirect refusal have a single
+implementation.
 
 The posture rests on two invariants:
 
-1. Localhost only. The server binds `127.0.0.1` exclusively, and `notify_hook.py` refuses to POST
+1. Localhost only. The server binds `127.0.0.1` exclusively, and every forwarder refuses to POST
    anywhere but loopback, ignores proxy environment variables, and does not follow redirects.
    Session data never leaves the machine. The quota poll is the single outbound exception, and it
    carries a vendor token out and quota numbers back, nothing else.
 2. Read-only against harness stores. They are opened read-only and never written. Two endpoints
    mutate, and both only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
-   Neither writes anything to disk.
+   Neither writes anything to disk. `POST /api/events/<harness>` also mutates in memory only, behind
+   the capability described under Known and accepted. The one thing a forwarder writes to disk is
+   `statusline_hook.py`'s deduplication memo under the Cargento state directory, which holds a
+   normalized state name and a timestamp and nothing about the session's content.
 
 Anything that weakens either invariant is a security bug: a bind-address escape, file reads outside
 the documented store paths and the project-read contract below (however the path was derived),
@@ -192,10 +199,14 @@ the user's secret material directly. An overlay may also only ever patch a row a
 it can never create or delete one, and it can only write `state`, `state_detail`, `active`,
 `blocked_since` and the acquisition marker. `--no-events` turns the whole path off for a run.
 
-The event envelope is allowlisted at both ends. The Claude adapter builds the nine permitted fields
-one at a time from the native payload, so the prompt, the tool name, the tool input and the tool
-output are dropped in the hook and never put on a socket; the server then validates independently,
-because a hook's output is untrusted regardless of who wrote it. `cwd` and `transcript_path` are
+The event envelope is allowlisted at both ends. Each adapter builds the nine permitted fields one at
+a time from the native payload, so the prompt, the tool name, the tool input and the tool output are
+dropped in the hook and never put on a socket; the server then validates independently, because a
+hook's output is untrusted regardless of who wrote it. Codex's payloads carry `prompt`, `tool_input`,
+`tool_response` and `last_assistant_message`, and Antigravity's carry the account email and the
+transcript path; none of those reach a socket. `statusline_hook.py` also shapes `/api/usage` down to
+the `quota` block alone, which is what this document asks for a paragraph below rather than sending
+the whole status-line document and relying on the server to discard it. `cwd` and `transcript_path` are
 matching hints and are never echoed to `/api/data`.
 
 `--diagnose` output is sensitive. It prints the home directory, the interpreter path, the *values* of

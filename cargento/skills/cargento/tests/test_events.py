@@ -166,9 +166,39 @@ class NormalizeSessionIdTest(unittest.TestCase):
         self.assertIsNone(events.normalize_session_id("goose", SESSION))
 
     def test_the_registry_only_holds_harnesses_whose_adapter_has_shipped(self) -> None:
-        # Phase 2a ships no producer, so Claude is the only mapping established.
-        # Antigravity joins this set in the phase that adds its hooks.json.
-        self.assertEqual({"claude"}, set(events.IDENTITY_NORMALIZERS))
+        # Each of these three had its mapping established against a real session
+        # before it was added. A fourth goes in the same way, not by analogy.
+        self.assertEqual({"claude", "codex", "antigravity"}, set(events.IDENTITY_NORMALIZERS))
+
+    def test_codex_and_antigravity_key_on_the_whole_id(self) -> None:
+        # Measured, not assumed. Codex's hook session_id matched the session_meta
+        # id of the rollout the same session wrote; Antigravity's conversation_id
+        # matched the stem of a real conversations/<id>.db. Truncating either the
+        # way Claude's is truncated would key on a row that does not exist.
+        for harness in ("codex", "antigravity"):
+            with self.subTest(harness):
+                self.assertEqual(SESSION, events.normalize_session_id(harness, SESSION))
+
+    def test_claude_still_truncates_and_the_others_do_not(self) -> None:
+        # The whole reason identity is per harness rather than one shared rule.
+        self.assertEqual(PREFIX, events.normalize_session_id("claude", SESSION))
+        self.assertNotEqual(
+            events.normalize_session_id("claude", SESSION),
+            events.normalize_session_id("codex", SESSION),
+        )
+
+    def test_a_whole_id_harness_refuses_a_wrong_length(self) -> None:
+        # Checked exactly rather than as a floor: both harnesses write
+        # 36-character ids, and a longer string that merely starts like one is not
+        # a near miss to tolerate.
+        for candidate in (SESSION[:-1], SESSION + "0", PREFIX):
+            with self.subTest(candidate=candidate):
+                self.assertIsNone(events.normalize_session_id("codex", candidate))
+
+    def test_a_whole_id_harness_refuses_a_non_uuid_shape(self) -> None:
+        forged = "../../../etc/passwd" + "-" * (36 - len("../../../etc/passwd"))
+        self.assertEqual(36, len(forged), "the guard under test is the charset, not the length")
+        self.assertIsNone(events.normalize_session_id("codex", forged))
 
 
 class TimestampTest(unittest.TestCase):

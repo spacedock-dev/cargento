@@ -528,36 +528,53 @@ snapshots while the TUI runs, but does not document a guaranteed start, end or f
 collectors and reconciliation remain authoritative for definitive session lifecycle. The hooks are
 what can be installed without separate user configuration.
 
-#### The Antigravity adapter is blocked on one capture, and it is a small one
+#### Antigravity status-line semantics: MEASURED, and the documented field list was wrong
 
-The notification prerequisite has shipped: both the native notifier and the browser now take their
-title from the matched row's harness label, so a second harness can raise a truthful alert. What is
-missing is the identity mapping, and it cannot be reasoned out.
+Captured from two real `agy` sessions, 37 status-line pushes, with the recorder wired through
+`settings.json` and the file restored afterwards. Records are in
+[`../captures/`](../captures/README.md). This measurement overturned three claims made earlier in
+this document from Google's documentation, which is why it is written out rather than summarised.
 
-The Antigravity collector keys on the **conversation id**: its `sid` is the stem of
-`conversations/<id>.db`, and `cache/last_conversations.json` maps each workspace to that same id.
-The status-line payload documents both a `session_id` and a `conversation_id`. An overlay keyed on
-the wrong one of those two never matches its row, so the adapter would install, report success, and
-change nothing. That is the failure mode this project has already paid for once.
+The payload's top-level fields are `agent_state`, `context_window`, `conversation_id`, `cwd`,
+`email`, `exceeds_200k_tokens`, `model`, `plan_tier`, `product`, `quota`, `sandbox`, `session_id`,
+`terminal_width`, `transcript_path`, `vcs`, `version` and `workspace`. Not all are present on every
+push.
 
-What exists as evidence today: one live status-line capture, which carried `quota`, `email`,
-`transcript_path`, `plan_tier` and `agent_state`. It is the fixture `test_quota.py` is built from.
-`agent_state` is therefore verified, and the `agy` binary carries an internal `agent_state_component`
-package consistent with it. Everything else in the field list above is read from Google's
-documentation, and desk-read field names for this harness have a poor record here.
+**Corrections to this document's earlier field list:**
 
-Not verified, and each one changes the adapter:
+1. `tool_confirmation_pending` **does not exist.** No confirmation-pending field appears under any
+   spelling across 37 pushes. It was the intended source of a permission wait, so **Antigravity
+   cannot report Needs input through the status line at all**, and the adapter does not pretend
+   otherwise. The collector remains the only source of that signal for this harness.
+2. `task_count` and `pending_input_count` **do not exist** either. There is no background-task
+   signal here.
+3. `agent_state` values observed were `authenticating`, `idle` and `working`, not the five the
+   documentation lists. `authenticating` is startup rather than activity and is deliberately
+   unmapped, because calling it either Working or Idle invents a claim about the session.
 
-- whether the payload carries `conversation_id`, and whether its value equals the `.db` stem the
-  collector keys on;
-- whether `tool_confirmation_pending` and `task_count` appear under those names;
-- which `agent_state` values occur in practice, against the five the docs list.
+**The identity mapping resolves cleanly.** `conversation_id` and `session_id` carried the same
+36-character value whenever they carried one, and that value was the stem of a real
+`conversations/<id>.db`, which is what `collectors/antigravity.py` keys on. The adapter prefers
+`conversation_id` because it is named for what the collector reads, with `session_id` as the
+fallback. So the feared ambiguity between two id fields is not real in practice, though preferring
+the durable one by name is what keeps a future divergence resolving correctly.
 
-The capture that settles all of it is one `agy` session with `/statusline <command>` pointed at a
-recording script, which is the same shape as `scripts/capture_hook.py`. Until then the adapter stays
-unwritten rather than written on guesses, and `IDENTITY_NORMALIZERS` deliberately holds Claude alone,
-so the ingress answers 404 for `/api/events/antigravity` rather than accepting events it cannot
-attach.
+**The id is often empty, and that bounds what the adapter can claim.** Fourteen of the 37 pushes
+carried a present-but-blank id: all four `authenticating` pushes and ten of the eleven `idle` ones,
+because the field exists before a conversation does. An event with no id cannot be keyed to a row,
+so this adapter reliably reports Working and usually cannot report the return to Idle. That is the
+concrete reason the Working overlay carries a measured deadline: it expires, and the collector's own
+reading of the store decides again. Whether a post-turn `idle` push carries an id is unobserved,
+because print mode ended while still `working`.
+
+**Cardinality is high.** Thirteen and 24 pushes for two short turns, mostly repeating the same
+`agent_state`. So the adapter dedupes on the last state in a small memo file rather than spending the
+server's per-source rate budget restating it, and forwards quota on its own slower interval because
+quota changes on its own schedule.
+
+The `hooks.json` path for Antigravity remains unbuilt. Its hook vocabulary (`PreInvocation`,
+`PostInvocation`) is a different one, its payloads are uncaptured, and the status line already
+supplies the state those hooks would only hint at.
 
 ### Gemini CLI, Copilot, and Factory Droid
 
@@ -1284,13 +1301,14 @@ The gates are independent. Verdicts, one per gate:
 
   Reconciliation therefore stays, and this is the concrete reason rather than a general caution. WSL,
   remote, bind and network stores are still unproven and retain the current cadence.
-- **Adapter semantics: WAIVED for Claude and Antigravity, MEASURED for Codex.** The Codex half is
-  cleared by real capture, and its evidence is under
-  [Codex](#codex): event cardinality, ordering, per-event payload fields, a p99 hook cost of 0.47 ms,
-  and an identity mapping verified against the rollout the same session wrote. The rest of this entry
-  covers Claude and Antigravity, where it is still a waiver.
+- **Adapter semantics: MEASURED for Codex and Antigravity, still WAIVED for Claude.** Codex's
+  evidence is under [Codex](#codex): cardinality, ordering, per-event payload fields, a p99 hook cost
+  of 0.47 ms, and an identity mapping verified against the rollout the same session wrote.
+  Antigravity's is under [Antigravity](#antigravity), and it corrected three field names this document
+  had taken from vendor documentation. Claude is the one harness still shipping on unmeasured
+  semantics, which is the irony worth noting: it is the harness this project runs inside.
 
-- **Claude and Antigravity adapter semantics: WAIVED by the maintainer, not cleared by evidence.** The gate asked for
+- **Claude adapter semantics: WAIVED by the maintainer, not cleared by evidence.** The gate asked for
   contract or real-CLI fixtures proving event meaning, cardinality and order, plus a p99 hook budget
   per OS. `scripts/capture_hook.py` exists to collect exactly that and reports its own cardinality,
   per-event payload shape, turn orderings and self-cost. No captures were ever taken: the recording

@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
-"""Forward one Claude Code lifecycle hook to a running Cargento as an event.
+"""Forward one command-hook lifecycle event to a running Cargento.
+
+Serves every harness whose hooks are *hook-shaped*: a fresh process per event,
+one JSON payload on stdin, a `hook_event_name` naming what happened. Claude Code
+and Codex both are, and Codex's `hooks.json` turned out to accept the same schema
+as Claude's `settings.json` hooks, PascalCase event names included. Antigravity is
+not: its status line pushes a state snapshot rather than an event, so it has its
+own adapter in `statusline_hook.py`.
 
 Separate from `notify_hook.py` on purpose. That script forwards a needs-input
 notification to `/api/notify`, which is unauthenticated and sets one harness's
-side state; this one posts general lifecycle events to `/api/events/claude`,
+side state; this one posts general lifecycle events to `/api/events/<harness>`,
 which requires this run's capability because a forged `session_ended` could
 suppress a permission alert and a looped `turn_started` could mask a blocked
 session. Different power, different door. The transport guards are shared, so a
 proxy or redirect fix lands in one place.
 
-Usage in ~/.claude/settings.json:
+Usage, with the harness first and an optional port second:
 
-    python3 <skill-dir>/event_hook.py            # macOS, Linux, WSL, Git Bash
-    python  <skill-dir>\\event_hook.py           # Windows
+    python3 <skill-dir>/event_hook.py claude       # macOS, Linux, WSL, Git Bash
+    python  <skill-dir>\\event_hook.py codex 9999  # Windows, non-default port
 
-Pass a port as the first argument to target a non-default instance.
+The harness is an argument rather than sniffed from the payload. Two harnesses
+send the same field names, so a payload cannot say which one it came from, and
+guessing would post one harness's events to the other's route.
 
 ## What it sends, and what it refuses to send
 
@@ -57,10 +66,11 @@ ENVELOPE_VERSION = 1
 DEFAULT_PORT = 4553
 MAX_PAYLOAD_BYTES = 1 << 20
 
-# Native Claude hook name to the normalized vocabulary. A name absent here is
-# not forwarded: this table is the whole of what this adapter claims to
-# understand, and the server would refuse an unknown name anyway.
-EVENT_NAMES = {
+# Native hook name to the normalized vocabulary, per harness. A name absent from
+# a harness's table is not forwarded: the table is the whole of what this adapter
+# claims to understand for that harness, and the server would refuse an unknown
+# name anyway.
+CLAUDE_EVENTS = {
     "SessionStart": "session_started",
     "SessionEnd": "session_ended",
     "UserPromptSubmit": "turn_started",
@@ -71,6 +81,30 @@ EVENT_NAMES = {
     "SubagentStop": "subagent_stopped",
     "TaskCompleted": "tasks_changed",
     "PostCompact": "reconcile_required",
+}
+
+# Codex. Measured from a real `codex exec` turn rather than read off a page: the
+# five names below all fired, once each, in the order
+# UserPromptSubmit -> PreToolUse -> PostToolUse -> Stop with SessionStart outside
+# the turn. `PreToolUse` is deliberately absent even though it fires: it means a
+# tool is about to run, which `PostToolUse` reports better once the store has
+# actually changed, and forwarding both would double every tool call for no gain.
+#
+# Codex documents subagent and permission hooks as well, and its config records
+# `subagent_start`, `subagent_stop` and `pre_tool_use` state keys. They are absent
+# here because the captured turn used no subagent and needed no permission, so
+# their payload shape is unmeasured. They go in when a capture shows them.
+CODEX_EVENTS = {
+    "SessionStart": "session_started",
+    "UserPromptSubmit": "turn_started",
+    "Stop": "turn_stopped",
+    "PostToolUse": "store_changed",
+    "PostCompact": "reconcile_required",
+}
+
+EVENTS_BY_HARNESS = {
+    "claude": CLAUDE_EVENTS,
+    "codex": CODEX_EVENTS,
 }
 
 
@@ -118,16 +152,20 @@ def capability(port: int, harness: str) -> str | None:
     return token if isinstance(token, str) and token else None
 
 
-def envelope(payload: dict[str, Any]) -> dict[str, Any] | None:
+def envelope(payload: dict[str, Any], harness: str = "claude") -> dict[str, Any] | None:
     """Build the allowlisted envelope, or None if this hook is not forwarded.
 
     Built field by field from an allowlist rather than by deleting known-bad keys
     from a copy. A native payload that grows a field would otherwise start
     carrying it, and the field most likely to be added to an agent hook is the
-    one carrying the user's text.
+    one carrying the user's text. Codex's payloads carry `prompt`, `tool_input`,
+    `tool_response` and `last_assistant_message`, all of which this drops.
     """
+    names = EVENTS_BY_HARNESS.get(harness)
+    if names is None:
+        return None
     native = payload.get("hook_event_name")
-    name = EVENT_NAMES.get(native) if isinstance(native, str) else None
+    name = names.get(native) if isinstance(native, str) else None
     if name is None:
         return None
     session_id = payload.get("session_id")
@@ -149,7 +187,7 @@ def envelope(payload: dict[str, Any]) -> dict[str, Any] | None:
     return event
 
 
-def read_event(raw: bytes) -> dict[str, Any] | None:
+def read_event(raw: bytes, harness: str = "claude") -> dict[str, Any] | None:
     """Parse stdin into an envelope, or None if there is nothing to forward."""
     try:
         payload = json.loads(raw or b"{}")
@@ -160,14 +198,18 @@ def read_event(raw: bytes) -> dict[str, Any] | None:
         return None
     if not isinstance(payload, dict):
         return None
-    return envelope(payload)
+    return envelope(payload, harness)
 
 
 def main(argv: list[str]) -> int:
+    # An unknown harness needs no check here: `envelope` has no table for it and
+    # returns None, so the guard below already covers it. A second check would be
+    # a branch no test could distinguish from its absence.
+    harness = argv[1] if len(argv) > 1 else "claude"
     port = DEFAULT_PORT
-    if len(argv) > 1:
+    if len(argv) > 2:
         with contextlib.suppress(ValueError):
-            port = int(argv[1])
+            port = int(argv[2])
     try:
         raw = sys.stdin.buffer.read(MAX_PAYLOAD_BYTES)
     except (OSError, ValueError, AttributeError):
@@ -175,10 +217,10 @@ def main(argv: list[str]) -> int:
     # Checked in order, cheapest first: parse before reading a file, and read the
     # file before importing anything. Doing nothing is the common case, because
     # most sessions run with no dashboard listening at all.
-    event = read_event(raw)
+    event = read_event(raw, harness)
     if event is None:
         return 0
-    token = capability(port, "claude")
+    token = capability(port, harness)
     if token is None:
         return 0
     shared = _shared()
@@ -189,7 +231,7 @@ def main(argv: list[str]) -> int:
     # surfaces as an error inside the very session it is reporting on.
     with contextlib.suppress(Exception):
         shared.forward(
-            f"http://127.0.0.1:{port}/api/events/claude",
+            f"http://127.0.0.1:{port}/api/events/{harness}",
             json.dumps(event, separators=(",", ":")).encode(),
             headers={"X-Cargento-Capability": token},
         )

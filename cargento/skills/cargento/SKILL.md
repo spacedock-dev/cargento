@@ -164,23 +164,41 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 ```json
 "hooks": {
   "UserPromptSubmit": [
-    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\"", "async": true}]}
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\" claude", "async": true}]}
   ],
   "Stop": [
-    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\"", "async": true}]}
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\" claude", "async": true}]}
   ],
   "PermissionRequest": [
-    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\"", "async": true}]}
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\" claude", "async": true}]}
   ],
   "SessionEnd": [
-    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\""}]}
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\" claude"}]}
   ]
 }
 ```
 
-Pass a **port** as the first argument for a non-default instance: `python3 "<skill-dir>/event_hook.py" 9999`. Note that this differs from `notify_hook.py`, which takes a whole URL.
+The harness name is the first argument and is required. Pass a **port** second for a non-default instance: `python3 "<skill-dir>/event_hook.py" claude 9999`. Note that this differs from `notify_hook.py`, which takes a whole URL.
 
 This path needs no configured secret. Each run of the dashboard generates its own capability and publishes it in its state file, which the hook reads; nothing is stored between runs. With no dashboard running the hook reads one small file and exits 0. A dashboard started with `--no-events` publishes no capability, so the hook stays silent.
+
+### Codex
+
+Codex sessions report through the **plugin's own bundled hooks** at `hooks/codex-hooks.json`, so there is nothing to add to a settings file. Codex asks the user to trust each hook once, and silently skips any hook it has not been asked about, so after installing the plugin tell the user to approve Cargento's hooks when Codex prompts. Until they do, Codex rows keep the same scan-only behaviour they have today.
+
+Five events are registered, which is exactly what a real capture showed firing: `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop` and `PostCompact`. `PreToolUse` fires too and is deliberately not used, because `PostToolUse` reports the same turn once the store has actually changed.
+
+### Antigravity
+
+Antigravity pushes a state snapshot through its status line rather than firing hooks, and a status line cannot be plugin-bundled, so this one is opt-in. Point it at `statusline_hook.py`, which forwards both the quota figures and the lifecycle state:
+
+```json
+"statusLine": {"command": "python3 \"<skill-dir>/statusline_hook.py\"", "enabled": true}
+```
+
+Pass a port as the first argument for a non-default instance. This replaces the older `notify_hook.py <url>/api/usage` line, which still works and still feeds the quota band; the new script additionally drives Working state and sends the quota block *alone* rather than the whole status-line document, which carries the account email and the transcript path.
+
+Two honest limits, both measured rather than assumed. Antigravity's status-line payload carries **no confirmation-pending field**, so an Antigravity row cannot report Needs input from this path and falls back to what the collector sees. And its conversation id is blank until a conversation exists, so the return to Idle often cannot be reported; the Working state carries a deadline and the collector decides again after it lapses.
 
 Paths 2 and 3 are complementary and can both be installed. Keep `Notification` on `notify_hook.py`: Claude Code can emit an input-waiting notification for a session that then carries on running, so it stays revocable side state rather than an authoritative state change. `SessionEnd` is useful on both, which is why it appears twice above.
 

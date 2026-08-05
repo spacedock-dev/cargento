@@ -17,6 +17,7 @@
     "visualization"
   ],
   "skills": "./skills/",
+  "hooks": "./hooks/codex-hooks.json",
   "interface": {
     "displayName": "Cargento",
     "shortDescription": "Agent cartography and visualization",
