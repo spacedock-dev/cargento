@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import email.message
 import errno
 import http.client
@@ -645,6 +646,147 @@ class VerificationFixTest(unittest.TestCase):
         self.assertTrue(handler._local_ok())
         handler.server = mock.Mock(server_port=4553)
         self.assertFalse(handler._local_ok())
+
+
+class StreamEndpointTest(RuntimeTestCase):
+    """The SSE contract: immediate state, then one event per revision.
+
+    Every socket read carries a timeout. A blocking read with no deadline turns
+    a Windows CI failure into a hang, which reads as infrastructure trouble
+    rather than as the bug it is.
+    """
+
+    @staticmethod
+    def _open(port: int, headers: dict[str, str] | None = None) -> Any:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", "/api/stream", headers=headers or {})
+        return conn, conn.getresponse()
+
+    @staticmethod
+    def _read_event(response: Any, *, limit: int = 4096) -> str:
+        """Read until a blank line terminates one SSE frame, or the peer ends."""
+        chunks: list[bytes] = []
+        while len(b"".join(chunks)) < limit:
+            byte = response.read(1)
+            if not byte:
+                break
+            chunks.append(byte)
+            if b"".join(chunks).endswith(b"\n\n"):
+                break
+        return b"".join(chunks).decode()
+
+    def test_the_stream_opens_as_an_event_stream(self) -> None:
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn, response = self._open(httpd.server_port)
+            try:
+                self.assertEqual(200, response.status)
+                self.assertEqual("text/event-stream", response.headers["Content-Type"])
+                self.assertEqual("no-store", response.headers["Cache-Control"])
+            finally:
+                conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_the_current_revision_arrives_immediately(self) -> None:
+        """A client must not wait for the next change to learn where it is."""
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            # Publish something first, so there is a current revision to send.
+            httpd.application.collect_json(show_all=False)
+            conn, response = self._open(httpd.server_port)
+            try:
+                frame = self._read_event(response)
+                self.assertIn("event: revision", frame)
+                self.assertRegex(frame, r"data: \d+\.\d+")
+            finally:
+                conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_a_new_revision_is_delivered_to_an_open_stream(self) -> None:
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            httpd.application.collect_json(show_all=False)
+            conn, response = self._open(httpd.server_port)
+            try:
+                first = self._read_event(response)
+                # Force a genuinely new revision, then read the next frame.
+                state_of().snapshot.clear()
+                httpd.application.collect_json(show_all=False)
+                second = self._read_event(response)
+                self.assertIn("event: revision", second)
+                self.assertNotEqual(first, second)
+            finally:
+                conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_a_cross_site_request_is_refused_unlike_api_data(self) -> None:
+        """A long-lived data stream is not a document navigation.
+
+        do_GET relaxes its origin check so a link to the dashboard works. This
+        route must re-check with the strict form, or that relaxation leaks onto
+        a stream any site could open.
+        """
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn, response = self._open(
+                httpd.server_port,
+                {
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                },
+            )
+            try:
+                self.assertEqual(403, response.status)
+                response.read()
+            finally:
+                conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_the_budget_refuses_past_the_cap(self) -> None:
+        """A refusal, not a queue: every stream costs a thread and a socket."""
+        httpd = make_server()
+        httpd.application.config = dataclasses.replace(
+            httpd.application.config, stream_max_clients=1
+        )
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            first_conn, first = self._open(httpd.server_port)
+            try:
+                self.assertEqual(200, first.status)
+                second_conn, second = self._open(httpd.server_port)
+                try:
+                    self.assertEqual(503, second.status)
+                    second.read()
+                finally:
+                    second_conn.close()
+            finally:
+                first_conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
 
 
 class InstalledContractCharacterizationTest(unittest.TestCase):

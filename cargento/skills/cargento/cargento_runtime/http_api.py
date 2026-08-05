@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 from cargento_runtime import io as runtime_io
 from cargento_runtime import notifications, quota
 from cargento_runtime import snapshot as runtime_snapshot
+from cargento_runtime import stream as runtime_stream
 
 if TYPE_CHECKING:
     from cargento_runtime.aggregate import Application
@@ -275,12 +276,85 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 "application/json",
                 headers={"X-Cargento-Revision": runtime_snapshot.format_revision(revision)},
             )
+        elif url.path == "/api/stream":
+            self._stream()
         elif url.path == "/api/health":
             self._health()
         elif url.path == "/":
             self._send(self.server.page_bytes, "text/html; charset=utf-8")
         else:
             self.send_error(404)
+
+    def _stream(self) -> None:
+        """The SSE revision stream.
+
+        Strictly same-origin. `do_GET` relaxes its check for document
+        navigations so a link to the dashboard works, and a long-lived data
+        stream is not a document navigation, so re-checking here with the
+        strict form is what keeps that relaxation off this route.
+        """
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        application = self.server.application
+        state = application.state
+        client = state.streams.register(limit=application.config.stream_max_clients)
+        if client is None:
+            # A refusal, not a queue: every stream costs a thread and a socket
+            # for as long as it lives.
+            self.send_error(503)
+            return
+        try:
+            self._stream_forever(client)
+        finally:
+            state.streams.release(client)
+
+    def _stream_forever(self, client: runtime_stream.StreamClient) -> None:
+        application = self.server.application
+        config = application.config
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        with contextlib.suppress(OSError):
+            # A peer that stops reading must not pin this thread forever. The
+            # unbounded default is the real risk here, not server_close.
+            self.connection.settimeout(config.stream_write_timeout_sec)
+        current = application.state.snapshot.current((config.window_hours, False))
+        if current is not None and not self._emit(current[0]):
+            return
+        while True:
+            revision = client.wait(timeout=config.stream_heartbeat_sec)
+            # Checked after the wait, not in the loop condition: close() lands
+            # while this thread is asleep, which is the whole point of it, and a
+            # `while not client.closed` header reads to the type checker as a
+            # value that cannot change inside the body.
+            if client.closed:
+                return
+            if revision is None:
+                if not self._write_raw(b": keepalive\n\n"):
+                    return
+                continue
+            if not self._emit(revision):
+                return
+
+    def _emit(self, revision: runtime_snapshot.Revision) -> bool:
+        rendered = runtime_snapshot.format_revision(revision)
+        return self._write_raw(f"id: {rendered}\nevent: revision\ndata: {rendered}\n\n".encode())
+
+    def _write_raw(self, payload: bytes) -> bool:
+        """Write and flush, reporting whether the peer is still there.
+
+        No lock is held here. A blocked write must never be able to stall a
+        publisher or a collection.
+        """
+        try:
+            self.wfile.write(payload)
+            self.wfile.flush()
+        except (OSError, ValueError):
+            return False
+        return True
 
     def _usage_receipt(self) -> None:
         """A harness's own quota, forwarded here by its status-line command.

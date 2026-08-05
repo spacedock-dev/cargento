@@ -78,6 +78,13 @@ class RuntimeConfig:
     spacedock_max_boot_records: int
     spacedock_max_boot_candidates: int
     collect_memo_sec: float
+    # The SSE stream. The client cap is above the browsers' six-per-origin
+    # limit, so the server is not the thing that refuses first: it bounds
+    # handler threads, it does not police tabs.
+    stream_max_clients: int
+    stream_heartbeat_sec: float
+    stream_write_timeout_sec: float
+    stream_producer_interval_sec: float
     daemon_ready_timeout_sec: float
     stop_release_timeout_sec: float
     state_read_cap_bytes: int
@@ -271,6 +278,10 @@ def build_runtime_config(
         spacedock_max_boot_records=16,
         spacedock_max_boot_candidates=64,
         collect_memo_sec=2.5,
+        stream_max_clients=8,
+        stream_heartbeat_sec=15.0,
+        stream_write_timeout_sec=10.0,
+        stream_producer_interval_sec=5.0,
         daemon_ready_timeout_sec=10.0,
         stop_release_timeout_sec=5.0,
         state_read_cap_bytes=65_536,
