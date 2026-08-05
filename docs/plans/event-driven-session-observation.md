@@ -1,9 +1,11 @@
 # Plan: event-driven session observation
 
-Status: unshipped, and provisional. This is a problem statement and an option survey. It does not
-become an implementation plan until Phase 0 has run and its abort gate has been evaluated. Delete
-this file once its contents ship or are dropped, folding the durable rationale (the ACP,
-filesystem-watcher and OpenTelemetry findings) into a `docs/design-*.md` owner.
+Status: Phase 0 has shipped; Phases 1 through 4 are unshipped and still provisional. The Phase 0
+collector fixes, the two quota opt-out repairs and the benchmark have landed with tests, and its four
+gates now carry verdicts: one measured and failed, three unreached. Everything below the Phase 0
+section remains a problem statement and an option survey. Delete this file once its contents ship or
+are dropped, folding the durable rationale (the ACP, filesystem-watcher and OpenTelemetry findings)
+into a `docs/design-*.md` owner.
 
 Which runtime file owns what, and the inward-only dependency rule any new module must respect, is
 owned by [`design-runtime-architecture.md`](../design-runtime-architecture.md). The per-harness
@@ -16,23 +18,41 @@ lower-latency collection.
 Cargento should keep its Python runtime and existing collectors, but stop making a browser refresh
 the scheduler for all collection work.
 
-**Phase 0 has not run, and the recommendation below is subordinate to it.** Measurements taken on
-one developer machine (6 harnesses discovered, 17 sessions, 3,632 Claude transcripts) already
-contradict part of the diagnosis this design was built on:
+**Phase 0 has run its measurement, collector and quota-repair tasks, and the recommendation below is
+subordinate to the verdicts it produced.** One of the four gates was reached and it failed; the other
+three were never reached. All of them are recorded under
+[Phase 0](#phase-0-measure-repair-prerequisites-and-fix-the-collector).
 
-| Measurement | Value |
-|---|---|
-| Warm `Application.collect` | 275 to 297 ms |
-| Of which the Claude collector | 267 to 277 ms, or 97% |
-| All nine other harnesses combined | about 7 ms |
-| All ten discovery predicates combined | about 0.4 ms |
-| Coarse `os.stat` probe over 97 store paths | 0.14 ms |
-| Forwarder process cost, server absent, macOS | 56 ms median |
+The figures below come from **one machine only**: darwin/arm64 (macOS 26.5.2, Apple silicon), CPython
+3.12.13, 6 of 10 harnesses discovered, 16 sessions in the default 24-hour window, and 3,632 Claude
+transcript files under `~/.claude/projects`. Nothing here has been reproduced on Linux or Windows.
+Both columns were measured on the same machine and the same day with `scripts/bench_collect.py`: the
+after column at the branch tip, the before column at the pre-fix commit checked out in a detached
+worktree of the same repository, against the same store.
 
-On that profile, per-harness dirty invalidation, the thing the dirty queue exists to enable,
-saves single-digit milliseconds, and the harness that dominates the cost is also the one that
-generates the most events, so it will be dirty in nearly every coalescing window. These numbers
-must be reproduced on other machines before this design is accepted.
+| Measurement | Before the Phase 0 collector fixes | After |
+|---|---|---|
+| Warm `Application.collect`, median of 7 | 283 ms | 118 to 120 ms |
+| Of which the Claude collector | 263 ms, 93% | 98 to 101 ms, 83% |
+| First collect in a fresh process, caches empty | 392 to 399 ms | 275 to 297 ms |
+| The five other discovered harnesses combined | 7.3 ms | 7.5 ms |
+| All ten discovery predicates combined | 0.34 ms | 0.33 ms |
+| `glob_under` calls in one cold collect | 11,850 | 1,646 |
+| Coarse `os.stat` probe over 97 store paths | 0.14 ms | not re-measured |
+| Forwarder process cost, server absent, macOS | 56 ms median | not re-measured; p95 and p99 never measured |
+| Files or bytes consulted | not measured | not measured, no counter exists |
+
+Run-to-run variance is worth about 15% of the total on this machine: an earlier same-commit baseline
+recorded 322 ms warm against the 283 ms above, on the same store hours apart. Read the columns as a
+ratio, not as absolute constants.
+
+Two conclusions survive the fixes. First, the cost argument for an event architecture is gone: a 120
+ms warm collect at the current five-second cadence is a 2.4% duty cycle, and latency plus
+needs-input semantics are the only remaining justification for anything below. Second, per-harness
+dirty invalidation still saves little. Claude is 83% of the post-fix collection and is also the
+harness that generates the most events, so it will be dirty in nearly every coalescing window; the
+[selective-reuse gate](#phase-0-measure-repair-prerequisites-and-fix-the-collector) measures that
+saving at 16% and fails it.
 
 The design that survives those numbers is an event-triggered, materialized dashboard snapshot:
 
@@ -146,22 +166,25 @@ about 3,000 historical session prefixes to produce 8 rows, because the freshness
 (`if not (active or show_all)`) runs *after* the per-prefix subagent scan, and because
 `agent_transcripts` is called once directly and once again inside `load_subagents` for every prefix.
 
-Two behavior-preserving fixes, an `os.path.isdir` guard before globbing and calling
-`agent_transcripts` once per prefix instead of twice, took the collector from 265 ms to 140 ms with
-identical output. A prototype that cached subagent listings in `RuntimeState` keyed on
-session-directory mtime took it to about 41 ms, but that prototype is not behavior-preserving as
-described. Appending an existing child transcript does not change its directory mtime, and creating a
-child below `subagents/workflows/<run>/` need not change the session directory. It can therefore miss
-the parked-parent case the code comments explicitly preserve.
+**This shipped in Phase 0.** Three behavior-preserving fixes landed: an `os.path.isdir` guard before
+globbing, calling `agent_transcripts` once per prefix instead of twice, and a bounded `RuntimeState`
+cache of subagent listings. Together they took the warm Claude collector from 263 ms to about 100 ms
+and one cold collect from 11,850 `glob` calls to 1,646, with the whole test suite unchanged.
 
-Cache membership only, fingerprint every directory that owns a glob, and restat every cached child
-transcript on each collection. Invalidate membership on nested workflow-directory creation or
-deletion. Re-measure after fixtures append an existing child transcript and create a child under an
-existing workflow run without touching ancestor mtimes. The 41 ms figure is a prototype result, not
-an accepted target, until those output-equivalence tests pass.
+The cache did not land the way the prototype described it, because the prototype was not
+behavior-preserving. Keying on the session directory's mtime alone misses two writes: appending to an
+existing child transcript changes no directory mtime, and creating a child below
+`subagents/workflows/<run>/` need not change the session directory. Either one loses the parked-parent
+case the code comments exist to preserve. What shipped caches membership only; fingerprints every
+directory a glob pattern can reach, including each existing workflow run directory, so a run watched
+before it holds anything still notices its first agent; takes that fingerprint **before** the listing,
+so a write racing the scan invalidates the entry instead of pinning a listing that missed it; and
+restats every cached child transcript on every call, so a running subagent is never frozen at the
+mtime it was first seen at. That conservatism is why the result is near 100 ms rather than the 41 ms
+the mtime-only prototype reported. The parked-parent and nested-workflow cases have regression tests.
 
-This must happen first regardless of what follows. A 60 ms collect at the current five-second cadence
-is a 1.2% duty cycle, which removes cost from the argument entirely and leaves latency and
+Doing this first was worth it regardless of what follows. A 120 ms collect at the current five-second
+cadence is a 2.4% duty cycle, which removes cost from the argument entirely and leaves latency and
 needs-input semantics as the only remaining justification for anything below. An event architecture
 layered over an O(all-history) collector inherits the same cost on every dirty refresh.
 
@@ -292,8 +315,8 @@ app-server; ordinary standalone CLI sessions do not silently join a separate Car
 
 | Approach | Sees independently launched sessions? | Semantic precision | Main cost | Feasibility | Recommendation |
 |---|---|---|---|---|---|
-| Fix the dominant collector | Yes | Whatever stores persist | One collector's algorithm | High | **Do this first, unconditionally** |
-| Coarse periodic `stat` probe | Intended to, pending mutation tests | Low: says bytes changed, not what the agent is doing | 0.14 ms for one warm 97-path Mac profile; cross-platform cost unmeasured | Medium, pending Phase 0 | Primary latency candidate only after its independent gate |
+| Fix the dominant collector | Yes | Whatever stores persist | One collector's algorithm | Done in Phase 0 | **Done first, unconditionally** |
+| Coarse periodic `stat` probe | Intended to, pending mutation tests | Low: says bytes changed, not what the agent is doing | 0.14 ms for one warm 97-path Mac profile; cross-platform cost unmeasured | Medium, gate unreached | Primary latency candidate only after its independent gate |
 | Harness-native hooks, extensions, and status lines | Yes, when installed at user or plugin scope | High for lifecycle and input waits | Per-harness adapters, user trust, an indefinite support tail | Medium | Semantic supplement, needs-input first |
 | ACP | Not guaranteed; normally only sessions on Cargento's connection | Very high for owned sessions | Changes Cargento into a client, launcher, or proxy | Technically feasible | Optional managed mode |
 | Native harness server or event API | Only sessions connected to that server | Very high | Agent-specific topology and lifecycle | Medium | Use opportunistically; prefer where already running |
@@ -668,9 +691,10 @@ side effect of the coalescing window.
 
 The bounded coordinator exists regardless of whether selective collection proves worthwhile: it
 serializes events and scans, enforces floors, and keeps collection off request threads. The existing
-`HarnessSpec.collect` boundary makes per-harness refresh feasible. If the Phase 0 selective-reuse gate
-fails, the coordinator marks the aggregate dirty and performs one full `Application.collect` per
-floor instead of retaining per-harness results.
+`HarnessSpec.collect` boundary makes per-harness refresh feasible. The Phase 0 selective-reuse gate
+failed at 16%, so what Phase 1 builds is the failed-gate path: the coordinator marks the aggregate
+dirty and performs one full `Application.collect` per floor instead of retaining per-harness results.
+The paragraph below describes the selective path only for the day a profile clears the gate.
 
 When selective refresh is enabled, the new application state retains one current result per harness,
 merges only the refreshed harness, deduplicates and sorts the aggregate, then serializes a new
@@ -915,9 +939,10 @@ the disclosure. That request may schedule a vendor quota fetch behind its existi
 in-flight gates. [`SECURITY.md`](../../SECURITY.md) publishes the resulting property: with the feature
 off, nothing is fetched or retained, and no polling happens while no dashboard page is connected.
 
-Phase 0 must first repair two existing violations of that contract: Windows daemon respawn must carry
-`--no-usage`, and `/api/usage` must discard quota fields before storage whenever server-side usage is
-disabled. These are security prerequisites, not behavior to claim Phase 1 already preserves.
+Phase 0 repaired the two existing violations of that contract: Windows daemon respawn now carries
+`--no-usage`, and `/api/usage` now discards quota fields before storage whenever server-side usage is
+disabled, while still answering 200 so a status line never sees an error. Those were security
+prerequisites, and Phase 1 may now claim the contract it preserves.
 
 Under SSE, quota consent remains browser-originated but cannot depend on unrelated revisions. The
 elected tab is the only quota-triggering client. It broadcasts `localStorage` consent changes to all
@@ -1081,43 +1106,66 @@ adapter firing ten times a second and one firing never look identical without th
 
 ### Phase 0: measure, repair prerequisites, and fix the collector
 
-The baseline measurements must complete before architectural code lands:
+The baseline measurements must complete before architectural code lands. What was measured, and what
+was not:
 
-- cold and memo-hit `/api/data` duration;
-- discovery and collection duration per harness;
-- a `cProfile` of the slowest collector by function, not just per-harness totals;
-- files or bytes consulted where cheaply measurable;
-- number of collections with one and several tabs;
-- forwarder end-to-end p50, p95 and p99 per OS, including authenticated discovery, against a closed
-  port, a stale/unresponsive listener and a live server;
-- native hook event count per turn per harness for the minimal event set, using the Antigravity
-  status-line path already in production as a free sample.
+| Baseline measurement | Status |
+|---|---|
+| Cold and memo-hit collection duration | Measured. Cold 275 to 297 ms, warm 118 to 120 ms, one machine. |
+| Discovery and collection duration per harness | Measured by `scripts/bench_collect.py`, one machine. |
+| `cProfile` of the slowest collector by function | Measured. Claude remains the slowest; its residue is subagent globbing (140 ms cumulative under the profiler), JSONL parsing and turn scanning. |
+| Files or bytes consulted | **Not measured.** No counter exists without instrumenting `io.py`, and the design asks for this only where cheaply measurable. Blocks nothing on its own, but leave the row empty rather than guessing. |
+| Number of collections with one and several tabs | **Not yet measured, blocks the phase it gates.** Only meaningful once Phase 1 owns the render path. |
+| Forwarder p50, p95 and p99 per OS, against a closed port, a stale listener and a live server | **Not yet measured, blocks the phase it gates.** One macOS median (56 ms, server absent) exists and is not a distribution. Depends on the authenticated discovery Phase 2 designs. |
+| Native hook event count per turn per harness | **Not yet measured, blocks the phase it gates.** The Antigravity status-line path is in production and remains the free sample to take it from. |
+| Probe dependency table, mutation corpus, warm and cold probe cost and false negatives on three OSes | **Not yet measured, blocks the phase it gates.** Phase 0 did not build the probe. |
+| Event cardinality and ordering from real harness fixtures | **Not yet measured, blocks the phase it gates.** Prerequisite for assigning semantic transitions. |
 
-Build the probe dependency table and mutation corpus described above, and measure warm/cold probe
-cost and false negatives on Linux, macOS and Windows. Record event cardinality and ordering from real
-harness fixtures before assigning semantic transitions. Event-to-render latency and reconciliation
-repair counts are post-change measurements, but missed-event rate is a rollout gate rather than a
-dashboard-only metric.
+Event-to-render latency and reconciliation repair counts are post-change measurements, but
+missed-event rate is a rollout gate rather than a dashboard-only metric.
 
-Then apply the collector fixes from [Make collection cheaper](#make-collection-cheaper), because they
-change every number below, including the parked-parent and nested-workflow equivalence tests. Also fix
-the two existing quota opt-out defects (`--no-usage` Windows respawn and pushed-receipt discard) before
-claiming the security contract is preserved.
+The collector fixes from [Make collection cheaper](#make-collection-cheaper) have landed, with the
+parked-parent and nested-workflow equivalence tests, and they changed every number above. The two
+quota opt-out defects are fixed as well: `--no-usage` now reaches the respawned Windows daemon, and a
+pushed status-line receipt has its quota fields dropped before storage when server-side usage is off.
+[`SECURITY.md`](../../SECURITY.md) documents the resulting behavior, so no exposure remains open
+against the published contract.
 
-The gates are independent:
+The gates are independent. Verdicts, one per gate:
 
-- **Selective reuse:** if per-harness reuse saves less than 25% of post-fix collection time, keep the
-  coordinator but run one full aggregate collection per floor. This gate does not remove event
-  ordering, coalescing or serialization.
-- **Coarse probe:** do not use it to reduce scans until its mutation corpus has no false negatives on
-  supported local filesystems and its CPU/I/O budget passes on all three OSes. WSL, remote, bind and
-  network stores retain the current cadence unless separately proven.
-- **Adapter semantics:** do not publish an overlay transition without contract or real-CLI fixtures
-  proving event meaning, cardinality and order. Each synchronous shim must fit the single end-to-end
-  p99 hook budget.
-- **Operational rollout:** retain abort thresholds for CPU duty, memory, handler/thread ceilings,
-  p95 render latency and missed-event repair rate. A 25% collection threshold alone cannot protect
-  the user experience.
+- **Selective reuse, MEASURED AND FAILED.** If per-harness reuse saves less than 25% of post-fix
+  collection time, keep the coordinator but run one full aggregate collection per floor. This gate
+  does not remove event ordering, coalescing or serialization. The saving available to reuse is
+  the total minus the largest single harness, as a fraction of the total, because Claude is dirty in
+  nearly every window and reuse can only skip the others. On the post-fix warm figures:
+
+  ```
+  run 1: (120.137 total - 100.612 claude) / 120.137 = 19.525 / 120.137 = 0.1625 -> 16.3%
+  run 2: (118.485 total -  98.492 claude) / 118.485 = 19.993 / 118.485 = 0.1687 -> 16.9%
+  ```
+
+  Both are below 25%, so the verdict is: keep the coordinator, run one full aggregate collection per
+  floor, and do not build the per-harness dirty queue. Phase 1's publish protocol should be written
+  for one full aggregate, not for per-harness merges. One machine measured it; a machine whose Claude
+  store is small enough that another harness becomes the largest would move the fraction, so re-run
+  `scripts/bench_collect.py --repeat 7` before treating the verdict as settled for another profile.
+- **Coarse probe: not yet measured, blocks the phase it gates.** Do not use it to reduce scans until
+  its mutation corpus has no false negatives on supported local filesystems and its CPU/I/O budget
+  passes on all three OSes. WSL, remote, bind and network stores retain the current cadence unless
+  separately proven. Phase 0 built no probe, so this gate is unreached, not passed. The 0.14 ms sweep
+  remains a hypothesis.
+- **Adapter semantics: not yet measured, blocks the phase it gates.** Do not publish an overlay
+  transition without contract or real-CLI fixtures proving event meaning, cardinality and order. Each
+  synchronous shim must fit the single end-to-end p99 hook budget. Unreachable until Phase 2 collects
+  those fixtures.
+- **Operational rollout: not yet measured, blocks the phase it gates.** Retain abort thresholds for
+  CPU duty, memory, handler/thread ceilings, p95 render latency and missed-event repair rate. A 25%
+  collection threshold alone cannot protect the user experience. There is no render path to measure
+  against until Phase 1 delivers one.
+
+Phase 1 may proceed: its inputs from Phase 0 are the post-fix collection time and the selective-reuse
+verdict, and both now exist. Phase 2 may not begin its probe or its adapters, because all three gates
+those steps depend on are unreached.
 
 ### Phase 1: materialized snapshot and SSE
 
@@ -1259,10 +1307,10 @@ The implementation plan should include tests for:
 
 | Outcome | Feasibility | Reason |
 |---|---|---|
-| Cheaper Claude collector at identical output | High for the first two fixes; cache pending | The guard and doubled glob are local; membership caching must pass parked-parent and nested-workflow fixtures |
+| Cheaper Claude collector at identical output | Done | All three fixes shipped in Phase 0 at 263 ms to about 100 ms warm; the membership cache passes the parked-parent and nested-workflow fixtures |
 | Coarse stat-poll invalidation across all ten harnesses | Medium, pending Phase 0 | Stdlib and promising on one Mac, but mutation coverage and cross-platform cost are unproven |
 | Materialized snapshot with SSE delivery | Medium to high | Fits the runtime, but needs a real coordinator, demand producer, restart cursor, server-wide resource limits and shutdown lifecycle |
-| Event-triggered selective collection | Medium, pending Phase 0 | Value depends on per-harness invalidation being worth more than the roughly 7 ms it currently saves |
+| Event-triggered selective collection | Low value, gate failed | Per-harness invalidation saves 16% of a post-fix collection on the measured machine, under the 25% gate, so the coordinator runs one full aggregate per floor instead |
 | Near-real-time Claude and Codex | Medium to high | Both plugin formats can bundle hooks; Cargento still needs authenticated routing, fixtures and its own lifecycle wiring |
 | Near-real-time Antigravity | Medium to high | Hooks are bundleable and status line adds agent state and tool confirmation, but hooks are not clean turn boundaries and status line is opt-in |
 | Near-real-time Gemini | Medium | The shipped extension can bundle hooks, but supported auth populations and event semantics need fixtures |
@@ -1284,6 +1332,7 @@ public latency promise.
 - Do not rewrite the runtime merely to remove Python; the cost is one collector's algorithm, not the
   interpreter.
 - Do fix that collector before changing any scheduling, since it changes every number in the argument.
+  Done: Phase 0 landed the three fixes, and the numbers in the argument are the post-fix ones.
 - Do not remove the existing collectors; they are the cross-harness historical and recovery layer.
 - Do not adopt ACP as the core passive observation mechanism, and never require ACP for the ordinary
   dashboard.
