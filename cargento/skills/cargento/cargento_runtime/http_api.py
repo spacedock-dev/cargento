@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
+from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import notifications, quota
 from cargento_runtime import snapshot as runtime_snapshot
@@ -460,6 +461,52 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
         self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
 
+    def _events(self, harness: str) -> None:
+        """A harness's lifecycle events, forwarded by its own hook.
+
+        The harness comes from the route, never from the body: a payload field
+        naming its own source would let one adapter's token post as any harness.
+        The route alone proves nothing about the caller, so the capability is
+        checked as well, which is the difference between this and `/api/notify`.
+
+        Order is deliberate. Unknown route first, so an unsupported harness is a
+        404 and not an authentication oracle. Then the capability. Then the rate
+        ceiling, which is independent of the token because a looping adapter holds
+        a valid one by definition. Then the length, before any read.
+        """
+        coordinator = self.server.observation
+        if coordinator is None or harness not in runtime_events.IDENTITY_NORMALIZERS:
+            self._reject(404)
+            return
+        if not coordinator.authorized(harness, self.headers.get("X-Cargento-Capability")):
+            self._reject(403)
+            return
+        if not coordinator.within_budget(harness):
+            self._reject(429)
+            return
+        config = self.server.application.config
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.event_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        outcome = coordinator.submit(harness, payload)
+        # Always 200, even for a rejected envelope. The hook must not learn to
+        # retry, and must never be the reason an agent session stalls; the
+        # outcome string is for diagnostics.
+        self._send(
+            json.dumps({"ok": True, "outcome": outcome}, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
     def do_POST(self) -> None:
         if not self._local_ok():
             self._reject(403)
@@ -470,6 +517,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/usage":
             self._usage_receipt()
+            return
+        if path.startswith("/api/events/"):
+            self._events(path[len("/api/events/") :])
             return
         if path != "/api/notify":
             self._reject(404)

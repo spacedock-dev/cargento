@@ -159,6 +159,31 @@ Simulate for testing:
 echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook.py"
 ```
 
+3. **Lifecycle events** — `event_hook.py`, beside `notify_hook.py`, forwards general lifecycle events to `/api/events/claude`: prompt submitted, turn stopped, permission requested, subagent started or stopped, tasks changed, compaction finished. Where path 2 sets one piece of side state, this drives the session's Working, Needs-input and Idle state directly, so the board reacts to a turn starting instead of waiting for the next scan. Also not installed by the plugin. Offer these if the user wants it:
+
+```json
+"hooks": {
+  "UserPromptSubmit": [
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\"", "async": true}]}
+  ],
+  "Stop": [
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\"", "async": true}]}
+  ],
+  "PermissionRequest": [
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\"", "async": true}]}
+  ],
+  "SessionEnd": [
+    {"matcher": "", "hooks": [{"type": "command", "command": "python3 \"<skill-dir>/event_hook.py\""}]}
+  ]
+}
+```
+
+Pass a **port** as the first argument for a non-default instance: `python3 "<skill-dir>/event_hook.py" 9999`. Note that this differs from `notify_hook.py`, which takes a whole URL.
+
+This path needs no configured secret. Each run of the dashboard generates its own capability and publishes it in its state file, which the hook reads; nothing is stored between runs. With no dashboard running the hook reads one small file and exits 0. A dashboard started with `--no-events` publishes no capability, so the hook stays silent.
+
+Paths 2 and 3 are complementary and can both be installed. Keep `Notification` on `notify_hook.py`: Claude Code can emit an input-waiting notification for a session that then carries on running, so it stays revocable side state rather than an authoritative state change. `SessionEnd` is useful on both, which is why it appears twice above.
+
 ## Options
 
 | Flag / URL | Effect |
@@ -171,6 +196,7 @@ echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
+| `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |

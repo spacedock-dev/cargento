@@ -46,6 +46,8 @@ than the poll it replaces.
 
 from __future__ import annotations
 
+import hmac
+import secrets
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -101,6 +103,16 @@ class Observation:
         # read from a payload: a hook that could choose its own arrival_seq could
         # choose its place in the reducer's order.
         self._arrival_seq = 0
+        # This run's ingress secret. Generated per process and never written to
+        # disk: what goes into the state file is one derived token per harness,
+        # so a token leaked out of one adapter's configuration cannot be used to
+        # post another harness's events. It dies with the process, which is what
+        # makes it a per-run capability rather than a stored credential.
+        self._secret = secrets.token_bytes(32)
+        # Per-source token bucket. A route is not authentication and a token is
+        # not a rate limit: a compromised or looping adapter holds a valid token
+        # by definition, so the ceiling has to be independent of it.
+        self._budget: dict[str, tuple[float, float]] = {}
         self._overlays: dict[SessionKey, dict[OverlayKey, runtime_events.Overlay]] = {}
         # sid -> (first seen, attempts). An event whose session no collection has
         # produced yet waits here. It never renders and never creates a row.
@@ -112,6 +124,61 @@ class Observation:
         self._coalesce_until: float | None = None
         self._probe_stamp: runtime_probe.Stamp | None = None
         self.counters: dict[str, int] = {}
+
+    # ---- the per-run, per-source capability ------------------------------
+
+    def capability(self, harness: str) -> str:
+        """This run's token for one harness. Derived, so nothing extra is stored.
+
+        Per source rather than per run, because a single shared token would mean
+        that reading any one adapter's configuration bought the ability to post
+        as every harness. HMAC over the harness name with a per-process secret
+        gives one token per source from one thing to keep.
+        """
+        return hmac.new(self._secret, harness.encode(), "sha256").hexdigest()
+
+    def capabilities(self) -> dict[str, str]:
+        """Every registered source's token, for the state file to publish."""
+        return {
+            harness: self.capability(harness) for harness in runtime_events.IDENTITY_NORMALIZERS
+        }
+
+    def authorized(self, harness: str, presented: str | None) -> bool:
+        """Whether a caller proved it holds this harness's capability.
+
+        `compare_digest`, not `==`: a short-circuiting comparison leaks the
+        length of the shared prefix, and this is a value an attacker can retry
+        against as fast as loopback allows.
+
+        The `isascii` guard is load-bearing rather than defensive. `compare_digest`
+        raises TypeError when either string holds a character above 127, and
+        `http.client` decodes header bytes as latin-1, so a single high byte in the
+        header would otherwise raise inside the handler rather than being refused.
+        The token is hex, so nothing legitimate is turned away.
+        """
+        if not presented or not presented.isascii():
+            return False
+        return hmac.compare_digest(self.capability(harness), presented)
+
+    def within_budget(self, harness: str) -> bool:
+        """Whether this source may spend one more event now.
+
+        A token bucket rather than a fixed window, so a hook that legitimately
+        emits four events for one turn is not refused for arriving together,
+        while a loop is still held to the average.
+        """
+        ceiling = float(self.config.event_burst_max)
+        refill = self.config.event_rate_per_sec
+        now = self.clock()
+        with self._lock:
+            tokens, last = self._budget.get(harness, (ceiling, now))
+            tokens = min(ceiling, tokens + (now - last) * refill)
+            if tokens < 1.0:
+                self._budget[harness] = (tokens, now)
+                self._bump("reject.rate")
+                return False
+            self._budget[harness] = (tokens - 1.0, now)
+            return True
 
     # ---- ingress side, called on handler threads -------------------------
 

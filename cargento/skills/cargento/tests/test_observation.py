@@ -722,6 +722,10 @@ class WiringTest(unittest.TestCase):
         events_seen: list[str] = []
 
         class FakeCoordinator:
+            def capabilities(self) -> dict[str, str]:
+                events_seen.append("capabilities")
+                return {"claude": "token"}
+
             def start(self) -> None:
                 events_seen.append("start")
 
@@ -751,7 +755,10 @@ class WiringTest(unittest.TestCase):
                 started=NOW,
                 diagnostic_sink=lambda _message: None,
             )
-        self.assertEqual(["start", "serve", "stop"], events_seen)
+        # capabilities before start: the tokens are published by write_state, and
+        # a hook that fires the instant the worker begins must find them already
+        # on disk rather than racing the write.
+        self.assertEqual(["capabilities", "start", "serve", "stop"], events_seen)
         producer.assert_not_called()
 
     def test_serve_falls_back_to_the_producer_without_a_coordinator(self) -> None:

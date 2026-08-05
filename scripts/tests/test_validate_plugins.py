@@ -84,9 +84,13 @@ class ValidatorTests(unittest.TestCase):
         # it can also fall behind. Compare it against what the checkout actually
         # ships: a new runtime module or asset must be added here deliberately.
         skill = validator.ROOT / "cargento" / "skills" / "cargento"
+        # Discovered rather than listed. The top-level scripts were named here by
+        # hand, and adding `event_hook.py` beside them failed this test for the
+        # right reason but in the wrong place: the inventory is the thing meant to
+        # be deliberate, not this test's idea of what exists. `glob`, not `rglob`,
+        # so `tests/` and `agents/` stay out.
         shipped = {
-            path.relative_to(validator.ROOT / "cargento").as_posix()
-            for path in [skill / "server.py", skill / "notify_hook.py"]
+            path.relative_to(validator.ROOT / "cargento").as_posix() for path in skill.glob("*.py")
         }
         for path in (skill / "cargento_runtime").rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts:

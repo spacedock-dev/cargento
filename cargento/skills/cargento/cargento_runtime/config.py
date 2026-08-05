@@ -122,6 +122,14 @@ class RuntimeConfig:
     event_pending_max: int
     event_pending_ttl_sec: float
     reconcile_interval_sec: float
+    # Event ingress. The body cap is far below the notification cap because the
+    # envelope is nine short fields and nothing else is read from it. The rate
+    # ceiling is independent of the capability: a looping or compromised adapter
+    # holds a valid token by definition, so the token cannot be what bounds it.
+    # The burst allows one turn's worth of hooks to arrive together.
+    event_body_cap_bytes: int
+    event_rate_per_sec: float
+    event_burst_max: int
 
 
 def resolve_store_roots(
@@ -321,6 +329,9 @@ def build_runtime_config(
         event_pending_max=256,
         event_pending_ttl_sec=60.0,
         reconcile_interval_sec=30.0,
+        event_body_cap_bytes=8_192,
+        event_rate_per_sec=20.0,
+        event_burst_max=40,
     )
 
 

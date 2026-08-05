@@ -95,6 +95,7 @@ UniqueKeyLoader.add_constructor(
 CARGENTO_RUNTIME_FILES = (
     "skills/cargento/server.py",
     "skills/cargento/notify_hook.py",
+    "skills/cargento/event_hook.py",
     "skills/cargento/cargento_runtime/__init__.py",
     "skills/cargento/cargento_runtime/cli.py",
     "skills/cargento/cargento_runtime/config.py",

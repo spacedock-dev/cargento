@@ -171,9 +171,32 @@ the same trust boundary described above, not a new one.
 Loopback is not a per-user boundary. Any other account on the same machine can `GET /api/data` and
 read every session's titles and prompts, or forge a `POST /api/notify`. The Host, `Sec-Fetch` and
 Origin checks defeat browser-based DNS rebinding, but they do not defeat a local process. This
-matters more on a shared Linux host than on a personal laptop. The known fix, a per-run bearer token
-in a `0600` file plus a random port, is not implemented. Please report a *bypass* of the checks that
-do exist. The absence of per-user isolation is documented here rather than treated as a new finding.
+matters more on a shared Linux host than on a personal laptop. Please report a *bypass* of the checks
+that do exist. The absence of per-user isolation is documented here rather than treated as a new
+finding.
+
+Event ingress is the exception, and it is narrow. `POST /api/events/<harness>` requires a per-run
+capability, because a general lifecycle overlay is more powerful than the side state `/api/notify`
+sets: a forged `session_ended` can suppress a permission alert, and a looped `turn_started` can mask
+a blocked session. The server generates one secret per process, derives one token per harness from
+it, and publishes only the derived tokens in the state file, opened `0600` with the mode in the
+`open` call so the token is never briefly world-readable. A token from one adapter cannot post as
+another harness, and a token recovered from an old state file is useless against the next run. The
+comparison is constant-time.
+
+What that does **not** buy: the file mode is advisory, exactly as the state directory's `0700` is.
+It does not apply to a directory that already exists, Windows ignores it, and root reads it either
+way. Any process running as the same user can read the token and post events, and that stays inside
+the trust boundary for the same reason the rest of this section does, since such a process can read
+the user's secret material directly. An overlay may also only ever patch a row a collector produced;
+it can never create or delete one, and it can only write `state`, `state_detail`, `active`,
+`blocked_since` and the acquisition marker. `--no-events` turns the whole path off for a run.
+
+The event envelope is allowlisted at both ends. The Claude adapter builds the nine permitted fields
+one at a time from the native payload, so the prompt, the tool name, the tool input and the tool
+output are dropped in the hook and never put on a socket; the server then validates independently,
+because a hook's output is untrusted regardless of who wrote it. `cwd` and `transcript_path` are
+matching hints and are never echoed to `/api/data`.
 
 `--diagnose` output is sensitive. It prints the home directory, the interpreter path, the *values* of
 the store relocation variables, every candidate store path, and per-path read errors. Nothing is

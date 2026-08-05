@@ -63,8 +63,15 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def forward(url: str, payload: bytes) -> bool:
-    """POST ``payload`` to ``url``. Returns whether it was delivered."""
+def forward(url: str, payload: bytes, headers: dict[str, str] | None = None) -> bool:
+    """POST ``payload`` to ``url``. Returns whether it was delivered.
+
+    ``headers`` adds to the content type rather than replacing it, and exists for
+    the event adapter beside this file, which has to present a capability. The
+    loopback and proxy guards below are the reason that adapter imports this
+    function instead of writing its own: a header is the only thing about the
+    request it needs to change.
+    """
     if not is_loopback_url(url):
         # This script is wired into an agent's lifecycle hooks and receives
         # prompts and session ids. It must not become a way to ship those
@@ -73,7 +80,7 @@ def forward(url: str, payload: bytes) -> bool:
     request = urllib.request.Request(  # noqa: S310 — scheme/host checked above
         url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **(headers or {})},
         method="POST",
     )
     # ProxyHandler({}) disables proxying entirely. Without it the default

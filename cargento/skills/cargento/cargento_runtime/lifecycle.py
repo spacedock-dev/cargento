@@ -85,6 +85,7 @@ def write_state(
     port: int,
     *,
     started: float,
+    capabilities: dict[str, str] | None = None,
     diagnostic_sink: Callable[[str], None] = print,
 ) -> None:
     """Record this process as the instance serving `port`.
@@ -95,19 +96,32 @@ def write_state(
 
     Written through a temp file and os.replace so a reader mid-write sees the
     old file or the new one, never half of one.
+
+    `capabilities` is how an adapter learns its event-ingress token. This file is
+    the only place it is published, and it is chmodded to owner-only for that
+    reason: the token is what stands between a local process and the ability to
+    forge lifecycle state. The mode is advisory, exactly as
+    `ensure_cargento_home`'s is, and Windows ignores it, so `SECURITY.md` records
+    what that does and does not buy rather than implying isolation.
     """
-    payload = {
+    payload: dict[str, Any] = {
         "pid": os.getpid(),
         "port": port,
         "started": started,
         "log": log_path(config, port),
         "python": sys.executable,
     }
+    if capabilities:
+        payload["capabilities"] = capabilities
     target = state_path(config, port)
     tmp = f"{target}.{os.getpid()}.tmp"
     try:
         ensure_cargento_home(config)
-        with open(tmp, "w", encoding="utf-8") as handle:
+        # Opened through os.open with the mode in the call rather than chmodded
+        # afterwards: a chmod leaves a window in which the file exists
+        # world-readable, and the token is in it from the first byte.
+        handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
         os.replace(tmp, target)
     except OSError as exc:
@@ -728,7 +742,17 @@ def serve(
     that always connects.
     """
     runtime_io.diag(f"Cargento: http://127.0.0.1:{port}/", diagnostic_sink)
-    write_state(config, port, started=started, diagnostic_sink=diagnostic_sink)
+    observation = getattr(server, "observation", None)
+    write_state(
+        config,
+        port,
+        started=started,
+        # Published here rather than at assembly because the tokens name a
+        # *serving* process. A run that never binds writes no state file, so it
+        # publishes no capability either.
+        capabilities=observation.capabilities() if observation is not None else None,
+        diagnostic_sink=diagnostic_sink,
+    )
     if announce_fd is not None:
         # After write_state, so --status works the instant the parent returns.
         daemon_announce(announce_fd)
@@ -736,7 +760,6 @@ def serve(
     # after the fork, so no thread is ever created in a process about to be
     # replaced. The coordinator subsumes the producer's periodic tick, so exactly
     # one of the two runs and they can never both collect.
-    observation = getattr(server, "observation", None)
     producer_stop = threading.Event()
     producer: threading.Thread | None = None
     if observation is not None:

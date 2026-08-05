@@ -931,9 +931,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
         "cargento_runtime.config": set(),
         # `observation` is here for typing only: the server carries the
         # coordinator so `serve` can start it, and the ingress route reaches it
-        # through that attribute rather than through a module global.
+        # through that attribute rather than through a module global. `events`
+        # arrived with that route, which reads the registered-harness set to
+        # decide whether `/api/events/<harness>` exists at all.
         "cargento_runtime.http_api": {
             "cargento_runtime.aggregate",
+            "cargento_runtime.events",
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.observation",
