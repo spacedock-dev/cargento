@@ -804,25 +804,40 @@ The dispatch site is narrower than the event name suggests:
 unified-exec runtimes only, not for MCP tools. So even once it fires, it would not
 report an MCP permission wait.
 
-**A measurement made while chasing this, which matters more than the hook does.**
-The argument for wanting a permission signal is that `input_requested` is the
-overlay with no dedicated clearing event: `EVENT_NAMES` carries `input_resolved` and
-nothing anywhere produces it. That much was already recorded. What was not is how
-badly the fallback behaves. A later `turn_started` does not durably clear a
-needs-input overlay, it only outranks it for `overlay_working_ttl_sec`, and when
-that working overlay expires the needs-input overlay applies again with its
+**A defect found while chasing this, which mattered more than the hook does. Now
+fixed.** The argument for wanting a permission signal is that `input_requested` is
+the overlay with no dedicated clearing event: `EVENT_NAMES` carries `input_resolved`
+and nothing anywhere produces it. That much was already recorded. What was not is
+how badly the fallback behaved. A later `turn_started` did not durably clear a
+needs-input overlay, it only outranked it for `overlay_working_ttl_sec`, and when
+that working overlay expired the needs-input overlay applied again with its
 *original* `blocked_since`:
 
-| `now` | patch `reduce_overlays` produces |
-|---|---|
-| working overlay live | `state: working` |
-| 90 seconds later | `state: needs_input`, `blocked_since` back at the original stamp |
+| `now` | before | after |
+|---|---|---|
+| working overlay live | `state: working` | `state: working` |
+| 90 seconds later | `state: needs_input`, original `blocked_since` | no patch: the collector's reading stands |
 
-So a turn still running 90 seconds after its permission was granted reverts to a
-false "waiting for you", and claims to have been waiting the whole time. The durable
-clears are only `turn_stopped`, `session_ended` and the pending TTL. That is a
-user-visible defect in its own right rather than a gap in this harness's coverage,
-and it is filed separately.
+So a turn still running 90 seconds after its permission was granted reverted to a
+false "waiting for you", and claimed to have been waiting the whole time.
+
+The fix is in `reduce_overlays`: a needs-input overlay is superseded permanently once
+a later overlay says the session is not waiting, and the check ignores whether that
+later overlay is still live. Once a turn has started the earlier wait is over as a
+matter of history, and history does not lapse. Two details are load-bearing:
+
+- **Order, not presence.** Superseding is by `arrival_seq`, so a permission asked for
+  *during* a turn arrives later and survives. Reversing that would silence every
+  mid-turn prompt, which is most of them.
+- **What it falls back to.** With the wait superseded and the working overlay expired,
+  no overlay patches anything, so the collector's own reading of the store stands.
+  Trusting the store again after the deadline is the point of the deadline.
+
+`idle` is in `ENDS_A_WAIT` alongside `working` for completeness rather than necessity:
+it carries no deadline today, so it already won forever. It is listed, and pinned by a
+test that builds an idle overlay with a deadline it does not currently have, because an
+untestable invariant is one a later change drops silently. That is precisely how this
+defect arrived through the working overlay.
 
 `subagent_start` and `subagent_stop` are real, and are now **measured** as well.
 Evidence: [`docs/captures/codex/subagents-0.146.0-macos.jsonl`](../captures/codex/subagents-0.146.0-macos.jsonl).

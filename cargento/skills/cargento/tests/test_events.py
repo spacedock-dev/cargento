@@ -463,22 +463,25 @@ class ReduceTest(unittest.TestCase):
         self.assertEqual("needs_input", events.reduce_overlays(ledger, now=NOW)["state"])
 
 
-class NeedsInputResurfacingTest(unittest.TestCase):
-    """Characterisation of a known defect. This pins what happens, not what should.
+class NeedsInputSupersedingTest(unittest.TestCase):
+    """A turn that starts after a permission wait ends that wait, permanently.
 
     `input_requested` deliberately has no expiry, because a real permission wait must
-    not be timed out. The intended clear is `input_resolved`, and nothing anywhere
-    produces it: it is the only `EVENT_NAMES` member with no producer. So the
-    fallback is that a later `turn_started` outranks the needs-input overlay by
-    `arrival_seq` -- but only while its own `overlay_working_ttl_sec` deadline holds.
-    When that lapses, the needs-input overlay applies again, carrying its ORIGINAL
-    `blocked_since`.
+    not be timed out. That left a defect (DRC-4095): a later `turn_started` only
+    *outranked* the needs-input overlay, and outranking lasts exactly as long as the
+    working overlay's own `overlay_working_ttl_sec` deadline. When that lapsed the
+    needs-input overlay applied again, carrying its ORIGINAL `blocked_since`, so a
+    turn still running 90 seconds after its permission was granted reverted to
+    "waiting for you" and claimed to have been waiting the whole time.
 
-    The user-visible effect: a turn still running 90 seconds after its permission was
-    granted reverts to "waiting for you", and claims to have been waiting the whole
-    time. Filed as DRC-4095. When that is fixed these assertions should be inverted
-    deliberately rather than discovered by surprise, which is why they are written
-    down rather than left as prose in a design document.
+    Superseding is now permanent, and deliberately independent of whether the overlay
+    that superseded it is still live. Once a turn has started, the earlier wait is
+    over as a matter of history, and history does not lapse.
+
+    What it falls back to matters as much as what it stops doing: with the wait
+    superseded and the working overlay expired, no overlay patches anything and the
+    collector's own reading of the store stands. Trusting the store after the deadline
+    is the point of the deadline.
     """
 
     def setUp(self) -> None:
@@ -510,12 +513,77 @@ class NeedsInputResurfacingTest(unittest.TestCase):
         self.assertEqual("working", patch["state"])
         self.assertIsNone(patch["blocked_since"])
 
-    def test_but_the_permission_wait_returns_when_working_expires(self) -> None:
-        # The defect. A durable clear would leave this working, or idle, or anything
-        # other than a revived wait.
+    def test_the_wait_does_not_return_when_working_expires(self) -> None:
+        # DRC-4095. Before the fix this asserted the opposite: needs_input, with the
+        # original blocked_since. An empty patch is the correct answer, because the
+        # only honest thing left to say is whatever the collector says.
         patch = self._reduce(NOW + 10 + self.config.overlay_working_ttl_sec + 1)
+        self.assertEqual({}, patch, "a superseded wait must not come back")
+
+    def test_a_permission_asked_for_during_a_turn_still_stands(self) -> None:
+        # The risk in the fix, pinned. Superseding is by arrival order, so a wait that
+        # arrives AFTER the turn started is a live wait and must survive. Getting this
+        # backwards would silence every mid-turn permission prompt, which is the
+        # majority of them.
+        built = [
+            events.overlay_for(self._event("turn_started", at=NOW, seq=1), config=self.config),
+            events.overlay_for(
+                self._event("input_requested", at=NOW + 10, seq=2), config=self.config
+            ),
+        ]
+        patch = events.reduce_overlays([o for o in built if o is not None], now=NOW + 15)
         self.assertEqual("needs_input", patch["state"])
-        self.assertEqual(NOW, patch["blocked_since"], "and it claims the original stamp")
+        self.assertEqual(NOW + 10, patch["blocked_since"])
+
+    def test_a_wait_with_no_turn_after_it_is_never_timed_out(self) -> None:
+        # The guarantee the missing expiry exists for. A real permission prompt that
+        # nobody answers must stay visible however long it waits.
+        built = events.overlay_for(
+            self._event("input_requested", at=NOW, seq=1), config=self.config
+        )
+        assert built is not None
+        patch = events.reduce_overlays([built], now=NOW + 86_400)
+        self.assertEqual("needs_input", patch["state"])
+        self.assertEqual(NOW, patch["blocked_since"])
+
+    def test_a_stop_also_ends_a_wait(self) -> None:
+        built = [
+            events.overlay_for(self._event("input_requested", at=NOW, seq=1), config=self.config),
+            events.overlay_for(self._event("turn_stopped", at=NOW + 10, seq=2), config=self.config),
+        ]
+        overlays = [o for o in built if o is not None]
+        patch = events.reduce_overlays(overlays, now=NOW + 86_400)
+        self.assertEqual("idle", patch["state"])
+        self.assertIsNone(patch["blocked_since"])
+
+    def test_an_expiring_stop_would_still_not_let_the_wait_return(self) -> None:
+        """The invariant, not today's configuration.
+
+        `turn_stopped` wins permanently today for an incidental reason: an idle
+        overlay carries no deadline, so there is nothing to lapse. That makes
+        `idle`'s membership of `ENDS_A_WAIT` untestable through `overlay_for`, and an
+        untestable invariant is one a later change can drop silently -- which is
+        exactly how DRC-4095 arrived through the working overlay.
+
+        So this builds the idle overlay directly, with a deadline it does not have
+        today, and asserts the superseded wait stays gone once it lapses.
+        """
+        wait = events.overlay_for(self._event("input_requested", at=NOW, seq=1), config=self.config)
+        assert wait is not None
+        stopped = events.Overlay(
+            harness="claude",
+            sid=PREFIX,
+            arrival_seq=2,
+            kind=events.OVERLAY_IDLE,
+            at=NOW + 10,
+            expires_at=NOW + 20,
+        )
+        self.assertEqual("idle", events.reduce_overlays([wait, stopped], now=NOW + 15)["state"])
+        self.assertEqual(
+            {},
+            events.reduce_overlays([wait, stopped], now=NOW + 25),
+            "a wait ended by a stop must not return when the stop lapses",
+        )
 
     def test_nothing_produces_the_event_that_would_clear_it_properly(self) -> None:
         # The root cause, pinned so that adding a producer is a deliberate act.
