@@ -57,6 +57,13 @@ branch, so the doc updates ride in the same PR.
   label, which is visible in the PR timeline.
 - `platform-tests`, the unit suite re-run natively on Ubuntu, macOS and Windows.
 
+`scripts/bench_collect.py` is not part of the gate. It measures what a collection costs, in total and
+per harness, against your own stores: `python3 scripts/bench_collect.py --repeat 7` prints a median,
+and `--profile` gives a `cProfile` of one collect by function. Reach for it before optimising a
+collector, since the cost is dominated by whichever harness has the most history on the machine and
+that is not the same harness for everyone. It runs with usage fetching off, so a benchmark never makes
+an outbound request.
+
 ### Tests
 
 Every behavior change to `server.py` or `cargento_runtime/` needs a regression test in

@@ -16,10 +16,21 @@ A usage entry is the same shape whoever produced it:
 
 ```
 {harness, state: "ok" | "expired", asOf,
- fiveH: {pct, reset}, week: {pct, reset},   // a gauge: used out of a limit
- month: {pct, reset},                       // the same, for a billing cycle
+ fiveH: {pct, reset, resetAt},              // a gauge: used out of a limit
+ week: {pct, reset, resetAt},
+ month: {pct, reset, resetAt},              // the same, for a billing cycle
  used}                                      // a figure: spend
 ```
+
+Each window carries its reset twice, from one `sessions.reset_fields` call so the pair cannot drift:
+`reset` is the wall-clock words and `resetAt` is the instant in epoch seconds. The page renders a
+countdown from `resetAt` and keeps the words as the row's tooltip. Two reasons, one measured and one
+about the reader. "Thu 02:00" with its glyph needs 92px in a 76px column, so it truncated to name
+neither the day nor the hour; and the question a quota window raises is how long until the allowance
+returns, which a wall-clock time makes the reader subtract by hand. Sending the instant rather than a
+server-rendered countdown also keeps the figure true between polls instead of ageing by up to the poll
+interval. Past its reset the page reads "due", which says the window has rolled without pretending to
+know the new number.
 
 Every window slot is optional, and a harness fills only the ones it genuinely has. That is the
 whole reason `month` exists rather than Cursor borrowing `week`: the slot names are what the page
@@ -144,9 +155,12 @@ rather than being scheduled or checked:
 
 The switch itself is browser state (`localStorage`), which the server cannot see except through
 the request. That is why the parameter exists: a bare `curl /api/data` gets whatever is cached and
-triggers nothing. `--no-usage` is the server-side override and acts earlier, at assembly: every
+triggers nothing. `--no-usage` is the server-side override and acts in two places. At assembly, every
 registry row that depends on the fetch simply gets no usage provider, so nothing reads the cache and
-the `usage_fetch` capability flag (which wakes the modal) can never appear. A contract test asserts
+the `usage_fetch` capability flag (which wakes the modal) can never appear. At ingest,
+`quota.receive_statusline` drops the quota fields of a pushed receipt before storing it. The second
+gate is needed because assembly only stops publication: a pushed receipt arrives unsolicited, so
+without it the flag would suppress display while the figures still sat in process memory. A contract test asserts
 that for the whole set rather than for Claude alone, so a future fetch vendor wired in without the
 gate fails there instead of quietly fetching under `--no-usage`.
 
@@ -237,7 +251,9 @@ by field rather than derived from the payload, and a test asserts no other field
 `usage_is_fetch` stays `False` for this row. There is no outbound request to disclose, so the
 first-run modal must not fire; the user installed the forwarder deliberately, which is the consent.
 `--no-usage` still drops the provider, because a user turning usage off means the section, not just
-its network half.
+its network half, and it also drops the quota fields at ingest so a receipt pushed while the flag is
+set is not retained. The endpoint still answers 200: a status-line command must never see an error
+from Cargento.
 
 ## Rejected alternatives worth keeping rejected
 
