@@ -697,6 +697,47 @@ class CodexAdapterTest(unittest.TestCase):
         )
         self.assertEqual(set(event_hook.CODEX_EVENTS), set(bundled["hooks"]))
 
+    def test_the_bundled_claude_hooks_only_register_events_the_adapter_maps(self) -> None:
+        # Same contract as the Codex file: a hook registered for an event the
+        # adapter drops runs a process for nothing, and one the adapter maps but
+        # nothing registers never fires. Claude registers every mapped name,
+        # including the two the Codex capture could not reach.
+        bundled = json.loads(
+            (Path(__file__).resolve().parents[3] / "hooks" / "hooks.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(set(event_hook.CLAUDE_EVENTS), set(bundled["hooks"]))
+
+    def test_the_bundled_claude_hooks_use_the_plugin_root_variable(self) -> None:
+        bundled = json.loads(
+            (Path(__file__).resolve().parents[3] / "hooks" / "hooks.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        commands = {
+            hook["command"]
+            for groups in bundled["hooks"].values()
+            for group in groups
+            for hook in group["hooks"]
+        }
+        self.assertEqual(1, len(commands), "one command keeps one trust decision")
+        command = next(iter(commands))
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}", command)
+        self.assertTrue(command.endswith(" claude"), command)
+
+    def test_the_two_bundled_files_do_not_post_as_each_other(self) -> None:
+        # The reason byte parity between them had to go. A mirrored file would
+        # make one harness post to the other's route, where Claude's normalizer
+        # would truncate a Codex id and match no row.
+        root = Path(__file__).resolve().parents[3] / "hooks"
+        claude = root.joinpath("hooks.json").read_text(encoding="utf-8")
+        codex = root.joinpath("codex-hooks.json").read_text(encoding="utf-8")
+        self.assertIn(" claude", claude)
+        self.assertNotIn(" codex", claude)
+        self.assertIn(" codex", codex)
+        self.assertNotIn(" claude", codex)
+
     def test_the_bundled_hooks_name_the_harness_and_use_a_stable_path(self) -> None:
         # Codex records a trusted_hash over the hook definition, so a command that
         # interpolated a version or a port would re-prompt on every upgrade.

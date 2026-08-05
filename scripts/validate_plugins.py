@@ -95,6 +95,7 @@ UniqueKeyLoader.add_constructor(
 CARGENTO_RUNTIME_FILES = (
     # Codex loads this through the `hooks` key in its manifest, so an install
     # missing it silently reports no Codex events at all rather than failing.
+    "hooks/hooks.json",
     "hooks/codex-hooks.json",
     "skills/cargento/server.py",
     "skills/cargento/notify_hook.py",
@@ -626,24 +627,90 @@ def validate_mcp_endpoint_parity(
         )
 
 
+# Where each harness looks for the hooks this plugin bundles. Verified by running
+# each harness against an installed or --plugin-dir copy, not read off a page:
+# Claude loads `hooks/hooks.json` by convention, Codex loads whatever path its
+# manifest's `hooks` key names, and Antigravity loads a root `hooks.json`.
+BUNDLED_HOOKS_FILES = (
+    "hooks/hooks.json",
+    "hooks/codex-hooks.json",
+    "hooks.json",
+)
+
+
 def validate_hooks_adapter(plugin_root: Path, validation: Validation) -> None:
-    """Antigravity loads hooks from a root hooks.json; keep it in parity with hooks/hooks.json."""
-    shared_path = plugin_root / "hooks/hooks.json"
-    adapter_path = plugin_root / "hooks.json"
-    if not shared_path.is_file():
-        if adapter_path.is_file():
-            validation.error(adapter_path, "root hooks adapter exists without hooks/hooks.json")
-        return
-    if not adapter_path.is_file():
-        validation.error(
-            adapter_path,
-            "Antigravity hook adapter must exist and mirror hooks/hooks.json",
-        )
-        return
-    shared = load_json(shared_path, validation)
-    adapter = load_json(adapter_path, validation)
-    if shared is not None and adapter is not None and shared != adapter:
-        validation.error(adapter_path, "root hooks adapter must mirror hooks/hooks.json exactly")
+    """Every bundled hooks file is well formed and points at a script that ships.
+
+    This used to require the root `hooks.json` to mirror `hooks/hooks.json` byte
+    for byte, on the assumption that one hooks file could serve both Claude and
+    Antigravity. That assumption is now false in two ways, so the rule is gone
+    rather than worked around:
+
+    1. The event vocabularies differ. Claude fires `UserPromptSubmit` and
+       `SessionEnd`; Antigravity fires `PreInvocation` and `PostInvocation`. A
+       file that satisfies one registers mostly-dead entries in the other.
+    2. The command names its harness. `event_hook.py claude` posts to
+       `/api/events/claude`, so a mirrored file would make Antigravity sessions
+       post as Claude, where the id would be truncated by Claude's normalizer and
+       match no row.
+
+    What replaces it is a check byte parity never made: that every command
+    references a file this plugin actually ships. A hooks file pointing at a
+    missing script installs cleanly and reports nothing, which is the same silent
+    failure the runtime inventory exists to prevent.
+    """
+    for relative in BUNDLED_HOOKS_FILES:
+        path = plugin_root / relative
+        if not path.is_file():
+            continue
+        document = load_json(path, validation)
+        if document is None:
+            continue
+        events = document.get("hooks") if isinstance(document, dict) else None
+        if not isinstance(events, dict) or not events:
+            validation.error(path, "bundled hooks file has no hooks object")
+            continue
+        for command in _hook_commands(events):
+            for script in _referenced_plugin_paths(command):
+                if not (plugin_root / script).is_file():
+                    validation.error(path, f"hook command references missing {script}")
+
+
+def _hook_commands(events: Any) -> list[str]:
+    """Every command string in a hooks document, however deeply nested."""
+    found: list[str] = []
+    for groups in events.values():
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            found.extend(
+                hook["command"]
+                for hook in group.get("hooks") or []
+                if isinstance(hook, dict) and isinstance(hook.get("command"), str)
+            )
+    return found
+
+
+def _referenced_plugin_paths(command: str) -> list[str]:
+    """Plugin-relative paths a command names through a plugin-root variable.
+
+    Both harnesses expand a variable rather than a literal path, which is what
+    keeps the command stable across upgrades: Codex records a trust hash over the
+    hook definition, so a command carrying a version number would re-prompt every
+    time the plugin updated.
+    """
+    paths: list[str] = []
+    for marker in ("${CLAUDE_PLUGIN_ROOT}/", "${PLUGIN_ROOT}/"):
+        start = 0
+        while (found := command.find(marker, start)) != -1:
+            rest = command[found + len(marker) :]
+            # Ends at the closing quote or the next whitespace, whichever is first.
+            end = min((i for i in (rest.find('"'), rest.find(" ")) if i != -1), default=len(rest))
+            paths.append(rest[:end])
+            start = found + len(marker)
+    return paths
 
 
 def validate_description_parity(

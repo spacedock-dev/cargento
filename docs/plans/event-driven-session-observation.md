@@ -438,6 +438,35 @@ when Cargento is not running. For a future managed mode, native app-server expos
 thread status and is preferable to scraping rollouts; compare it with the ACP adapter using fixtures
 before choosing between those managed transports.
 
+#### Claude hook distribution: MEASURED. Semantics: still waived
+
+Two separate questions, and only one of them is now answered.
+
+**Distribution is verified.** Claude Code loads a plugin's bundled hooks from
+`hooks/hooks.json` at the plugin root, by convention, with no manifest key. Confirmed by running
+`claude --plugin-dir <copy> -p` against a copy carrying probe hooks and watching them fire, then
+end to end with the shipped file: a dashboard on an isolated `CARGENTO_HOME` showed the nested
+session's row with `acquisition: event`. `${CLAUDE_PLUGIN_ROOT}` is expanded in the hook's
+environment, so a command referencing it stays stable across plugin upgrades. So Claude no longer
+needs a hand-edited `settings.json` for events, which was the last harness that did.
+
+Two things that misled the verification, worth writing down because both look like bugs:
+
+1. `session_ended` retires a session's overlays, correctly, and a one-shot `claude -p` run ends
+   immediately. So the row reads scan-only again within seconds and the events look lost. Removing
+   only `SessionEnd` from the bundled file made the same run show `acquisition: event`, which is what
+   isolated the cause.
+2. The adapter exits 0 on every failure by design, so nothing distinguishes "posted" from "gave up".
+   Diagnosing this needed the guards instrumented from inside a real hook invocation.
+
+**Semantics remain waived.** What this exercise measured is that the hooks arrive and are accepted,
+not that the vocabulary is right. The payload observed for `UserPromptSubmit` carried `cwd`,
+`hook_event_name`, `permission_mode`, `prompt`, `prompt_id`, `session_id` and `transcript_path`,
+which is consistent with `event_hook.py`'s allowlist. But no subagent ran, no permission was
+requested, and no hook cost was sampled, so cardinality, ordering and the p99 budget are still
+unmeasured, and `SubagentStart`, `SubagentStop`, `TaskCompleted` and `PermissionRequest` are still
+mappings taken on trust. Closing that is its own piece of work.
+
 #### Codex adapter semantics: MEASURED, and the gate is cleared
 
 The first adapter gate in this project to be cleared by evidence rather than waived. Captured from a

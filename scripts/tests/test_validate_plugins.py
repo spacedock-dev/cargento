@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -343,41 +344,75 @@ class ValidatorTests(unittest.TestCase):
 
             self.assertEqual(validation.errors, [])
 
-    def test_hooks_adapter_must_exist_and_mirror_shared_hooks(self) -> None:
+    def test_a_bundled_hook_command_must_reference_a_script_that_ships(self) -> None:
+        # This replaced a byte-parity rule between hooks/hooks.json and the root
+        # hooks.json. Parity assumed one file could serve both Claude and
+        # Antigravity, which stopped being true once the command named its
+        # harness. The check that matters is the one parity never made: a hooks
+        # file pointing at a missing script installs cleanly and reports nothing.
+        command = 'python3 "${CLAUDE_PLUGIN_ROOT}/skills/cargento/event_hook.py" claude'
+        document = {
+            "hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": command}]}]}
+        }
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
-            plugin_root.mkdir()
-            (plugin_root / "hooks.json").write_text('{"hooks":{"SessionStart":[]}}\n')
+            (plugin_root / "hooks").mkdir(parents=True)
+            (plugin_root / "skills/cargento").mkdir(parents=True)
+            (plugin_root / "hooks/hooks.json").write_text(json.dumps(document))
+
             validation = validator.Validation()
-
             validator.validate_hooks_adapter(plugin_root, validation)
-
             self.assertTrue(
                 any(
-                    "root hooks adapter exists without hooks/hooks.json" in error
-                    for error in validation.errors
-                )
+                    "references missing skills/cargento/event_hook.py" in e
+                    for e in validation.errors
+                ),
+                validation.errors,
             )
 
-            (plugin_root / "hooks.json").unlink()
+            (plugin_root / "skills/cargento/event_hook.py").write_text("#\n")
+            validation = validator.Validation()
+            validator.validate_hooks_adapter(plugin_root, validation)
+            self.assertEqual([], validation.errors)
+
+    def test_a_bundled_hooks_file_with_no_hooks_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+            plugin_root = Path(directory) / "fixture-plugin"
             (plugin_root / "hooks").mkdir(parents=True)
-            (plugin_root / "hooks/hooks.json").write_text('{"hooks":{"SessionStart":[]}}\n')
-            validation = validator.Validation()
+            (plugin_root / "hooks/hooks.json").write_text('{"hooks": {}}')
 
+            validation = validator.Validation()
             validator.validate_hooks_adapter(plugin_root, validation)
 
-            self.assertTrue(any("must exist and mirror" in error for error in validation.errors))
+            self.assertTrue(any("no hooks object" in e for e in validation.errors))
 
-            (plugin_root / "hooks.json").write_text(
-                '{"hooks":{"SessionStart":[{"matcher":"x"}]}}\n'
+    def test_two_harnesses_may_bundle_different_hooks_files(self) -> None:
+        # The whole point of dropping parity. Claude fires UserPromptSubmit and
+        # SessionEnd; Antigravity fires PreInvocation and PostInvocation. A
+        # mirrored file would also make Antigravity post as Claude, where the id
+        # gets truncated by Claude's normalizer and matches no row.
+        def document(event: str, harness: str) -> str:
+            command = f'python3 "${{PLUGIN_ROOT}}/skills/cargento/event_hook.py" {harness}'
+            return json.dumps(
+                {
+                    "hooks": {
+                        event: [{"matcher": "", "hooks": [{"type": "command", "command": command}]}]
+                    }
+                }
             )
-            validation = validator.Validation()
 
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+            plugin_root = Path(directory) / "fixture-plugin"
+            (plugin_root / "hooks").mkdir(parents=True)
+            (plugin_root / "skills/cargento").mkdir(parents=True)
+            (plugin_root / "skills/cargento/event_hook.py").write_text("#\n")
+            (plugin_root / "hooks/hooks.json").write_text(document("UserPromptSubmit", "claude"))
+            (plugin_root / "hooks.json").write_text(document("PostInvocation", "antigravity"))
+
+            validation = validator.Validation()
             validator.validate_hooks_adapter(plugin_root, validation)
 
-            self.assertTrue(
-                any("must mirror hooks/hooks.json exactly" in error for error in validation.errors)
-            )
+            self.assertEqual([], validation.errors)
 
     def test_description_parity_rejects_drifted_manifests(self) -> None:
         validation = validator.Validation()

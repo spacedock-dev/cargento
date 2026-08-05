@@ -159,7 +159,11 @@ Simulate for testing:
 echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook.py"
 ```
 
-3. **Lifecycle events** — `event_hook.py`, beside `notify_hook.py`, forwards general lifecycle events to `/api/events/claude`: prompt submitted, turn stopped, permission requested, subagent started or stopped, tasks changed, compaction finished. Where path 2 sets one piece of side state, this drives the session's Working, Needs-input and Idle state directly, so the board reacts to a turn starting instead of waiting for the next scan. Also not installed by the plugin. Offer these if the user wants it:
+3. **Lifecycle events** — the plugin's own bundled hooks at `hooks/hooks.json`, so there is **nothing to add to a settings file**. They forward general lifecycle events to `/api/events/claude`: prompt submitted, turn stopped, permission requested, subagent started or stopped, tasks changed, compaction finished. Where path 2 sets one piece of side state, this drives the session's Working, Needs-input and Idle state directly, so the board reacts to a turn starting instead of waiting for the next scan.
+
+   Nothing to install: enabling the plugin is enough. Note that a session's overlays are retired when it ends, which is correct and means a one-shot `claude -p` run shows no event-driven state by the time it exits.
+
+   Only add the hooks by hand if the user runs `event_hook.py` outside the plugin, for instance against a checkout. In that case:
 
 ```json
 "hooks": {
