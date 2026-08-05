@@ -759,9 +759,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
 
     EXPECTED: ClassVar[dict[str, set[str]]] = {
         "cargento_runtime": set(),
+        # `events` arrived with the overlay patch. `aggregate` applies overlays to
+        # the rows it just collected and stays below `observation`, which owns the
+        # ledger: the coordinator is reached through the `OverlaySource` protocol
+        # declared here, so the dependency does not invert.
         "cargento_runtime.aggregate": {
             "cargento_runtime.collectors",
             "cargento_runtime.config",
+            "cargento_runtime.events",
             "cargento_runtime.io",
             "cargento_runtime.quota",
             "cargento_runtime.sessions",
@@ -777,6 +782,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.lifecycle",
             "cargento_runtime.notifications",
+            "cargento_runtime.observation",
             "cargento_runtime.state",
             "cargento_runtime.web",
         },
@@ -923,13 +929,27 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.turns",
         },
         "cargento_runtime.config": set(),
+        # `observation` is here for typing only: the server carries the
+        # coordinator so `serve` can start it, and the ingress route reaches it
+        # through that attribute rather than through a module global.
         "cargento_runtime.http_api": {
             "cargento_runtime.aggregate",
             "cargento_runtime.io",
             "cargento_runtime.notifications",
+            "cargento_runtime.observation",
             "cargento_runtime.quota",
             "cargento_runtime.snapshot",
             "cargento_runtime.stream",
+        },
+        # Above aggregate, events and probe, and the only runtime module that
+        # starts a thread. Nothing imports it except the assembly point and the
+        # server that carries it.
+        "cargento_runtime.observation": {
+            "cargento_runtime.aggregate",
+            "cargento_runtime.config",
+            "cargento_runtime.events",
+            "cargento_runtime.io",
+            "cargento_runtime.probe",
         },
         "cargento_runtime.lifecycle": {
             "cargento_runtime.config",

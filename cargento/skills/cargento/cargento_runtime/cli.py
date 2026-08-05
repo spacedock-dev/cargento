@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cargento_runtime import aggregate, diagnostics, http_api, lifecycle, notifications
+from cargento_runtime import aggregate, diagnostics, http_api, lifecycle, notifications, observation
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
@@ -73,6 +73,16 @@ def build_parser() -> argparse.ArgumentParser:
             "not publish quota a harness pushed in, regardless of the "
             "dashboard's stored setting. Quota a harness writes into its own "
             "store (Codex, Copilot) still shows"
+        ),
+    )
+    parser.add_argument(
+        "--no-events",
+        action="store_true",
+        help=(
+            "do not run the event coordinator for this run: no event overlays, "
+            "no coarse store probe, and the older fixed-interval producer keeps "
+            "the snapshot warm instead. The independent rollback switch if event "
+            "acquisition misbehaves"
         ),
     )
     parser.add_argument(
@@ -238,10 +248,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     # send that message to a log file nobody has been told about yet, and
     # report success.
     try:
+        application = build_application(config, state)
+        # Constructed inert and attached both ways: the coordinator reads the
+        # application to collect, and the application reads the coordinator for
+        # overlays. Nothing has started a thread yet, which is what lets the
+        # daemon fork below happen safely.
+        coordinator = None
+        if not args.no_events:
+            coordinator = observation.Observation(application)
+            application.overlays = coordinator
         server = http_api.CargentoHTTPServer(
             ("127.0.0.1", args.port),
-            build_application(config, state),
+            application,
             page_bytes,
+            coordinator,
         )
     except OSError as exc:
         runtime_io.diag(http_api.bind_error_message(exc, args.port), print)

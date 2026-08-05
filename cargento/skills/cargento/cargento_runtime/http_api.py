@@ -20,6 +20,7 @@ from cargento_runtime import stream as runtime_stream
 
 if TYPE_CHECKING:
     from cargento_runtime.aggregate import Application
+    from cargento_runtime.observation import Observation
 
 
 def normalize_host(value: str) -> str:
@@ -97,9 +98,14 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         address: tuple[str, int],
         application: Application,
         page_bytes: bytes,
+        observation: Observation | None = None,
     ) -> None:
         self.application = application
         self.page_bytes = page_bytes
+        # None under --no-events, and None for the many test doubles that only
+        # need a page and an application. `serve` reads it to decide whether to
+        # run the coordinator or the older periodic producer.
+        self.observation = observation
         # Instance attribute, set before the bind that reads it: the class
         # default would be sampled from the host os.name at import, which is
         # the ambient read D-4 exists to stop.

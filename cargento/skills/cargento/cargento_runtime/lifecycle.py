@@ -541,6 +541,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-spacedock")
     if args.no_usage:
         argv.append("--no-usage")
+    if args.no_events:
+        argv.append("--no-events")
     return argv
 
 
@@ -677,6 +679,10 @@ def run_producer(
 ) -> None:
     """Keep the snapshot warm while at least one stream is connected.
 
+    The fallback path. When a server carries a coordinator, `serve` runs that
+    instead and this is never reached; it stays for a server assembled without
+    one, which is what `--no-events` and a good many test doubles are.
+
     With no client this loop does nothing at all: no collection, no store
     access. An idle daemon costs what it costs today, which is nothing, and a
     timer that collected regardless would be exactly the regression this phase
@@ -727,18 +733,30 @@ def serve(
         # After write_state, so --status works the instant the parent returns.
         daemon_announce(announce_fd)
     # Started here rather than at assembly: on the daemon path serve() runs
-    # after the fork, so the thread is never created in a process about to be
-    # replaced.
+    # after the fork, so no thread is ever created in a process about to be
+    # replaced. The coordinator subsumes the producer's periodic tick, so exactly
+    # one of the two runs and they can never both collect.
+    observation = getattr(server, "observation", None)
     producer_stop = threading.Event()
-    producer = threading.Thread(
-        target=run_producer, args=(server,), kwargs={"stop": producer_stop}, daemon=True
-    )
-    producer.start()
+    producer: threading.Thread | None = None
+    if observation is not None:
+        observation.start()
+    else:
+        producer = threading.Thread(
+            target=run_producer, args=(server,), kwargs={"stop": producer_stop}, daemon=True
+        )
+        producer.start()
     try:
         server.serve_forever()
     finally:
         producer_stop.set()
-        producer.join(timeout=2)
+        if producer is not None:
+            producer.join(timeout=2)
+        if observation is not None:
+            # Before the streams close: a coordinator mid-collection would
+            # otherwise publish into a registry being torn down.
+            with contextlib.suppress(Exception):
+                observation.stop(timeout=config.stop_release_timeout_sec)
         # Converge every exit path on the same cleanup: --stop, a signal, and an
         # exception all have to release the streams, not just the endpoint.
         # getattr rather than a bare attribute: a test double may stand in for

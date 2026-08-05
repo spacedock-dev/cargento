@@ -1122,7 +1122,12 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 address: tuple[str, int],
                 _application: Any,
                 page_bytes: bytes,
+                _observation: Any = None,
             ) -> None:
+                # The coordinator rides along as the fourth argument. Accepted and
+                # ignored here: this test characterizes the bind address and the
+                # page bytes, and a double that refused the argument would fail
+                # for a reason that has nothing to do with either.
                 captured_addresses.append(address)
                 captured_pages.append(page_bytes)
 

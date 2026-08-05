@@ -10,8 +10,8 @@ a later change either follows it or overturns it deliberately.
 
 The materialized snapshot and the SSE stream have since landed as `snapshot.py` and `stream.py`, each
 importing no runtime module so that `state` can own them without inverting R-2. `events.py` has landed
-as the envelope and reducer layer beneath them. The coordinator that would drive it, and the ingress
-route that would feed it, are still proposals; the whole design lives in
+as the envelope and reducer layer beneath them, and `observation.py` as the coordinator that drives
+it. The ingress route that would feed the coordinator is still a proposal; the whole design lives in
 [`plans/event-driven-session-observation.md`](plans/event-driven-session-observation.md).
 
 ## The problem these decisions answer
@@ -53,6 +53,7 @@ Everything else lives in one file per responsibility:
 | `stream.py` | Connected SSE clients and their one-slot revision mailboxes, with the connection budget. Imports no runtime module, for the same reason `snapshot.py` does not. `state` owns the registry because a connected stream belongs to the runtime, not to whichever object serves a request. |
 | `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
 | `probe.py` | The coarse store probe: a bounded stat sweep answering whether anything on disk moved. Stat only, no globbing or reads, and a hint rather than authority. |
+| `observation.py` | The event coordinator, and the only runtime module that starts a thread. Owns the bounded overlay ledger and pending map, the dirty generations, one collection lane, the collection floor, the coalescing window, probe-gated periodic ticks, the reconciliation interval and deterministic shutdown. Constructed inert so a coordinator built before the daemon fork is never inherited half-running; `lifecycle.serve` starts it after the last fork. |
 | `events.py` | The untrusted event envelope: its accepted version range, its vocabulary, per-harness identity normalization onto the collector's key, the mapping from event to overlay, and the reducer that turns live overlays into a field patch. Pure by design, so ordering and precedence are testable without a server: no locks, no counters, no clock and no filesystem. The mutable pending map and overlay ledger belong to the coordinator that bounds them, not here. |
 | `records.py` | Parsing and normalizing untrusted records from disk. |
 | `sessions.py` | Session identity and shape (including the row's declared field set, `base_session`), freshness, display ids, deterministic aggregation. |
@@ -182,6 +183,13 @@ owns the bind:
 `cli.main` returns exit codes rather than raising, except where argparse owns `SystemExit` for
 `--help` and its own usage errors. That is why `lifecycle.prepare_daemon_home` reports whether the
 home is usable instead of raising.
+
+All three branches assemble the coordinator without starting it, and `serve` starts it. That is the
+whole reason `Observation.__init__` spawns nothing: on the POSIX daemon path the process that
+assembles is not the process that serves, and a thread created before the fork is either lost with the
+parent or inherited into a child that never asked for it. `serve` runs the coordinator or the older
+fixed-interval producer, never both, so two things can never collect at once; a server assembled
+without a coordinator, which is what `--no-events` and most test doubles are, gets the producer.
 
 ## Rejected alternatives worth keeping rejected
 

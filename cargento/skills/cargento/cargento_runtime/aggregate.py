@@ -6,16 +6,34 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
+from . import events as runtime_events
 from . import io as runtime_io
 from . import quota, sessions
 from . import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
     from .config import RuntimeConfig
+    from .events import Overlay
     from .sessions import Session
     from .state import RuntimeState
+
+
+class OverlaySource(Protocol):
+    """The narrow view of the coordinator that a collection needs.
+
+    Two methods rather than one, because the traffic runs both ways. A collection
+    reads the overlays for each row it produced, and then reports back which rows
+    exist at all, which is how an overlay for a session no collection has yet seen
+    resolves or expires. Stated as a Protocol so `aggregate` stays below
+    `observation` and the dependency does not invert.
+    """
+
+    def overlays_for(self, harness: str, sid: str) -> list[Overlay]: ...
+
+    def note_rows(self, keys: set[tuple[str, str]]) -> None: ...
+
 
 Collection: TypeAlias = dict[str, Any]
 Discoverer: TypeAlias = Callable[["RuntimeConfig", "RuntimeState"], bool]
@@ -160,6 +178,7 @@ class Application:
         popup_notifier: Callable[[str, str], None],
         diagnostic_sink: Callable[[str], None],
         clock: Callable[[], float] = time.time,
+        overlays: OverlaySource | None = None,
     ) -> None:
         self.config = config
         self.state = state
@@ -168,6 +187,11 @@ class Application:
         self.popup_notifier = popup_notifier
         self.diagnostic_sink = diagnostic_sink
         self.clock = clock
+        # None until the coordinator is attached, and None forever under
+        # --no-events. A collection with no overlay source is exactly the
+        # scan-only behaviour that shipped before events existed, which is what
+        # makes the rollback switch a one-line assembly change.
+        self.overlays = overlays
 
     def collect(self, *, show_all: bool) -> Collection:
         config, state = self.config, self.state
@@ -218,6 +242,12 @@ class Application:
                 )
 
         out_sessions = sessions.dedupe_sessions(out_sessions)
+        # Between dedupe and the sort, deliberately. Dedupe keys on
+        # (harness, sid), which no overlay changes, and the sort ranks on `state`,
+        # which an overlay does change: patching after the sort would leave a row
+        # ranked by the state it no longer claims. The summary below is counted
+        # from the patched rows for the same reason.
+        self._apply_overlays(out_sessions, now=now)
         sessions.assign_display_ids(config, out_sessions)
         state_rank = {"needs_input": 0, "working": 1, "idle": 2}
         # Session id as tiebreaker (not last_activity) so rows don't reshuffle
@@ -258,6 +288,27 @@ class Application:
             # a disk-read provider or with the fetch disabled.
             collection["usage_fetch"] = True
         return collection
+
+    def _apply_overlays(self, out_sessions: list[Session], *, now: float) -> None:
+        """Patch collected rows from the live overlay ledger, if one is attached.
+
+        The row list is walked, not the ledger: an overlay can only ever reach a
+        session a collector produced, so there is no path here by which one
+        creates or removes a row. `note_rows` then reports the full key set back,
+        which is what lets an unmatched overlay wait or expire rather than
+        silently doing nothing forever.
+        """
+        source = self.overlays
+        if source is None:
+            return
+        for session in out_sessions:
+            harness, sid = str(session["harness"]), str(session["sid"])
+            overlays = source.overlays_for(harness, sid)
+            if overlays:
+                runtime_events.apply_patch(
+                    session, runtime_events.reduce_overlays(overlays, now=now)
+                )
+        source.note_rows({(str(s["harness"]), str(s["sid"])) for s in out_sessions})
 
     def request_usage_fetch(self) -> bool:
         """Maybe start a background quota fetch; the gates live in `quota`.

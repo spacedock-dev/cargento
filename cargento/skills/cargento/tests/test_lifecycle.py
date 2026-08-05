@@ -239,7 +239,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def test_daemon_respawn_uses_the_absolute_stable_launcher(self) -> None:
         args = argparse.Namespace(
-            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
         )
         with tempfile.TemporaryDirectory() as tmp:
             log_file = str(Path(tmp) / "cargento.log")
@@ -368,7 +368,7 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
         windows_launcher = "C:\\plugin\\server.py"
         config = dataclasses.replace(cfg(), launcher_path=Path(windows_launcher))
         args = argparse.Namespace(
-            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
         )
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -1147,7 +1147,7 @@ class CargentoServerTest(PageJsHarness):
         # covers the thing that actually runs.
         config = cfg()
         args = argparse.Namespace(
-            port=4553, window_hours=12.0, no_spacedock=True, no_usage=False, daemon=True
+            port=4553, window_hours=12.0, no_spacedock=True, no_usage=False, no_events=False, daemon=True
         )
         argv = lifecycle.spawn_argv(config, args)
         self.assertEqual(
@@ -1169,7 +1169,7 @@ class CargentoServerTest(PageJsHarness):
         plain = lifecycle.spawn_argv(
             config,
             argparse.Namespace(
-                port=1, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+                port=1, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
             ),
         )
         self.assertEqual(
@@ -1180,9 +1180,29 @@ class CargentoServerTest(PageJsHarness):
         # and no second launcher may appear anywhere in the list.
         self.assertEqual(1, argv.count(sys.executable))
 
+    def test_every_opt_out_reaches_the_respawned_daemon(self) -> None:
+        # Windows has no fork, so a Windows daemon is always a respawn and a flag
+        # missing from spawn_argv is a flag silently ignored for every Windows
+        # daemon user. That happened once already, to --no-usage in Phase 0, so
+        # this asserts the whole set rather than one flag at a time.
+        config = cfg()
+        argv = lifecycle.spawn_argv(
+            config,
+            argparse.Namespace(
+                port=4553,
+                window_hours=24.0,
+                no_spacedock=True,
+                no_usage=True,
+                no_events=True,
+                daemon=True,
+            ),
+        )
+        for flag in ("--no-spacedock", "--no-usage", "--no-events"):
+            self.assertIn(flag, argv)
+
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
         args = argparse.Namespace(
-            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, daemon=True
+            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
         )
         with tempfile.TemporaryDirectory() as tmp:
             log_file = os.path.join(tmp, "c.log")
@@ -1383,6 +1403,7 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "window_hours": 24.0,
             "no_spacedock": False,
             "no_usage": False,
+            "no_events": False,
         }
         base.update(overrides)
         return argparse.Namespace(**base)

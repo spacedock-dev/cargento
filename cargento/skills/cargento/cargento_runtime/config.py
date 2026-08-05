@@ -110,6 +110,18 @@ class RuntimeConfig:
     # new prompt resolves inside one publish instead of flapping the row.
     overlay_working_ttl_sec: float
     overlay_idle_dwell_sec: float
+    # The coordinator. The coalescing window is fixed rather than sliding: a
+    # sliding window never closes under a sustained burst, and the board would
+    # stop updating entirely. The ledger and pending caps are refusal thresholds,
+    # not eviction thresholds, because evicting to make room would drop whichever
+    # permission alert happened to be oldest. `reconcile_interval_sec` is the
+    # longest a probe-negative tick may keep skipping, which is what bounds the
+    # probe's documented false negative.
+    event_coalesce_sec: float
+    event_overlay_max_sessions: int
+    event_pending_max: int
+    event_pending_ttl_sec: float
+    reconcile_interval_sec: float
 
 
 def resolve_store_roots(
@@ -304,6 +316,11 @@ def build_runtime_config(
         usage_receipt_cap_bytes=131_072,
         overlay_working_ttl_sec=90,
         overlay_idle_dwell_sec=3.0,
+        event_coalesce_sec=0.1,
+        event_overlay_max_sessions=512,
+        event_pending_max=256,
+        event_pending_ttl_sec=60.0,
+        reconcile_interval_sec=30.0,
     )
 
 
