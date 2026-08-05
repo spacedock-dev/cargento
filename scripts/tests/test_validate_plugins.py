@@ -89,8 +89,14 @@ class ValidatorTests(unittest.TestCase):
         # right reason but in the wrong place: the inventory is the thing meant to
         # be deliberate, not this test's idea of what exists. `glob`, not `rglob`,
         # so `tests/` and `agents/` stay out.
-        shipped = {
-            path.relative_to(validator.ROOT / "cargento").as_posix() for path in skill.glob("*.py")
+        plugin_root = validator.ROOT / "cargento"
+        shipped = {path.relative_to(plugin_root).as_posix() for path in skill.glob("*.py")}
+        # Plugin-root hook definitions count too. They are not read by the
+        # dashboard, but they fail the same way: absent from an install, the
+        # harness registers no hooks and reports no events, silently.
+        shipped |= {
+            path.relative_to(plugin_root).as_posix()
+            for path in (plugin_root / "hooks").glob("*.json")
         }
         for path in (skill / "cargento_runtime").rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts:
