@@ -438,6 +438,60 @@ when Cargento is not running. For a future managed mode, native app-server expos
 thread status and is preferable to scraping rollouts; compare it with the ACP adapter using fixtures
 before choosing between those managed transports.
 
+#### Codex adapter semantics: MEASURED, and the gate is cleared
+
+The first adapter gate in this project to be cleared by evidence rather than waived. Captured from a
+real `codex exec` session, codex-cli 0.146.0 on macOS, against an isolated `CODEX_HOME` so nothing of
+the user's configuration was touched. The records are kept in
+[`../captures/`](../captures/README.md).
+
+`hooks.json` accepts the same schema as Claude's `settings.json` hooks, PascalCase event names and
+all: `{"hooks": {"<Event>": [{"matcher": ..., "hooks": [{"type": "command", "command": ...}]}]}}`.
+Codex normalizes those names to snake_case internally, which is the form its `config.toml`
+`[hooks.state]` keys use.
+
+Cardinality and order for one turn containing one tool call, all five hooks fired exactly once:
+
+```text
+UserPromptSubmit -> PreToolUse -> PostToolUse -> Stop
+```
+
+`SessionStart` fires once outside the turn. Payload fields per event, which is what the adapter is
+written against:
+
+| Event | Fields |
+|---|---|
+| `SessionStart` | `cwd`, `hook_event_name`, `model`, `permission_mode`, `session_id`, `source`, `transcript_path` |
+| `UserPromptSubmit` | the common set plus `prompt`, `turn_id` |
+| `PreToolUse` | the common set plus `tool_input`, `tool_name`, `tool_use_id`, `turn_id` |
+| `PostToolUse` | as `PreToolUse` plus `tool_response` |
+| `Stop` | the common set plus `last_assistant_message`, `stop_hook_active`, `turn_id` |
+
+The common set is `cwd`, `hook_event_name`, `model`, `permission_mode`, `session_id` and
+`transcript_path`. Hook self-cost p99 was 0.47 ms against the 5 ms posix budget, excluding interpreter
+startup as always.
+
+**The identity mapping is the identity function, and this is the part worth having measured.** The
+payload's `session_id` is Codex's own session id, and it matched the `session_meta` id of the rollout
+file the same session wrote, which is exactly what `collectors/codex.py` keys `sid` on. So unlike
+Claude, no truncation is involved, and unlike Antigravity there is no second candidate id field to
+choose wrongly between.
+
+Two operational findings that change how the adapter ships:
+
+1. **Hooks require per-hook trust.** Codex records a `trusted_hash` in `config.toml` under
+   `[hooks.state."<source>:<snake_case_event>:<group>:<index>"]`, and an untrusted hook is silently
+   skipped rather than reported. The first capture attempt produced zero events for exactly this
+   reason. `codex exec --dangerously-bypass-hook-trust` exists for automation and is what the capture
+   used; a shipped adapter must instead expect the user to approve it once, and must tolerate being
+   skipped until they do.
+2. **The trust hash changes with the command.** So an adapter upgrade that rewrites its command line
+   re-prompts. The command should therefore be stable, which argues for a fixed script path with the
+   port passed through the environment or a settings file rather than interpolated into the command.
+
+`prompt`, `tool_input`, `tool_response` and `last_assistant_message` all arrive in these payloads.
+The adapter drops them in the hook, exactly as the Claude one does, so they never reach a socket.
+
 ### Antigravity
 
 Antigravity has two push paths, not one, and the second is the better fit for this design.
@@ -1230,7 +1284,13 @@ The gates are independent. Verdicts, one per gate:
 
   Reconciliation therefore stays, and this is the concrete reason rather than a general caution. WSL,
   remote, bind and network stores are still unproven and retain the current cadence.
-- **Adapter semantics: WAIVED by the maintainer, not cleared by evidence.** The gate asked for
+- **Adapter semantics: WAIVED for Claude and Antigravity, MEASURED for Codex.** The Codex half is
+  cleared by real capture, and its evidence is under
+  [Codex](#codex): event cardinality, ordering, per-event payload fields, a p99 hook cost of 0.47 ms,
+  and an identity mapping verified against the rollout the same session wrote. The rest of this entry
+  covers Claude and Antigravity, where it is still a waiver.
+
+- **Claude and Antigravity adapter semantics: WAIVED by the maintainer, not cleared by evidence.** The gate asked for
   contract or real-CLI fixtures proving event meaning, cardinality and order, plus a p99 hook budget
   per OS. `scripts/capture_hook.py` exists to collect exactly that and reports its own cardinality,
   per-event payload shape, turn orderings and self-cost. No captures were ever taken: the recording
