@@ -318,14 +318,14 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(os.getpid(), first["pid"])
 
     def test_the_collection_memo_does_not_cross_applications(self) -> None:
-        first, _, state_a, _, _ = self._application(
+        first, config_a, _, _, _ = self._application(
             home="/home/a",
             started=11.0,
             clock=1000.0,
             notifier="notifier-a",
             harnesses=(self._spec("alpha"),),
         )
-        second, _, state_b, _, _ = self._application(
+        second, config_b, _, _, _ = self._application(
             home="/home/b",
             started=22.0,
             clock=2000.0,
@@ -333,20 +333,24 @@ class ApplicationIsolationTest(unittest.TestCase):
             harnesses=(self._spec("beta"),),
         )
 
-        body_a = first.collect_json(show_all=False)
-        body_b = second.collect_json(show_all=False)
+        rev_a, body_a = first.collect_json(show_all=False)
+        rev_b, body_b = second.collect_json(show_all=False)
 
         self.assertNotEqual(body_a, body_b)
-        self.assertEqual(1, len(state_a.collect_memo))
-        self.assertEqual(1, len(state_b.collect_memo))
-        # A warm read comes from the application's own memo, not the neighbour's.
-        self.assertEqual(body_a, first.collect_json(show_all=False))
-        self.assertEqual(body_b, second.collect_json(show_all=False))
-        self.assertEqual(1, len(state_a.collect_memo))
+        # Each application publishes into its own snapshot, so neither can serve
+        # the other's bytes and their revisions count independently.
+        self.assertIsNot(first.snapshot, second.snapshot)
+        self.assertIsNone(first.snapshot.current((config_a.window_hours, True)))
+        self.assertIsNone(second.snapshot.current((config_b.window_hours, True)))
+        # A warm read comes from the application's own snapshot, not the
+        # neighbour's, and reuse does not mint a revision.
+        self.assertEqual((rev_a, body_a), first.collect_json(show_all=False))
+        self.assertEqual((rev_b, body_b), second.collect_json(show_all=False))
         # A different show_all is a different key, so it is a second entry.
         first.collect_json(show_all=True)
-        self.assertEqual(2, len(state_a.collect_memo))
-        self.assertEqual(1, len(state_b.collect_memo))
+        self.assertIsNotNone(first.snapshot.current((config_a.window_hours, True)))
+        # The neighbour gained nothing from it.
+        self.assertIsNone(second.snapshot.current((config_b.window_hours, True)))
 
     def test_the_memo_expires_on_the_injected_clock(self) -> None:
         # Mutation-checked: reading time.time() instead of self.clock() in the
@@ -383,12 +387,15 @@ class ApplicationIsolationTest(unittest.TestCase):
         now[0] += config.collect_memo_sec / 2
         application.collect_json(show_all=False)
         self.assertEqual([1000.0], collections)
-        self.assertEqual(1000.0, state.collect_memo[(config.window_hours, False)]["ts"])
+        # The published entry carries the injected clock, so its age at that
+        # instant is zero rather than a real reading.
+        self.assertEqual(0.0, application.snapshot.age((config.window_hours, False), now=1000.0))
         # Past the window: collected again, and the entry is re-stamped.
         now[0] = 1000.0 + config.collect_memo_sec + 1
         application.collect_json(show_all=False)
         self.assertEqual([1000.0, now[0]], collections)
-        self.assertEqual(now[0], state.collect_memo[(config.window_hours, False)]["ts"])
+        # Re-stamped on the injected clock: age is zero at the new "now".
+        self.assertEqual(0.0, application.snapshot.age((config.window_hours, False), now=now[0]))
 
     def test_a_discovery_failure_marks_only_that_harness_absent(self) -> None:
         application, _, _, diagnostics, _ = self._application(
@@ -758,6 +765,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.quota",
             "cargento_runtime.sessions",
+            "cargento_runtime.snapshot",
             "cargento_runtime.state",
         },
         # The CLI is the assembly point, so it may import any runtime module.
@@ -928,7 +936,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # revision and takes a lock. It imports no runtime module, which is what
         # lets both aggregate and the HTTP layer depend on it without a cycle.
         "cargento_runtime.snapshot": set(),
-        "cargento_runtime.state": {"cargento_runtime.config"},
+        "cargento_runtime.state": {"cargento_runtime.config", "cargento_runtime.snapshot"},
         "cargento_runtime.transcripts": {
             "cargento_runtime.config",
             "cargento_runtime.io",

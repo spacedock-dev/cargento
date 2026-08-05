@@ -61,6 +61,16 @@ class Snapshot:
         revision, body, _published_at = entry
         return revision, body
 
+    def clear(self) -> None:
+        """Drop every published variant, so the next read collects.
+
+        The counter is deliberately not rewound. A client holding a cursor must
+        see strictly higher revisions after an invalidation, or it would ignore
+        the state that follows one.
+        """
+        with self._lock:
+            self._entries.clear()
+
     def age(self, key: SnapshotKey, *, now: float) -> float | None:
         """Seconds since this variant was published, or None if it never was.
 

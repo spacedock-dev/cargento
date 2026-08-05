@@ -198,7 +198,10 @@ class CargentoServerTest(RuntimeTestCase):
         self.assertEqual(1, calls.count((24, True)))
         self.assertEqual(1, len(set(bodies)))
         self.assertNotEqual(bodies[0], alternate)
-        self.assertEqual(2, len(state_of().collect_memo))
+        # Both variants are published, separately, into the runtime's snapshot.
+        snap = state_of().snapshot
+        self.assertIsNotNone(snap.current((24, False)))
+        self.assertIsNotNone(snap.current((24, True)))
 
     def test_a_requested_window_reaches_the_collection_and_its_memo_key(self) -> None:
         # The window is a request-time argument: /api/data must collect and
@@ -211,8 +214,9 @@ class CargentoServerTest(RuntimeTestCase):
 
             self.assertEqual(6, requested["window_hours"])
             self.assertEqual(24, default["window_hours"])
-            self.assertIn((6, False), state_of().collect_memo)
-            self.assertIn((24, False), state_of().collect_memo)
+            snap = state_of().snapshot
+            self.assertIsNotNone(snap.current((6, False)))
+            self.assertIsNotNone(snap.current((24, False)))
 
     def test_collector_failure_is_exposed_in_harness_status(self) -> None:
         def fail(*_args: object) -> list[dict[str, Any]]:
@@ -597,7 +601,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             state_of().last_session_state.clear()
             state_of().hook_generation.clear()
         with state_of().collect_memo_lock:
-            state_of().collect_memo.clear()
+            state_of().snapshot.clear()
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
@@ -621,7 +625,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         with state_of().collect_memo_lock:
-            state_of().collect_memo.clear()
+            state_of().snapshot.clear()
 
     @staticmethod
     def _response(
@@ -646,7 +650,12 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         with mock.patch.object(
             aggregate.Application,
             "collect_json",
-            return_value=json.dumps({"generated": 1.0, "sessions": [], "harnesses": []}).encode(),
+            # (revision, body): the handler names the revision it served in a
+            # header, so the stub has to carry one too.
+            return_value=(
+                (1.0, 1),
+                json.dumps({"generated": 1.0, "sessions": [], "harnesses": []}).encode(),
+            ),
         ):
             try:
                 cases = (

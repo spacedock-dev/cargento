@@ -257,7 +257,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # request without the parameter never triggers network traffic.
             if query.get("usage", ["0"])[0] == "1":
                 self.server.application.request_usage_fetch()
-            self._send(self.server.application.collect_json(show_all=show_all), "application/json")
+            _revision, body = self.server.application.collect_json(show_all=show_all)
+            self._send(body, "application/json")
         elif url.path == "/api/health":
             self._health()
         elif url.path == "/":

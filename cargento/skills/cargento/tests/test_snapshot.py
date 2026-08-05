@@ -6,6 +6,8 @@ import unittest
 
 from cargento_runtime import snapshot as runtime_snapshot
 
+from . import support
+
 
 class SnapshotTest(unittest.TestCase):
     def _snap(self, started: float = 1000.0) -> runtime_snapshot.Snapshot:
@@ -55,6 +57,24 @@ class SnapshotTest(unittest.TestCase):
         # Zero would read as "fresh" and skip the collection a cold GET needs.
         self.assertIsNone(self._snap().age((24.0, False), now=1.0))
 
+    def test_clear_drops_every_variant_so_the_next_read_collects(self) -> None:
+        snap = self._snap()
+        snap.publish((24.0, False), b"{}", now=1.0)
+        snap.publish((24.0, True), b"{}", now=1.0)
+        snap.clear()
+        self.assertIsNone(snap.current((24.0, False)))
+        self.assertIsNone(snap.current((24.0, True)))
+        self.assertIsNone(snap.age((24.0, False), now=1.0))
+
+    def test_clear_does_not_rewind_the_revision_counter(self) -> None:
+        # A cleared snapshot must still mint a strictly higher revision, or a
+        # client holding a cursor would ignore the state that follows a reset.
+        snap = self._snap()
+        before = snap.publish((24.0, False), b"{}")
+        snap.clear()
+        after = snap.publish((24.0, False), b"{}")
+        self.assertGreater(after[1], before[1])
+
     def test_format_revision_is_stable_and_restart_qualified(self) -> None:
         self.assertEqual(runtime_snapshot.format_revision((1700000000.0, 7)), "1700000000.7")
 
@@ -65,6 +85,43 @@ class SnapshotTest(unittest.TestCase):
         b = self._snap(started=2000.0).publish((24.0, False), b"{}")
         self.assertEqual(a[1], b[1])
         self.assertNotEqual(a, b)
+
+
+class ApplicationSnapshotTest(support.RuntimeTestCase):
+    """collect_json publishes, reuses inside the floor, and recollects after it."""
+
+    def test_a_second_call_inside_the_floor_reuses_the_published_bytes(self) -> None:
+        app = support.build_app()
+        calls: list[int] = []
+        real = app.collect
+
+        def counting(*, show_all: bool) -> dict[str, object]:
+            calls.append(1)
+            return real(show_all=show_all)
+
+        app.collect = counting  # type: ignore[method-assign]
+        first_rev, first_body = app.collect_json(show_all=False)
+        second_rev, second_body = app.collect_json(show_all=False)
+        self.assertEqual(len(calls), 1, "the second call must not recollect")
+        self.assertEqual(first_body, second_body)
+        self.assertEqual(first_rev, second_rev, "reuse must not mint a revision")
+
+    def test_the_two_variants_are_published_separately(self) -> None:
+        app = support.build_app()
+        default_rev, _ = app.collect_json(show_all=False)
+        all_rev, _ = app.collect_json(show_all=True)
+        self.assertNotEqual(default_rev, all_rev)
+        self.assertIsNotNone(app.snapshot.current((app.config.window_hours, False)))
+        self.assertIsNotNone(app.snapshot.current((app.config.window_hours, True)))
+
+    def test_a_stale_snapshot_recollects_and_mints_a_new_revision(self) -> None:
+        app = support.build_app()
+        first_rev, _ = app.collect_json(show_all=False)
+        # Advance past the floor rather than sleeping: the clock is injected.
+        base = app.clock()
+        app.clock = lambda: base + app.config.collect_memo_sec + 1
+        second_rev, _ = app.collect_json(show_all=False)
+        self.assertGreater(second_rev[1], first_rev[1])
 
 
 if __name__ == "__main__":

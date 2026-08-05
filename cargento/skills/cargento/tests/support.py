@@ -179,8 +179,9 @@ def collect(window_hours: float = 24, show_all: bool = False) -> dict[str, Any]:
 
 
 def collect_json(window_hours: float = 24, show_all: bool = False) -> bytes:
-    """The memoized JSON body for one collection over the shared runtime."""
-    return build_app(window_hours).collect_json(show_all=show_all)
+    """The published JSON body for one collection over the shared runtime."""
+    _revision, body = build_app(window_hours).collect_json(show_all=show_all)
+    return body
 
 
 def diagnose(window_hours: float = 24) -> dict[str, Any]:
@@ -291,7 +292,7 @@ def clear_state(state: RuntimeState) -> None:
         state.pi_scan.clear()
         state.turn_scan.clear()
     with state.collect_memo_lock:
-        state.collect_memo.clear()
+        state.snapshot.clear()
     with state.usage_fetch_lock:
         state.usage_fetch_cache.clear()
         state.usage_fetch_inflight.clear()

@@ -734,7 +734,7 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
                 diagnostic_sink=lambda _line: None,
                 clock=lambda: NOW,
             )
-            body = application.collect_json(show_all=True)
+            _revision, body = application.collect_json(show_all=True)
         self.assertNotIn(TOKEN.encode(), body)
         data = json.loads(body)
         self.assertTrue(data.get("usage_fetch"))

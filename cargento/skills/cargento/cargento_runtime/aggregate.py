@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 
 from . import io as runtime_io
 from . import quota, sessions
+from . import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
     from .config import RuntimeConfig
@@ -272,16 +273,43 @@ class Application:
             diagnostic_sink=self.diagnostic_sink,
         )
 
-    def collect_json(self, *, show_all: bool) -> bytes:
-        state = self.state
-        key = (self.config.window_hours, show_all)
-        with state.collect_memo_lock:
-            cached = state.collect_memo.get(key)
-            if cached and self.clock() - cached["ts"] < self.config.collect_memo_sec:
-                body: bytes = cached["body"]
-                return body
-            # Hold the lock through collection: ThreadingHTTPServer callers share
-            # one filesystem/SQLite scan rather than stampeding cold cache entries.
+    @property
+    def snapshot(self) -> runtime_snapshot.Snapshot:
+        """The runtime's published responses. Owned by state, not by this object."""
+        return self.state.snapshot
+
+    def collect_json(self, *, show_all: bool) -> tuple[runtime_snapshot.Revision, bytes]:
+        """The published response for one variant, collecting only if stale.
+
+        Two locks, deliberately. `collect_memo_lock` is still held across
+        collection, so ThreadingHTTPServer callers share one filesystem and
+        SQLite scan rather than stampeding a cold entry. The snapshot's own lock
+        is taken only to read or write the published tuple, so a slow reader can
+        never block a collection and a collection can never block a reader.
+
+        The freshness floor is `collect_memo_sec`, unchanged from the memo this
+        replaced, so the worst-case staleness a `curl` or headless caller sees is
+        exactly what it was before.
+        """
+        key: runtime_snapshot.SnapshotKey = (self.config.window_hours, show_all)
+        published = self._fresh_snapshot(key)
+        if published is not None:
+            return published
+        with self.state.collect_memo_lock:
+            # Re-check under the lock: another thread may have collected while
+            # this one waited, which is the whole point of holding it.
+            published = self._fresh_snapshot(key)
+            if published is not None:
+                return published
             body = json.dumps(self.collect(show_all=show_all)).encode()
-            state.collect_memo[key] = {"ts": self.clock(), "body": body}
-            return body
+            revision = self.snapshot.publish(key, body, now=self.clock())
+            return revision, body
+
+    def _fresh_snapshot(
+        self, key: runtime_snapshot.SnapshotKey
+    ) -> tuple[runtime_snapshot.Revision, bytes] | None:
+        """The published entry for `key` if it is inside the floor, else None."""
+        age = self.snapshot.age(key, now=self.clock())
+        if age is None or age >= self.config.collect_memo_sec:
+            return None
+        return self.snapshot.current(key)

@@ -6,6 +6,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from cargento_runtime import snapshot as runtime_snapshot
+
 if TYPE_CHECKING:
     from _thread import LockType
 
@@ -26,6 +28,12 @@ class UsageFetchEntry(TypedDict):
 class RuntimeState:
     config: RuntimeConfig
     server_started: float
+    # The published responses live here rather than on the Application, exactly
+    # where the memo they replace lived. Two applications over one state must
+    # share one scan: that single-flight property is what stops concurrent tabs
+    # stampeding a cold entry, and it is a property of the runtime, not of the
+    # object that happens to serve a request.
+    snapshot: runtime_snapshot.Snapshot = field(init=False)
     hook_lock: LockType = field(default_factory=threading.Lock)
     cache_lock: LockType = field(default_factory=threading.Lock)
     scanner_lock: LockType = field(default_factory=threading.Lock)
@@ -72,6 +80,11 @@ class RuntimeState:
     # way and guarded by the same lock: one cache, two ways to fill it. In
     # memory only, so Cargento's two written paths are unchanged.
     usage_receipts: dict[str, UsageFetchEntry] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Built here rather than by a default_factory because it needs
+        # server_started, which is a field of this same dataclass.
+        self.snapshot = runtime_snapshot.Snapshot(server_started=self.server_started)
 
 
 def build_runtime_state(config: RuntimeConfig, *, started: float) -> RuntimeState:

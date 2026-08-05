@@ -1165,7 +1165,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             state_of().last_session_state.clear()
             state_of().hook_generation.clear()
         with state_of().collect_memo_lock:
-            state_of().collect_memo.clear()
+            state_of().snapshot.clear()
         # Route-shape tests run the notification code but do not assert native
         # delivery, so keep its osascript process off the host.
         original_run = subprocess.run
@@ -1188,7 +1188,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         with state_of().collect_memo_lock:
-            state_of().collect_memo.clear()
+            state_of().snapshot.clear()
 
     @staticmethod
     def _response(
