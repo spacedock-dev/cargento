@@ -1038,3 +1038,52 @@ class ClaudeGlobTest(unittest.TestCase):
 
         self.assertEqual(1, len(sessions))
         self.assertEqual("hostile path prompt", sessions[0]["title"])
+
+
+class SubagentGlobCostTest(RuntimeTestCase):
+    """One subagent scan per session, not two.
+
+    The parent transcript and the subagent transcripts are all real files, so
+    these fail if handing the listing over changes which subagents are found.
+    """
+
+    def _fixture(self, root: str, *names: str) -> str:
+        """A parent transcript plus ``names`` under its ``subagents/`` layout."""
+        parent = Path(root) / "abcd1234-session.jsonl"
+        parent.write_text("{}\n", encoding="utf-8")
+        sub = Path(root) / "abcd1234-session" / "subagents"
+        sub.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            (sub / name).write_text("{}\n", encoding="utf-8")
+        return str(parent)
+
+    def test_load_subagents_accepts_a_precomputed_listing(self) -> None:
+        config = runtime()[0]
+        now = time.time()
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-worker.jsonl")
+
+            found = claude_collector.agent_transcripts(parent)
+            self.assertTrue(found, "fixture must produce at least one subagent transcript")
+
+            with mock.patch.object(
+                claude_collector,
+                "agent_transcripts",
+                side_effect=AssertionError("globbed again"),
+            ):
+                agents = claude_collector.load_subagents(config, parent, now, found=found)
+
+            self.assertEqual(["subagent"], [a["label"] for a in agents])
+
+    def test_precomputed_and_self_scanned_results_are_identical(self) -> None:
+        config = runtime()[0]
+        now = time.time()
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-a.jsonl", "agent-b.jsonl")
+
+            self.assertEqual(
+                claude_collector.load_subagents(config, parent, now),
+                claude_collector.load_subagents(
+                    config, parent, now, found=claude_collector.agent_transcripts(parent)
+                ),
+            )

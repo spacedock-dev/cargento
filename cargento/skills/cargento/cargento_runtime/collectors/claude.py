@@ -92,12 +92,21 @@ def agent_transcripts(transcript: str | None) -> list[tuple[str, float]]:
 
 
 def load_subagents(
-    config: RuntimeConfig, transcript: str | None, now: float
+    config: RuntimeConfig,
+    transcript: str | None,
+    now: float,
+    *,
+    found: list[tuple[str, float]] | None = None,
 ) -> list[dict[str, Any]]:
     """Running Claude subagents beneath the session directory; fresh mtime =
-    running. Covers both layouts in ``SUBAGENT_GLOBS``."""
+    running. Covers both layouts in ``SUBAGENT_GLOBS``.
+
+    ``found`` lets a caller that has already listed the directory hand the
+    listing over, so one session costs one scan. The collector needs the full
+    listing anyway for its parked-parent activity check.
+    """
     agents: list[dict[str, Any]] = []
-    for fp, mtime in agent_transcripts(transcript):
+    for fp, mtime in agent_transcripts(transcript) if found is None else found:
         if not runtime_sessions.is_fresh(config, now, mtime, config.working_threshold_sec):
             continue
         label = None
@@ -234,7 +243,7 @@ def collect(
             transcript_mtime = 0
         latest_task_mtime = max((t["updated"] for t in tasks), default=0)
         agent_files = agent_transcripts(transcript)
-        subagents = load_subagents(config, transcript, now)
+        subagents = load_subagents(config, transcript, now, found=agent_files)
         children = agent_children.get(prefix, [])
         subagents += [
             {"label": c["label"], "mtime": c["mtime"]}
