@@ -239,7 +239,12 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
 
     def test_daemon_respawn_uses_the_absolute_stable_launcher(self) -> None:
         args = argparse.Namespace(
-            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
+            port=4553,
+            window_hours=24.0,
+            no_spacedock=False,
+            no_usage=False,
+            no_events=False,
+            daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
             log_file = str(Path(tmp) / "cargento.log")
@@ -368,7 +373,12 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
         windows_launcher = "C:\\plugin\\server.py"
         config = dataclasses.replace(cfg(), launcher_path=Path(windows_launcher))
         args = argparse.Namespace(
-            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
+            port=4553,
+            window_hours=24.0,
+            no_spacedock=False,
+            no_usage=False,
+            no_events=False,
+            daemon=True,
         )
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -1147,7 +1157,12 @@ class CargentoServerTest(PageJsHarness):
         # covers the thing that actually runs.
         config = cfg()
         args = argparse.Namespace(
-            port=4553, window_hours=12.0, no_spacedock=True, no_usage=False, no_events=False, daemon=True
+            port=4553,
+            window_hours=12.0,
+            no_spacedock=True,
+            no_usage=False,
+            no_events=False,
+            daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
         self.assertEqual(
@@ -1169,7 +1184,12 @@ class CargentoServerTest(PageJsHarness):
         plain = lifecycle.spawn_argv(
             config,
             argparse.Namespace(
-                port=1, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
+                port=1,
+                window_hours=24.0,
+                no_spacedock=False,
+                no_usage=False,
+                no_events=False,
+                daemon=True,
             ),
         )
         self.assertEqual(
@@ -1202,7 +1222,12 @@ class CargentoServerTest(PageJsHarness):
 
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
         args = argparse.Namespace(
-            port=4553, window_hours=24.0, no_spacedock=False, no_usage=False, no_events=False, daemon=True
+            port=4553,
+            window_hours=24.0,
+            no_spacedock=False,
+            no_usage=False,
+            no_events=False,
+            daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
             log_file = os.path.join(tmp, "c.log")
