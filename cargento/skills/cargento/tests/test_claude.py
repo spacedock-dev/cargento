@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from cargento_runtime import claude_data, notifications, records, spacedock
+from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import claude as claude_collector
 
@@ -1087,3 +1088,22 @@ class SubagentGlobCostTest(RuntimeTestCase):
                     config, parent, now, found=claude_collector.agent_transcripts(parent)
                 ),
             )
+
+    def test_absent_session_directory_is_not_globbed(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            parent = Path(root) / "abcd1234-session.jsonl"
+            parent.write_text("{}\n", encoding="utf-8")
+            # No sibling "abcd1234-session/" directory: the common case for a
+            # historical session that never ran a subagent.
+            with mock.patch.object(
+                runtime_io,
+                "glob_under",
+                side_effect=AssertionError("globbed a directory that does not exist"),
+            ):
+                self.assertEqual([], claude_collector.agent_transcripts(str(parent)))
+
+    def test_present_session_directory_is_still_globbed(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-a.jsonl")
+            found = claude_collector.agent_transcripts(parent)
+            self.assertEqual(["agent-a.jsonl"], [os.path.basename(p) for p, _ in found])

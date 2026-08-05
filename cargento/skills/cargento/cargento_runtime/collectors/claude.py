@@ -81,6 +81,11 @@ def agent_transcripts(transcript: str | None) -> list[tuple[str, float]]:
     sess_dir = os.path.join(
         os.path.dirname(transcript), os.path.basename(transcript)[: -len(".jsonl")]
     )
+    # Most historical prefixes never ran a subagent, so the directory is absent.
+    # One stat is cheaper than running every SUBAGENT_GLOBS pattern against a
+    # path that cannot match.
+    if not os.path.isdir(sess_dir):
+        return []
     found: list[tuple[str, float]] = []
     for pattern in SUBAGENT_GLOBS:
         for fp in runtime_io.glob_under(sess_dir, *pattern):
