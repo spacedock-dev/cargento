@@ -1215,6 +1215,12 @@ Split into 1a and 1b. 1a is shipped: see [`event-driven-phase-1a.md`](event-driv
 - **Shipped in 1b.** A demand-scoped producer that collects on an interval only while a stream is
   connected, started inside `serve()` so the daemon path creates it after the fork. Verified on a
   real daemon: 14 seconds idle with no reader and the first GET still reports revision counter 1.
+- **Shipped in 1c.** The page drives itself from the stream: one `EventSource` per browser elected
+  through a `localStorage` lease, followers refetching on a storage broadcast, and the fixed
+  five-second poll replaced by a twenty-second safety net. A browser with no `EventSource` keeps the
+  old cadence rather than freezing. Quota consent needs no lease: the page still carries `usage=1` on
+  the fetch it makes per revision, and the producer publishes on every tick, so the cadence a
+  consenting page sees is unchanged.
 - Start its remaining services only after daemonization and implement the shutdown order above.
 - Add the SSE revision stream with restart-qualified IDs, immediate current-state delivery, server-wide
   and stream connection budgets, read/write timeouts, one-slot queues, heartbeats, leader-tab election

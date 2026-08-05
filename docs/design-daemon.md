@@ -245,7 +245,7 @@ No keystroke is bound to stopping. Calm mode gives single keys to moving, expand
 all of which are free to get wrong.
 
 On success the page enters a terminal stopped panel and stops polling. Falling through to the
-existing "stalled · retrying every 5s" banner would be actively misleading: nothing is retrying,
+existing "stalled · retrying" banner would be actively misleading: nothing is retrying,
 nothing is coming back, and the reader is the one who ended it. A failed POST shows the error inline
 and disarms, because the server is still running and the page should not pretend otherwise.
 

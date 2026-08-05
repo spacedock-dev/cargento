@@ -52,22 +52,37 @@ function leaseIsLive(lease){
 function electLeader(){
   if(serverStopped) return;
   const lease = readLease();
-  if(leaseIsLive(lease) && lease.id !== TAB_ID){
+  /* Yield on any foreign lease that is either live or newer than our own claim.
+     Checking only `leaseIsLive` was wrong: a tab throttled to one wake-up a
+     minute (Chrome does this after five minutes hidden) reads a stale foreign
+     lease, falls through to writeLease, and `if(!isLeader)` then suppresses the
+     only demotion. Two hidden tabs stomp each other's lease forever and both
+     keep a stream, which is precisely the connection exhaustion this module
+     exists to prevent. */
+  if(lease && lease.id !== TAB_ID && (leaseIsLive(lease) || isLeader)){
     if(isLeader) closeStream();
     isLeader = false;
     return;
   }
   writeLease();
-  if(!isLeader){
-    isLeader = true;
-    openStream();
-  }
+  isLeader = true;
+  /* Outside any `!isLeader` guard so a leader whose stream died reopens it. */
+  openStream();
 }
 
 function openStream(){
   if(streamSource || !LIVE_SUPPORTED || serverStopped) return;
   try{ streamSource = new EventSource("/api/stream"); }
   catch(e){ streamSource = null; return; }  /* refused, or past the server's cap */
+  /* A non-200 or wrong-content-type reply fails the connection permanently:
+     readyState goes to CLOSED and the browser must not reconnect. That is
+     exactly what a 503 past the server's client cap looks like, so without this
+     the tab would hold a dead source, keep the lease, and never recover. */
+  streamSource.addEventListener("error", () => {
+    if(!streamSource || streamSource.readyState !== 2) return;  /* 2 = CLOSED */
+    closeStream();
+    isLeader = false;  /* let another tab try; this one retries on its next tick */
+  });
   streamSource.addEventListener("revision", ev => {
     /* Ignored rather than acted on: EventSource replays its last id when it
        reconnects, so the first event after a drop is usually one already seen,
@@ -90,12 +105,25 @@ function closeStream(){
 
 /* Terminal: the stop control calls this, and nothing restarts it. */
 function stopLive(){
+  releaseLease();
   closeStream();
   if(leaderTimer !== null){ clearInterval(leaderTimer); leaderTimer = null; }
   if(refreshTimer !== null){ clearInterval(refreshTimer); refreshTimer = null; }
 }
 
+function releaseLease(){
+  if(!isLeader) return;
+  try{ localStorage.removeItem(LEADER_KEY); }catch(e){ /* no storage */ }
+}
+
 function startLive(){
+  /* Handing the lease back makes takeover near-instant instead of costing the
+     full stale window, and re-electing when a tab is shown narrows the window
+     in which a throttled leader still holds one. */
+  window.addEventListener("pagehide", releaseLease);
+  document.addEventListener("visibilitychange", () => {
+    if(!document.hidden) electLeader();
+  });
   window.addEventListener("storage", ev => {
     if(serverStopped || !ev || ev.key !== REVISION_KEY) return;
     const revision = String(ev.newValue || "");

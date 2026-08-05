@@ -105,7 +105,7 @@ python3 -m webbrowser -t http://127.0.0.1:4553/
 Use `127.0.0.1`, not `localhost`: the server listens on IPv4 only, and on some systems `localhost`
 resolves to `::1` first.
 
-Tell the user the URL, that the page auto-refreshes every 5 seconds, that it keeps running until
+Tell the user the URL, that the page updates itself as sessions change, that it keeps running until
 stopped, and that popups require the server to be running. Completed-task ages/estimates degrade
 where the filesystem exposes no birthtime (Linux, and Windows before Python 3.12).
 

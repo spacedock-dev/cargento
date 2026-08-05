@@ -32,7 +32,8 @@ class PageLiveTest(PageJsHarness):
 let __store = {seed};
 const localStorage = {{
   getItem(k){{ return Object.prototype.hasOwnProperty.call(__store, k) ? __store[k] : null; }},
-  setItem(k, v){{ __store[k] = String(v); }}
+  setItem(k, v){{ __store[k] = String(v); }},
+  removeItem(k){{ delete __store[k]; }}
 }};
 """
             if storage
@@ -40,7 +41,8 @@ const localStorage = {{
 let __store = {};
 const localStorage = {
   getItem(){ return null; },
-  setItem(){ throw new Error("private browsing"); }
+  setItem(){ throw new Error("private browsing"); },
+  removeItem(){ throw new Error("private browsing"); }
 };
 """
         )
@@ -226,3 +228,78 @@ console.log(JSON.stringify({closed: __sources[0].closed}));
 """
         )
         self.assertTrue(out["closed"], "a terminal stop must not leave a stream open")
+
+    def test_a_leader_yields_to_a_foreign_lease_even_when_that_lease_is_stale(self) -> None:
+        """The throttled-tab bug: two hidden tabs each streaming forever.
+
+        Chrome throttles a hidden page's timers to about one wake-up a minute,
+        far past the six-second stale window, so a leader routinely reads a
+        stale foreign lease. Yielding only on a *live* one let both tabs stomp
+        each other's lease and keep a stream, which is exactly the connection
+        exhaustion the election exists to prevent.
+        """
+        out = self._boot(
+            """
+await __settle();
+const led = isLeader && __sources.length === 1;
+// Another tab claims it, then time moves far past stale for both.
+__store["cargento.leader"] = JSON.stringify({id: "other-tab", ts: 1000 * 1000});
+__setNow(1000 + 600);
+__runInterval(2000);
+await __settle();
+console.log(JSON.stringify({led, stillLeader: isLeader, closed: __sources[0].closed}));
+"""
+        )
+        self.assertTrue(out["led"], "the tab must start as leader for this to mean anything")
+        self.assertFalse(out["stillLeader"], "a foreign lease must demote, stale or not")
+        self.assertTrue(out["closed"], "demotion must close the stream")
+
+    def test_a_closed_stream_is_reopened_rather_than_held_dead(self) -> None:
+        """A 503 past the server's cap fails the connection permanently.
+
+        readyState goes to CLOSED and the browser must not reconnect, so without
+        an error listener the tab would hold a dead source, keep the lease, and
+        never recover: the whole browser silently degrades to the slow poll.
+        """
+        out = self._boot(
+            """
+await __settle();
+const first = __sources.length;
+__sources[0].readyState = 2;              // CLOSED, as a 503 leaves it
+__sources[0].emit("error", null);
+const yielded = !isLeader;
+__runInterval(2000);                      // the next election tick
+await __settle();
+console.log(JSON.stringify({first, yielded, sources: __sources.length}));
+"""
+        )
+        self.assertEqual(1, out["first"])
+        self.assertTrue(out["yielded"], "a dead stream must yield leadership")
+        self.assertEqual(2, out["sources"], "the next tick must open a fresh stream")
+
+    def test_a_storage_event_cannot_refetch_after_the_server_is_stopped(self) -> None:
+        """The stopped panel is terminal; the storage listener outlives stopLive."""
+        out = self._boot(
+            """
+await __settle();
+serverStopped = true;
+stopLive();
+const before = __fetchCalls.length;
+__fire("window:storage", {key: "cargento.revision", newValue: "1700000000.42"});
+await __settle();
+console.log(JSON.stringify({fetched: __fetchCalls.length > before}));
+"""
+        )
+        self.assertFalse(out["fetched"], "nothing may repaint a board for a server that is gone")
+
+    def test_a_leader_hands_its_lease_back_when_the_page_hides(self) -> None:
+        out = self._boot(
+            """
+await __settle();
+const held = !!__store["cargento.leader"];
+__fire("window:pagehide", {});
+console.log(JSON.stringify({held, after: __store["cargento.leader"] || null}));
+"""
+        )
+        self.assertTrue(out["held"])
+        self.assertIsNone(out["after"], "handoff must not cost the full stale window")

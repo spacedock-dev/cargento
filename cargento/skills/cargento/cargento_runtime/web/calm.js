@@ -449,7 +449,7 @@ function calmLedger(d){
     `<div class="cm-bar"><span class="cm-brand">Cargento</span>` +
     `<div class="cm-legend">${legend}</div><span class="cm-sp"></span>` +
     `<span class="cm-live"><span class="live" id="live-dot"></span>` +
-    `<span id="live-status">auto-refresh 5s · ` +
+    `<span id="live-status">${LIVE_SUPPORTED ? "live" : "auto-refresh 5s"} · ` +
     `${new Date(d.generated*1000).toLocaleTimeString()}</span>` +
     (d.show_all ? `<span>· showing all</span>` : "") + notifyControl(d) + `</span></div>` +
     `<div class="cm-ctl"><span class="cm-k">order</span><div class="cm-seg">${sorts}</div>` +
