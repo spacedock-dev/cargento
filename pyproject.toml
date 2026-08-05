@@ -9,6 +9,15 @@ line-length = 100
 # listed here so ruff skips them even when invoked with gitignore disabled.
 extend-exclude = [".venv", "venv", "visibility-2x2-template", "visibility-2x2-template-alt"]
 
+[tool.ruff.format]
+# The formatter reads Python code blocks inside Markdown, which is what holds
+# the prose docs to the same style as the code they quote. Plan docs are the one
+# place that breaks down: their blocks are fragments, most often a method to
+# paste into a named class, and formatting a fragment as a whole module dedents
+# it and loses the instruction. `ruff check` never reads Markdown at all, so
+# nothing is lost by excluding them here. Every other doc stays formatted.
+exclude = ["docs/plans/*.md"]
+
 [tool.ruff.lint]
 # Strict-by-default: every rule family on, with a curated, documented
 # ignore list rather than a permissive selection.
