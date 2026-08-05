@@ -9,8 +9,9 @@ an importable `cargento_runtime` package. This document records the arrangement 
 a later change either follows it or overturns it deliberately.
 
 The materialized snapshot and the SSE stream have since landed as `snapshot.py` and `stream.py`, each
-importing no runtime module so that `state` can own them without inverting R-2. The event ingress
-that would feed them is still a proposal, and the whole design lives in
+importing no runtime module so that `state` can own them without inverting R-2. `events.py` has landed
+as the envelope and reducer layer beneath them. The coordinator that would drive it, and the ingress
+route that would feed it, are still proposals; the whole design lives in
 [`plans/event-driven-session-observation.md`](plans/event-driven-session-observation.md).
 
 ## The problem these decisions answer
@@ -52,6 +53,7 @@ Everything else lives in one file per responsibility:
 | `stream.py` | Connected SSE clients and their one-slot revision mailboxes, with the connection budget. Imports no runtime module, for the same reason `snapshot.py` does not. `state` owns the registry because a connected stream belongs to the runtime, not to whichever object serves a request. |
 | `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
 | `probe.py` | The coarse store probe: a bounded stat sweep answering whether anything on disk moved. Stat only, no globbing or reads, and a hint rather than authority. |
+| `events.py` | The untrusted event envelope: its accepted version range, its vocabulary, per-harness identity normalization onto the collector's key, the mapping from event to overlay, and the reducer that turns live overlays into a field patch. Pure by design, so ordering and precedence are testable without a server: no locks, no counters, no clock and no filesystem. The mutable pending map and overlay ledger belong to the coordinator that bounds them, not here. |
 | `records.py` | Parsing and normalizing untrusted records from disk. |
 | `sessions.py` | Session identity and shape (including the row's declared field set, `base_session`), freshness, display ids, deterministic aggregation. |
 | `transcripts.py` | Shared metadata readers, prompt titles, the non-Claude analyzers. |

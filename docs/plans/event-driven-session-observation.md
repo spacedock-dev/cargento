@@ -1199,18 +1199,32 @@ The gates are independent. Verdicts, one per gate:
 
   Reconciliation therefore stays, and this is the concrete reason rather than a general caution. WSL,
   remote, bind and network stores are still unproven and retain the current cadence.
-- **Adapter semantics: not yet measured, blocks the phase it gates.** Do not publish an overlay
-  transition without contract or real-CLI fixtures proving event meaning, cardinality and order. Each
-  synchronous shim must fit the single end-to-end p99 hook budget. Unreachable until Phase 2 collects
-  those fixtures.
+- **Adapter semantics: WAIVED by the maintainer, not cleared by evidence.** The gate asked for
+  contract or real-CLI fixtures proving event meaning, cardinality and order, plus a p99 hook budget
+  per OS. `scripts/capture_hook.py` exists to collect exactly that and reports its own cardinality,
+  per-event payload shape, turn orderings and self-cost. No captures were ever taken: the recording
+  hook writes a merged `settings_with_hooks.json` for review and deliberately never edits the real
+  settings file, and nobody swapped it in, so `~/.cargento/captures` stayed empty. Phase 2 proceeds
+  on the maintainer's decision to accept unproven event semantics rather than on measurement.
+
+  What that costs, stated plainly so it is not rediscovered as a bug. Every semantic mapping in
+  `events.py` is a reasoned guess: that a prompt hook means Working, that a permission request means
+  Needs input, that one turn emits the events in the order the reducer assumes. A wrong guess shows
+  as a row stuck in the wrong state, and the deadline on the Working overlay is what bounds the
+  damage. The p99 hook budget per OS is also unmeasured, so the claim that a synchronous shim fits
+  inside it is untested. The envelope layer itself is not affected: it publishes no transition, and a
+  reducer with no ingress wired to it cannot patch a row.
+
+  Take the captures before trusting the transitions in anger. The gate is recorded as waived rather
+  than deleted so that remains findable.
 - **Operational rollout: not yet measured, blocks the phase it gates.** Retain abort thresholds for
   CPU duty, memory, handler/thread ceilings, p95 render latency and missed-event repair rate. A 25%
   collection threshold alone cannot protect the user experience. There is no render path to measure
   against until Phase 1 delivers one.
 
 Phase 1 may proceed: its inputs from Phase 0 are the post-fix collection time and the selective-reuse
-verdict, and both now exist. Phase 2 may not begin its probe or its adapters, because all three gates
-those steps depend on are unreached.
+verdict, and both now exist. Phase 2's probe gate is cleared. Its adapter gate is waived rather than
+cleared, so its adapters proceed with unproven event semantics, which the waiver above records.
 
 ### Phase 1: materialized snapshot and SSE
 

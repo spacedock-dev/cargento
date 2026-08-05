@@ -101,6 +101,15 @@ class RuntimeConfig:
     # A pushed status-line receipt. Larger than the notification cap because
     # the payload carries a whole session-state block, not just a message.
     usage_receipt_cap_bytes: int
+    # Event overlays. The Working deadline is tied to `working_threshold_sec`
+    # rather than chosen separately: that value is already what the collectors
+    # mean by Working, so an overlay that outlived it would be claiming Working
+    # for a session the scan would call Idle, which is the disagreement the
+    # overlay exists to avoid. The dwell is a chosen constant, set well above the
+    # 50 to 150 millisecond coalescing window so a stop followed immediately by a
+    # new prompt resolves inside one publish instead of flapping the row.
+    overlay_working_ttl_sec: float
+    overlay_idle_dwell_sec: float
 
 
 def resolve_store_roots(
@@ -293,6 +302,8 @@ def build_runtime_config(
         usage_credentials_cap_bytes=65_536,
         usage_response_cap_bytes=262_144,
         usage_receipt_cap_bytes=131_072,
+        overlay_working_ttl_sec=90,
+        overlay_idle_dwell_sec=3.0,
     )
 
 

@@ -107,6 +107,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/turns.py",
     "skills/cargento/cargento_runtime/sessions.py",
     "skills/cargento/cargento_runtime/snapshot.py",
+    "skills/cargento/cargento_runtime/events.py",
     "skills/cargento/cargento_runtime/claude_data.py",
     "skills/cargento/cargento_runtime/notifications.py",
     "skills/cargento/cargento_runtime/spacedock.py",

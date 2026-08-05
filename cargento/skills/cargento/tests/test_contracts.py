@@ -781,6 +781,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.web",
         },
         "cargento_runtime.collectors": set(),
+        # `sessions` arrived with the event envelope: an event timestamp passes
+        # through the same plausibility filter as every store timestamp, so a
+        # hook with a skewed clock cannot invent activity that a store read
+        # could not. The module stays pure, so it depends on nothing else.
+        "cargento_runtime.events": {
+            "cargento_runtime.config",
+            "cargento_runtime.sessions",
+        },
         "cargento_runtime.diagnostics": {
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
