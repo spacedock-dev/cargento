@@ -14,7 +14,8 @@ APP_PARTS: tuple[str, ...] = (
     "controls.js",  # the stop control, stopped panel, and mode bar
     "calm.js",  # the calm ledger: tables, actions, listeners, renderers
     "notify.js",  # desktop notifications
-    "main.js",  # render(), refresh(), and the poll timer
+    "main.js",  # render() and refresh()
+    "live.js",  # leader election, the SSE stream, and the fallback poll
 )
 
 

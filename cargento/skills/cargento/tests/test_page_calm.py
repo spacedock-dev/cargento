@@ -962,7 +962,11 @@ console.log(JSON.stringify(out));
         self.assertFalse(out["buttonGone"])
         self.assertIn("stopped", out["title"])
         self.assertIsNone(out["refreshTimer"])
-        self.assertEqual([73], out["clearedIntervals"])
+        # One timer, because the calm harness stubs no EventSource: without it
+        # the page runs the legacy five-second poll and elects no leader, so
+        # stopLive has only the poll to clear. The id is the harness's
+        # sequential setInterval counter.
+        self.assertEqual([1], out["clearedIntervals"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_armed_stop_button_keeps_focus_and_accepts_keyboard_activation(self) -> None:

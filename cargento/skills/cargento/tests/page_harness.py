@@ -59,8 +59,15 @@ let __fetchCalls = [];
 let __fetchImpl = () => new Promise(() => {});
 const fetch = (...args) => { __fetchCalls.push(args); return __fetchImpl(...args); };
 let __clearedIntervals = [];
+// Intervals are recorded rather than run, so a test drives the page's clock
+// itself. __runInterval fires every timer registered at one period, which is
+// how the live tests exercise the election tick and the fallback poll without
+// waiting real seconds.
+let __intervals = [];
 const clearInterval = id => { __clearedIntervals.push(id); };
-const setInterval = () => 73;
+const setInterval = (fn, ms) => { __intervals.push({fn, ms}); return __intervals.length; };
+const __runInterval = ms => __intervals.filter(i => i.ms === ms).forEach(i => i.fn());
+const __intervalPeriods = () => __intervals.map(i => i.ms);
 // Notification stub: records what the page would have raised, with a
 // permission value tests can set. Defined here so every page test runs with a
 // browser-notification-capable environment, as a real browser would.

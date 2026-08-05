@@ -136,6 +136,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/calm.js",
     "skills/cargento/cargento_runtime/web/notify.js",
     "skills/cargento/cargento_runtime/web/main.js",
+    "skills/cargento/cargento_runtime/web/live.js",
     "skills/cargento/cargento_runtime/web/page.py",
 )
 

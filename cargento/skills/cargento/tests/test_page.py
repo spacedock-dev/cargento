@@ -56,9 +56,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         assembled = frontend_page.load_page()
         styles = frontend_page.asset_path("styles.css").read_bytes()
 
-        self.assertEqual(130_266, len(assembled))
+        self.assertEqual(134_746, len(assembled))
         self.assertEqual(
-            "989ad9d7d1b7374ba7615c4878ca13cc36eb2070baef7cd77a92c758ad0a8f26",
+            "f3938d53350b378ba7ca4b02c883721cbc15a447ec02c35c7065582b8c2836b9",
             hashlib.sha256(assembled).hexdigest(),
         )
         self.assertEqual(39_054, len(styles))
@@ -84,8 +84,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "0d7db08f93e91e944989b1a44c587a3fadce368ac4ce7c0d3f1d1d449c7652a6",
             ),
             "controls.js": (
-                3_382,
-                "ca8282870edbf67b14c78e533e1caeb182318632524a6bf6ff3741d78870ffcc",
+                3_363,
+                "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
                 26_824,
@@ -96,8 +96,12 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "79b0396140c35ad4b34b9656b692ed45855fb04e63a2165610531b5d4aa54984",
             ),
             "main.js": (
-                8_025,
-                "0890ca1a3c6ca4233edd66e4e69a42617369c3371ad434dce1fa148e1f287f6f",
+                7_985,
+                "d756dcc8bfc7a67fab0e2aa085e897e52d611ac8a96c4f1bb3e1f42b6fa59faf",
+            ),
+            "live.js": (
+                4_539,
+                "5be946fd88223c24ff78b74bdd65ce239b9ec1e0e30fa30c47d67296d756ef56",
             ),
         }
         self.assertEqual(tuple(expected_parts), frontend_page.APP_PARTS)

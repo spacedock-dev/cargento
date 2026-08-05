@@ -102,7 +102,7 @@ function render(d){
   app.innerHTML = modeBar() +
     `<div class="top"><div><div class="brand">Cargento</div>` +
     `<div class="sub"><span class="live" id="live-dot"></span>` +
-    `<span id="live-status">live · updated ${new Date(d.generated*1000).toLocaleTimeString()} · auto-refresh 5s</span>` +
+    `<span id="live-status">live · updated ${new Date(d.generated*1000).toLocaleTimeString()}${LIVE_SUPPORTED ? "" : " · auto-refresh 5s"}</span>` +
     (d.show_all ? " · showing all" : "") + notifyControl(d) + `</div></div>` +
     `<div class="hstrip">${harnessStrip(d.harnesses)}</div></div>` + body + usageModal(d);
   renderInProgress = false;
@@ -158,9 +158,7 @@ async function refresh(){
     if(dot) dot.classList.add("stalled");
     if(status){
       const updated = new Date(lastData.generated*1000).toLocaleTimeString();
-      status.textContent = `stalled · last update ${updated} · retrying every 5s`;
+      status.textContent = `stalled · last update ${updated} · retrying`;
     }
   }
 }
-refresh();
-let refreshTimer = setInterval(refresh, 5000);

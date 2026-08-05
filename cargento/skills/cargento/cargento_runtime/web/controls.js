@@ -53,7 +53,7 @@ async function requestStop(){
 function renderStopped(){
   /* Not the "stalled" banner: nothing is retrying, nothing is coming back,
      and the reader is the one who ended it. */
-  if(refreshTimer !== null){ clearInterval(refreshTimer); refreshTimer = null; }
+  stopLive();  /* clears both timers and closes the stream */
   document.title = "Cargento — stopped";
   const app = document.getElementById("app");
   if(!app) return;
