@@ -115,6 +115,12 @@ CLAUDE_EVENTS = {
 # requested and the hook has nothing to be asked about. Enabling the
 # `exec_permission_approvals` feature changed nothing. Its payload is therefore
 # unmeasured, which is the same reason Gemini's `Notification` is unmapped.
+#
+# One extra reason not to register it casually: alone among Codex's hooks it gets to
+# decide, `hookSpecificOutput.decision.behavior` being exactly `allow` or `deny`.
+# Emitting nothing is the documented way to decline, which is what this script does on
+# every path, but three reserved `decision` fields fail closed, so a forwarder that
+# grew one by mistake would block a user's tool call. See the design doc.
 CODEX_EVENTS = {
     "SessionStart": "session_started",
     "UserPromptSubmit": "turn_started",

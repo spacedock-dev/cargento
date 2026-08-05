@@ -726,7 +726,7 @@ been made.
 The vendor documents it, and has for months. OpenAI's Codex documentation (now on
 `learn.chatgpt.com`; the `developers.openai.com/codex/*` paths 308-redirect there)
 describes `PermissionRequest` as a shipped hook that runs before Codex asks for
-approval and may allow, deny or decline. It landed in `rust-v0.122.0` on 2026-04-20
+approval and may allow or deny. It landed in `rust-v0.122.0` on 2026-04-20
 and was extended in `rust-v0.145.0` on 2026-07-21. Nothing removed it. So the
 negative was not merely unsupported by its evidence, it was contradicted by the
 vendor's own documentation for the whole time it stood.
@@ -786,18 +786,31 @@ and the rule is that a mapping ships on a capture.
 
 **And a hazard that has to be settled before this event is ever registered, whatever
 the mapping.** Alone among Codex's hooks, a permission hook gets to *decide*:
-`hookSpecificOutput.decision.behavior` accepts `allow` or `deny`, and a denial
-surfaces as "PermissionRequest hook denied approval". That is strictly more authority
-than `PreToolUse` has, which rejects both `decision: approve` and
-`permissionDecision: allow` as unsupported. A cartography tool must never be able to
-approve a tool call, and the documented resolution order makes that sharper than it
-sounds: a permission hook resolves *before* both the auto-review guardian and the
-user, so its answer is not a suggestion that a human then confirms. `event_hook.py` writes nothing to stdout and exits 0 on every
-path, which is almost certainly read as "no opinion", but *almost certainly* is not
-the standard the rest of this document holds itself to. Before `PermissionRequest`
-appears in any bundled hooks file, the no-output path must be shown not to be read as
-a decision. Registering it for observability alone would otherwise put a dashboard in
-the approval path.
+`hookSpecificOutput.decision.behavior` accepts exactly `allow` or `deny`, with no
+third value, and a denial surfaces as "PermissionRequest hook denied approval". That
+is strictly more authority than `PreToolUse` has, which rejects both
+`decision: approve` and `permissionDecision: allow` as unsupported. Note the shape:
+unlike `PreToolUse`, `PermissionRequest` has *no* top-level `decision` field, and its
+message rides on `hookSpecificOutput.decision.message` rather than a top-level
+`reason`. The documented resolution order makes the authority sharper than it sounds:
+a permission hook resolves *before* both the auto-review guardian and the user, so its
+answer is not a suggestion that a human then confirms.
+
+Declining is the absence of a decision rather than a third enum value: omit
+`hookSpecificOutput.decision` and normal handling proceeds. That is what
+`event_hook.py` already does, since it writes nothing to stdout and exits 0 on every
+path, so silence is the documented no-opinion path rather than a lucky accident.
+
+What is *not* safe is stray output. Three `decision` fields are documented as reserved
+and **fail closed**: `interrupt: true`, or the presence of `updatedInput` or
+`updatedPermissions`, each causes the hook to fail closed. So a forwarder that grew a
+field by mistake would not approve a tool call, it would block one. That is the safer
+direction of the two, and it is still a dashboard interfering with a user's session.
+
+Before `PermissionRequest` appears in any bundled hooks file, the no-output path should
+be confirmed against a real firing event rather than against a schema, and the
+forwarder's output kept provably empty. A cartography tool must be unable to decide
+either way.
 
 The dispatch site is narrower than the event name suggests:
 `Approvable::permission_request_payload` is implemented for the shell, apply-patch and
