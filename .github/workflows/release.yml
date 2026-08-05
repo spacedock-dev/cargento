@@ -174,9 +174,12 @@ jobs:
           python3 scripts/validate_plugins.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cargento/.claude-plugin/plugin.json \
-                  cargento/.codex-plugin/plugin.json \
-                  cargento/gemini-extension.json
+          # Read from bump_version.py rather than restated here. This list was
+          # hardcoded and drifted the moment the Gemini manifest moved out of the
+          # plugin root: the bump succeeded, then `git add` failed on a path that
+          # no longer existed and took the release down mid-run.
+          # shellcheck disable=SC2046 # word splitting is the point: one path per line
+          git add $(python3 scripts/bump_version.py --paths)
           # -s: DCO sign-off (as github-actions[bot]) per repo convention.
           git commit -s -m "chore(release): $TAG" -m "Bump plugin version to $VERSION (tag-driven release)."
           # No --force: if main advanced mid-run this rejects cleanly and a

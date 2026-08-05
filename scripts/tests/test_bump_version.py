@@ -98,3 +98,68 @@ class BumpVersionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManifestPathsTest(unittest.TestCase):
+    """`--paths` exists so the Release workflow stops restating this list.
+
+    It was restated, and it drifted the moment the Gemini manifest moved out of the
+    plugin root. The bump succeeded, `validate_plugins.py` passed, and then
+    `git add` failed on `cargento/gemini-extension.json`, which no longer existed.
+    That took the release down after the version fields had already been rewritten,
+    which is the worst point in the run to fail at: nothing was pushed, but the tag
+    had been created and release tags are immutable.
+    """
+
+    def test_paths_prints_every_owned_manifest_repo_relative(self) -> None:
+        with mock.patch.object(sys, "stdout", new_callable=_Capture) as out:
+            self.assertEqual(0, bump_version.main(["--paths"]))
+        printed = out.text().split()
+        expected = [
+            path.relative_to(bump_version.ROOT).as_posix() for path in bump_version.MANIFESTS
+        ]
+        self.assertEqual(expected, printed)
+        self.assertEqual(3, len(printed), "three manifests carry the version field")
+
+    def test_every_printed_path_exists(self) -> None:
+        # The failure mode this guards is a path that is listed but absent, which is
+        # exactly what the workflow hit.
+        for path in bump_version.MANIFESTS:
+            with self.subTest(path=path.name):
+                self.assertTrue(path.is_file(), f"{path} is listed but missing")
+
+    def test_the_release_workflow_derives_the_paths_rather_than_restating_them(self) -> None:
+        """The guard that would have caught the outage.
+
+        A literal manifest path inside the workflow's staging step is the drift that
+        broke v0.7.0. Deriving them means the workflow cannot disagree with the
+        script that rewrites them.
+        """
+        workflow = (bump_version.ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        self.assertIn("bump_version.py --paths", workflow)
+        staged = [line for line in workflow.splitlines() if line.strip().startswith("git add")]
+        self.assertEqual(1, len(staged), "one staging step")
+        for path in bump_version.MANIFESTS:
+            with self.subTest(path=path.name):
+                self.assertNotIn(
+                    path.relative_to(bump_version.ROOT).as_posix(),
+                    staged[0],
+                    "stage the derived list, not a literal path",
+                )
+
+
+class _Capture:
+    """Minimal stdout stand-in; `io.StringIO` would need a `flush` on some paths."""
+
+    def __init__(self) -> None:
+        self._chunks: list[str] = []
+
+    def write(self, chunk: str) -> int:
+        self._chunks.append(chunk)
+        return len(chunk)
+
+    def flush(self) -> None:
+        return None
+
+    def text(self) -> str:
+        return "".join(self._chunks)

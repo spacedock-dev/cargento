@@ -91,6 +91,16 @@ def main(argv: list[str]) -> int:
     if len(argv) == 1 and argv[0] == "--current":
         print(current_version())
         return 0
+    if len(argv) == 1 and argv[0] == "--paths":
+        # Repository-relative, one per line, for the Release workflow to stage.
+        # The workflow used to hardcode this list, and drifted from it the moment
+        # the Gemini manifest moved out of the plugin root: `bump_version.py`
+        # rewrote three files and `git add` then failed on a path that no longer
+        # existed, taking the release down after the bump had already succeeded.
+        # One source of truth, read rather than restated.
+        for path in MANIFESTS:
+            print(path.relative_to(ROOT).as_posix())
+        return 0
     if len(argv) == 1 and not argv[0].startswith("-"):
         bump(argv[0])
         return 0
