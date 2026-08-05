@@ -16,6 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import agy_hook
 import event_hook
 import notify_hook
 import statusline_hook
@@ -1109,3 +1110,158 @@ class StatuslinePushTest(unittest.TestCase):
             self.posts.clear()
             self.push(self.payload())
         self.assertTrue(self.posts, "a failed memo write must not stop the next push")
+
+
+class AntigravityHookTest(unittest.TestCase):
+    """`agy_hook.py`: a third input contract, with a gate hazard attached."""
+
+    def payload(self, **overrides: Any) -> dict[str, Any]:
+        # camelCase, as Antigravity's protojson encoding produces.
+        payload: dict[str, Any] = {
+            "conversationId": AGY_SESSION,
+            "stepIdx": 3,
+            "workspacePaths": ["/w/proj"],
+            "transcriptPath": "/store/secret.jsonl",
+            "artifactDirectoryPath": "/store/artifacts",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_the_id_is_read_from_camelcase_not_snake_case(self) -> None:
+        # An adapter reading `session_id` here finds nothing and posts nothing,
+        # successfully, which is the failure mode this test exists to prevent.
+        self.assertEqual(AGY_SESSION, agy_hook.conversation_id(self.payload()))
+        self.assertIsNone(agy_hook.conversation_id({"session_id": AGY_SESSION}))
+
+    def test_the_environment_variable_is_the_fallback(self) -> None:
+        # `agy` sets ANTIGRAVITY_CONVERSATION_ID for hook processes, so a payload
+        # that changed shape does not take the adapter out entirely.
+        with unittest.mock.patch.dict(os.environ, {"ANTIGRAVITY_CONVERSATION_ID": AGY_SESSION}):
+            self.assertEqual(AGY_SESSION, agy_hook.conversation_id({}))
+
+    def test_a_blank_id_yields_nothing(self) -> None:
+        self.assertIsNone(agy_hook.conversation_id(self.payload(conversationId="")))
+
+    def test_an_id_of_the_wrong_length_is_refused(self) -> None:
+        # Checked as exactly 36, not merely non-empty. The collector keys on the
+        # stem of a real conversations/<id>.db, so a short value is not a near
+        # miss to tolerate; it is a key that matches nothing.
+        for candidate in ("abc", AGY_SESSION[:-1], AGY_SESSION + "0"):
+            with self.subTest(candidate=candidate):
+                self.assertIsNone(agy_hook.conversation_id(self.payload(conversationId=candidate)))
+
+    def test_it_posts_nothing_without_a_capability(self) -> None:
+        # A dashboard that publishes none, or one run with --no-events. The hook
+        # still has to print its empty object, because that is what the harness
+        # reads back.
+        payload = json.dumps(self.payload()).encode()
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            unittest.mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+            unittest.mock.patch.object(agy_hook, "_shared") as shared,
+            unittest.mock.patch.object(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload))),
+            unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            self.assertEqual(0, agy_hook.main(["agy_hook.py", "PostToolUse"]))
+        shared.assert_not_called()
+        self.assertEqual({}, json.loads(out.getvalue()))
+
+    def test_only_the_post_hooks_are_forwarded(self) -> None:
+        for hook in ("PostToolUse", "PostInvocation"):
+            with self.subTest(hook):
+                built = agy_hook.envelope(hook, self.payload())
+                assert built is not None
+                self.assertEqual("store_changed", built["event"])
+
+    def test_nothing_asserts_a_turn_boundary(self) -> None:
+        # The design's rule for this harness: its hooks are hints, not asserted
+        # user-turn boundaries, because one turn may contain several invocations.
+        # Cardinality is unmeasured, so mapping Stop to turn_stopped would risk
+        # flapping a row mid-turn.
+        for hook in ("PreToolUse", "PreInvocation", "Stop"):
+            with self.subTest(hook):
+                self.assertIsNone(agy_hook.envelope(hook, self.payload()))
+
+    def test_the_envelope_leaks_no_paths_but_the_matching_hint(self) -> None:
+        built = agy_hook.envelope("PostToolUse", self.payload())
+        assert built is not None
+        self.assertLessEqual(set(built), set(events.ALLOWED_FIELDS))
+        rendered = json.dumps(built)
+        self.assertNotIn("secret.jsonl", rendered)
+        self.assertNotIn("artifacts", rendered)
+        self.assertEqual("/w/proj", built["cwd"])
+
+    def test_the_server_accepts_what_it_sends(self) -> None:
+        built = agy_hook.envelope("PostInvocation", self.payload())
+        assert built is not None
+        parsed = events.parse(
+            "antigravity", built, arrival_seq=1, config=support.make_config(), now=NOW
+        )
+        assert isinstance(parsed, events.Event)
+        self.assertEqual("store_changed", parsed.event)
+        self.assertEqual(AGY_SESSION, parsed.sid)
+
+    def test_it_always_prints_exactly_an_empty_json_object(self) -> None:
+        # The gate hazard. PreToolUse output can carry a `decision` of allow, deny,
+        # ask or force_ask, so anything this script printed there could block the
+        # user's tool calls. It says one thing, on every path.
+        for stdin_bytes in (
+            b"",
+            b"{not json",
+            b"[1,2]",
+            json.dumps({"conversationId": AGY_SESSION}).encode(),
+        ):
+            with self.subTest(stdin=stdin_bytes[:12]):
+                with (
+                    unittest.mock.patch.object(
+                        sys, "stdin", SimpleNamespace(buffer=io.BytesIO(stdin_bytes))
+                    ),
+                    unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+                ):
+                    code = agy_hook.main(["agy_hook.py", "PreToolUse"])
+                self.assertEqual(0, code)
+                self.assertEqual({}, json.loads(out.getvalue()))
+
+    def test_it_prints_the_empty_object_even_when_posting(self) -> None:
+        payload = json.dumps(self.payload()).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "cargento-4553.json").write_text(
+                json.dumps({"capabilities": {"antigravity": AGY_TOKEN}})
+            )
+            posted: list[Any] = []
+            fake = SimpleNamespace(
+                forward=lambda url, _body, headers=None: posted.append((url, headers))
+            )
+            with (
+                unittest.mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+                unittest.mock.patch.object(agy_hook, "_shared", lambda: fake),
+                unittest.mock.patch.object(
+                    sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload))
+                ),
+                unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+            ):
+                self.assertEqual(0, agy_hook.main(["agy_hook.py", "PostToolUse"]))
+        self.assertEqual({}, json.loads(out.getvalue()))
+        self.assertEqual("http://127.0.0.1:4553/api/events/antigravity", posted[0][0])
+        self.assertEqual({"X-Cargento-Capability": AGY_TOKEN}, posted[0][1])
+
+    def test_the_bundled_file_registers_only_the_hooks_the_adapter_forwards(self) -> None:
+        # Antigravity's schema has no `hooks` wrapper: each top-level key is an
+        # event name. Cargento's validator rejected the file until it learned that,
+        # which is how the difference was found.
+        bundled = json.loads(
+            (Path(__file__).resolve().parents[3] / "hooks.json").read_text(encoding="utf-8")
+        )
+        self.assertNotIn("hooks", bundled, "Antigravity events are top-level keys")
+        self.assertEqual(set(agy_hook.STORE_CHANGED_HOOKS), set(bundled))
+
+    def test_the_bundled_file_uses_both_handler_layouts_correctly(self) -> None:
+        # Tool-scoped events group handlers under a matcher; loop-scoped events
+        # list them directly. Antigravity's own validator enforces this, and
+        # getting it wrong means the half in the wrong shape never runs.
+        bundled = json.loads(
+            (Path(__file__).resolve().parents[3] / "hooks.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("matcher", bundled["PostToolUse"][0])
+        self.assertNotIn("matcher", bundled["PostInvocation"][0])
+        self.assertEqual("command", bundled["PostInvocation"][0]["type"])

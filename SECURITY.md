@@ -10,9 +10,14 @@ makes one kind of outbound request, the quota poll described in Usage quota read
 fetcher); it carries no session data. Three small forwarders ship beside it, each wired into a
 harness's own configuration by the user or by the plugin: `notify_hook.py` POSTs a Claude
 `Notification` payload to the dashboard, `event_hook.py` posts command-hook lifecycle events for
-Claude and Codex, and `statusline_hook.py` posts Antigravity's status-line state. All three share one
-transport, so the loopback check, the proxy suppression and the redirect refusal have a single
-implementation.
+Claude and Codex, `agy_hook.py` posts Antigravity's hook events, and `statusline_hook.py` posts
+Antigravity's status-line state. All four share one transport, so the loopback check, the proxy
+suppression and the redirect refusal have a single implementation.
+
+One of them runs somewhere it could do harm. Antigravity's `PreToolUse` hook may return a `decision`
+that allows, denies or re-prompts a tool call, so a reporting hook there can block the user's work.
+`agy_hook.py` prints exactly `{}` and nothing else, on every path including every failure path, and a
+test asserts that for malformed, empty and valid input alike.
 
 The posture rests on two invariants:
 

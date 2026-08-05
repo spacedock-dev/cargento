@@ -92,13 +92,16 @@ class ValidatorTests(unittest.TestCase):
         # so `tests/` and `agents/` stay out.
         plugin_root = validator.ROOT / "cargento"
         shipped = {path.relative_to(plugin_root).as_posix() for path in skill.glob("*.py")}
-        # Plugin-root hook definitions count too. They are not read by the
-        # dashboard, but they fail the same way: absent from an install, the
-        # harness registers no hooks and reports no events, silently.
+        # Hook definitions count too. They are not read by the dashboard, but they
+        # fail the same way: absent from an install, the harness registers no hooks
+        # and reports no events, silently. Both locations, because the harnesses
+        # disagree: Claude and Codex read files under `hooks/`, Antigravity reads a
+        # root `hooks.json`.
         shipped |= {
             path.relative_to(plugin_root).as_posix()
             for path in (plugin_root / "hooks").glob("*.json")
         }
+        shipped |= {path.name for path in plugin_root.glob("hooks.json") if path.is_file()}
         for path in (skill / "cargento_runtime").rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts:
                 continue
@@ -375,7 +378,7 @@ class ValidatorTests(unittest.TestCase):
             validator.validate_hooks_adapter(plugin_root, validation)
             self.assertEqual([], validation.errors)
 
-    def test_a_bundled_hooks_file_with_no_hooks_is_rejected(self) -> None:
+    def test_a_bundled_hooks_file_registering_nothing_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             (plugin_root / "hooks").mkdir(parents=True)
@@ -384,7 +387,7 @@ class ValidatorTests(unittest.TestCase):
             validation = validator.Validation()
             validator.validate_hooks_adapter(plugin_root, validation)
 
-            self.assertTrue(any("no hooks object" in e for e in validation.errors))
+            self.assertTrue(any("registers no events" in e for e in validation.errors))
 
     def test_two_harnesses_may_bundle_different_hooks_files(self) -> None:
         # The whole point of dropping parity. Claude fires UserPromptSubmit and
@@ -786,3 +789,59 @@ class ValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BundledHooksSchemaTests(unittest.TestCase):
+    """The two hook schemas Cargento ships, which are not the same shape."""
+
+    def _validate(self, document: object, *, ship_script: bool) -> list[str]:
+        with tempfile.TemporaryDirectory(prefix="cargento-hooks-schema-") as directory:
+            plugin_root = Path(directory) / "plug"
+            (plugin_root / "skills/cargento").mkdir(parents=True)
+            if ship_script:
+                (plugin_root / "skills/cargento/agy_hook.py").write_text("#\n")
+            (plugin_root / "hooks.json").write_text(json.dumps(document))
+            validation = validator.Validation()
+            validator.validate_hooks_adapter(plugin_root, validation)
+            return validation.errors
+
+    def test_an_unwrapped_antigravity_file_is_understood(self) -> None:
+        # Antigravity's guide states that each top-level key is a hook name, with
+        # no `hooks` wrapper. Requiring the wrapper rejected a file Antigravity's
+        # own validator had just accepted, which is how this was found.
+        document = {
+            "PostToolUse": [
+                {
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
+                        }
+                    ],
+                }
+            ]
+        }
+        self.assertEqual([], self._validate(document, ship_script=True))
+        self.assertTrue(
+            any("agy_hook.py" in e for e in self._validate(document, ship_script=False))
+        )
+
+    def test_a_flat_handler_list_is_walked_too(self) -> None:
+        # Antigravity uses both layouts in one file: tool-scoped events group their
+        # handlers under a matcher, loop-scoped events list them directly. A walker
+        # that understood only the grouped form would check nothing in the flat
+        # half, so a missing script there would ship unnoticed.
+        document = {
+            "PostInvocation": [
+                {
+                    "type": "command",
+                    "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
+                }
+            ]
+        }
+        self.assertEqual([], self._validate(document, ship_script=True))
+        self.assertTrue(
+            any("agy_hook.py" in e for e in self._validate(document, ship_script=False)),
+            "a flat handler's command went unchecked",
+        )

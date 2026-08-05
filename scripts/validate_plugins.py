@@ -97,10 +97,12 @@ CARGENTO_RUNTIME_FILES = (
     # missing it silently reports no Codex events at all rather than failing.
     "hooks/hooks.json",
     "hooks/codex-hooks.json",
+    "hooks.json",
     "skills/cargento/server.py",
     "skills/cargento/notify_hook.py",
     "skills/cargento/event_hook.py",
     "skills/cargento/statusline_hook.py",
+    "skills/cargento/agy_hook.py",
     "skills/cargento/cargento_runtime/__init__.py",
     "skills/cargento/cargento_runtime/cli.py",
     "skills/cargento/cargento_runtime/config.py",
@@ -664,11 +666,11 @@ def validate_hooks_adapter(plugin_root: Path, validation: Validation) -> None:
         if not path.is_file():
             continue
         document = load_json(path, validation)
-        if document is None:
+        if document is None or not isinstance(document, dict):
             continue
-        events = document.get("hooks") if isinstance(document, dict) else None
-        if not isinstance(events, dict) or not events:
-            validation.error(path, "bundled hooks file has no hooks object")
+        events = _hook_events(document)
+        if not events:
+            validation.error(path, "bundled hooks file registers no events")
             continue
         for command in _hook_commands(events):
             for script in _referenced_plugin_paths(command):
@@ -676,18 +678,40 @@ def validate_hooks_adapter(plugin_root: Path, validation: Validation) -> None:
                     validation.error(path, f"hook command references missing {script}")
 
 
+def _hook_events(document: dict[str, Any]) -> dict[str, Any]:
+    """The event map, whichever of the two shipped schemas this file uses.
+
+    Claude and Codex wrap the events in a `hooks` object. Antigravity does not:
+    its guide states that each top-level key *is* a hook name. Requiring the
+    wrapper rejected a file Antigravity's own validator had just accepted, which
+    is how this difference was found.
+    """
+    wrapped = document.get("hooks")
+    if isinstance(wrapped, dict):
+        return wrapped
+    return {key: value for key, value in document.items() if isinstance(value, list)}
+
+
 def _hook_commands(events: Any) -> list[str]:
-    """Every command string in a hooks document, however deeply nested."""
+    """Every command string in a hooks document, in either handler layout.
+
+    Two layouts ship, and Antigravity uses both in one file. Tool-scoped events
+    group their handlers under a `matcher`; its loop-scoped events list handlers
+    directly. A walker that understood only the grouped form would silently check
+    nothing in the flat half.
+    """
     found: list[str] = []
-    for groups in events.values():
-        if not isinstance(groups, list):
+    for entries in events.values():
+        if not isinstance(entries, list):
             continue
-        for group in groups:
-            if not isinstance(group, dict):
+        for entry in entries:
+            if not isinstance(entry, dict):
                 continue
+            if isinstance(entry.get("command"), str):
+                found.append(entry["command"])  # flat: a handler directly
             found.extend(
                 hook["command"]
-                for hook in group.get("hooks") or []
+                for hook in entry.get("hooks") or []
                 if isinstance(hook, dict) and isinstance(hook.get("command"), str)
             )
     return found

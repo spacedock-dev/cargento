@@ -194,7 +194,11 @@ Five events are registered, which is exactly what a real capture showed firing: 
 
 ### Antigravity
 
-Antigravity pushes a state snapshot through its status line rather than firing hooks, and a status line cannot be plugin-bundled, so this one is opt-in. Point it at `statusline_hook.py`, which forwards both the quota figures and the lifecycle state:
+Antigravity has two paths, and they do different jobs.
+
+**Hooks are bundled with the plugin** (`hooks.json` at the plugin root), so nothing needs configuring for them. They fire after a tool step and after a model invocation, and they only tell the dashboard the store probably moved, which keeps an Antigravity row fresh without waiting for the next scan. They deliberately claim nothing about whether the agent is working or idle: Antigravity's hooks can fire several times in one turn, so treating them as turn boundaries would flap the row.
+
+**Working and Idle state comes from the status line**, which cannot be plugin-bundled, so that half is opt-in. Point it at `statusline_hook.py`, which forwards both the quota figures and the lifecycle state:
 
 ```json
 "statusLine": {"command": "python3 \"<skill-dir>/statusline_hook.py\"", "enabled": true}

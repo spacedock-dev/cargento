@@ -557,6 +557,68 @@ snapshots while the TUI runs, but does not document a guaranteed start, end or f
 collectors and reconciliation remain authoritative for definitive session lifecycle. The hooks are
 what can be installed without separate user configuration.
 
+#### Antigravity hooks: distribution and schema MEASURED, payload documented only
+
+`agy plugin validate` on a copy reports `hooks: 5 processed` for a **root
+`hooks.json`**, which settles both the location and the schema. Two schema facts
+matter, and neither matches Claude:
+
+1. **There is no `hooks` wrapper.** Each top-level key is a hook name. Cargento's
+   own validator rejected the file until it learned this, having required the
+   wrapper that Claude and Codex use.
+2. **Two handler layouts in one file.** `PreToolUse` and `PostToolUse` group their
+   handlers under a `matcher`; `PreInvocation`, `PostInvocation` and `Stop` list
+   handlers directly. A file using the wrong layout for either half has that half
+   silently ignored.
+
+From the guide embedded in the `agy` binary, which is stronger than a web page but
+is still documentation rather than capture: payload keys are camelCase protojson,
+so the id is `conversationId`; every payload carries it alongside
+`workspacePaths`, `transcriptPath` and `artifactDirectoryPath`; a hook must print
+a JSON object on stdout; and **`PreToolUse` output can gate the tool** with a
+`decision` of `allow`, `deny`, `ask` or `force_ask`. That last one is why
+`agy_hook.py` prints exactly `{}` on every path including every failure path: a
+reporting hook has no business being able to block a user's tool call.
+
+The hooks could not be made to fire under `agy --print`, at either the workspace
+`.agents/hooks.json` or the CLI customization root, so **cardinality and ordering
+are unmeasured**. That is why the adapter maps so little: only `PostToolUse` and
+`PostInvocation`, and only to `store_changed`, which claims nothing about what the
+agent is doing. Mapping `PreInvocation` to `turn_started` or `Stop` to
+`turn_stopped` without knowing how often they fire per turn would risk flapping a
+row mid-turn, which is the rule this document already sets for this harness.
+
+So the two Antigravity paths divide cleanly: **hooks give freshness and install
+with the plugin; the status line gives state and is opt-in.**
+
+#### Codex has no permission hook, and its subagent hooks stay unmapped
+
+A negative result worth recording so nobody looks for it twice. This document
+previously said Codex hooks "expose session start/end, prompt submission, pre- and
+post-tool events, permission requests, stops, and subagent lifecycle". The
+permission half is wrong.
+
+Evidence from a live install rather than a reading: `~/.codex/config.toml`
+accumulates a `trusted_hash` under
+`[hooks.state."<source>:<snake_case_event>:<group>:<index>"]` for every hook Codex
+has actually registered. Across two independent hooks files, one from a plugin and
+one user-written, the events recorded are `session_start`, `user_prompt_submit`,
+`pre_tool_use`, `post_tool_use`, `subagent_start`, `subagent_stop`, `stop`,
+`pre_compact` and `post_compact`. **There is no permission event and no
+task-completed event.** Registering a name Codex does not know appears to
+invalidate the whole file: a nine-event file including invented names produced zero
+hook invocations, where a five-event file of proven names had worked moments
+before.
+
+`subagent_start` and `subagent_stop` are real, but their payloads are still
+unmeasured and so stay out of `CODEX_EVENTS`. Capturing them needs a session that
+actually spawns a subagent, and `codex exec` exposes no way to do that: a prompt
+asking for one hangs until the timeout, because the model has no subagent tool in
+that mode. What the overlay needs from those payloads is specifically whether the
+id is the parent's or the child's, since a subagent overlay attaches to the
+parent's row and carries the child in `subagent_id`. Guessing that wrong attaches
+child activity to a row that does not exist.
+
 #### Antigravity status-line semantics: MEASURED, and the documented field list was wrong
 
 Captured from two real `agy` sessions, 37 status-line pushes, with the recorder wired through
