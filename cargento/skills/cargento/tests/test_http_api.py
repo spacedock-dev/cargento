@@ -203,6 +203,63 @@ class CargentoServerTest(RuntimeTestCase):
         self.assertIsNotNone(snap.current((24, False)))
         self.assertIsNotNone(snap.current((24, True)))
 
+    @staticmethod
+    def _get_headers(port: int, path: str) -> tuple[int, email.message.Message, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", path)
+            response = conn.getresponse()
+            return response.status, response.headers, response.read()
+        finally:
+            conn.close()
+
+    def test_api_data_names_the_revision_it_served(self) -> None:
+        """A client cannot hold a cursor it cannot see.
+
+        The revision rides in a header, not the body, so the documented JSON
+        contract and every curl caller are untouched.
+        """
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = httpd.server_port
+            _code, headers, body = self._get_headers(port, "/api/data")
+            first = headers["X-Cargento-Revision"]
+            self.assertRegex(first, r"^\d+\.\d+$")
+            # The body still parses and still carries its documented keys.
+            payload = json.loads(body)
+            self.assertIn("sessions", payload)
+            self.assertIn("generated", payload)
+            # A warm re-read serves the same revision.
+            _code, headers, _body = self._get_headers(port, "/api/data")
+            self.assertEqual(first, headers["X-Cargento-Revision"])
+            # A stale read mints a higher counter against the same start stamp.
+            state_of().snapshot.clear()
+            _code, headers, _body = self._get_headers(port, "/api/data")
+            second = headers["X-Cargento-Revision"]
+            self.assertEqual(first.split(".")[0], second.split(".")[0])
+            self.assertGreater(int(second.split(".")[1]), int(first.split(".")[1]))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_only_api_data_carries_a_revision(self) -> None:
+        """A page load or a liveness probe must not look like a cursor."""
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for path in ("/", "/api/health"):
+                with self.subTest(path=path):
+                    _code, headers, _body = self._get_headers(httpd.server_port, path)
+                    self.assertIsNone(headers.get("X-Cargento-Revision"))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
     def test_a_requested_window_reaches_the_collection_and_its_memo_key(self) -> None:
         # The window is a request-time argument: /api/data must collect and
         # report the window it was asked for, not the configured default.

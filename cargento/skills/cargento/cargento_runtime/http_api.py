@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime import notifications, quota
+from cargento_runtime import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
     from cargento_runtime.aggregate import Application
@@ -184,11 +185,20 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self.headers.get("Sec-Fetch-Dest") or ""
         ).lower() == "document"
 
-    def _send(self, body: bytes, ctype: str, code: int = 200) -> None:
+    def _send(
+        self,
+        body: bytes,
+        ctype: str,
+        code: int = 200,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -257,8 +267,14 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # request without the parameter never triggers network traffic.
             if query.get("usage", ["0"])[0] == "1":
                 self.server.application.request_usage_fetch()
-            _revision, body = self.server.application.collect_json(show_all=show_all)
-            self._send(body, "application/json")
+            revision, body = self.server.application.collect_json(show_all=show_all)
+            # The cursor rides in a header rather than the body, so the
+            # documented JSON contract and every curl caller stay untouched.
+            self._send(
+                body,
+                "application/json",
+                headers={"X-Cargento-Revision": runtime_snapshot.format_revision(revision)},
+            )
         elif url.path == "/api/health":
             self._health()
         elif url.path == "/":

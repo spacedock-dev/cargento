@@ -920,6 +920,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.quota",
+            "cargento_runtime.snapshot",
         },
         "cargento_runtime.lifecycle": {
             "cargento_runtime.config",
