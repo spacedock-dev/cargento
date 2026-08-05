@@ -690,6 +690,91 @@ These hooks are synchronous in at least some implementations, which puts the for
 user's own agent latency. The forwarding command must do no collection work itself, must use a short
 bounded loopback request, and must not make an unavailable dashboard visible as a harness failure.
 
+#### Gemini CLI adapter semantics: MEASURED, and the harness is not legacy
+
+Evidence: [`docs/captures/gemini/`](../captures/gemini/), from Gemini CLI 0.53.1 on macOS.
+
+**The premise was wrong before the payloads were.** This document and the collector both described the
+Gemini store as legacy. Gemini CLI 0.53.1 published on 2026-07-31, nightly builds were still landing
+two days before this measurement, the package is not deprecated, and a real 0.53.1 session was
+observed writing `<tmp>/<project>/chats/session-*.jsonl`, the exact layout `collectors/gemini.py`
+globs. Consumer access ended; the CLI did not.
+
+**How a real session was reached without a credential.** The auth check runs before any hook fires, so
+an unauthenticated run produces nothing at all: exit 41 and zero hooks. Consumer accounts are no
+longer served, so there is no ordinary login to use. The route that worked is
+`GOOGLE_GEMINI_BASE_URL` pointed at a loopback stand-in for the API, with an isolated
+`GEMINI_CLI_HOME`. Every hook, store write and session id in the capture is genuine; only the model
+was substituted. That also made the model's behavior scriptable, which is how a tool call was
+exercised deliberately rather than hoped for.
+
+**Vocabulary, cardinality and ordering.** Four turns, 56 hook invocations, identical ordering 4 out of
+4:
+
+```text
+SessionStart -> BeforeAgent -> PreCompress -> BeforeModel -> BeforeToolSelection -> AfterModel
+             -> BeforeTool -> AfterTool
+             -> PreCompress -> BeforeModel -> BeforeToolSelection -> AfterModel
+             -> AfterAgent -> SessionEnd
+```
+
+`BeforeAgent` and `AfterAgent` fired exactly once per turn and bound it. `BeforeTool` and `AfterTool`
+fired once per tool call. `PreCompress`, `BeforeModel`, `BeforeToolSelection` and `AfterModel` fired
+once per model round trip, twice in a turn with one tool call, which is why none of them is a session
+signal. The payload is the same snake_case shape Claude and Codex send, down to `session_id`,
+`transcript_path`, `cwd`, `hook_event_name` and `timestamp`. That resemblance is deliberate: Gemini
+ships a `gemini hooks migrate` subcommand for porting Claude Code hooks across.
+
+**Identity: the whole id, matched against the store.** Five sessions, five exact matches between the
+hook's `session_id` and the `sessionId` on line 1 of the transcript the same session wrote, all 36
+characters. So `IDENTITY_NORMALIZERS["gemini"]` is the whole-uuid normalizer, not Claude's truncating
+one. The trap worth recording: the store *filename* carries only the first eight characters, so a
+mapping keyed on the name would key on a prefix the collector never reads.
+
+**Cost.** p50 0.16 ms, p95 0.43 ms, p99 0.61 ms, max 0.61 ms, macOS, hook self-cost across 56
+invocations. Linux and Windows remain unmeasured.
+
+**The one thing still unmeasured, and it is the one worth wanting.** `Notification` is documented as
+carrying `notification_type: "ToolPermission"`, which would be a first-class permission signal, better
+than Claude's ambiguous notification and better than Codex, which has no permission hook at all. It
+could not be captured, and not for want of trying: non-interactive Gemini offers no tool that needs
+approval. The advertised set was `glob`, `grep_search`, `list_directory`, `read_file`,
+`google_web_search`, `invoke_agent`, `update_topic` and `enter_plan_mode`, with no shell and no write
+tool, so no approval prompt can arise. It is therefore absent from `GEMINI_EVENTS`, on the same rule
+that keeps unmeasured Codex subagent events out. Capturing it needs an interactive session.
+
+#### Two harnesses cannot share one hooks file, and sharing one root shipped a defect
+
+Distribution turned out to be the hard part, and the collision is not avoidable by naming.
+
+Claude Code reads `<plugin root>/hooks/hooks.json` unconditionally. Declaring another path in
+`.claude-plugin/plugin.json`, or inlining the hooks object there, does not release the slot:
+`claude plugin validate --strict` still reads that file and rejects any event name it does not know.
+Gemini CLI reads `<extension>/hooks/hooks.json` and its reference states plainly that hooks "are not
+defined in the `gemini-extension.json` manifest", so it cannot be redirected either. Both were
+confirmed by running the two validators against the same directory.
+
+Before this was noticed, `cargento/` carried both `gemini-extension.json` and Claude's
+`hooks/hooks.json`, and the README told users to install that directory as a Gemini extension. What
+that produced, measured on a real session:
+
+- eight `Invalid hook event name ... Skipping.` warnings on stderr, one per Claude-only name;
+- the two names that do overlap, `SessionStart` and `SessionEnd`, registered and run, then reported to
+  the user as failed hooks, because Gemini does not expand `${CLAUDE_PLUGIN_ROOT}`;
+- 258 ms and 259 ms of synchronous cost per session, for nothing.
+
+That is precisely the failure this section warned about two paragraphs earlier: making an unavailable
+dashboard visible as a harness failure. The fix is a separate extension root, `cargento-gemini/`,
+holding the Gemini manifest, a Gemini-vocabulary `hooks/hooks.json` using `${extensionPath}`, and
+byte-identical copies of `event_hook.py` and `notify_hook.py`. The copies are the cost of the split:
+`gemini extensions install` copies the directory and a git-URL install clones it, so a command
+reaching outside the extension root does not resolve once installed.
+
+Two validator rules now hold the shape, because nothing in the build noticed the defect for a whole
+release. No bundled hooks file may register an event name its harness does not recognise, or pass
+another harness's name to `event_hook.py`; and a script that ships twice must be byte-identical in
+both places.
+
 ### OpenCode
 
 OpenCode has two native options:
@@ -1392,12 +1477,14 @@ The gates are independent. Verdicts, one per gate:
 
   Reconciliation therefore stays, and this is the concrete reason rather than a general caution. WSL,
   remote, bind and network stores are still unproven and retain the current cadence.
-- **Adapter semantics: MEASURED for Codex and Antigravity, still WAIVED for Claude.** Codex's
-  evidence is under [Codex](#codex): cardinality, ordering, per-event payload fields, a p99 hook cost
-  of 0.47 ms, and an identity mapping verified against the rollout the same session wrote.
+- **Adapter semantics: MEASURED for Codex, Antigravity and Gemini CLI, still WAIVED for Claude.**
+  Codex's evidence is under [Codex](#codex): cardinality, ordering, per-event payload fields, a p99
+  hook cost of 0.47 ms, and an identity mapping verified against the rollout the same session wrote.
   Antigravity's is under [Antigravity](#antigravity), and it corrected three field names this document
-  had taken from vendor documentation. Claude is the one harness still shipping on unmeasured
-  semantics, which is the irony worth noting: it is the harness this project runs inside.
+  had taken from vendor documentation. Gemini's is under
+  [Gemini CLI](#gemini-cli-copilot-and-factory-droid), and it corrected something larger than a field
+  name: the premise that the harness was legacy. Claude is the one harness still shipping on
+  unmeasured semantics, which is the irony worth noting: it is the harness this project runs inside.
 
 - **Claude adapter semantics: WAIVED by the maintainer, not cleared by evidence.** The gate asked for
   contract or real-CLI fixtures proving event meaning, cardinality and order, plus a p99 hook budget

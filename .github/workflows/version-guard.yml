@@ -100,7 +100,7 @@ jobs:
 
           check_field "cargento/.claude-plugin/plugin.json" '.version' "plugin manifest version"
           check_field "cargento/.codex-plugin/plugin.json" '.version' "codex manifest version"
-          check_field "cargento/gemini-extension.json" '.version' "Gemini CLI extension version"
+          check_field "cargento-gemini/gemini-extension.json" '.version' "Gemini CLI extension version"
 
           if [ "$FAIL" = "1" ]; then
             echo

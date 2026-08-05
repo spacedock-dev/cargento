@@ -166,16 +166,23 @@ class NormalizeSessionIdTest(unittest.TestCase):
         self.assertIsNone(events.normalize_session_id("goose", SESSION))
 
     def test_the_registry_only_holds_harnesses_whose_adapter_has_shipped(self) -> None:
-        # Each of these three had its mapping established against a real session
-        # before it was added. A fourth goes in the same way, not by analogy.
-        self.assertEqual({"claude", "codex", "antigravity"}, set(events.IDENTITY_NORMALIZERS))
+        # Each of these four had its mapping established against a real session
+        # before it was added. A fifth goes in the same way, not by analogy.
+        # Gemini's evidence is docs/captures/gemini/identity-0.53.1-macos.jsonl.
+        self.assertEqual(
+            {"claude", "codex", "antigravity", "gemini"}, set(events.IDENTITY_NORMALIZERS)
+        )
 
-    def test_codex_and_antigravity_key_on_the_whole_id(self) -> None:
+    def test_codex_antigravity_and_gemini_key_on_the_whole_id(self) -> None:
         # Measured, not assumed. Codex's hook session_id matched the session_meta
         # id of the rollout the same session wrote; Antigravity's conversation_id
-        # matched the stem of a real conversations/<id>.db. Truncating either the
-        # way Claude's is truncated would key on a row that does not exist.
-        for harness in ("codex", "antigravity"):
+        # matched the stem of a real conversations/<id>.db; Gemini's matched the
+        # sessionId on line 1 of the chats/session-*.jsonl the same session wrote,
+        # five times out of five. Truncating any of them the way Claude's is
+        # truncated would key on a row that does not exist. For Gemini the trap is
+        # sharper: its store filename really does carry only eight characters, so
+        # truncating looks right until the lookup misses.
+        for harness in ("codex", "antigravity", "gemini"):
             with self.subTest(harness):
                 self.assertEqual(SESSION, events.normalize_session_id(harness, SESSION))
 

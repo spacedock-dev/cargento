@@ -4,11 +4,11 @@ The repository keeps one shared skill implementation for all clients. Platform-n
 
 | Surface | Codex | Claude Code | Antigravity / AGY | Gemini CLI | Repository contract |
 |---|---|---|---|---|---|
-| Package marker | `.codex-plugin/plugin.json` | `.claude-plugin/plugin.json` | `plugin.json` | `gemini-extension.json` | Each runtime receives its native root/manifest shape |
-| Skills | `/skills` or `$cargento` | `/cargento:cargento` | Bundled plugin skills | Bundled extension skills | Shared `skills/cargento/SKILL.md` |
+| Package marker | `.codex-plugin/plugin.json` | `.claude-plugin/plugin.json` | `plugin.json` | `../cargento-gemini/gemini-extension.json` | Each runtime receives its native root/manifest shape. Gemini's is a separate root: see Hooks below |
+| Skills | `/skills` or `$cargento` | `/cargento:cargento` | Bundled plugin skills | **Not bundled** | Shared `skills/cargento/SKILL.md`. The Gemini extension root carries hooks only, so Gemini users launch the dashboard directly rather than through a skill |
 | Skill UI metadata | `agents/openai.yaml` | Ignored | Ignored | Ignored | Optional Codex presentation data beside the shared skill |
 | MCP | Not used | Not used | Not used | Not used | Cargento reads local session stores directly; no MCP server is bundled |
-| Hooks | None | None | None | None | The dashboard's optional Claude `Notification` and `SessionEnd` hooks are user-installed, never bundled (see [SKILL.md](cargento/skills/cargento/SKILL.md#notifications)) |
+| Hooks | `hooks/codex-hooks.json` | `hooks/hooks.json` | `hooks.json` | `../cargento-gemini/hooks/hooks.json` | Bundled per harness, each in the path that harness reads, each in that harness's own event vocabulary. The vocabularies do not overlap enough to share a file: a foreign event name is skipped with a warning on every session. `scripts/validate_plugins.py` fails the build on a foreign name or a foreign harness argument |
 | Recurring runs | Invoke the skill one pass at a time | Invoke the skill one pass at a time; a scheduler plugin can repeat it | Invoke the skill one pass at a time | Invoke the skill one pass at a time | The skill remains useful as a one-shot workflow |
 
 ## Platform-specific behavior

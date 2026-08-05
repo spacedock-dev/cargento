@@ -6,10 +6,19 @@ fixtures proving what an event *means*, how many of it arrive per turn, and in
 what order. None of that can be looked up: it has to be observed from real
 sessions. This is the observer.
 
-Two modes:
+Two modes, with the harness named first on the record path exactly as
+`event_hook.py` takes it:
 
-    record   (default) read one hook payload on stdin and append a line
-    --report            summarise every capture into the numbers the gate wants
+    capture_hook.py claude          read one hook payload on stdin, append a line
+    capture_hook.py gemini
+    --report                        summarise every capture, per harness
+    --install --harness gemini      write a merged settings file, never over yours
+
+The harness is an argument rather than sniffed from the payload, for the same
+reason `event_hook.py` takes one: Claude Code and Gemini CLI send the same field
+names, so a payload cannot say which harness produced it. What differs per
+harness is the event vocabulary, the settings file, and the pair of names that
+bounds one turn.
 
 ## What it records, and what it refuses to
 
@@ -52,9 +61,13 @@ import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
-FORMAT_VERSION = 1
+# 2 adds the `harness` field. Version 1 lines stay readable: they were all Claude
+# captures, because Claude was the only harness this script served, so a line
+# without a harness is read as one.
+FORMAT_VERSION = 2
+LEGACY_HARNESS = "claude"
 DEFAULT_DIR = Path.home() / ".cargento" / "captures"
 MAX_PAYLOAD_BYTES = 1_000_000
 # Tool names are recorded because cardinality per turn is meaningless without
@@ -80,6 +93,17 @@ NEVER_RECORD = (
 
 def capture_dir() -> Path:
     return Path(os.environ.get("CARGENTO_CAPTURE_DIR") or DEFAULT_DIR)
+
+
+def _slug(harness: str) -> str:
+    """A harness name reduced to what is safe in a filename.
+
+    The harness reaches this script from a hook command, which is user-owned
+    configuration, so it is not trusted to be a bare word. Anything outside the
+    allowed set becomes a hyphen rather than a path separator or a traversal.
+    """
+    kept = "".join(char if char.isalnum() or char in "-_" else "-" for char in harness[:40])
+    return kept.strip("-") or "unknown"
 
 
 def salt_for(directory: Path) -> str:
@@ -110,7 +134,7 @@ def digest(value: str, salt: str) -> str:
 
 
 def shape_of(
-    payload: dict[str, Any], *, event: str, salt: str, elapsed_ms: float
+    payload: dict[str, Any], *, event: str, salt: str, elapsed_ms: float, harness: str = "claude"
 ) -> dict[str, Any]:
     """One capture line: what happened, not what was said."""
     session = ""
@@ -132,6 +156,10 @@ def shape_of(
     return {
         "v": FORMAT_VERSION,
         "at": round(time.time(), 3),
+        # Recorded rather than inferred from the filename, so two harnesses
+        # captured on one machine stay separable after the files are merged, and
+        # so `--report` can pick each one's turn boundaries without being told.
+        "harness": harness[:40],
         "event": event[:60],
         "session": session,
         "project": digest(cwd, salt) if isinstance(cwd, str) else "",
@@ -146,8 +174,14 @@ def shape_of(
 
 
 def record(argv: list[str], *, started: float) -> int:
-    """Append one event. Every failure path returns 0."""
-    event = argv[1] if len(argv) > 1 else ""
+    """Append one event. Every failure path returns 0.
+
+    Invoked as `capture_hook.py <harness> [<EventName>]`, the harness first, the
+    same order `event_hook.py` uses. The event name is a fallback only: every
+    harness captured so far names its own event in the payload.
+    """
+    harness = argv[1] if len(argv) > 1 else LEGACY_HARNESS
+    event = argv[2] if len(argv) > 2 else ""
     try:
         raw = sys.stdin.buffer.read(MAX_PAYLOAD_BYTES)
     except (OSError, ValueError, AttributeError):
@@ -170,10 +204,12 @@ def record(argv: list[str], *, started: float) -> int:
     directory = capture_dir()
     salt = salt_for(directory)
     elapsed = (time.perf_counter() - started) * 1000
-    line = shape_of(payload, event=event, salt=salt, elapsed_ms=elapsed)
+    line = shape_of(payload, event=event, salt=salt, elapsed_ms=elapsed, harness=harness)
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        target = directory / f"claude-{time.strftime('%Y%m%d')}.jsonl"
+        # Per harness as well as per day: one file per harness keeps a capture
+        # reviewable on its own before it is vendored into `docs/captures/`.
+        target = directory / f"{_slug(harness)}-{time.strftime('%Y%m%d')}.jsonl"
         # One append, opened and closed. Concurrent hooks are separate processes,
         # and an append under the platform buffer size does not interleave.
         with target.open("a", encoding="utf-8") as handle:
@@ -237,12 +273,43 @@ def turns_for(entries: list[dict[str, Any]], *, start: str, end: str) -> list[li
     return turns
 
 
+def turn_report(entries: list[dict[str, Any]]) -> list[str]:
+    """Cardinality and ordering per harness, each against its own turn boundary.
+
+    Split per harness because the pair of names that bounds a turn is part of a
+    harness's vocabulary. Measuring every harness against Claude's pair is how a
+    Gemini capture of four complete turns reported "no complete turn".
+    """
+    by_harness: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for entry in entries:
+        name = entry.get("harness")
+        by_harness[str(name) if isinstance(name, str) and name else LEGACY_HARNESS].append(entry)
+
+    lines: list[str] = []
+    for harness in sorted(by_harness):
+        start, end = harness_for(harness).turn
+        turns = turns_for(by_harness[harness], start=start, end=end)
+        if not turns:
+            lines.append(f"No complete {start}-to-{end} turn captured yet for {harness}.")
+            continue
+        lengths = [len(turn) for turn in turns]
+        lines.append(f"Complete turns observed for {harness}: {len(turns)}")
+        lines.append(
+            f"  events per turn: min {min(lengths)}, median "
+            f"{statistics.median(lengths)}, max {max(lengths)}"
+        )
+        lines.append("  most common orderings:")
+        shapes = Counter(" -> ".join(turn) for turn in turns)
+        lines.extend(f"    {count:4}x {shape}" for shape, count in shapes.most_common(5))
+    return lines
+
+
 def report(directory: Path) -> str:
     entries = load_captures(directory)
     if not entries:
         return (
             f"No captures in {directory}.\n"
-            "Install the hook (see --install) and use Claude Code normally; "
+            "Install the hook (see --install) and use the harness normally; "
             "come back once a few sessions have run."
         )
     out: list[str] = [f"{len(entries)} events from {directory}", ""]
@@ -264,20 +331,7 @@ def report(directory: Path) -> str:
     )
     out.append("")
 
-    turns = turns_for(entries, start="UserPromptSubmit", end="Stop")
-    if turns:
-        lengths = [len(t) for t in turns]
-        out.append(f"Complete turns observed: {len(turns)}")
-        out.append(
-            f"  events per turn: min {min(lengths)}, median "
-            f"{statistics.median(lengths)}, max {max(lengths)}"
-        )
-        shapes = Counter(" -> ".join(t) for t in turns)
-        out.append("  most common orderings:")
-        for shape, count in shapes.most_common(5):
-            out.append(f"    {count:4}x {shape}")
-    else:
-        out.append("No complete UserPromptSubmit-to-Stop turn captured yet.")
+    out.extend(turn_report(entries))
     out.append("")
 
     costs = sorted(
@@ -316,15 +370,70 @@ CAPTURE_EVENTS = (
     "SessionEnd",
 )
 
+# Gemini CLI's whole documented vocabulary, all eleven, because the point of a
+# capture is to find out which of them fire and how often. Its names are its own:
+# `BeforeAgent` and `AfterAgent` bound a turn where Claude uses `UserPromptSubmit`
+# and `Stop`.
+GEMINI_CAPTURE_EVENTS = (
+    "SessionStart",
+    "BeforeAgent",
+    "BeforeModel",
+    "BeforeToolSelection",
+    "AfterModel",
+    "BeforeTool",
+    "AfterTool",
+    "Notification",
+    "PreCompress",
+    "AfterAgent",
+    "SessionEnd",
+)
 
-def settings_path() -> Path:
-    """Where Claude Code keeps its settings, honouring the documented override."""
-    base = os.environ.get("CLAUDE_CONFIG_DIR")
-    return (Path(base) if base else Path.home() / ".claude") / "settings.json"
+
+class Harness(NamedTuple):
+    """What differs per harness when capturing and reporting."""
+
+    events: tuple[str, ...]
+    # The pair that bounds one turn. Ordering and cardinality are reported between
+    # them, so a wrong pair reports "no complete turn" rather than a wrong number.
+    turn: tuple[str, str]
+    # The user-level settings file whose `hooks` object the capture merges into.
+    # Gemini's home is the *parent* of its `.gemini` directory, matching what
+    # `cargento_runtime/config.py` does with the same variable.
+    settings_env: str
+    settings_dir: tuple[str, ...]
 
 
-def hook_command() -> str:
-    return f'python3 "{Path(__file__).resolve()}"'
+HARNESSES = {
+    "claude": Harness(
+        events=CAPTURE_EVENTS,
+        turn=("UserPromptSubmit", "Stop"),
+        settings_env="CLAUDE_CONFIG_DIR",
+        settings_dir=(),
+    ),
+    "gemini": Harness(
+        events=GEMINI_CAPTURE_EVENTS,
+        turn=("BeforeAgent", "AfterAgent"),
+        settings_env="GEMINI_CLI_HOME",
+        settings_dir=(".gemini",),
+    ),
+}
+DEFAULT_HOME = {"claude": ".claude", "gemini": ".gemini"}
+
+
+def harness_for(name: str) -> Harness:
+    return HARNESSES.get(name, HARNESSES["claude"])
+
+
+def settings_path(harness: str = "claude") -> Path:
+    """Where `harness` keeps its settings, honouring the documented override."""
+    spec = harness_for(harness)
+    base = os.environ.get(spec.settings_env)
+    root = Path(base).joinpath(*spec.settings_dir) if base else Path.home() / DEFAULT_HOME[harness]
+    return root / "settings.json"
+
+
+def hook_command(harness: str = "claude") -> str:
+    return f'python3 "{Path(__file__).resolve()}" {harness}'
 
 
 def merge_hooks(
@@ -375,16 +484,21 @@ def merge_hooks(
     return merged, actions
 
 
-def install(source: Path | None = None) -> str:
+def install(source: Path | None = None, harness: str = "claude") -> str:
     """Write a merged settings file beside the real one, and never over it.
 
     A merged copy rather than an edit in place, because a settings file is the
     user's and a research tool has no business rewriting it. The caller reads the
     result, and swaps it in if they agree.
+
+    Both harnesses captured so far take the same `hooks` object in the same
+    `settings.json` shape, so only the event list, the path and the harness
+    argument differ.
     """
-    settings_file = source or settings_path()
+    events = harness_for(harness).events
+    settings_file = source or settings_path(harness)
     output = settings_file.with_name("settings_with_hooks.json")
-    command = hook_command()
+    command = hook_command(harness)
 
     existing: dict[str, Any] = {}
     note = ""
@@ -406,7 +520,7 @@ def install(source: Path | None = None) -> str:
     else:
         note = f"No settings file at {settings_file}, so this is a fresh one.\n"
 
-    merged, actions = merge_hooks(existing, command)
+    merged, actions = merge_hooks(existing, command, events)
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
@@ -419,7 +533,7 @@ def install(source: Path | None = None) -> str:
     untouched = sorted(
         event
         for event in (existing.get("hooks") or {})
-        if isinstance(existing.get("hooks"), dict) and event not in CAPTURE_EVENTS
+        if isinstance(existing.get("hooks"), dict) and event not in events
     )
 
     lines = [note + f"Wrote {output}", ""]
@@ -464,10 +578,16 @@ def main(argv: list[str]) -> int:
         )
         parser.add_argument("--settings", default=None, help="settings.json to merge into")
         parser.add_argument("--dir", default=None, help="capture directory")
+        parser.add_argument(
+            "--harness",
+            default="claude",
+            choices=sorted(HARNESSES),
+            help="which harness to install the capture hook for",
+        )
         args = parser.parse_args(argv[1:])
         directory = Path(args.dir) if args.dir else capture_dir()
         if args.install:
-            print(install(Path(args.settings) if args.settings else None))
+            print(install(Path(args.settings) if args.settings else None, args.harness))
         else:
             print(report(directory))
         return 0

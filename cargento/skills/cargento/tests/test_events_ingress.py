@@ -727,6 +727,87 @@ class CodexAdapterTest(unittest.TestCase):
         self.assertIn("${CLAUDE_PLUGIN_ROOT}", command)
         self.assertTrue(command.endswith(" claude"), command)
 
+    @staticmethod
+    def _gemini_hooks() -> dict[str, Any]:
+        path = Path(__file__).resolve().parents[4] / "cargento-gemini" / "hooks" / "hooks.json"
+        return json.loads(path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+
+    def test_the_bundled_gemini_hooks_only_register_events_the_adapter_maps(self) -> None:
+        # Same contract as the Codex and Claude files. Gemini matters more than
+        # either, because Gemini *warns on every session* about a name it does not
+        # know, so a stale entry here is visible to the user rather than silent.
+        self.assertEqual(set(event_hook.GEMINI_EVENTS), set(self._gemini_hooks()["hooks"]))
+
+    def test_the_bundled_gemini_hooks_use_the_extension_path_variable(self) -> None:
+        # Gemini expands ${extensionPath}, not ${CLAUDE_PLUGIN_ROOT}. Getting this
+        # wrong is what made the pre-split file report two failed hooks per
+        # session: the variable stayed literal and python3 could not find the file.
+        commands = {
+            hook["command"]
+            for groups in self._gemini_hooks()["hooks"].values()
+            for group in groups
+            for hook in group["hooks"]
+        }
+        self.assertEqual(1, len(commands), "one command keeps one trust decision")
+        command = next(iter(commands))
+        self.assertIn("${extensionPath}", command)
+        self.assertNotIn("${CLAUDE_PLUGIN_ROOT}", command)
+        self.assertTrue(command.endswith(" gemini"), command)
+
+    def test_gemini_bounds_a_turn_with_its_own_vocabulary(self) -> None:
+        # Measured across four 0.53.1 turns: BeforeAgent then AfterAgent, once
+        # each. Claude's pair is not Gemini's, and mapping Claude's names here
+        # would register events Gemini rejects.
+        self.assertEqual("turn_started", event_hook.GEMINI_EVENTS["BeforeAgent"])
+        self.assertEqual("turn_stopped", event_hook.GEMINI_EVENTS["AfterAgent"])
+        self.assertNotIn("UserPromptSubmit", event_hook.GEMINI_EVENTS)
+        self.assertNotIn("Stop", event_hook.GEMINI_EVENTS)
+
+    def test_gemini_reports_a_tool_call_after_it_ran_not_before(self) -> None:
+        # As for Codex: AfterTool reports the same call once the store changed.
+        self.assertEqual("store_changed", event_hook.GEMINI_EVENTS["AfterTool"])
+        self.assertNotIn("BeforeTool", event_hook.GEMINI_EVENTS)
+        self.assertIsNone(
+            event_hook.envelope({"hook_event_name": "BeforeTool", "session_id": SESSION}, "gemini")
+        )
+
+    def test_a_gemini_notification_is_not_mapped_because_it_was_never_captured(self) -> None:
+        # Gemini documents Notification as carrying notification_type
+        # "ToolPermission", which would be a first-class permission signal. It
+        # could not be captured: non-interactive Gemini offers no tool that needs
+        # approval, so no prompt can arise. Unmeasured semantics do not ship.
+        self.assertNotIn("Notification", event_hook.GEMINI_EVENTS)
+        self.assertIsNone(
+            event_hook.envelope(
+                {"hook_event_name": "Notification", "session_id": SESSION}, "gemini"
+            )
+        )
+
+    def test_gemini_keeps_the_whole_session_id(self) -> None:
+        # Measured 5/5: the hook's session_id equalled the sessionId on line 1 of
+        # the chats/session-*.jsonl the same session wrote. The store *filename*
+        # carries only eight characters, so truncating like Claude would key on a
+        # prefix the collector never uses.
+        whole = "11111111-2222-4333-8444-555555555555"
+        self.assertEqual(whole, events.normalize_session_id("gemini", whole))
+        self.assertIsNone(events.normalize_session_id("gemini", whole[:8]))
+
+    def test_a_gemini_envelope_carries_the_whole_id_and_no_prompt(self) -> None:
+        built = event_hook.envelope(
+            {
+                "hook_event_name": "BeforeAgent",
+                "session_id": SESSION,
+                "cwd": "/tmp/project",
+                "transcript_path": "/tmp/chats/session-x.jsonl",
+                "prompt": "this must never be sent",
+            },
+            "gemini",
+        )
+        assert built is not None
+        self.assertEqual("turn_started", built["event"])
+        self.assertEqual(SESSION, built["session_id"])
+        self.assertNotIn("prompt", built)
+
     def test_the_two_bundled_files_do_not_post_as_each_other(self) -> None:
         # The reason byte parity between them had to go. A mirrored file would
         # make one harness post to the other's route, where Claude's normalizer

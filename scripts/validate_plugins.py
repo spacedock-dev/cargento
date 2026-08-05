@@ -14,6 +14,36 @@ from yaml.constructor import ConstructorError
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_NAMES = ("cargento",)
+
+# Gemini CLI gets its own extension root rather than sharing the plugin root.
+# Both harnesses load extension hooks from `<root>/hooks/hooks.json` and neither
+# lets that path be moved: Claude Code reads it whichever path the manifest
+# declares, and Gemini's reference states hooks "are not defined in the
+# gemini-extension.json manifest". Sharing one root therefore hands each harness
+# the other's vocabulary. Measured, before the split: a Gemini session loading
+# Claude's file printed eight `Invalid hook event name` warnings, then ran the two
+# names that do overlap and reported both as failed hooks, because Gemini does not
+# expand `${CLAUDE_PLUGIN_ROOT}` -- at a synchronous cost of 258 ms and 259 ms per
+# session for nothing.
+GEMINI_EXTENSION_ROOT = "cargento-gemini"
+
+# The Gemini extension is self-contained because `gemini extensions install`
+# copies the directory and a git-URL install clones it, so a command reaching
+# outside the extension root would not resolve once installed. That means two
+# scripts ship twice, and drift between the copies is the hazard the byte check
+# below exists to prevent.
+GEMINI_EXTENSION_FILES = (
+    "gemini-extension.json",
+    "hooks/hooks.json",
+    "hooks/event_hook.py",
+    "hooks/notify_hook.py",
+)
+
+# Which shipped file is a byte-identical copy of which source of truth.
+DUPLICATED_SCRIPTS = (
+    (f"{GEMINI_EXTENSION_ROOT}/hooks/event_hook.py", "cargento/skills/cargento/event_hook.py"),
+    (f"{GEMINI_EXTENSION_ROOT}/hooks/notify_hook.py", "cargento/skills/cargento/notify_hook.py"),
+)
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PORTABILITY_MARKERS = {
     "${CLAUDE_PLUGIN_ROOT}": "resolve shared skill resources relative to the skill instead",
@@ -536,8 +566,16 @@ def validate_antigravity_manifest(
     return manifest
 
 
-def validate_gemini_extension(plugin_root: Path, validation: Validation) -> dict[str, Any] | None:
-    path = plugin_root / "gemini-extension.json"
+def validate_gemini_extension(
+    extension_root: Path, expected_name: str, validation: Validation
+) -> dict[str, Any] | None:
+    """The Gemini extension manifest, which lives in its own root.
+
+    `expected_name` rather than the directory name: the extension installs and is
+    listed as `cargento`, the same name as the plugin, while its directory is
+    `cargento-gemini` so that its `hooks/hooks.json` cannot collide with Claude's.
+    """
+    path = extension_root / "gemini-extension.json"
     manifest = load_json(path, validation)
     if manifest is None:
         return None
@@ -545,8 +583,11 @@ def validate_gemini_extension(plugin_root: Path, validation: Validation) -> dict
     for field in ("name", "version", "description"):
         if not isinstance(manifest.get(field), str) or not manifest[field].strip():
             validation.error(path, f"{field} must be a non-empty string")
-    if manifest.get("name") != plugin_root.name:
-        validation.error(path, "name must match the plugin directory")
+    if manifest.get("name") != expected_name:
+        validation.error(path, f"name must be {expected_name!r}, matching the plugin")
+    for relative in GEMINI_EXTENSION_FILES:
+        if not (extension_root / relative).is_file():
+            validation.error(extension_root / relative, "missing from the Gemini extension")
     if "mcpServers" in manifest:
         validate_mcp_entries(manifest["mcpServers"], path, validation)
     return manifest
@@ -639,6 +680,134 @@ BUNDLED_HOOKS_FILES = (
     "hooks.json",
 )
 
+# Which harness reads each bundled hooks file, and every event name that harness
+# recognises. Listed explicitly rather than derived from `event_hook.py`, because
+# the failure this catches is a *name the harness rejects*, and the adapter's own
+# table cannot describe that: a file may legitimately register names the adapter
+# does not map, but never a name the harness has never heard of.
+#
+# The Gemini row is why this exists. Before the root split, Claude's file sat where
+# Gemini looks and eight of its ten names were rejected on every Gemini session.
+HOOK_FILE_VOCABULARY = {
+    "cargento/hooks/hooks.json": (
+        "claude",
+        frozenset(
+            {
+                "SessionStart",
+                "SessionEnd",
+                "UserPromptSubmit",
+                "Stop",
+                "PermissionRequest",
+                "Notification",
+                "PreToolUse",
+                "PostToolUse",
+                "SubagentStart",
+                "SubagentStop",
+                "TaskCompleted",
+                "PreCompact",
+                "PostCompact",
+            }
+        ),
+    ),
+    "cargento/hooks/codex-hooks.json": (
+        "codex",
+        frozenset(
+            {
+                "SessionStart",
+                "SessionEnd",
+                "UserPromptSubmit",
+                "Stop",
+                "PreToolUse",
+                "PostToolUse",
+                "SubagentStart",
+                "SubagentStop",
+                "PreCompact",
+                "PostCompact",
+            }
+        ),
+    ),
+    "cargento/hooks.json": (
+        "antigravity",
+        frozenset({"PreInvocation", "PostInvocation", "PreToolUse", "PostToolUse"}),
+    ),
+    f"{GEMINI_EXTENSION_ROOT}/hooks/hooks.json": (
+        "gemini",
+        # The whole documented 0.53.1 vocabulary, measured firing in that order.
+        frozenset(
+            {
+                "SessionStart",
+                "SessionEnd",
+                "BeforeAgent",
+                "AfterAgent",
+                "BeforeModel",
+                "BeforeToolSelection",
+                "AfterModel",
+                "BeforeTool",
+                "AfterTool",
+                "Notification",
+                "PreCompress",
+            }
+        ),
+    ),
+}
+
+
+def validate_hook_vocabulary(validation: Validation) -> None:
+    """No bundled hooks file registers a name its harness does not know.
+
+    Two failures, both observed rather than imagined:
+
+    1. A foreign event name. The harness skips it with a warning on every session,
+       so the hook silently reports nothing while looking installed.
+    2. A foreign harness argument. `event_hook.py claude` in Gemini's file would
+       post Gemini sessions to `/api/events/claude`, where Claude's normalizer
+       truncates the id to eight characters and it matches no row.
+    """
+    for relative, (harness, vocabulary) in HOOK_FILE_VOCABULARY.items():
+        path = ROOT / relative
+        if not path.is_file():
+            continue
+        document = load_json(path, validation)
+        if not isinstance(document, dict):
+            continue
+        for name in _hook_events(document):
+            if name not in vocabulary:
+                validation.error(
+                    path,
+                    f"registers {name!r}, which {harness} does not recognise; "
+                    f"a foreign event name is skipped with a warning on every session",
+                )
+        for command in _hook_commands(_hook_events(document)):
+            if "event_hook.py" not in command:
+                continue
+            named = command.rsplit('"', 1)[-1].strip().split(" ")
+            if named and named[0] and named[0] != harness:
+                validation.error(
+                    path,
+                    f"hook command passes harness {named[0]!r} in {harness}'s hooks file; "
+                    "events would post to the wrong route",
+                )
+
+
+def validate_duplicated_scripts(validation: Validation) -> None:
+    """A script that ships twice is byte-identical in both places.
+
+    The Gemini extension cannot reach outside its own root once installed, so it
+    carries its own copy of the adapter and of the transport it imports. Copies
+    drift silently; a byte comparison is the only check that does not.
+    """
+    for copy_relative, source_relative in DUPLICATED_SCRIPTS:
+        copy_path = ROOT / copy_relative
+        source_path = ROOT / source_relative
+        if not copy_path.is_file() or not source_path.is_file():
+            continue
+        if copy_path.read_bytes() != source_path.read_bytes():
+            validation.error(
+                copy_path,
+                f"must be byte-identical to {source_relative}; "
+                f"run: cp {source_relative} {copy_relative}",
+            )
+
 
 def validate_hooks_adapter(plugin_root: Path, validation: Validation) -> None:
     """Every bundled hooks file is well formed and points at a script that ships.
@@ -726,7 +895,7 @@ def _referenced_plugin_paths(command: str) -> list[str]:
     time the plugin updated.
     """
     paths: list[str] = []
-    for marker in ("${CLAUDE_PLUGIN_ROOT}/", "${PLUGIN_ROOT}/"):
+    for marker in ("${CLAUDE_PLUGIN_ROOT}/", "${PLUGIN_ROOT}/", "${extensionPath}/"):
         start = 0
         while (found := command.find(marker, start)) != -1:
             rest = command[found + len(marker) :]
@@ -976,12 +1145,16 @@ def main() -> int:
         plugin_root = ROOT / plugin_name
         manifests[plugin_name] = validate_codex_manifest(plugin_root, validation)
         antigravity_manifests[plugin_name] = validate_antigravity_manifest(plugin_root, validation)
-        gemini_manifests[plugin_name] = validate_gemini_extension(plugin_root, validation)
+        gemini_root = ROOT / GEMINI_EXTENSION_ROOT
+        gemini_manifests[plugin_name] = validate_gemini_extension(
+            gemini_root, plugin_name, validation
+        )
         mcp_config = validate_antigravity_mcp_config(plugin_root, validation)
         validate_mcp_endpoint_parity(
-            plugin_root, gemini_manifests[plugin_name], mcp_config, validation
+            gemini_root, gemini_manifests[plugin_name], mcp_config, validation
         )
         validate_hooks_adapter(plugin_root, validation)
+        validate_hooks_adapter(gemini_root, validation)
         validate_runtime_files(plugin_root, validation)
         skill_names[plugin_name], plugin_catalog_lines = validate_skills(plugin_root, validation)
         catalog_lines.extend(plugin_catalog_lines)
@@ -991,6 +1164,8 @@ def main() -> int:
                 plugin_root / "commands", "legacy commands must be migrated to shared skills"
             )
 
+    validate_hook_vocabulary(validation)
+    validate_duplicated_scripts(validation)
     validate_marketplaces(manifests, gemini_manifests, antigravity_manifests, validation)
     validate_readme(skill_names, validation)
     validate_repo_docs(validation)

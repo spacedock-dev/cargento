@@ -107,11 +107,13 @@ class RecordTest(unittest.TestCase):
         self.assertEqual("Stop", lines[0]["event"])
 
     def test_the_harness_event_name_wins_over_argv(self) -> None:
-        self._run({"hook_event_name": "Stop"}, ["capture_hook.py", "FromArgv"])
+        self._run({"hook_event_name": "Stop"}, ["capture_hook.py", "claude", "FromArgv"])
         self.assertEqual("Stop", self._lines()[0]["event"])
 
     def test_argv_names_the_event_for_a_harness_that_does_not(self) -> None:
-        self._run({"session_id": "abcd1234"}, ["capture_hook.py", "FromArgv"])
+        # Second argument, because the first is the harness. Same order
+        # `event_hook.py` takes, so one mental model covers both adapters.
+        self._run({"session_id": "abcd1234"}, ["capture_hook.py", "claude", "FromArgv"])
         self.assertEqual("FromArgv", self._lines()[0]["event"])
 
     def test_malformed_json_is_recorded_as_an_unknown_event_not_a_crash(self) -> None:
@@ -302,3 +304,140 @@ class InstallTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HarnessTest(unittest.TestCase):
+    """The recorder serves more than one harness, and must not confuse them.
+
+    Claude was the only harness when this script was written, which left three
+    Claude assumptions baked in: the output filename, the event vocabulary the
+    installer registers, and the pair of names `--report` uses to bound a turn. The
+    Gemini capture found all three at once, and the third the hard way: a capture
+    of four complete turns reported "no complete turn" because the report was
+    looking for Claude's `UserPromptSubmit` and `Stop`.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(prefix="cargento-capture-harness-")
+        self.dir = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _run(self, payload: dict[str, Any], harness: str) -> None:
+        stdin = unittest.mock.MagicMock()
+        stdin.buffer.read.return_value = json.dumps(payload).encode()
+        with (
+            unittest.mock.patch.dict("os.environ", {"CARGENTO_CAPTURE_DIR": str(self.dir)}),
+            unittest.mock.patch.object(sys, "stdin", stdin),
+        ):
+            self.assertEqual(0, capture_hook.main(["capture_hook.py", harness]))
+
+    def test_the_line_records_which_harness_produced_it(self) -> None:
+        # Recorded rather than inferred from the filename, so two harnesses stay
+        # separable once their files are merged into one directory.
+        self._run({"hook_event_name": "BeforeAgent", "session_id": "abcd1234"}, "gemini")
+        self.assertEqual("gemini", capture_hook.load_captures(self.dir)[0]["harness"])
+
+    def test_each_harness_writes_its_own_file(self) -> None:
+        self._run({"hook_event_name": "Stop"}, "claude")
+        self._run({"hook_event_name": "AfterAgent"}, "gemini")
+        stems = sorted(path.name.split("-")[0] for path in self.dir.glob("*.jsonl"))
+        self.assertEqual(["claude", "gemini"], stems)
+
+    def test_a_harness_name_cannot_escape_the_capture_directory(self) -> None:
+        # The harness arrives from a hook command, which is user-owned
+        # configuration, so it is not trusted to be a bare word.
+        self._run({"hook_event_name": "Stop"}, "../../etc/passwd")
+        written = list(self.dir.glob("*.jsonl"))
+        self.assertEqual(1, len(written), "the capture must stay in its directory")
+        self.assertNotIn("/", written[0].name)
+        self.assertNotIn("..", written[0].name)
+
+    def test_an_empty_harness_name_still_produces_a_readable_file(self) -> None:
+        self.assertEqual("unknown", capture_hook._slug("///"))
+
+    def test_a_version_one_line_without_a_harness_reads_as_claude(self) -> None:
+        # Every v1 capture was Claude's, because Claude was the only harness. The
+        # shipped codex capture is a v1 file, so this is not a hypothetical.
+        (self.dir / "claude-20260101.jsonl").write_text(
+            json.dumps({"v": 1, "event": "UserPromptSubmit", "session": "aaaa1111", "at": 1})
+            + "\n"
+            + json.dumps({"v": 1, "event": "Stop", "session": "aaaa1111", "at": 2})
+            + "\n",
+            encoding="utf-8",
+        )
+        report = capture_hook.report(self.dir)
+        self.assertIn("Complete turns observed for claude: 1", report)
+
+    def test_a_turn_is_bounded_by_each_harness_own_vocabulary(self) -> None:
+        # The bug this pins: reporting a Gemini capture against Claude's pair.
+        (self.dir / "gemini-20260101.jsonl").write_text(
+            json.dumps(
+                {
+                    "v": 2,
+                    "harness": "gemini",
+                    "event": "BeforeAgent",
+                    "session": "bbbb2222",
+                    "at": 1,
+                }
+            )
+            + "\n"
+            + json.dumps(
+                {"v": 2, "harness": "gemini", "event": "AfterTool", "session": "bbbb2222", "at": 2}
+            )
+            + "\n"
+            + json.dumps(
+                {"v": 2, "harness": "gemini", "event": "AfterAgent", "session": "bbbb2222", "at": 3}
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        report = capture_hook.report(self.dir)
+        self.assertIn("Complete turns observed for gemini: 1", report)
+        self.assertIn("BeforeAgent -> AfterTool -> AfterAgent", report)
+
+    def test_two_harnesses_in_one_directory_are_reported_separately(self) -> None:
+        self._run({"hook_event_name": "UserPromptSubmit", "session_id": "aaaa1111"}, "claude")
+        self._run({"hook_event_name": "Stop", "session_id": "aaaa1111"}, "claude")
+        self._run({"hook_event_name": "BeforeAgent", "session_id": "bbbb2222"}, "gemini")
+        self._run({"hook_event_name": "AfterAgent", "session_id": "bbbb2222"}, "gemini")
+        report = capture_hook.report(self.dir)
+        self.assertIn("Complete turns observed for claude: 1", report)
+        self.assertIn("Complete turns observed for gemini: 1", report)
+
+
+class HarnessInstallTest(unittest.TestCase):
+    """`--install` registers the right vocabulary in the right settings file."""
+
+    def test_the_installed_command_names_the_harness(self) -> None:
+        self.assertTrue(capture_hook.hook_command("gemini").endswith(" gemini"))
+
+    def test_gemini_registers_gemini_events_and_claude_registers_claudes(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-capture-install-") as raw:
+            for harness, expected, unexpected in (
+                ("gemini", "BeforeAgent", "UserPromptSubmit"),
+                ("claude", "UserPromptSubmit", "BeforeAgent"),
+            ):
+                with self.subTest(harness=harness):
+                    settings = Path(raw) / harness / "settings.json"
+                    settings.parent.mkdir(parents=True, exist_ok=True)
+                    settings.write_text("{}\n", encoding="utf-8")
+                    capture_hook.install(settings, harness)
+                    merged = json.loads(
+                        settings.with_name("settings_with_hooks.json").read_text(encoding="utf-8")
+                    )
+                    self.assertIn(expected, merged["hooks"])
+                    self.assertNotIn(unexpected, merged["hooks"])
+
+    def test_geminis_settings_live_under_a_dot_gemini_inside_its_home(self) -> None:
+        # GEMINI_CLI_HOME names the *parent* of the .gemini directory, which is
+        # what cargento_runtime/config.py already does with the same variable.
+        # Treating it as the .gemini directory itself points at a path the CLI
+        # never reads, and the capture then silently records nothing.
+        with unittest.mock.patch.dict("os.environ", {"GEMINI_CLI_HOME": "/tmp/ghome"}):
+            self.assertEqual(
+                Path("/tmp/ghome/.gemini/settings.json"), capture_hook.settings_path("gemini")
+            )
+
+    def test_claudes_settings_honour_its_own_override(self) -> None:
+        with unittest.mock.patch.dict("os.environ", {"CLAUDE_CONFIG_DIR": "/tmp/chome"}):
+            self.assertEqual(Path("/tmp/chome/settings.json"), capture_hook.settings_path("claude"))

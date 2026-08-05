@@ -63,10 +63,15 @@ Restart AGY after installation.
 
 ```bash
 # From a local checkout, install the native Gemini CLI extension
-gemini extensions install "$PWD/cargento"
+gemini extensions install "$PWD/cargento-gemini"
 ```
 
 Restart Gemini CLI after installation.
+
+Gemini installs from its own directory rather than from `cargento/`. Both Claude Code and Gemini CLI
+load extension hooks from `<root>/hooks/hooks.json` and neither lets that path be moved, so one shared
+root would hand each harness the other's event names. `cargento-gemini/` carries the Gemini manifest,
+Gemini's hooks, and the two hook scripts they run.
 
 ### Codex installation
 

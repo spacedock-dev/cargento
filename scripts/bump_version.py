@@ -12,7 +12,7 @@ backwards. Fields updated together:
 
     cargento/.claude-plugin/plugin.json  .version   <- source of truth
     cargento/.codex-plugin/plugin.json   .version
-    cargento/gemini-extension.json       .version
+    cargento-gemini/gemini-extension.json  .version   <- Gemini's own root
 """
 
 from __future__ import annotations
@@ -32,7 +32,9 @@ TRUTH = ROOT / "cargento/.claude-plugin/plugin.json"
 MANIFESTS = (
     TRUTH,
     ROOT / "cargento/.codex-plugin/plugin.json",
-    ROOT / "cargento/gemini-extension.json",
+    # Gemini gets its own extension root: both it and Claude Code claim
+    # `<root>/hooks/hooks.json` and neither lets that path move.
+    ROOT / "cargento-gemini/gemini-extension.json",
 )
 SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -204,10 +205,28 @@ class ValidatorTests(unittest.TestCase):
                 )
             )
 
-    def test_gemini_extensions_use_native_root_manifests(self) -> None:
+    def test_the_gemini_extension_lives_in_its_own_root(self) -> None:
+        # And specifically *not* in the plugin root. Sharing one root is what made
+        # a Gemini session load Claude's hooks/hooks.json, warn about eight event
+        # names it does not know, and run two hooks that failed: both harnesses
+        # read `<root>/hooks/hooks.json` and neither lets that path be moved.
+        gemini_root = validator.ROOT / validator.GEMINI_EXTENSION_ROOT
+        self.assertTrue((gemini_root / "gemini-extension.json").is_file())
         for plugin_name in validator.PLUGIN_NAMES:
             with self.subTest(plugin=plugin_name):
-                self.assertTrue((validator.ROOT / plugin_name / "gemini-extension.json").is_file())
+                self.assertFalse(
+                    (validator.ROOT / plugin_name / "gemini-extension.json").is_file(),
+                    "the plugin root must not also be a Gemini extension",
+                )
+
+    def test_the_gemini_extension_is_self_contained(self) -> None:
+        # `gemini extensions install` copies the directory and a git-URL install
+        # clones it, so a hook command reaching outside this root would not resolve
+        # once installed.
+        gemini_root = validator.ROOT / validator.GEMINI_EXTENSION_ROOT
+        for relative in validator.GEMINI_EXTENSION_FILES:
+            with self.subTest(file=relative):
+                self.assertTrue((gemini_root / relative).is_file())
 
     def test_antigravity_manifest_rejects_unknown_fields_and_name_mismatch(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
@@ -240,12 +259,32 @@ class ValidatorTests(unittest.TestCase):
             )
             validation = validator.Validation()
 
-            validator.validate_gemini_extension(plugin_root, validation)
+            validator.validate_gemini_extension(plugin_root, "fixture-plugin", validation)
 
             self.assertTrue(
                 any("version must be a non-empty string" in error for error in validation.errors)
             )
             self.assertTrue(any("needs a url or command" in error for error in validation.errors))
+
+    def test_the_gemini_manifest_name_is_the_plugin_name_not_the_directory(self) -> None:
+        # The extension installs and lists as `cargento`, while its directory is
+        # `cargento-gemini` so its hooks file cannot collide with Claude's. Tying
+        # the name to the directory would force one of those two to be wrong.
+        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+            extension_root = Path(directory) / "cargento-gemini"
+            extension_root.mkdir()
+            (extension_root / "gemini-extension.json").write_text(
+                '{"name":"cargento","description":"Fixture","version":"1.0.0"}\n'
+            )
+            validation = validator.Validation()
+
+            validator.validate_gemini_extension(extension_root, "cargento", validation)
+
+            self.assertEqual(
+                [],
+                [error for error in validation.errors if "name must be" in error],
+                "the directory name must not be required to match",
+            )
 
     def test_mcp_endpoint_parity_rejects_drift_and_missing_antigravity_config(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
@@ -845,3 +884,113 @@ class BundledHooksSchemaTests(unittest.TestCase):
             any("agy_hook.py" in e for e in self._validate(document, ship_script=False)),
             "a flat handler's command went unchecked",
         )
+
+
+class HookVocabularyTests(unittest.TestCase):
+    """No bundled hooks file may register another harness's event names.
+
+    The guard exists because the failure was real, not hypothetical. Before Gemini
+    got its own extension root, a Gemini session loading Claude's `hooks/hooks.json`
+    printed eight `Invalid hook event name` warnings, then ran the two names that do
+    overlap and reported both as failed hooks. Nothing in the build noticed.
+    """
+
+    def _errors(self, relative: str, document: dict[str, Any], tmp: Path) -> list[str]:
+        path = tmp / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document), encoding="utf-8")
+        validation = validator.Validation()
+        with mock.patch.object(validator, "ROOT", tmp):
+            validator.validate_hook_vocabulary(validation)
+        return [str(message) for message in validation.errors]
+
+    @staticmethod
+    def _gemini_document(event: str = "BeforeAgent", harness: str = "gemini") -> dict[str, Any]:
+        return {
+            "hooks": {
+                event: [
+                    {
+                        "matcher": "",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": (
+                                    'python3 "${extensionPath}/hooks/event_hook.py" ' + harness
+                                ),
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+
+    def test_a_name_the_harness_knows_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            self.assertEqual(
+                [],
+                self._errors("cargento-gemini/hooks/hooks.json", self._gemini_document(), tmp),
+            )
+
+    def test_a_foreign_event_name_is_rejected(self) -> None:
+        # `UserPromptSubmit` is Claude's name for the same moment. Gemini skips it.
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            errors = self._errors(
+                "cargento-gemini/hooks/hooks.json",
+                self._gemini_document(event="UserPromptSubmit"),
+                tmp,
+            )
+            self.assertTrue(
+                any("UserPromptSubmit" in message for message in errors),
+                f"a foreign event name went unreported: {errors}",
+            )
+
+    def test_a_foreign_harness_argument_is_rejected(self) -> None:
+        # The other half of the same bug: the file could carry Gemini's event names
+        # and still post them to Claude's route, where Claude's normalizer
+        # truncates the id to eight characters and it matches no row.
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            errors = self._errors(
+                "cargento-gemini/hooks/hooks.json",
+                self._gemini_document(harness="claude"),
+                tmp,
+            )
+            self.assertTrue(
+                any("wrong route" in message for message in errors),
+                f"a foreign harness argument went unreported: {errors}",
+            )
+
+    def test_every_bundled_hooks_file_in_the_repository_satisfies_its_vocabulary(self) -> None:
+        # The shipped files themselves, not a fixture: this is what would have
+        # failed before the split.
+        validation = validator.Validation()
+        validator.validate_hook_vocabulary(validation)
+        self.assertEqual([], [str(message) for message in validation.errors])
+
+
+class DuplicatedScriptTests(unittest.TestCase):
+    """A script that ships twice stays byte-identical in both places."""
+
+    def test_the_shipped_copies_match_today(self) -> None:
+        validation = validator.Validation()
+        validator.validate_duplicated_scripts(validation)
+        self.assertEqual([], [str(message) for message in validation.errors])
+
+    def test_drift_between_the_copies_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            for copy_relative, source_relative in validator.DUPLICATED_SCRIPTS:
+                for relative, body in ((source_relative, "one"), (copy_relative, "two")):
+                    path = tmp / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(body, encoding="utf-8")
+            validation = validator.Validation()
+            with mock.patch.object(validator, "ROOT", tmp):
+                validator.validate_duplicated_scripts(validation)
+            self.assertEqual(
+                len(validator.DUPLICATED_SCRIPTS),
+                len(validation.errors),
+                "each drifted copy must be reported",
+            )

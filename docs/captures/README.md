@@ -14,7 +14,14 @@ the payload's fields and nothing about their values:
   actually written against;
 - `session` is the first eight characters of the session id, and `project` is a salted hash of the
   working directory, so records can be grouped into turns without naming anything;
-- `tool` is the tool name, `hook_ms` is the hook's own cost, `os` and `at` place the run.
+- `tool` is the tool name, `hook_ms` is the hook's own cost, `os` and `at` place the run;
+- `harness` names which harness produced the line, from format version 2 onward. Version 1 lines
+  carry no `harness` and are read as Claude, which is what they all were.
+
+A harness is recorded rather than inferred from the filename because the reporter bounds a turn with
+each harness's own pair of event names, and getting that wrong is not a cosmetic error: the first
+Gemini capture reported "no complete turn" across four complete turns, because it was being measured
+against Claude's `UserPromptSubmit` and `Stop`.
 
 No prompt text, no tool input, no tool output, no file path. `PreToolUse` records that a
 `tool_input` field existed; it does not record what was in it.
@@ -25,6 +32,15 @@ No prompt text, no tool input, no tool output, no file path. `PreToolUse` record
 |---|---|
 | `codex/hooks-0.146.0-macos.jsonl` | One `codex exec` turn containing one shell tool call. codex-cli 0.146.0, macOS, run against an isolated `CODEX_HOME` so no user configuration was touched, with `--dangerously-bypass-hook-trust` because Codex skips untrusted hooks silently. |
 | `antigravity/statusline-macos.jsonl` | Two `agy --print` sessions, 37 status-line pushes. macOS. Recorded through a `statusLine` entry in the real `settings.json`, backed up and restored in the same script, because Antigravity's status line cannot be plugin-bundled. |
+| `gemini/hooks-0.53.1-macos.jsonl` | Four headless `gemini -p` turns, 56 hook invocations, each turn containing one `list_directory` tool call. Gemini CLI 0.53.1, macOS, against an isolated `GEMINI_CLI_HOME`. No credential was involved: the CLI ran against a loopback stand-in for the Gemini API, which is what made a real session reachable at all, since consumer accounts have not been served since 2026-06-18 and the auth check happens before any hook fires. |
+| `gemini/identity-0.53.1-macos.jsonl` | The identity question for the same five sessions, as verdicts rather than values, in the shape the Antigravity file established. |
+
+The Gemini identity file exists because a shape-only record cannot answer the question the gate asks.
+`capture_hook.py` truncates a session id to eight characters on purpose, and the question was whether
+the hook's *whole* id equals the `sessionId` on line 1 of the `chats/session-*.jsonl` the same session
+wrote, which is what `collectors/gemini.py` keys on. Five sessions, five exact matches, all 36
+characters. The store *filename* carries only the first eight, which is the trap: keying on the name
+would key on a prefix the collector never uses.
 
 The Antigravity file has a different shape from the Codex one, because it answers a different
 question. Its records carry `keys`, the observed `agent_state`, and `id_verdicts`: for each candidate

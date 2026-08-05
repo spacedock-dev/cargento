@@ -1,10 +1,19 @@
 """Gemini CLI collection.
 
-Gemini CLI was replaced by Antigravity CLI on 2026-06-18, so this store is
-legacy: nothing writes it anymore, and its sessions read as idle and fall
-outside the default activity window. It is still collected so a machine that
-ran Gemini CLI keeps its history under ``?all=1``. Antigravity is its own
-collector beside this one; see ``docs/design-harness-registry.md``.
+Gemini CLI stopped serving consumer accounts on 2026-06-18, and Antigravity CLI
+is Google's current agent. It does *not* follow that nothing writes this store.
+Enterprise Gemini Code Assist licences and API-key authentication were explicitly
+unaffected, and the CLI is actively released: 0.53.1 shipped on 2026-07-31 with
+nightly builds continuing, and a real 0.53.1 session was measured writing
+``<tmp>/<project>/chats/session-*.jsonl``, the layout this collector globs. Say
+"consumer access ended" rather than "legacy".
+
+That measurement is also what cleared the adapter gate: Gemini's hooks carry the
+same ``session_id`` this collector keys on, so live events reach these rows. See
+``docs/captures/gemini/`` for the evidence and ``event_hook.py`` for the mapping.
+
+Antigravity is its own collector beside this one; see
+``docs/design-harness-registry.md``.
 """
 
 from __future__ import annotations
@@ -28,7 +37,9 @@ def collect(
     window_hours: float,
     show_all: bool,
 ) -> list[Session]:
-    # Legacy Gemini CLI main sessions: <tmp>/<project>/chats/session-*.jsonl.
+    # Gemini CLI main sessions: <tmp>/<project>/chats/session-*.jsonl. The file
+    # name carries only the first eight characters of the session id; the whole id
+    # is on line 1, which is why `sid` is read from the file and not the name.
     # Subagents: <tmp>/<project>/chats/<safeParentSessionId>/<id>.jsonl, linked
     # to the parent purely by the directory name. Antigravity CLI sessions are
     # appended from its per-conversation SQLite stores below.
@@ -120,5 +131,5 @@ def collect(
 
 
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
-    """Whether a legacy Gemini CLI chat store is present."""
+    """Whether a Gemini CLI chat store is present."""
     return bool(runtime_io.glob_stores(config, "gemini.tmp", "*", "chats", "session-*.jsonl"))

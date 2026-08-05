@@ -4,18 +4,24 @@
 
 This repository distributes Cargento — an agnostic agent cartography and visualization tool — to Codex, Claude Code, Antigravity/AGY, and Gemini CLI. It contains one markdown-first plugin rather than a code application:
 
-- `cargento/` — the agent cartography dashboard skill
+- `cargento/` — the agent cartography dashboard skill, and the plugin root Claude Code, Codex
+  and Antigravity all install
+- `cargento-gemini/` — a hooks-only Gemini CLI extension root. It exists because Claude Code and
+  Gemini CLI both load extension hooks from `<root>/hooks/hooks.json` and neither lets that path
+  be moved, so a shared root hands each harness the other's event vocabulary
 
 The user-facing workflow lives in `cargento/skills/cargento/`. Every user-facing workflow must be usable as a skill so Codex can discover it; Claude-only agents and lifecycle hooks may remain in their native directories if ever added.
 
 ## Architecture
 
 ```
-cargento/                           # plugin root
+cargento/                           # plugin root: Claude Code, Codex, Antigravity
 ├── .claude-plugin/plugin.json      # Claude Code manifest
 ├── .codex-plugin/plugin.json       # Codex manifest
 ├── plugin.json                     # Antigravity / AGY manifest
-├── gemini-extension.json           # Gemini CLI extension manifest
+├── hooks/hooks.json                # Claude Code lifecycle hooks (its path, by convention)
+├── hooks/codex-hooks.json          # Codex lifecycle hooks (declared in its manifest)
+├── hooks.json                      # Antigravity lifecycle hooks (its path, at the root)
 └── skills/
     └── cargento/                   # the dashboard skill
         ├── SKILL.md                # shared skill body (all harnesses)
@@ -150,8 +156,8 @@ Every PR must pass the `quality-gate` required check (`.github/workflows/quality
 
 The plugin version must be identical in three places: `cargento/.claude-plugin/plugin.json` (the
 source of truth `bump_version.py` reads and writes from), `cargento/.codex-plugin/plugin.json`,
-and `cargento/gemini-extension.json`. The plugin description must be identical in four: those
-three manifests plus the Antigravity `cargento/plugin.json`. `scripts/validate_plugins.py`
+and `cargento-gemini/gemini-extension.json`. The plugin description must be identical in four:
+those three manifests plus the Antigravity `cargento/plugin.json`. `scripts/validate_plugins.py`
 enforces both.
 
 Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does). To release:

@@ -251,7 +251,8 @@ def _claude_sid(session_id: str) -> str | None:
 def _whole_uuid_sid(session_id: str) -> str | None:
     """The collector key for a harness that keys on the whole id, unchanged.
 
-    Codex and Antigravity both do, and both were measured rather than assumed:
+    Codex, Antigravity and Gemini CLI all do, and all three were measured rather
+    than assumed:
 
     - Codex's hook payload carries its own `session_id`, and that value matched
       the `session_meta` id of the rollout file the same session wrote, which is
@@ -260,10 +261,16 @@ def _whole_uuid_sid(session_id: str) -> str | None:
       `conversation_id` holding the same value, and that value matched the stem
       of a real `conversations/<id>.db`, which is what `collectors/antigravity.py`
       keys on.
+    - Gemini CLI's hook payload carries `session_id`, and across five real 0.53.1
+      sessions that value equalled the `sessionId` on line 1 of the
+      `chats/session-*.jsonl` the same session wrote, which is what
+      `collectors/gemini.py` keys on. Note the store *filename* carries only the
+      first eight characters; the id inside the file is whole, and the collector
+      reads the file rather than the name.
 
     So no truncation, unlike Claude. The shape is still validated: a value that is
     not UUID-shaped is not one of these ids, and must not reach a lookup. The
-    length is checked exactly rather than as a floor, because both harnesses write
+    length is checked exactly rather than as a floor, because these harnesses write
     36-character ids and a longer string that merely starts like one is not a
     near miss to be tolerated.
     """
@@ -281,6 +288,7 @@ IDENTITY_NORMALIZERS: Final[dict[str, Any]] = {
     "claude": _claude_sid,
     "codex": _whole_uuid_sid,
     "antigravity": _whole_uuid_sid,
+    "gemini": _whole_uuid_sid,
 }
 
 
