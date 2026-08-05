@@ -39,6 +39,15 @@ class RuntimeState:
     metadata_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
     claude_title_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
     claude_user_event_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
+    # sess_dir -> (directory mtimes, subagent transcript paths). A subagent tree
+    # whose directory mtimes have not moved cannot have gained or lost a
+    # transcript, so only the glob is memoised; mtimes are restated on every
+    # read because appending to a transcript moves no directory. Keying on
+    # directory mtimes rather than on a freshness window keeps a parked
+    # parent's subagents visible.
+    claude_subagent_cache: dict[str, tuple[tuple[float, ...], list[str]]] = field(
+        default_factory=dict
+    )
     cwd_cache: dict[str, str] = field(default_factory=dict)
     pi_scan: dict[str, dict[str, Any]] = field(default_factory=dict)
     turn_scan: dict[str, Any] = field(default_factory=dict)

@@ -1107,3 +1107,95 @@ class SubagentGlobCostTest(RuntimeTestCase):
             parent = self._fixture(root, "agent-a.jsonl")
             found = claude_collector.agent_transcripts(parent)
             self.assertEqual(["agent-a.jsonl"], [os.path.basename(p) for p, _ in found])
+
+
+class SubagentListingCacheTest(RuntimeTestCase):
+    """A session directory whose subagent tree has not moved is listed once.
+
+    Keyed on directory mtimes rather than on a freshness window, because a
+    workflow that runs for hours parks its parent transcript and keeps writing
+    only to subagent files. Dropping old prefixes would lose those sessions.
+    """
+
+    def _fixture(self, root: str, *names: str) -> str:
+        """A parent transcript plus ``names`` under its ``subagents/`` layout."""
+        parent = os.path.join(root, "abcd1234-session.jsonl")
+        Path(parent).write_text("{}\n", encoding="utf-8")
+        sub = os.path.join(root, "abcd1234-session", "subagents")
+        os.makedirs(sub, exist_ok=True)
+        for name in names:
+            Path(os.path.join(sub, name)).write_text("{}\n", encoding="utf-8")
+        return parent
+
+    def test_second_call_with_unchanged_mtime_does_not_glob(self) -> None:
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-a.jsonl")
+            first = claude_collector.agent_transcripts(parent, config=config, state=state)
+            self.assertTrue(first)
+            with mock.patch.object(
+                runtime_io,
+                "glob_under",
+                side_effect=AssertionError("re-globbed an unchanged directory"),
+            ):
+                second = claude_collector.agent_transcripts(parent, config=config, state=state)
+            self.assertEqual(first, second)
+
+    def test_a_new_subagent_file_invalidates_the_entry(self) -> None:
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-a.jsonl")
+            first = claude_collector.agent_transcripts(parent, config=config, state=state)
+            sub = os.path.join(root, "abcd1234-session", "subagents")
+            # Force a distinct directory mtime: a coarse filesystem timestamp
+            # would otherwise make this test pass or fail on timing alone.
+            Path(os.path.join(sub, "agent-b.jsonl")).write_text("{}\n", encoding="utf-8")
+            os.utime(sub, (time.time() + 5, time.time() + 5))
+            second = claude_collector.agent_transcripts(parent, config=config, state=state)
+            self.assertEqual(len(first), 1)
+            self.assertEqual(len(second), 2)
+
+    def test_a_reused_listing_carries_the_current_file_mtime(self) -> None:
+        """A cache hit restates the mtimes; only the glob is skipped.
+
+        Appending to a subagent transcript moves no directory mtime, so an
+        entry that served cached mtimes would freeze a running subagent at the
+        moment it was first seen and read Idle from then on.
+        """
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-a.jsonl")
+            claude_collector.agent_transcripts(parent, config=config, state=state)
+            agent = os.path.join(root, "abcd1234-session", "subagents", "agent-a.jsonl")
+            moved = time.time() + 30
+            os.utime(agent, (moved, moved))
+            with mock.patch.object(
+                runtime_io,
+                "glob_under",
+                side_effect=AssertionError("re-globbed an unchanged directory"),
+            ):
+                again = claude_collector.agent_transcripts(parent, config=config, state=state)
+            self.assertEqual([(agent, moved)], again)
+
+    def test_without_state_the_behaviour_is_uncached(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-a.jsonl")
+            self.assertEqual(
+                claude_collector.agent_transcripts(parent),
+                claude_collector.agent_transcripts(parent),
+            )
+
+    def test_a_parked_parent_keeps_its_subagent_activity(self) -> None:
+        """The regression this cache design exists to avoid.
+
+        The parent transcript is hours old; only the subagent file is fresh. The
+        session must still report its subagent activity.
+        """
+        config, state = runtime()
+        with tempfile.TemporaryDirectory() as root:
+            parent = self._fixture(root, "agent-a.jsonl")
+            stale = time.time() - 6 * 3600
+            os.utime(parent, (stale, stale))
+            found = claude_collector.agent_transcripts(parent, config=config, state=state)
+            self.assertEqual(len(found), 1)
+            self.assertGreater(found[0][1], stale)

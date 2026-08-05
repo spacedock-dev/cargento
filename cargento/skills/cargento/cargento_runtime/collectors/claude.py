@@ -11,6 +11,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import quota as runtime_quota
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import spacedock as runtime_spacedock
+from cargento_runtime import state as runtime_state
 from cargento_runtime import turns as runtime_turns
 
 if TYPE_CHECKING:
@@ -74,8 +75,42 @@ def load_tasks(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
     return by_session
 
 
-def agent_transcripts(transcript: str | None) -> list[tuple[str, float]]:
-    """(path, mtime) for every subagent transcript belonging to a session."""
+def subagent_tree_stamp(sess_dir: str, paths: list[str]) -> tuple[float, ...]:
+    """The mtimes of every directory that could gain or lose one of ``paths``.
+
+    A file appears in or leaves a directory only by changing that directory's
+    mtime, so this tuple is a complete change detector for the listing: the two
+    container directories catch a first flat subagent and a first workflow run,
+    and the parents of the known paths catch a later agent inside a run that
+    already has one. Absent directories stamp as -1 so the tuple keeps its
+    shape and length across calls.
+    """
+    subagents = os.path.join(sess_dir, "subagents")
+    watched = {sess_dir, subagents, os.path.join(subagents, "workflows")}
+    watched.update(os.path.dirname(path) for path in paths)
+    stamp: list[float] = []
+    for directory in sorted(watched):
+        try:
+            stamp.append(os.stat(directory).st_mtime)
+        except OSError:
+            stamp.append(-1.0)  # absent, or a file where a directory was expected
+    return tuple(stamp)
+
+
+def agent_transcripts(
+    transcript: str | None,
+    *,
+    config: RuntimeConfig | None = None,
+    state: RuntimeState | None = None,
+) -> list[tuple[str, float]]:
+    """(path, mtime) for every subagent transcript belonging to a session.
+
+    With ``config`` and ``state`` the glob is memoised on the subagent tree's
+    directory mtimes, which is what makes a large history cheap: most session
+    directories belong to finished work and are walked once per process rather
+    than once per collection. Without them the scan is unmemoised, so callers
+    outside a runtime keep working.
+    """
     if not transcript:
         return []
     sess_dir = os.path.join(
@@ -86,13 +121,34 @@ def agent_transcripts(transcript: str | None) -> list[tuple[str, float]]:
     # path that cannot match.
     if not os.path.isdir(sess_dir):
         return []
+    cache = None if state is None or config is None else state.claude_subagent_cache
+    hit = None if cache is None else cache.get(sess_dir)
+    if hit is not None and hit[0] == subagent_tree_stamp(sess_dir, hit[1]):
+        return stamped(hit[1])
+    paths = [fp for pattern in SUBAGENT_GLOBS for fp in runtime_io.glob_under(sess_dir, *pattern)]
+    if cache is not None and config is not None:
+        runtime_state.bounded_put(
+            cache,
+            sess_dir,
+            (subagent_tree_stamp(sess_dir, paths), list(paths)),
+            limit=config.max_cache_entries,
+        )
+    return stamped(paths)
+
+
+def stamped(paths: list[str]) -> list[tuple[str, float]]:
+    """(path, current mtime) per path, dropping any that has since gone.
+
+    Restated on every call, cached listing or not: a subagent writing to its
+    transcript moves no directory mtime, so serving a remembered mtime would
+    freeze a running agent at the moment it was first seen.
+    """
     found: list[tuple[str, float]] = []
-    for pattern in SUBAGENT_GLOBS:
-        for fp in runtime_io.glob_under(sess_dir, *pattern):
-            try:
-                found.append((fp, os.path.getmtime(fp)))
-            except OSError:
-                continue  # transcript rotated/deleted between glob and stat
+    for fp in paths:
+        try:
+            found.append((fp, os.path.getmtime(fp)))
+        except OSError:
+            continue  # transcript rotated/deleted between glob and stat
     return found
 
 
@@ -247,7 +303,7 @@ def collect(
         except OSError:
             transcript_mtime = 0
         latest_task_mtime = max((t["updated"] for t in tasks), default=0)
-        agent_files = agent_transcripts(transcript)
+        agent_files = agent_transcripts(transcript, config=config, state=state)
         subagents = load_subagents(config, transcript, now, found=agent_files)
         children = agent_children.get(prefix, [])
         subagents += [
