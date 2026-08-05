@@ -125,7 +125,12 @@ jobs:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
         run: |
           set -euo pipefail
-          gemini extensions install "$GITHUB_WORKSPACE/cargento" --consent
+          # cargento-gemini, not cargento: both Claude Code and Gemini CLI load
+          # extension hooks from <root>/hooks/hooks.json and neither lets that
+          # path move, so Gemini has its own root. Installing the plugin root
+          # instead would hand Gemini Claude's event vocabulary, which is the
+          # defect this split fixed.
+          gemini extensions install "$GITHUB_WORKSPACE/cargento-gemini" --consent
           cd "$RUNNER_TEMP"
           # Strip ANSI color codes so the anchors below are stable, and
           # anchor on the "✓ name (version)" loaded marker — a bare name
@@ -133,6 +138,13 @@ jobs:
           gemini extensions list 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee /tmp/cargento-gemini-extensions.txt
           grep -E '^✓ cargento \([0-9]+\.[0-9]+\.[0-9]+\)' /tmp/cargento-gemini-extensions.txt
           grep -F 'Enabled (User): true' /tmp/cargento-gemini-extensions.txt
+          # The hooks Gemini loaded must be Gemini's own vocabulary. A foreign
+          # event name is skipped with a warning on every session, which is
+          # exactly what shipped before the roots were split.
+          HOOKS="$GITHUB_WORKSPACE/cargento-gemini/hooks/hooks.json"
+          jq -e '.hooks | has("BeforeAgent") and has("AfterAgent") and has("AfterTool")' "$HOOKS"
+          jq -e '.hooks | has("UserPromptSubmit") | not' "$HOOKS"
+          jq -e '[.hooks[][] | .hooks[].command] | all(contains("gemini"))' "$HOOKS"
 
       - name: Check the installed runtime inventory
         # Separate from the launch below so a missing file produces the
