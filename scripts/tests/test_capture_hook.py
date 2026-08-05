@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -203,10 +204,99 @@ class ReportTest(unittest.TestCase):
         self.assertIn("Payload shape per event", text)
         self.assertIn("p99", text)
 
-    def test_the_install_snippet_names_every_event_and_the_privacy_promise(self) -> None:
-        text = capture_hook.install_snippet()
-        for event in ("SessionStart", "PermissionRequest", "SubagentStart", "SessionEnd"):
-            self.assertIn(event, text)
+
+class MergeTest(unittest.TestCase):
+    """Merging into a real settings file must add, never replace."""
+
+    CMD = "python3 /repo/scripts/capture_hook.py"
+
+    def test_an_existing_hook_on_the_same_event_survives(self) -> None:
+        """The reason this merges instead of printing a block to paste."""
+        existing = {
+            "hooks": {
+                "PostToolUse": [
+                    {"matcher": "Task", "hooks": [{"type": "command", "command": "cozempic"}]}
+                ]
+            }
+        }
+        merged, actions = capture_hook.merge_hooks(existing, self.CMD, ("PostToolUse",))
+        groups = merged["hooks"]["PostToolUse"]
+        self.assertEqual(2, len(groups), "ours is appended as an extra group")
+        self.assertEqual("Task", groups[0]["matcher"])
+        self.assertEqual("cozempic", groups[0]["hooks"][0]["command"])
+        self.assertEqual(self.CMD, groups[1]["hooks"][0]["command"])
+        self.assertEqual("added", actions["PostToolUse"])
+
+    def test_unrelated_top_level_settings_are_carried_over(self) -> None:
+        existing = {"model": "opus", "permissions": {"allow": ["Bash"]}, "hooks": {}}
+        merged, _ = capture_hook.merge_hooks(existing, self.CMD, ("Stop",))
+        self.assertEqual("opus", merged["model"])
+        self.assertEqual({"allow": ["Bash"]}, merged["permissions"])
+
+    def test_hooks_on_events_we_do_not_touch_are_untouched(self) -> None:
+        existing = {"hooks": {"SomeOtherEvent": [{"hooks": [{"command": "keep-me"}]}]}}
+        merged, _ = capture_hook.merge_hooks(existing, self.CMD, ("Stop",))
+        self.assertEqual([{"hooks": [{"command": "keep-me"}]}], merged["hooks"]["SomeOtherEvent"])
+
+    def test_merging_twice_does_not_double_record(self) -> None:
+        once, _ = capture_hook.merge_hooks({}, self.CMD, ("Stop",))
+        twice, actions = capture_hook.merge_hooks(once, self.CMD, ("Stop",))
+        self.assertEqual(1, len(twice["hooks"]["Stop"]))
+        self.assertEqual("already present", actions["Stop"])
+
+    def test_the_input_settings_are_never_mutated(self) -> None:
+        existing: dict[str, Any] = {"hooks": {"Stop": []}}
+        before = json.dumps(existing, sort_keys=True)
+        capture_hook.merge_hooks(existing, self.CMD, ("Stop",))
+        self.assertEqual(before, json.dumps(existing, sort_keys=True))
+
+    def test_a_missing_hooks_key_is_created(self) -> None:
+        merged, _ = capture_hook.merge_hooks({"model": "opus"}, self.CMD, ("Stop",))
+        self.assertEqual(self.CMD, merged["hooks"]["Stop"][0]["hooks"][0]["command"])
+
+
+class InstallTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.dir = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.settings = self.dir / "settings.json"
+        self.output = self.dir / "settings_with_hooks.json"
+
+    def test_it_writes_beside_the_settings_and_never_over_them(self) -> None:
+        """A settings file is the user's; a research tool does not rewrite it."""
+        original = {"model": "opus", "hooks": {"Stop": [{"hooks": [{"command": "mine"}]}]}}
+        self.settings.write_text(json.dumps(original), encoding="utf-8")
+        text = capture_hook.install(self.settings)
+
+        self.assertIn("settings_with_hooks.json", text)
+        self.assertEqual(original, json.loads(self.settings.read_text(encoding="utf-8")))
+        written = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual("opus", written["model"])
+        commands = [h["command"] for g in written["hooks"]["Stop"] for h in g["hooks"]]
+        self.assertIn("mine", commands, "the existing hook must survive")
+        self.assertEqual(2, len(commands))
+
+    def test_no_settings_file_still_produces_a_usable_one(self) -> None:
+        text = capture_hook.install(self.settings)
+        self.assertIn("fresh one", text)
+        self.assertIn("Stop", json.loads(self.output.read_text(encoding="utf-8"))["hooks"])
+
+    def test_unreadable_json_refuses_rather_than_writing_something_wrong(self) -> None:
+        self.settings.write_text("{not json", encoding="utf-8")
+        text = capture_hook.install(self.settings)
+        self.assertIn("Nothing was written", text)
+        self.assertFalse(self.output.exists())
+
+    def test_a_non_object_settings_file_refuses(self) -> None:
+        self.settings.write_text("[1,2,3]", encoding="utf-8")
+        text = capture_hook.install(self.settings)
+        self.assertIn("Nothing was written", text)
+        self.assertFalse(self.output.exists())
+
+    def test_the_output_names_the_swap_and_the_privacy_promise(self) -> None:
+        self.settings.write_text("{}", encoding="utf-8")
+        text = capture_hook.install(self.settings)
+        self.assertIn("mv ", text)
+        self.assertIn(".bak", text, "back up before swapping")
         self.assertIn("no prompts", text)
 
 

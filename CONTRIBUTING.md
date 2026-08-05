@@ -66,8 +66,14 @@ an outbound request.
 
 `scripts/capture_hook.py` is also outside the gate. It answers the adapter-semantics question for the
 event-driven work: what a harness lifecycle event means, how many arrive per turn, and in what order.
-None of that is documented anywhere, so it has to be observed. `--install` prints the settings block
-to add, `--report` summarises what has accumulated, and captures land in `~/.cargento/captures`.
+None of that is documented anywhere, so it has to be observed. `--report` summarises what has
+accumulated, and captures land in `~/.cargento/captures`.
+
+`--install` does not print a block to paste. It reads your existing `settings.json`, appends the
+capture hook as an extra matcher group on each event, and writes the result to
+`settings_with_hooks.json` beside it. Nothing is written over: read the merged file, then swap it in
+yourself. Appending a group rather than editing one in place is what makes an existing hook on the same
+event safe, since Claude Code runs every group whose matcher matches. Running it twice adds nothing.
 
 It records shape and refuses content. A capture line carries the event name, the session prefix, a
 salted digest of the working directory, the sorted top-level keys the payload carried, the tool name,

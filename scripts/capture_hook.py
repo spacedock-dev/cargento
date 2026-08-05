@@ -300,37 +300,154 @@ def report(directory: Path) -> str:
     return "\n".join(out)
 
 
-def install_snippet() -> str:
-    script = Path(__file__).resolve()
-    events = (
-        "SessionStart",
-        "UserPromptSubmit",
-        "PreToolUse",
-        "PostToolUse",
-        "PermissionRequest",
-        "Notification",
-        "SubagentStart",
-        "SubagentStop",
-        "TaskCompleted",
-        "PreCompact",
-        "PostCompact",
-        "Stop",
-        "SessionEnd",
+CAPTURE_EVENTS = (
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PermissionRequest",
+    "Notification",
+    "SubagentStart",
+    "SubagentStop",
+    "TaskCompleted",
+    "PreCompact",
+    "PostCompact",
+    "Stop",
+    "SessionEnd",
+)
+
+
+def settings_path() -> Path:
+    """Where Claude Code keeps its settings, honouring the documented override."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(base) if base else Path.home() / ".claude") / "settings.json"
+
+
+def hook_command() -> str:
+    return f'python3 "{Path(__file__).resolve()}"'
+
+
+def merge_hooks(
+    settings: dict[str, Any], command: str, events: tuple[str, ...] = CAPTURE_EVENTS
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Add the capture hook to `events`, leaving every existing hook alone.
+
+    Additive per event: a new matcher group is appended rather than merged into
+    an existing one. Claude Code runs every group whose matcher matches, so
+    appending cannot disturb a hook that is already there, while editing a group
+    in place could. `matcher: ""` matches everything, which is the shape the
+    existing entries use.
+
+    Idempotent: an event that already runs this exact command is left untouched,
+    so running this twice does not double-record.
+
+    Returns the merged settings and what happened per event, so the caller can
+    report it rather than claiming success blindly.
+    """
+    merged = json.loads(json.dumps(settings))  # deep copy: never mutate the input
+    hooks = merged.get("hooks")
+    if not isinstance(hooks, dict):
+        # Absent is normal. A non-object here is a settings file Claude Code
+        # would reject anyway, so replacing it is the honest move, but say so.
+        hooks = {}
+    merged["hooks"] = hooks
+    actions: dict[str, str] = {}
+    for event in events:
+        groups = hooks.get(event)
+        if not isinstance(groups, list):
+            groups = [] if groups is None else [groups]
+        already = any(
+            isinstance(group, dict)
+            and any(
+                isinstance(entry, dict) and entry.get("command") == command
+                for entry in (group.get("hooks") or [])
+                if isinstance(group.get("hooks"), list)
+            )
+            for group in groups
+        )
+        if already:
+            actions[event] = "already present"
+            hooks[event] = groups
+            continue
+        groups = [*groups, {"matcher": "", "hooks": [{"type": "command", "command": command}]}]
+        hooks[event] = groups
+        actions[event] = "added" if len(groups) > 1 else "added (first hook for this event)"
+    return merged, actions
+
+
+def install(source: Path | None = None) -> str:
+    """Write a merged settings file beside the real one, and never over it.
+
+    A merged copy rather than an edit in place, because a settings file is the
+    user's and a research tool has no business rewriting it. The caller reads the
+    result, and swaps it in if they agree.
+    """
+    settings_file = source or settings_path()
+    output = settings_file.with_name("settings_with_hooks.json")
+    command = hook_command()
+
+    existing: dict[str, Any] = {}
+    note = ""
+    if settings_file.exists():
+        try:
+            loaded = json.loads(settings_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return (
+                f"Could not read {settings_file}: {exc}\n"
+                "Nothing was written. Fix the file, or pass --settings with another path."
+            )
+        if isinstance(loaded, dict):
+            existing = loaded
+        else:
+            return (
+                f"{settings_file} does not contain a JSON object, so there is nothing to "
+                "merge into. Nothing was written."
+            )
+    else:
+        note = f"No settings file at {settings_file}, so this is a fresh one.\n"
+
+    merged, actions = merge_hooks(existing, command)
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return f"Could not write {output}: {exc}"
+
+    added = [e for e, a in actions.items() if a.startswith("added")]
+    present = [e for e, a in actions.items() if a == "already present"]
+    kept = sorted(k for k in existing if k != "hooks")
+    untouched = sorted(
+        event
+        for event in (existing.get("hooks") or {})
+        if isinstance(existing.get("hooks"), dict) and event not in CAPTURE_EVENTS
     )
-    hooks = {
-        name: [{"hooks": [{"type": "command", "command": f'python3 "{script}"'}]}]
-        for name in events
-    }
-    return (
-        "Add this to the `hooks` object in ~/.claude/settings.json, merging rather\n"
-        "than replacing whatever is already there. Every event is included on\n"
-        "purpose: cardinality cannot be studied by guessing which ones matter.\n\n"
-        + json.dumps({"hooks": hooks}, indent=2)
-        + "\n\nCaptures land in "
-        + str(capture_dir())
-        + " and record shape only:\n"
-        "no prompts, tool arguments, tool output, or paths. Remove the block to stop.\n"
-    )
+
+    lines = [note + f"Wrote {output}", ""]
+    lines.append(f"Capture hook added to {len(added)} event(s):")
+    lines.append("  " + ", ".join(added) if added else "  none")
+    if present:
+        lines.append(f"Already had it, left alone: {', '.join(present)}")
+    lines.append("")
+    lines.append("Your existing configuration is carried over untouched:")
+    lines.append(f"  {len(kept)} top-level key(s) kept: {', '.join(kept) or 'none'}")
+    existing_hooks = existing.get("hooks")
+    if isinstance(existing_hooks, dict) and existing_hooks:
+        lines.append(
+            f"  {len(existing_hooks)} event(s) already had hooks; the capture hook is appended "
+            "as an extra group rather than replacing them"
+        )
+    if untouched:
+        lines.append(f"  events with hooks that this does not touch: {', '.join(untouched)}")
+    lines += [
+        "",
+        "Read it, and if it looks right:",
+        f"  cp {settings_file} {settings_file.with_suffix('.json.bak')}",
+        f"  mv {output} {settings_file}",
+        "",
+        f"Captures land in {capture_dir()} and record shape only: no prompts, tool",
+        "arguments, tool output, or paths. To stop, remove the appended groups.",
+    ]
+    return "\n".join(lines)
 
 
 def main(argv: list[str]) -> int:
@@ -340,12 +457,17 @@ def main(argv: list[str]) -> int:
     if len(argv) > 1 and argv[1] in {"--report", "--install", "--help", "-h"}:
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument("--report", action="store_true", help="summarise captures")
-        parser.add_argument("--install", action="store_true", help="print the settings snippet")
+        parser.add_argument(
+            "--install",
+            action="store_true",
+            help="write settings_with_hooks.json beside your settings, merged",
+        )
+        parser.add_argument("--settings", default=None, help="settings.json to merge into")
         parser.add_argument("--dir", default=None, help="capture directory")
         args = parser.parse_args(argv[1:])
         directory = Path(args.dir) if args.dir else capture_dir()
         if args.install:
-            print(install_snippet())
+            print(install(Path(args.settings) if args.settings else None))
         else:
             print(report(directory))
         return 0
