@@ -13,6 +13,7 @@ import select
 import socket
 import subprocess
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -668,6 +669,38 @@ def prepare_daemon_home(
     return True
 
 
+def run_producer(
+    server: http_api.CargentoHTTPServer,
+    *,
+    stop: threading.Event,
+    interval: float | None = None,
+) -> None:
+    """Keep the snapshot warm while at least one stream is connected.
+
+    With no client this loop does nothing at all: no collection, no store
+    access. An idle daemon costs what it costs today, which is nothing, and a
+    timer that collected regardless would be exactly the regression this phase
+    exists to avoid.
+
+    A collection failure is swallowed and retried on the next tick. The
+    per-harness failure boundary already reports the cause, and a producer that
+    died on one bad read would leave every connected dashboard frozen with no
+    indication why.
+    """
+    application = server.application
+    period = application.config.stream_producer_interval_sec if interval is None else interval
+    while not stop.wait(period):
+        if application.state.streams.count == 0:
+            continue
+        try:
+            application.collect_json(show_all=False)
+        except Exception as exc:  # noqa: BLE001 (a bad read must not stop the loop)
+            runtime_io.diag(
+                f"Cargento: producer collection failed: {exc}",
+                application.diagnostic_sink,
+            )
+
+
 def serve(
     config: RuntimeConfig,
     server: http_api.CargentoHTTPServer,
@@ -688,9 +721,19 @@ def serve(
     if announce_fd is not None:
         # After write_state, so --status works the instant the parent returns.
         daemon_announce(announce_fd)
+    # Started here rather than at assembly: on the daemon path serve() runs
+    # after the fork, so the thread is never created in a process about to be
+    # replaced.
+    producer_stop = threading.Event()
+    producer = threading.Thread(
+        target=run_producer, args=(server,), kwargs={"stop": producer_stop}, daemon=True
+    )
+    producer.start()
     try:
         server.serve_forever()
     finally:
+        producer_stop.set()
+        producer.join(timeout=2)
         # Converge every exit path on the same cleanup: --stop, a signal, and an
         # exception all have to release the streams, not just the endpoint.
         with contextlib.suppress(Exception):
