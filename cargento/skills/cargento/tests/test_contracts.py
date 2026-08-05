@@ -932,6 +932,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.config",
             "cargento_runtime.state",
         },
+        # The coarse store probe: stat only, no globbing and no reads. Imports
+        # config for typing alone, which is why it sits at the bottom layer with
+        # sessions and state rather than beside the collectors.
+        "cargento_runtime.probe": {"cargento_runtime.config"},
         "cargento_runtime.records": set(),
         "cargento_runtime.sessions": {"cargento_runtime.config"},
         # The published snapshot is a passive container: it holds bytes and a

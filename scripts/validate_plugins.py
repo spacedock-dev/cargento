@@ -101,6 +101,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/state.py",
     "skills/cargento/cargento_runtime/stream.py",
     "skills/cargento/cargento_runtime/io.py",
+    "skills/cargento/cargento_runtime/probe.py",
     "skills/cargento/cargento_runtime/records.py",
     "skills/cargento/cargento_runtime/transcripts.py",
     "skills/cargento/cargento_runtime/turns.py",

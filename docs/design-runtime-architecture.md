@@ -51,6 +51,7 @@ Everything else lives in one file per responsibility:
 | `snapshot.py` | The published response bytes per variant, and the restart-qualified revision that versions them. Imports no runtime module, which is what lets `state`, `aggregate` and `http_api` all depend on it without a cycle. |
 | `stream.py` | Connected SSE clients and their one-slot revision mailboxes, with the connection budget. Imports no runtime module, for the same reason `snapshot.py` does not. `state` owns the registry because a connected stream belongs to the runtime, not to whichever object serves a request. |
 | `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
+| `probe.py` | The coarse store probe: a bounded stat sweep answering whether anything on disk moved. Stat only, no globbing or reads, and a hint rather than authority. |
 | `records.py` | Parsing and normalizing untrusted records from disk. |
 | `sessions.py` | Session identity and shape (including the row's declared field set, `base_session`), freshness, display ids, deterministic aggregation. |
 | `transcripts.py` | Shared metadata readers, prompt titles, the non-Claude analyzers. |
@@ -84,7 +85,8 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 | `web/controls.js` | The stop control, the stopped panel, and the mode bar. |
 | `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. |
 | `web/notify.js` | Desktop notifications. |
-| `web/main.js` | `render()`, `refresh()`, and the poll timer. |
+| `web/main.js` | `render()` and `refresh()`. |
+| `web/live.js` | Leader election across tabs, the SSE stream, and the fallback poll. |
 
 ## R-2: Dependencies run inward, and the test enforces it
 

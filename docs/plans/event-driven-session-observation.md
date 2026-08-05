@@ -1175,11 +1175,30 @@ The gates are independent. Verdicts, one per gate:
   the figures are comparable across hardware. Until then Phase 1 should keep the publish protocol
   behind an interface that can serve either one full aggregate or per-harness merges, and should not
   hard-code the full-aggregate assumption that a single-machine reading would have justified.
-- **Coarse probe: not yet measured, blocks the phase it gates.** Do not use it to reduce scans until
-  its mutation corpus has no false negatives on supported local filesystems and its CPU/I/O budget
-  passes on all three OSes. WSL, remote, bind and network stores retain the current cadence unless
-  separately proven. Phase 0 built no probe, so this gate is unreached, not passed. The 0.14 ms sweep
-  remains a hypothesis.
+- **Coarse probe: MEASURED, and it passes with one documented false negative.** The probe is
+  `cargento_runtime/probe.py`, and its corpus is `tests/test_probe.py`, which performs real
+  filesystem mutations against a real temporary store rather than mocking `stat`.
+
+  Detected: an append to a tracked transcript; an append inside one filesystem tick, which mtime
+  alone misses and size catches; a new session file in a known project; a new project directory; a
+  deleted tracked transcript; a rename; and a SQLite write that lands only in the write-ahead log.
+  An unreadable or absent store root degrades to no signal rather than raising.
+
+  The probe stats store roots, their immediate children, and the paths a caller names as tracked. It
+  never globs, reads, or recurses. Cost is asserted per path rather than as a total, so the budget
+  means the same thing on a fast laptop and a slow runner, and the test additionally asserts the
+  watched set stays bounded: 60 projects holding 40 files each must not become 2,400 stats.
+  Ubuntu, macOS and Windows all run it through `platform-tests`.
+
+  **The false negative, which is deliberate.** A session that is not tracked and whose directory does
+  not change is invisible: a session older than the activity window becomes active again, its
+  transcript's mtime moves, and appending changed no directory. Covering it means statting every
+  historical transcript, which on the machine measured in Phase 0 is 24,898 files and costs more than
+  the collection the probe exists to avoid. A test asserts the gap is still exactly that size, so
+  widening the watched set cannot happen silently without re-measuring the budget.
+
+  Reconciliation therefore stays, and this is the concrete reason rather than a general caution. WSL,
+  remote, bind and network stores are still unproven and retain the current cadence.
 - **Adapter semantics: not yet measured, blocks the phase it gates.** Do not publish an overlay
   transition without contract or real-CLI fixtures proving event meaning, cardinality and order. Each
   synchronous shim must fit the single end-to-end p99 hook budget. Unreachable until Phase 2 collects
