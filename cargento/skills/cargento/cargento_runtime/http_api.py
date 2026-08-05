@@ -139,6 +139,69 @@ class _RequestHandler(BaseHTTPRequestHandler):
     # reach 127.0.0.1-bound servers through the victim's browser).
     LOCAL_HOSTS: ClassVar[set[str]] = {"127.0.0.1", "localhost", "::1"}
 
+    # How much of a rejected POST's body to read and throw away. Generously above
+    # every accept-path cap so a rejection drains whatever a legitimate client
+    # sent, and still a hard bound so a hostile declared length cannot turn a
+    # refusal into an unbounded read.
+    REJECT_DRAIN_CAP_BYTES: ClassVar[int] = 1 << 20
+
+    # How long to spend draining a rejected body. Bounded in time as well as in
+    # bytes: a peer may declare a length it never sends, which a limit test does
+    # on purpose and a hostile client would do to stall a handler.
+    REJECT_DRAIN_SECONDS: ClassVar[float] = 0.25
+
+    def _drain_body(self) -> None:
+        """Read and discard a rejected request's body before answering.
+
+        Closing a socket that still holds unread inbound data makes the OS send
+        RST rather than FIN, and an RST can discard the reply already written.
+        The client then sees ECONNRESET, or WSAECONNABORTED on Windows, instead
+        of the 403 or 413 it was told to expect. That is what failed on the
+        macOS and Windows runners.
+
+        Bounded three ways, and all three are load-bearing. By the declared
+        length, so a well-behaved client is drained exactly. By
+        REJECT_DRAIN_CAP_BYTES, so a hostile declared length cannot turn a
+        refusal into an unbounded read. And by REJECT_DRAIN_SECONDS, because a
+        peer that declares more than it sends would otherwise stall this handler
+        until the connection timeout: `read1` blocks for at least one byte, and
+        a request-limit test sends exactly that shape deliberately.
+        """
+        try:
+            declared = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return
+        remaining = max(0, min(declared, self.REJECT_DRAIN_CAP_BYTES))
+        if not remaining:
+            return
+        deadline = time.monotonic() + self.REJECT_DRAIN_SECONDS
+        previous = None
+        try:
+            previous = self.connection.gettimeout()
+            self.connection.settimeout(self.REJECT_DRAIN_SECONDS)
+        except (OSError, AttributeError):
+            previous = None  # not a real socket, as in a handler-level test
+        try:
+            while remaining > 0 and time.monotonic() < deadline:
+                try:
+                    # read1, not read: one syscall returning what is available,
+                    # rather than blocking until the full count arrives.
+                    chunk = self.rfile.read1(min(remaining, 65_536))
+                except (OSError, ValueError, AttributeError):
+                    return
+                if not chunk:
+                    return  # end of stream, or nothing more is coming
+                remaining -= len(chunk)
+        finally:
+            if previous is not None:
+                with contextlib.suppress(OSError):
+                    self.connection.settimeout(previous)
+
+    def _reject(self, code: int) -> None:
+        """Refuse a POST without stranding the peer mid-write."""
+        self._drain_body()
+        self.send_error(code)
+
     def _local_ok(self, *, allow_cross_site_navigation: bool = False) -> bool:
         if normalize_host(self.headers.get("Host") or "") not in self.LOCAL_HOSTS:
             return False
@@ -375,7 +438,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             length = -1
         if not 0 <= length <= application.config.usage_receipt_cap_bytes:
-            self.send_error(413)
+            self._reject(413)
             return
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
@@ -393,7 +456,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if not self._local_ok():
-            self.send_error(403)
+            self._reject(403)
             return
         path = urlparse(self.path).path
         if path == "/api/shutdown":
@@ -403,7 +466,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._usage_receipt()
             return
         if path != "/api/notify":
-            self.send_error(404)
+            self._reject(404)
             return
         # Claude Code Notification-hook payload: {"session_id": ..., "message": ..., ...}
         application = self.server.application
@@ -414,7 +477,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # Checked before the read, so an oversized declared length costs nothing
         # and no path here ever reads an unbounded body.
         if not 0 <= length <= application.config.notification_body_cap_bytes:
-            self.send_error(413)
+            self._reject(413)
             return
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")

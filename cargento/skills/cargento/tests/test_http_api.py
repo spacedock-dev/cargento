@@ -16,6 +16,7 @@ import threading
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -646,6 +647,123 @@ class VerificationFixTest(unittest.TestCase):
         self.assertTrue(handler._local_ok())
         handler.server = mock.Mock(server_port=4553)
         self.assertFalse(handler._local_ok())
+
+
+class RejectedPostDrainTest(unittest.TestCase):
+    """A refused POST has its body read before the refusal is written.
+
+    Closing a socket that still holds unread inbound data makes the OS send RST
+    rather than FIN, and an RST can discard the reply already written, so the
+    client sees ECONNRESET (WSAECONNABORTED on Windows) instead of the 413 it was
+    told to expect. That is what failed on the macOS and Windows runners.
+
+    Asserted at the handler rather than through a socket, deliberately. A
+    socket-level version of this passes on this machine whether or not the drain
+    is there, because the race needs buffer and scheduling conditions a local run
+    does not reproduce: it would be a test that cannot fail. Reading the body
+    before answering is the behaviour being added, so that is what is pinned.
+    """
+
+    class _Handler(http_api._RequestHandler):
+        def __init__(self, declared: str, available: bytes) -> None:
+            # Headers is an email.message.Message on the real handler; a dict
+            # answers the only call the drain makes of it.
+            self.headers = email.message.Message()
+            self.headers["Content-Length"] = declared
+            self.rfile = io.BytesIO(available)
+            self.sent: list[int] = []
+
+        def send_error(
+            self, code: int, message: str | None = None, explain: str | None = None
+        ) -> None:
+            # Records the order: the drain has to have happened by now.
+            del message, explain
+            self.sent.append(code)
+
+    def _reject(self, declared: str, available: bytes) -> tuple[list[int], int]:
+        handler = self._Handler(declared, available)
+        handler._reject(413)
+        return handler.sent, handler.rfile.tell()
+
+    def test_the_declared_body_is_consumed_before_the_error_is_sent(self) -> None:
+        sent, consumed = self._reject("2048", b"a" * 2048)
+        self.assertEqual([413], sent)
+        self.assertEqual(2048, consumed, "the body must be read, or the close sends RST")
+
+    def test_an_oversized_declared_length_is_drained_only_to_the_bound(self) -> None:
+        """Bounded: a refusal must not become an unbounded read."""
+        cap = http_api._RequestHandler.REJECT_DRAIN_CAP_BYTES
+        sent, consumed = self._reject(str(cap * 4), b"b" * (cap + 100))
+        self.assertEqual([413], sent)
+        self.assertEqual(cap, consumed, "never more than the bound, whatever is declared")
+
+    def test_a_body_shorter_than_declared_does_not_hang(self) -> None:
+        """A peer that declares more than it sends must not block the handler.
+
+        BytesIO reports end of stream immediately; a real socket blocks instead,
+        which is why the drain is also bounded by a deadline. The socket case is
+        covered by test_a_declared_body_never_sent_does_not_stall below.
+        """
+        sent, consumed = self._reject("100000", b"c" * 10)
+        self.assertEqual([413], sent)
+        self.assertEqual(10, consumed)
+
+    def test_a_missing_or_unparseable_length_reads_nothing(self) -> None:
+        for declared in ("", "not-a-number"):
+            with self.subTest(declared=declared):
+                sent, consumed = self._reject(declared, b"d" * 50)
+                self.assertEqual([413], sent)
+                self.assertEqual(0, consumed)
+
+    def test_a_declared_body_never_sent_does_not_stall(self) -> None:
+        """The bug my first fix introduced, over a real socket.
+
+        A peer that declares a length and sends nothing made the drain block on
+        read1 until the connection timeout, which turned a refusal into a
+        five-second hang. A request-limit test sends exactly that shape on
+        purpose, so this is a real caller and not a hypothetical one.
+        """
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            started = time.monotonic()
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=10)
+            try:
+                # Declare a body, send none: putrequest/endheaders without a send.
+                conn.putrequest("POST", "/api/notify")
+                # Above notification_body_cap_bytes, so this takes the rejection
+                # path. A declared length UNDER the cap is a different case: the
+                # accept path reads it and blocks, which is pre-existing
+                # behaviour and not what this test is about.
+                conn.putheader("Content-Length", "200000")
+                conn.putheader("Content-Type", "application/json")
+                conn.endheaders()
+                response = conn.getresponse()
+                self.assertEqual(413, response.status)
+                response.read()
+            finally:
+                conn.close()
+            elapsed = time.monotonic() - started
+            self.assertLess(
+                elapsed,
+                3.0,
+                f"a refusal must not wait out the connection timeout, took {elapsed:.1f}s",
+            )
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_every_post_rejection_path_drains(self) -> None:
+        """The whole class of bug, not the one instance that was reported."""
+        source = Path(http_api.__file__).read_text(encoding="utf-8")
+        post_region = source[source.index("    def _usage_receipt") :]
+        self.assertNotIn(
+            "self.send_error(",
+            post_region,
+            "a POST path answering with send_error instead of _reject will strand its peer",
+        )
 
 
 class StreamEndpointTest(RuntimeTestCase):
