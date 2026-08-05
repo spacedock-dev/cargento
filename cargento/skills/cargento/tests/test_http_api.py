@@ -789,6 +789,86 @@ class StreamEndpointTest(RuntimeTestCase):
             thread.join(timeout=2)
 
 
+class StreamShutdownTest(RuntimeTestCase):
+    """A stream asleep in wait() has to be woken, or shutdown looks like a hang.
+
+    server.shutdown() stops the accept loop and never touches handler threads,
+    and daemon_threads means nothing joins them, so nothing else would tell a
+    sleeping stream to stop.
+    """
+
+    def test_shutdown_closes_an_open_stream_promptly(self) -> None:
+        httpd = make_server()
+        # A heartbeat far longer than the assertion window, so a pass cannot be
+        # the heartbeat firing rather than the close.
+        httpd.application.config = dataclasses.replace(
+            httpd.application.config, stream_heartbeat_sec=60.0
+        )
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=10)
+            conn.request("GET", "/api/stream")
+            response = conn.getresponse()
+            self.assertEqual(200, response.status)
+            ended = threading.Event()
+
+            def drain() -> None:
+                while response.read(1):
+                    pass
+                ended.set()
+
+            reader = threading.Thread(target=drain, daemon=True)
+            reader.start()
+            httpd.application.state.streams.close_all()
+            self.assertTrue(
+                ended.wait(timeout=5.0),
+                "an open stream must end when the registry closes it",
+            )
+            conn.close()
+            reader.join(timeout=2)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_the_shutdown_endpoint_closes_streams_before_stopping(self) -> None:
+        httpd = make_server()
+        httpd.application.config = dataclasses.replace(
+            httpd.application.config, stream_heartbeat_sec=60.0
+        )
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            stream_conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=10)
+            stream_conn.request("GET", "/api/stream")
+            stream_response = stream_conn.getresponse()
+            self.assertEqual(200, stream_response.status)
+            ended = threading.Event()
+
+            def drain() -> None:
+                while stream_response.read(1):
+                    pass
+                ended.set()
+
+            reader = threading.Thread(target=drain, daemon=True)
+            reader.start()
+            stop_conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=10)
+            stop_conn.request("POST", "/api/shutdown", body=b"")
+            stop_conn.getresponse().read()
+            stop_conn.close()
+            self.assertTrue(
+                ended.wait(timeout=5.0),
+                "POST /api/shutdown must wake open streams, not leave them asleep",
+            )
+            stream_conn.close()
+            reader.join(timeout=2)
+        finally:
+            with contextlib.suppress(Exception):
+                httpd.server_close()
+            thread.join(timeout=2)
+
+
 class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
 

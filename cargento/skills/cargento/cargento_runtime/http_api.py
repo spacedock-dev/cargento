@@ -241,6 +241,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         `shutdown()` inline would then deadlock, exactly as `BaseServer.
         shutdown`'s docstring warns.
         """
+        # Wake every stream first. shutdown() stops the accept loop but never
+        # touches handler threads, and a stream is asleep in wait() rather than
+        # in the socket, so nothing else would tell it to stop.
+        with contextlib.suppress(Exception):
+            self.server.application.state.streams.close_all()
         try:
             self._send(b'{"ok":true,"stopping":true}', "application/json")
             with contextlib.suppress(OSError, ValueError):

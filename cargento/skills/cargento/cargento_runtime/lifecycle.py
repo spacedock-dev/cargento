@@ -691,6 +691,10 @@ def serve(
     try:
         server.serve_forever()
     finally:
+        # Converge every exit path on the same cleanup: --stop, a signal, and an
+        # exception all have to release the streams, not just the endpoint.
+        with contextlib.suppress(Exception):
+            server.application.state.streams.close_all()
         remove_state(config, port)
         with contextlib.suppress(OSError):
             server.server_close()
