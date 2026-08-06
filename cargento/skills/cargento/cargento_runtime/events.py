@@ -451,7 +451,13 @@ def requires_reconcile(event: Event) -> bool:
     return event.event == "reconcile_required"
 
 
-def reduce_overlays(overlays: Iterable[Overlay], *, now: float) -> dict[str, Any]:
+def reduce_overlays(
+    overlays: Iterable[Overlay],
+    *,
+    now: float,
+    own_activity: float = 0.0,
+    activity_grace_sec: float = 0.0,
+) -> dict[str, Any]:
     """The field patch a session's live overlays imply, in `arrival_seq` order.
 
     Last writer wins per field, which is why the sort is by `arrival_seq` and not
@@ -471,6 +477,16 @@ def reduce_overlays(overlays: Iterable[Overlay], *, now: float) -> dict[str, Any
     turn still running past `overlay_working_ttl_sec` reverted to "waiting for you"
     while claiming to have been waiting the whole time. Once a turn has started the
     earlier wait is over as a matter of history, and history does not lapse.
+
+    A wait is also over once the session's own transcript has moved on past it.
+    Claude has no hook for a permission being *granted* — `UserPromptSubmit` and
+    `Stop` are the only overlays that end a wait, and neither fires mid-turn — so
+    without this a permission approved thirty seconds in leaves the row in the red
+    band for the rest of the turn, counted in the Needs-you tile and popped as a
+    notification, while the session generates (DRC-4097). `own_activity` is the
+    parent transcript alone and never the subagents below it: a background agent
+    writing says nothing about whether the human has answered, and clearing a
+    genuine wait is the worse error of the two.
     """
     ordered = sorted(overlays, key=lambda item: item.arrival_seq)
     # The latest point at which this session was known not to be waiting. Computed
@@ -482,6 +498,8 @@ def reduce_overlays(overlays: Iterable[Overlay], *, now: float) -> dict[str, Any
     patch: dict[str, Any] = {}
     for overlay in ordered:
         if overlay.kind == OVERLAY_NEEDS_INPUT and overlay.arrival_seq < not_waiting_since:
+            continue
+        if overlay.kind == OVERLAY_NEEDS_INPUT and own_activity > overlay.at + activity_grace_sec:
             continue
         if not overlay.applies(now=now):
             continue

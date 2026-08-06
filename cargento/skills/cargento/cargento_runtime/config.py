@@ -108,6 +108,14 @@ class RuntimeConfig:
     # overlay exists to avoid. The dwell is a chosen constant, set well above the
     # 50 to 150 millisecond coalescing window so a stop followed immediately by a
     # new prompt resolves inside one publish instead of flapping the row.
+    # A needs-input overlay has no deadline, because a real permission wait can
+    # last hours. What ends it, absent a hook that says so, is the session's own
+    # transcript moving again: the tool_use record is written before the prompt
+    # is raised, so an open prompt leaves the file quiet and the tool_result that
+    # follows a grant advances it. The grace absorbs the ordering between a hook
+    # process and the write that provoked it, and nothing else -- a wait that
+    # ends is over within one write, not within a minute.
+    overlay_wait_activity_grace_sec: float
     overlay_working_ttl_sec: float
     overlay_idle_dwell_sec: float
     # The coordinator. The coalescing window is fixed rather than sliding: a
@@ -322,6 +330,7 @@ def build_runtime_config(
         usage_credentials_cap_bytes=65_536,
         usage_response_cap_bytes=262_144,
         usage_receipt_cap_bytes=131_072,
+        overlay_wait_activity_grace_sec=10.0,
         overlay_working_ttl_sec=90,
         overlay_idle_dwell_sec=3.0,
         event_coalesce_sec=0.1,
