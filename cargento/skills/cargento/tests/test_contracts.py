@@ -794,9 +794,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # `sessions` arrived with the event envelope: an event timestamp passes
         # through the same plausibility filter as every store timestamp, so a
         # hook with a skewed clock cannot invent activity that a store read
-        # could not. The module stays pure, so it depends on nothing else.
+        # could not. `records` is here for one function, `iso_epoch`: the rule
+        # that an offset-less ISO stamp means UTC has to be the same rule the
+        # collectors apply, and it stopped being that when two of the four
+        # readers grew their own copy. `records` is a leaf, so this stays inward
+        # and the module stays pure.
         "cargento_runtime.events": {
             "cargento_runtime.config",
+            "cargento_runtime.records",
             "cargento_runtime.sessions",
         },
         "cargento_runtime.diagnostics": {

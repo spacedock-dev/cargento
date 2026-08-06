@@ -39,10 +39,10 @@ it has no knowledge of.
 
 from __future__ import annotations
 
-import datetime as dt
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
+from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 
 if TYPE_CHECKING:
@@ -224,17 +224,17 @@ def _parse_timestamp(raw: str | None, *, config: RuntimeConfig, now: float) -> f
     to invent activity. `sessions.age` is the same plausibility filter every
     store timestamp passes through, so a container clock hours ahead cannot pin a
     row here either.
+
+    The parse itself is `records.iso_epoch`, which holds the repo-wide rule that an
+    offset-less stamp is UTC. This path had that rule inline and correct already;
+    routing it through the shared helper is what keeps the four ISO readers from
+    drifting apart again, which is how two of them came to disagree.
     """
     if raw is None:
         return now
-    text = raw.replace("Z", "+00:00") if raw.endswith("Z") else raw
-    try:
-        parsed = dt.datetime.fromisoformat(text)
-    except ValueError:
+    stamp = records.iso_epoch(raw)
+    if stamp is None:
         return now
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.UTC)
-    stamp = parsed.timestamp()
     if runtime_sessions.age(config, now, stamp) is None:
         return now
     return stamp

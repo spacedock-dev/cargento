@@ -38,7 +38,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from . import io as runtime_io
@@ -166,15 +165,18 @@ def _read_token(
 
 
 def _epoch(raw: Any) -> float | None:
-    """A reset stamp as epoch seconds: the endpoint has sent both shapes."""
+    """A reset stamp as epoch seconds: the endpoint has sent both shapes.
+
+    The string branch defers to `records.iso_epoch`, so an offset-less stamp is
+    read as UTC here exactly as it is everywhere else. It matters most on this
+    path: a `resets_at` misread by the server's own UTC offset moves every reset
+    countdown and, since A5 landed, the burn projection that fires off it. The
+    live capture records all four `resets_at` fields arriving with an explicit
+    `+00:00`, so the naive branch is a guard rather than the normal case.
+    """
     if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0:
         return float(raw)
-    if isinstance(raw, str):
-        try:
-            return datetime.fromisoformat(raw).timestamp()
-        except ValueError:
-            return None
-    return None
+    return records.iso_epoch(raw)
 
 
 def _epoch_millis(raw: Any) -> float | None:
