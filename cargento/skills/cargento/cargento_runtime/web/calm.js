@@ -32,6 +32,12 @@ const CALM_TASK = {
   completed:  {glyph:"✓", ink:"var(--accent-ink)", text:"var(--ink3)"}
 };
 const CALM_TASK_ORDER = {in_progress:0, pending:1, completed:2};
+/* The order segment: the key the action carries, and the word on the button.
+   They differ for one of them. `burn` is what the ordering is called wherever it
+   is implemented; `fastest` is the word a reader scanning for "who is burning
+   fastest" will actually look for. */
+const CALM_SORTS = [["attention", "attention"], ["recent", "recent"],
+                    ["repo", "repo"], ["burn", "fastest"]];
 
 /* These tables are indexed by strings that come out of the payload, and every
    plain object inherits truthy `constructor`, `toString` and friends from
@@ -65,7 +71,16 @@ function calmRow(d, x){
   const tasks = (x.tasks || []).slice().sort(
     (a, b) => own(CALM_TASK_ORDER, a.status, 3) - own(CALM_TASK_ORDER, b.status, 3));
   const taskDone = tasks.filter(t => t.status === "completed").length;
-  const rate = x.rate_per_min || 0;
+  /* `null` where the harness reports no rate at all, which is a different fact
+     from a zero and must never be ranked as one — see calmEntries' burn branch
+     and rateKnown(). */
+  const rateIsKnown = rateKnown(d, x);
+  const rate = rateIsKnown ? ((isFinite(x.rate_per_min) ? x.rate_per_min : 0) || 0) : null;
+  /* The column fills for anything working — that is the bucket it describes —
+     and also for any row with a rate above zero, because a session that stopped
+     inside the trailing window really did produce those tokens and the burn
+     ordering has to be able to show what it ranked on. */
+  const showRate = st === "work" || rate > 0;
   return {
     key: sessKey(x), sid: x.sid,
     harness: x.harness, project: x.project, session: x.session,
@@ -82,6 +97,10 @@ function calmRow(d, x){
     tasks, taskNote: tasks.length ? taskDone + " of " + tasks.length + " done" : "",
     subagents: x.subagents || [], spacedock: x.spacedock || null,
     rank: flag ? CALM_TONE[tone].rank : (st === "work" ? 2 : 4),
+    /* What the burn ordering ranks on: the number itself, or null for a row the
+       board cannot rank. Kept separate from the rendered `rate` string below,
+       because a sort key that has been through toLocaleString() sorts on commas. */
+    burn: rate,
     /* One column used to carry all three buckets' headline numbers under the
        single heading `signal` — tokens per minute on one row, hours idle on the
        next. A column whose unit changes per row cannot be compared down its own
@@ -89,9 +108,12 @@ function calmRow(d, x){
        each with one unit: what this request is producing, and how long the
        session has been sitting still. Both are empty where they do not apply,
        and an empty cell reads as "not applicable" where a wrong unit does not. */
-    rate: st === "work" ? (rate ? rate.toLocaleString() + " /m" : "—") : "",
-    rateTip: st === "work"
-      ? (rate ? rate.toLocaleString() + " tokens per minute" : "this harness reports no token rate")
+    rate: showRate ? (rateIsKnown ? rate.toLocaleString() + " /m" : "—") : "",
+    rateTip: showRate
+      ? (rateIsKnown
+          ? rate.toLocaleString() + " tokens per minute, averaged over the last " +
+            fmtDur(rateWindowSec(d))
+          : "this harness reports no token rate")
       : "",
     quiet: st === "needs" ? fmtDur(waitSec) : (st === "idle" ? fmtDur(ageSec) : ""),
     quietTip: st === "needs" ? "blocked on you for " + fmtDur(waitSec)
@@ -123,9 +145,42 @@ function calmFilter(all){
 const bySid = (a, b) => (a.sid < b.sid ? -1 : (a.sid > b.sid ? 1 : 0));
 const byAge = (a, b) => a.sortAge - b.sortAge || bySid(a, b);
 const byRank = (a, b) => a.rank - b.rank || byAge(a, b);
+/* Fastest known rate first. Only ever applied to rows whose rate is known: see
+   the burn branch below for where the others go, which is not "the bottom". */
+const byBurn = (a, b) => b.burn - a.burn || bySid(a, b);
 
-/* Returns display entries: {row} for a session, {divider} for a repo heading. */
-function calmEntries(shown){
+/* Returns display entries: {row} for a session, {divider} for a group heading. */
+function calmEntries(shown, d){
+  if(calmSort === "burn"){
+    /* The one ordering that ranks on a value which ticks, and so the one that
+       can move a row under the reader between polls. Accepted here and nowhere
+       else: the reader picked this order to ask which session is burning
+       fastest, and an answer that cannot change is not an answer to that
+       question. It is never the default, and the trailing mean it ranks on moves
+       slowly enough that a swap reflects a real change in output rather than the
+       poll jitter that `sortAge` exists to absorb.
+
+       Rows with no rate are ranked NOWHERE. Sorting them to the bottom of a
+       descending list would present them as the slowest sessions on the board,
+       and the reader has no way to see that the number behind that placement
+       does not exist. They sit below their own divider instead, which says so.
+
+       The leading divider carries the window this ordering ranked on. "Fastest"
+       invites reading as this instant, and the arithmetic is a trailing mean, so
+       the ordering states its own terms where it cannot be missed. */
+    const ranked = shown.filter(r => r.burn != null).sort(byBurn);
+    const unranked = shown.filter(r => r.burn == null).sort(byRank);
+    const group = (label, rows) => ({divider: {label, count: rows.length,
+                                               flagged: rows.filter(r => r.flag).length}});
+    const out = ranked.length
+      ? [group("fastest first · " + fmtDur(rateWindowSec(d)) + " mean", ranked)] : [];
+    for(const r of ranked) out.push({row: r});
+    if(unranked.length){
+      out.push(group("no rate reported · cannot be ranked", unranked));
+      for(const r of unranked) out.push({row: r});
+    }
+    return out;
+  }
   if(calmSort === "recent"){
     return shown.slice().sort(byAge).map(r => ({row: r}));
   }
@@ -155,7 +210,7 @@ function calmEffectiveFocus(order){
 }
 
 function calmOrder(d){
-  return calmEntries(calmFilter(d.sessions.map(x => calmRow(d, x))))
+  return calmEntries(calmFilter(d.sessions.map(x => calmRow(d, x))), d)
     .filter(e => e.row).map(e => e.row);
 }
 
@@ -402,7 +457,7 @@ function calmRowHTML(r, focusSid){
 function calmLedger(d){
   const all = d.sessions.map(x => calmRow(d, x));
   const shown = calmFilter(all);
-  const entries = calmEntries(shown);
+  const entries = calmEntries(shown, d);
   const focusSid = calmEffectiveFocus(entries.filter(e => e.row).map(e => e.row));
   const count = st => all.filter(r => r.st === st).length;
   const chip = (st, label, dot) =>
@@ -413,9 +468,9 @@ function calmLedger(d){
     chip("needs", "needs you", `<span class="cm-dot" style="background:var(--alert)"></span>`) +
     chip("work", "working", `<span class="cm-dot" style="background:var(--accent)"></span>`) +
     chip("idle", "idle", `<span class="cm-dot hollow"></span>`);
-  const sorts = ["attention", "recent", "repo"].map(k =>
+  const sorts = CALM_SORTS.map(([k, label]) =>
     `<button type="button" class="cm-segb${calmSort === k ? " on" : ""}" data-calm="sort"` +
-    ` data-arg="${k}" aria-pressed="${calmSort === k}">${k}</button>`).join("");
+    ` data-arg="${k}" aria-pressed="${calmSort === k}">${label}</button>`).join("");
   const flagged = all.filter(r => r.flag).length;
   const clear = (calmFlagOnly || calmStateOnly)
     ? `<button type="button" class="cm-clear" data-calm="clear">clear</button>` : "";

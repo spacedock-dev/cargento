@@ -12,8 +12,11 @@
       week:  {pct, reset},
       month: {pct, reset},
       used,                         // spend, preformatted
-      burn, today, cost}            // optional extras, preformatted strings
+      today, cost}                  // optional extras, preformatted strings
    Every window slot is optional and a harness fills only the ones it has.
+   The `burn` stat is the one figure on this band the payload does not carry:
+   it is derived in the page from the percentages as they arrive — see the burn
+   projection block below.
    `month` exists because Cursor meters money against a monthly billing cycle
    rather than a rolling window; borrowing `week` for it would put a wrong
    label on a real number, which is the one thing this band cannot afford.
@@ -34,14 +37,22 @@ const USAGE_ENABLED_KEY = "cargento.usageEnabled";  /* the feature switch */
 const USAGE_MODAL_KEY = "cargento.usageModalSeen";
 const USAGE_STATS = [
   ["fiveH", "5h window"], ["week", "weekly window"], ["month", "monthly window"],
-  ["burn", "burn rate"], ["today", "tokens today"], ["cost", "cost today"]];
+  ["burn", "burn projection"], ["today", "tokens today"], ["cost", "cost today"]];
 
 let usageOpen = true;
 let usageEnabled = true;
 let usageModalSeen = false;
 let usageCfgOpen = false;   /* the popover is transient, never persisted */
 /* `month` defaults on for the same reason the window slots do: it is the only
-   gauge Cursor has, and a row whose single figure is hidden reads as broken. */
+   gauge Cursor has, and a row whose single figure is hidden reads as broken.
+   `burn` stays off, and that is a decision rather than an omission. Its series
+   is built in the page from the moment the tab opens (see the burn projection
+   block), so for the first ten minutes of every session it has nothing to say
+   and says so. A default-on row that reads "warming up" under every window on
+   first load teaches the reader that the band is half-built; an opt-in one is
+   asked for by someone who has read what it measures. Turning it on is one
+   click in `configure`, and the samples accrue whether or not it is shown, so
+   the switch is instant rather than the start of another wait. */
 let usageCfg = {fiveH: true, week: true, month: true, burn: false, today: false,
                 cost: false};
 try{
@@ -105,14 +116,280 @@ function usageReset(w){
      "due" says that without pretending to know the new number. */
   if(left <= 0) return "due";
   if(left < 60) return "<1m";
+  return usageSpan(left);
+}
+
+/* Two units at most, largest first: "1d 5h" and "2h 16m" both fit the column,
+   and a third unit is noise at this precision. Truncated, never rounded up — a
+   countdown that rounds up promises time the reader has not got. Shared with
+   the burn projection so the two countdowns on a row read the same way. */
+function usageSpan(left){
   const days = Math.floor(left / 86400);
   const hours = Math.floor((left % 86400) / 3600);
   const mins = Math.floor((left % 3600) / 60);
-  /* Two units at most, largest first: "1d 5h" and "2h 16m" both fit the column,
-     and a third unit is noise at this precision. */
   if(days) return days + "d " + hours + "h";
   if(hours) return hours + "h " + mins + "m";
   return mins + "m";
+}
+
+/* ── burn projection ───────────────────────────────────────────────────────
+   "Is this window going to run out before it resets?" needs a derivative, and
+   nothing in the payload carries one: every quota figure is a level. So the
+   series is built here, in the page, as one bounded buffer per window — the
+   same ring-buffer idiom the token sparkline uses (spark.js) rather than a
+   second one. A persisted series was considered and deliberately not built: it
+   would need a server-side write path and a cache file for a signal whose whole
+   value is the last hour, and the price of not persisting is four costs that
+   can each be stated on screen instead of assumed away. Each is a rendered
+   state, not a silent fallback:
+
+   - Warm-up. There is no history when a tab opens, and samples only accrue
+     while a tab is open with usage on, because the quota fetch is driven by
+     /api/data requests carrying the page's consent (http_api.py). So the signal
+     is coldest at the exact moment the dashboard is opened to ask "can I start
+     this now" — which is why that moment gets a sentence saying so. Until
+     BURN_MIN_SAMPLES samples span BURN_MIN_SPAN_SEC the row reads "warming up"
+     with its own count, never "resets first": unknown and clear are different
+     answers and only one of them is true at load.
+   - Reload loss. The buffer dies with the page, and a reloaded tab is
+     indistinguishable from a fresh one. That is precisely why a fresh one has
+     to read as unmeasured — the alternative is a projection built from a
+     just-emptied buffer.
+   - Quantisation. The published pct is an integer and the server floors its
+     quota fetch at 300s (config.usage_poll_floor_sec), so the difference of two
+     samples carries up to a whole point of pure rounding. A measured rise of one
+     point could be a true rise of anything from just above zero to just under
+     two: 100% relative error, and at a 600s span it spans 0 to 12%/h. So a total
+     fitted rise under BURN_RESOLUTION_PCT is not published as a rate at all. It
+     is published as a ceiling, which is the one thing the samples do support,
+     and the ceiling is still enough to answer the question outright whenever
+     even the fastest slope consistent with it resets in time.
+   - No reset time. The live Claude capture carries a `weekly_scoped` limit with
+     no `resets_at`, and `_shape_window` omits `resetAt` entirely when the
+     vendor sends none. With no reset instant there is nothing to project
+     against, so the verdict is unknown — not "resets first", which is what
+     treating a missing instant as zero would render.
+
+   Samples are stamped with the payload's own `asOf` rather than the viewer
+   clock: `asOf` is the moment the percentage was true, and a cached fetch is
+   older than the poll that carried it. Stamping at receipt would compress a
+   300s-old figure onto "now" and steepen the slope. The verdict is therefore
+   computed wholly in payload time; only the countdown shown to the reader comes
+   off the viewer's clock, exactly as usageReset() does. */
+const BURN_MIN_SAMPLES = 3;
+/* Two samples are one interval, and across a 300s interval a single one-point
+   rounding step IS the entire measurement. Three samples span two intervals, so
+   the fit has something to disagree with and one rounding step cannot own the
+   answer. At the server's 300s floor that puts the first projection about ten
+   minutes after the tab opens. */
+const BURN_MIN_SPAN_SEC = 600;
+/* A trailing hour. Older samples describe work that has since stopped, and the
+   question is what the next hour looks like, not the last four. */
+const BURN_HISTORY_SEC = 3600;
+/* The smallest total rise a printed rate may rest on, in whole percentage
+   points. One point sits entirely inside the rounding of two integers; two bounds
+   the relative error at 50%, which is still coarse enough that every figure this
+   row prints is marked as one — `~` for an estimate, `under` for a ceiling — and
+   names its own ± in the tooltip. */
+const BURN_RESOLUTION_PCT = 2;
+const BURN_SLOTS = ["fiveH", "week", "month"];
+const burnHistory = new Map();      /* "harness:slot" -> [{t, v}] */
+const burnKey = (harness, slot) => harness + ":" + slot;
+
+function burnPush(key, t, v){
+  let arr = burnHistory.get(key);
+  if(!arr) burnHistory.set(key, arr = []);
+  if(arr.length){
+    const last = arr[arr.length - 1];
+    if(t <= last.t) return;         /* the same fetch, re-rendered */
+    /* A fall means the window rolled, or the vendor restated it. Either way the
+       samples before the fall measure a window that no longer exists, and a
+       slope fitted across the discontinuity would read as a steep decline into
+       a wall that is never coming. Start again, and warm up again. */
+    if(v < last.v) arr.length = 0;
+  }
+  arr.push({t, v});
+  const cutoff = t - BURN_HISTORY_SEC;
+  while(arr.length && arr[0].t < cutoff) arr.shift();
+}
+
+/* Called once per payload from usageBody(), so the buffers fill whether or not
+   the burn stat is switched on — turning it on is then instant instead of the
+   start of another ten-minute wait. In the calm view a collapsed band does not
+   render and so does not sample, which is the honest boundary: nothing was on
+   screen to go stale, and reopening it reads as warming up. */
+function usageSample(d){
+  if(!usagePresent(d)) return;
+  const seen = new Set();
+  for(const u of d.usage){
+    const t = Number(u.asOf);
+    /* No timestamp, no sample. A figure of unknown age placed at "now" bends
+       the slope by however stale it was; every producer sends `asOf`. */
+    if(!isFinite(t) || t <= 0) continue;
+    for(const slot of BURN_SLOTS){
+      const w = u[slot];
+      if(!w || w.pct == null) continue;
+      const v = Number(w.pct);
+      if(!isFinite(v)) continue;
+      const key = burnKey(u.harness, slot);
+      seen.add(key);
+      burnPush(key, t, Math.max(0, Math.min(100, v)));
+    }
+  }
+  /* Drop the buffers this payload no longer carries — a token that expired, a
+     harness that went away — so the map cannot grow without bound. */
+  for(const key of burnHistory.keys()) if(!seen.has(key)) burnHistory.delete(key);
+}
+
+/* Least squares over every retained sample rather than first-to-last, so one
+   noisy endpoint cannot set the whole rate. Percent per second. */
+function burnSlope(pts){
+  const n = pts.length;
+  let st = 0, sv = 0;
+  for(const p of pts){ st += p.t; sv += p.v; }
+  const mt = st / n, mv = sv / n;
+  let num = 0, den = 0;
+  for(const p of pts){
+    num += (p.t - mt) * (p.v - mv);
+    den += (p.t - mt) * (p.t - mt);
+  }
+  return den > 0 ? num / den : 0;
+}
+
+/* One window's reading: a state naming what kind of answer this is, and a
+   verdict naming which way the race goes. Nothing returns a bare number, because
+   the caller must not be able to mistake "we cannot tell" for one.
+     state    warmup | slow | proj | spent
+     verdict  wall (fills first) | safe (resets first) | open (either) | noreset
+   `slow` is not "idle": it means the rise is smaller than this span can resolve,
+   so the reading is a ceiling rather than a rate. */
+function burnRead(key, w){
+  /* Already full needs no history and no fit: the bar beside it reads 100%.
+     Checked first so a fresh buffer cannot report an exhausted window as
+     something that is still warming up. */
+  const pct = Number(w && w.pct);
+  if(isFinite(pct) && pct >= 100) return {state: "spent"};
+  const pts = burnHistory.get(key) || [];
+  const n = pts.length;
+  const span = n > 1 ? pts[n - 1].t - pts[0].t : 0;
+  if(n < BURN_MIN_SAMPLES || span < BURN_MIN_SPAN_SEC) return {state: "warmup", n, span};
+  const last = pts[n - 1];
+  const level = isFinite(pct) ? Math.max(0, Math.min(100, pct)) : last.v;
+  const at = Number(w.resetAt);
+  /* A window can arrive with no reset instant at all, and then no rate answers
+     the question — the verdict is unknown rather than favourable. */
+  const resetAt = isFinite(at) && at > 0 ? at : null;
+  /* Non-negative by construction: burnPush() restarts the buffer on any fall, so
+     a downward fit would mean a fit over one sample, which cannot get here. */
+  const slope = Math.max(0, burnSlope(pts));
+  const wallFrom = rate => last.t + (100 - level) / rate;
+  if(slope * span < BURN_RESOLUTION_PCT){
+    /* Below the resolution floor there is no rate to print, only a ceiling. It
+       still settles the race whenever even that ceiling resets in time, which is
+       the common case for a window nobody is spending. */
+    const ceiling = BURN_RESOLUTION_PCT / span;
+    const verdict = resetAt == null ? "noreset"
+      : (wallFrom(ceiling) >= resetAt ? "safe" : "open");
+    return {state: "slow", span, ceilHour: ceiling * 3600, verdict, resetAt};
+  }
+  const wallAt = wallFrom(slope);
+  /* ±1 whole point on the fitted rise is ±1/span on the slope. The reader is
+     told this rather than left to assume the figure is sharper than it is. */
+  const read = {state: "proj", span, perHour: slope * 3600,
+                bandHour: 3600 / span, wallAt, resetAt};
+  if(resetAt == null) return Object.assign(read, {verdict: "noreset"});
+  if(wallAt < resetAt) return Object.assign(read, {verdict: "wall"});
+  /* The reset wins, so the figure worth having is where the window gets to by
+     then rather than a wall this rate does not reach. */
+  return Object.assign(read, {verdict: "safe",
+    atReset: Math.min(100, Math.round(level + slope * (resetAt - last.t)))});
+}
+
+/* One decimal at most, and none at all past 10: the input is an integer sampled
+   a few times, and "7.43%/h" would dress that up as a measurement. The bare
+   figure, so each caller can say what kind of figure it is — `~` for an
+   estimate, `under` for a ceiling, `±` for the band. */
+function burnRate(perHour){
+  const r = perHour >= 10 ? Math.round(perHour) : Math.round(perHour * 10) / 10;
+  return r + "%/h";
+}
+
+function burnLeft(sec){
+  if(!isFinite(sec) || sec <= 0) return "now";
+  if(sec < 60) return "<1m";
+  return usageSpan(sec);
+}
+
+/* The words for one reading: a short label for the row, and the whole story in
+   the tooltip. Two tones, and only these two earn one: `hot` when this window is
+   projected to fill before it resets, `warn` when the samples cannot rule that
+   out. Every other reading is dim, including the warm-up — an unknown that
+   raises a colour is an unknown pretending to be a finding. */
+function burnWords(r){
+  if(r.state === "spent"){
+    return {text: "window spent", tone: "hot",
+            title: "This window is already full. The wall is here, not ahead of you."};
+  }
+  if(r.state === "warmup"){
+    return {text: "warming up · " + r.n + " of " + BURN_MIN_SAMPLES, tone: "",
+            title: "No projection yet: " + r.n + " reading" + (r.n === 1 ? "" : "s") +
+              (r.span > 0 ? " over " + fmtDur(r.span) : "") + ", and a projection needs " +
+              BURN_MIN_SAMPLES + " spanning " + fmtDur(BURN_MIN_SPAN_SEC) + ". Quota is" +
+              " sampled only while this tab is open with usage on, and the readings are" +
+              " lost on reload — so this is unknown, not clear."};
+  }
+  if(r.state === "slow"){
+    /* A ceiling, never a rate: "under 12%/h" is what these samples support, and
+       printing the fitted number instead would publish the rounding. */
+    const ceiling = "under " + burnRate(r.ceilHour);
+    const why = "The rise over " + fmtDur(r.span) + " is too small for a span of" +
+      " integer percentages to resolve, so the supported figure is a ceiling — " +
+      ceiling + " — rather than a rate.";
+    if(r.verdict === "noreset"){
+      return {text: ceiling + " · reset unknown", tone: "",
+              title: why + " This window also reported no reset time, so there is" +
+                " nothing to project it against."};
+    }
+    if(r.verdict === "safe"){
+      return {text: ceiling + " · resets first", tone: "",
+              title: why + " Even at that ceiling the window resets in " +
+                burnLeft(r.resetAt - nowSec()) + ", before it could fill."};
+    }
+    return {text: ceiling + " · may fill first", tone: "warn",
+            title: why + " That ceiling is not low enough to rule out filling before" +
+              " the reset in " + burnLeft(r.resetAt - nowSec()) + ", so leave the tab" +
+              " open and the figure sharpens."};
+  }
+  const rate = "~" + burnRate(r.perHour);
+  const band = " The span resolves this to about ±" + burnRate(r.bandHour) +
+    ". Fitted over " + fmtDur(r.span) + " of readings taken in this tab.";
+  if(r.verdict === "noreset"){
+    return {text: rate + " · reset unknown", tone: "warn",
+            title: "At " + rate + " this window fills in about " +
+              burnLeft(r.wallAt - nowSec()) + ", but the harness reported no reset time," +
+              " so whether the reset gets there first cannot be answered." + band};
+  }
+  if(r.verdict === "wall"){
+    const toWall = r.wallAt - nowSec();
+    return {text: rate + " · wall in " + burnLeft(toWall), tone: "hot",
+            title: "At " + rate + " this window is projected to reach 100% in about " +
+              burnLeft(toWall) + ", which is " + burnLeft(r.resetAt - r.wallAt) +
+              " before it resets." + band};
+  }
+  return {text: rate + " · resets first", tone: "",
+          title: "At " + rate + " this window reaches about " + r.atReset +
+            "% by the time it resets in " + burnLeft(r.resetAt - nowSec()) +
+            ", so the reset arrives first." + band};
+}
+
+/* Rendered under its own window's row rather than as one figure per harness: a
+   5h window and a weekly window fill at different rates and reset at different
+   times, so a single per-harness projection would have to pick one silently. */
+function burnRow(harness, slot, w){
+  if(!usageCfg.burn) return "";
+  const words = burnWords(burnRead(burnKey(harness, slot), w));
+  return `<span class="u-burn${words.tone ? " " + words.tone : ""}"` +
+    ` title="${esc(words.title)}">${esc(words.text)}</span>`;
 }
 
 function usageEntry(u){
@@ -132,7 +409,7 @@ function usageEntry(u){
       `<div class="u-expired"><span class="u-excl" role="img" aria-label="attention">!</span>` +
       `<span>token expired — sign in again in ${esc(h.name || u.harness)}</span></div></div>`;
   }
-  const win = (label, w) => {
+  const win = (label, slot, w) => {
     if(!w || w.pct == null) return "";
     const pct = Math.max(0, Math.min(100, Math.round(Number(w.pct) || 0)));
     const tone = usageTone(pct);
@@ -143,7 +420,7 @@ function usageEntry(u){
       /* The tooltip keeps the wall-clock time the countdown replaced, so the
          exact moment is still one hover away. */
       `<span class="u-reset" title="resets ${esc(String(w.reset || "at an unknown time"))}">` +
-      `↺ ${esc(usageReset(w))}</span></div>`;
+      `↺ ${esc(usageReset(w))}</span>` + burnRow(u.harness, slot, w) + `</div>`;
   };
   /* No bar and no percentage: there is no limit to be a fraction of. The
      label says "used" rather than a window name so it cannot be misread as a
@@ -152,11 +429,10 @@ function usageEntry(u){
     ? ""
     : `<div class="u-wrow"><span class="u-wlab">used</span>` +
       `<span class="u-used">${esc(String(u.used))}</span></div>`;
-  const wins = usedRow + (usageCfg.fiveH ? win("5h", u.fiveH) : "") +
-    (usageCfg.week ? win("wk", u.week) : "") +
-    (usageCfg.month ? win("mo", u.month) : "");
+  const wins = usedRow + (usageCfg.fiveH ? win("5h", "fiveH", u.fiveH) : "") +
+    (usageCfg.week ? win("wk", "week", u.week) : "") +
+    (usageCfg.month ? win("mo", "month", u.month) : "");
   const extras = [];
-  if(usageCfg.burn && u.burn != null) extras.push(["burn", u.burn]);
   if(usageCfg.today && u.today != null) extras.push(["today", u.today]);
   if(usageCfg.cost && u.cost != null) extras.push(["cost", u.cost]);
   const asOf = usageAsOf(u);
@@ -196,6 +472,11 @@ function usageBody(d){
   if(!usageEnabled){
     return `<div class="u-note">usage is off — turn it back on under configure</div>`;
   }
+  /* The one sampling point, so the burn buffers advance once per payload no
+     matter which view is on screen. burnPush() ignores a repeat of a `asOf` it
+     already holds, which is what makes a re-render from a UI action (usageAction
+     re-renders lastData) harmless rather than a duplicated sample. */
+  usageSample(d);
   if(!d.usage.length){
     return `<div class="u-note">No quota data yet. Harnesses that publish usage will appear here.</div>`;
   }

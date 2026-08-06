@@ -110,23 +110,18 @@
       "outcome": "avoid force-pause",
       "archetype": "capacity",
       "impact": 65,
-      "build": 25,
-      "state": "new",
+      "build": 0,
+      "state": "shipped",
       "column": "usage",
-      "release": "r2",
+      "release": "done",
       "origin": "workshop",
       "flag": true,
-      "note": "From the workshop board, and the most-cited pain on it: force-paused mid-job, restart by hand after the reset. Under the realigned axis it is the closest thing here to a commodity, at access 24, because /usage is one command away and a Barista-style status line puts it on screen unprompted. That is not an argument to cut it. It is the prerequisite for A2, A3, A4, A5, A7, A8, A9 and E7, so treat it as plumbing rather than a feature, and never ship it alone: on its own it spends a security amendment to save the user a glance at a status line.",
-      "needs": "See DEC-1. The data is real, five_hour.utilization and resets_at, but it arrives from an authenticated API call rather than a local file. Direction is to amend the promise. The live question is which of the three shapes we amend it into.",
+      "note": "From the workshop board, and the most-cited pain on it: force-paused mid-job, restart by hand after the reset. Under the realigned axis it is the closest thing here to a commodity, at access 24, because /usage is one command away and a Barista-style status line puts it on screen unprompted. That is not an argument to cut it. It is the prerequisite for A2, A3, A4, A5, A7, A8, A9 and E7, so treat it as plumbing rather than a feature, and never ship it alone: on its own it spends a security amendment to save the user a glance at a status line. [Shipped since, so the sequencing advice above is a record of the argument rather than a live instruction.]",
+      "needs": "Done. DEC-1 resolved on 2026-08-04 and the numbers now arrive three ways: the server fetches Claude's (and Cursor's) with the vendor's own token, Codex's are read from the rate-limit snapshots it already writes to disk, and Antigravity pushes its own in as a receipt. A vendor with no quota authority of its own still shows nothing.",
       "access": 24,
       "kind": "information",
       "detectorRisk": 0,
       "riskAdjustedImpact": 65,
-      "redundantWith": {
-        "primary": "A9",
-        "penalty": 50,
-        "remains": "The exact percentage and the reset clock, for a user who wants to reason instead of obeying a light: 'red, but it resets in 11 minutes, so I will wait rather than switch model'. That is real and small. A1 remains a mandatory input to A9, A2, A5, A7 and E7, so the penalty is against counting it as a user-facing feature, not against building it. Its own note already says to ship it as plumbing and never alone; at access 24 [stale '12' corrected to the panel median] it is the most commodity item here, and A9 is where its impact [the author's pre-panel 88; panel median for A9 is 68] actually gets realised."
-      },
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "furniture",
       "scoreConfidence": "medium"
@@ -137,25 +132,17 @@
       "outcome": "plan the week, not the hour",
       "archetype": "capacity",
       "impact": 60,
-      "build": 15,
-      "state": "new",
+      "build": 0,
+      "state": "shipped",
       "column": "usage",
-      "release": "r2",
+      "release": "done",
       "origin": "workshop",
       "note": "The 5h window governs the next job. The weekly window governs whether to start a big one at all on a Thursday.",
-      "needs": "Same source and same decision as A1.",
-      "requires": [
-        "A1"
-      ],
+      "needs": "Done. The weekly window ships wherever the 5-hour one does, and a Codex plan that publishes only the weekly one publishes without it.",
       "access": 26,
       "kind": "information",
       "detectorRisk": 0,
       "riskAdjustedImpact": 60,
-      "redundantWith": {
-        "primary": "A9",
-        "penalty": 38,
-        "remains": "The multi-day horizon a start/stop light cannot express: whether to begin a large job on a Thursday at all. A9 can only encode that by becoming time-scoped, at which point it has absorbed A2. What survives independently is the weekly reset date as a planning fact."
-      },
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "furniture",
       "scoreConfidence": "high"
@@ -237,11 +224,6 @@
       "riskAdjustedImpact": 46,
       "inferred": "Forward consumption rate, extrapolated from recent token or request throughput to a time-of-exhaustion. The series is non-stationary and bursty: an agent that just went idle carries a stale high rate, a compaction or a large file read spikes it, and the burn over the next hour depends mostly on what the user chooses to launch next, which is not in the data at all.",
       "detectorConfidence": "medium",
-      "redundantWith": {
-        "primary": "A9",
-        "penalty": 30,
-        "remains": "Time-to-wall as a quantity rather than a verdict, which is what you scope the next prompt against ('22 minutes left, so ask for the small refactor') and what E7 triggers on. A9 collapses it to green/amber/red and loses the number. This is the largest surviving residue in the cluster, and the reason A5 rather than A1 is the item that earns DEC-1."
-      },
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "differentiated",
       "scoreConfidence": "low"
@@ -271,12 +253,7 @@
       "subsetOf": [
         "A9"
       ],
-      "subsetNote": "A6 subset of A9's question - both answer 'should I start', A6 adding a task-size estimate that needs H1 and stays speculative.",
-      "redundantWith": {
-        "primary": "A9",
-        "penalty": 30,
-        "remains": "The demand side of the same comparison: A9 knows the ceiling but not the size of the job you are about to start. That is a genuine gap, and also the half nobody computes well; it needs H1 plus shape-matching against past sessions and stays speculative even then. Once A9 exists, A6 is a refinement of A9's threshold, not a separate decision."
-      },
+      "subsetNote": "A6 subset of A9's question - both answer 'should I start', A6 adding a task-size estimate that needs H1 and stays speculative. [A9 is cut as of 2026-08-06, so this relation is historical. A6 is still hidden by 'primaries only' while the field stands.]",
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "costly, low reward",
       "scoreConfidence": "medium"
@@ -305,7 +282,9 @@
       "detectorConfidence": "low",
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "differentiated",
-      "scoreConfidence": "medium"
+      "scoreConfidence": "medium",
+      "verdict": "cut",
+      "decisionNote": "Closed as infeasible in favour of A10, 2026-08-06. The detector line above is the reason: local output-token share is not share of the quota pool, and no reweighting fixes the consumers Cargento cannot see. A10 answers the same question from numbers Cargento already has, which is what its preferredOver already recorded."
     },
     {
       "id": "A10",
@@ -388,7 +367,9 @@
       "detectorConfidence": "medium",
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "costly, low reward",
-      "scoreConfidence": "low"
+      "scoreConfidence": "low",
+      "verdict": "cut",
+      "decisionNote": "Killed by the owner, 2026-08-06. A9 was the redundancy primary for A1, A2, A5, A6 and G1, and those five penalties are lifted with it. No score moves: the penalties were held as metadata and never subtracted from impact, which is what the reviewNotes say and what audit/verify-scores.py computes."
     },
     {
       "id": "B1",
@@ -1515,11 +1496,6 @@
         "A5"
       ],
       "subsetNote": "G1 subset of A5 - the rate without a ceiling versus the rate projected against one; A5 is G1 plus the number that makes it a decision.",
-      "redundantWith": {
-        "primary": "A9",
-        "penalty": 18,
-        "remains": "Decoration once a projection exists. Its own note concedes a rate with no ceiling supports no decision, and the ceiling arriving is exactly what A5 and A9 do with it. What is left is the shape of the rate over time, which is diagnostic colour on a row rather than a decision."
-      },
       "scoreBasis": "panel median of 3 blind lenses",
       "quadrant": "costly, low reward",
       "scoreConfidence": "high"

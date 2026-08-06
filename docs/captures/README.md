@@ -5,6 +5,11 @@ semantics gate in
 [`../plans/event-driven-session-observation.md`](../plans/event-driven-session-observation.md).
 A gate that says "measured" should be able to show its measurement.
 
+Most files here are hook payloads. One is not: `claude/usage-endpoint-macos.jsonl` records the shape
+of a vendor HTTP response, and the claims it backs live in
+[`../design-usage-quota.md`](../design-usage-quota.md). It is kept here because it obeys the rule
+this directory exists for — shapes, never values.
+
 ## What is in a record, and what is deliberately not
 
 Each line is one hook invocation, written by `scripts/capture_hook.py`. It records the **names** of
@@ -37,6 +42,7 @@ No prompt text, no tool input, no tool output, no file path. `PreToolUse` record
 | `antigravity/statusline-macos.jsonl` | Two `agy --print` sessions, 37 status-line pushes. macOS. Recorded through a `statusLine` entry in the real `settings.json`, backed up and restored in the same script, because Antigravity's status line cannot be plugin-bundled. |
 | `claude/hooks-2.1.222-macos.jsonl` | Five headless `claude -p` turns, 38 hook invocations: one turn with three tool calls, one that dispatches a subagent which itself calls a tool, and three that pursued a permission prompt. Claude Code 2.1.222, macOS. Recorded through `--plugin-dir` against a copy of the plugin whose hook commands were repointed at the recorder, so no settings file was edited. **Not** through an isolated `CLAUDE_CONFIG_DIR`: that changes the credential's keychain account name and loses the subscription login. |
 | `claude/identity-2.1.222-macos.jsonl` | The identity question for the same five sessions, as verdicts, covering both `session_id` and the subagent `agent_id`. |
+| `claude/usage-endpoint-macos.jsonl` | One live `GET /api/oauth/usage` response, on a subscription account with extra-usage credits disabled. macOS, 2026-08-06. Written by a one-off purpose-built recorder rather than `capture_hook.py`, on the precedent the Antigravity file set: there is no hook anywhere in this path, only a response, and the token came from the same Keychain item `quota.py` already reads. Settles what `limits[]` actually contains, whether `utilization` is a percent or a fraction, and which of the per-model field names are alive on a subscription plan. |
 | `gemini/hooks-0.53.1-macos.jsonl` | Four headless `gemini -p` turns, 56 hook invocations, each turn containing one `list_directory` tool call. Gemini CLI 0.53.1, macOS, against an isolated `GEMINI_CLI_HOME`. No credential was involved: the CLI ran against a loopback stand-in for the Gemini API, which is what made a real session reachable at all, since consumer accounts have not been served since 2026-06-18 and the auth check happens before any hook fires. |
 | `gemini/identity-0.53.1-macos.jsonl` | The identity question for the same five sessions, as verdicts rather than values, in the shape the Antigravity file established. |
 
@@ -63,6 +69,16 @@ id field, its length, whether it named a real `conversations/<id>.db`, and wheth
 `session_id`. **Verdicts rather than values** is the point: the question was whether the ids match
 what the collector keys on, and that can be answered without recording an id at all.
 
+The usage-endpoint record is the extreme case of that, because a quota response is *all* values:
+one account's percentages, its reset stamps, its balance. So every number in it becomes a scale
+verdict — `float 0..100 (percent scale)` for `five_hour.utilization`, `int 0..100` for a
+`limits[]` element's `percent` — which is the only thing a parser needs from them and is not a
+figure about anyone's usage. `scope.model.display_name` is recorded as presence alone for the same
+reason: whether the field arrives decides whether a per-model row can be labelled, while its value
+is a model name attached to one person's plan. Null-valued keys are written down as `null` rather
+than dropped, so a field name that exists and is dead on a plan stays distinguishable from one that
+was never sent — which is the whole finding about `seven_day_opus`.
+
 ## Reading one
 
 One directory per harness, because the reporter summarises a whole directory and two harnesses with
@@ -81,4 +97,12 @@ shape-only recorder cannot answer that. Read them directly:
 
 ```bash
 python3 -c "import json,sys; [print(json.loads(l)['agent_state'], json.loads(l)['id_verdicts']['conversation_id']) for l in open('docs/captures/antigravity/statusline-macos.jsonl')]"
+```
+
+`claude/usage-endpoint-macos.jsonl` came from a purpose-built recorder for the other reason: there
+is no hook in that path to intercept, and one request answers the question. It is a single line, so
+read it whole:
+
+```bash
+python3 -m json.tool docs/captures/claude/usage-endpoint-macos.jsonl
 ```

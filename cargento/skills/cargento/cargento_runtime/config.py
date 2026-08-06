@@ -45,6 +45,13 @@ class RuntimeConfig:
     window_hours: float
     spacedock_enabled: bool
     usage_fetch_enabled: bool
+    # The trailing window every published token rate is averaged over. What a
+    # row carries is therefore a MEAN and not an instantaneous reading, and at
+    # ten minutes it lags a burst by minutes. `sessions.rate_from` divides by it,
+    # and the four collectors that sum their own usage events re-derive the same
+    # figure against this same field. The page is told the number rather than
+    # having "10 min" written into its markup, so the words on screen and the
+    # arithmetic behind them cannot drift apart.
     rate_window_sec: float
     working_threshold_sec: float
     turn_gap_reset_sec: float
@@ -282,6 +289,14 @@ def build_runtime_config(
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,
         usage_fetch_enabled=usage_fetch_enabled,
+        # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
+        # session "right now", and this window is the reason it cannot have it:
+        # narrowing it would re-scale the summary tile, both sparklines and four
+        # collectors' arithmetic in one edit, for a figure that would then be
+        # noisier on every surface that already reads it. So the board keeps the
+        # mean and names it — the payload publishes this number and the ledger
+        # states the window it ranked on, rather than claiming an immediacy the
+        # arithmetic does not have.
         rate_window_sec=600,
         working_threshold_sec=90,
         turn_gap_reset_sec=300,

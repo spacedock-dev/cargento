@@ -387,7 +387,11 @@ const at = (t, k) => {
 const snap = () => [...__els.app.innerHTML.matchAll(
     /data-arg="[a-z]+:([a-z]+-\\d)" role/g)].map(m => m[1]);
 
-for(const sort of ["attention", "recent", "repo"]){
+// `burn` is in this loop deliberately. It is the one ordering that ranks on a
+// value which ticks, so it is the one that CAN move a row — but only when the
+// rate itself moves. These rows keep a fixed rate while their ages advance, so
+// churn here would mean the ordering is reading the clock, not the rate.
+for(const sort of ["attention", "recent", "repo", "burn"]){
   calmAction("sort", sort);
   render(at(100000, 0));
   const first = snap();
@@ -411,7 +415,7 @@ out.realChangeMoves = snap().join() !== before.join();
 console.log(JSON.stringify(out));
 """
         out = self.run_calm(checks)
-        for sort in ("attention", "recent", "repo"):
+        for sort in ("attention", "recent", "repo", "burn"):
             with self.subTest(sort=sort):
                 self.assertEqual(11, out[sort]["rows"], "a row went missing")
                 self.assertTrue(
@@ -759,9 +763,11 @@ console.log(JSON.stringify(out));
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_a_harness_that_reports_no_rate_does_not_read_as_zero(self) -> None:
-        # Copilot, OpenCode, Cursor and Droid never populate rate_per_min, and
-        # the regular view omits the meter rather than printing a zero. Calm
-        # mode printing "0 /m" would make the two modes disagree.
+        # Copilot, OpenCode, Cursor and Droid never populate rate_per_min. Both
+        # views say so rather than printing the 0 those rows carry: the regular
+        # card reads "rate unknown" and the ledger cell shows a dash. A fabricated
+        # "0 /m" would be indistinguishable from a session that really did
+        # generate nothing, which is a different fact.
         checks = """
 render(payload([
   mk({sid: "cp", session: "cp", harness: "copilot", state: "working", active: true,
@@ -776,6 +782,149 @@ console.log(JSON.stringify({
         self.assertFalse(out["zero"], 'printed a fabricated "0 /m" for a rate-less harness')
         self.assertTrue(out["dash"])
         self.assertTrue(out["real"], "lost the rate for a harness that does report one")
+
+    # A strip that states, per harness, whether a rate from it is a measurement
+    # at all — which is what the server publishes as `reports_rate`. Copilot is
+    # the rate-less row here; its sessions carry the same 0 Claude's would for a
+    # session that generated nothing, so only this flag separates them.
+    BURN_FIXTURE = """
+const strip = [
+  {key: "claude", label: "Claude Code", discovered: true, error: null, reports_rate: true},
+  {key: "codex", label: "Codex", discovered: true, error: null, reports_rate: true},
+  {key: "copilot", label: "Copilot", discovered: true, error: null, reports_rate: false}];
+const working = (sid, harness, rate) => mk({sid, session: sid, harness, state: "working",
+  active: true, last_activity: 99990, rate_per_min: rate});
+const burnBoard = (over) => Object.assign(payload([
+  working("slow", "claude", 40), working("fast", "codex", 3100),
+  working("zero", "claude", 0), working("mute", "copilot", 0),
+  working("mid", "codex", 900)]), {harnesses: strip, rate_window_sec: 600}, over || {});
+const seq = h => [...h.matchAll(/data-arg="[a-z]+:([a-z]+)" role="button"/g)].map(m => m[1]);
+const dividers = h => [...h.matchAll(/cm-div-k">([^<]*)<\\/span><span class="cm-div-n">(\\d+)</g)]
+  .map(m => [m[1], Number(m[2])]);
+// One row's markup, ending at the first </div> — a ledger row is spans only, so
+// the row's own close is the first one after it.
+const rowOf = (h, key) => {
+  const i = h.indexOf('data-arg="' + key + '" role="button"');
+  return i < 0 ? "" : h.slice(i, h.indexOf("</div>", i));
+};
+"""
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_burn_ordering_ranks_on_rate_and_ranks_no_unknown(self) -> None:
+        # A10's question, and the trap in it. Four of the ten harnesses report no
+        # rate, so a descending sort that treats their 0 as a number puts them
+        # below every session it can prove is slow — a claim the payload does not
+        # support and the reader cannot see through. They are ranked nowhere
+        # instead, under a divider that says so, and a REAL zero still ranks.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+calmAction("sort", "burn");
+render(burnBoard());
+const h = __els.app.innerHTML;
+out.order = seq(h);
+out.dividers = dividers(h);
+out.rows = rows();
+// A real zero prints its number; an unmeasured one prints a dash. Both sit in
+// the ledger, in different groups, saying different things.
+out.realZero = rowOf(h, "claude:zero").includes(">0 /m<");
+out.unknownCell = [rowOf(h, "copilot:mute").includes(">—<"),
+                   rowOf(h, "copilot:mute").includes("/m")];
+out.unknownTip = rowOf(h, "copilot:mute").includes("this harness reports no token rate");
+// The unranked group sits after every ranked row, behind its divider.
+out.dividerBeforeUnknown = h.indexOf("no rate reported") < h.indexOf('data-arg="copilot:mute"');
+out.slowestRankedBeforeDivider =
+  h.indexOf('data-arg="claude:zero"') < h.indexOf("no rate reported");
+// A board with nothing unmeasured raises no unranked divider at all.
+render(burnBoard({sessions: [working("fast", "codex", 3100), working("slow", "claude", 40)]}));
+out.allKnown = [seq(__els.app.innerHTML), dividers(__els.app.innerHTML)];
+// A board with nothing measured ranks nobody, and says that rather than
+// presenting an arbitrary order as a ranking.
+render(burnBoard({sessions: [working("mute", "copilot", 0), working("hush", "copilot", 0)]}));
+out.noneKnown = dividers(__els.app.innerHTML);
+// Switching away restores the ordering that was there before.
+calmAction("sort", "attention");
+render(burnBoard());
+out.attentionUnaffected = dividers(__els.app.innerHTML).length;
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        self.assertEqual(["fast", "mid", "slow", "zero", "mute"], out["order"])
+        self.assertEqual(
+            [["fastest first · 10m mean", 4], ["no rate reported · cannot be ranked", 1]],
+            out["dividers"],
+        )
+        self.assertEqual(5, out["rows"], "the ordering dropped a row")
+        self.assertTrue(out["realZero"], "a measured zero lost its number")
+        self.assertEqual([True, False], out["unknownCell"], "an unmeasured row printed a rate")
+        self.assertTrue(out["unknownTip"])
+        self.assertTrue(out["dividerBeforeUnknown"], "an unknown row was ranked")
+        self.assertTrue(out["slowestRankedBeforeDivider"])
+        self.assertEqual(
+            [["fast", "slow"], [["fastest first · 10m mean", 2]]],
+            out["allKnown"],
+            "an unranked divider appeared with nothing in it",
+        )
+        self.assertEqual(
+            [["no rate reported · cannot be ranked", 2]],
+            out["noneKnown"],
+            "a board with no measurements still claimed a fastest-first ranking",
+        )
+        self.assertEqual(0, out["attentionUnaffected"], "burn dividers leaked into another order")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_burn_ordering_names_the_window_it_actually_ranked_on(self) -> None:
+        # The published rate is a trailing mean over the server's
+        # `rate_window_sec`, not a reading of this instant, and immediacy is the
+        # only thing this ordering has over the Output rate tile. So the wording
+        # is derived from the number the payload sent: a hardcoded "10 min" would
+        # go on reading 10 min the day the server's window changed, which is the
+        # label lying about its own arithmetic.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+calmAction("sort", "burn");
+const label = h => (h.match(/cm-div-k">fastest first[^<]*/) || [""])[0];
+render(burnBoard());
+out.tenMin = [label(__els.app.innerHTML),
+              rowOf(__els.app.innerHTML, "codex:fast").includes(
+                "3,100 tokens per minute, averaged over the last 10m")];
+render(burnBoard({rate_window_sec: 300}));
+out.fiveMin = [label(__els.app.innerHTML),
+               __els.app.innerHTML.includes("averaged over the last 5m"),
+               __els.app.innerHTML.includes("10m")];
+render(burnBoard({rate_window_sec: 5400}));
+out.ninetyMin = label(__els.app.innerHTML);
+// A payload from before the field existed still gets a window, not a blank or a
+// NaN, and not a claim about now.
+const stale = burnBoard();
+delete stale.rate_window_sec;
+render(stale);
+out.absent = label(__els.app.innerHTML);
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        self.assertEqual(
+            ['cm-div-k">fastest first · 10m mean', True],
+            out["tenMin"],
+            "the ordering did not state the window it ranked on",
+        )
+        self.assertEqual(
+            ['cm-div-k">fastest first · 5m mean', True, False],
+            out["fiveMin"],
+            "the window label is hardcoded rather than read from the payload",
+        )
+        self.assertEqual('cm-div-k">fastest first · 1h 30m mean', out["ninetyMin"])
+        self.assertEqual('cm-div-k">fastest first · 10m mean', out["absent"])
+        # Nothing on the ordering may call the figure current: it is a mean whose
+        # newest input can be ten minutes old.
+        for claim in ("right now", "now ", "live", "instant", "current"):
+            with self.subTest(claim=claim):
+                self.assertNotIn(claim, out["tenMin"][0])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_copy_id_reports_what_the_clipboard_actually_did(self) -> None:

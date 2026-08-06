@@ -61,12 +61,22 @@ class HarnessSpec:
     what raises the payload's ``usage_fetch`` capability flag, and that flag
     is what wakes the page's first-run disclosure modal — a disk reader like
     Codex's must never raise it.
+
+    ``reports_rate`` says whether this harness's collector can populate
+    ``rate_per_min`` at all. Four of the ten cannot: OpenCode, Cursor and Droid
+    read no token accounting, and Copilot's store carries only quota receipts.
+    Those rows publish 0 — the same number a reporting harness sends for a
+    session that generated nothing in the window — so a row on its own cannot
+    say which of the two it is. Declaring it here is what lets a consumer render
+    an absence as unknown and rank a real zero, instead of sorting a harness
+    that never measured below a session it can prove is slow.
     """
 
     key: str
     label: str
     discover: Discoverer
     collect: Collector
+    reports_rate: bool = False
     usage: UsageProvider | None = None
     usage_is_fetch: bool = False
 
@@ -122,15 +132,18 @@ def default_harnesses(
             "Claude",
             claude.discover,
             collect_claude,
+            reports_rate=True,
             usage=claude.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,
         ),
-        HarnessSpec("codex", "Codex", codex.discover, codex.collect, usage=codex.usage),
-        HarnessSpec("pi", "Pi", pi.discover, pi.collect),
+        HarnessSpec(
+            "codex", "Codex", codex.discover, codex.collect, reports_rate=True, usage=codex.usage
+        ),
+        HarnessSpec("pi", "Pi", pi.discover, pi.collect, reports_rate=True),
         # Gemini CLI was retired on 2026-06-18 and Antigravity replaced it.
         # They shared this row while both were Google's current surface; the
         # legacy row stays so a machine that ran Gemini CLI keeps its history.
-        HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect),
+        HarnessSpec("gemini", "Gemini", gemini.discover, gemini.collect, reports_rate=True),
         # Antigravity's quota arrives as a pushed status-line receipt rather
         # than a fetch, so `usage_is_fetch` stays False: there is no outbound
         # request to disclose, and the first-run modal must not fire for it.
@@ -141,8 +154,13 @@ def default_harnesses(
             "Antigravity",
             antigravity.discover,
             antigravity.collect,
+            reports_rate=True,
             usage=antigravity.usage if usage_fetch_enabled else None,
         ),
+        # Copilot, OpenCode, Cursor and Droid leave `reports_rate` at False, and
+        # it is a reading of their stores rather than a gap in their collectors:
+        # OpenCode, Cursor and Droid record no token accounting, and Copilot's
+        # store carries AI-Unit quota receipts and no per-message token counts.
         HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect, usage=copilot.usage),
         HarnessSpec("opencode", "OpenCode", opencode.discover, opencode.collect),
         # Cursor's allowance is money against a monthly billing cycle, fetched
@@ -156,7 +174,7 @@ def default_harnesses(
             usage=cursor.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,
         ),
-        HarnessSpec("goose", "Goose", goose.discover, goose.collect),
+        HarnessSpec("goose", "Goose", goose.discover, goose.collect, reports_rate=True),
         HarnessSpec("droid", "Droid", droid.discover, droid.collect),
     )
 
@@ -211,6 +229,11 @@ class Application:
                 "key": spec.key,
                 "label": spec.label,
                 "discovered": found,
+                # Whether a `rate_per_min` from this harness is a measurement at
+                # all. Stated per harness rather than per session because it is a
+                # property of the store, and because a session row cannot carry
+                # the distinction: its 0 is the same 0 either way.
+                "reports_rate": spec.reports_rate,
                 "error": None,
             }
             harnesses.append(harness)
@@ -259,6 +282,11 @@ class Application:
         collection: Collection = {
             "generated": now,
             "window_hours": window_hours,
+            # The trailing window every `rate_per_min` below is averaged over.
+            # Published so a consumer can name the window it is ranking on
+            # instead of hardcoding a figure that would go on reading "10 min"
+            # the day this configuration changed it.
+            "rate_window_sec": config.rate_window_sec,
             "show_all": show_all,
             # Which layer owns needs-input popups. Empty means the page should
             # raise its own; a backend name means the server already did.

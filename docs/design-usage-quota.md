@@ -58,6 +58,13 @@ GitHub bills Copilot in AI Units, and the CLI records its own consumption per mo
 token breakdown, and a `created_at` per row. That is real spend rather than an estimate, and reading
 it needs no credential, so it ships under the original two invariants like the Codex tile.
 
+That table was read from a live store on 2026-08-06 rather than taken from the CLI's documentation,
+which does not describe it. Two facts from that read are worth keeping: it carries a `session_id`,
+and those values matched the `session-state/<uuid>` directory names the Copilot collector already
+publishes as a session id. So a per-session slice of AIU spend is available from the same rows the
+harness figure is summed from, with no second identity to reconcile — which is what any future
+per-session cost display would need and is the reason not to key one on anything else.
+
 The entitlement is the part that does not exist locally. GitHub keeps it server-side and the CLI
 never writes it down, which was confirmed by searching every file under `~/.copilot`: `entitlement`
 and `allowance` appear in none of them, though both are strings inside the CLI binary. So there is a
@@ -85,18 +92,56 @@ field says exactly what it is and needs neither.
 
 ## Q-2: The response fields Cargento reads
 
-From `GET https://api.anthropic.com/api/oauth/usage` (with `anthropic-beta: oauth-2025-04-20`),
-exactly three fields are consumed:
+From `GET https://api.anthropic.com/api/oauth/usage` (with `anthropic-beta: oauth-2025-04-20`), two
+fields per window are consumed. The shapes below are measured rather than inferred: one live
+response was recorded on 2026-08-06 from macOS, on a subscription account with extra-usage credits
+disabled:
+[`captures/claude/usage-endpoint-macos.jsonl`](captures/claude/usage-endpoint-macos.jsonl).
 
 | Field | Used as |
 |---|---|
-| `five_hour.utilization`, `seven_day.utilization` | The window percentage, rounded and clamped to 0 to 100. |
-| `five_hour.resets_at`, `seven_day.resets_at` | The reset stamp. Both shapes the endpoint has sent are accepted: epoch seconds, or an ISO-8601 string. |
-| `limits[]` | Acknowledged but not published. It carries per-model windows; the roadmap item that renders them (A3 on the Visibility board) decides their shape when it lands. Publishing unused data would widen the payload for nothing. |
+| `five_hour.utilization`, `seven_day.utilization` | The window percentage, rounded and clamped to 0 to 100. Measured as a float already on a 0-to-100 percent scale, so the round is a rounding and not a conversion. |
+| `five_hour.resets_at`, `seven_day.resets_at` | The reset stamp. Both shapes the endpoint has sent are accepted: epoch seconds, or an ISO-8601 string, which is what the capture carries. |
+| `limits[]` | Documented here, not read. `_fetch_windows` shapes `five_hour` and `seven_day` and drops the rest of the body, so the per-model rows are ignored rather than parsed into something unpublished. Their shape is written out below, so the roadmap item that renders them (A3 on the Visibility board) starts from a measurement. |
 
 Anything else in the response is ignored. The endpoint is undocumented for third parties, so the
 parse is defensive throughout: a malformed body or a response with no recognizable window caches
 an empty entry list and a one-word diagnostic, never an error tile.
+
+**The percent scale is a capture-only finding.** No unit test can settle it, because a fixture
+picks its own input scale: a suite written against a 0-to-1 fraction and one written against
+0-to-100 both pass, and each proves only that the code agrees with its own fixture. The live
+response is what fixes it, and it makes `_shape_window`'s round-and-clamp correct as written. Under
+the other reading that same line publishes 1% for a window at 90%, and a band that reads
+almost-empty while the allowance is nearly gone is the one failure this section exists to prevent.
+
+**`limits[]` is the live per-model surface, and its shape is now measured rather than described.**
+The capture records three elements whose key sets are identical: `group`, `is_active`, `kind`,
+`percent`, `resets_at`, `scope`, `severity`. `percent` is an integer on the same 0-to-100 scale as
+`utilization`. `kind` discriminates the rows as `session`, `weekly_all` and `weekly_scoped`, and
+`group` collapses those to `session` and `weekly`, so either field can key a renderer. `severity` is
+a vendor-computed enum of which only `normal` was observed, which makes it something to display
+rather than something to branch on.
+
+Two constraints fall out, and both belong to whoever renders these rather than to the parse:
+
+- **A `weekly_scoped` element may arrive with no `resets_at`.** The scoped element in the capture is
+  the per-model one: it names its model at `scope.model.display_name`, `scope.model.id` was null, so
+  the display name is the only label available — and it carried a percentage with no countdown at
+  all. The contract in Q-1 already allows a window with `pct` and no `resetAt`, and the page falls
+  back to an em dash when neither the instant nor the words arrive, so nothing breaks. The decision
+  left open is whether an em dash is the right thing to print for a window that genuinely has no
+  reset, which is a choice to make deliberately rather than to inherit.
+- **`seven_day_opus` and `seven_day_sonnet` are dead names on a subscription plan.** Both exist as
+  top-level keys and both were null, as were three similarly named siblings. Per-model work written
+  against those field names reads nothing and reports nothing, with no error to explain the silence.
+  `limits[]` is where the per-model figures actually are.
+
+The capture also pins two fields the parse still ignores on purpose. Each window carries
+`limit_dollars`, `remaining_dollars` and `used_dollars`, all null on a subscription plan, so a
+Claude `used` figure cannot be read from them. And `spend.used` is a minor-unit object
+(`amount_minor`, `currency`, `exponent`, which was 2) rather than a number: the Q-8 cents trap in
+self-describing form, where the divisor is stated by the payload instead of having to be discovered.
 
 ## Q-8: Cursor meters money, so the honest gauge is spend over a billing cycle
 
@@ -284,9 +329,12 @@ the query parameter for the first-run case. The parameter alone is the smaller c
 
 ### Publishing `limits[]` now
 
-The per-model rows have no rendering yet. Shipping them into `/api/data` early would freeze a
-shape nobody has designed against; the parse point is marked and the field documented here
-instead.
+The per-model rows have no rendering yet. Part of the old argument was that their shape was unknown,
+and that half has expired: the capture in Q-2 measures it. What remains is that publishing them
+would freeze a payload shape ahead of the renderer that has to label them, and the scoped row's
+missing `resets_at` is exactly the kind of thing a renderer should decide about rather than inherit
+from whatever the first parse happened to emit. So the body is read for its two named windows only
+and the measured shape is documented in Q-2.
 
 ### Cursor's nicer-looking usage endpoint, and its two dead legacy ones
 

@@ -388,6 +388,20 @@
   /* Spans the track, percent and reset columns: a used figure has no bar to
      sit beside and no reset time, so it gets the width instead of a gap. */
   .u-used{grid-column:2 / -1;font-size:var(--fs-2xs);font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums}
+  /* The burn projection, auto-placed onto a second row of its own window's grid
+     and spanning the same three columns `used` does. Under the bar rather than
+     beside it: the widest reading runs to 27 characters (`under 12%/h · reset
+     unknown`), and the note above puts seven characters at 75px in this font, so
+     no fifth column could hold it and a wider grid would take the space from the
+     bar. A projection belongs to the window it projects, which the row above it
+     names. Dim by default — it is a derived figure sat
+     next to measured ones — and it borrows the band's existing two warning tones
+     for the only two readings that earn one: `hot` when the window is projected
+     to fill before it resets, `warn` when the samples cannot rule that out. An
+     unknown never takes a colour. */
+  .u-burn{grid-column:2 / -1;font-size:var(--fs-2xs);color:var(--ink3);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .u-burn.warn{color:var(--warnink)}
+  .u-burn.hot{color:var(--alert);font-weight:700}
   /* Left-aligned under the rows it belongs to. `as of` used to carry
      `margin-left:auto`, which with no other extras present computed to a
      164px shove and left the stamp floating at the tile's right edge, read as
