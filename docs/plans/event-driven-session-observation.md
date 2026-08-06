@@ -1695,39 +1695,56 @@ The gates are independent. Verdicts, one per gate:
   > Selective reuse clears the 25% bar whenever the largest harness is at most 75% of collection
   > time. It fails only when one harness dominates.
 
-  The one machine measured is an extreme outlier and cannot answer this. Its Claude store holds
-  25,483 files against Codex's 349, a 71x skew, so Claude is 92.8% of collection time and the saving
-  computes to 7.2%. That is a fact about one store, not about the product.
+  The one machine measured is an extreme outlier and cannot answer this on its own. Its Claude store
+  held 25,483 files against Codex's 349, a 71x skew, and Claude came out at 92.8% of collection time
+  for a saving of 7.2%. That was a fact about one store, and it has not even held still: the same
+  machine re-measured on 2026-08-06 reports Claude at 75.9% and a 24.1% saving, 17 points off the
+  original, after Phase 0's optimisation and some pruning. A number that moves that far on one
+  machine was never going to settle a question about every machine.
 
-  Extrapolating from measured cost per store file makes the direction clear, and it points the other
-  way. Claude is now the *cheapest* collector per file, at 0.0039 ms, precisely because Phase 0
-  optimised it; every other collector currently costs between 1.5x and 11x more per file. So at equal
-  history volumes Claude does not dominate at all:
+  **The extrapolation this section used to carry has been withdrawn, because it measured the wrong
+  quantity.** It modelled cost as milliseconds per *store file*. A `cProfile` run over the real store
+  shows where a collect's time actually goes: turn-scanning the in-window transcripts costs ~0.28 s
+  against ~0.07 s of stat and glob over all 22,332 files. Files set the walk term, in-window sessions
+  set the read term, and the read term is roughly four times the larger. Scaling a profile by file
+  count therefore scales the smaller half.
+
+  `scripts/bench_collect.py --simulate` replaces the model with a measurement. It generates a store
+  with a named number of in-window sessions per harness, at a session shape measured from the real
+  one (53 records of ~3.2 KiB, spread across 75 project directories), points the runtime's store roots
+  at it, and runs the same collect. Its calibration is the reason to believe it: given this machine's
+  own shape — 65 in-window Claude sessions over 11,106 older ones — it reports 257.0 ms where the
+  machine itself reports 246.5 ms, 4.3% apart.
 
   ```
-  measured ms/file:  claude 0.0039  cursor 0.0059  codex 0.0118  antigravity 0.0178
-                     copilot 0.0200  pi 0.0427
-
-  this machine, 71x Claude skew      largest 92.8%  saving  7.2%   fails
-  10k Claude + 1k each x4            largest 41.6%  saving 58.4%   passes
-  two harnesses, 5k files each       largest 74.9%  saving 25.1%   passes
-  five harnesses, 3k files each      largest 33.6%  saving 66.4%   passes
+  simulated, active sessions per harness       largest              saving   verdict
+  claude 40                                    claude 98.4%           1.6%   below
+  claude 40 + 4 each x4   (was modelled 58%)   claude 76.8%          23.2%   below
+  claude 20 + codex 20                         claude 54.8%          45.2%   clears
+  claude 12 + 4 others at 12                   claude 28.3%          71.7%   clears
   ```
 
-  Every balanced profile clears the bar, and the largest harness in those profiles is Copilot, not
-  Claude. Cargento's intended users run several harnesses, so the balanced rows describe them better
-  than the machine that produced the measurement does.
+  Two of those rows overturn the withdrawn model. It put the 10:1 profile at a 58% saving, clearing
+  the bar comfortably; measured, that profile saves 23.2% and sits below it. And it named Copilot as
+  the largest harness in a balanced store; measured, Claude is still the largest even with every
+  harness at the same session count. A Claude session simply costs more to read than the others'.
 
-  Treat the extrapolation as establishing that the question is open, not as a new verdict. Cost per
-  file is crude: collectors read different formats with different fixed overheads, the file counts
-  are whole store trees rather than in-window sessions, and the other collectors have not had the
-  optimisation pass Claude just had, so their per-file cost may also fall.
+  So the gate is now decidable, as a function of one variable. Sweeping the ratio at 40 Claude
+  sessions puts the crossover between 4 and 5 sessions for each of the four other harnesses — Claude
+  is 77.6% of collection time at 4 and 72.9% at 5. **Selective reuse clears the bar once harnesses
+  other than Claude supply roughly a third of active sessions, and not before.**
 
-  What this gate needs is `scripts/bench_collect.py --repeat 7` output from several genuinely
-  multi-harness machines, reported as largest-harness share rather than as absolute milliseconds so
-  the figures are comparable across hardware. Until then Phase 1 should keep the publish protocol
-  behind an interface that can serve either one full aggregate or per-harness merges, and should not
-  hard-code the full-aggregate assumption that a single-machine reading would have justified.
+  History volume turns out not to enter into it. Adding 2,000 out-of-window sessions per harness to a
+  balanced profile moves the largest-harness share by 0.2 points, because those files are stat'd and
+  skipped rather than read. The store-file counts that the withdrawn model was built on are close to
+  irrelevant to the answer.
+
+  What this gate still needs, and what a simulation cannot supply, is what session mix real users
+  actually have — that is a fact about people, not about code. It also needs a second set of hardware:
+  every figure above comes from one laptop, and the simulation is silent about the four SQLite-backed
+  harnesses, which have no generator. Until then Phase 1 should keep the publish protocol behind an
+  interface that can serve either one full aggregate or per-harness merges, and should not hard-code
+  the full-aggregate assumption that a single-machine reading would have justified.
 - **Coarse probe: MEASURED, and it passes with one documented false negative.** The probe is
   `cargento_runtime/probe.py`, and its corpus is `tests/test_probe.py`, which performs real
   filesystem mutations against a real temporary store rather than mocking `stat`.
@@ -1962,7 +1979,7 @@ The implementation plan should include tests for:
 | Cheaper Claude collector at identical output | Done | All three fixes shipped in Phase 0 at 263 ms to about 100 ms warm; the membership cache passes the parked-parent and nested-workflow fixtures |
 | Coarse stat-poll invalidation across all ten harnesses | Medium, pending Phase 0 | Stdlib and promising on one Mac, but mutation coverage and cross-platform cost are unproven |
 | Materialized snapshot with SSE delivery | Medium to high | Fits the runtime, but needs a real coordinator, demand producer, restart cursor, server-wide resource limits and shutdown lifecycle |
-| Event-triggered selective collection | Low value, gate failed | Per-harness invalidation saves 16% of a post-fix collection on the measured machine, under the 25% gate, so the coordinator runs one full aggregate per floor instead |
+| Event-triggered selective collection | Value depends on the session mix | Below the 25% gate on a Claude-dominated machine and well clear of it once other harnesses supply about a third of active sessions, measured with `bench_collect.py --simulate`. The coordinator runs one full aggregate per floor until real multi-harness mixes are known |
 | Near-real-time Claude and Codex | Medium to high | Both plugin formats can bundle hooks; Cargento still needs authenticated routing, fixtures and its own lifecycle wiring |
 | Near-real-time Antigravity | Medium to high | Hooks are bundleable and status line adds agent state and tool confirmation, but hooks are not clean turn boundaries and status line is opt-in |
 | Near-real-time Gemini | Medium | The shipped extension can bundle hooks, but supported auth populations and event semantics need fixtures |
