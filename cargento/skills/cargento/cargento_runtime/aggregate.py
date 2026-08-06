@@ -315,6 +315,11 @@ class Application:
                         # ever closes. Collectors that do not report it send 0,
                         # and the wait then stands.
                         own_activity=float(session.get("own_activity") or 0.0),
+                        # The whole-tree reading, subagents included, which is
+                        # what retires a stop no `turn_started` ever follows. A
+                        # parked parent with a running child is working, so idle
+                        # cannot key on `own_activity` the way a wait does.
+                        session_activity=float(session.get("last_activity") or 0.0),
                         activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
                     ),
                 )
