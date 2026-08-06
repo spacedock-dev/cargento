@@ -12,7 +12,7 @@ try{
   if(saved === "calm" || saved === "regular") displayMode = saved;
 }catch(e){ /* private mode, or a context with no storage — regular it is */ }
 
-let calmSort = "attention";   /* attention | recent | repo */
+let calmSort = "attention";   /* attention | recent | repo | burn */
 let calmStateOnly = null;     /* needs | work | idle */
 let calmFlagOnly = false;
 /* Rows are identified by sessKey(), the same (harness, sid) pair the rate

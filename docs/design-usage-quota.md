@@ -62,7 +62,7 @@ That table was read from a live store on 2026-08-06 rather than taken from the C
 which does not describe it. Two facts from that read are worth keeping: it carries a `session_id`,
 and those values matched the `session-state/<uuid>` directory names the Copilot collector already
 publishes as a session id. So a per-session slice of AIU spend is available from the same rows the
-harness figure is summed from, with no second identity to reconcile — which is what any future
+harness figure is summed from, with no second identity to reconcile, which is what any future
 per-session cost display would need and is the reason not to key one on anything else.
 
 The entitlement is the part that does not exist locally. GitHub keeps it server-side and the CLI
@@ -73,11 +73,11 @@ numerator and no denominator, and no honest percentage can be derived.
 Hence `used`: a preformatted figure, rendered as a labelled row with no track and no percent sign,
 because a bar implies a fraction of something. Three consequences worth stating:
 
-- **It is always shown when present.** The extras (`burn`, `today`, `cost`) default to off in
-  `usageCfg`, and a consumption-only entry whose single figure sat behind `configure` rendered as a
-  harness name and a timestamp with no number, which reads as a broken row rather than a hidden
-  setting. A contract test executes the page script and fails if the figure stops surviving the
-  default config.
+- **It is always shown when present.** The optional stats, the `today` and `cost` extras, and the
+  page-derived `burn` projection of Q-9, default to off in `usageCfg`, and a consumption-only entry
+  whose single figure sat behind `configure` rendered as a harness name and a timestamp with no
+  number, which reads as a broken row rather than a hidden setting. A contract test executes the page
+  script and fails if the figure stops surviving the default config.
 - **It is windowed on each row's own timestamp**, so the number answers "in the last
   `window_hours`" rather than "since however much session history happens to be retained", which
   would drift as old session directories accumulate or get cleaned.
@@ -86,9 +86,16 @@ because a bar implies a fraction of something. Three consequences worth stating:
   spend flows through the AIU fields. The legacy counter is deliberately not read.
 
 The alternative shapes considered were reusing the `today` extra and force-showing it for
-window-less harnesses, which makes `usageCfg`'s meaning depend on the payload, and deriving a burn
-rate to give the figure context, which is a heuristic over however few rows exist. A first-class
-field says exactly what it is and needs neither.
+window-less harnesses, which makes `usageCfg`'s meaning depend on the payload, and deriving a rate
+from the AIU rows so that the bare figure had some context, which is a heuristic over however few
+rows the window happens to hold. A first-class field says exactly what it is and needs neither.
+
+That second rejection is about **this** figure and nothing else, and being exact about it matters now
+that Q-9 ships a derived rate. A projection needs three things: a level, a slope, and a ceiling to
+run into. Copilot's spend has the first two and no third, so a rate attached to it would be a number
+travelling towards nothing, the same missing denominator this whole section is about, dressed up as
+a forecast. Q-9 fits its slope on a published percentage and projects when that percentage reaches
+100, and it reads no `used` figure at all.
 
 ## Q-2: The response fields Cargento reads
 
@@ -118,8 +125,10 @@ almost-empty while the allowance is nearly gone is the one failure this section 
 **`limits[]` is the live per-model surface, and its shape is now measured rather than described.**
 The capture records three elements whose key sets are identical: `group`, `is_active`, `kind`,
 `percent`, `resets_at`, `scope`, `severity`. `percent` is an integer on the same 0-to-100 scale as
-`utilization`. `kind` discriminates the rows as `session`, `weekly_all` and `weekly_scoped`, and
-`group` collapses those to `session` and `weekly`, so either field can key a renderer. `severity` is
+`utilization`. `kind` discriminates the rows as `session`, `weekly_all` and `weekly_scoped`; `group`
+collapses those three into two, `session` and `weekly`. So `kind` can key a renderer and `group`
+cannot: keying on `group` merges `weekly_all` with `weekly_scoped`, which are precisely the two rows
+A3 has to label differently, and only `weekly_scoped` arrives without a `resets_at`. `severity` is
 a vendor-computed enum of which only `normal` was observed, which makes it something to display
 rather than something to branch on.
 
@@ -127,7 +136,7 @@ Two constraints fall out, and both belong to whoever renders these rather than t
 
 - **A `weekly_scoped` element may arrive with no `resets_at`.** The scoped element in the capture is
   the per-model one: it names its model at `scope.model.display_name`, `scope.model.id` was null, so
-  the display name is the only label available — and it carried a percentage with no countdown at
+  the display name is the only label available, and it carried a percentage with no countdown at
   all. The contract in Q-1 already allows a window with `pct` and no `resetAt`, and the page falls
   back to an em dash when neither the instant nor the words arrive, so nothing breaks. The decision
   left open is whether an em dash is the right thing to print for a window that genuinely has no
@@ -140,8 +149,11 @@ Two constraints fall out, and both belong to whoever renders these rather than t
 The capture also pins two fields the parse still ignores on purpose. Each window carries
 `limit_dollars`, `remaining_dollars` and `used_dollars`, all null on a subscription plan, so a
 Claude `used` figure cannot be read from them. And `spend.used` is a minor-unit object
-(`amount_minor`, `currency`, `exponent`, which was 2) rather than a number: the Q-8 cents trap in
-self-describing form, where the divisor is stated by the payload instead of having to be discovered.
+(`amount_minor`, `currency`, `exponent`) rather than a number: the Q-8 cents trap in self-describing
+form, where the divisor is stated by the payload instead of having to be discovered. What the
+exponent's value is on any given account is not written down here, because the capture records no
+values at all, only that the field is there and integral. Whoever reads that object takes the
+divisor from the object, which is the entire point of its being self-describing.
 
 ## Q-8: Cursor meters money, so the honest gauge is spend over a billing cycle
 
@@ -184,6 +196,162 @@ Keychain is macOS-only, and where the CLI persists this token on Linux and Windo
 Guessing a path would mean reading some other file and calling it a credential, so off macOS the
 reader reports no credential source and Cursor stays out of the band. Installing the CLI on the
 other two platforms is what unblocks them.
+
+## Q-9: The burn projection is derived in the page, and states quantities rather than a verdict
+
+"How fast is this window filling, and when does it fill?" needs a derivative, and nothing in the
+payload carries one: every quota figure in Q-1 is a level. So the series is built in the page, one
+bounded buffer per harness and window, using the same ring-buffer idiom the token sparkline already
+uses rather than a second one. The constants and the code live in `web/usage.js` under "burn
+projection"; what follows is why it is shaped this way, which is this document's half of it.
+
+**What the row publishes is quantities, and nothing composed out of them.** A resolved reading
+prints the fitted rate, the ± those samples support, and the interval in which the window reaches
+100%. It does not say whether the reset gets there first. That was answered here once and the answer
+was wrong five times over, so the comparison is left to the reader, who has this window's own reset
+countdown (Q-1) on the same row: two measured figures side by side and no product of them. The
+record is "The burn row's race verdict, built and then deleted" among the rejected alternatives, and
+it is the part of this section to read before putting the verdict back. `burnRead` does not read
+`resetAt` at all, the reset instant is the buffer's business, for the reason in the restart rule
+below, and reading it a third time in the fit is what made the verdict possible.
+
+**A persisted series was considered and deliberately not built.** Storing the samples would mean a
+server-side write path and a cache file, for a signal whose whole value is the last hour. What that
+buys is a projection that survives a reload, and the price is four costs that a page-local buffer
+pays instead. Each one is *rendered* rather than assumed away, which is what makes the trade
+acceptable: none of the four can turn into a confident reading of evidence that is not there.
+
+- **Warm-up.** There is no history when a tab opens, and samples accrue only while a tab is open
+  with usage on, because the fetch is driven by `/api/data` requests carrying the page's consent
+  (Q-3), and in the calm view only while the band itself is open, since a collapsed band does not
+  render and so does not sample. So the signal is coldest at the exact moment somebody opens the
+  dashboard to ask "can I start this now", which is why that moment gets a sentence saying so. Until
+  three samples span ten minutes the row reads "warming up" with its own count and prints no figure
+  at all. Unknown and measured are different answers and only one of them is available at load. At
+  the server's five-minute floor that puts the first projection about ten minutes after the tab
+  opens. The count or the span can be the requirement still short, `asOf` advances as fast as its
+  producer stamps it, not at the fetch floor, so the row names whichever one it is rather than
+  printing "9 of 3".
+- **Reload loss.** The buffer dies with the page, and a reloaded tab is indistinguishable from a
+  fresh one. That is exactly why a fresh one has to read as unmeasured: the alternative is a
+  projection fitted to a just-emptied buffer.
+- **Quantisation.** The published `pct` is an integer and the fetch is floored at 300 seconds
+  (`usage_poll_floor_sec`), so the difference of two samples carries up to a whole point of pure
+  rounding. A measured rise of one point could be a true rise of anything from just above zero to
+  just under two, 100% relative error, and across a ten-minute span that is a rate somewhere
+  between 0 and 12%/h. So a rise this fit's own error bound cannot separate from the rounding is not
+  published as a rate at all, only as a ceiling, and every figure that does print carries the bound
+  it was fitted with. That bound is not a constant, and the error model below is where it, and
+  everything keyed to it, is written down.
+- **Staleness.** `asOf` is the moment the percentage was true, and nothing obliges it to advance. A
+  stored Antigravity receipt keeps being served with a frozen `asOf` for up to `window_hours` after
+  its harness stops (Q-7), and the buffer ignores a repeat of an `asOf` it already holds, so the
+  samples stop arriving while the page goes on rendering. Left unbounded that republishes one fit
+  forever: byte-identical burn rows hours apart, beside a countdown the reader can see ticking. So
+  the newest sample's age is bounded against the viewer's clock at ten minutes (`BURN_STALE_SEC`, which is
+  two arrival intervals at the 300-second fetch floor, because one missed refresh is jitter and two
+  in a row is a feed that has stopped), and a frozen feed reads as unmeasured again, with the age on
+  the row so the reader can tell a harness that went quiet ten minutes ago from one that stopped
+  this morning. The bound is tested ahead of the count and the span, since it outranks them: a
+  buffer holding one three-hour-old reading is not filling up slowly, it has stopped being fed, and
+  counting it towards a threshold nothing is going to cross would print the wrong unknown.
+
+  A window that reports no reset time at all used to be the fourth cost here, and it is not a cost
+  any more. The capture in Q-2 carries a `weekly_scoped` limit with no `resets_at`, and
+  `_shape_window` omits `resetAt` when the vendor sends none; with the race gone there is nothing in
+  the reading that wanted the instant, so such a window now loses nothing from its projection rather
+  than degrading to an unknown verdict
+  (`test_a_window_with_no_reset_time_loses_nothing_from_the_projection`).
+
+**Every reading names what kind of answer it is.** Nothing returns a bare number, because the caller
+must not be able to mistake "we cannot tell" for one. There are five states and each has its own
+words on the row: a window already at 100% ("window spent"), a feed whose newest reading is too old
+to fit ("stale", with the age), a buffer still short of the count or the span ("warming up", with
+whichever is short), a rise this span cannot resolve into a rate ("under 3%/h"), and a resolved
+projection, which prints the rate then both ends of the wall interval separated by an en dash (the
+exact literal is pinned by `test_a_projected_wall_is_published_as_the_interval_its_band_spans` and
+shown in the skill body; it is not reproduced here because these docs hold no dashes in prose and a
+verbatim copy would read as drift). They are tested in that order, and the first two placements
+are decisions rather than accidents of code: a full window outranks even a frozen feed, because "the
+wall is here" must never be buried under a note about staleness, and staleness outranks the count
+and the span for the reason given above. Colour now reaches exactly one of them. A spent window
+keeps the alert tone, because it is a level the payload published rather than anything inferred
+here; every projection is dim however fast it reads, since a tone on a projection is the other half
+of the verdict, a claim about what the number means for the reader, and the readings that used to
+raise one are the readings the reviews found wrong. Both printed figures are marked as what they
+are, `~` for an estimate and `under` for a ceiling, because "7.43%/h" off a handful of integer
+samples would dress a few readings up as a measurement.
+
+**The error model is this fit's own, and it moves with the sample count.** `burnFitError` takes the
+worst thing ±0.5 of integer rounding can do to this particular least-squares slope, from the weights
+of the samples actually held. Read as an error on the fitted rise that is one whole point at three
+samples, 1.2 at four, and climbing towards 1.5 as the buffer fills, more samples over the same span
+widen it rather than tightening it, so no constant can stand in for it. A dozen readings across 55
+minutes carry ±1.5%/h where the three-sample expression would have printed ±1.1%/h and sold the
+estimate as a third sharper than the samples support
+(`test_the_burn_error_band_widens_as_the_buffer_fills` pins both figures, and the earlier drafts of
+this section that stated the three-sample constant are how that would come back). Three things are
+keyed to that bound rather than written down as numbers:
+
+- **The gate.** A slope must clear twice the bound (`BURN_RESOLUTION_FACTOR`) before it prints as a
+  rate, which is two points of rise at three samples and about 2.8 by twelve. Three samples is the
+  warm-up minimum and not the ordinary case, the trailing hour of a tab left open holds about a
+  dozen readings at the 300-second floor, so a fixed two-point gate there would publish as a rate a
+  rise those samples cannot resolve.
+- **The ceiling, for a rise under the gate.** The fitted slope plus the whole bound, never printed
+  tighter than the gate it failed to clear, since a row whose claim is "this span cannot resolve a
+  rise this small" cannot also report having measured a smaller one. It supports exactly one
+  instant, the earliest the window could be full, and that is a bound in one direction only: the
+  same samples are equally consistent with a slope of zero, which never fills at all. So the instant
+  goes in the tooltip and not on the row, where a figure beside "under 3%/h" would read as a
+  prediction with the half that says "possibly going nowhere" missing.
+- **The wall, published as the interval its band spans.** Two sources of ± reach it. The slope's
+  band gives the early end its fastest consistent slope and the late end its slowest, and the
+  published level carries its own half point, an 89 is anything in 88.5 to 89.5, so the early end
+  divides the least headroom consistent with that level and the late end the most. The half point is
+  worth the arithmetic because at a slow slope it is minutes rather than seconds: at 3%/h it is 600
+  seconds, which is why the early end is anchored at `level + 0.5` and not at the integer the row
+  prints. A single "wall in 57m" was the other candidate and is the verdict's defect one layer out:
+  it is exactly the input a reader needs for the comparison this row has stopped making, and handed
+  over as a point it invites that comparison at a precision the fit has not got: at 16.8%/h ±4.8 the
+  wall is anywhere from 43m to 1h 22m out, and "57m" against a reset 50m away reads as fine on
+  evidence that says possibly not. The pessimistic end alone is the mirror of that failure, since a
+  row that only ever names the earliest possible wall overstates every window it describes, and a
+  signal that cries wolf is read as decoration inside a week. The interval states what is known and
+  how well at once, which is the argument for keeping these numbers while dropping the verdict over
+  them. Both ends collapse to one figure when they round the same, so a window about to fill does
+  not read as vague.
+
+**Samples are stamped with the payload's own `asOf`, not the viewer's clock.** `asOf` is the moment
+the percentage was true, and a cached fetch is older than the poll that carried it; stamping at
+receipt would compress a five-minute-old figure onto "now" and steepen the slope. The fit therefore
+lives entirely in payload time, and the viewer's clock is read for exactly two things, both of them
+facts about now rather than about the fit: how old the newest sample is (the staleness bound above),
+and how long the intervals on screen have left, which is the clock the reset countdown in Q-1 reads.
+
+**Two independent signs of a rolled window empty the buffer, and neither one is redundant.** A fall
+in the percentage is the visible sign: the samples before a fall describe a window that no longer
+exists, and a slope fitted across that discontinuity reads as a steep decline into a wall that is
+never coming. A fall alone only catches a roll whose new level sits *below* the old one, though, and
+a window that rolls and then climbs straight past where the last one stood never falls, the buffer
+would keep both sides and fit one slope across two separate allowances, understating the new
+window's rate and pushing its wall out. So every sample also carries the reset instant it was taken
+under, and a change in that instant empties the buffer too. Producers build `resetAt` from the
+vendor's own absolute reset time (`sessions.reset_fields`), so it holds still for the life of a
+window and a change in it really is a new allowance rather than sampling noise. Either restart
+returns the row to warming up, which is the only honest reading of a buffer holding one sample. Both
+triggers are pinned separately
+(`test_the_burn_series_ignores_a_replayed_reading_and_restarts_on_a_roll` and
+`test_the_burn_series_restarts_when_the_reset_instant_moves`), because a draft that named only the
+visible one is what left the second case unhandled.
+
+**It is rendered under each window's own row, and it defaults to off.** A 5-hour window and a weekly
+window fill at different rates and reset at different times, so one projection per harness would
+have to pick one of them silently. Off by default is a decision rather than an omission: the series
+starts empty every time a tab opens, so a default-on row would read "warming up" under every window
+on first load and teach the reader that the band is half-built, whereas an opt-in row is asked for
+by someone who has read what it measures. The buffers fill whether or not the stat is shown, so
+turning it on is instant rather than the start of another ten-minute wait.
 
 ## Q-3: Consent rides on the poll
 
@@ -420,3 +588,46 @@ Anyone revisiting this inherits that question unanswered.
 
 Revisit only if Antigravity begins persisting quota to disk, or ships a documented local interface.
 The endpoint and method above will still be correct; it is the credential that has to change.
+
+### The burn row's race verdict, built and then deleted (2026-08-06)
+
+Q-9's row used to end in a verdict on the race: `resets first` where the projection put the reset
+ahead of the wall, `may fill first` where the samples could not rule filling out, `wall in 40m`
+where they put the wall first, and `reset unknown` where there was nothing to race against. It was
+the reading the row was built to give, a level and a slope are only interesting if they answer "can
+I start this now", and it is gone. What survives is the arithmetic under it.
+
+Three review rounds found five false-green defects in that verdict: a row telling the reader the
+window is safe when its own evidence does not say so. All five were inside the verdict. None was in
+the quantities. The last two were deleted rather than patched, because the deletion is the fix for
+both:
+
+- **The wall was anchored at the published integer** rather than at `level + 0.5`. `pct` is rounded,
+  so a window printing 99 is anywhere up to 99.5 and the projection was handed half a point of
+  headroom that may not exist. At a low slope that half point is most of the answer: at 3%/h it is
+  600 seconds, and 600 seconds of phantom headroom is the margin `resets first` was being decided
+  on. The half point itself was not the mistake and did not go away with the verdict: the wall
+  interval Q-9 ships now takes it on its early end.
+- **A row could read `resets first` while its own tooltip said the window reaches 100%.** The
+  headline and the sentence under it were derived on different footings, and the reassuring one was
+  the one in the headline.
+
+The quantities stayed because they were never what failed. The fitted slope and its error band were
+put through a 4,000-case randomised sweep across the levels, slopes, sample counts and reset
+distances the row actually meets, and it returned no false-safe result. So the arithmetic held and
+the last step did not, and that asymmetry is structural rather than a run of bad luck. A verdict has
+to pick a side. The side that needs care is the pessimistic one, and every slip on the way to it (an
+anchor half a point out, a bound read at the fit instead of at the top of its band, a stale
+instant treated as a deadline, a branch reached before its guard) comes out as `resets first`. A
+wrong number looks wrong. A wrong verdict looks like good news.
+
+So the row states what was measured: the rate, the uncertainty on it, and the interval in which the
+window is projected to fill. The reader compares that against the reset countdown Q-1 already puts
+on the same row, and Cargento gives up the one bit it could not compute reliably while keeping every
+figure the reader needs to compute it.
+
+This is the judgement that killed A9 on the Visibility board, "a single safe-to-start light": a
+verdict composed over uncertain evidence fails toward confident green, and a false green is worse
+than no light. It is written down here because reintroducing it will look like an improvement rather
+than a regression. A wall in 40 minutes printed beside a reset in 50 is asking to be collapsed into
+one word, and that word is the defect.

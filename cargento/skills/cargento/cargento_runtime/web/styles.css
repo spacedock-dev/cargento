@@ -390,17 +390,23 @@
   .u-used{grid-column:2 / -1;font-size:var(--fs-2xs);font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums}
   /* The burn projection, auto-placed onto a second row of its own window's grid
      and spanning the same three columns `used` does. Under the bar rather than
-     beside it: the widest reading runs to 27 characters (`under 12%/h · reset
-     unknown`), and the note above puts seven characters at 75px in this font, so
-     no fifth column could hold it and a wider grid would take the space from the
+     beside it: the widest reading runs to 30 characters (`~48%/h · wall 1h 28m–1h
+     49m`), and the note above puts seven characters at 75px in this font, so no
+     fifth column could hold it and a wider grid would take the space from the
      bar. A projection belongs to the window it projects, which the row above it
-     names. Dim by default — it is a derived figure sat
-     next to measured ones — and it borrows the band's existing two warning tones
-     for the only two readings that earn one: `hot` when the window is projected
-     to fill before it resets, `warn` when the samples cannot rule that out. An
-     unknown never takes a colour. */
+     names. Dim by default — it is a derived figure sat next to measured ones —
+     and exactly one reading takes a colour: `hot`, for a window the payload
+     already publishes at 100%. That is a fact rather than a projection, which is
+     the whole reason it is the only one.
+
+     There is deliberately no warning tone. The row used to carry one for a
+     window whose samples could not rule out filling before its reset, and that
+     verdict was deleted in full (see the rejected alternative in
+     docs/design-usage-quota.md): a tone that encodes reassurance is the other
+     half of a verdict, so restoring it would restore the defect. A projection
+     states its rate and the interval its band spans, and lets the reader compare
+     that against the countdown on the row above. */
   .u-burn{grid-column:2 / -1;font-size:var(--fs-2xs);color:var(--ink3);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .u-burn.warn{color:var(--warnink)}
   .u-burn.hot{color:var(--alert);font-weight:700}
   /* Left-aligned under the rows it belongs to. `as of` used to carry
      `margin-left:auto`, which with no other extras present computed to a

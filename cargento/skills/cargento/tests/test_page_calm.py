@@ -185,8 +185,12 @@ out.perSession = [K("claude", "aaa1"), K("codex", "bbb2"), K("claude", "ccc3")]
   .map(k => (h.match(new RegExp('data-arg="' + k + '"', "g")) || []).length);
 out.note = h.includes("showing all 3");
 // The session count lives once, in the filter-aware `showing …` note. The
-// footer carries what the note does not, and pluralizes.
-out.footer = h.includes("1 harness · 1,234 tok/min");
+// footer carries what the note does not, and pluralizes. The `≥` is this
+// board's own arithmetic, not decoration: `blocked` is active and its rate is
+// unmeasurable — the strip states no `reports_rate` for claude and the row's
+// own rate is 0 — so the total is short by whatever that session is burning.
+// The rule itself is pinned below, in the floor test.
+out.footer = h.includes("1 harness · ≥ 1,234 tok/min");
 out.footerHasNoCount = !h.includes("3 sessions");
 out.legend = [h.includes("1 needs you"), h.includes("1 working"), h.includes("1 idle")];
 // Column values come straight from the payload.
@@ -807,6 +811,37 @@ const rowOf = (h, key) => {
   const i = h.indexOf('data-arg="' + key + '" role="button"');
   return i < 0 ? "" : h.slice(i, h.indexOf("</div>", i));
 };
+// Sessions that are NOT working, carrying the rates a trailing mean really does
+// report for them: one that stopped inside the window keeps the number it earned
+// before it stopped, and one blocked on the reader keeps the number it burned
+// before it asked.
+const stopped = (sid, harness, rate, ago) => mk({sid, session: sid, harness,
+  state: "idle", active: true, last_activity: 100000 - ago, rate_per_min: rate});
+const waiting = (sid, harness, rate) => mk({sid, session: sid, harness,
+  state: "needs_input", active: true, last_activity: 99880, blocked_since: 99880,
+  rate_per_min: rate});
+// The board the two views used to disagree about: one codex session actually
+// generating, at a thirtieth of the mean still carried by a claude session that
+// stopped nearly two minutes ago.
+const contra = () => burnBoard({sessions: [
+  stopped("stop", "claude", 9000, 110), working("work", "codex", 300),
+  working("zed", "claude", 0), working("mute", "copilot", 0),
+  waiting("held", "claude", 4000), stopped("hush", "copilot", 0, 3000)]});
+// One row's rate cell exactly as rendered — "" for an empty cell, so a missing
+// number and a dash cannot be mistaken for each other here either.
+const rateCellOf = (h, key) => {
+  const m = rowOf(h, key).match(/class="cm-rate"><span class="cm-metric"[^>]*>([^<]*)</);
+  return m ? m[1] : null;
+};
+// The rows sitting under one divider, in rendered order, keyed the way the
+// ledger keys them: (harness, sid).
+const groupRows = (h, label) => {
+  const start = h.indexOf('cm-div-k">' + label);
+  if(start < 0) return null;
+  const next = h.indexOf('class="cm-div"', start);
+  return [...h.slice(start, next < 0 ? h.length : next)
+    .matchAll(/data-arg="([a-z]+:[a-z]+)" role="button"/g)].map(m => m[1]);
+};
 """
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -873,6 +908,472 @@ console.log(JSON.stringify(out));
             "a board with no measurements still claimed a fastest-first ranking",
         )
         self.assertEqual(0, out["attentionUnaffected"], "burn dividers leaked into another order")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_burn_ordering_ranks_only_the_sessions_that_are_working(self) -> None:
+        # The rate is a trailing mean, so a session that stopped inside the window
+        # still carries the number it earned before it stopped — routinely a much
+        # larger one than anything still running. Ranking those rows headed
+        # "fastest first" with an agent doing nothing, and made the two views
+        # disagree about one payload: the regular card marks the fastest WORKING
+        # session, and that is the semantics both of them now hold.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+calmAction("sort", "burn");
+render(contra());
+const h = __els.app.innerHTML;
+out.order = seq(h);
+out.dividers = dividers(h);
+out.rows = rows();
+out.ranked = groupRows(h, "fastest first");
+// The one claim a reader takes from this ordering is that the top row is the
+// session generating fastest. It is also the row the regular view marks, and on
+// this payload the old ordering and that marker named different sessions.
+out.topRow = (h.match(/data-arg="([a-z]+:[a-z]+)" role="button"/) || [])[1];
+out.regularLeaders = [...burnLeaders(contra()).keys];
+// A row that is not ranked sits under a divider that says why, rather than
+// leaving the reader to infer it from an `idle / wait` column three cells away.
+out.stillGroup = groupRows(h, "not working");
+// Ranking is read off state, not off a demotion: dropping the stopped row
+// entirely leaves the same ranked group behind.
+render(burnBoard({sessions: [working("work", "codex", 300), working("zed", "claude", 0)]}));
+out.withoutStopped = groupRows(__els.app.innerHTML, "fastest first");
+// With nothing working there is no ranking to head at all, however fast the
+// stopped rows were a minute ago.
+render(burnBoard({sessions: [stopped("stop", "claude", 9000, 110),
+                             waiting("held", "claude", 4000)]}));
+out.noneWorking = dividers(__els.app.innerHTML);
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        self.assertEqual(6, out["rows"], "the ordering dropped a row")
+        self.assertEqual(
+            ["codex:work", "claude:zed"],
+            out["ranked"],
+            "a session that is not working was ranked on its stale mean",
+        )
+        self.assertEqual(
+            "codex:work", out["topRow"], '"fastest first" led with a session doing nothing'
+        )
+        self.assertEqual(
+            ["codex:work"],
+            out["regularLeaders"],
+            "the fixture stopped pinning the two views to one answer",
+        )
+        self.assertEqual(
+            [
+                ["fastest first · 10m mean", 2],
+                ["no rate reported · cannot be ranked", 1],
+                # "now": the same group also takes a row whose state still says
+                # working but whose harness has not written inside the window,
+                # and that row displays as working. See the parity test below.
+                ["not working now · not in the ranking", 3],
+            ],
+            out["dividers"],
+            "the groups do not account for every row, or do not say what they are",
+        )
+        self.assertEqual(["work", "zed", "mute", "held", "stop", "hush"], out["order"])
+        self.assertEqual(["claude:held", "claude:stop", "copilot:hush"], out["stillGroup"])
+        self.assertEqual(["codex:work", "claude:zed"], out["withoutStopped"])
+        self.assertEqual(
+            [["not working now · not in the ranking", 2]],
+            out["noneWorking"],
+            "a board with nothing working still claimed a fastest-first ranking",
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_ranking_takes_the_predicate_the_regular_view_marks_on(self) -> None:
+        # `state === "working"` is the harness's claim; `active` is whether it has
+        # written anything inside the display window. A row can carry the first
+        # without the second — `?all=1` lists those, and a session whose subagents
+        # hold the state file open reaches it too — and it still carries the last
+        # trailing mean its harness measured. Ranking on the state alone put that
+        # row first under "fastest first" while the regular view marked a live
+        # session fifty times slower as `fastest`: two views, one payload, two
+        # answers to "which is fastest". Both read one predicate now.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+// Working by state, silent for longer than the display window.
+const ghost = (sid, harness, rate) => mk({sid, session: sid, harness, state: "working",
+  active: false, last_activity: 99990, rate_per_min: rate});
+const d = burnBoard({show_all: true, sessions: [
+  ghost("ghost", "claude", 5000), working("live", "codex", 100),
+  working("mute", "copilot", 0), ghost("hush", "copilot", 0)]});
+calmAction("sort", "burn");
+render(d);
+const h = __els.app.innerHTML;
+out.order = seq(h);
+out.dividers = dividers(h);
+out.rows = rows();
+out.ranked = groupRows(h, "fastest first");
+out.topRow = (h.match(/data-arg="([a-z]+:[a-z]+)" role="button"/) || [])[1];
+// The SAME payload object the ledger just rendered, so nothing about the two
+// answers can be blamed on two payloads.
+out.regularLeaders = [...burnLeaders(d).keys];
+out.stillGroup = groupRows(h, "not working now");
+// Left out of the ranking, not stripped of what its harness measured: the row
+// keeps its number, under a divider that says why it is not being compared.
+out.ghostCell = rateCellOf(h, "claude:ghost");
+// An unmeasured row that is not running belongs to the same group as the rest of
+// them, not to the divider about measurement.
+out.muteGroup = groupRows(h, "no rate reported");
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        self.assertEqual(4, out["rows"], "the ordering dropped a row")
+        self.assertEqual(
+            ["codex:live"],
+            out["ranked"],
+            "a session that has not written inside the window was ranked on its stale mean",
+        )
+        self.assertEqual(
+            out["regularLeaders"],
+            [out["topRow"]],
+            "the two views disagree about which session is burning fastest",
+        )
+        self.assertEqual(
+            [
+                ["fastest first · 10m mean", 1],
+                ["no rate reported · cannot be ranked", 1],
+                ["not working now · not in the ranking", 2],
+            ],
+            out["dividers"],
+            "the groups do not account for every row, or do not say what they are",
+        )
+        self.assertEqual(["live", "mute", "ghost", "hush"], out["order"])
+        self.assertEqual(["claude:ghost", "copilot:hush"], out["stillGroup"])
+        self.assertEqual(["copilot:mute"], out["muteGroup"])
+        self.assertEqual("5,000 /m", out["ghostCell"], "an unranked row lost its measurement")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_footer_total_says_when_it_is_only_a_floor(self) -> None:
+        # `summary.rate_per_min` sums every ACTIVE session's rate, and the four
+        # harnesses that never measure one contribute the same 0 a reporting
+        # harness sends for a session that generated nothing — so on a mixed board
+        # the footer's single number is the measured part of the output printed as
+        # all of it. The ledger dashes those rows one at a time; this is the number
+        # a reader takes for the board, and calm used to print it bare while the
+        # regular view's tile said the same total was a floor.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+const foot = h => (h.match(/class="cm-foot"><span>([^<]*)</) || [])[1];
+// The qualification exactly as rendered: the footer item after the total, and
+// the tooltip on it. null when there is none.
+const floorOf = h => {
+  const m = h.match(/tok\\/min<\\/span><span title="([^"]*)">([^<]*)</);
+  return m ? [m[2], m[1]] : null;
+};
+const rated = (sessions, total) => burnBoard(
+  {sessions, summary: Object.assign({}, payload([]).summary, {rate_per_min: total,
+    active_sessions: sessions.filter(x => x.active).length})});
+// One measured session, one active session whose harness takes no measurement.
+const partial = rated([working("live", "claude", 450), working("mute", "copilot", 0)], 450);
+render(partial);
+out.partial = foot(__els.app.innerHTML);
+out.partialNote = floorOf(__els.app.innerHTML);
+// The regular view's tile, on the SAME payload: same numeral, same sentence.
+const tile = rateTile(partial);
+out.tileVal = (tile.match(/class="tile-val">([^<]*)</) || [])[1];
+out.tileSub = (tile.match(/class="tile-sub"[^>]*>([^<]*)</) || [])[1];
+// Every active session measured: an exact total, said exactly, with nothing
+// hedging it. This is the common case and it must stay unqualified.
+render(rated([working("live", "claude", 450), working("fast", "codex", 3100)], 3550));
+out.exact = foot(__els.app.innerHTML);
+out.exactNote = floorOf(__els.app.innerHTML);
+out.exactClean = !/≥|a floor|no rate from/.test(__els.app.innerHTML);
+// The whole board unmeasured: a bare 0 here would read as "nothing is being
+// generated", which is the one thing this payload cannot say. Singular, too.
+render(rated([working("mute", "copilot", 0)], 0));
+out.blind = foot(__els.app.innerHTML);
+out.blindNote = floorOf(__els.app.innerHTML);
+// The same 0, measured. Claude reports a rate, so a session of it generating
+// nothing IS in the total, correctly and completely — the absence of a
+// measurement is what makes a floor, never the size of one.
+render(rated([working("zero", "claude", 0)], 0));
+out.measuredZero = foot(__els.app.innerHTML);
+out.measuredZeroNote = floorOf(__els.app.innerHTML);
+// The sum is over ACTIVE sessions, so an inactive unmeasured row is not missing
+// from it and must not make the total a floor.
+render(rated([working("live", "claude", 450),
+              mk({sid: "gone", session: "gone", harness: "copilot", state: "working",
+                  active: false, last_activity: 99990, rate_per_min: 0})], 450));
+out.inactive = foot(__els.app.innerHTML);
+out.inactiveNote = floorOf(__els.app.innerHTML);
+// Two harnesses missing: both named, and the sentence agrees with itself.
+render(rated([working("live", "claude", 450), working("mute", "copilot", 0),
+              working("cur", "cursor", 0)], 450));
+out.twoNote = floorOf(__els.app.innerHTML);
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        self.assertEqual("3 harnesses · ≥ 450 tok/min", out["partial"])
+        self.assertEqual(
+            [
+                "no rate from 1 of 2 active sessions — a floor",
+                (
+                    "Copilot reports no token accounting, so what its sessions are burning"
+                    " is missing from this total — and is not zero."
+                ),
+            ],
+            out["partialNote"],
+            "the footer total does not say how much of the board it could not see",
+        )
+        # The two views on one payload. A reader switching modes with `c` must not
+        # be told the same total is a floor in one and a figure in the other.
+        self.assertEqual("≥ 450", out["tileVal"])
+        self.assertEqual(out["partialNote"][0], out["tileSub"], "the two modes word it differently")
+        self.assertEqual("3 harnesses · 3,550 tok/min", out["exact"])
+        self.assertIsNone(out["exactNote"], "an exact total was hedged")
+        self.assertTrue(out["exactClean"], "a floor mark survived onto a fully measured board")
+        self.assertEqual("3 harnesses · ≥ 0 tok/min", out["blind"])
+        self.assertEqual("no rate from 1 of 1 active session — a floor", out["blindNote"][0])
+        self.assertEqual("3 harnesses · 0 tok/min", out["measuredZero"])
+        self.assertIsNone(out["measuredZeroNote"], "a measured zero was called a floor")
+        self.assertEqual("3 harnesses · 450 tok/min", out["inactive"])
+        self.assertIsNone(
+            out["inactiveNote"], "a session outside the total was counted as missing from it"
+        )
+        self.assertEqual(
+            [
+                "no rate from 2 of 3 active sessions — a floor",
+                (
+                    "Copilot, Cursor report no token accounting, so what their sessions are"
+                    " burning is missing from this total — and is not zero."
+                ),
+            ],
+            out["twoNote"],
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_footer_total_says_when_a_harness_could_not_be_read(self) -> None:
+        # The other way a total is a floor, and the one no session count can see: a
+        # discovered harness whose collector raised publishes an `error` and no
+        # sessions at all. The strip badges it `— collector error`, so the failure
+        # is disclosed — but the footer's numeral sat beside that badge unqualified,
+        # counting the sessions it did have and finding them all measured. A total
+        # missing a whole harness is the least exact number on the board.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+const foot = h => (h.match(/class="cm-foot"><span>([^<]*)</) || [])[1];
+const floorOf = h => {
+  const m = h.match(/tok\\/min<\\/span><span title="([^"]*)">([^<]*)</);
+  return m ? [m[2], m[1]] : null;
+};
+// One strip apart from the error, so nothing else can account for a difference.
+const okStrip = [strip[0], {...strip[1]}, strip[2]];
+const errStrip = [strip[0], {...strip[1], error: "OSError: [Errno 13] Permission denied"},
+                  strip[2]];
+const rated = (sessions, harnesses, total) => burnBoard({harnesses, sessions,
+  summary: Object.assign({}, payload([]).summary, {rate_per_min: total,
+    active_sessions: sessions.filter(x => x.active).length})});
+const one = [working("live", "claude", 2010)];
+const errored = rated(one, errStrip, 2010);
+render(errored);
+out.errored = foot(__els.app.innerHTML);
+out.erroredNote = floorOf(__els.app.innerHTML);
+// The regular view's tile, on the SAME payload: same numeral, same sentence.
+const tile = rateTile(errored);
+out.tileVal = (tile.match(/class="tile-val">([^<]*)</) || [])[1];
+out.tileSub = (tile.match(/class="tile-sub"[^>]*>([^<]*)</) || [])[1];
+// Every discovered harness read, every active session measured: an exact total,
+// with nothing hedging it. Codex having no sessions is not a hole.
+render(rated(one, okStrip, 2010));
+out.exact = foot(__els.app.innerHTML);
+out.exactNote = floorOf(__els.app.innerHTML);
+out.exactClean = !/≥|a floor|could not be read/.test(__els.app.innerHTML);
+// The strip still discloses the failure the footer now qualifies — a reader has
+// to be able to get from "a floor" to which harness it was.
+render(errored);
+out.badge = __els.app.innerHTML.includes("Codex — collector error");
+// Both holes at once, each counted as itself.
+render(rated([working("live", "claude", 2010), working("mute", "copilot", 0)],
+             errStrip, 2010));
+out.bothNote = floorOf(__els.app.innerHTML);
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        self.assertEqual("3 harnesses · ≥ 2,010 tok/min", out["errored"])
+        self.assertEqual(
+            [
+                "1 harness could not be read — a floor",
+                (
+                    "Codex failed to collect, so none of its sessions reached this total"
+                    " — unread, not idle."
+                ),
+            ],
+            out["erroredNote"],
+            "the footer presented a total missing a whole harness as exact",
+        )
+        # The two views on one payload. A reader switching modes with `c` must not
+        # be told the same total is a floor in one and a figure in the other.
+        self.assertEqual("≥ 2,010", out["tileVal"])
+        self.assertEqual(out["erroredNote"][0], out["tileSub"], "the two modes word it differently")
+        self.assertEqual("3 harnesses · 2,010 tok/min", out["exact"])
+        self.assertIsNone(out["exactNote"], "an exact total was hedged")
+        self.assertTrue(out["exactClean"], "a floor mark survived onto a fully read board")
+        self.assertTrue(out["badge"], "the strip stopped naming the harness that failed")
+        self.assertEqual(
+            [
+                "no rate from 1 of 2 active sessions · 1 harness could not be read — a floor",
+                (
+                    "Copilot reports no token accounting, so what its sessions are burning"
+                    " is missing from this total — and is not zero."
+                    " Codex failed to collect, so none of its sessions reached this total"
+                    " — unread, not idle."
+                ),
+            ],
+            out["bothNote"],
+            "the note reported one hole and dropped the other",
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_board_generating_nothing_is_not_ranked_fastest_first(self) -> None:
+        # Comparable is not the same as there being something to compare. The
+        # regular view has always refused to mark a `fastest` card when the highest
+        # known rate is zero — a board where nothing is generating has no fastest
+        # session — and calm ranked those rows anyway, so the divider claimed
+        # "fastest first" and the top row was an agent producing nothing. The rule
+        # is burnRacers() now, asked by both views, because this is the second
+        # parity fault after a fix that claimed one shared predicate had made them
+        # impossible: one predicate for which rows may be compared was not one rule
+        # for whether the comparison exists.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+calmAction("sort", "burn");
+// Every working row measured, every measurement zero, plus the two kinds of row
+// that were never in the ranking.
+const d = burnBoard({sessions: [working("a", "claude", 0), working("b", "codex", 0),
+  working("mute", "copilot", 0), stopped("stop", "claude", 9000, 110)]});
+render(d);
+const h = __els.app.innerHTML;
+out.order = seq(h);
+out.dividers = dividers(h);
+out.rows = rows();
+out.calmRanked = groupRows(h, "fastest first") || [];
+out.zeroGroup = groupRows(h, "all measured at zero");
+// The same payload object the ledger just rendered, so nothing about the two
+// answers can be blamed on two payloads.
+out.regularLeaders = [...burnLeaders(d).keys];
+out.regularPills = d.sessions.filter(x => x.state === "working")
+  .map(s => (workingCard(d, s).match(/>(fastest[a-z ]*)</) || [null, null])[1]);
+// The cells were never the lie: a measured zero keeps its number, an unmeasured
+// row keeps its dash. Only the placement and the divider invented the race.
+out.cells = [rateCellOf(h, "claude:a"), rateCellOf(h, "copilot:mute")];
+// One positive rate anywhere makes it a race, and then every measured row is in
+// it — the zeroes included, sorted last, where they are genuinely slowest.
+render(burnBoard({sessions: [working("a", "claude", 0), working("b", "codex", 5)]}));
+out.racing = [dividers(__els.app.innerHTML),
+              groupRows(__els.app.innerHTML, "fastest first")];
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        self.assertEqual(4, out["rows"], "the ordering dropped a row")
+        self.assertEqual(
+            [],
+            out["calmRanked"],
+            'a board where nothing is generating was headed "fastest first"',
+        )
+        self.assertEqual(
+            out["regularLeaders"],
+            out["calmRanked"],
+            "the two views disagree about whether there is a fastest session",
+        )
+        self.assertEqual([None, None, None], out["regularPills"])
+        self.assertEqual(["claude:a", "codex:b"], out["zeroGroup"])
+        self.assertEqual(
+            [
+                ["all measured at zero · no ranking to make", 2],
+                ["no rate reported · cannot be ranked", 1],
+                ["not working now · not in the ranking", 1],
+            ],
+            out["dividers"],
+            "the groups do not account for every row, or do not say what they are",
+        )
+        self.assertEqual(["a", "b", "mute", "stop"], out["order"])
+        self.assertEqual(["0 /m", "—"], out["cells"], "a cell was changed instead of the divider")
+        self.assertEqual(
+            [[["fastest first · 10m mean", 2]], ["codex:b", "claude:a"]],
+            out["racing"],
+            "one measured rate above zero is a race and every measured row is in it",
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_every_ranked_row_shows_the_number_it_was_ranked_on(self) -> None:
+        # Three states in the rate cell, and each may mean exactly one thing: a
+        # number is a measurement (a real 0 included), a dash is a harness that
+        # never took one, an empty cell is a row that is not working. The cell used
+        # to fill by rate rather than by bucket, so a non-working row holding a
+        # MEASURED 0 rendered blank while an unmeasured row rendered a dash — the
+        # absence reading as less than the unknown, which is backwards — and the
+        # blank row was in the ranking, ranked on a number it never showed.
+        checks = (
+            self.BURN_FIXTURE
+            + """
+const out = {};
+calmAction("sort", "burn");
+render(contra());
+const h = __els.app.innerHTML;
+// Nothing under the ranking heading may be silent about what it was ranked on.
+out.rankedCells = groupRows(h, "fastest first").map(k => [k, rateCellOf(h, k)]);
+out.cells = ["codex:work", "claude:zed", "copilot:mute", "claude:stop",
+             "claude:held", "copilot:hush"].map(k => [k, rateCellOf(h, k)]);
+// The dash is the working rows nobody measured and nothing else: on a row that
+// is not working it would answer a question this column has stopped asking.
+out.dashes = (h.match(/>—</g) || []).length;
+// The tooltip follows the cell. An empty cell makes no claim, so it explains no
+// number, and a stopped row's stale mean does not arrive as a tooltip either.
+out.workTip = rowOf(h, "codex:work").includes(
+  "300 tokens per minute, averaged over the last 10m");
+out.muteTip = rowOf(h, "copilot:mute").includes("this harness reports no token rate");
+out.stopTip = rowOf(h, "claude:stop").includes("averaged over the last")
+  || rowOf(h, "claude:stop").includes("9,000");
+// The rule is the row's bucket, not the ordering: the same cells under an order
+// that ranks nothing.
+calmAction("sort", "attention");
+render(contra());
+out.underAttention = ["claude:zed", "claude:stop", "copilot:mute"]
+  .map(k => rateCellOf(__els.app.innerHTML, k));
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self.run_calm(checks)
+        for key, cell in out["rankedCells"]:
+            with self.subTest(row=key):
+                self.assertTrue(
+                    cell.endswith(" /m"), f"{key} was ranked on a number it does not show: {cell!r}"
+                )
+        self.assertEqual(
+            [
+                ["codex:work", "300 /m"],
+                ["claude:zed", "0 /m"],
+                ["copilot:mute", "—"],
+                ["claude:stop", ""],
+                ["claude:held", ""],
+                ["copilot:hush", ""],
+            ],
+            out["cells"],
+            "the rate cell's three states no longer mean one thing each",
+        )
+        self.assertEqual(1, out["dashes"], "a dash landed on a row that is not working")
+        self.assertTrue(out["workTip"])
+        self.assertTrue(out["muteTip"])
+        self.assertFalse(out["stopTip"], "a stopped session's stale mean survived as a tooltip")
+        self.assertEqual(["0 /m", "", "—"], out["underAttention"], "the cell reads the ordering")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_burn_ordering_names_the_window_it_actually_ranked_on(self) -> None:

@@ -52,10 +52,15 @@ that discount, and it is the field to rank on. C2 carries the largest discount b
 false all-clear sends someone away from a wedged agent, which is worse than a spurious
 warning they can dismiss.
 
-**Redundancy.** Twenty-one subset relationships were found. The board reads as 57 features
-and is nearer 47. Use the "primaries only" filter before treating it as a build list. Nine
-items are narrower than something else *and* score higher than it, so they are kept rather
-than hidden: a cheaper route that outranks its own superset is the version to build.
+**Redundancy.** The audit found twenty-one subset relationships, and that census is dated:
+it was taken before A9 was cut on 2026-08-06, which lifted the five recorded within it (A1,
+A2, A5, A6 and G1) and removed their `redundantWith` blocks. What the board still enforces
+is the `subsetOf` field, which ten items carry, so "primaries only" shows 47 of the 57 —
+use it before treating the board as a build list. The audit also counted nine subsets that
+score higher than the item containing them, and those are kept rather than hidden: a
+cheaper route that outranks its own superset is the version to build.
+[`audit/g2-redundancy.jsonl`](audit/g2-redundancy.jsonl) is the census itself; each item's
+`verdict` and `decisionNote` are what has happened since.
 
 **The cutoff.** "Differentiated" means impact 70 or more, and 70 is a convention. Ten items
 score within five points of that line while also sitting right of access 60, so the line

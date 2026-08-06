@@ -122,7 +122,7 @@ function sparkSVG(pts, now, w, h, stretch){
     ` vector-effect="non-scaling-stroke"/>${marks}</svg>`;
 }
 
-function heroSpark(){
+function heroSpark(d){
   // Stretched viewBox (0..100 units) so the HTML end-dot and crosshair can
   // share the same coordinates as percentages of the wrap's width and height.
   // The axis anchors to the viewer's clock — the same clock the points are
@@ -137,11 +137,22 @@ function heroSpark(){
     dot = `<span class="spark-dot" style="left:${dotX.toFixed(2)}%;` +
       `top:${dotY.toFixed(2)}%"></span>`;
   }
+  /* The spoken version of the graphic, and it has to make the same two
+     distinctions the sighted surfaces make. It used to say "now N tokens per
+     minute, trailing 5 minutes": the figure is a trailing mean over the server's
+     rate window, never a reading of this instant, and the five minutes belongs to
+     the line — the client-side buffer of those means — not to the number. So the
+     value names its own window, the line names its own, and neither borrows the
+     other's. A buffer too short to draw a line says so rather than describing a
+     line that is not there. */
   const lastV = rateHistory.length ? rateHistory[rateHistory.length-1].v : null;
-  const nowLabel = lastV == null ? "" :
-    `, now ${lastV.toLocaleString()} tokens per minute`;
+  const valueLabel = lastV == null ? "" :
+    `, latest sample ${lastV.toLocaleString()} tokens per minute, a ${rateWindowLabel(d)}`;
+  const lineLabel = rateHistory.length > 1
+    ? `, line trails the last ${fmtDur(SPARK_WINDOW_SEC)}`
+    : `, no line yet — it needs a second sample`;
   return `<div class="spark-wrap" id="spark-main" tabindex="0" data-now="${axisNow}"` +
-    ` role="img" aria-label="output rate, trailing 5 minutes${nowLabel}">` +
+    ` role="img" aria-label="output rate${esc(valueLabel)}${esc(lineLabel)}">` +
     sparkSVG(rateHistory, axisNow, 100, 46, true) + dot +
     `<span class="spark-x" id="spark-x"></span><span class="spark-tip" id="spark-tip"></span></div>`;
 }
