@@ -306,7 +306,17 @@ class Application:
             overlays = source.overlays_for(harness, sid)
             if overlays:
                 runtime_events.apply_patch(
-                    session, runtime_events.reduce_overlays(overlays, now=now)
+                    session,
+                    runtime_events.reduce_overlays(
+                        overlays,
+                        now=now,
+                        # The row's own reading of when the session last wrote,
+                        # which is the only evidence that outlives a wait no hook
+                        # ever closes. Collectors that do not report it send 0,
+                        # and the wait then stands.
+                        own_activity=float(session.get("own_activity") or 0.0),
+                        activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
+                    ),
                 )
         source.note_rows({(str(s["harness"]), str(s["sid"])) for s in out_sessions})
 

@@ -213,6 +213,15 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "state_detail": "awaiting your message",
         "active": False,
         "last_activity": 0,
+        # `last_activity` is the whole subtree: the session, its task files, and
+        # every subagent and child transcript, because a parent parked on a long
+        # workflow must not age out of the window. `own_activity` is the session
+        # itself and nothing below it, which is the only signal that separates
+        # "the human answered and it carried on" from "a background agent is
+        # writing while the human still has not answered" (DRC-4097). Zero means
+        # the collector does not report it, and the overlay reducer then leaves a
+        # wait standing rather than guessing.
+        "own_activity": 0,
         "rate_per_min": 0,
         "total": 0,
         "done": 0,

@@ -564,6 +564,14 @@ The claim is that for identical store contents the response is byte-identical to
 
 That is necessary but weak on its own, so also confirm against the base branch by hand in Step 2.
 
+The snippet above is what shipped, and it does not do what the sentence above it says: it builds no
+fixture store, so both collections read the developer's real one. That drifted past review because a
+CI runner's store is empty and the test therefore compared two empty payloads. It flaked locally
+instead, was muted, and was repaired in DRC-4088 by seeding a fixture store, pinning the clock, and
+asserting on the collected session ids so an override that misses fails loudly rather than passing
+having compared nothing. Left here rather than rewritten: the gap between the sentence and the code
+is the point.
+
 - [ ] **Step 2: Diff a real response against the Phase 0 branch**
 
 ```bash

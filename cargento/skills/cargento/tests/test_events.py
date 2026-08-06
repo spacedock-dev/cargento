@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any
 
 import event_hook
 from cargento_runtime import events
 
-from . import support
+from . import fixtures, support
 
 NOW = 1_700_000_000.0
 # A UUID whose first eight characters are the prefix the Claude collector keys on.
@@ -346,6 +348,67 @@ class OverlayMappingTest(unittest.TestCase):
                 self.assertTrue(classified)
 
 
+class GrantedPermissionTest(support.RuntimeTestCase):
+    """End to end: a wait no hook ever closes, and the row that has to escape it.
+
+    The reducer unit tests pin the rule. This pins the wiring, which is where the
+    bug actually lived: the collector has to report `own_activity`, the
+    application has to hand it to the reducer, and the grace has to come off the
+    config rather than a literal.
+    """
+
+    def _collect(self, *, parent_at: float, requested_at: float, now: float) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            seeded = fixtures.build_claude(
+                Path(tmp), parent_at, "12345678-1111-2222-3333-444444444444", "seeded"
+            )
+            with support.store_patch(**seeded):
+                app = support.build_app()
+                app.clock = lambda: now
+                app.overlays = _StubOverlays(
+                    events.Overlay(
+                        harness="claude",
+                        sid="12345678",
+                        arrival_seq=1,
+                        kind=events.OVERLAY_NEEDS_INPUT,
+                        at=requested_at,
+                    )
+                )
+                rows = app.collect(show_all=True)["sessions"]
+        return next(r for r in rows if r["sid"].startswith("12345678"))
+
+    def test_a_turn_that_carried_on_is_not_still_waiting_on_you(self) -> None:
+        # The reported case: an AskUserQuestion answered 16 minutes ago, on a
+        # session that has been generating ever since (DRC-4097).
+        now = 1_700_000_000.0
+        row = self._collect(parent_at=now - 30, requested_at=now - 960, now=now)
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_a_prompt_still_open_is_still_your_call(self) -> None:
+        # The true positive that the fix must not clear: the transcript stopped
+        # at the request and has not moved since.
+        now = 1_700_000_000.0
+        row = self._collect(parent_at=now - 960, requested_at=now - 950, now=now)
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(now - 950, row["blocked_since"])
+
+
+class _StubOverlays:
+    """The overlay source shape `Application` consumes, with one overlay in it."""
+
+    def __init__(self, overlay: events.Overlay) -> None:
+        self.overlay = overlay
+
+    def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+        if (harness, sid) == (self.overlay.harness, self.overlay.sid):
+            return [self.overlay]
+        return []
+
+    def note_rows(self, keys: set[tuple[str, str]]) -> None:
+        del keys  # the real coordinator ages unmatched overlays here; a stub has none
+
+
 class ReduceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.config = support.make_config()
@@ -425,6 +488,47 @@ class ReduceTest(unittest.TestCase):
         ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=1, at=NOW)]
         patch = events.reduce_overlays(ledger, now=NOW + 86_400)
         self.assertEqual("needs_input", patch["state"])
+
+    def test_own_activity_after_the_request_ends_the_wait(self) -> None:
+        # Claude has no hook for a permission being granted, so nothing arrives
+        # to close the wait mid-turn. The session's own transcript moving on is
+        # the only evidence there is (DRC-4097).
+        ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, own_activity=NOW - 5, activity_grace_sec=10.0
+        )
+        self.assertEqual({}, patch, "the collector's own state should show, not a stale wait")
+
+    def test_own_activity_before_the_request_leaves_the_wait_standing(self) -> None:
+        # The ordinary open prompt: the tool_use record was written just before
+        # the prompt was raised, and nothing has been written since.
+        ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, own_activity=NOW - 601, activity_grace_sec=10.0
+        )
+        self.assertEqual("needs_input", patch["state"])
+        self.assertEqual(NOW - 600, patch["blocked_since"])
+
+    def test_activity_inside_the_grace_does_not_end_the_wait(self) -> None:
+        # A hook process and the write that provoked it can land either way
+        # round by a second or two. Only that ordering is what the grace covers.
+        ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, own_activity=NOW - 594, activity_grace_sec=10.0
+        )
+        self.assertEqual("needs_input", patch["state"])
+
+    def test_an_unreported_own_activity_leaves_the_wait_standing(self) -> None:
+        # Harnesses whose collectors do not fill the field send 0. Treating that
+        # as "active since the epoch" would clear every wait on the board.
+        ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(ledger, now=NOW, own_activity=0.0, activity_grace_sec=10.0)
+        self.assertEqual("needs_input", patch["state"])
+
+    def test_activity_does_not_disturb_a_working_overlay(self) -> None:
+        ledger = [self.overlay(events.OVERLAY_WORKING, seq=1, expires_at=NOW + 90)]
+        patch = events.reduce_overlays(ledger, now=NOW, own_activity=NOW, activity_grace_sec=10.0)
+        self.assertEqual("working", patch["state"])
 
     def test_an_expired_overlay_does_not_truncate_the_replay_behind_it(self) -> None:
         # Skipping rather than stopping. The dead overlay is deliberately the
