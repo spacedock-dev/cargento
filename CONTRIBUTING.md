@@ -64,6 +64,14 @@ collector, since the cost is dominated by whichever harness has the most history
 that is not the same harness for everyone. It runs with usage fetching off, so a benchmark never makes
 an outbound request.
 
+`--simulate` asks the same question of a machine you do not have. It writes a synthetic store with a
+named number of in-window sessions per harness, redirects every store root at it, and runs the same
+collect, so a laptop with one busy harness can still measure what a balanced five-harness machine
+would cost. `--list-simulations` names the built-in mixes, or pass your own as `claude=12,codex=12`.
+The report prints the sessions each collector actually returned next to the number asked for: a
+generator that drifts from a store shape collects nothing and would otherwise report a confident
+share of an empty store.
+
 `scripts/capture_hook.py` is also outside the gate. It answers the adapter-semantics question for the
 event-driven work: what a harness lifecycle event means, how many arrive per turn, and in what order.
 None of that is documented anywhere, so it has to be observed. `--report` summarises what has

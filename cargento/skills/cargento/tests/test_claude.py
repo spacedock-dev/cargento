@@ -1369,3 +1369,77 @@ class SubagentScanCountTest(RuntimeTestCase):
             f"one collection should list the subagent tree once, listed: {scans}",
         )
         self.assertEqual(after_one, len(scans), "an unchanged tree was listed again")
+
+
+class OwnActivityTest(RuntimeTestCase):
+    """`own_activity` is the session's own transcript and nothing below it.
+
+    `last_activity` folds in every subagent and task write on purpose, so a
+    parent parked on a long workflow does not age out of the window. That makes
+    it useless for the one question the overlay reducer asks: has the human
+    answered, or is a background agent simply writing while the prompt is still
+    open (DRC-4097). The two fields must come apart here, or the reducer's guard
+    is reading the subtree under another name.
+    """
+
+    def _store(self, root: Path, *, parent_at: float, agent_at: float) -> Path:
+        projects = root / "projects"
+        project = projects / "-w-proj"
+        project.mkdir(parents=True)
+        parent = project / "12345678-1111-2222-3333-444444444444.jsonl"
+        parent.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": datetime.fromtimestamp(parent_at, UTC).isoformat(),
+                    "message": {"content": []},
+                }
+            )
+            + "\n"
+        )
+        os.utime(parent, (parent_at, parent_at))
+        agent = project / "99999999-1111-2222-3333-444444444444.jsonl"
+        agent.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "agentName": "reviewer",
+                    "teamName": "session-12345678",
+                    "timestamp": datetime.fromtimestamp(agent_at, UTC).isoformat(),
+                    "message": {"content": "x"},
+                }
+            )
+            + "\n"
+        )
+        os.utime(agent, (agent_at, agent_at))
+        return projects
+
+    def test_a_fresh_subagent_moves_last_activity_and_leaves_own_activity_alone(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = self._store(Path(tmp), parent_at=now - 600, agent_at=now - 5)
+            with (
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
+                mock.patch.object(notifications, "notify_mac"),
+            ):
+                sessions = collect_claude(now, 24, False)
+
+        parent = next(s for s in sessions if s["sid"].startswith("12345678"))
+        self.assertAlmostEqual(now - 5, parent["last_activity"], delta=1.0)
+        self.assertAlmostEqual(now - 600, parent["own_activity"], delta=1.0)
+        self.assertLess(parent["own_activity"], parent["last_activity"])
+
+    def test_own_activity_follows_the_parent_transcript_when_it_is_the_fresher(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = self._store(Path(tmp), parent_at=now - 5, agent_at=now - 600)
+            with (
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
+                mock.patch.object(notifications, "notify_mac"),
+            ):
+                sessions = collect_claude(now, 24, False)
+
+        parent = next(s for s in sessions if s["sid"].startswith("12345678"))
+        self.assertAlmostEqual(now - 5, parent["own_activity"], delta=1.0)

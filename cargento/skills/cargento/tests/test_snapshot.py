@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from cargento_runtime import snapshot as runtime_snapshot
 
-from . import support
+from . import fixtures, support
 
 
 class SnapshotTest(unittest.TestCase):
@@ -115,27 +117,45 @@ class ApplicationSnapshotTest(support.RuntimeTestCase):
         self.assertIsNotNone(app.snapshot.current((app.config.window_hours, False)))
         self.assertIsNotNone(app.snapshot.current((app.config.window_hours, True)))
 
-    @unittest.skip(
-        "DRC-4088: reads the developer's real Claude store, so any session "
-        "activity between the two collections drifts rate_per_min and the "
-        "other time-derived fields. Re-enable with a fixture store."
-    )
     def test_the_payload_is_unchanged_apart_from_its_generated_stamp(self) -> None:
         """The snapshot is a delivery change, not a payload change.
 
         Verified byte-for-byte against the pre-snapshot branch by hand as well;
         this keeps the guarantee in the suite so a later change cannot drift it.
 
-        Skipped rather than deleted. It is the only in-suite guard that the
-        snapshot did not change the payload, and the fix is to point it at a
-        seeded fixture store instead of the real one. `STORE_OVERRIDES` keys on
-        the resolved store key, `claude.projects`, not on the fixture constant
-        name: getting that wrong reads the real store and passes for the wrong
-        reason. CI never saw this fail because a runner's store is empty.
+        Two collections, not two applications, and both over a seeded fixture
+        store on a pinned clock. Reading the developer's real store is what made
+        this flake (DRC-4088): a session generating in another window moves
+        `rate_per_min` and every other time-derived field between the two
+        collections, and the payloads then differ for a reason that has nothing
+        to do with the snapshot. CI never saw it because a runner's store is
+        empty — which is also the trap the assertion below guards, since an
+        override that misses reads an empty store and the comparison passes
+        having compared nothing.
+
+        The clock is pinned as well as the store. A fixture store alone leaves
+        `now - mtime` to be evaluated twice milliseconds apart, which is a
+        rounding boundary away from the same flake at a much lower rate.
         """
-        first = json.loads(support.collect_json())
-        support.state_of().snapshot.clear()
-        second = json.loads(support.collect_json())
+        pinned = support.SERVER_STARTED + 300.0
+        with tempfile.TemporaryDirectory() as tmp:
+            seeded = fixtures.build_claude(
+                Path(tmp), pinned - 120.0, "5eeded00-1111-2222-3333-444444444444", "seeded session"
+            )
+            with support.store_patch(**seeded):
+                app = support.build_app()
+                app.clock = lambda: pinned
+                _first_rev, first_body = app.collect_json(show_all=False)
+                app.snapshot.clear()
+                _second_rev, second_body = app.collect_json(show_all=False)
+
+        first = json.loads(first_body)
+        second = json.loads(second_body)
+        self.assertEqual(
+            [x["sid"] for x in first["sessions"]],
+            ["5eeded00"],
+            "the fixture store was not the one collected, so the comparison proves nothing",
+        )
         first.pop("generated", None)
         second.pop("generated", None)
         self.assertEqual(first, second)

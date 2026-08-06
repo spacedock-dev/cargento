@@ -465,6 +465,11 @@ def collect(
                 "blocked_since": blocked_since,
                 "active": active,
                 "last_activity": last_activity,
+                # The parent transcript alone, deliberately excluded from the
+                # subagent and task mtimes folded into `last_activity` above:
+                # this is what tells a resumed turn from a background agent
+                # writing while a permission prompt is still open (DRC-4097).
+                "own_activity": transcript_mtime,
                 # Subagent output lives in the children's own transcripts; fold
                 # it in so the session's rate reflects all its work.
                 "rate_per_min": runtime_sessions.rate_from(info, now, config)

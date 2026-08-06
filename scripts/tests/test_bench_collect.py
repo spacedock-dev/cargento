@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+import io
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -212,3 +215,192 @@ class SelectiveReuseTest(unittest.TestCase):
         self.assertIn("92.8%", report)
         self.assertIn("below the 25% bar", report)
         self.assertIn("One machine cannot settle this", report)
+
+
+class SimulationSpecTest(unittest.TestCase):
+    """Parsing a simulation spec, where a silent misread is the failure to avoid."""
+
+    def test_a_named_profile_resolves_to_its_counts(self) -> None:
+        self.assertEqual(
+            bench_collect.parse_simulation("balanced-five"),
+            bench_collect.SIMULATIONS["balanced-five"],
+        )
+
+    def test_a_named_profile_is_copied_rather_than_handed_out(self) -> None:
+        # The caller is free to mutate what it gets; the table behind it is not.
+        parsed = bench_collect.parse_simulation("two-harness")
+        parsed["claude"] = 999
+        self.assertEqual(bench_collect.SIMULATIONS["two-harness"]["claude"], 20)
+
+    def test_harness_pairs_parse_to_session_counts(self) -> None:
+        self.assertEqual(
+            bench_collect.parse_simulation("claude=3, codex=4"), {"claude": 3, "codex": 4}
+        )
+
+    def test_an_unknown_harness_is_an_error_rather_than_a_skip(self) -> None:
+        # Silently generating nothing would report a share for a profile the
+        # caller never ran, which is the whole failure this ticket exists over.
+        with self.assertRaises(ValueError):
+            bench_collect.parse_simulation("clade=3")
+
+    def test_an_unknown_profile_name_is_an_error(self) -> None:
+        with self.assertRaises(ValueError):
+            bench_collect.parse_simulation("balanced")
+
+    def test_a_non_integer_count_is_an_error(self) -> None:
+        with self.assertRaises(ValueError):
+            bench_collect.parse_simulation("claude=lots")
+
+    def test_a_negative_count_is_an_error(self) -> None:
+        with self.assertRaises(ValueError):
+            bench_collect.parse_simulation("claude=-1")
+
+
+class SimulatedStoreTest(unittest.TestCase):
+    """The generated store, and the guard against measuring the caller's own."""
+
+    def test_every_store_key_is_overridden_not_only_the_generated_ones(self) -> None:
+        # A simulation that overrode only claude would leave nine stores pointing
+        # at the caller's real home, and the share would be of a machine nobody
+        # has. This is the assertion that keeps the simulation a simulation.
+        with tempfile.TemporaryDirectory() as tmp:
+            overrides = bench_collect.build_simulated_store(
+                Path(tmp), {"claude": 1}, now=time.time(), records=1
+            )
+        self.assertEqual(sorted(overrides), sorted(bench_collect.ALL_STORE_KEYS))
+        for key, path in overrides.items():
+            self.assertTrue(path.startswith(tmp), f"{key} escaped the scratch tree: {path}")
+
+    def test_an_ungenerated_harness_points_somewhere_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            overrides = bench_collect.build_simulated_store(
+                Path(tmp), {"claude": 1}, now=time.time(), records=1
+            )
+            # goose.db names a file rather than a directory, so its stand-in has
+            # to be a path that does not exist, not the shared empty directory.
+            self.assertFalse(Path(overrides["goose.db"]).exists())
+            self.assertEqual(list(Path(overrides["codex.sessions"]).iterdir()), [])
+
+    def test_claudes_two_stores_get_two_different_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            overrides = bench_collect.build_simulated_store(
+                Path(tmp), {"claude": 1}, now=time.time(), records=1
+            )
+        self.assertNotEqual(overrides["claude.projects"], overrides["claude.tasks"])
+
+    def test_sessions_are_spread_across_the_requested_project_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            overrides = bench_collect.build_simulated_store(
+                Path(tmp), {"claude": 6}, now=time.time(), records=1, projects=3
+            )
+            projects = sorted(p.name for p in Path(overrides["claude.projects"]).iterdir())
+        # Not cosmetic: a directory per session made a store shaped like the
+        # Phase 0 machine cost 4.8x what the machine itself costs.
+        self.assertEqual(len(projects), 3)
+
+    def test_out_of_window_sessions_are_written_but_not_in_the_window(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            overrides = bench_collect.build_simulated_store(
+                Path(tmp), {"claude": 2}, now=now, records=1, cold=5, projects=1
+            )
+            written = list(Path(overrides["claude.projects"]).rglob("*.jsonl"))
+            recent = [f for f in written if f.stat().st_mtime > now - 3600]
+        self.assertEqual(len(written), 7)
+        self.assertEqual(len(recent), 2)
+
+
+class SimulationReportTest(unittest.TestCase):
+    def test_the_report_prints_what_was_asked_for_and_what_was_collected(self) -> None:
+        report = bench_collect.format_report(
+            {
+                "total_ms": 30.0,
+                "per_harness_ms": {"claude": 10.0, "codex": 10.0, "pi": 10.0},
+                "discovery_ms": 0.3,
+                "sessions": {"claude": 2, "codex": 2, "pi": 2},
+                "repeat": 5,
+            },
+            {
+                "spec": "demo",
+                "counts": {"claude": 2, "codex": 2, "pi": 2},
+                "records": 4,
+                "record_bytes": 1024,
+                "cold": 0,
+                "projects": 2,
+            },
+        )
+        self.assertIn("simulated store: demo", report)
+        self.assertIn("claude=2", report)
+        self.assertIn("A synthetic store measures", report)
+        self.assertNotIn("One machine cannot settle this", report)
+
+    def test_a_store_no_collector_recognised_says_so_instead_of_reporting_a_share(self) -> None:
+        # The share would still compute, and would still look plausible. Printing
+        # a count of zero next to the count asked for is what makes it visible.
+        report = bench_collect.format_report(
+            {
+                "total_ms": 1.0,
+                "per_harness_ms": {"claude": 0.5},
+                "discovery_ms": 0.1,
+                "sessions": {},
+                "repeat": 1,
+            },
+            {
+                "spec": "demo",
+                "counts": {"claude": 4},
+                "records": 4,
+                "record_bytes": 1024,
+                "cold": 0,
+                "projects": 1,
+            },
+        )
+        self.assertIn("NOTHING", report)
+
+
+class SimulationEndToEndTest(unittest.TestCase):
+    """The generated store, run through the real runtime and its real collectors.
+
+    Inspecting the generated files proves nothing: the question is whether the
+    collectors recognise them, and only a collection can answer it. A generator
+    that drifts from a store shape fails here rather than reporting a confident
+    share of an empty store.
+    """
+
+    def test_each_generated_harness_collects_the_sessions_it_was_asked_for(self) -> None:
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = bench_collect.main(
+                [
+                    "bench_collect",
+                    "--simulate",
+                    "claude=2,codex=2,pi=2,gemini=2,copilot=2,droid=2",
+                    "--simulate-records",
+                    "2",
+                    "--simulate-projects",
+                    "2",
+                    "--repeat",
+                    "1",
+                ]
+            )
+        report = buffer.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn(
+            "collected:                 claude=2, codex=2, copilot=2, droid=2, gemini=2, pi=2",
+            report,
+        )
+        self.assertNotIn("NOTHING", report)
+
+    def test_an_unparseable_spec_exits_non_zero_without_measuring(self) -> None:
+        buffer = io.StringIO()
+        with contextlib.redirect_stderr(buffer):
+            code = bench_collect.main(["bench_collect", "--simulate", "nope=1"])
+        self.assertEqual(code, 2)
+        self.assertIn("unknown simulation", buffer.getvalue())
+
+    def test_listing_the_profiles_needs_no_runtime_and_names_them_all(self) -> None:
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = bench_collect.main(["bench_collect", "--list-simulations"])
+        self.assertEqual(code, 0)
+        for name in bench_collect.SIMULATIONS:
+            self.assertIn(name, buffer.getvalue())
