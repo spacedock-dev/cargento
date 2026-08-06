@@ -2,8 +2,11 @@
 
 Status: Phase 0 has shipped; Phases 1 through 4 are unshipped and still provisional. The Phase 0
 collector fixes, the two quota opt-out repairs and the benchmark have landed with tests, and its four
-gates now carry verdicts: one measured and failed, three unreached. Everything below the Phase 0
-section remains a problem statement and an option survey. Delete this file once its contents ship or
+gates now carry verdicts: the coarse probe and the adapter semantics are measured, the latter for the
+four harnesses that have adapters; selective reuse is undecided from the one machine measured rather
+than failed; operational rollout is unreached. Phase 2's ingress, coordinator and bundled hooks have
+shipped since this line was written. Everything below the Phase 0 section that is not marked shipped
+remains a problem statement and an option survey. Delete this file once its contents ship or
 are dropped, folding the durable rationale (the ACP, filesystem-watcher and OpenTelemetry findings)
 into a `docs/design-*.md` owner.
 
@@ -52,7 +55,9 @@ needs-input semantics are the only remaining justification for anything below. S
 dirty invalidation still saves little. Claude is 83% of the post-fix collection and is also the
 harness that generates the most events, so it will be dirty in nearly every coalescing window; the
 [selective-reuse gate](#phase-0-measure-repair-prerequisites-and-fix-the-collector) measures that
-saving at 16% and fails it.
+saving at about 17% on the one machine measured, which is below the bar but does not settle the
+gate: that machine's Claude store is 71x Codex's, and the gate section records the verdict as open
+pending several multi-harness profiles.
 
 The design that survives those numbers is an event-triggered, materialized dashboard snapshot:
 
@@ -80,7 +85,10 @@ replacement for passive discovery of arbitrary agent sessions already running un
 
 ## The current collection path
 
-The browser calls `/api/data` every five seconds in `cargento_runtime/web/main.js`. A cold request
+Before Phase 1c the browser called `/api/data` every five seconds from `cargento_runtime/web/main.js`;
+the section below describes that path, which is the baseline every figure in this document was
+measured against. The page now drives itself from `/api/stream` in `web/live.js`, with a twenty-second
+safety net and the five-second cadence retained only for browsers without `EventSource`. A cold request
 enters `Application.collect` in `cargento_runtime/aggregate.py`, iterates the harness registry, runs
 discovery for each harness, invokes every discovered collector, and serializes the complete
 aggregate response.
@@ -213,6 +221,10 @@ the 0.14 ms experiment is a hypothesis, not grounds to reduce polling.
 
 ## ACP findings
 
+Nothing in this section is measured. It is read from the ACP specification pages; no ACP agent has
+been launched here and no ACP traffic captured. The conclusions are about what the standard
+requires, not about what any implementation does.
+
 ### What ACP is designed to do
 
 The [ACP introduction](https://agentclientprotocol.com/get-started/introduction) describes a standard
@@ -246,7 +258,8 @@ history-discovery mechanism. Standard `SessionInfo` contains a session identifie
 directory, and optional `additionalDirectories`, `title`, `updatedAt` and `_meta`. Only `sessionId` and
 `cwd` are required, so a collector cannot rely on a title or an update time being present, and `_meta`
 is ACP's generic extension slot rather than a defined agent-metadata field. The method is gated on the
-`sessionCapabilities.list` capability. `session_info_update` can keep title, update time and `_meta`
+`sessionCapabilities.list` capability. All of that is as the v1 schema reads; unverified against any
+implementation. `session_info_update` can keep title, update time and `_meta`
 current without polling, and it is delivered over `session/update`, so it inherits exactly the scoping
 described next.
 The standard does not give listed sessions a normalized Working, Idle, waiting-for-approval, tool
@@ -268,8 +281,9 @@ more expensive than reading the already-local store.
 
 ### Nominal coverage is not passive observability
 
-The current [ACP agent directory](https://agentclientprotocol.com/get-started/agents) lists nine of
-Cargento's ten harnesses:
+The [ACP agent directory](https://agentclientprotocol.com/get-started/agents) as read in August 2026
+lists nine of Cargento's ten harnesses. It is a live page, so re-read it before relying on either the
+membership or the maturity annotations:
 
 - Claude Agent, through an adapter;
 - Codex CLI, through an adapter;
@@ -306,9 +320,13 @@ cartography.
 Codex illustrates the distinction. Its official
 [app-server protocol](https://learn.chatgpt.com/docs/app-server) exposes authentication,
 conversation history, approvals, streamed `turn/*` and `item/*` events, loaded-thread discovery, and
-`thread/status/changed`, including `waitingOnApproval`. Those explicit loaded-thread states make it
-the provisional first managed Codex topology, subject to an adapter fixture comparison rather than
-an assumed superiority over ACP. It only provides exact runtime status for threads loaded in that
+`thread/status/changed`, whose `status.activeFlags` can carry `waitingOnApproval`. All of that is
+read from the page, not observed: no app-server has been started here and `docs/captures/codex/`
+covers hooks and rollouts only, so the managed-Codex recommendation is provisional on a capture, one
+`codex app-server` process, one loaded thread, and a recorded list of the notification method names
+and status values it actually emits. Those explicit loaded-thread states make it the provisional
+first managed Codex topology, subject to an adapter fixture comparison rather than an assumed
+superiority over ACP. It only provides exact runtime status for threads loaded in that
 app-server; ordinary standalone CLI sessions do not silently join a separate Cargento server.
 
 ## Alternative acquisition strategies
@@ -375,14 +393,17 @@ coalescing worker, two schedulers, an SSE endpoint, browser reconnect logic and 
 display, in a stdlib-only runtime with a 3:1 test-to-code ratio, `ruff select = ALL`,
 `mypy --strict`, a ratcheting coverage floor and a three-OS matrix. Order-of-magnitude estimate:
 1,000 to 1,500 runtime lines and 3,000 to 4,500 test lines. The latency it buys over the coarse probe
-is about one second down to about 0.3 seconds. Each phase beyond the first two must carry its own
+is about one second, which is the 1 Hz probe cadence rather than a measurement, down to about 0.3
+seconds, which the measured 294 ms ordinary p50 later bore out. No probe-to-render measurement
+exists, so the two are not directly comparable. Each phase beyond the first two must carry its own
 justification against the probe baseline rather than inherit this recommendation.
 
 Distribution asymmetry compounds it. Cargento currently ships artifacts to four harnesses (Claude,
 Codex, Antigravity and Gemini) and currently has no distribution artifact for the other six. That is
 not the same as those ecosystems lacking manageable lifecycle support: [Pi has packages](https://pi.dev/docs/latest/packages),
-[Cursor has plugin-installed hooks](https://cursor.com/docs/hooks.md), and Factory can install hooks
-through its plugin surface. Other harnesses vary. Assess
+[Cursor has plugin-installed hooks](https://cursor.com/docs/hooks.md), and Factory is said to install
+hooks through its plugin surface, a claim carried here with no citation behind it. Other harnesses
+vary. Assess
 install, trust, update and exact removal per harness. Until Cargento actually ships such an artifact,
 any hand-written setup instructions remain a user-owned support tail.
 
@@ -393,35 +414,48 @@ any count next to a harness list here is part of the list.
 |---|---|---|---|
 | Claude Code | Plugin-bundled HTTP or command hooks | Claude ACP adapter | First and only initial implementation target |
 | Codex | Plugin-bundled command hooks | Native app-server first; ACP adapter second | Second target, after Claude proves the ingress |
-| Pi | User extension lifecycle events | Community ACP adapter | Deferred; probe baseline |
+| Pi | User extension lifecycle events (documentation read; no event name or payload observed) | Community ACP adapter | Deferred; probe baseline |
 | Gemini CLI | Extension-bundled command hooks and OTel; consumer-account access transitioned, while enterprise and API-key use remain | Native ACP mode | Shipped-extension candidate after the first adapters |
-| Antigravity | Plugin-bundled model/tool/loop hints, plus opt-in `statusLine` snapshots for agent state, confirmation, background tasks and quota | No listed ACP implementation | Phase 2 target alongside Claude |
-| Copilot CLI | Personal command hooks | Preview ACP server over stdio or TCP | Deferred; probe baseline |
-| OpenCode | Shared server SSE where safely discoverable and authenticated; user plugin otherwise | Native ACP mode | Prefer a proven existing-server topology |
-| Cursor CLI | Plugin-installed hooks, with ordinary local-CLI coverage requiring fixtures | Native ACP mode, or opt-in `--output-format stream-json` in print mode | Deferred; probe baseline |
+| Antigravity | Plugin-bundled model/tool/loop hints, plus opt-in `statusLine` snapshots for agent state and quota (no confirmation or task-count field observed) | No listed ACP implementation | Phase 2 target alongside Claude |
+| Copilot CLI | Plugin-bundled, repo (`.github/hooks/*.json`) or user command hooks | ACP server via `--acp`, transport unverified | Deferred; probe baseline |
+| OpenCode | Shared server SSE where safely discoverable and authenticated; user plugin otherwise | Native ACP mode | Prefer an existing-server topology once proven |
+| Cursor CLI | Plugin-installed hooks, with ordinary local-CLI coverage requiring fixtures | Listed in the ACP agent directory; the installed cursor-agent 2026.07.23 help advertises no ACP entry point, so the mode is unverified. Opt-in `--output-format stream-json` in print mode | Deferred; probe baseline |
 | Goose | No universal passive feed documented | Goose ACP server/API | Deferred; probe baseline |
-| Factory Droid | User or plugin command hooks | Native ACP output mode | Deferred; probe baseline |
+| Factory Droid | User or plugin command hooks (documented, summarised by category) | ACP listed in the agent directory, mode unverified | Deferred; probe baseline |
+
+Claude, Codex, Antigravity and Gemini rows are backed by captures under `docs/captures/`. The other
+six rows are vendor-documentation reads with no capture behind them: treat every cell for Pi,
+Copilot CLI, OpenCode, Cursor CLI, Goose and Factory Droid as unmeasured, including the ACP column,
+whose per-harness qualifiers come from the ACP agent directory listing rather than from any observed
+connection.
 
 ### Claude Code
 
 [Claude's hook reference](https://code.claude.com/docs/en/hooks) exposes session start/end, prompt
 submission, pre- and post-tool events, permission requests, notifications, stops, subagent and task
-lifecycle, and several other events. It supports HTTP hooks directly and allows hooks to ship in an
-enabled plugin. This fits Cargento's existing loopback server and can lift the current restriction
-that Claude's only event-driven path is a notification side channel.
+lifecycle, and several other events; eight of those names are measured firing below, and bundled
+plugin hooks are measured too. **HTTP hooks are a desk read.** The reference documents an HTTP hook
+type, nothing here has ever registered one, and all ten entries in the shipped `hooks/hooks.json` are
+command hooks. That gap is worth closing before Phase 2: the command forwarder costs 56 ms per
+invocation on macOS, which is the figure that decides whether the event path is cheaper than the
+polling it replaces, and an HTTP hook would not pay it.
 
 The minimal event set should be `SessionStart`, `UserPromptSubmit`, `PermissionRequest` and/or
 actionable `Notification`, `Stop`, `SubagentStart`, `SubagentStop`, `TaskCompleted` if task progress is
-needed, and `SessionEnd`. All nine names are present in the Claude Code 2.1.221 binary, alongside
-`PreToolUse`, `PostToolUse`, `PreCompact` and `PostCompact`. That last pair is a reminder that this set
+needed, and `SessionEnd`. All nine names are present in a `strings` read of the Claude Code 2.1.221
+binary, a static read, which in this project sits above the docs and below a capture (see the
+`session_title` miss recorded below), alongside `PreToolUse`, `PostToolUse`, `PreCompact` and
+`PostCompact`. That last pair is a reminder that this set
 has changed across releases, so confirm each name against the installed version at implementation time
 rather than against this document. Observing every tool call is not required merely to know that a turn
 is active and would add avoidable process or HTTP traffic.
 
 Cost, measured: the current forwarder takes 56 ms per invocation on macOS against a closed port:
 about 13.5 ms of interpreter startup plus about 42 ms importing `urllib.request`. Process
-creation on Windows is substantially more expensive. Against a 285 ms poll every five seconds,
-break-even is roughly 60 hook events per minute; against a fixed 60 ms collector it is roughly 13.
+creation on Windows is expected to cost more, but that is unmeasured here and no capture on this
+project is from Windows. Against the pre-fix 283 ms poll every five seconds, break-even was roughly
+60 hook events per minute. Against the post-fix 120 ms collect it is roughly 26, and against a fixed
+60 ms collector roughly 13.
 The minimal event set is therefore not a nicety but the thing that decides whether the event path
 costs less than the polling it replaces, and a forwarder that imports `urllib.request` on every event
 is the wrong shape. Prefer `http.client`, or a persistent local transport.
@@ -525,6 +559,14 @@ prompts non-interactively and is the likely route; an interactive session is the
 `input_requested` mapping is the one Claude claim still resting on documentation, and
 `overlay_working_ttl_sec` remains what bounds the damage.
 
+`PermissionRequest` is registered in the bundled `hooks/hooks.json` and has never fired, so beyond
+its unmeasured payload its output contract is also unconfirmed. Claude carries `permissionDecision`
+and `permissionDecisionReason` inside the same `hookSpecificOutput` envelope Codex uses for
+`decision.behavior`, both present in the 2.1.223 binary, so the Codex hazard analysis recorded below
+does not carry over field-for-field. `event_hook.py` writes nothing and exits 0, which is expected to
+read as no opinion; that expectation rests on a static read and the vendor page, not on a firing
+event. The confirmation the Codex section demands before registration is owed here retroactively.
+
 #### Permission alert latency: MEASURED, and the floor was never the real problem
 
 `scripts/bench_event_latency.py` measures the gap between an adapter posting an event and a revision
@@ -573,7 +615,7 @@ obstacle.** Two corrections to what this document and the ticket both said:
 
 So the remaining prize is the 2.7 s between `urgent` and `floored`, bought with a retention refactor
 whose own risk is the display-id double-render hazard this document warns about under
-[Event overlays versus store truth](#event-overlays-versus-store-truth). A correctness risk traded for
+[Dirty queue and coalescing](#dirty-queue-and-coalescing). A correctness risk traded for
 under three seconds on one transition is the wrong trade while the floor still protects the stores.
 Revisit it if the floor itself ever moves.
 
@@ -607,8 +649,9 @@ written against:
 | `Stop` | the common set plus `last_assistant_message`, `stop_hook_active`, `turn_id` |
 
 The common set is `cwd`, `hook_event_name`, `model`, `permission_mode`, `session_id` and
-`transcript_path`. Hook self-cost p99 was 0.47 ms against the 5 ms posix budget, excluding interpreter
-startup as always.
+`transcript_path`. Hook self-cost p99 was 0.47 ms on macOS, excluding interpreter startup as always.
+No numeric budget has been agreed for this gate; 0.47 ms is well inside any plausible one. Linux and
+Windows remain unmeasured.
 
 **The identity mapping is the identity function, and this is the part worth having measured.** The
 payload's `session_id` is Codex's own session id, and it matched the `session_meta` id of the rollout
@@ -635,17 +678,26 @@ The adapter drops them in the hook, exactly as the Claude one does, so they neve
 
 Antigravity has two push paths, not one, and the second is the better fit for this design.
 
-The [status-line callback](https://antigravity.google/docs/cli/statusline) fires on every state change,
-and its payload is much richer than a dirty
-signal. It carries about two dozen top-level fields, including `agent_state` (`idle`, `thinking`,
-`working`, `tool_use`, `initializing`), `tool_confirmation_pending`, `pending_input_count`,
-`task_count`, `session_id`, `conversation_id`, `transcript_path`, `cwd`, and a `quota` block mapping
-model and bucket identifiers to `remaining_fraction`, `reset_time` and `reset_in_seconds`.
-`agent_state` supplies Working and Idle, and `tool_confirmation_pending` supplies a visible
-permission wait. `pending_input_count` is the number of queued user messages and must not map to
-`input_requested`. Antigravity is therefore the best-instrumented
-harness Cargento supports, not a marginal one, and the `/api/usage` receipt path should feed the
-general event coordinator before or alongside quota shaping.
+The [status-line callback](https://antigravity.google/docs/cli/statusline) fires frequently while the
+TUI runs, measured at 13 and 24 pushes across two short turns, mostly repeating the same
+`agent_state`, and its payload is much richer than a dirty signal. Measured, from those 37 pushes:
+`agent_state`, `context_window`, `conversation_id`, `cwd`, `email`, `exceeds_200k_tokens`, `model`,
+`plan_tier`, `product`, `quota`, `sandbox`, `session_id`, `terminal_width`, `transcript_path`, `vcs`,
+`version` and `workspace`, not all on every push. The `quota` block is measured only as far as its
+bucket identifiers, which the capture records as `quota_keys` (`3p-5h`, `3p-weekly`, `gemini-5h`,
+`gemini-weekly`): the recorder does not descend into a nested object, so none of the inner field
+names appears in it. `remaining_fraction` and `reset_time` are what the shipped reader consumes
+(`quota.py:513,519`), which is evidence they arrive; `reset_in_seconds` is a documentation read and
+appears nowhere in the runtime. Google's documentation additionally
+describes `tool_confirmation_pending`, `pending_input_count` and `task_count`; none appeared, and see
+[Antigravity status-line semantics](#antigravity-status-line-semantics-measured-and-the-documented-field-list-was-wrong)
+for why the capture could not settle whether they exist.
+
+`agent_state` supplies Working and Idle. Antigravity's status line is a genuine live-state source
+rather than a dirty signal, but narrower than a documentation read suggests: no confirmation field
+was observed, and the id is blank on 14 of 37 pushes, so the adapter often cannot report the return
+to Idle. The `/api/usage` receipt path should still feed the general event coordinator before or
+alongside quota shaping.
 
 Antigravity also documents [agent hooks](https://antigravity.google/docs/hooks): `PreToolUse`,
 `PostToolUse`, `PreInvocation`, `PostInvocation` and `Stop`, configured through a `hooks.json`. They
@@ -662,8 +714,9 @@ rule, to prefer plugin-bundled hooks where Cargento already ships through the ha
 applies here and makes Antigravity a Phase 2 target on the same footing as Claude.
 
 Neither path replaces the other. Antigravity's hooks include no session start or end and no
-notification event. The status line supplies live state, confirmation, background-task and quota
-snapshots while the TUI runs, but does not document a guaranteed start, end or final callback;
+notification event. The status line supplies live state and quota snapshots while the TUI runs, with
+no confirmation or background-task field observed in any captured push, and does not document a
+guaranteed start, end or final callback;
 collectors and reconciliation remain authoritative for definitive session lifecycle. The hooks are
 what can be installed without separate user configuration.
 
@@ -681,8 +734,8 @@ matter, and neither matches Claude:
    handlers directly. A file using the wrong layout for either half has that half
    silently ignored.
 
-From the guide embedded in the `agy` binary, which is stronger than a web page but
-is still documentation rather than capture: payload keys are camelCase protojson,
+From the guide embedded in the `agy` 1.1.10 binary, which is stronger than a web
+page but is still documentation rather than capture: payload keys are camelCase protojson,
 so the id is `conversationId`; every payload carries it alongside
 `workspacePaths`, `transcriptPath` and `artifactDirectoryPath`; a hook must print
 a JSON object on stdout; and **`PreToolUse` output can gate the tool** with a
@@ -726,7 +779,9 @@ been made.
 The vendor documents it, and has for months. OpenAI's Codex documentation (now on
 `learn.chatgpt.com`; the `developers.openai.com/codex/*` paths 308-redirect there)
 describes `PermissionRequest` as a shipped hook that runs before Codex asks for
-approval and may allow or deny. It landed in `rust-v0.122.0` on 2026-04-20
+approval and may allow or deny. This document previously recorded a third value,
+`decline`, from a reading of that page; the binary has only two, and the page as it
+stands today agrees with the binary. It landed in `rust-v0.122.0` on 2026-04-20
 and was extended in `rust-v0.145.0` on 2026-07-21. Nothing removed it. So the
 negative was not merely unsupported by its evidence, it was contradicted by the
 vendor's own documentation for the whole time it stood.
@@ -785,9 +840,12 @@ whole reason it stays unmapped. Static reads have been wrong in this project bef
 and the rule is that a mapping ships on a capture.
 
 **And a hazard that has to be settled before this event is ever registered, whatever
-the mapping.** Alone among Codex's hooks, a permission hook gets to *decide*:
-`hookSpecificOutput.decision.behavior` accepts exactly `allow` or `deny`, with no
-third value, and a denial surfaces as "PermissionRequest hook denied approval". That
+the mapping.** Alone among Codex's hooks, a permission hook gets to *decide*. A
+static read of the binary settles the shape: `PermissionRequestBehaviorWire` carries
+exactly `allow` and `deny`, with no third variant, and a denial surfaces as
+"PermissionRequest hook denied approval". The vendor page agrees today, but it is the
+binary being trusted here, because an earlier reading of that page recorded a third
+value, `decline`, that does not exist. That
 is strictly more authority than `PreToolUse` has, which rejects both
 `decision: approve` and `permissionDecision: allow` as unsupported. Note the shape:
 unlike `PreToolUse`, `PermissionRequest` has *no* top-level `decision` field, and its
@@ -812,10 +870,21 @@ be confirmed against a real firing event rather than against a schema, and the
 forwarder's output kept provably empty. A cartography tool must be unable to decide
 either way.
 
-The dispatch site is narrower than the event name suggests:
-`Approvable::permission_request_payload` is implemented for the shell, apply-patch and
-unified-exec runtimes only, not for MCP tools. So even once it fires, it would not
-report an MCP permission wait.
+The dispatch site may be narrower than the event name suggests, but that is a
+read of the Codex Rust source with no file, commit or date recorded here:
+`Approvable::permission_request_payload` appears to be implemented for the shell,
+apply-patch and unified-exec runtimes only, not for MCP tools, which would mean the
+event does not report an MCP permission wait even once it fires. Nothing in the
+shipped binary corroborates it. `strings -a` on 0.146.1 finds no
+`permission_request_payload` and no `Approvable` symbol, while the source paths it
+does retain include `core/src/mcp_tool_approval_templates.rs`,
+`core/src/tools/approvals.rs` and `core/src/guardian/approval_request.rs`, so MCP
+approval has a module of its own and the bound is a claim about which of several
+approval paths reaches the hook. That is the same class of evidence that predicted
+`session_title` on Claude's `UserPromptSubmit` and lost, so treat it as a reason to
+check rather than a settled bound. Settling it means driving an MCP tool to an
+approval with `PermissionRequest` registered, which is the capture the payload gate
+already needs.
 
 **A defect found while chasing this, which mattered more than the hook does. Now
 fixed.** The argument for wanting a permission signal is that `input_requested` is
@@ -895,10 +964,11 @@ asked. It stays unmapped for want of a payload rather than for want of an event.
 
 #### Antigravity status-line semantics: MEASURED, and the documented field list was wrong
 
-Captured from two real `agy` sessions, 37 status-line pushes, with the recorder wired through
+Captured from two real `agy --print` sessions, 37 status-line pushes, with the recorder wired through
 `settings.json` and the file restored afterwards. Records are in
-[`../captures/`](../captures/README.md). This measurement overturned three claims made earlier in
-this document from Google's documentation, which is why it is written out rather than summarised.
+[`../captures/`](../captures/README.md). This measurement corrected claims made earlier in this
+document from Google's documentation, and bounded what a print-mode capture can say about the rest,
+which is why it is written out rather than summarised.
 
 The payload's top-level fields are `agent_state`, `context_window`, `conversation_id`, `cwd`,
 `email`, `exceeds_200k_tokens`, `model`, `plan_tier`, `product`, `quota`, `sandbox`, `session_id`,
@@ -907,13 +977,18 @@ push.
 
 **Corrections to this document's earlier field list:**
 
-1. `tool_confirmation_pending` **does not exist.** No confirmation-pending field appears under any
-   spelling across 37 pushes. It was the intended source of a permission wait, so **Antigravity
-   cannot report Needs input through the status line at all**, and the adapter does not pretend
-   otherwise. The collector remains the only source of that signal for this harness.
-2. `task_count` and `pending_input_count` **do not exist** either. There is no background-task
-   signal here.
-3. `agent_state` values observed were `authenticating`, `idle` and `working`, not the five the
+1. None of `tool_confirmation_pending`, `task_count` or `pending_input_count` appeared on any of the
+   37 pushes, and that is not evidence they do not exist. All three are declared `omitempty` in the
+   agy 1.1.10 binary, so a zero value is omitted from the wire and a shape-only recorder cannot see
+   it. The same is true of `email`, `quota` and `plan_tier`, which appeared on 33, 30 and 25 of the
+   37 pushes rather than all of them. Both sessions were `agy --print`, a mode in which no tool
+   confirmation can be pending, no input can queue and no background task runs, so the capture never
+   asked the question. What this measurement establishes is the always-present field set, not the
+   schema. Whether the status line can report Needs input is **unmeasured**; the collector remains
+   Cargento's only source for it by choice, not by proven necessity. Settling it needs one
+   interactive `agy` session driven to a tool confirmation, recording whether
+   `tool_confirmation_pending` appears in `keys` while the prompt is open.
+2. `agent_state` values observed were `authenticating`, `idle` and `working`, not the five the
    documentation lists. `authenticating` is startup rather than activity and is deliberately
    unmapped, because calling it either Working or Idle invents a claim about the session.
 
@@ -937,28 +1012,35 @@ because print mode ended while still `working`.
 server's per-source rate budget restating it, and forwards quota on its own slower interval because
 quota changes on its own schedule.
 
-The `hooks.json` path for Antigravity remains unbuilt. Its hook vocabulary (`PreInvocation`,
-`PostInvocation`) is a different one, its payloads are uncaptured, and the status line already
-supplies the state those hooks would only hint at.
+The `hooks.json` path for Antigravity has since been built and ships: `cargento/hooks.json` registers
+`agy_hook.py` on `PostToolUse` and `PostInvocation`. What has not changed is why it claims so little.
+Its hook vocabulary (`PreInvocation`, `PostInvocation`) is a different one, its payloads are
+uncaptured, and the status line already supplies the state those hooks would only hint at, so the
+adapter maps them to `store_changed` and nothing more.
 
 ### Gemini CLI, Copilot, and Factory Droid
 
-All three document command-based lifecycle hooks:
+All three document command-based lifecycle hooks. Gemini's is measured below; Copilot's and
+Factory's are documentation reads with no capture and no adapter:
 
 - [Gemini CLI hooks](https://geminicli.com/docs/hooks/reference/) include before/after agent and
   model events, tool events, session lifecycle, notifications, and compression.
-- [Copilot hooks](https://docs.github.com/en/copilot/concepts/agents/hooks) include session,
-  prompt, tool, agent-stop, subagent-stop, and error events, with personal hook configuration for
-  ordinary CLI use.
+- [Copilot hooks](https://docs.github.com/en/copilot/concepts/agents/hooks) include session, prompt,
+  tool, agent-stop, subagent-stop, and error events. Copilot CLI 1.0.78 accepts them at three
+  scopes: bundled in a plugin, repo-level in `.github/hooks/*.json`, and user-level in global
+  `config.json`. Event names, cardinality and payloads are unmeasured.
 - [Factory hooks](https://docs.factory.ai/reference/hooks-reference) include session lifecycle,
   prompts, notifications, stops, subagent stops, and tool events. Factory documents notification
   cases for permission waits and idle input waits.
 
 The [Gemini extension format](https://geminicli.com/docs/extensions/reference/) can bundle
 `hooks/hooks.json`, and this repository already ships an extension manifest. Gemini CLI's
-[consumer-account transition](https://github.com/google-gemini/gemini-cli/discussions/28017) did not
-remove enterprise Code Assist or API-key use, so call out the affected authentication populations
-rather than labeling the whole harness legacy.
+[consumer-account transition](https://github.com/google-gemini/gemini-cli/discussions/28017), a
+vendor discussion thread rather than a documentation page, is read as leaving enterprise Code Assist
+and API-key use in place. Not measured, and the capture below could not measure it: the auth check
+runs before any hook fires, so the only route to a real session was a loopback stand-in for the API,
+and the capture records no authentication mode. Call out the affected authentication populations as
+unverified rather than labeling the whole harness legacy.
 
 These hooks are synchronous in at least some implementations, which puts the forwarder's cost on the
 user's own agent latency. The forwarding command must do no collection work itself, must use a short
@@ -1054,25 +1136,30 @@ both places.
 
 OpenCode has two native options:
 
-- Its [server](https://dev.opencode.ai/docs/server/) exposes `/global/event` and `/event` SSE
-  streams, session listing, and session status.
-- Its [plugin API](https://dev.opencode.ai/docs/plugins/) exposes `permission.asked`,
+- Its [server](https://dev.opencode.ai/docs/server/) is documented to expose `/global/event` and
+  `/event` SSE streams, session listing, and session status. Documented only, since no OpenCode
+  server has been started here.
+- Its [plugin API](https://dev.opencode.ai/docs/plugins/) is documented to expose `permission.asked`,
   `permission.replied`, session creation/update/status/idle/error, message, todo, and tool events.
+  Documented only: no plugin has been installed here and no event observed.
 
 Prefer the shared server where the exact TUI server can be discovered and authenticated. That path
 is zero-install only under those conditions: the TUI may select a random host and port, and an
 operator may configure authentication. It carries `permission.asked` semantics natively for one SSE
 client thread when reachable. A user plugin is the fallback for sessions with no safely discoverable
-server. Starting a second `opencode serve` process does not reveal the live state of a separate TUI
-server.
+server. The server documentation states that `opencode serve` starts a new server when a TUI is
+already running, and that the TUI picks its port and hostname at random. Whether that new server can
+see the first instance's sessions or events is not documented and has not been tested here, so the
+fallback-to-plugin conclusion is provisional.
 
 ### Pi, Cursor, and Goose
 
 Pi exposes an extension event model, so a small package suits passive events better than its ACP
 adapter. [Cursor documents hooks](https://cursor.com/docs/hooks.md) and plugin installation, but its
 official documentation does not establish complete ordinary local-CLI parity; fixture-test each
-transition. Its [structured output](https://cursor.com/docs/cli/reference/output-format.md) is opt-in
-`--output-format stream-json` in explicit or inferred print mode, while `text` is the default.
+transition. Its [structured output](https://cursor.com/docs/cli/reference/output-format.md) is
+documented as opt-in `--output-format stream-json` in explicit or inferred print mode, with `text`
+the default.
 Goose's [official documentation](https://block.github.io/goose/) describes CLI, API and managed ACP
 server modes, but no documented way exists for a separate Cargento process to attach passively to
 every already-running ordinary Goose CLI session. That last conclusion is an inference from the
@@ -1245,19 +1332,24 @@ side effect of the coalescing window.
 The bounded coordinator exists regardless of whether selective collection proves worthwhile: it
 serializes events and scans, enforces floors, and keeps collection off request threads. The existing
 `HarnessSpec.collect` boundary makes per-harness refresh feasible. The Phase 0 selective-reuse gate
-failed at 16%, so what Phase 1 builds is the failed-gate path: the coordinator marks the aggregate
-dirty and performs one full `Application.collect` per floor instead of retaining per-harness results.
-The paragraph below describes the selective path only for the day a profile clears the gate.
+is undecided from one machine: Claude was 83% of a 118 to 120 ms collect there, about a 17% saving
+against a 25% bar, on a store 71x skewed toward Claude. Phase 1 therefore marks the aggregate dirty
+and performs one full `Application.collect` per floor, behind an interface that can serve per-harness
+merges if a multi-harness profile clears the bar. The paragraph below describes the selective path
+for that day.
 
 When selective refresh is enabled, the new application state retains one current result per harness,
 merges only the refreshed harness, deduplicates and sorts the aggregate, then serializes a new
 version. Retained per-harness results are immutable once
-published: `assign_display_ids` writes into session dicts and the Claude collector mutates task dicts
-during row construction, so merging must build a fresh aggregate list before dedupe, display-id
-assignment and sorting run over it. Otherwise a Codex worker re-running display-id assignment over
-the retained Claude list while `/api/data` serializes it can emit one session twice at two id widths,
-the exact confusion display ids exist to prevent. The single coordinator lane serializes collection
-and merge, rather than merely placing a lock around the final merge.
+published. `assign_display_ids` is idempotent over a fixed row set, so re-running it is not the
+hazard; a merge that changes the row set is, because widening is per `(harness, project)` and a Codex
+worker widening the retained Claude list while `/api/data` serializes it can emit one session at two
+id widths, the exact confusion display ids exist to prevent. The mutations with no unpatched base to
+restore are `events.apply_patch`'s five in-place display fields and the Claude collector's
+clock-derived `elapsed_h` and `updated_ago` writes into embedded task dicts. Merging must therefore
+build a fresh aggregate list before dedupe, display-id assignment and sorting run over it. The single
+coordinator lane serializes collection and merge, rather than merely placing a lock around the final
+merge.
 
 `show_all` is decided here rather than deferred, because it is not a presentation filter: it reaches
 into the collectors and changes what they return. The snapshot is built for the default window only.
@@ -1314,9 +1406,11 @@ Needs-input overlays do not get an arbitrary time-only expiry; event-source live
 without silently clearing a real hours-long permission wait.
 
 `session_ended` is non-destructive. It retires overlays and hook state but never removes a row; only
-the collector may do that. Claude fires it on `/clear` as well as on exit, so a user who clears and
-immediately prompts again can produce `session_ended` and `turn_started` for the same session inside
-one coalescing window. A killed harness may never send it; in that case its source-health lease
+the collector may do that. Claude is documented as firing it on `/clear` as well as on exit, so a
+user who clears and immediately prompts again can produce `session_ended` and `turn_started` for the
+same session inside one coalescing window. Not measured: the capture is headless and `/clear` is
+interactive, so only the `reason` field name was observed, never its value. A killed harness may
+never send it; in that case its source-health lease
 expires while the alert remains until positive evidence resolves it or the collector removes the row
 from its authoritative window.
 
@@ -1360,9 +1454,9 @@ never refetch, showing an hours-old board behind a live indicator.
 `/api/data` must also remain self-freshening. Define a direct-GET maximum age no greater than today's
 `collect_memo_sec` (2.5 seconds by default), independently of the slower reconciliation interval. A
 GET beyond that age submits a collection to the coordinator and waits before answering.
-`curl -s http://127.0.0.1:4553/api/data` is documented in the shipped skill, is printed by the
-bind-error message, and is the whole headless and SSH story; those callers have no SSE connection and
-no tab. A snapshot-only read would hand them arbitrarily stale data. This keeps the current freshness
+`curl -s http://127.0.0.1:4553/api/data` is printed by the bind-error message when a port is already
+in use, and a headless or SSH-forwarded caller has no SSE connection and no tab. A snapshot-only read
+would hand them arbitrarily stale data. This keeps the current freshness
 contract rather than quietly replacing 2.5 seconds with 30 to 60 seconds.
 
 Time-derived fields need their own contract, but the wire snapshot does not currently retain enough
@@ -1537,9 +1631,11 @@ The plan must therefore include:
   lifecycle fields actually consumed, and drops account email and unrelated state before transport;
 - `--diagnose` listing installed adapters with the Cargento version that wrote them.
 
-Adding a stable shim, secret or edited harness config changes the "exactly two written files" contract
-in `SECURITY.md`; amend that owner before implementation rather than hiding the new paths in an
-installer.
+[`SECURITY.md`](../../SECURITY.md) says Cargento writes exactly two files, and its own invariant 2
+already names a third: `statusline_hook.py`'s deduplication memo under the state directory.
+Reconcile the owner first. The shipped ingress capability needs no path, being a per-process HMAC
+key held in memory, but a stable shim or an edited harness config would add one, so amend
+`SECURITY.md` before installing either, rather than hiding the new paths in an installer.
 
 ### Port discovery
 
@@ -1670,8 +1766,8 @@ was not:
 | Files or bytes consulted | **Not measured.** No counter exists without instrumenting `io.py`, and the design asks for this only where cheaply measurable. Blocks nothing on its own, but leave the row empty rather than guessing. |
 | Number of collections with one and several tabs | **Not yet measured, blocks the phase it gates.** Only meaningful once Phase 1 owns the render path. |
 | Forwarder p50, p95 and p99 per OS, against a closed port, a stale listener and a live server | **Not yet measured, blocks the phase it gates.** One macOS median (56 ms, server absent) exists and is not a distribution. Depends on the authenticated discovery Phase 2 designs. |
-| Native hook event count per turn per harness | **Not yet measured, blocks the phase it gates.** The Antigravity status-line path is in production and remains the free sample to take it from. |
-| Probe dependency table, mutation corpus, warm and cold probe cost and false negatives on three OSes | **Not yet measured, blocks the phase it gates.** Phase 0 did not build the probe. |
+| Native hook event count per turn per harness | **Measured for the four harnesses with captures.** Claude 38 invocations over five turns, Codex ten over one subagent turn, Gemini 56 over four turns, Antigravity 13 and 24 status-line pushes for two turns. Unmeasured for the six harnesses with no adapter. |
+| Probe dependency table, mutation corpus, warm and cold probe cost and false negatives on three OSes | **Measured, with one part still outstanding.** `cargento_runtime/probe.py` shipped after this row was written, and `tests/test_probe.py` runs its mutation corpus on Ubuntu, macOS and Windows through `platform-tests`, asserting cost per path rather than as a total, with one documented false negative. The reviewed per-harness dependency and fingerprint table is still unwritten. See the probe gate verdict below. |
 | Event cardinality and ordering from real harness fixtures | **Not yet measured, blocks the phase it gates.** Prerequisite for assigning semantic transitions. |
 
 Event-to-render latency and reconciliation repair counts are post-change measurements, but
@@ -1746,13 +1842,20 @@ The gates are independent. Verdicts, one per gate:
   **The false negative, which is deliberate.** A session that is not tracked and whose directory does
   not change is invisible: a session older than the activity window becomes active again, its
   transcript's mtime moves, and appending changed no directory. Covering it means statting every
-  historical transcript, which on the machine measured in Phase 0 is 24,898 files and costs more than
-  the collection the probe exists to avoid. A test asserts the gap is still exactly that size, so
+  historical transcript, which on the machine measured in Phase 0 is about 3,600 top-level
+  transcripts, or 24,898 files walking the whole store tree. Either count costs more than the
+  collection the probe exists to avoid, but the two are not the same number and which one the budget
+  was computed against is not written down. A test asserts the gap is still exactly that size, so
   widening the watched set cannot happen silently without re-measuring the budget.
 
   Reconciliation therefore stays, and this is the concrete reason rather than a general caution. WSL,
   remote, bind and network stores are still unproven and retain the current cadence.
-- **Adapter semantics: MEASURED for every harness with an adapter.**
+- **Adapter semantics: MEASURED for Claude, Codex, Gemini and the Antigravity status line. NOT
+  measured for the Antigravity hooks adapter.** Antigravity has two adapters at two standings. The
+  status-line adapter is measured. The hooks adapter (`agy_hook.py`, shipped and registered in
+  `cargento/hooks.json`) rests on a static read of the guide embedded in the agy 1.1.10 binary: its
+  payload keys are unconfirmed by any capture and its cardinality and ordering are unmeasured, which
+  is why it maps only to `store_changed`.
   Codex's evidence is under [Codex](#codex): cardinality, ordering, per-event payload fields, a p99
   hook cost of 0.47 ms, and an identity mapping verified against the rollout the same session wrote.
   Antigravity's is under [Antigravity](#antigravity), and it corrected three field names this document
@@ -1824,16 +1927,9 @@ Split into 1a and 1b. 1a is shipped: see [`event-driven-phase-1a.md`](event-driv
   old cadence rather than freezing. Quota consent needs no lease: the page still carries `usage=1` on
   the fetch it makes per revision, and the producer publishes on every tick, so the cadence a
   consenting page sees is unchanged.
-- Start its remaining services only after daemonization and implement the shutdown order above.
-- Add the SSE revision stream with restart-qualified IDs, immediate current-state delivery, server-wide
-  and stream connection budgets, read/write timeouts, one-slot queues, heartbeats, leader-tab election
-  and browser reconnect behavior.
-- Keep one demand-scoped server producer at the current five-second cadence while a default-window
-  stream is connected. Stop it with zero readers; keep `?all=1` on its explicit polling fallback.
 - Move time-derived fields only after the derivation-input inventory proves the tick can recompute
   them; otherwise retain the current cadence. Decouple sparkline sampling from arbitrary revisions.
-- Implement elected-tab quota consent synchronization, the explicit quota-due request, completion
-  publication, and server-side discard of unconsented pushed quota.
+  Still outstanding: no `rate_sampled_at` or equivalent fixed time bucket exists in the runtime.
 
 This phase separates browser delivery from collection without changing harness semantics. Its success
 criterion is delivery-mechanism correctness, not a user-visible latency improvement, which it does not
@@ -1843,8 +1939,10 @@ produce.
 
 - Add the coarse store probe only for harnesses and filesystems that pass its independent gate;
   unproven sources keep the current scan cadence.
-- Add authenticated normalized ingress, envelope versioning, identity normalization, the pending
-  overlay map and the bounded coordinator. These are not subject to the selective-reuse gate; a
+- **Shipped in 2a and 2b** (PRs #89, #91 and #92). Authenticated normalized ingress, envelope
+  versioning, identity normalization, the pending overlay map and the bounded coordinator, in
+  `events.py` and `observation.py`. The ingress capability is a per-process HMAC key held in memory
+  and never written to disk. These were not subject to the selective-reuse gate; an undecided or
   failed reuse gate makes the coordinator run a full collection.
 - Ship a minimal plugin-bundled lifecycle hook for Claude first, using its native trust model, and get
   the ingress to one working producer end to end before adding a second.
@@ -1855,10 +1953,12 @@ produce.
 - Extend `notify_hook.py` with source-aware minimal schemas behind arguments, keeping its legacy path
   and default URL while installed. Add the stable shim and authenticated one-instance discovery with
   a single end-to-end deadline.
-- Route Antigravity's existing status-line receipt into dirty invalidation, and read `agent_state`,
-  `tool_confirmation_pending` and `task_count` from its minimal lifecycle envelope.
-  `pending_input_count` is queued user input, not Needs input. Keep status-line quota separately;
-  collectors own definitive session lifecycle.
+- Route Antigravity's existing status-line receipt into dirty invalidation, and read `agent_state`
+  from its minimal lifecycle envelope. No confirmation, task-count or pending-input field appeared
+  in the 37 captured pushes; all three are `omitempty` in the binary and the capture was print-mode
+  and shape-only, so their presence in an interactive session is unmeasured. Until that capture
+  exists, Needs input is not available from this path and the collector remains its only source.
+  Keep status-line quota separately; collectors own definitive session lifecycle.
 - Add deadline-driven Working-to-Idle transitions with dwell. Needs-input retirement requires
   positive evidence, not a generic dead-man timeout.
 - Do **not** reduce reconciliation from a one-shot hook receipt or for a harness without positive
@@ -1960,11 +2060,11 @@ The implementation plan should include tests for:
 | Outcome | Feasibility | Reason |
 |---|---|---|
 | Cheaper Claude collector at identical output | Done | All three fixes shipped in Phase 0 at 263 ms to about 100 ms warm; the membership cache passes the parked-parent and nested-workflow fixtures |
-| Coarse stat-poll invalidation across all ten harnesses | Medium, pending Phase 0 | Stdlib and promising on one Mac, but mutation coverage and cross-platform cost are unproven |
+| Coarse stat-poll invalidation across all ten harnesses | Gate cleared | The mutation corpus passes on Ubuntu, macOS and Windows with one documented false negative, an untracked session whose directory does not change. WSL, remote, bind and network stores remain unproven and keep the current cadence |
 | Materialized snapshot with SSE delivery | Medium to high | Fits the runtime, but needs a real coordinator, demand producer, restart cursor, server-wide resource limits and shutdown lifecycle |
 | Event-triggered selective collection | Low value, gate failed | Per-harness invalidation saves 16% of a post-fix collection on the measured machine, under the 25% gate, so the coordinator runs one full aggregate per floor instead |
 | Near-real-time Claude and Codex | Medium to high | Both plugin formats can bundle hooks; Cargento still needs authenticated routing, fixtures and its own lifecycle wiring |
-| Near-real-time Antigravity | Medium to high | Hooks are bundleable and status line adds agent state and tool confirmation, but hooks are not clean turn boundaries and status line is opt-in |
+| Near-real-time Antigravity | Medium to high | Hooks are bundleable and the status line adds agent state, but no confirmation field appeared in any captured push, hooks are not clean turn boundaries, and the status line is opt-in |
 | Near-real-time Gemini | Medium | The shipped extension can bundle hooks, but supported auth populations and event semantics need fixtures |
 | Near-real-time coverage across all ten harnesses | Low to medium | Several adapters and passive topologies remain unproven; Cargento lacks artifacts for six even where upstream lifecycle support exists |
 | Zero polling for every arbitrary external session | Not presently feasible | No universal observer protocol; events can be missed and time-derived state still needs deadlines |

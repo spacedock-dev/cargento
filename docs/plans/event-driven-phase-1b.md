@@ -29,7 +29,7 @@ An inert endpoint for one PR cycle is the cost. The benefit is that when 1c land
 - `git commit -s` for DCO.
 - `docs/plans/*.md` is inside the tone gate: no em dashes, en dashes, or curly quotes.
 - **R-2.** `stream.py` imports no runtime module. Each new module or edge needs a reviewed entry in `RuntimeImportGraphTest.EXPECTED`.
-- **New runtime modules must be added to `CARGENTO_RUNTIME_FILES` in `scripts/validate_plugins.py`.** Phase 1a shipped a module without it and the installed-copy route test caught it as a handler crash. Do not repeat that.
+- **New runtime modules must be added to `CARGENTO_RUNTIME_FILES` in `scripts/validate_plugins.py`.** Phase 1a added `snapshot.py` in one commit and the inventory line twelve minutes later in the next, both inside PR #84, so nothing reached main missing it. What would have caught it is `scripts/tests/test_validate_plugins.py`, which runs `validate_runtime_files` over an installed copy rather than over the checkout. That the gap closed inside one PR is not a reason to rely on noticing again.
 - **Never hold a lock across a socket write.** The publisher takes the registry lock only to drop a revision into each client's mailbox. The handler takes nothing while writing.
 - **The producer must not run when nobody is connected.** An idle daemon does zero filesystem work today and this phase must not regress that.
 
@@ -423,7 +423,7 @@ git commit -s -m "feat(aggregate): announce each new revision to connected strea
 
 **Interfaces:**
 - Consumes: `state.streams`, `state.snapshot`.
-- Produces: `GET /api/stream`, `text/event-stream`. Emits the current revision immediately, then one `event: revision` per publish, and a `: keepalive` comment every heartbeat interval. Returns 503 past the budget.
+- Produces: `GET /api/stream`, `text/event-stream`. Emits the current revision immediately if one has been published; on a cold server nothing has been, so the first event is the producer's first tick. Then one `event: revision` per publish, and a `: keepalive` comment every heartbeat interval. Returns 503 past the budget.
 
 **Config fields, following the existing `_sec` / `_bytes` naming:**
 
@@ -433,7 +433,7 @@ git commit -s -m "feat(aggregate): announce each new revision to connected strea
     stream_write_timeout_sec: float
 ```
 
-with defaults `stream_max_clients=8`, `stream_heartbeat_sec=15.0`, `stream_write_timeout_sec=10.0`. Eight is above the browsers' six-per-origin cap, so the server is not the thing that refuses first; the cap exists to bound threads, not to police tabs.
+with defaults `stream_max_clients=8`, `stream_heartbeat_sec=15.0`, `stream_write_timeout_sec=10.0`. Eight bounds threads, not tabs. It sits above the six persistent connections HTTP/1.x browsers conventionally allow per origin, so a single browser is unlikely to be what refuses first. That is a desk read, not measured here, and the exact limit is user-agent-dependent. The cap is process-wide rather than per origin, so two browsers or two users can still reach it, and once 1c elects a leader tab one browser holds one stream and the cap is slack.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -455,6 +455,12 @@ class StreamEndpointTest(RuntimeTestCase):
     def test_the_current_revision_arrives_immediately(self) -> None:
         # A client must not wait for the next change to learn where it is.
         # Read the first event and assert it is `event: revision`.
+
+    def test_a_cold_stream_gets_headers_then_the_first_produced_revision(self) -> None:
+        # Nothing has been published yet, so there is no current revision to
+        # send: the client gets headers and then waits for the first published
+        # revision rather than receiving one at once. This is the case the
+        # immediate-delivery test hides by collecting first.
 
     def test_a_new_revision_is_delivered(self) -> None:
         # Open the stream, force a collection (state_of().snapshot.clear() then

@@ -30,7 +30,14 @@ Deliberately no background producer here. A producer exists to keep the snapshot
 - `git commit -s` for DCO. Subject format `<type>(<scope>): <description>`.
 - `docs/plans/*.md` is inside the sync-docs tone gate: no em dashes, en dashes, or curly quotes.
 - **R-2, inward-only imports.** `snapshot.py` must import no runtime module except `config` for types. Adding it requires a reviewed entry in `RuntimeImportGraphTest.EXPECTED` in `cargento/skills/cargento/tests/test_contracts.py`. That entry is the ownership decision, not a formality: if you find yourself adding `aggregate` to snapshot's set, the design is wrong.
-- **Behaviour-preserving.** For the same store contents, `/api/data` must return byte-identical JSON with the same worst-case staleness as today. Task 5 proves it.
+- **Behaviour-preserving.** For the same store contents, `/api/data` must return byte-identical JSON
+  with the same worst-case staleness as today. Task 5 checks that, but it does not prove it: the
+  in-suite check in Step 1 collects twice through the changed code and never compares against the
+  Phase 0 branch, so it can catch a payload that drifts between two calls and nothing else. The only
+  comparison against the old behaviour is the hand diff in Step 2, run once, outside the suite. Read
+  byte-identity as confirmed by hand and not guarded by the suite. The shipped version of the Step 1
+  check also drifted from what Step 1 asks for, read the developer's real store, and was muted with
+  `@unittest.skip`. DRC-4088 tracks the repair.
 
 ---
 
@@ -522,7 +529,14 @@ Remove the `CollectMemoEntry` TypedDict and the `collect_memo` field from `state
 
 - [ ] **Step 3: Update `clear_state`**
 
-`support.clear_state` promises to empty every cache. Remove its `collect_memo` line, and add nothing: the snapshot belongs to the application, not to state, so a fresh `build_app` already gets a fresh one. Note that in the docstring if it lists what it clears.
+`support.clear_state` promises to empty every cache. Remove its `collect_memo` line and put
+`state.snapshot.clear()` under `collect_memo_lock` in its place. The snapshot is a `RuntimeState`
+field, not an `Application` field: two applications over one state must share one published entry, or
+concurrent cold reads stop single-flighting and each does its own collection. Task 2 Step 3 above puts
+it on `Application` and is wrong. What shipped is a state field with a read-only
+`Application.snapshot` alias, and the test that caught the per-instance version is the one the suite
+already had, `test_collect_json_single_flights_concurrent_cold_requests` in `test_http_api.py`. Note
+the snapshot in the docstring if it lists what it clears.
 
 - [ ] **Step 4: Run the suite**
 

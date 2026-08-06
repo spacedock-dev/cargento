@@ -290,6 +290,14 @@ git commit -s -m "test(bench): add a reproducible collection benchmark (DRC-4080
 - Consumes: nothing from earlier tasks.
 - Produces: `load_subagents(config, transcript, now, *, found: list[tuple[str, float]] | None = None) -> list[dict[str, Any]]`. When `found` is given it is used verbatim and no globbing happens. Task 4 caches what gets passed as `found`.
 
+Every subagent fixture below writes `agent-*.jsonl` directly into `<sess_dir>`, which no
+SUBAGENT_GLOBS pattern matches, so none of them can pass as written: the assertion that the fixture
+produced at least one transcript fails first. Whether they were run and rewritten, or never run, is
+not recorded here. A working fixture writes into
+`<sess_dir>/subagents/` (flat) or `<sess_dir>/subagents/workflows/<run>/` (workflow). See
+`SubagentListingCacheTest` in `cargento/skills/cargento/tests/test_claude.py` for the fixtures that
+shipped.
+
 - [ ] **Step 1: Write the failing test**
 
 Add to `cargento/skills/cargento/tests/test_claude.py`:
@@ -410,7 +418,10 @@ git commit -s -m "perf(claude): scan each session's subagents once, not twice (D
 
 ### Task 3: Skip the subagent glob when the session directory is absent
 
-Most historical prefixes have no session directory at all, and `agent_transcripts` still runs every pattern in `SUBAGENT_GLOBS` against a path that does not exist. An `isdir` check replaces two glob syscalls per pattern with one stat.
+Most historical prefixes are expected to have no session directory at all, and `agent_transcripts`
+still runs every pattern in `SUBAGENT_GLOBS` against a path that does not exist. An `isdir` check
+replaces the glob of every pattern with one stat. Neither the prefix ratio nor the syscall saving is
+measured; the timing delta in Step 5 is what settles whether the check is worth having.
 
 **Files:**
 - Modify: `cargento/skills/cargento/cargento_runtime/collectors/claude.py:77-92` (`agent_transcripts`)
@@ -497,6 +508,16 @@ git commit -s -m "perf(claude): skip the subagent glob when no session dir exist
 ---
 
 ### Task 4: Cache subagent listings on session-directory mtime
+
+Task 4 did not ship as written, and its premise is false. A subagent transcript never lives in the
+session directory itself: SUBAGENT_GLOBS matches `<sess_dir>/subagents/agent-*.jsonl` and
+`<sess_dir>/subagents/workflows/*/agent-*.jsonl`. Keying on the session directory's own mtime misses
+every flat agent after the first, every workflow agent, and the create-then-write race where a run
+directory exists a beat before its first transcript. The cached value must be paths only, because
+appending to a transcript moves no directory and a cached mtime would go stale. What shipped
+fingerprints every directory a pattern can reach and stamps it before the listing: see
+`subagent_tree_stamp` in `collectors/claude.py`, and `event-driven-session-observation.md` lines
+174-184. The task below is kept as the prototype it was, with its false claims marked in place.
 
 Tasks 2 and 3 cut the constant factor. This one cuts the work itself: a session directory whose mtime has not moved cannot have gained or lost a transcript, so its listing can be reused across collections. The parked-parent case makes this delicate, so the cache key is the directory mtime and nothing else.
 
@@ -594,6 +615,12 @@ Expected: FAIL with `TypeError: agent_transcripts() got an unexpected keyword ar
 In `cargento_runtime/state.py`, beside the other Claude caches (near `claude_user_event_cache`):
 
 ```python
+    # This shape did not ship, and the invariant below is false: the session
+    # directory's own mtime does not move when a workflow run gains its first
+    # agent, and a cached mtime goes stale because appending to a transcript
+    # moves no directory. What shipped is
+    # dict[str, tuple[tuple[float, ...], list[str]]] - a fingerprint over every
+    # directory a pattern can reach, and paths only. See state.py in the repo.
     # sess_dir -> (directory mtime, listing). A directory whose mtime has not
     # moved cannot have gained or lost a transcript, and keying on mtime rather
     # than on a freshness window keeps a parked parent's subagents visible.
@@ -616,8 +643,9 @@ def agent_transcripts(
     """(path, mtime) for every subagent transcript belonging to a session.
 
     With ``config`` and ``state`` the listing is memoised on the session
-    directory's mtime, which is what makes a large history cheap. Without them
-    the scan is unmemoised, so callers outside a runtime keep working.
+    directory's mtime. That key is not sufficient and did not ship; see the
+    correction at the head of this task. Without them the scan is unmemoised,
+    so callers outside a runtime keep working.
     """
     if not transcript:
         return []
@@ -703,7 +731,7 @@ git commit -s -m "perf(claude): memoise subagent listings on session-dir mtime (
 
 ### Task 5: Carry `--no-usage` through the Windows respawn
 
-`lifecycle.spawn_argv` rebuilds the child's argv from the parsed namespace and forwards `--port`, `--window-hours` and `--no-spacedock`, but not `--no-usage`. On Windows, which has no fork and so always respawns, `server.py --daemon --no-usage` produces a child that fetches quota. `SECURITY.md` states that with the feature off nothing is fetched, so this is a published-contract violation.
+Read from the source rather than run: `spawn_argv` rebuilds the child's argv from the parsed namespace and forwards `--port`, `--window-hours` and `--no-spacedock` but not `--no-usage`, so on Windows, which has no fork and always respawns, the child loses the opt-out. Whether the child then performs an outbound fetch has not been observed on Windows; the argv is what the test pins. `SECURITY.md` states that with the feature off nothing is fetched, so a child that fetched would violate a published contract.
 
 **Files:**
 - Modify: `cargento/skills/cargento/cargento_runtime/lifecycle.py:515-539` (`spawn_argv`)
@@ -970,6 +998,12 @@ Remember the tone gate: no em dashes, en dashes, or curly quotes.
 The design states: if per-harness reuse saves less than 25% of post-fix collection time, keep the coordinator but run one full aggregate collection per floor, and do not build the dirty queue.
 
 Compute it from the post-fix per-harness figures: the saving available to per-harness reuse is the total minus the largest single harness, as a fraction of the total. Write the arithmetic into the doc so a reviewer can check it, then state the verdict as one sentence.
+
+Before writing the verdict, state the store profile it came from: file count per harness, not just
+total collection time. If one harness's store is more than a few times larger than the others, the
+arithmetic measures that skew and not the product, and the verdict is NOT DECIDABLE rather than
+failed. A gate may be recorded as failed only from a profile that resembles a user running several
+harnesses.
 
 - [ ] **Step 4: State the remaining gate verdicts**
 
