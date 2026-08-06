@@ -37,7 +37,9 @@ Deliberately no background producer here. A producer exists to keep the snapshot
   comparison against the old behaviour is the hand diff in Step 2, run once, outside the suite. Read
   byte-identity as confirmed by hand and not guarded by the suite. The shipped version of the Step 1
   check also drifted from what Step 1 asks for, read the developer's real store, and was muted with
-  `@unittest.skip`. DRC-4088 tracks the repair.
+  `@unittest.skip`. DRC-4088 repaired it: a seeded fixture store, a pinned clock, and an assertion on
+  the collected session ids so an override that misses fails loudly instead of comparing two empty
+  payloads. The check is back in the suite, and still only checks what Step 1 asks of it.
 
 ---
 

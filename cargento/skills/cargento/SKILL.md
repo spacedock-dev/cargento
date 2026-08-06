@@ -42,7 +42,7 @@ A `display` switch at the top right toggles between two renderings of the same `
 A `stop` button sits beside the switch in both modes: the first activation arms it and keeps focus
 there, and the second stops the server. `Enter` or `Space` on the focused button works like a click.
 Anything unrelated you do first — `esc`, a click elsewhere, another control, another key —
-disarms it. After it fires the page stops polling and says
+disarms it. After it fires the page stops updating and says
 Cargento was stopped, rather than showing the "stalled" banner that means the server went away on
 its own.
 
@@ -51,7 +51,7 @@ its own.
 
 MCP tools appear under the service being called rather than their wire name — `Linear · list issues`, not the double-underscored triple the harness records. The full original string is in the row's tooltip.
 
-Calm mode's own controls: the three state counts in the header filter by state, `order` sorts by `attention` (flagged and blocking states first, newest within each), `recent`, or `repo` (grouped, with a heading per project), and the `◆ N flagged` pill narrows to flagged rows. Keys: `j`/`k` or arrows move the cursor, `⏎` expands, `f` toggles the flagged filter, `c` switches mode, `esc` clears filters. Row order is stable across the 5-second refresh, so rows do not move under the cursor while you read.
+Calm mode's own controls: the three state counts in the header filter by state, `order` sorts by `attention` (flagged and blocking states first, newest within each), `recent`, or `repo` (grouped, with a heading per project), and the `◆ N flagged` pill narrows to flagged rows. Keys: `j`/`k` or arrows move the cursor, `⏎` expands, `f` toggles the flagged filter, `c` switches mode, `esc` clears filters. Row order is stable across a refresh, so rows do not move under the cursor while you read.
 
 Three flags appear in the `flag` column, and only these three — each is a signal the server actually detects, so no flag means nothing is known to be wrong:
 
@@ -119,9 +119,11 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-Cargento writes two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+The server writes two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance, and `cargento-<port>.log`, where a
-detached server's output goes.
+detached server's output goes. If you wire up Antigravity's status line, `statusline_hook.py` keeps
+one small memo per conversation in the same directory so a status line that fires many times a turn
+posts once.
 
 ## Notifications
 
@@ -134,7 +136,7 @@ Both layers notify on the *transition* into needs-input, not on every refresh a 
 
 **Known gap:** idle nudges (`idle_prompt`) pop without marking the session blocked. The server delivers those on macOS, but the page only notifies on a needs-input transition — so on Linux and Windows an idle nudge produces no popup today. Closing it needs a one-shot event channel in `/api/data`; it is tracked alongside the native Linux and Windows backends rather than bolted on here.
 
-1. **Transcript detection** — an open AskUserQuestion flips the session to Needs input on the next poll (the UI polling `/api/data` drives this; keep a dashboard tab open).
+1. **Transcript detection** — an open AskUserQuestion flips the session to Needs input on the next collection (an open dashboard tab is what drives collections, so keep one open).
 2. **Lifecycle hooks** — `Notification` and `SessionEnd` hooks in user settings (`~/.claude/settings.json`) POSTing their payloads to `http://127.0.0.1:4553/api/notify`. Notifications cover permission prompts and idle waits, even with no browser tab open. The structured `notification_type` decides whether a notification is actionable. Idle nudges (`idle_prompt`, message "Claude is waiting for your input") pop once but never mark the session blocked; authentication/completion notifications do neither; permission prompts and MCP elicitation dialogs create Needs-input state. `SessionEnd` clears a standing hook when Claude exits cleanly. These hooks are NOT installed by the plugin — if the user wants path 2, offer to add them to their `~/.claude/settings.json`:
 
 Use the bundled `notify_hook.py` (next to `server.py`) rather than a `curl` one-liner. The one-liner is POSIX-only end to end — single-quoting, `/dev/null`, `|| true`, and `--data-binary @-` all fail in `cmd.exe`, and Windows PowerShell 5.1 aliases `curl` to `Invoke-WebRequest` and has no `||`. One interpreter invocation behaves the same in every shell, exits 0 even when the dashboard is not running, and refuses to POST anywhere but loopback.
@@ -226,6 +228,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
+| `/api/stream` | Server-sent events, one per new revision. This is what keeps an open page current, so it refetches when something changed rather than on a timer; one tab per browser holds the connection. A browser without `EventSource` falls back to polling. |
 | `POST /api/shutdown` | Stop the server. Loopback-only, with the same origin checks as `/api/notify`. |
 | `POST /api/usage` | Receive a harness's own quota, forwarded by its status-line command (see Usage and rate limits). Loopback-only, same origin checks. Stores in memory only. |
 

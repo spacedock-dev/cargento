@@ -1631,10 +1631,10 @@ The plan must therefore include:
   lifecycle fields actually consumed, and drops account email and unrelated state before transport;
 - `--diagnose` listing installed adapters with the Cargento version that wrote them.
 
-[`SECURITY.md`](../../SECURITY.md) says Cargento writes exactly two files, and its own invariant 2
-already names a third: `statusline_hook.py`'s deduplication memo under the state directory.
-Reconcile the owner first. The shipped ingress capability needs no path, being a per-process HMAC
-key held in memory, but a stable shim or an edited harness config would add one, so amend
+[`SECURITY.md`](../../SECURITY.md) now names all three written paths: the server's two, and
+`statusline_hook.py`'s deduplication memo, which its invariant 2 had always described while the
+lifecycle section still said two. The shipped ingress capability needs no path, being a per-process
+HMAC key held in memory, but a stable shim or an edited harness config would add one, so amend
 `SECURITY.md` before installing either, rather than hiding the new paths in an installer.
 
 ### Port discovery
@@ -1809,7 +1809,7 @@ The gates are independent. Verdicts, one per gate:
   with a named number of in-window sessions per harness, at a session shape measured from the real
   one (53 records of ~3.2 KiB, spread across 75 project directories), points the runtime's store roots
   at it, and runs the same collect. Its calibration is the reason to believe it: given this machine's
-  own shape — 65 in-window Claude sessions over 11,106 older ones — it reports 257.0 ms where the
+  own shape, 65 in-window Claude sessions over 11,106 older ones, it reports 257.0 ms where the
   machine itself reports 246.5 ms, 4.3% apart.
 
   ```
@@ -1826,7 +1826,7 @@ The gates are independent. Verdicts, one per gate:
   harness at the same session count. A Claude session simply costs more to read than the others'.
 
   So the gate is now decidable, as a function of one variable. Sweeping the ratio at 40 Claude
-  sessions puts the crossover between 4 and 5 sessions for each of the four other harnesses — Claude
+  sessions puts the crossover between 4 and 5 sessions for each of the four other harnesses: Claude
   is 77.6% of collection time at 4 and 72.9% at 5. **Selective reuse clears the bar once harnesses
   other than Claude supply roughly a third of active sessions, and not before.**
 
@@ -1836,7 +1836,7 @@ The gates are independent. Verdicts, one per gate:
   irrelevant to the answer.
 
   What this gate still needs, and what a simulation cannot supply, is what session mix real users
-  actually have — that is a fact about people, not about code. It also needs a second set of hardware:
+  actually have. That is a fact about people, not about code. It also needs a second set of hardware:
   every figure above comes from one laptop, and the simulation is silent about the four SQLite-backed
   harnesses, which have no generator. Until then Phase 1 should keep the publish protocol behind an
   interface that can serve either one full aggregate or per-harness merges, and should not hard-code

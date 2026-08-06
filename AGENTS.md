@@ -34,15 +34,20 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── collectors/         # one harness collector per file, one per supported harness
         │   ├── config.py           # immutable process configuration and store roots
         │   ├── diagnostics.py      # store-path reporting for --diagnose
+        │   ├── events.py           # the untrusted event envelope and its overlay reducer
         │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
-        │   ├── lifecycle.py       # state file, port probes, stop, and daemon detach
+        │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
         │   ├── notifications.py    # hook state, popup policy, and the native notifier
+        │   ├── observation.py      # the event coordinator: one collection lane, floors, shutdown
+        │   ├── probe.py            # the coarse store probe: a bounded stat sweep, a hint only
         │   ├── quota.py            # quota: per-vendor fetches, pushed receipts, and the cache
         │   ├── records.py          # untrusted-record parsing and normalization
         │   ├── sessions.py         # session identity, shape, and deterministic aggregation
+        │   ├── snapshot.py         # the published response bytes and their restart-qualified revision
         │   ├── spacedock.py        # Spacedock workflow and entity cartography
         │   ├── state.py            # mutable process state, locks, and bounded caches
+        │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
         │   ├── transcripts.py      # shared metadata, prompt titles, non-Claude analyzers
         │   ├── turns.py            # generic incremental turn scanning and turn display
         │   └── web/                # HTML, CSS, JS, and byte-preserving page loader

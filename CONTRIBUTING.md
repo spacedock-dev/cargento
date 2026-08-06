@@ -182,9 +182,12 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
-- The frontend rebuilds `#app` from scratch every five seconds. Anything the reader set has to
-  live in a module variable and be reapplied after the swap: the expanded row, the keyboard cursor,
-  the filters, the scroll offset. Two rules follow. Escape every payload-derived string through
+- The frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in Phase 1c:
+  the leader tab holds an `EventSource` on `/api/stream` and refetches when the server announces a
+  new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
+  falls back to the old five-second poll. The rebuild itself is unchanged, so anything the reader
+  set has to live in a module variable and be reapplied after the swap: the expanded row, the
+  keyboard cursor, the filters, the scroll offset. Two rules follow. Escape every payload-derived string through
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.

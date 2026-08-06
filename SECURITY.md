@@ -164,10 +164,12 @@ retention for a run is what `--no-usage` is for.
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
-Cargento writes exactly two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`,
+The server writes exactly two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`,
 authoritative when nonblank): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
 `started`, `log`, `python`), and `cargento-<port>.log`, where a detached (`--daemon`) instance's
-output goes. The directory is created `0o700` because the log can carry local paths: uncaught
+output goes. One forwarder writes a third, in the same directory and named in invariant 2 above:
+`statusline_hook.py` keeps `statusline-<harness>-<session>.json` per conversation, holding a
+normalized state name and a timestamp, so a status line that fires many times a turn posts once. The directory is created `0o700` because the log can carry local paths: uncaught
 tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
 `--stop` (or a killed process) deletes the state file but leaves the log behind, since it is the
 record of a detached run, so `~/.cargento` accumulates one log file per port indefinitely.
