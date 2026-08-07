@@ -21,6 +21,17 @@ def _apply_turn_record(
     harness: str,
 ) -> None:
     """Apply one chronological transcript record to incremental turn state."""
+    model = records.model_signal(record, harness, sessions.MODEL_CAP_CHARS)
+    if model:
+        # Overwrite on every hit, so the last declaration in file order wins.
+        # That is the model in current use and the whole of what is published:
+        # no sort, no comparison against the previous value, and no claim about
+        # whether the session ever changed model.
+        #
+        # Read before the timestamp guard below, because a model is a fact
+        # about the session rather than about a moment in it, and a record
+        # arriving without a usable stamp should not cost the reading.
+        st["model"] = model
     ep = records.parse_ts(record.get("timestamp") or "")
     if not ep:
         return
@@ -62,7 +73,13 @@ def _latest_turn_context(
 ) -> dict[str, Any]:
     """Find the nearest turn boundary before ``end_pos`` without loading the
     prefix into memory. Used when the file is larger than the forward-read
-    budget so a long current turn is not lost."""
+    budget so a long current turn is not lost.
+
+    ``model`` is in the returned mapping only when this pass actually read one.
+    ``scan_turns`` merges the result with ``st.update()``, so a key carrying
+    None would overwrite a model an earlier pass already found — the key is
+    absent, never null, and absence there means "this pass has nothing to say".
+    """
     context: dict[str, Any] = {"turn_start": None, "last_start": None, "prev_ts": None}
     if end_pos <= 0:
         return context
@@ -81,6 +98,14 @@ def _latest_turn_context(
             reversed(records.gemini_records(decoded)) if harness == "gemini" else (decoded,)
         )
         for record in transcript_records:
+            # Walking backward, the first declaration met is the last one in
+            # file order, so the first hit is kept and later ones ignored. The
+            # forward pass over the tail runs after this and legitimately
+            # overwrites it, being later still.
+            if "model" not in context:
+                model = records.model_signal(record, harness, sessions.MODEL_CAP_CHARS)
+                if model:
+                    context["model"] = model
             ep = records.parse_ts(record.get("timestamp") or "")
             if not ep:
                 continue
@@ -137,6 +162,12 @@ def scan_turns(
                 "last_start": None,
                 "durations": [],
                 "prev_ts": None,
+                # The model the transcript last declared, or None for "not
+                # read". Tracked here rather than in the tail analyzer because
+                # the declaration sits far behind EOF on real files — a median
+                # of 273 KB and up to 3 MB — while this scanner's budget is
+                # 8 MB and reaches every one of them.
+                "model": None,
                 "gemini_seen": {},
                 "gemini_snapshot_count": 0,
                 "gemini_snapshot_tail": None,

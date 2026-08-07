@@ -395,37 +395,134 @@ def _step_activity(
     return result
 
 
+# Antigravity records the model, but not as a column: no table in a conversation
+# store has one, which is why a `PRAGMA table_info` survey once concluded the
+# harness does not report it. The value is inside the protobuf blob in
+# `gen_metadata.data`, at top-level field 1 then nested field 21, as the product
+# display name ("Gemini 3.6 Flash (High)"). Nested field 19 carries a model id
+# too and is never preferred: it is an internal alias ("gemini-pro-default"
+# where 21 says "Gemini 3.1 Pro (High)"), so publishing it would need an
+# alias-to-name table, which is a guess.
+#
+# Field 21 was the terminal field of every blob observed — an observed
+# serialization property, not a documented one — so the read is a 64-byte tail
+# slice, not a blob decode.
+#
+# The slice comes from `Connection.blobopen`, not from `substr(data,-64)`, and
+# the difference is the privacy argument rather than a micro-optimisation.
+# `substr()` is a scalar function over a *value*: SQLite materialises the whole
+# row — every byte of the verbatim system-prompt text that sits before the name
+# — and then discards all but 64 of them. Incremental blob I/O never builds that
+# value at all. Measured on a 50 MB row: +50 MB peak RSS for `substr`, +9 MB for
+# `blobopen` (which caps at the page cache). Only 64 bytes ever reach Python
+# either way; the row is what differs.
+#
+# What this does NOT bound is the traversal. SQLite reaches the tail of an
+# overflow-page chain by walking it, so page reads still scale with the row —
+# measured 0.28 ms on a 783 KB row, per inspected store per refresh, and real
+# stores reach that size because `ORDER BY idx DESC LIMIT 1` selects the newest
+# generation, which is the largest row in the store. That cost belongs to the
+# harness's row shape, not to this query, and no read of this column can avoid
+# it. Do not re-derive it as a bound this read does not claim.
+#
+# The safety argument is unchanged. The parse is accepted only when the field
+# runs exactly to the end of the tail, so if a future Antigravity build appends
+# a field after 21 the check fails and the session reports no model rather than
+# a wrong one.
+#
+# The window stays at 64 bytes for privacy, not for speed: a 700-byte tail on
+# the same row holds verbatim system-prompt text, and pulling conversation
+# content into process memory buys nothing. 64 bytes admits any name up to 61
+# characters; a longer one falls to "no model reported", which is the correct
+# reading of a blob we could not validate, not a bug to widen the window for.
+_MODEL_ROW_QUERY = "SELECT rowid FROM gen_metadata ORDER BY idx DESC LIMIT 1"
+_MODEL_TAIL_BYTES = 64
+_MODEL_FIELD_TAG = b"\xaa\x01"  # field 21, wire type 2
+
+
+def _model_tail(con: Any) -> Any:
+    """Last ``_MODEL_TAIL_BYTES`` of the newest ``gen_metadata`` blob, or nothing.
+
+    Rides the caller's already-open connection and fails on its own terms: a
+    store on a schema without ``gen_metadata``, one with no generations yet, and
+    one whose newest row holds no readable blob all withdraw the model and
+    nothing else. The caller's parent-identity read is untouched.
+    """
+    try:
+        row = con.execute(_MODEL_ROW_QUERY).fetchone()
+        if not row:
+            return None
+        blob = con.blobopen("gen_metadata", "data", row[0], readonly=True)
+    except runtime_io.sqlite_module.Error:
+        return None
+    try:
+        blob.seek(max(0, len(blob) - _MODEL_TAIL_BYTES))
+        return blob.read(_MODEL_TAIL_BYTES)
+    except (runtime_io.sqlite_module.Error, OSError, ValueError):
+        return None
+    finally:
+        blob.close()
+
+
+def _model_from_tail(tail: Any) -> str | None:
+    """Validated model display name from the tail bytes of a ``gen_metadata`` blob."""
+    if not isinstance(tail, (bytes, bytearray, memoryview)):
+        return None
+    data = bytes(tail)
+    for offset in range(len(data) - 2):
+        if data[offset : offset + 2] != _MODEL_FIELD_TAG:
+            continue
+        # A one-byte length is all a 64-byte window can hold, and the field must
+        # run to the last byte of the blob. Both together are the check.
+        if offset + 3 + data[offset + 2] != len(data):
+            continue
+        try:
+            name = data[offset + 3 :].decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        return records.safe_text(name, sessions.MODEL_CAP_CHARS).strip() or None
+    return None
+
+
 def _session_info(
     _config: RuntimeConfig,
     state: RuntimeState,
     path: str,
     sid: str,
 ) -> dict[str, Any]:
-    """Extract parent conversation ID and subagent label from an Antigravity store."""
-    info: dict[str, Any] = {"parent_id": None, "subagent_label": None}
+    """Extract parent conversation ID, subagent label, and model from a store."""
+    info: dict[str, Any] = {"parent_id": None, "subagent_label": None, "model": None}
     if not runtime_io.sqlite_available():
         return info
     query = "SELECT data FROM trajectory_metadata_blob WHERE id='main'"
 
-    def read_row(uri: str) -> tuple[bool, Any, BaseException | None]:
+    def read_store(uri: str) -> tuple[bool, Any, Any, BaseException | None]:
         try:
             con = runtime_io.sqlite_module.connect(uri, uri=True, timeout=0.2)
         except runtime_io.sqlite_module.Error as exc:
-            return False, None, exc
+            return False, None, None, exc
         try:
-            return True, con.execute(query).fetchone(), None
+            row = con.execute(query).fetchone()
+            # The model rides this connection rather than opening a second one,
+            # and it fails on its own: a store on a schema without
+            # `gen_metadata` still reports its parent.
+            tail = _model_tail(con)
         except runtime_io.sqlite_module.Error as exc:
-            return False, None, exc
+            return False, None, None, exc
+        else:
+            return True, row, tail, None
         finally:
             con.close()
 
-    readable, row, read_error = read_row(runtime_io.sqlite_ro_uri(path))
+    readable, row, tail, read_error = read_store(runtime_io.sqlite_ro_uri(path))
     if not readable and _wal_has_data(path):
         if read_error:
             runtime_io.record_store_error(state, path, read_error)
         return info
     if not readable:
-        readable, row, fallback_error = read_row(runtime_io.sqlite_ro_uri(path, immutable=True))
+        readable, row, tail, fallback_error = read_store(
+            runtime_io.sqlite_ro_uri(path, immutable=True)
+        )
         if _wal_has_data(path):
             if read_error:
                 runtime_io.record_store_error(state, path, read_error)
@@ -434,7 +531,12 @@ def _session_info(
             if fallback_error:
                 runtime_io.record_store_error(state, path, fallback_error)
             return info
-    if not readable or not row or not row[0]:
+    # A store with no generations yet reads fine and reports no model; that is a
+    # session that never got a reply, not a store error. Set it before the
+    # identity row is examined, so a missing `main` row withdraws only the
+    # parent it feeds.
+    info["model"] = _model_from_tail(tail)
+    if not row or not row[0]:
         return info
     data = row[0]
 
@@ -497,12 +599,19 @@ def collect(
         if show_all or sessions.is_fresh(config, now, mtime, window_hours * 3600)
     ]
     inspected: set[str] = set()
+    # Every store that reaches a card is inspected here — the freshness filter
+    # above admits it, and a subagent pushes its parent on at the bottom of this
+    # loop — so one model per inspected store covers every card and every
+    # subagent with no read the collector was not already doing. A sid missing
+    # from this map was never inspected, which is the same "not read" its None is.
+    models: dict[str, str | None] = {}
     while pending:
         sid = pending.pop()
         if sid in inspected:
             continue
         inspected.add(sid)
         info = _session_info(config, state, db_paths[sid], sid)
+        models[sid] = info.get("model")
         parent = info.get("parent_id")
         if parent and parent != sid:
             subagent_sids.add(sid)
@@ -549,9 +658,13 @@ def collect(
                 for agent_sid, _, agent_mtime in agents
                 if sessions.is_fresh(config, now, agent_mtime, config.rate_window_sec)
             )
-        subagents = [
-            label
-            for _, label, agent_mtime in agents
+        # Each subagent owns a store, so its model is measured on its own terms
+        # and published as read — never compared here, never withheld because a
+        # neighbour's reading is missing. The page decides where a child's model
+        # is worth showing, and it needs both readings to decide.
+        subagents: list[dict[str, Any]] = [
+            {"name": label, "model": models.get(agent_sid)}
+            for agent_sid, label, agent_mtime in agents
             if sessions.is_fresh(config, now, agent_mtime, config.working_threshold_sec)
         ]
         session_state, state_detail = "idle", "awaiting your message"
@@ -570,6 +683,11 @@ def collect(
         session = sessions.base_session("antigravity", sid, project)
         session.update(
             {
+                # `provider` stays None: the only vendor-adjacent fields in the
+                # blob are per-generation booleans (`used_claude=false`) and an
+                # opaque `MODEL_PLACEHOLDER_*` enum. Reading "google" off the
+                # string "Gemini" is inference, which this field forbids.
+                "model": models.get(sid),
                 "title": prompt.split("\n")[0][:80] or None,
                 "last_prompt": prompt[:140],
                 "state": session_state,

@@ -92,7 +92,10 @@ def collect(
             continue
         info = transcripts.analyze_gemini_transcript(config, fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
-        subagents = [label for label, _ in agents]
+        # `model` is always present on a subagent element, per the contract in
+        # `sessions.base_session`. None here says nobody has looked for where
+        # Gemini records the model, not that Gemini runs on none.
+        subagents = [{"name": label, "model": None} for label, _ in agents]
         session_state, state_detail = "idle", "awaiting your message"
         if sessions.is_fresh(
             config,

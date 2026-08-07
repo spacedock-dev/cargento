@@ -83,9 +83,28 @@ class _Ledger(NamedTuple):
     Dropping it would understate the harness figure, and attributing it to some
     session would be worse. So the per-session figures need not add up to
     ``total``, and the gap is honest.
+
+    ``models`` is the model each row names, keyed by ``(session_id, agent_id)``
+    with None for the ledger's SQL NULL — which is what a row for the session
+    itself carries, as against the ``sidekick-…`` string on a subagent's rows.
+    Both halves of the key are needed: the NULL group spans every session in the
+    store (2 of 2 on the store this was measured against), so keying on
+    ``agent_id`` alone would hand every session whichever model was seen first.
+
+    It is a separate accumulator from the two above for a reason that has to
+    survive refactoring: **a model and a charge are withdrawn independently, in
+    both directions.** A row whose model cell is unusable still has a perfectly
+    accountable charge, and blacking out a session's spend over it would be the
+    same over-withdrawal the note above rejects for an unattributed row. A row
+    whose charge or stamp is unreadable still names a model, and that reading is
+    good — which is why the accumulation happens before both of the loop's
+    ``continue`` statements. Window coverage and model coverage are different
+    questions, so an idle session outside the window can carry a model while its
+    ``consumption`` is None.
     """
 
     by_session: dict[str, int]
+    models: dict[tuple[str, str | None], str | None]
     unmeasured: frozenset[str]
     total: int | None
     newest: float
@@ -97,6 +116,19 @@ def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
     ``session_id`` is selected because the join is measured: on a live store the
     distinct values matched the ``session-state/<uuid>`` directory names 2 of 2,
     and those basenames are exactly what ``collect`` publishes as ``sid``.
+
+    ``agent_id`` and ``model`` ride along on the statement that was already being
+    run, which is the whole cost of publishing a session's model: two more
+    columns in one existing projection, no second query, no second connection,
+    and no per-session read. ``agent_id`` is SQL NULL on a row the session itself
+    ran and ``sidekick-<name>-<epoch ms>`` on a subagent's, so selecting it is
+    what lets the caller keep those two apart.
+
+    ``ORDER BY id DESC`` is what makes newest-wins free. ``id`` is
+    ``INTEGER PRIMARY KEY AUTOINCREMENT`` and was verified monotone against
+    ``created_at`` over every row of a live store, so the first row a key is seen
+    on is its newest — with no timestamp parsed, which matters because an
+    unparseable stamp is a failure class this file already handles.
 
     One row past ``_USAGE_ROW_CAP`` is read deliberately. It is the only thing
     that separates "that was the whole ledger" from "there is history behind this
@@ -115,8 +147,8 @@ def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
         return None
     try:
         rows: list[Any] = connection.execute(
-            "SELECT session_id, total_nano_aiu, created_at FROM assistant_usage_events "
-            "ORDER BY id DESC LIMIT ?",
+            "SELECT session_id, agent_id, model, total_nano_aiu, created_at "
+            "FROM assistant_usage_events ORDER BY id DESC LIMIT ?",
             (_USAGE_ROW_CAP + 1,),
         ).fetchall()
     except Exception:  # noqa: BLE001 — schema drift is a miss, never an error
@@ -125,6 +157,27 @@ def _usage_rows(config: RuntimeConfig, state: RuntimeState) -> list[Any] | None:
     finally:
         connection.close()
     return rows
+
+
+def _row_model(value: Any) -> str | None:
+    """One reported model as a model name, or None when it is not one.
+
+    The single door for both of this harness's model readings — the ledger cell
+    a session's own rows carry, and the value a subagent's start event reports —
+    so the two cannot end up bounded differently or guarded differently.
+
+    The ledger column is ``TEXT NOT NULL`` on the live store and the guard is
+    still needed: NOT NULL excludes only NULL, so ``''`` passes it. An event
+    payload is untyped JSON and offers no guarantee at all.
+
+    Bounded here because this is where the payload is assembled and where the
+    declared width lives. The value is a vendor's own string on its way to the
+    DOM, and it lands inline on a metadata row beside the project and the
+    session id, so an unbounded one pushes everything after it off the card.
+    """
+    if not isinstance(value, str):
+        return None
+    return records.safe_text(value, sessions.MODEL_CAP_CHARS).strip() or None
 
 
 def _read_ledger(
@@ -177,6 +230,14 @@ def _read_ledger(
     contributes nothing whatever its amount column holds, so a null charge on a
     week-old row costs nothing and still proves the read reached past the edge.
 
+    The model each row names is read first and kept in its own map, because it
+    is a different question from every one above: see ``_Ledger``. The one route
+    by which a model is lost to a *charge* failure is the truncation guard below,
+    which returns no ledger at all and takes the models with it. That is accepted
+    rather than restructured — it degrades to "no model reported", which is never
+    wrong, only incomplete — and it is recorded here so the next reader does not
+    read it as an oversight.
+
     The tile and the collection call this separately, so a refresh pays the
     bounded read twice. Caching it between them would trade one cheap read for a
     real staleness risk: the two calls are the same refresh but not the same
@@ -187,6 +248,7 @@ def _read_ledger(
         return None
     window_sec = window_hours * 3600
     by_session: dict[str, int] = {}
+    models: dict[tuple[str, str | None], str | None] = {}
     unmeasured: set[str] = set()
     total = 0
     measured = True
@@ -195,6 +257,17 @@ def _read_ledger(
     for row in rows:
         session_id = row["session_id"]
         named = session_id if isinstance(session_id, str) and session_id else None
+        if named:
+            # Ahead of both `continue`s below, and that placement is the whole
+            # point: an old row and a row whose charge will not read are both
+            # still perfectly good statements of which model ran. An unusable
+            # cell records None deliberately rather than falling through to an
+            # older row — `setdefault` means the newest reading wins, including
+            # when the newest reading is "cannot tell", which is the one answer
+            # a stale row must never be allowed to overwrite.
+            agent_id = row["agent_id"]
+            key = (named, agent_id if isinstance(agent_id, str) and agent_id else None)
+            models.setdefault(key, _row_model(row["model"]))
         stamp = records.parse_utc_sql(row["created_at"])
         seconds = sessions.age(config, now, stamp) if stamp else None
         if seconds is not None and seconds > window_sec:
@@ -212,7 +285,7 @@ def _read_ledger(
         newest = max(newest, stamp)
     if len(rows) > _USAGE_ROW_CAP and not reached_past_window:
         return None
-    return _Ledger(by_session, frozenset(unmeasured), total if measured else None, newest)
+    return _Ledger(by_session, models, frozenset(unmeasured), total if measured else None, newest)
 
 
 def _session_consumption(ledger: _Ledger | None, sid: str, active: bool) -> str | None:
@@ -321,7 +394,18 @@ def collect(
         info = transcripts.analyze_copilot_events(config, fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         session_state, state_detail = "idle", "awaiting your message"
-        subagents: list[str] = []
+        # `{"name": str, "model": str | None}` each, built in
+        # `transcripts.analyze_copilot_events` where the name and the model come
+        # off one JSON object. Only a working session has any: `info` is None
+        # unless the session is active, so a Copilot subagent's model is visible
+        # only while it is running — which is also why it cannot be exercised
+        # against an idle fixture.
+        #
+        # The published model is raw, not a decision. Whether a child's model is
+        # worth the space is a comparison against the parent's, both measured,
+        # and the page owns that rule for every harness at once; deciding it here
+        # would put one rule in ten places.
+        subagents: list[dict[str, Any]] = []
         if sessions.is_fresh(
             config,
             now,
@@ -329,7 +413,13 @@ def collect(
             config.working_threshold_sec,
         ):
             session_state = "working"
-            subagents = list((info or {}).get("pending_agents", {}).values())
+            subagents = [
+                {
+                    "name": pending.get("name") or "subagent",
+                    "model": _row_model(pending.get("model")),
+                }
+                for pending in (info or {}).get("pending_agents", {}).values()
+            ]
             state_detail = sessions.working_detail(info, subagents)
 
         cwd = (info or {}).get("cwd") or transcripts.copilot_meta(config, state, fp).get("cwd")
@@ -346,6 +436,13 @@ def collect(
                 # against a window that was read to its end, that covers this
                 # session, and that holds no row for this sid.
                 "consumption": _session_consumption(ledger, sid, active),
+                # The ledger's own rows for this session, which are the ones
+                # carrying no `agent_id`. Never a subagent's row: a child runs on
+                # its own model, and reading one off the parent's card would put
+                # a measured value where it does not belong. `provider` stays
+                # None on purpose — Copilot's authority is Copilot, and "via
+                # Copilot" beside a Copilot badge is a clause that says nothing.
+                "model": ledger.models.get((sid, None)) if ledger else None,
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,

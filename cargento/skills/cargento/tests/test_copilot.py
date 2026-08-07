@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import copilot as copilot_collector
 
 from .support import (
@@ -37,14 +38,22 @@ def write_ledger(root: Path, rows: list[tuple[str | None, int, float]]) -> None:
     """A session-store.db whose usage rows are (session_id, nano_aiu, epoch).
 
     Column names and types are the ones a live `~/.copilot/session-store.db`
-    carries; the table there has 23 columns and this writes the five the
-    collector reads or joins on.
+    carries; the table there has 23 columns and this writes the six the collector
+    reads or joins on.
+
+    `agent_id` is left NULL, which is the shape of a row the session itself ran —
+    measured on a live store, where the NULL group was every parent row and the
+    subagent rows carried `sidekick-<name>-<epoch ms>`. It has to exist here even
+    though these rows never set it: the collector selects it, and a column the
+    fixture omits raises inside the read, which the collector catches as schema
+    drift and answers with no ledger at all. Every consumption assertion in this
+    file would then flip to None while the code under test was fine.
     """
     root.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(root / "session-store.db")
     con.execute(
         "CREATE TABLE assistant_usage_events ("
-        " id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT,"
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, agent_id TEXT,"
         " model TEXT, total_nano_aiu INTEGER, created_at TEXT)"
     )
     con.executemany(
@@ -65,6 +74,29 @@ def add_row(root: Path, session_id: str | None, amount: Any, created_at: Any) ->
         "INSERT INTO assistant_usage_events (session_id, model, total_nano_aiu, created_at)"
         " VALUES (?, 'm', ?, ?)",
         (session_id, amount, created_at),
+    )
+    con.commit()
+    con.close()
+
+
+def add_model_row(
+    root: Path,
+    session_id: str | None,
+    agent_id: str | None,
+    model: Any,
+    amount: Any,
+    created_at: Any,
+) -> None:
+    """One raw usage row with its `agent_id` and `model` cells spelled out.
+
+    The highest id, so the collector's `ORDER BY id DESC` read sees it first —
+    which is what makes it the newest row for whatever key it names.
+    """
+    con = sqlite3.connect(root / "session-store.db")
+    con.execute(
+        "INSERT INTO assistant_usage_events"
+        " (session_id, agent_id, model, total_nano_aiu, created_at) VALUES (?, ?, ?, ?, ?)",
+        (session_id, agent_id, model, amount, created_at),
     )
     con.commit()
     con.close()
@@ -142,7 +174,7 @@ class CopilotCollectorTest(RuntimeTestCase):
         self.assertEqual("working", s["state"])
         self.assertEqual("w/myproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("fix the login bug", s["last_prompt"])
-        self.assertEqual(["researcher"], s["subagents"])
+        self.assertEqual([{"name": "researcher", "model": None}], s["subagents"])
 
     def test_the_legacy_history_store_is_discovered_and_collected(self) -> None:
         # Copilot moved its sessions between two directories, and the older one
@@ -635,3 +667,266 @@ class CopilotConsumptionTest(RuntimeTestCase):
         self.assertIsNone(rows[self.SID_A]["consumption"])
         self.assertIsNone(rows[self.SID_B]["consumption"])
         self.assertEqual([], tile)
+
+
+def collect_rows(root: Path, now: float, window_hours: float = 24) -> dict[str, dict[str, Any]]:
+    """Every collected row for a prepared store, keyed by full sid."""
+    with store_patch(COPILOT_DIR=str(root)):
+        config, state = runtime()
+        rows = copilot_collector.collect(config, state, now, window_hours, True)
+    return {str(row["sid"]): row for row in rows}
+
+
+class CopilotModelTest(RuntimeTestCase):
+    """The model a session ran on, read off the ledger rows it already reads.
+
+    Measured on a live store, and the shape of that store is what these fixtures
+    reproduce: five rows with `agent_id` SQL NULL, all on one model, spanning two
+    sessions; four rows with a `sidekick-<name>-<epoch ms>` `agent_id`, all on a
+    different one. Both halves of the key are load-bearing because of the first
+    of those — the NULL group is not per-session.
+
+    None here is "no model reported", and it is a third reading beside a name.
+    Nothing in this file may let a collector guess one.
+    """
+
+    SID_A = "aaaa1111-2222-3333-4444-555555555555"
+    SID_B = "bbbb1111-2222-3333-4444-555555555555"
+    PARENT = "gpt-5.6-terra"
+    CHILD = "gpt-5.4-mini"
+
+    def test_the_sessions_own_rows_name_the_model_the_card_publishes(self) -> None:
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "on some model")
+            write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+            rows = collect_rows(root, now)
+
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+        # Copilot's authority is Copilot. A provider here would render "via
+        # Copilot" beside a Copilot badge — a clause that carries no information
+        # and takes the space that says which model.
+        self.assertIsNone(rows[self.SID_A]["provider"])
+
+    def test_a_store_with_no_ledger_reports_no_model_rather_than_guessing(self) -> None:
+        # There is no second source to fall back to, and the fallbacks that look
+        # available are not: `session.start` carries no model field at all, and
+        # the model-cache list near the tail is a TTL record rather than a
+        # statement of what ran. So the honest answer is that none was read.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "unaccounted")
+            rows = collect_rows(root, now)
+
+        self.assertIsNone(rows[self.SID_A]["model"])
+
+    def test_sessions_sharing_the_null_agent_group_keep_their_own_models(self) -> None:
+        # The live shape: `agent_id` NULL is not a per-session marker, it is every
+        # parent row in the store, and on the store this was measured against that
+        # group spanned both sessions. Keyed on `agent_id` alone, whichever model
+        # the id-descending read met first would be published for every session in
+        # the harness. Mutation-checked: dropping the session half of the key gave
+        # both rows "gpt-5.4-mini".
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "one")
+            write_events(root, "session-state", self.SID_B, iso, "two")
+            write_ledger(root, [])
+            add_model_row(root, self.SID_A, None, self.PARENT, 1_000_000_000, iso)
+            add_model_row(root, self.SID_B, None, self.CHILD, 1_000_000_000, iso)
+            rows = collect_rows(root, now)
+
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+        self.assertEqual(self.CHILD, rows[self.SID_B]["model"])
+
+    def test_a_subagents_row_is_never_read_as_the_sessions_own_model(self) -> None:
+        # The ledger attributes a sidekick's spend to the session that launched
+        # it, so its rows carry this session's `session_id` and run on a different
+        # model. Reading the newest row for the *session* rather than the newest
+        # row naming the session is what keeps the child's model off the parent's
+        # card — where it would be a measured value in the wrong place, which is
+        # indistinguishable from the right one.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "launched a sidekick")
+            write_ledger(root, [])
+            add_model_row(root, self.SID_A, None, self.PARENT, 1_000_000_000, iso)
+            # Highest id, so an unkeyed newest-wins read would take this one.
+            agent = "sidekick-github-context-memory-1785829732526"
+            add_model_row(root, self.SID_A, agent, self.CHILD, 330_000_000, iso)
+            rows = collect_rows(root, now)
+
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+        self.assertEqual("1.33 AIU", rows[self.SID_A]["consumption"])
+
+    def test_an_unusable_model_cell_withdraws_the_model_and_not_the_charge(self) -> None:
+        # Two quantities, withdrawn independently. The charge on such a row is
+        # perfectly accountable and blacking a session's spend out over the cell
+        # beside it would be the same over-withdrawal this collector already
+        # rejects for a row that names no session.
+        #
+        # And the withdrawal reaches the newest reading only. An unusable newest
+        # cell records "cannot tell" deliberately, so the older row below cannot
+        # promote a stale model into a confident answer.
+        #
+        # `TEXT NOT NULL` on the live column is not a guard: it excludes NULL and
+        # nothing else. A number written into it is not testable here and does not
+        # need to be — TEXT affinity stores 5 as the string "5", which no reader
+        # can tell from a one-character model name; what survives as a non-string
+        # is a blob, which affinity does not convert.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        unusable: list[tuple[str, Any]] = [
+            ("an empty cell", ""),
+            ("whitespace only", "   "),
+            ("a null cell", None),
+            ("a blob", sqlite3.Binary(b"\x01\x02")),
+        ]
+        for label, model in unusable:
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "copilot"
+                write_events(root, "session-state", self.SID_A, iso, "billed anyway")
+                write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+                add_model_row(root, self.SID_A, None, model, 1_000_000_000, iso)
+                rows = collect_rows(root, now)
+
+                self.assertIsNone(rows[self.SID_A]["model"])
+                self.assertEqual("2.00 AIU", rows[self.SID_A]["consumption"])
+
+    def test_a_charge_that_cannot_be_read_does_not_withhold_the_model(self) -> None:
+        # The other direction, and the one an implementation loses by accident:
+        # every one of these rows hits a `continue` before the charge is banked,
+        # so a model accumulated after it is silently dropped. The row still says
+        # which model ran, and that reading is good.
+        #
+        # The assertion is the *newest* model rather than merely a non-None one.
+        # An older readable row sits underneath, so "a model came back" would pass
+        # a build that skipped the bad row entirely.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        for label, amount, created_at in unreadable_shapes(now):
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "copilot"
+                write_events(root, "session-state", self.SID_A, iso, "billed")
+                write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+                add_model_row(root, self.SID_A, None, self.CHILD, amount, created_at)
+                rows = collect_rows(root, now)
+
+                self.assertEqual(self.CHILD, rows[self.SID_A]["model"])
+                self.assertIsNone(rows[self.SID_A]["consumption"])
+
+    def test_a_session_outside_the_window_still_names_its_model(self) -> None:
+        # The window continue, which is the other one the accumulation sits above.
+        # Window coverage and model coverage are different questions: the ledger
+        # has no reach over the hours this session was running, so it has no
+        # figure to publish, but the row it does hold still says what ran. These
+        # are the rows behind "Show all N idle", which is where a reader browses.
+        now = time.time()
+        stale = now - 100_000
+        iso = datetime.fromtimestamp(stale, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = write_events(root, "session-state", self.SID_A, iso, "long finished")
+            os.utime(events, (stale, stale))
+            write_ledger(root, [(self.SID_A, 1_000_000_000, stale)])
+            rows = collect_rows(root, now)
+
+        self.assertFalse(rows[self.SID_A]["active"], "fixture must be outside the window")
+        self.assertIsNone(rows[self.SID_A]["consumption"])
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+
+    def test_a_working_sessions_subagent_carries_the_model_it_started_on(self) -> None:
+        # The two-measured-values case, and Copilot is where it was measured on
+        # both sides at once: the parent on `gpt-5.6-terra` from the ledger, the
+        # child on `gpt-5.4-mini` from its own start event.
+        #
+        # The child's model comes off the same JSON object as its name, so the
+        # pair is right by construction. The ledger's `agent_id` for that child is
+        # `sidekick-github-context-memory-<epoch ms>` while the published name is
+        # `github-context-memory`: related by string construction only, so
+        # recovering one from the other is prefix-parsing, which is inference.
+        #
+        # The fixture must be *working*. Copilot only reads its events at all
+        # while the session is active, so an idle one publishes no subagents and
+        # this path would never run.
+        #
+        # The collector publishes both models raw. Whether the child's is worth
+        # screen space is the page's decision, made on two measured values, and
+        # duplicating it here would put the rule in two places.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = root / "session-state" / self.SID_A / "events.jsonl"
+            events.parent.mkdir(parents=True)
+            events.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session.start",
+                                "timestamp": iso,
+                                "data": {"context": {"cwd": "/w/myproj"}},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "subagent.started",
+                                "timestamp": iso,
+                                "agentId": "sidekick-github-context-memory-1785829732526",
+                                "id": "5c868fe4-340b-4d4e-a4b5-9540074b612f",
+                                "data": {
+                                    "toolCallId": "sidekick-github-context-memory-1785829732526",
+                                    "agentName": "github-context-memory",
+                                    "model": self.CHILD,
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n"
+            )
+            write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+            rows = collect_rows(root, now)
+
+        row = rows[self.SID_A]
+        self.assertEqual("working", row["state"], "an idle session publishes no subagents")
+        self.assertEqual(self.PARENT, row["model"])
+        self.assertEqual([{"name": "github-context-memory", "model": self.CHILD}], row["subagents"])
+
+    def test_a_childs_model_is_bounded_and_guarded_like_the_sessions_own(self) -> None:
+        # Both readings go through one function, so a hostile value cannot be
+        # bounded on one path and not the other. The name is capped in the
+        # analyzer at its own width; the model is capped here, at the width
+        # `sessions` declares for every model on the payload.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        cap = runtime_sessions.MODEL_CAP_CHARS
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = root / "session-state" / self.SID_A / "events.jsonl"
+            events.parent.mkdir(parents=True)
+            events.write_text(
+                json.dumps(
+                    {
+                        "type": "subagent.started",
+                        "timestamp": iso,
+                        "agentId": "a1",
+                        "data": {"agentName": "n" * 200, "model": "m\x00o" + "d" * 100},
+                    }
+                )
+                + "\n"
+            )
+            rows = collect_rows(root, now)
+
+        pill = rows[self.SID_A]["subagents"][0]
+        self.assertEqual("n" * 70, pill["name"])
+        self.assertEqual("m o" + "d" * (cap - 3), pill["model"])

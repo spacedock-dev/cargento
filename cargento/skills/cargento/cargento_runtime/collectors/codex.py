@@ -98,12 +98,15 @@ def usage(
 
 def _subagent_rate(
     config: RuntimeConfig,
-    state: RuntimeState,
     path: str,
     now: float,
+    scan: dict[str, Any] | None,
 ) -> int:
-    """Recent Codex subagent output after its own task_started boundary."""
-    scan = turns.scan_turns(config, state, path, "codex")
+    """Recent Codex subagent output after its own task_started boundary.
+
+    Takes the scan rather than making it: the caller needs the same scan for
+    the child's model, and one child file must not be walked twice in a pass.
+    """
     start = scan.get("last_start") if scan else None
     if not start:
         return 0
@@ -126,7 +129,7 @@ def collect(
     # Resumes and subagent threads each write their own rollout file, so group
     # by the session_meta session_id rather than by file.
     found: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
-    # parent session_id -> {"agents": [(label, mtime)], "rate": int}
+    # parent session_id -> {"agents": [(label, mtime, model)], "rate": int}
     agent_data: dict[str, dict[str, Any]] = {}
     for fp in runtime_io.glob_stores(
         config,
@@ -145,10 +148,27 @@ def collect(
         if meta.get("subagent"):
             parent_sid = meta.get("parent_session_id") or sid
             data = agent_data.setdefault(parent_sid, {"agents": [], "rate": 0})
-            if sessions.is_fresh(config, now, mtime, config.rate_window_sec):
-                data["rate"] += _subagent_rate(config, state, fp, now)
-            if sessions.is_fresh(config, now, mtime, config.working_threshold_sec):
-                data["agents"].append(((meta.get("agent_label") or "subagent")[:70], mtime))
+            # One scan, above both branches. The rate window is wider than the
+            # working window today, so the rate branch happens to have scanned
+            # every child the second branch renders — but that is two config
+            # numbers agreeing, not an invariant, and a child's model must not
+            # rest on it. Still gated on a child being inside one window or the
+            # other, so a store full of finished threads is not re-walked.
+            charged = sessions.is_fresh(config, now, mtime, config.rate_window_sec)
+            rendered = sessions.is_fresh(config, now, mtime, config.working_threshold_sec)
+            scan = turns.scan_turns(config, state, fp, "codex") if charged or rendered else None
+            if charged:
+                data["rate"] += _subagent_rate(config, fp, now, scan)
+            if rendered:
+                # The child's own rollout declares its own model; the page, not
+                # the collector, decides whether it differs from the parent's.
+                data["agents"].append(
+                    (
+                        (meta.get("agent_label") or "subagent")[:70],
+                        mtime,
+                        (scan or {}).get("model"),
+                    )
+                )
             continue
         if sid not in found or mtime > found[sid][0]:
             found[sid] = (mtime, fp)
@@ -157,14 +177,19 @@ def collect(
     for sid, (mtime, fp) in found.items():
         data = agent_data.get(sid) or {"agents": [], "rate": 0}
         agents = sorted(data["agents"], key=lambda a: -a[1])
-        activity_sources = (mtime, *(m for _, m in agents))
+        activity_sources = (mtime, *(a[1] for a in agents))
         last_activity = sessions.newest_plausible(config, now, activity_sources)
         active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         info = transcripts.analyze_codex_transcript(config, fp) if active else None
+        # Hoisted above `subagents` because the model is published beside them,
+        # and kept behind the `if info` guard so a stale `?all=1` row still pays
+        # for no scan. Such a row reports no model rather than an old one: the
+        # collector has not read it this pass, and that is the honest reading.
+        scan = turns.scan_turns(config, state, fp, "codex") if info else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
-        subagents = [label for label, _ in agents]
+        subagents = [{"name": label, "model": model} for label, _, model in agents]
         session_state, state_detail = "idle", "awaiting your message"
         if sessions.is_fresh(
             config,
@@ -193,12 +218,10 @@ def collect(
                 "active": active,
                 "last_activity": last_activity,
                 "rate_per_min": sessions.rate_from(info, now, config) + data["rate"],
-                "turn": turns.turn_progress(
-                    turns.scan_turns(config, state, fp, "codex") if info else None,
-                    session_state,
-                    now,
-                    config,
-                ),
+                "turn": turns.turn_progress(scan, session_state, now, config),
+                # `provider` stays None: no Codex record carries one, and
+                # reading "openai" off the harness name would be inference.
+                "model": scan.get("model") if scan else None,
                 "subagents": subagents,
             }
         )

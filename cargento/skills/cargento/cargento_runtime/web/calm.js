@@ -126,7 +126,11 @@ function calmRow(d, x){
     /* The prompt is only worth quoting when the title is not already it. */
     excerpt: (prompt && prompt !== String(title).trim()) ? prompt : "",
     tasks, taskNote: tasks.length ? taskDone + " of " + tasks.length + " done" : "",
-    subagents: x.subagents || [], spacedock: x.spacedock || null,
+    /* Normalized to the published element shape, `{name, model}`, through the
+       tolerant accessors — a producer still shipping bare labels lands here as a
+       name with model null rather than reaching the renderer as a raw string. */
+    subagents: (x.subagents || []).map(a => ({name: subName(a), model: subModel(a)})),
+    spacedock: x.spacedock || null,
     rank: flag ? CALM_TONE[tone].rank : (st === "work" ? 2 : 4),
     /* Whether the burn ordering may rank this row at all: `state === "working"
        && active`, which is the predicate regular.js's burnLeaders() takes,
@@ -485,10 +489,18 @@ function calmExpansion(r, d){
         ` style="width:${r.turn.pct}%;background:${r.rail}"></span></div>` : "") +
       `<div class="cm-turn-line">${esc(r.turnLine)}</div></div>`
     : "";
+  /* Same differs-only rule as the regular view's `.subpill`, read from the one
+     definition. The chip is its own element because `.cm-sub-n` ellipsises, so a
+     model appended to the label would be the first thing clipped away. */
   const subs = r.subagents.length
     ? `<div class="cm-subs"><span class="cm-subk">subagents</span>` +
-      r.subagents.slice(0, 8).map(a => `<div class="cm-sub"><span class="cm-sub-dot"></span>` +
-        `<span class="cm-sub-n" title="${esc(a)}">${esc(a)}</span></div>`).join("") +
+      r.subagents.slice(0, 8).map(a => {
+        const model = childModelShown(r, a);
+        return `<div class="cm-sub"><span class="cm-sub-dot"></span>` +
+          `<span class="cm-sub-n" title="${esc(subName(a))}">${esc(subName(a))}</span>` +
+          (model ? `<span class="cm-sub-m" title="${esc(childModelNote(r, model))}">` +
+            `${esc(model)}</span>` : "") + `</div>`;
+      }).join("") +
       (r.subagents.length > 8
         ? `<div class="cm-sub"><span class="cm-sub-n">+${r.subagents.length - 8} more</span></div>`
         : "") + `</div>`

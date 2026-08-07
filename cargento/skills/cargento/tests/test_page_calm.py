@@ -93,7 +93,11 @@ const busy = mk({sid: "bbb2", session: "bbb2", harness: "codex", project: "repo/
   title: "Migrate warehouse sync", state: "working", active: true,
   state_detail: "running Bash", last_activity: 99990, rate_per_min: 2010,
   turn: {elapsed_h: "20m", eta_h: "39m", pct: 34, long: true},
-  subagents: ["Final whole-branch review"], last_prompt: "migrate the sync",
+  // The published element shape: {name, model}, model always present, null
+  // meaning nobody read one. Codex fills it, so a child on the same model as its
+  // parent is the ordinary case and draws no chip.
+  subagents: [{name: "Final whole-branch review", model: null}],
+  last_prompt: "migrate the sync",
   tasks: [{status: "completed", subject: "Map every call site", activeForm: null},
           {status: "in_progress", subject: "Convert chain", activeForm: "Converting chain"},
           {status: "pending", subject: "Re-run suite", activeForm: null}]});
@@ -544,6 +548,77 @@ console.log(JSON.stringify(out));
         self.assertEqual([False, False], out["bare"], "a harness with no ledger drew a figure")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_model_reaches_the_detail_panel_and_earns_no_column_either(self) -> None:
+        # The consumption argument, run again for the model, and it lands in the
+        # same place for a different reason. Consumption gets no column because
+        # nine rows in ten would hold a dash; the model would fill every row, so a
+        # column is arguable — and still refused, because a session's model is not
+        # something a reader scans a ledger to compare. It reaches the panel with
+        # no code of its own: `calmRow` already copies `model`, and the panel's meta
+        # line already calls the one `authorityBit` both views share.
+        #
+        # A subagent's model is the same story one level down. The chip needs its
+        # own element rather than a suffix on the name, because `.cm-sub-n`
+        # ellipsises and a suffix would be the first thing clipped.
+        #
+        # `test_page_calm.py`'s subagent assertion is the only one on subagent
+        # markup in either view — `.subpill` has never had one — so the chip's
+        # regular-view twin is pinned in `test_page.py` instead.
+        checks = """
+const out = {};
+const differ = mk({harness: "codex", sid: "cx1", session: "cx1", title: "Wide fan-out",
+  state: "working", active: true, last_activity: 99990, model: "gpt-5.6-sol",
+  subagents: [{name: "elsewhere", model: "gpt-5.6-terra"},
+              {name: "alongside", model: "gpt-5.6-sol"},
+              {name: "unmeasured", model: null}]});
+const blind = mk({harness: "goose", sid: "go1", session: "go1", title: "No reading",
+  state: "working", active: true, last_activity: 99990, model: null,
+  subagents: [{name: "a", model: "gpt-5.6-terra"}]});
+render(payload([differ, blind, quiet]));
+const collapsed = __els.app.innerHTML;
+// The grid keeps exactly the headings it had, and no row leaks a model.
+out.headings = [...((collapsed.match(/class="cm-head">([\\s\\S]*?)<\\/div>/) || [null, ""])[1])
+  .matchAll(/<span[^>]*>([^<]*)<\\/span>/g)].map(m => m[1]);
+out.collapsedModel = /gpt-5\\.6/.test(collapsed);
+const panelOf = h => h.slice(h.indexOf('class="cm-exp"'));
+calmAction("open", "codex:cx1");
+const panel = panelOf(__els.app.innerHTML);
+out.sessionModel = panel.includes("model gpt-5.6-sol");
+out.chips = (panel.match(/class="cm-sub-m"/g) || []).length;
+out.chipText = [...panel.matchAll(/class="cm-sub-m"[^>]*>([^<]*)/g)].map(m => m[1]);
+// Names still render, and each keeps its own tooltip.
+out.names = [...panel.matchAll(/class="cm-sub-n" title="([^"]*)">([^<]*)/g)]
+  .map(m => [m[1], m[2]]);
+// A parent nobody read draws no chip, however many children report one — the
+// dash is the parent's whole statement.
+calmAction("open", "goose:go1");
+const blindPanel = panelOf(__els.app.innerHTML);
+out.blind = [blindPanel.includes("model —"), (blindPanel.match(/class="cm-sub-m"/g) || []).length];
+// And a harness with no model at all still says so on an idle row, which is the
+// one state the regular view's card column never renders.
+calmAction("open", "claude:ccc3");
+out.idle = panelOf(__els.app.innerHTML).includes("model —");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual(
+            ["", "", "session", "where", "doing", "flag", "rate", "idle / wait", "", ""],
+            out["headings"],
+            "the ledger grid gained or lost a column",
+        )
+        self.assertFalse(out["collapsedModel"], "a model reached the collapsed ledger row")
+        self.assertTrue(out["sessionModel"], "the panel dropped the session's model")
+        self.assertEqual(1, out["chips"], "the chip was drawn for a child that matches its parent")
+        self.assertEqual(["gpt-5.6-terra"], out["chipText"])
+        self.assertEqual(
+            [["elsewhere", "elsewhere"], ["alongside", "alongside"], ["unmeasured", "unmeasured"]],
+            out["names"],
+            "a subagent name was lost, or reached the body without its tooltip",
+        )
+        self.assertEqual([True, 0], out["blind"], "an unread parent produced a chip")
+        self.assertTrue(out["idle"], "an idle row's panel left the model slot blank")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_panel_names_the_window_the_figure_was_measured_over(self) -> None:
         # The figure is windowed — the same window the harness usage tile sums, so
         # a reader comparing a row against the tile compares like with like — and
@@ -621,26 +696,53 @@ console.log(JSON.stringify(out));
         # Titles, prompts, task subjects and subagent names all come from files
         # a project can write. Calm mode builds HTML strings, so every one of
         # them has to go through esc().
+        #
+        # Model strings join that list, and they are not covered by the names
+        # already here: a model is read out of a vendor's transcript, protobuf blob
+        # or SQLite ledger, and it reaches the DOM through its own two sites — the
+        # session's `authorityBit` in the meta line and the child chip's body and
+        # `title=`. Fixing the name is not fixing the model, so the same string
+        # goes in both places on the same row.
         checks = """
 const bad = '<img src=x onerror=alert(1)>"><b>';
 render(payload([mk({sid: bad, session: bad, project: bad, title: bad,
   state: "working", active: true, state_detail: bad, last_prompt: "p " + bad,
-  last_activity: 99999, subagents: [bad], harness: bad,
+  last_activity: 99999, model: "parent-" + bad, harness: bad,
+  subagents: [{name: bad, model: "child-" + bad}],
   turn: {elapsed_h: bad, eta_h: bad, pct: 50, long: true},
   tasks: [{status: "pending", subject: bad, activeForm: bad}]})]));
-calmAction("open", "claude:" + bad);
+// Keyed on the row's own (harness, sid) — this fixture's harness is hostile text
+// too, so "claude:" never matched it and the panel stayed shut. Half the values
+// under test (the prompt quote, the task subjects, the subagent chip) only render
+// inside the panel, so that spelling was checking the collapsed row alone.
+calmAction("open", K(bad, bad));
 const h = __els.app.innerHTML;
 console.log(JSON.stringify({
+  panelOpen: h.includes('class="cm-exp"'),
   noTag: !h.includes("<img") && !h.includes("<b>"),
   escaped: h.includes("&lt;img src=x onerror=alert(1)&gt;"),
   attrsClosed: !h.includes('title=""><b>'),
+  // The chip is drawn — parent and child are both measured and unequal — so the
+  // hostile child model really did render, escaped, rather than passing by being
+  // suppressed.
+  chip: (h.match(/class="cm-sub-m"/g) || []).length,
+  chipEscaped: h.includes("child-&lt;img src=x onerror=alert(1)&gt;"),
+  metaEscaped: h.includes("parent-&lt;img src=x onerror=alert(1)&gt;"),
   rows: rows()
 }));
 """
         out = self.run_calm(checks)
+        self.assertTrue(out["panelOpen"], "the panel never opened, so most of this proves nothing")
         self.assertTrue(out["noTag"], "hostile session text reached the DOM as markup")
         self.assertTrue(out["escaped"])
         self.assertTrue(out["attrsClosed"], "hostile text broke out of an attribute")
+        self.assertEqual(
+            1,
+            out["chip"],
+            "the hostile child model never rendered, so nothing here proves it is escaped",
+        )
+        self.assertTrue(out["chipEscaped"])
+        self.assertTrue(out["metaEscaped"])
         self.assertEqual(1, out["rows"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")

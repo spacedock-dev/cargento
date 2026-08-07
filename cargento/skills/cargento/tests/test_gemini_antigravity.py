@@ -36,6 +36,50 @@ from .support import (
 )
 
 
+# The generation-metadata half of an Antigravity store. `fixtures.py` writes the
+# identity blob only, and this ticket needs a store that also has generations, so
+# the shape lives here until the shared fixture grows a `gen_metadata` argument.
+# One row per generation, newest last, exactly as the harness writes it: the
+# collector reads `ORDER BY idx DESC LIMIT 1`, so the ordering is load-bearing.
+def _write_antigravity_generations(path: Path, blobs: list[bytes]) -> None:
+    with contextlib.closing(sqlite3.connect(path)) as connection:
+        connection.execute("CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB)")
+        for index, blob in enumerate(blobs):
+            connection.execute("INSERT INTO gen_metadata VALUES (?, ?)", (index, blob))
+        connection.commit()
+
+
+def _generation_blob(
+    name: bytes,
+    *,
+    alias: bytes | None = None,
+    trailing: bytes | None = None,
+    trailing_field: int = 22,
+    preamble: bytes | None = None,
+) -> bytes:
+    """One `gen_metadata.data` blob: top-level field 1, model name at field 21.
+
+    `alias` is field 19, the internal model id the collector must never prefer.
+    `trailing` appends a field *after* 21, which is what a future Antigravity
+    build would do and what the terminal-field check exists to refuse.
+    `trailing_field` picks its number, and the number decides which guard does
+    the refusing: 16 and above encode to a two-byte tag whose lead byte is never
+    a valid UTF-8 start, so the decoder refuses those before the length check is
+    consulted; only a low number reaches the length check itself.
+    `preamble` is bulk that sits before the name — conversation content, in a
+    real store — and must stay outside the read window.
+    """
+    inner = b""
+    if preamble is not None:
+        inner += protobuf_bytes_field(9, preamble)
+    if alias is not None:
+        inner += protobuf_bytes_field(19, alias)
+    inner += protobuf_bytes_field(21, name)
+    if trailing is not None:
+        inner += protobuf_bytes_field(trailing_field, trailing)
+    return protobuf_bytes_field(1, inner)
+
+
 class GeminiAntigravityCollectorTest(RuntimeTestCase):
     def test_the_legacy_gemini_row_still_reads_its_own_store_alone(self) -> None:
         # Gemini CLI lost its consumer tiers, not its enterprise and API-key
@@ -556,7 +600,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(parent_sid, sessions[0]["sid"])
-        self.assertEqual(["Research Auditor"], sessions[0]["subagents"])
+        self.assertEqual([{"name": "Research Auditor", "model": None}], sessions[0]["subagents"])
 
     def test_antigravity_folded_subagent_rate_reaches_parent(self) -> None:
         now = time.time()
@@ -634,7 +678,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual([root_sid], [session["sid"] for session in sessions])
-        self.assertEqual(["Nested Auditor"], sessions[0]["subagents"])
+        self.assertEqual([{"name": "Nested Auditor", "model": None}], sessions[0]["subagents"])
         self.assertEqual("working", sessions[0]["state"])
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
         self.assertEqual(grandchild_mtime, sessions[0]["last_activity"])
@@ -700,7 +744,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 config, state = runtime()
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
-        self.assertEqual(["Fresh Auditor"], sessions[0]["subagents"])
+        self.assertEqual([{"name": "Fresh Auditor", "model": None}], sessions[0]["subagents"])
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
 
     def test_antigravity_skips_unrelated_stale_metadata_stores(self) -> None:
@@ -808,7 +852,340 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 config, state = runtime()
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
-        self.assertEqual(["subagent 22222222"], sessions[0]["subagents"])
+        self.assertEqual([{"name": "subagent 22222222", "model": None}], sessions[0]["subagents"])
+
+    def test_antigravity_publishes_the_model_its_session_is_running_on(self) -> None:
+        # No table in a conversation store has a model column, which is why a
+        # `PRAGMA table_info` survey once concluded the harness does not report
+        # one. It does: the product display name is the last field of the newest
+        # `gen_metadata` blob.
+        now = time.time()
+        sid = "11111111-1111-1111-1111-111111111111"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conversations = root / "conversations"
+            conversations.mkdir()
+            path = conversations / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(path, [_generation_blob(b"Gemini 3.6 Flash (High)")])
+
+            with store_patch(ANTIGRAVITY_CLI_DIR=str(root)):
+                config, state = runtime()
+                sessions = agy_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual("Gemini 3.6 Flash (High)", sessions[0]["model"])
+        # There is no measured provider: the blob's only vendor-adjacent fields
+        # are per-generation booleans and an opaque placeholder enum, and reading
+        # "google" off the string "Gemini" is inference.
+        self.assertIsNone(sessions[0]["provider"])
+
+    def test_the_newest_generation_wins_and_the_internal_alias_never_does(self) -> None:
+        # Field 19 carries a model id too and is an alias: it reads
+        # "gemini-pro-default" where field 21 reads "Gemini 3.1 Pro (High)".
+        # Publishing it would need an alias-to-name table, which is a guess.
+        sid = "11111111-1111-1111-1111-111111111111"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(
+                path,
+                [
+                    _generation_blob(b"Gemini 3.1 Pro (Low)"),
+                    _generation_blob(b"Gemini 3.1 Pro (High)", alias=b"gemini-pro-default"),
+                ],
+            )
+            config, state = runtime()
+            info = agy_collector._session_info(config, state, str(path), sid)
+
+        self.assertEqual("Gemini 3.1 Pro (High)", info["model"])
+
+    def test_a_trailing_field_whose_tag_breaks_the_decode_is_refused(self) -> None:
+        # A future build that appends field 22 lands here, and the session must
+        # report no model rather than a truncated or fused one. Which guard
+        # refuses it is worth naming, because the name of this test used to claim
+        # the other one: every field number from 16 up encodes to a two-byte tag
+        # whose lead byte is 0x80-0xBF, never a valid UTF-8 start, so the decode
+        # fails and the terminal-field check is never consulted. The check itself
+        # is pinned by the low-numbered case below.
+        sid = "11111111-1111-1111-1111-111111111111"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(
+                path,
+                [_generation_blob(b"Gemini 3.6 Flash (High)", trailing=b"a-later-build")],
+            )
+            config, state = runtime()
+            info = agy_collector._session_info(config, state, str(path), sid)
+
+        self.assertIsNone(info["model"])
+
+    def test_a_trailing_low_numbered_field_is_refused_by_the_terminal_check(self) -> None:
+        # Field 21 running to the last byte of the blob is an observed
+        # serialization property, not a documented one, so the parse is accepted
+        # only when it holds. A trailing field numbered 1-15 has a single-byte
+        # ASCII tag, so the tail still decodes cleanly and the length check is the
+        # only thing standing between a fused string and a card that presents it
+        # as a measured model.
+        sid = "11111111-1111-1111-1111-111111111111"
+        blob = _generation_blob(
+            b"Gemini 3.6 Flash (High)",
+            trailing=b"gpt-oss-safety",
+            trailing_field=9,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(path, [blob])
+            config, state = runtime()
+            info = agy_collector._session_info(config, state, str(path), sid)
+
+        self.assertIsNone(info["model"])
+        # And it was the length check that refused it, not the decoder: these are
+        # the bytes the check rejects, and they decode without complaint. Remove
+        # the check and this is what a card publishes.
+        tail = blob[-64:]
+        marker = tail.index(agy_collector._MODEL_FIELD_TAG)
+        self.assertEqual(
+            "Gemini 3.6 Flash (High)J gpt-oss-safety",
+            records.safe_text(tail[marker + 3 :].decode("utf-8"), runtime_sessions.MODEL_CAP_CHARS),
+        )
+
+    def test_a_long_model_name_is_capped_and_its_control_bytes_scrubbed(self) -> None:
+        # The name is untrusted vendor text on its way to the DOM, so it is
+        # bounded and scrubbed like every other such string rather than published
+        # as read. The 64-byte window admits 61 characters, well past the
+        # 40-character cap, so the cap is the only thing holding the length.
+        sid = "11111111-1111-1111-1111-111111111111"
+        raw = b"Gemini 3.6 Ultra\x07Thinking Preview (Very High)"
+        self.assertEqual(45, len(raw))  # admitted by the window, over the cap
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(path, [_generation_blob(raw)])
+            config, state = runtime()
+            info = agy_collector._session_info(config, state, str(path), sid)
+
+        self.assertEqual("Gemini 3.6 Ultra Thinking Preview (Very", info["model"])
+        self.assertLessEqual(len(info["model"]), runtime_sessions.MODEL_CAP_CHARS)
+        self.assertNotIn("\x07", info["model"])
+
+    def test_a_name_too_long_for_the_read_window_reports_no_model(self) -> None:
+        # The window stays at 64 bytes for privacy, so a name past 61 characters
+        # cannot be validated. That reads as "no model reported", which is the
+        # right answer for a blob we could not check, not a reason to widen it.
+        sid = "11111111-1111-1111-1111-111111111111"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(path, [_generation_blob(b"G" * 62)])
+            config, state = runtime()
+            info = agy_collector._session_info(config, state, str(path), sid)
+
+        self.assertIsNone(info["model"])
+
+    def test_the_model_read_stays_inside_the_window_and_the_open_connection(self) -> None:
+        # Three invariants in one store, because they are the same constraint:
+        # the read costs no extra connection, it asks SQLite for 64 bytes rather
+        # than for the value, and the conversation content sitting before the
+        # name never reaches the result. A wider tail on a real row holds
+        # verbatim system-prompt text.
+        #
+        # `substr(data,-64)` would satisfy the last of those and fail the second:
+        # a scalar function over a value materialises the whole row first. So the
+        # SQL is asserted never to name the blob column, and the 64 bytes are
+        # asserted to come through incremental blob I/O instead.
+        sid = "11111111-1111-1111-1111-111111111111"
+        secret = b"ALWAYS START your thought with recalling critical instructions"
+        connections: list[Any] = []
+        real_connect = runtime_io.sqlite_module.connect
+
+        def spy(*args: Any, **kwargs: Any) -> Any:
+            connection = mock.MagicMock(wraps=real_connect(*args, **kwargs))
+            connections.append(connection)
+            return connection
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(
+                path,
+                [_generation_blob(b"Gemini 3.6 Flash (High)", preamble=secret)],
+            )
+            config, state = runtime()
+            with mock.patch.object(
+                runtime_io.sqlite_module,
+                "connect",
+                side_effect=spy,
+            ) as connect:
+                info = agy_collector._session_info(config, state, str(path), sid)
+
+        self.assertEqual("Gemini 3.6 Flash (High)", info["model"])
+        self.assertEqual(1, connect.call_count)
+        self.assertNotIn("ALWAYS START", json.dumps(info))
+
+        (connection,) = connections
+        connection.blobopen.assert_called_once_with("gen_metadata", "data", mock.ANY, readonly=True)
+        self.assertEqual(64, agy_collector._MODEL_TAIL_BYTES)
+        statements = [call.args[0] for call in connection.execute.call_args_list]
+        self.assertIn(agy_collector._MODEL_ROW_QUERY, statements)
+        self.assertTrue(agy_collector._MODEL_ROW_QUERY.startswith("SELECT rowid FROM"))
+        self.assertTrue(
+            all(
+                "gen_metadata" not in sql or sql == agy_collector._MODEL_ROW_QUERY
+                for sql in statements
+            ),
+            statements,
+        )
+
+    def test_a_store_without_generation_metadata_still_reports_its_parent(self) -> None:
+        # The model fails on its own terms. A store on a schema with no
+        # `gen_metadata` at all is not a broken store, and the parent it does
+        # report must survive the missing table.
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sub_sid}.db"
+            write_antigravity_metadata(
+                path,
+                protobuf_bytes_field(5, parent_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Research Auditor")),
+            )
+            with state_of().cache_lock:
+                state_of().store_errors.clear()
+            config, state = runtime()
+            info = agy_collector._session_info(config, state, str(path), sub_sid)
+
+            self.assertNotIn(str(path), state_of().store_errors)
+
+        self.assertEqual(parent_sid, info["parent_id"])
+        self.assertEqual("Research Auditor", info["subagent_label"])
+        self.assertIsNone(info["model"])
+
+    def test_a_session_that_never_got_a_reply_reports_no_model_not_an_error(self) -> None:
+        # Zero generations is a session that has not been answered yet. It reads
+        # fine, so it must not reach the store-error diagnostics.
+        sid = "11111111-1111-1111-1111-111111111111"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / f"{sid}.db"
+            write_antigravity_metadata(path, protobuf_bytes_field(6, sid.encode()))
+            _write_antigravity_generations(path, [])
+            with state_of().cache_lock:
+                state_of().store_errors.clear()
+            config, state = runtime()
+            info = agy_collector._session_info(config, state, str(path), sid)
+
+            self.assertNotIn(str(path), state_of().store_errors)
+
+        self.assertIsNone(info["model"])
+
+    def test_a_subagent_publishes_the_model_measured_in_its_own_store(self) -> None:
+        # The live shape: a parent on Flash delegating to a subagent on Pro. Each
+        # store is measured on its own, so both sides of the comparison the page
+        # makes are readings rather than one reading and an assumption.
+        now = time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conversations = root / "conversations"
+            conversations.mkdir()
+            parent_path = conversations / f"{parent_sid}.db"
+            write_antigravity_metadata(parent_path, protobuf_bytes_field(6, parent_sid.encode()))
+            _write_antigravity_generations(
+                parent_path, [_generation_blob(b"Gemini 3.6 Flash (High)")]
+            )
+            sub_path = conversations / f"{sub_sid}.db"
+            write_antigravity_metadata(
+                sub_path,
+                protobuf_bytes_field(5, parent_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Research Auditor")),
+            )
+            _write_antigravity_generations(sub_path, [_generation_blob(b"Gemini 3.1 Pro (Low)")])
+
+            with store_patch(ANTIGRAVITY_CLI_DIR=str(root)):
+                config, state = runtime()
+                sessions = agy_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual("Gemini 3.6 Flash (High)", sessions[0]["model"])
+        self.assertEqual(
+            [{"name": "Research Auditor", "model": "Gemini 3.1 Pro (Low)"}],
+            sessions[0]["subagents"],
+        )
+
+    def test_an_unread_subagent_model_is_published_absent_never_inherited(self) -> None:
+        # A subagent whose store holds no generations has not been measured. Its
+        # model is None, never the parent's: a copied value renders identically
+        # to a reading, which is the collapse this field exists to prevent.
+        now = time.time()
+        parent_sid = "11111111-1111-1111-1111-111111111111"
+        sub_sid = "22222222-2222-2222-2222-222222222222"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conversations = root / "conversations"
+            conversations.mkdir()
+            parent_path = conversations / f"{parent_sid}.db"
+            write_antigravity_metadata(parent_path, protobuf_bytes_field(6, parent_sid.encode()))
+            _write_antigravity_generations(
+                parent_path, [_generation_blob(b"Gemini 3.6 Flash (High)")]
+            )
+            write_antigravity_metadata(
+                conversations / f"{sub_sid}.db",
+                protobuf_bytes_field(5, parent_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Research Auditor")),
+            )
+
+            with store_patch(ANTIGRAVITY_CLI_DIR=str(root)):
+                config, state = runtime()
+                sessions = agy_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual("Gemini 3.6 Flash (High)", sessions[0]["model"])
+        self.assertEqual([{"name": "Research Auditor", "model": None}], sessions[0]["subagents"])
+
+    def test_a_nested_subagent_carries_the_model_its_own_store_reports(self) -> None:
+        # `descendants()` flattens the subtree, so a grandchild is listed on the
+        # root's card beside its own parent. Each entry still carries the model
+        # its own store reports and nothing else — the collector attributes no
+        # model across stores, and the page compares what it is given.
+        now = time.time()
+        root_sid = "11111111-1111-1111-1111-111111111111"
+        child_sid = "22222222-2222-2222-2222-222222222222"
+        grandchild_sid = "33333333-3333-3333-3333-333333333333"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conversations = root / "conversations"
+            conversations.mkdir()
+            root_path = conversations / f"{root_sid}.db"
+            write_antigravity_metadata(root_path, protobuf_bytes_field(6, root_sid.encode()))
+            _write_antigravity_generations(
+                root_path, [_generation_blob(b"Gemini 3.6 Flash (High)")]
+            )
+            child_path = conversations / f"{child_sid}.db"
+            write_antigravity_metadata(
+                child_path,
+                protobuf_bytes_field(5, root_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Parent Worker")),
+            )
+            _write_antigravity_generations(child_path, [_generation_blob(b"Gemini 3.1 Pro (Low)")])
+            grandchild_path = conversations / f"{grandchild_sid}.db"
+            write_antigravity_metadata(
+                grandchild_path,
+                protobuf_bytes_field(5, child_sid.encode())
+                + protobuf_bytes_field(8, protobuf_bytes_field(2, b"Nested Auditor")),
+            )
+            _write_antigravity_generations(
+                grandchild_path, [_generation_blob(b"Gemini 3.1 Pro (Low)")]
+            )
+
+            with store_patch(ANTIGRAVITY_CLI_DIR=str(root)):
+                config, state = runtime()
+                sessions = agy_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual([root_sid], [session["sid"] for session in sessions])
+        self.assertEqual(
+            {("Parent Worker", "Gemini 3.1 Pro (Low)"), ("Nested Auditor", "Gemini 3.1 Pro (Low)")},
+            {(a["name"], a["model"]) for a in sessions[0]["subagents"]},
+        )
 
     def test_antigravity_session_info_uses_decodable_fallback_fields(self) -> None:
         parent_sid = "11111111-1111-1111-1111-111111111111"
@@ -890,7 +1267,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             config, state = runtime()
             info = agy_collector._session_info(config, state, str(database), "session")
 
-        self.assertEqual({"parent_id": None, "subagent_label": None}, info)
+        self.assertEqual({"parent_id": None, "subagent_label": None, "model": None}, info)
         self.assertEqual(1, connect.call_count)
         connection.close.assert_called_once_with()
 
@@ -936,7 +1313,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
             config, state = runtime()
             info = agy_collector._session_info(config, state, "/tmp/session.db", "session")
 
-        self.assertEqual({"parent_id": None, "subagent_label": None}, info)
+        self.assertEqual({"parent_id": None, "subagent_label": None, "model": None}, info)
         self.assertEqual(2, connect.call_count)
         plain.close.assert_called_once_with()
         immutable.close.assert_called_once_with()

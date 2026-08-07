@@ -161,6 +161,10 @@
   .subs-k{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink3);text-transform:uppercase;letter-spacing:.08em}
   .subpill{display:inline-flex;align-items:center;gap:7px;padding:5px 13px;border-radius:999px;background:color-mix(in oklab,var(--accent) 13%,transparent);border:1px solid color-mix(in oklab,var(--accent) 30%,transparent);font-size:var(--fs-sm);color:var(--ink)}
   .subdot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.6s infinite}
+  /* Only drawn where the child's model differs from its parent's, so it must not
+     read as loudly as the name it sits beside: mono and one step down, in the
+     muted ink, inside the pill rather than after it. */
+  .subpill-m{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink3);border-left:1px solid color-mix(in oklab,var(--accent) 34%,transparent);margin-left:2px;padding-left:8px}
   .sd{display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--line);padding-top:12px}
   .sd-k{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink3);text-transform:uppercase;letter-spacing:.08em}
   .sd-role{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2);margin-left:8px}
@@ -339,6 +343,10 @@
   .cm-sub{display:flex;align-items:center;gap:10px}
   .cm-sub-dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--accent);animation:pulse 1.7s infinite}
   .cm-sub-n{font-size:var(--fs-md);color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* `flex:none` because .cm-sub-n takes the slack and ellipsises: the chip is the
+     shorter, rarer string and must survive a long subagent name rather than be
+     the first thing clipped. */
+  .cm-sub-m{flex:none;font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);white-space:nowrap}
   .cm-acts{display:flex;gap:8px;flex-wrap:wrap}
   .cm-act{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink2);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:8px 14px;cursor:pointer;transition:background .12s,color .12s}
   .cm-act:hover{background:var(--bg);color:var(--ink)}

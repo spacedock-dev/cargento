@@ -105,7 +105,10 @@ def _collect_db(
             active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
             if not (active or show_all):
                 continue
-            subagents = [label for label, _ in agents]
+            # `model` is always present on a subagent element, per the contract
+            # in `sessions.base_session`. None here says nobody has looked for
+            # where Goose records the model, not that Goose runs on none.
+            subagents = [{"name": label, "model": None} for label, _ in agents]
             session_state, state_detail = "idle", "awaiting your message"
             if sessions.is_fresh(config, now, last_activity, config.working_threshold_sec):
                 session_state = "working"

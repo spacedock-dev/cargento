@@ -575,6 +575,123 @@ class PromptTitleTest(unittest.TestCase):
         )
 
 
+class CopilotSubagentEventsTest(unittest.TestCase):
+    """Copilot's pending subagents: which child a pill is, and what it runs on.
+
+    An element is `{"name": str, "model": str | None}`, and the two come off one
+    `subagent.started` object. That is the reason this is the source rather than
+    the billing ledger, whose `agent_id` is `sidekick-<name>-<epoch ms>` against a
+    published name of `<name>` — related by string construction only, so
+    recovering one from the other is prefix-parsing, and a parsed match renders
+    exactly like a read one.
+
+    None means the event reported no model. It is never a guess.
+    """
+
+    def analyze(self, *events: dict[str, Any]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "events.jsonl"
+            path.write_text("".join(json.dumps(e) + "\n" for e in events))
+            return runtime_transcripts.analyze_copilot_events(CONFIG, str(path))
+
+    def started(self, agent_id: str, name: str, model: Any = "gpt-5.4-mini") -> dict[str, Any]:
+        """One start event in the live shape: the name and the model in `data`,
+        the identity at the top level beside a per-event `id` of its own."""
+        return {
+            "type": "subagent.started",
+            "agentId": agent_id,
+            "id": "event-" + agent_id,
+            "data": {"toolCallId": agent_id, "agentName": name, "model": model},
+        }
+
+    def test_a_finished_child_retires_itself_and_not_whichever_started_first(self) -> None:
+        # The pre-existing defect this ticket makes visible. `subagent.completed`
+        # carries a *different* top-level `id` from `subagent.started` — measured
+        # on a live store — so keying on `id` never matched and the unmatched-key
+        # fallback below retired the oldest pill instead. With one child that is
+        # accidentally right. With two it retires the wrong one, and now that a
+        # pill carries a model, the wrong model goes with the wrong name.
+        #
+        # `agentId` is the one candidate that holds the same value across started,
+        # completed and failed, and it is the same value the billing ledger's
+        # `agent_id` column carries.
+        #
+        # The second child is the one that finishes, precisely because retiring
+        # the oldest would also leave exactly one pill behind and pass.
+        info = self.analyze(
+            self.started("a1", "researcher", "gpt-5.4-mini"),
+            self.started("b1", "reviewer", "gpt-5.6-terra"),
+            {"type": "subagent.completed", "agentId": "b1", "id": "some-other-event-id"},
+        )
+
+        self.assertEqual(
+            [{"name": "researcher", "model": "gpt-5.4-mini"}],
+            list(info["pending_agents"].values()),
+        )
+
+    def test_a_failed_child_stops_being_pending(self) -> None:
+        # `subagent.failed` was unhandled, so a child that failed kept its pill
+        # for the rest of the session — measured live, on one that failed with
+        # "No response generated". It would now keep a model badge with it,
+        # advertising a model nothing is running on.
+        info = self.analyze(
+            self.started("a1", "researcher"),
+            {
+                "type": "subagent.failed",
+                "agentId": "a1",
+                "data": {"agentName": "researcher", "error": "No response generated"},
+            },
+        )
+
+        self.assertEqual({}, info["pending_agents"])
+
+    def test_a_start_event_with_no_model_reports_none_rather_than_a_name(self) -> None:
+        info = self.analyze(
+            {"type": "subagent.started", "agentId": "a1", "data": {"agentName": "researcher"}}
+        )
+
+        self.assertEqual(
+            [{"name": "researcher", "model": None}], list(info["pending_agents"].values())
+        )
+
+    def test_no_unusable_model_value_reaches_the_payload_as_a_model(self) -> None:
+        unusable: list[Any] = ["", "   ", 5, ["gpt-5"], {"name": "gpt-5"}, None, True]
+        for value in unusable:
+            with self.subTest(value=repr(value)):
+                info = self.analyze(self.started("a1", "researcher", value))
+
+                self.assertEqual(
+                    [{"name": "researcher", "model": None}], list(info["pending_agents"].values())
+                )
+
+    def test_the_name_is_bounded_here_and_the_model_is_carried_raw(self) -> None:
+        # A vendor model string is untrusted text on its way to the DOM, exactly
+        # like the name beside it, and it lands on the surface with the least room
+        # of any. It is bounded by the collector rather than here, to the width
+        # `sessions` declares for every model on the payload — this module may not
+        # import `sessions`, and a second literal cap beside the declared one is
+        # how two caps drift apart. `tests/test_copilot.py` pins the bound.
+        info = self.analyze(self.started("a1", "n" * 200, "m" * 100))
+        pill = next(iter(info["pending_agents"].values()))
+
+        self.assertEqual("n" * 70, pill["name"])
+        self.assertEqual("m" * 100, pill["model"])
+
+    def test_an_unhashable_identity_does_not_take_the_session_reading_with_it(self) -> None:
+        # The key is a dict key and the record is untrusted, so a JSON list under
+        # `agentId` would raise straight out of the analyzer — taking the title,
+        # the prompt and the activity stamp of a session that was read fine.
+        info = self.analyze(
+            {"type": "user.message", "data": {"text": "hello"}},
+            {"type": "subagent.started", "agentId": ["a1"], "data": {"agentName": "researcher"}},
+        )
+
+        self.assertEqual("hello", info["last_prompt"])
+        self.assertEqual(
+            [{"name": "researcher", "model": None}], list(info["pending_agents"].values())
+        )
+
+
 class MalformedRecordTest(unittest.TestCase):
     """Every harness payload is untyped JSON read off disk. `x.get("k") or {}`
     is not a guard: any truthy non-dict passes the `or` and the next .get()
@@ -654,6 +771,10 @@ class MalformedRecordTest(unittest.TestCase):
                     {"type": "session.start", "data": {"context": hostile}},
                     {"type": "user.message", "data": hostile},
                     {"type": "subagent.started", "data": hostile},
+                    # The identity is a dict key, so an unhashable one here would
+                    # raise rather than merely read wrong.
+                    {"type": "subagent.started", "agentId": hostile, "data": {"agentName": "n"}},
+                    {"type": "subagent.completed", "agentId": hostile},
                 ],
             ),
             (

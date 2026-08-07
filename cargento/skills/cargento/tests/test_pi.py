@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from cargento_runtime import records as runtime_records
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import pi as pi_collector
 
@@ -329,6 +330,57 @@ class PiTranscriptTest(unittest.TestCase):
 
         self.assertEqual("groq", scan["provider"])
         self.assertIsNone(scan["model"], "the older entry's model leaked across")
+
+    def test_the_authority_is_bounded_and_scrubbed_before_it_can_reach_a_card(self) -> None:
+        # Both values are the vendor's own text, copied out of an API response,
+        # and DRC-4117 turns `model` from a Pi-only field into a slot every
+        # harness's card draws — so the length is bounded and the control bytes
+        # are stripped at the type guard both fields pass through, not trusted.
+        # Mutation-checked: returning the raw string from `_text` publishes all
+        # 96 characters of the model and the tab inside the provider with them.
+        cap = runtime_sessions.MODEL_CAP_CHARS
+        long_model = "gpt-" + "5" * 92
+        records = [
+            {"type": "session", "version": 3, "id": "cap", "cwd": "/w/proj"},
+            self._message(
+                "root",
+                None,
+                "2026-07-29T11:00:00Z",
+                "assistant",
+                "one",
+                provider="open\tai-codex",
+                model=long_model,
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-cap.jsonl"
+            self._write(path, records)
+            scan = self.scan(path)
+            assert scan is not None
+
+        self.assertEqual(96, len(long_model), "fixture no longer exceeds the cap")
+        self.assertEqual(long_model[:cap], scan["model"])
+        self.assertEqual(cap, len(scan["model"]))
+        self.assertEqual("open ai-codex", scan["provider"])
+
+    def test_a_switch_bounds_its_authority_the_same_way_a_message_does(self) -> None:
+        # The two kinds read different keys, so a cap applied to one arm and not
+        # the other ships an unbounded model to anyone who just switched.
+        cap = runtime_sessions.MODEL_CAP_CHARS
+        long_model = "claude-" + "opus" * 20
+        records = [
+            {"type": "session", "version": 3, "id": "capsw", "cwd": "/w/proj"},
+            self._message("root", None, "2026-07-29T11:00:00Z", "user", "Start"),
+            self._switch("sw", "root", "2026-07-29T11:00:01Z", "anthropic", long_model),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi-capsw.jsonl"
+            self._write(path, records)
+            scan = self.scan(path)
+            assert scan is not None
+
+        self.assertEqual(long_model[:cap], scan["model"])
+        self.assertEqual("anthropic", scan["provider"], "a short value is left alone")
 
     def test_an_abandoned_branch_never_reports_its_authority(self) -> None:
         # The whole reason this is derived from the branch path rather than a

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import time
 import unittest
@@ -140,6 +141,54 @@ class CargentoServerTest(RuntimeTestCase):
         # Copilot's collector fills this; every other harness leaves the declared
         # None, which reads as "no accounting", never as "spent nothing".
         self.assertIsNone(runtime_sessions.base_session("goose", "abc", "proj")["consumption"])
+
+    def test_model_ships_unfilled_and_bounded_by_a_cap_of_its_own(self) -> None:
+        # None is the declared value, and it means "not read" rather than "no
+        # model" — five harnesses in ten publish it after this batch, so it is the
+        # commonest reading and not an edge. The page draws it as an explicit dash
+        # for that reason; a blank slot is indistinguishable from a measurement.
+        row = runtime_sessions.base_session("goose", "abc", "proj")
+        self.assertIsNone(row["model"])
+        self.assertIsNone(row["provider"])
+        self.assertEqual([], row["subagents"])
+
+        # The cap is this module's own symbol even though `quota` already has a
+        # 40. `quota` imports this module, so importing back is a cycle — but the
+        # reason they are separate is that they answer different questions: quota's
+        # cap feeds a distinctness digest so two long model names sharing a prefix
+        # stay two usage rows, and a session row, holding one model and nothing to
+        # tell it apart from, only truncates. Either may move without the other,
+        # which is what this asserts: agreement is not required, independence is.
+        self.assertEqual(40, runtime_sessions.MODEL_CAP_CHARS)
+        source = Path(runtime_sessions.__file__ or "").read_text(encoding="utf-8")
+        self.assertIsNone(
+            re.search(r"^\s*(?:from|import)\b.*\bquota\b", source, re.MULTILINE),
+            "sessions.py imported quota — quota.py imports sessions, so that is a cycle",
+        )
+
+    def test_a_subagent_element_always_carries_a_model_key(self) -> None:
+        # The published element is `{"name": str, "model": str | None}` and `model`
+        # is always present. A parallel list of only the children whose model
+        # differs would be smaller and is refused: absence from such a list means
+        # either "same as the parent" or "nobody read one", which collapses in the
+        # wire format the two facts this field exists to keep apart. There is also
+        # no sound join key to build one on — several collectors fall back to a
+        # bare "subagent" label, so two unnamed children collide and a model gets
+        # attributed to a sibling.
+        #
+        # Nothing here builds an element; the collectors do, each in its own test.
+        # What this pins is that the one shared consumer survives either shape:
+        # `working_detail` counts elements without reading inside them, which is
+        # why the collectors can be converted one at a time.
+        self.assertEqual([], runtime_sessions.base_session("claude", "abc", "proj")["subagents"])
+        self.assertEqual(
+            "running 2 subagents",
+            runtime_sessions.working_detail(None, [{"name": "a", "model": None}, "b"]),
+        )
+        self.assertEqual(
+            "running 1 subagent", runtime_sessions.working_detail(None, [{"name": "a"}])
+        )
+        self.assertEqual("generating…", runtime_sessions.working_detail(None, []))
 
     def test_turn_clock_reanchors_after_quiet_gap(self) -> None:
         # Time blocked on a human (permission prompt, AskUserQuestion, sleep)

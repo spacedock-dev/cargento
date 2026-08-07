@@ -298,28 +298,119 @@ const PROVIDER_HARNESS = {
 /* "via" because the authority is borrowed, with the model beside it since the
    two answer one question together: whose quota, and how expensively. No icon:
    a Claude glyph on a Pi row reads as a Claude session, which is the confusion
-   this is meant to remove. */
+   this is meant to remove.
+
+   Three states for the model, not two, and this is a slot rather than a clause.
+   Consumption vanishes where it is unset because its absence is a measurement
+   about the harness — nine harnesses keep no billing ledger, so a line with no
+   `used` in it claims nothing. Model's absence is never a fact about the world:
+   every session runs on some model, so an unset value is only a gap in our
+   reading. Left blank it is indistinguishable from a measurement, which is the
+   one collapse this field exists to prevent, so it draws a dash and says in the
+   tooltip whose gap it is. Four harnesses in ten report no model today (Gemini,
+   Goose, OpenCode, Droid), so that dash is common and not an edge.
+
+   The sentence is about THIS READING, never about the harness's capability. The
+   dash arrives by three different roads that look identical from here: a harness
+   nobody has taught Cargento to read a model from, a harness that does report one
+   but not for this session (Claude publishes null for every session that is not
+   active, Codex for any `?all=1` row, Copilot whenever its usage row is
+   truncated), and a store that could not be read this time. "Cargento does not
+   read a model for Claude sessions" is false on two of those three, and it is
+   false in the loudest way: it tells the reader the gap is by design, which is
+   how a bug report does not get filed. Naming the harness is fine — it scopes the
+   sentence to this row — as long as it stays inside "this <name> session" and
+   never becomes a claim about what that harness can do. */
+const MODEL_UNREAD_DASH = "—";
+function modelUnreadNote(harness){
+  const named = (own(HARNESS, harness, null) || {}).name || harness || "";
+  const scope = named ? "this " + named + " session" : "this session";
+  return "Cargento read no model for " + scope + " on this refresh, so which model" +
+    " it runs on is unknown — not unset. Every session runs on some model.";
+}
 function authorityBit(sess){
   const provider = sess && sess.provider;
-  const model = sess && sess.model;
-  if(!provider && !model) return "";
+  const raw = sess && sess.model;
+  const model = (typeof raw === "string" && raw.trim()) ? raw : null;
   const key = provider ? own(PROVIDER_HARNESS, provider, null) : null;
   const named = key ? (own(HARNESS, key, null) || {}).name : null;
   /* "via" only when an authority is known. "via gpt-5" would read as the model
-     being the thing that owns the quota. */
-  const text = provider
-    ? "via " + (named || provider) + (model ? " · " + model : "")
-    : model;
-  const title = provider
-    ? "spending " + provider + "'s quota" + (model ? ", model " + model : "")
-    : "model " + model;
+     being the thing that owns the quota. Where there is no authority the value
+     is labelled `model` instead, which is also what gives the dash a referent —
+     a bare "—" in a metadata line says nothing is missing in particular. */
+  let text;
+  let title;
+  if(provider){
+    text = "via " + (named || provider) +
+      (model ? " · " + model : " · model " + MODEL_UNREAD_DASH);
+    title = "spending " + provider + "'s quota" +
+      (model ? ", model " + model : ". " + modelUnreadNote(sess && sess.harness));
+  } else if(model){
+    text = "model " + model;
+    title = "model " + model;
+  } else {
+    text = "model " + MODEL_UNREAD_DASH;
+    title = modelUnreadNote(sess && sess.harness);
+  }
   return `<span class="via" title="${esc(title)}">${esc(text)}</span>`;
 }
 
-/* Separator included, so a row with no authority renders no stray dot. */
+/* Separator included, so the caller does not have to know whether anything
+   rendered. Always something now — the model slot is never empty. */
 function authorityMeta(sess){
   const bit = authorityBit(sess);
   return bit ? " · " + bit : "";
+}
+
+/* Subagent list elements grew from a bare label to `{name, model}`, and these
+   two are how both views read one. They tolerate a bare string so a producer
+   still on the old shape degrades to name-only instead of printing
+   "[object Object]" — which is what lets the collectors be converted one at a
+   time. */
+function subName(a){
+  if(a == null) return "";
+  if(typeof a === "string") return a;
+  return String(a.name == null ? "" : a.name);
+}
+function subModel(a){
+  if(a == null || typeof a === "string") return null;
+  const m = a.model;
+  return (typeof m === "string" && m.trim()) ? m : null;
+}
+
+/* A child's model is worth screen space only where it is NOT the parent's — the
+   interesting fact is a subagent running somewhere else, and repeating the
+   parent's model under every child is noise on the one card that has least room
+   for it. Returns the model to show, or null.
+
+   Both sides must be measured. `child !== parent` is true whenever the parent is
+   null, and a null parent is the *common* case: four harnesses in ten report no
+   model at all, and the six that do still publish null for a session they could
+   not read. That spelling would mark every measured child as differing across a
+   whole board and read as a finding. "Differs" is a claim about two readings, and
+   one reading against a gap is not a comparison.
+
+   No case-folding, no suffix-stripping, no prefix matching. Two vendor strings
+   are the same model when they are the same string; deciding otherwise is
+   inference, and an inferred match renders identically to a read one. */
+function childModelShown(sess, a){
+  const parent = sess && sess.model;
+  if(typeof parent !== "string" || !parent.trim()) return null;
+  const child = subModel(a);
+  if(child === null) return null;
+  return child === parent ? null : child;
+}
+
+/* One wording, so the card chip and the calm panel chip cannot drift.
+
+   "this session", not "its parent session": Antigravity flattens a whole
+   subtree onto the root card, so a grandchild's own parent is not the session
+   named here. The comparison childModelShown() makes is against the card, and
+   the tooltip has to describe that same comparison or it states, of a
+   grandchild, a relationship nobody measured. */
+function childModelNote(sess, model){
+  return "this subagent runs on " + model + ", not the " + (sess && sess.model) +
+    " this session is on";
 }
 
 /* One badge encoding for both states, and the difference is not carried by

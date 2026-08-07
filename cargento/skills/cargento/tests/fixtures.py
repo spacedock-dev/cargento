@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import sqlite3
@@ -196,12 +197,41 @@ def build_opencode(root: Path, when: float, sid: str, title: str) -> dict[str, s
     return {"OPENCODE_DATA": str(root)}
 
 
+# The model a Cursor store reports. Cursor writes its own codename rather than a
+# marketing name, so this is what a real store says and what the card shows.
+CURSOR_MODEL = "vega"
+
+
 def build_cursor(root: Path, when: float, sid: str, title: str) -> dict[str, str]:
+    # `blobs (id TEXT PRIMARY KEY, data BLOB)` is the real schema, and the ids
+    # are content-addressed sha256 of the bytes they hold. The chain the reader
+    # walks is meta -> latestRootBlobId -> root blob -> its children -> the
+    # message carrying `providerOptions.cursor.modelName`, so the fixture builds
+    # every hop: a store that merely holds the bytes without the pointer would
+    # publish no model and the read would look green while testing nothing.
+    message = json.dumps(
+        {
+            "role": "user",
+            "providerOptions": {"cursor": {"modelName": CURSOR_MODEL}},
+            "content": [{"type": "text", "text": title}],
+        }
+    ).encode()
+    message_id = hashlib.sha256(message).hexdigest()
+    # One child id: protobuf field 1, wire type 2, length 32 — the framing a
+    # root blob lists its messages with.
+    root_blob = b"\x0a\x20" + bytes.fromhex(message_id)
+    root_id = hashlib.sha256(root_blob).hexdigest()
     _sqlite(
         root / "w" / sid / "store.db",
         [
             ("CREATE TABLE meta (value TEXT)", ()),
-            ("INSERT INTO meta VALUES (?)", (json.dumps({"name": title}).encode().hex(),)),
+            (
+                "INSERT INTO meta VALUES (?)",
+                (json.dumps({"name": title, "latestRootBlobId": root_id}).encode().hex(),),
+            ),
+            ("CREATE TABLE blobs (id TEXT PRIMARY KEY, data BLOB)", ()),
+            ("INSERT INTO blobs VALUES (?, ?)", (root_id, root_blob)),
+            ("INSERT INTO blobs VALUES (?, ?)", (message_id, message)),
         ],
         when,
     )

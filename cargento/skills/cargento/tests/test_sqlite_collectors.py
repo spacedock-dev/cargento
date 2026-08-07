@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import sqlite3
@@ -27,6 +28,7 @@ from .support import (
     RuntimeTestCase,
     collect,
     collect_claude,
+    config_patch,
     diagnose,
     make_runtime,
     runtime,
@@ -126,7 +128,10 @@ class SqliteCollectorTest(RuntimeTestCase):
                 rows = opencode_collector.collect(config, state, now, 24, True)
 
         self.assertEqual(1, len(rows), "a child must not become its own row")
-        self.assertEqual(["researcher"], rows[0]["subagents"])
+        # DRC-4117 grew each element into an object. `model` is present and
+        # None: OpenCode records no model, and that is a different fact from
+        # "this child runs whatever its parent runs".
+        self.assertEqual([{"name": "researcher", "model": None}], rows[0]["subagents"])
         self.assertEqual("working", rows[0]["state"])
 
     def test_a_broken_session_query_is_recorded_as_a_store_error(self) -> None:
@@ -194,7 +199,13 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual(250, len(everything))  # previously capped at 200
         self.assertEqual(0, len(windowed))
 
-    def _cursor_store(self, tmp: Path, sid: str, rows: list[Any]) -> None:
+    def _cursor_store(
+        self,
+        tmp: Path,
+        sid: str,
+        rows: list[Any],
+        blobs: dict[str, bytes] | None = None,
+    ) -> None:
         db = tmp / "chats" / "hash1" / sid / "store.db"
         db.parent.mkdir(parents=True)
         con = sqlite3.connect(str(db))
@@ -204,9 +215,38 @@ class SqliteCollectorTest(RuntimeTestCase):
                 payload = json.dumps(row)
                 # Cursor hex-encodes the JSON in some versions; cover that one.
                 con.execute("INSERT INTO meta VALUES (?)", (payload.encode().hex(),))
+            # Omitted entirely when there are no blobs, because that is the
+            # shape a store on an older schema has, and "no such table" must
+            # read as "no model here", not as a broken store.
+            if blobs is not None:
+                con.execute("CREATE TABLE blobs (id TEXT PRIMARY KEY, data BLOB)")
+                con.executemany("INSERT INTO blobs VALUES (?, ?)", list(blobs.items()))
             con.commit()
         finally:
             con.close()
+
+    @staticmethod
+    def _cursor_message(model: str | None, text: str = "hi") -> bytes:
+        """One message blob, with or without the model Cursor records on it."""
+        payload: dict[str, Any] = {"role": "assistant", "content": [{"type": "text", "text": text}]}
+        if model is not None:
+            payload["providerOptions"] = {"cursor": {"modelName": model}}
+        return json.dumps(payload, separators=(",", ":")).encode()
+
+    @staticmethod
+    def _cursor_chat(messages: list[bytes], trailer: bytes = b"") -> tuple[str, dict[str, bytes]]:
+        """(root blob id, the blobs table) for a chat holding ``messages``.
+
+        Shaped like the real store rather than conveniently: blob ids are the
+        sha256 of the blob's own bytes, and the root blob is the flat, ordered
+        list of child ids, each framed as protobuf field 1 (`0a 20 <32 bytes>`).
+        ``trailer`` appends raw bytes past that list, which is how a stray frame
+        inside message text reaches the parser.
+        """
+        pairs = [(hashlib.sha256(m).hexdigest(), m) for m in messages]
+        root = b"".join(b"\x0a\x20" + bytes.fromhex(i) for i, _ in pairs) + trailer
+        root_id = hashlib.sha256(root).hexdigest()
+        return root_id, {root_id: root, **dict(pairs)}
 
     def _collect_cursor(self, tmp: Path) -> list[dict[str, Any]]:
         with (
@@ -224,12 +264,27 @@ class SqliteCollectorTest(RuntimeTestCase):
         # every five-second refresh. Asserting the returned value is not enough:
         # the double-checked lock inside _meta returns the cached value even
         # with the outer memo gone, so this counts store opens instead.
+        #
+        # The model is memoized with the title and the workspace, and that is
+        # what keeps its two blob lookups off every refresh: it costs a read
+        # only when the store has moved, which is exactly when it can have
+        # changed.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             workspace = root / "w" / "proj"
             workspace.mkdir(parents=True)
+            root_id, blobs = self._cursor_chat([self._cursor_message("vega")])
             self._cursor_store(
-                root, "aaaa1111", [{"name": "Some title", "workspacePath": str(workspace)}]
+                root,
+                "aaaa1111",
+                [
+                    {
+                        "name": "Some title",
+                        "workspacePath": str(workspace),
+                        "latestRootBlobId": root_id,
+                    }
+                ],
+                blobs,
             )
             self.assertEqual(1, len(self._collect_cursor(root)))
 
@@ -246,17 +301,283 @@ class SqliteCollectorTest(RuntimeTestCase):
 
             with mock.patch.object(runtime_io, "open_sqlite_read_only", counting_open):
                 self.assertEqual(
-                    ("Some title", str(workspace)),
+                    ("Some title", str(workspace), "vega"),
                     cursor_collector._meta(config, state, db, mtime),
                 )
                 self.assertEqual([], opens, "a memo hit reopened the store")
 
                 # A changed mtime invalidates the memo, so the store is read.
                 self.assertEqual(
-                    ("Some title", str(workspace)),
+                    ("Some title", str(workspace), "vega"),
                     cursor_collector._meta(config, state, db, mtime + 1),
                 )
                 self.assertEqual([db], opens)
+
+    def test_cursor_publishes_the_model_of_its_newest_message(self) -> None:
+        # DRC-4117. The model lives on the message blobs, not in a column, and
+        # the root blob's child list is the only chronology the store has: ids
+        # are content-addressed sha256 and `blobs` has no timestamp, so the
+        # newest message is the last child and nothing else can say which it is.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat(
+                [
+                    self._cursor_message("last-week-model"),
+                    self._cursor_message(None, text="a tool result"),
+                    self._cursor_message("vega"),
+                ]
+            )
+            self._cursor_store(
+                root, "sess-model", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual(1, len(sessions))
+        # Verbatim: `vega` is Cursor's own codename, and mapping it to a
+        # marketing name would be the page inventing a reading the store never
+        # made.
+        self.assertEqual("vega", sessions[0]["model"])
+        self.assertEqual("chat", sessions[0]["title"])
+
+    def test_cursor_walks_past_a_child_id_that_belongs_to_no_blob(self) -> None:
+        # The child list is found by scanning for `0a 20` frames, so a stray
+        # pair inside message text yields a plausible 64-hex id that no row
+        # carries. The walk starts at the newest end, so that bogus id is tried
+        # FIRST; it has to miss on the primary key and cost one probe, not the
+        # session's model.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat(
+                [self._cursor_message("vega")], trailer=b"\x0a\x20" + b"\xff" * 32
+            )
+            self._cursor_store(
+                root, "sess-stray", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("vega", sessions[0]["model"])
+
+    def test_cursor_keeps_its_title_when_the_store_has_no_blobs_table(self) -> None:
+        # The failure that costs the most: a store on a schema without `blobs`
+        # raises `no such table`, and routing that through the store-error path
+        # would withdraw the title and the workspace along with the model. They
+        # are separate readings, and only the one that failed may be withdrawn.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "git" / "recce" / "cargento"
+            workspace.mkdir(parents=True)
+            self._cursor_store(
+                root,
+                "sess-old",
+                [
+                    {
+                        "name": "refactor the parser",
+                        "workspacePath": str(workspace),
+                        "latestRootBlobId": "a" * 64,
+                    }
+                ],
+            )
+            sessions = self._collect_cursor(root)
+            errors = dict(state_of().store_errors)
+
+        self.assertEqual("refactor the parser", sessions[0]["title"])
+        self.assertEqual("recce/cargento", sessions[0]["project"])
+        self.assertIsNone(sessions[0]["model"])
+        self.assertEqual(
+            [], [p for p in errors if "sess-old" in p], "a missing table is not a fault"
+        )
+
+    def test_cursor_reports_no_model_when_the_blobs_do_not_read_as_text(self) -> None:
+        # Every meta payload carries a `blobEncryptionKey`, so some Cursor build
+        # almost certainly encrypts the blobs. There the field simply is not
+        # found, and the session must report no model rather than anything else
+        # — and the key in the store is never used to go looking.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat([bytes(range(256)) * 4])
+            self._cursor_store(
+                root, "sess-enc", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertIsNone(sessions[0]["model"])
+
+    def test_cursor_reports_no_model_rather_than_an_old_one_past_the_walk_cap(self) -> None:
+        # The walk is bounded so a long conversation cannot pull tens of
+        # kilobytes per refresh. Falling off the end of that budget reports no
+        # model, which is honest; reaching further back for one would report the
+        # model of a message that is not the current one.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config, _ = runtime()
+            depth = config.cursor_model_probe_blobs + 2
+            messages = [self._cursor_message("vega")]
+            messages += [self._cursor_message(None, text=f"turn {i}") for i in range(depth)]
+            root_id, blobs = self._cursor_chat(messages)
+            self._cursor_store(
+                root, "sess-deep", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertIsNone(sessions[0]["model"])
+
+    def test_cursor_publishes_the_newest_model_past_the_root_child_cap(self) -> None:
+        # DRC-4117. The child list is capped, and the cap used to keep the ids
+        # it met FIRST — the oldest end of a list that runs oldest first. Past
+        # `cursor_root_children` the probe window then never moved again: the
+        # model of message ~63 was published as the model of a chat that had
+        # since switched, rendered exactly like a live reading, and re-derived
+        # identically on every refresh so it could never self-correct. Every
+        # tool result is its own child, so the cap is about 16 assistant turns.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config, _ = runtime()
+            before = config.cursor_root_children + 20
+            messages = [
+                self._cursor_message("last-week-model", text=f"turn {i}") for i in range(before)
+            ]
+            messages.append(self._cursor_message("vega"))
+            root_id, blobs = self._cursor_chat(messages)
+            self._cursor_store(
+                root, "sess-long", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("vega", sessions[0]["model"])
+
+    def test_cursor_reads_the_newest_children_of_a_root_past_the_byte_cap(self) -> None:
+        # Same freeze one level down: the root itself is read under
+        # `cursor_blob_bytes`, and its newest children are at its END, so a head
+        # read would hand back the oldest window and pin the answer there for
+        # good. It is read from the tail instead. The re-sync can land mid-frame
+        # and invent an id; that id is at the OLD end of the window and misses
+        # on the primary key like any other stray frame.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with config_patch(cursor_blob_bytes=512), tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real = [
+                self._cursor_message("last-week-model", text="older"),
+                self._cursor_message(None, text="a tool result"),
+                self._cursor_message("vega"),
+            ]
+            pairs = [(hashlib.sha256(m).hexdigest(), m) for m in real]
+            # Filler ids for messages whose blobs have been pruned. No byte is
+            # 0x0a or 0x20, so no filler id can fake a frame boundary.
+            filler = [bytes([100 + (i % 90)]) * 32 for i in range(37)]
+            root_blob = b"".join(b"\x0a\x20" + f for f in filler) + b"".join(
+                b"\x0a\x20" + bytes.fromhex(i) for i, _ in pairs
+            )
+            self.assertGreater(len(root_blob), 512, "the root has to outrun the cap")
+            root_id = hashlib.sha256(root_blob).hexdigest()
+            self._cursor_store(
+                root,
+                "sess-wide",
+                [{"name": "chat", "latestRootBlobId": root_id}],
+                {root_id: root_blob, **dict(pairs)},
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("vega", sessions[0]["model"])
+
+    def test_cursor_reads_past_a_turn_with_ten_tool_results_in_flight(self) -> None:
+        # The probe depth is a measurement, not a round number. Across three
+        # live stores the longest run of consecutive non-assistant children
+        # between two assistant messages is five — one turn with five tool
+        # results in flight — which a six-deep window clears by exactly nothing.
+        # The depth carries twice that run, so a turn this deep still reports
+        # the model of the assistant message before it instead of a dash.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            messages = [self._cursor_message("vega")]
+            messages += [self._cursor_message(None, text=f"tool {i}") for i in range(10)]
+            root_id, blobs = self._cursor_chat(messages)
+            self._cursor_store(
+                root, "sess-busy", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertEqual("vega", sessions[0]["model"])
+
+    def test_cursor_reports_no_model_past_a_blob_it_could_not_read_whole(self) -> None:
+        # `providerOptions` is not anchored near the head of a blob: on the live
+        # stores it sits 676–6,042 bytes in, sometimes as the last top-level key
+        # of the message, so where it lands tracks how long the message ran. A
+        # blob cut off at `cursor_blob_bytes` is therefore a message whose model
+        # was NOT read, which is a different fact from a message carrying no
+        # model — and reaching past it would hand the card the previous
+        # message's model dressed as the current one.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with config_patch(cursor_blob_bytes=512), tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat(
+                [
+                    self._cursor_message("last-week-model"),
+                    self._cursor_message("vega", text="x" * 4096),
+                ]
+            )
+            self._cursor_store(
+                root, "sess-cut", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            sessions = self._collect_cursor(root)
+
+        self.assertIsNone(sessions[0]["model"])
+
+    def test_cursor_bounds_the_model_string_it_publishes(self) -> None:
+        # A model name is vendor text on its way to the DOM. It is bounded here
+        # so no page has to trust its length, and stripped of control characters
+        # for the same reason every other untrusted string is.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat([self._cursor_message("v" * 60)])
+            self._cursor_store(
+                root, "sess-long", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            long_rows = self._collect_cursor(root)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat(
+                [b'{"providerOptions":{"cursor":{"modelName":"a\tb"}}}']
+            )
+            self._cursor_store(
+                root, "sess-ctrl", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            control_rows = self._collect_cursor(root)
+
+        self.assertEqual("v" * 40, long_rows[0]["model"])
+        self.assertEqual("a b", control_rows[0]["model"])
+
+    def test_cursor_ignores_the_model_picker_setting(self) -> None:
+        # `lastUsedModel` sits in the same meta payload and reads "default" on
+        # two of three live sessions — it is the picker, not a measurement.
+        # Publishing it would render a session as running a model literally
+        # named "default", which is indistinguishable from a real reading.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_store(root, "sess-pick", [{"name": "chat", "lastUsedModel": "default"}])
+            sessions = self._collect_cursor(root)
+
+        self.assertIsNone(sessions[0]["model"])
 
     def test_cursor_reports_its_workspace_instead_of_the_harness_name(self) -> None:
         # DRC-3963. Cursor rows were hardcoded to "cursor", so every Cursor
@@ -498,7 +819,7 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual("w/gooseproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("Fix flaky tests", s["title"])
         self.assertEqual("add retries", s["last_prompt"])
-        self.assertEqual(["helper"], s["subagents"])
+        self.assertEqual([{"name": "helper", "model": None}], s["subagents"])
         self.assertEqual(100, s["rate_per_min"])  # 1000 tokens / 10 min window
 
 
@@ -561,7 +882,9 @@ class SqliteDiagnosticTest(unittest.TestCase):
             config, state = runtime()
             with state.cache_lock:
                 state.store_errors.clear()
-            self.assertEqual((None, ""), cursor_collector._meta(config, state, str(cursor), 1.0))
+            self.assertEqual(
+                (None, "", None), cursor_collector._meta(config, state, str(cursor), 1.0)
+            )
             self.assertIn(str(cursor), state.store_errors)
             # A title the query never returned must not be cached as "no title".
             self.assertNotIn(str(cursor), state.cursor_metadata_cache)

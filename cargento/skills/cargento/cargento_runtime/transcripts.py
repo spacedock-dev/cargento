@@ -319,6 +319,31 @@ def analyze_gemini_transcript(config: RuntimeConfig, path: str) -> dict[str, Any
     return info
 
 
+def _copilot_agent_key(d: dict[str, Any], data: dict[str, Any]) -> str:
+    """One subagent's identity, the same across its started/completed/failed events.
+
+    ``agentId`` is tried first because it is the only candidate that holds the
+    same value on all three, measured on a live store. The others do not:
+    ``subagent.completed`` carries a *different* top-level ``id`` from
+    ``subagent.started``, so keying on ``id`` never matched and the caller's
+    drop-oldest fallback did all the retiring. That is accidentally right for one
+    child and wrong for two — it retires whichever pill happens to be first —
+    and now that a pill carries a model, the wrong model goes with the wrong
+    label. ``agentId`` is also the value the billing ledger's ``agent_id`` column
+    holds, though nothing joins on it; see ``collectors/copilot.py``.
+
+    Coerced to text because the result is a dict key and the record is untrusted:
+    a JSON list under ``agentId`` is unhashable, and one would raise out of the
+    analyzer and take every other reading of the session with it.
+    """
+    for candidate in (d.get("agentId"), data.get("id"), data.get("subagentId"), d.get("id")):
+        if isinstance(candidate, (str, int, float)) and not isinstance(candidate, bool):
+            text = str(candidate)
+            if text:
+                return text
+    return ""
+
+
 def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
     """Copilot events.jsonl tail: typed events with data payloads. Field
     names inside data are de-facto (not a stable API) — extracted
@@ -330,7 +355,19 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
         "last_tool": None,
         "last_event_ts": 0,
         "cwd": None,
-        "pending_agents": {},  # started-but-not-completed subagents
+        # Started-but-not-finished subagents, one `{"name": str, "model": str |
+        # None}` each, which is the element shape the payload publishes. `model`
+        # is the child's own reading and None means the event did not report one
+        # — never a guess.
+        #
+        # The model is carried raw and bounded by the collector, which caps it to
+        # the width `sessions` declares for every model on the payload. That
+        # width cannot be read from here: this module may not import `sessions`
+        # (`test_contracts` pins the runtime import graph), and a second literal
+        # 40 beside the declared one is how two caps drift apart. The collector
+        # already sanitises the session's own model through one function, so the
+        # child goes through the same door rather than a copy of it.
+        "pending_agents": {},
     }
     for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
@@ -357,7 +394,6 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
             if name:
                 info["last_tool"] = str(name)
         elif t == "subagent.started":
-            key = data.get("id") or data.get("subagentId") or d.get("id")
             label = (
                 data.get("name")
                 or data.get("agentName")
@@ -365,9 +401,25 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
                 or data.get("agentType")
                 or "subagent"
             )
-            info["pending_agents"][key] = str(label)[:70]
-        elif t == "subagent.completed":
-            key = data.get("id") or data.get("subagentId") or d.get("id")
+            # The model comes off the same JSON object the label does, so the two
+            # are paired by construction rather than by a join. That is the whole
+            # reason this is the source: the ledger's `agent_id` is
+            # `sidekick-<agentName>-<epoch ms>`, related to the published label by
+            # string construction only, and recovering one from the other means
+            # prefix-parsing an id — inference, which a measured value must never
+            # be mixed with.
+            raw = data.get("model")
+            info["pending_agents"][_copilot_agent_key(d, data)] = {
+                "name": records.safe_text(label, 70),
+                "model": raw if isinstance(raw, str) and raw.strip() else None,
+            }
+        elif t in ("subagent.completed", "subagent.failed"):
+            # `failed` retires the pill for the same reason `completed` does: the
+            # child is not running. It was unhandled, so a failed subagent kept
+            # its pill for the rest of the session — measured live, on a child
+            # that failed with "No response generated" — and it would now keep a
+            # model badge with it.
+            key = _copilot_agent_key(d, data)
             if key in info["pending_agents"]:
                 info["pending_agents"].pop(key)
             elif info["pending_agents"]:  # unmatched key scheme: drop oldest

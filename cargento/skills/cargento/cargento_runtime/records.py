@@ -161,6 +161,35 @@ def incremental_gemini_records(
     return messages[start:]
 
 
+def model_signal(record: dict[str, Any], harness: str, limit: int) -> str | None:
+    """The model one transcript record declares, bounded, or nothing.
+
+    Codex re-declares the model at the head of every turn, in a `turn_context`
+    record written one to six lines after each `task_started`. The last such
+    record a rollout carries is therefore the model the session is running on
+    now, which is the only question this answers: it reports a value, not a
+    history, so a caller keeps the newest hit and does not compare it to the
+    ones before it.
+
+    Gated on the harness for the reason `_turn_signal` is gated: `scan_turns`
+    runs this over five harnesses' transcripts, and an ungated read would let
+    any of them publish a model out of a record that merely shares a type name.
+
+    Nothing is inferred. A harness with no such record, a payload with no
+    `model`, a non-string value, and a string that bounds away to nothing all
+    yield None, which every consumer reads as "not measured" rather than as a
+    statement about which model ran.
+    """
+    if harness != "codex" or record.get("type") != "turn_context":
+        return None
+    value = as_dict(record.get("payload")).get("model")
+    if not isinstance(value, str):
+        return None
+    # Untrusted vendor text on its way to the DOM: bounded here, escaped again
+    # at the render site.
+    return safe_text(value, limit).strip() or None
+
+
 def _turn_signal(record: dict[str, Any], harness: str) -> tuple[str, Any] | None:
     record_type = record.get("type")
     if harness == "codex":

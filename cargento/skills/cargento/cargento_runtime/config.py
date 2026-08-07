@@ -74,6 +74,29 @@ class RuntimeConfig:
     claude_agent_cache_negative_min_bytes: int
     claude_agent_scan_bytes: int
     cursor_meta_rows: int
+    # The three bounds on the Cursor model read. It is a hop through
+    # content-addressed blobs — the root blob of a chat lists its message blobs
+    # in order — so the cost is two indexed lookups, and these are what keep it
+    # two rather than "however long the conversation is". `cursor_blob_bytes`
+    # caps each blob in SQLite (a tool result runs to tens of kilobytes and the
+    # field being looked for is twenty bytes), `cursor_root_children` caps the
+    # id list parsed out of the root (its NEWEST ids — the child list runs
+    # oldest first), and `cursor_model_probe_blobs` caps how far back the walk
+    # goes before giving up.
+    #
+    # Measured on three live stores, 145 blobs: at most 24 children, and the
+    # model was on the first blob tried every time. The probe depth is set by
+    # the other end of that measurement — the longest run of consecutive
+    # non-assistant children between two assistant messages is 5 (one turn with
+    # five tool results in flight), which a 6-deep window clears by exactly
+    # nothing: a sixth tool result mid-turn would fill the window and the
+    # session would report no model at all. 12 is twice the measured worst case.
+    # It is still bounded work under the read budget — at most twelve indexed
+    # lookups of at most `cursor_blob_bytes` each, paid only by a store whose
+    # mtime moved, since `_meta` memoizes the answer.
+    cursor_blob_bytes: int
+    cursor_root_children: int
+    cursor_model_probe_blobs: int
     antigravity_log_head_bytes: int
     spacedock_boot_scan_bytes: int
     spacedock_readme_bytes: int
@@ -320,6 +343,9 @@ def build_runtime_config(
         claude_agent_cache_negative_min_bytes=16_384,
         claude_agent_scan_bytes=16_384,
         cursor_meta_rows=50,
+        cursor_blob_bytes=65_536,
+        cursor_root_children=64,
+        cursor_model_probe_blobs=12,
         antigravity_log_head_bytes=80_000,
         spacedock_boot_scan_bytes=512_000,
         spacedock_readme_bytes=65_536,

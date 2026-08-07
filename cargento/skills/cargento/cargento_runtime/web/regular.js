@@ -508,9 +508,19 @@ function workingCard(d, sess){
   if(sess.total) bits.push(`${sess.done}/${sess.total} done · ${sess.progress_pct}%`);
   if(sess.eta_h) bits.push(`~${sess.eta_h} left`);
   const bitsLine = bits.length ? `<div class="card-bits">${esc(bits.join(" · "))}</div>` : "";
+  /* The model chip appears only where the child's and the parent's are both
+     measured and unequal — childModelShown() owns that rule for both views, and
+     re-deriving it inline is how the two came to disagree about `fastest`. Its
+     own element rather than appended text, because the label beside it is a
+     project's own string and would swallow a suffix. */
   const subs = (sess.subagents && sess.subagents.length)
     ? `<div class="subs"><span class="subs-k">subagents</span>` +
-      sess.subagents.slice(0,6).map(a => `<span class="subpill"><span class="subdot"></span>${esc(a)}</span>`).join("") +
+      sess.subagents.slice(0,6).map(a => {
+        const model = childModelShown(sess, a);
+        return `<span class="subpill"><span class="subdot"></span>${esc(subName(a))}` +
+          (model ? `<span class="subpill-m" title="${esc(childModelNote(sess, model))}">` +
+            `${esc(model)}</span>` : "") + `</span>`;
+      }).join("") +
       (sess.subagents.length > 6 ? `<span class="subs-k">+${sess.subagents.length-6} more</span>` : "") +
       `</div>`
     : "";
@@ -546,6 +556,15 @@ function idleRow(d, sess){
        with an ellipsis, so appending would silently swallow it, and an idle
        session is spending nobody's quota. It shows where consumption is live:
        the working card, the needs-input row, and the calm detail panel.
+
+       The model is now part of that note, and it does not inherit the reason:
+       "spending nobody's quota" is an argument about spend, and a model is not
+       spend — the session still ran on one, and its dash is a real reading. It
+       stays out on the truncation ground alone. Appending `· model —` to a cell
+       that already ellipsises means the reader loses the title, the age, or both,
+       to a slot whose whole job is to be visible; and the model here would be a
+       third clause in a drawer clipped behind `Show all N idle`. Calm's panel
+       opens on every row whatever its state, so it is one keystroke away.
 
        No consumption figure either, and that one is a closer call, because what
        an idle session already spent is as real as a working session's and is in

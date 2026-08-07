@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import records, transcripts
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
 
 if TYPE_CHECKING:
@@ -23,6 +24,31 @@ if TYPE_CHECKING:
 
 # Tools that mean Claude is blocked on the human, not just running long.
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
+
+# Claude's own sentinel for an assistant record it generated locally, without
+# the request ever reaching the API: a cancellation notice, an error banner, a
+# tool-limit message. It is not a model, and it is common — one top-level
+# transcript in five carries it as its newest assistant record, and many carry
+# nothing else.
+SYNTHETIC_MODEL = "<synthetic>"
+
+
+def model_reported(value: Any) -> str | None:
+    """The model an assistant record names, or None when it names none.
+
+    `SYNTHETIC_MODEL` is rejected **by value**, never by the `isApiErrorMessage`
+    flag that sits beside it on the same record. That flag is falsy on some
+    synthetic records, so a flag gate publishes the sentinel as though it were a
+    measurement — and "<synthetic>" on a session card is indistinguishable from a
+    real model name to the person reading it. When the sentinel is all a
+    transcript has, the honest answer is that no model was reported.
+
+    Bounded here rather than at the caller because this is the only door: the
+    value is untrusted vendor text on its way to the DOM.
+    """
+    if not isinstance(value, str) or value.strip() in ("", SYNTHETIC_MODEL):
+        return None
+    return records.safe_text(value, runtime_sessions.MODEL_CAP_CHARS).strip() or None
 
 
 def session_title(config: RuntimeConfig, state: RuntimeState, path: str) -> str | None:
@@ -132,10 +158,27 @@ def last_user_event(config: RuntimeConfig, state: RuntimeState, path: str) -> st
 
 
 def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[str, Any]:
-    """Claude Code transcript tail."""
+    """Claude Code transcript tail.
+
+    `model` and `model_sidechain` are the two halves of one reading, split on the
+    `isSidechain` flag, because that flag **inverts** between a session and its
+    subagents. A top-level transcript's own turns are not sidechains, so its model
+    lands in `model`; a subagent writes its own transcript and every assistant
+    record in it is flagged as a sidechain, so its model lands in
+    `model_sidechain`. A caller holding a child transcript therefore reads
+    `model_sidechain or model` — see `collectors.claude.child_model`.
+
+    Newest wins for both: the last assistant record in the tail is the model the
+    session is on now. A mid-session switch is real and rare (a plan change), and
+    a transcript does not carry stray background models to be confused with one.
+    Not cached on session identity for the same reason: the value is mutable
+    while the session runs.
+    """
     info: dict[str, Any] = {
         "title": session_title(config, state, path),
         "last_prompt": None,
+        "model": None,
+        "model_sidechain": None,
         "usage_events": [],  # (epoch, output_tokens)
         "pending_input_tool": None,  # {"name", "ts"} awaiting the human
         "last_tool": None,
@@ -158,6 +201,12 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":
             msg = records.message_dict(d)
+            model = model_reported(msg.get("model"))
+            if model:
+                # Last write wins, and a rejected value overwrites nothing: a
+                # trailing synthetic error must not withdraw the model the turns
+                # before it were measured on.
+                info["model_sidechain" if d.get("isSidechain") else "model"] = model
             usage = records.as_dict(msg.get("usage"))
             if ep and usage.get("output_tokens"):
                 info["usage_events"].append((ep, usage["output_tokens"]))

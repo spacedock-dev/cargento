@@ -181,6 +181,22 @@ def newest_plausible(config: RuntimeConfig, now: float, timestamps: Iterable[flo
     return max((t for t in timestamps if age(config, now, t) is not None), default=0.0)
 
 
+# How much of a vendor's model string a session row may carry. Model names are
+# untrusted vendor text on their way to the DOM, and a row's model sits inline in
+# a metadata line beside the project and the session id, so an unbounded value
+# pushes everything after it off the card.
+#
+# `quota.MODEL_LABEL_CAP_CHARS` is also 40 and this is deliberately not it.
+# `quota.py` imports this module, so importing back is a cycle — but the reason
+# they are two symbols is not the cycle. Quota's cap is an input to a
+# distinctness requirement: a per-model usage row that elides has to keep a
+# digest so two long names that share a prefix stay two rows. A session row has
+# no such requirement — one row, one model, nothing to tell apart — so it just
+# truncates. The numbers agree by coincidence of purpose, not by dependency, and
+# either may move without the other.
+MODEL_CAP_CHARS = 40
+
+
 def base_session(harness: str, sid: Any, project: str) -> Session:
     # "session" is the display id. The 8 below is the floor and must match
     # config.display_id_len, which assign_display_ids() reads; nothing enforces
@@ -193,13 +209,32 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
     # model it is spending it on. Declared here for every harness, at None, so
     # the payload's shape does not depend on which collector filled a row: a key
     # that appears only for some harnesses makes every consumer test for
-    # presence rather than for a value. Only Pi populates them today, because
-    # Pi is the one harness with no authority of its own and therefore the one
-    # where the answer is not already the harness name.
+    # presence rather than for a value.
     #
-    # `provider` is the vendor's own id, unmapped (`openai-codex`, not
+    # `provider` is Pi's alone, because Pi is the one harness with no authority
+    # of its own and therefore the one where the answer is not already the
+    # harness name. It is the vendor's own id, unmapped (`openai-codex`, not
     # `codex`). Naming is presentation and belongs to the page, which has the
     # harness table; the payload stays the raw reading.
+    #
+    # `model` is not Pi's alone. Claude, Codex, Copilot, Antigravity and Cursor
+    # each record the model somewhere their collector already reads, so each
+    # fills it; Gemini, Goose, OpenCode and Droid leave it None because nobody
+    # has found where — or whether — those harnesses record it. Cursor fills the
+    # session's own model only: its subagents are still published as peer
+    # top-level rows, so no Cursor row carries a subagent model.
+    #
+    # None therefore means "not read", never "no model". Every session runs on
+    # some model, so an absent value is a gap in our reading rather than a fact
+    # about the world, and that is why the page draws it as an explicit dash with
+    # a tooltip naming the harness instead of leaving the slot blank. A blank
+    # slot and a measurement are indistinguishable, which is the collapse this
+    # field exists to avoid. Bounded to MODEL_CAP_CHARS at the collector, through
+    # `records.safe_text`: the value is untrusted vendor text.
+    #
+    # A collector must never infer it — not from a plan name, a token count, a
+    # timestamp join, or which quota bucket moved. A guessed model renders
+    # identically to a measured one.
     #
     # `consumption` is what the session has spent, and it is declared here for
     # the same reason as those two: only Copilot fills it, because Copilot is the
@@ -245,6 +280,23 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "progress_pct": 0,
         "eta_h": None,
         "turn": None,
+        # One element per subagent: `{"name": str, "model": str | None}`. `model`
+        # is always present, and None means the same thing it means on the parent
+        # — not read. It is a key rather than a parallel list of only the children
+        # whose model differs, because absence from such a map would mean either
+        # "matches the parent" or "not measured", which collapses in the wire
+        # format the exact two facts this field is here to keep apart. It is also
+        # a key rather than a suffix on `name`, because a subagent genuinely named
+        # `foo · gpt-5` would then be indistinguishable from a measurement.
+        #
+        # There is no join key to offer instead: labels are non-unique by
+        # construction (several collectors fall back to a bare "subagent"), so two
+        # unnamed children collide and a model gets attributed to a sibling.
+        #
+        # The page shows a child's model only where the child's and the parent's
+        # are both measured and unequal. That rule lives in one place, in the
+        # frontend, because both views need it and a re-derivation is how they
+        # would come to disagree.
         "subagents": [],
         "tasks": [],
         "spacedock": None,

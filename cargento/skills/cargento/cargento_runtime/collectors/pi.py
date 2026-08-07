@@ -22,8 +22,18 @@ _PI_NO_NAME = object()
 
 
 def _text(value: Any) -> str | None:
-    """A non-empty string, or nothing."""
-    return value if isinstance(value, str) and value else None
+    """One authority string — a provider or a model — bounded, or nothing.
+
+    Both fields are vendor text Pi copied out of an API response, and both now
+    reach the DOM on a path shared with every other harness rather than on Pi's
+    own row alone, so the length has to be bounded here rather than trusted.
+    Bounding at this guard — the one gate both fields pass through, on both the
+    message and the `model_change` kind — keeps a truncation from being missed
+    on whichever call site is added next.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    return records.safe_text(value, sessions.MODEL_CAP_CHARS)
 
 
 def _projection(record: Any) -> dict[str, Any] | None:

@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                22_302,
-                "b1fb777472fb2d7fa0c92bbab1e4ca2889137fe5ebc1741821bded8e065407ed",
+                27_200,
+                "a973a4b15fe39d99cd41f8344b63985094b94462bea4b4b6d3e3cc1fe0e1f07a",
             ),
             "regular.js": (
-                33_567,
-                "83d467aa56df901510e8b0384e758976ab5d1109c131a353230b133ea3086ce3",
+                34_808,
+                "bb040630d3d7777f33babc9053bf52aa1019540dbead6f2b7670619cdc596c4d",
             ),
             "mode.js": (
                 1_938,
@@ -84,8 +84,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
-                37_614,
-                "be59ad3b8fce25e5243a13c9aa5521ea3abc060ce237a68592cc6c03d5cec7b7",
+                38_380,
+                "00e047f8dc4cef7fd7cb8c41e85ba30113a7cdb3c9d9c82c4595b2f8369d376c",
             ),
             "notify.js": (
                 3_185,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(42_073, len(styles))
+        self.assertEqual(42_779, len(styles))
         self.assertEqual(
-            "bc8dcae8f4787a506b79c12bcccc6ef50b531850a067bd3f3dba9a9ff1791c8f",
+            "7b0f4c93d4d1f55ab1b709b4efe26878e05262c1e85fcde944c5cbdebbd76883",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(209_565, len(assembled))
+        self.assertEqual(217_176, len(assembled))
         self.assertEqual(
-            "74b1c98cf9960aff1580c4ff34eda04813e33d5a127f9c90a69ca839d2e03e84",
+            "5a75bd634b5578013300c0caaa94c7388aca89d171dbcf9cbebd89df8caf5659",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -633,6 +633,8 @@ class CargentoServerTest(PageJsHarness):
             " ['unknown id',     {harness:'pi', provider:'brand-new-co', model:'x-1'}],"
             " ['model only',     {harness:'pi', provider:null, model:'gpt-5'}],"
             " ['neither',        {harness:'claude', provider:null, model:null}],"
+            " ['provider only',  {harness:'pi', provider:'anthropic', model:null}],"
+            " ['blank model',    {harness:'goose', provider:null, model:'   '}],"
             " ['prototype key',  {harness:'pi', provider:'constructor', model:'m'}]];"
             # Visible text as well as markup: the wrapper's class is literally
             # "via", so asserting on the HTML cannot tell the label apart from
@@ -650,10 +652,21 @@ class CargentoServerTest(PageJsHarness):
         self.assertEqual("via groq · llama-4", got["unmapped key"])
         # An unrecognised id passes through rather than being dropped or guessed.
         self.assertEqual("via brand-new-co · x-1", got["unknown id"])
-        # "via gpt-5" would read as the model owning the quota.
-        self.assertEqual("gpt-5", got["model only"])
-        # Nothing to say, nothing rendered — no stray separator.
-        self.assertEqual("", got["neither"])
+        # "via gpt-5" would read as the model owning the quota, so the value is
+        # labelled instead. The label is also what gives the dash below a
+        # referent: a bare "—" in a metadata line says nothing in particular is
+        # missing.
+        self.assertEqual("model gpt-5", got["model only"])
+        # Not nothing. Every session runs on some model, so an unfilled `model` is
+        # a gap in Cargento's reading rather than a fact about the session, and a
+        # blank slot is indistinguishable from a measurement. Four harnesses in
+        # ten report no model, so this is the common row and not an edge.
+        self.assertEqual("model —", got["neither"])
+        # The dash belongs to the model, so a known authority does not absorb it.
+        self.assertEqual("via Claude · model —", got["provider only"])
+        # Whitespace is not a reading. A producer that ships "   " gets the dash,
+        # not a pill containing nothing.
+        self.assertEqual("model —", got["blank model"])
         # `own()` exists because every plain object inherits `constructor`; a
         # provider named for an Object.prototype key must not resolve to it.
         self.assertEqual("via constructor · m", got["prototype key"])
@@ -670,10 +683,244 @@ class CargentoServerTest(PageJsHarness):
         self.assertNotIn("cm-ico", rendered["bit"])
         self.assertNotIn("mask:url", rendered["bit"])
         self.assertNotIn("<img", rendered["bit"])
-        # The separator belongs to the helper, so a row with no authority does
-        # not render a dangling " · ".
+        # The separator belongs to the helper, so no caller has to know whether
+        # anything rendered.
         self.assertTrue(rendered["meta"].startswith(" · "))
-        self.assertEqual("", rendered["empty"])
+        # And there is always something now: the model slot is a slot. A row with
+        # neither provider nor model still carries its dash, so this helper no
+        # longer has an empty return at all.
+        self.assertTrue(rendered["empty"].startswith(" · "))
+        self.assertIn("model —", rendered["empty"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_session_says_its_model_is_unread_rather_than_leaving_the_slot_blank(self) -> None:
+        # The rate meter's argument, applied to the model. Four harnesses in ten
+        # report no model after this batch, so an omitted clause would leave the
+        # commonest row silently claiming nothing — and a blank slot renders
+        # identically to a measurement, which is the one collapse this field is
+        # here to prevent. Unlike consumption, absence here is never a fact about
+        # the world: every session runs on some model, so the only thing missing
+        # is our reading of it, and the tooltip has to say so in those terms.
+        checks = """
+const out = {};
+const seen = h => h.replace(/<[^>]*>/g, "");
+const titleOf = h => (h.match(/title="([^"]*)"/) || [null, ""])[1];
+const unread = authorityBit({harness: "goose", provider: null, model: null});
+out.unread = [seen(unread).includes("—"), seen(unread) === "model —",
+              titleOf(unread).includes("Goose"), unread.includes(">0<")];
+out.tip = titleOf(unread);
+// A measured model is a different fact and prints its string, with no dash.
+const known = authorityBit({harness: "goose", provider: null, model: "gpt-5"});
+out.measured = [seen(known), known.includes("—")];
+// A harness with no row in the table names itself rather than "undefined", and a
+// row with no harness at all still says something.
+out.unknownHarness = titleOf(authorityBit({harness: "brand-new-cli", model: null}));
+out.noHarness = titleOf(authorityBit({model: null}));
+// The same dash on a harness that DOES read a model: Claude publishes null for
+// every session that is not active, so this is the ordinary inactive-Claude row,
+// rendered on a board where the card above it reads `model claude-opus-5`.
+out.claude = titleOf(authorityBit({harness: "claude", provider: null, model: null}));
+// And on the borrowed-authority path, where the note is appended to the quota
+// clause rather than standing alone.
+out.borrowed = titleOf(
+  authorityBit({harness: "pi", provider: "anthropic", model: null}));
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(
+            [True, True, True, False],
+            out["unread"],
+            "an unread model was rendered as a measurement, a blank, or a zero",
+        )
+        self.assertIn("unknown — not unset", out["tip"])
+        # Whose gap it is: Cargento's, and only for this reading. The sentence is
+        # pinned verbatim because every clause in it is load-bearing.
+        self.assertEqual(
+            "Cargento read no model for this Goose session on this refresh, so which"
+            " model it runs on is unknown — not unset. Every session runs on some"
+            " model.",
+            out["tip"],
+        )
+        # Two claims the sentence must never make. "Goose does not report the model"
+        # is about the vendor and nobody measured it. "Cargento does not read a
+        # model for <Harness> sessions" is about coverage and is flatly false on six
+        # of ten harnesses, each of which publishes null for individual sessions:
+        # Claude for anything inactive, Codex for any `?all=1` row, Copilot when the
+        # usage row truncates, Cursor by store design. Worse than wrong, it tells
+        # the reader the gap is intended, which is how the bug report never gets
+        # filed. A session-level sentence is honest on all three roads to the dash:
+        # a harness with no reader, a reader that returned nothing here, and a store
+        # that could not be read this time.
+        self.assertNotIn("does not report", out["tip"])
+        self.assertNotIn("does not read a model for", out["tip"])
+        self.assertNotIn(" sessions", out["tip"])
+        self.assertEqual(["model gpt-5", False], out["measured"])
+        self.assertIn("brand-new-cli", out["unknownHarness"])
+        self.assertNotIn("undefined", out["unknownHarness"])
+        self.assertNotIn("undefined", out["noHarness"])
+        # The Claude row is the finding this wording exists for: the old sentence
+        # told a reader looking at a cancelled Claude session that Cargento does not
+        # read models for Claude, three inches under a Claude card showing one.
+        self.assertEqual(
+            "Cargento read no model for this Claude session on this refresh, so which"
+            " model it runs on is unknown — not unset. Every session runs on some"
+            " model.",
+            out["claude"],
+        )
+        self.assertNotIn("does not read a model for", out["borrowed"])
+        self.assertIn("Cargento read no model for this Pi session", out["borrowed"])
+        # Naming the harness is allowed; claiming something about it is not. Every
+        # sentence above scopes the name inside "this <name> session".
+        for tip in (out["tip"], out["claude"], out["borrowed"], out["noHarness"]):
+            self.assertIn("Cargento read no model for this", tip)
+            self.assertIn("Every session runs on some model.", tip)
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_subagent_model_shows_only_where_two_readings_disagree(self) -> None:
+        # The rule is a claim about two measurements. `child !== parent` is the
+        # spelling that reads naturally and is wrong: the parent's model is null on
+        # the four harnesses that report none and on any session the other six
+        # could not read, so that comparison is true for every measured child on
+        # those rows and would print "this one is running somewhere else"
+        # across a whole board on the strength of one reading. One reading against
+        # a gap is not a comparison, and the case below that guards it is
+        # `childOnly`.
+        checks = """
+const out = {};
+const shown = (parent, child) =>
+  childModelShown({harness: "claude", provider: null, model: parent}, child);
+out.differ = shown("claude-opus-5", {name: "review", model: "claude-fable-5"});
+out.same = shown("claude-opus-5", {name: "review", model: "claude-opus-5"});
+out.childOnly = shown(null, {name: "review", model: "claude-fable-5"});
+out.parentOnly = shown("claude-opus-5", {name: "review", model: null});
+out.neither = shown(null, {name: "review", model: null});
+// Whitespace is not a reading on either side.
+out.blankChild = shown("claude-opus-5", {name: "review", model: "   "});
+out.blankParent = shown("   ", {name: "review", model: "claude-fable-5"});
+// No case folding, no suffix stripping, no prefix match: two vendor strings are
+// one model when they are the same string. Anything looser is inference, and an
+// inferred match hides exactly the fact this chip exists to show.
+out.caseDiff = shown("GPT-5", {name: "review", model: "gpt-5"});
+out.prefix = shown("gpt-5", {name: "review", model: "gpt-5-mini"});
+// A producer still shipping bare labels degrades to name-only rather than
+// rendering "[object Object]" — which is what lets the collectors convert one at
+// a time.
+out.bareString = shown("claude-opus-5", "review");
+out.names = [subName({name: "review", model: "m"}), subName("review"), subName(null),
+             subName({}), subName({name: 7})];
+out.models = [subModel({name: "r", model: "m"}), subModel("r"), subModel(null),
+              subModel({name: "r"}), subModel({name: "r", model: 7})];
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual("claude-fable-5", out["differ"])
+        self.assertIsNone(out["same"], "the parent's own model was repeated under its child")
+        self.assertIsNone(
+            out["childOnly"],
+            "a measured child was called 'differs' against a parent nobody read —"
+            " this fires on four harnesses in ten and on any unread session of the"
+            " other six",
+        )
+        self.assertIsNone(out["parentOnly"])
+        self.assertIsNone(out["neither"])
+        self.assertIsNone(out["blankChild"])
+        self.assertIsNone(out["blankParent"])
+        self.assertEqual("gpt-5", out["caseDiff"], "two vendor strings were folded into one model")
+        self.assertEqual("gpt-5-mini", out["prefix"])
+        self.assertIsNone(out["bareString"])
+        self.assertEqual(["review", "review", "", "", "7"], out["names"])
+        self.assertEqual(["m", None, None, None, None], out["models"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_subagent_chip_is_drawn_only_for_the_child_that_differs(self) -> None:
+        # The predicate above, through the card that renders it. There must be
+        # exactly one definition of the rule for both views to read, so a card that
+        # re-derived it inline would pass the predicate test and fail here.
+        checks = (
+            self.SPEND_FIXTURE
+            + """
+const out = {};
+const parent = sess("s1", "claude", {model: "claude-opus-5", subagents: [
+  {name: "elsewhere", model: "claude-fable-5"},
+  {name: "alongside", model: "claude-opus-5"},
+  {name: "unmeasured", model: null},
+  "still-a-string"]});
+const card = workingCard(board([parent]), parent);
+out.chips = (card.match(/class="subpill-m"/g) || []).length;
+out.names = [...card.matchAll(/class="subdot"><\\/span>([^<]*)/g)].map(m => m[1]);
+out.chipText = [...card.matchAll(/class="subpill-m"[^>]*>([^<]*)/g)].map(m => m[1]);
+out.chipTip = (card.match(/class="subpill-m" title="([^"]*)"/) || [null, ""])[1];
+// A parent nobody read draws no chip at all, however many children report one.
+const blind = sess("s2", "claude", {model: null, subagents: [
+  {name: "a", model: "claude-fable-5"}, {name: "b", model: "claude-opus-5"}]});
+out.blindChips = (workingCard(board([blind]), blind).match(/class="subpill-m"/g) || []).length;
+// The +N tail still counts elements, not chips.
+const many = sess("s3", "claude", {model: "m0", subagents:
+  Array.from({length: 9}, (_, i) => ({name: "sub" + i, model: "m" + i}))});
+const manyCard = workingCard(board([many]), many);
+out.more = manyCard.includes("+3 more");
+out.manyChips = (manyCard.match(/class="subpill-m"/g) || []).length;
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self._run_page_js(checks)
+        self.assertEqual(1, out["chips"], "the chip was drawn for a child that matches its parent")
+        # Every child keeps its name whatever shape it arrived in.
+        self.assertEqual(["elsewhere", "alongside", "unmeasured", "still-a-string"], out["names"])
+        self.assertEqual(["claude-fable-5"], out["chipText"])
+        # "this session", not "its parent session". Antigravity flattens a whole
+        # subtree onto the root card, so the session named in the tooltip is not
+        # every chipped child's parent — but it is always the session the
+        # comparison was made against, which is what the wording must describe.
+        self.assertEqual(
+            "this subagent runs on claude-fable-5, not the claude-opus-5 this session is on",
+            out["chipTip"],
+        )
+        self.assertEqual(0, out["blindChips"], "an unread parent produced a wall of chips")
+        self.assertTrue(out["more"])
+        # Six pills are drawn, and `m0` is the parent's own, so five of the six
+        # differ from it.
+        self.assertEqual(5, out["manyChips"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_hostile_model_string_cannot_reach_the_dom_as_markup(self) -> None:
+        # Model names are vendor text read out of a transcript, a protobuf blob or
+        # a SQLite ledger — untrusted on exactly the same footing as a title. This
+        # page builds HTML by concatenation, so an unescaped value is markup and an
+        # unescaped tooltip is an attribute break. Both the session's model and a
+        # child's are new values reaching the DOM, in a body and in a `title=`, so
+        # escaping one is not escaping the other.
+        checks = (
+            self.SPEND_FIXTURE
+            + """
+const out = {};
+const bad = '<img src=x> gpt-5" onmouseover=y';
+const probe = h => [h.includes("<img"), h.includes("&lt;img"),
+                    h.includes('" onmouseover'), h.includes("&quot; onmouseover")];
+const solo = sess("s1", "claude", {model: bad});
+out.session = probe(workingCard(board([solo]), solo));
+out.sessionBit = probe(authorityBit(solo));
+// The unread tooltip interpolates the harness, which is payload text too.
+out.harnessTip = probe(authorityBit({harness: bad, model: null}));
+// The child's model reaches a body and a tooltip of its own, and the tooltip
+// also interpolates the parent's model — three places, one value.
+const parent = sess("s2", "claude", {model: "safe-1",
+  subagents: [{name: "reviewer", model: bad}]});
+out.child = probe(workingCard(board([parent]), parent));
+const hostileParent = sess("s3", "claude", {model: bad,
+  subagents: [{name: "reviewer", model: "safe-2"}]});
+out.childTip = probe(workingCard(board([hostileParent]), hostileParent));
+// And the child's own name, which grew a second render site in the same edit.
+const named = sess("s4", "claude", {model: null, subagents: [{name: bad, model: null}]});
+out.childName = probe(workingCard(board([named]), named));
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self._run_page_js(checks)
+        clean = [False, True, False, True]
+        for where in ("session", "sessionBit", "harnessTip", "child", "childTip", "childName"):
+            with self.subTest(where=where):
+                self.assertEqual(clean, out[where], "a model string reached the DOM as markup")
 
     # A board with one harness that keeps a per-request billing ledger and one
     # that keeps none, which is every real board: Copilot is the only harness
@@ -883,11 +1130,20 @@ console.log(JSON.stringify(out));
 """
         )
         out = self._run_page_js(checks)
-        self.assertEqual("proj · cp1 · used 6.43 AIU", out["working"])
+        # Copilot fills `consumption` and, on this fixture, no model — so the same
+        # line carries a printed figure and an unread dash, which is the pairing
+        # that makes the two absences readable side by side.
+        self.assertEqual("proj · cp1 · model — · used 6.43 AIU", out["working"])
         # The needs row leads with the harness badge, whose tooltip text survives
         # the tag strip; the clause still lands at the end of the same line.
-        self.assertEqual("Copilotproj · cp2 · used 0.00 AIU", out["needs"])
-        self.assertEqual("proj · cl1", out["plain"], "a session with no ledger drew a stray dot")
+        self.assertEqual("Copilotproj · cp2 · model — · used 0.00 AIU", out["needs"])
+        # A harness with no ledger says nothing about spend and still declares the
+        # model slot: the consumption clause vanishes, the model dash does not.
+        # The two absences are different — no `used` claims nothing, whereas every
+        # session does run on some model.
+        self.assertEqual(
+            "proj · cl1 · model —", out["plain"], "a session with no ledger drew a stray dot"
+        )
         self.assertEqual("proj · pi1 · via Copilot · gpt-5 · used 1.20 AIU", out["both"])
         self.assertNotIn("AIU", out["idle"], "the idle drawer grew a second unit")
         self.assertNotIn("used", out["idle"])

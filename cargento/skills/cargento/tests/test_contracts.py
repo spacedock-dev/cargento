@@ -23,10 +23,13 @@ from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
 from cargento_runtime.collectors import codex as codex_collector
+from cargento_runtime.collectors import gemini as gemini_collector
 
 from .fixtures import (
+    CURSOR_MODEL,
     HARNESSES,
     STORE_CONSTANTS,
+    build_cursor,
     build_opencode,
     build_pi,
 )
@@ -835,10 +838,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # `quota` arrived with the Cursor usage provider: Cursor keeps no
         # allowance on disk and pushes nothing in, so the collector reads back
         # what the fetch thread cached, exactly as Claude's does.
+        # `records` is on this list because the collector reads a model name out
+        # of a chat blob and bounds it through `records.safe_text` before it is
+        # published, exactly as the Antigravity collector does with its own.
         "cargento_runtime.collectors.cursor": {
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.quota",
+            "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
@@ -921,10 +928,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
+        # `sessions` is a pure leaf inside this package, so depending on it is
+        # not a layering break: the transcript reader needs `MODEL_CAP_CHARS` to
+        # bound a model string at the one door that string comes through.
         "cargento_runtime.claude_data": {
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.records",
+            "cargento_runtime.sessions",
             "cargento_runtime.state",
             "cargento_runtime.transcripts",
         },
@@ -1539,6 +1550,109 @@ class HarnessContractTest(HarnessContractTestCase):
                     stack.enter_context(mock.patch.object(notifications, "notify_mac"))
                     data = collect(24, show_all=True)  # must not raise
                 self.assertIsInstance(data["sessions"], list)
+
+    def test_every_session_reports_a_model_as_a_reading_or_as_unread(self) -> None:
+        # Three states, not two. A measured model and "no model reported" are
+        # different facts and the wire format has to keep them apart, so the key
+        # is always present and None is the only spelling of "not read". An
+        # empty string is the collapse this guards: it is not a reading, and the
+        # page draws it as a blank where the dash belongs.
+        #
+        # The two branches are asserted, not one. `if model is None: continue`
+        # alone reads as a ten-harness contract and pins whichever fixtures
+        # happen to carry a value — every other harness falls out of the loop
+        # before the shape assertions, so a fixture that quietly stopped
+        # publishing a model would move this test from "checked" to "skipped"
+        # without changing its result. So: the unread branch asserts the value is
+        # literally None (not "", not 0, not False — those are falsy spellings of
+        # "not read" that the page would draw as a blank), the read branch runs
+        # the shape assertions for every harness that does publish, and the tally
+        # below proves the read branch ran at all and that all ten fixtures were
+        # visited.
+        measured: dict[str, str] = {}
+        unread: list[str] = []
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                data = self.collect(build, when=self.NOW)
+                sessions = self.sessions_for(data, key)
+                self.assertTrue(sessions, "the fixture published no session to check")
+                for session in sessions:
+                    self.assertIn("model", session, "the model slot must never vanish")
+                    model = session["model"]
+                    if not model:
+                        self.assertIsNone(model, "None is the only spelling of 'not read'")
+                        unread.append(key)
+                        continue
+                    self.assertIsInstance(model, str)
+                    self.assertTrue(model.strip(), "an empty string is not a reading")
+                    self.assertLessEqual(len(model), runtime_sessions.MODEL_CAP_CHARS)
+                    measured[key] = model
+        self.assertEqual(
+            {key for key, _ in HARNESSES},
+            set(measured) | set(unread),
+            "a harness landed in neither branch: its fixture produced no row, or its"
+            " model failed a check above and never reached the tally",
+        )
+        # At least one fixture must reach the read branch, or the shape assertions
+        # above are dead code dressed as a cross-harness contract. Cursor is the
+        # one that carries a model end to end today; the assertion is a floor, not
+        # a pin, so a fixture gaining a model strengthens it instead of failing.
+        self.assertIn(
+            "cursor",
+            measured,
+            "no fixture exercised the model shape — the read branch never ran",
+        )
+
+    def test_a_cursor_store_reports_the_model_its_own_blobs_name(self) -> None:
+        # The one shared fixture that carries a measurable model end to end, and
+        # the only assertion that proves the chain. Cursor reaches its model
+        # through meta -> latestRootBlobId -> root blob -> child message, and a
+        # break at any hop returns None — which the contract above accepts as an
+        # honest "not read", so without this the whole read could rot unseen.
+        data = self.collect(build_cursor, when=self.NOW)
+        self.assertEqual(CURSOR_MODEL, self.sessions_for(data, "cursor")[0]["model"])
+
+
+class SubagentElementContractTest(unittest.TestCase):
+    """A published subagent is an object carrying a name and a model.
+
+    Claude, Codex, Copilot, Antigravity, Goose and OpenCode each pin this in
+    their own module. Gemini's producer had no assertion anywhere in the tree,
+    so its conversion to the grown element shipped untested; this is that
+    assertion, kept here rather than beside Gemini's other tests because the
+    shape is a cross-harness contract and not a Gemini behaviour.
+    """
+
+    NOW = 1_700_000_000.0
+    PARENT = "abcdef12-3456-7890-abcd-ef1234567890"
+
+    def test_a_gemini_subagent_is_a_name_and_an_unread_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            chats = Path(tmp) / "proj" / "chats"
+            (chats / records.alnum(self.PARENT)).mkdir(parents=True)
+            main = chats / f"session-{self.PARENT}.jsonl"
+            main.write_text(
+                json.dumps({"sessionId": self.PARENT, "kind": "main", "directories": ["/w/proj"]})
+                + "\n"
+                + json.dumps({"type": "user", "timestamp": "2023-11-14T22:13:20Z", "content": "hi"})
+                + "\n",
+                encoding="utf-8",
+            )
+            os.utime(main, (self.NOW, self.NOW))
+            child = chats / records.alnum(self.PARENT) / "9f3c1a55-child.jsonl"
+            child.write_text(
+                json.dumps({"sessionId": "9f3c1a55", "kind": "subagent"}) + "\n",
+                encoding="utf-8",
+            )
+            os.utime(child, (self.NOW, self.NOW))
+            with store_patch(GEMINI_TMP=str(tmp)):
+                config, state = runtime()
+                rows = gemini_collector.collect(config, state, self.NOW, 24, True)
+
+        # Nobody has looked for where Gemini records a model, so None here says
+        # "not read" — never that the child runs on no model, and never a value
+        # borrowed from the parent card.
+        self.assertEqual([{"name": "subagent 9f3c1a55", "model": None}], rows[0]["subagents"])
 
 
 class HostilePathContractTest(unittest.TestCase):

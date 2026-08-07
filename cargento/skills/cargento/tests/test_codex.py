@@ -8,11 +8,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from cargento_runtime import records as runtime_records
 from cargento_runtime import transcripts as runtime_transcripts
+from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import codex as codex_collector
 
 from .support import (
     RuntimeTestCase,
+    config_patch,
     make_runtime,
     runtime,
     store_patch,
@@ -108,7 +111,11 @@ class CodexCollectorTest(RuntimeTestCase):
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(100, sessions[0]["rate_per_min"])
-        self.assertEqual(["worker"], sessions[0]["subagents"])
+        # One element per subagent, `model` always present. Neither rollout here
+        # declares a turn_context, so both models read None — "not measured",
+        # which is a different fact from a model and stays distinguishable.
+        self.assertEqual([{"name": "worker", "model": None}], sessions[0]["subagents"])
+        self.assertIsNone(sessions[0]["model"])
 
     def test_codex_meta_tolerates_malformed_payload_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -302,3 +309,318 @@ class CodexUsageTest(RuntimeTestCase):
             with store_patch(CODEX_SESSIONS_DIR=tmp):
                 config, state = runtime()
                 self.assertEqual([], codex_collector.usage(config, state, now, 24))
+
+
+def _stamp(when: float) -> str:
+    return datetime.fromtimestamp(when, tz=UTC).isoformat().replace("+00:00", "Z")
+
+
+def _turn_context(when: float, model: Any) -> dict[str, Any]:
+    """One `turn_context` record, as Codex writes it at the head of every turn."""
+    return {
+        "timestamp": _stamp(when),
+        "type": "turn_context",
+        "payload": {"cwd": "/tmp/project", "effort": "high", "model": model},
+    }
+
+
+def _task_started(when: float) -> dict[str, Any]:
+    return {
+        "timestamp": _stamp(when),
+        "type": "event_msg",
+        "payload": {"type": "task_started", "started_at": when},
+    }
+
+
+def _padding(when: float, filler: int = 1000) -> dict[str, Any]:
+    """A well-formed record carrying neither a turn signal nor a model.
+
+    Streamed deltas are what actually sits between a turn's context record and
+    the end of a long rollout, and they are what pushes the declaration out of
+    reach of any tail-sized read.
+    """
+    return {
+        "timestamp": _stamp(when),
+        "type": "event_msg",
+        "payload": {"type": "agent_message_delta", "delta": "x" * filler},
+    }
+
+
+class CodexModelSignalTest(RuntimeTestCase):
+    """`records.model_signal`: what it will read, and what it refuses to."""
+
+    def test_the_signal_is_gated_on_the_harness_that_writes_the_record(self) -> None:
+        # scan_turns runs this over five harnesses' transcripts. Ungated, any of
+        # them could publish a model out of a record that merely shares a type
+        # name -- which would be a guess rendered identically to a measurement.
+        record = _turn_context(0, "gpt-5.6-sol")
+        self.assertEqual(
+            "gpt-5.6-sol",
+            runtime_records.model_signal(record, "codex", 40),
+        )
+        for harness in ("claude", "gemini", "copilot", "droid"):
+            self.assertIsNone(runtime_records.model_signal(record, harness, 40))
+
+    def test_only_a_usable_string_is_reported_and_never_a_stand_in(self) -> None:
+        cases: list[Any] = [None, 42, True, ["gpt-5"], {"name": "gpt-5"}, "", "   "]
+        for value in cases:
+            with self.subTest(value=value):
+                self.assertIsNone(
+                    runtime_records.model_signal(_turn_context(0, value), "codex", 40)
+                )
+        # A record of another type carries no model even on the right harness.
+        self.assertIsNone(runtime_records.model_signal(_task_started(0), "codex", 40))
+
+    def test_vendor_text_is_bounded_and_stripped_of_control_characters(self) -> None:
+        # The value reaches the DOM, so it is bounded here and escaped again at
+        # the render site. Neither layer is a substitute for the other.
+        hostile = "gpt-\x00\x1b5.6\x7f-sol " + "z" * 200
+        read = runtime_records.model_signal(_turn_context(0, hostile), "codex", 40)
+        assert read is not None
+        self.assertEqual(40, len(read))
+        self.assertNotIn("\x00", read)
+        self.assertNotIn("\x1b", read)
+        self.assertNotIn("\x7f", read)
+        self.assertTrue(read.startswith("gpt- 5.6 -sol "))
+
+
+class CodexSessionModelTest(RuntimeTestCase):
+    """The model a Codex session is running on, read where it actually sits."""
+
+    def _write(
+        self,
+        root: Path,
+        name: str,
+        entries: list[dict[str, Any]],
+        when: float,
+    ) -> Path:
+        path = root / "2026" / "08" / "07" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(json.dumps(r) + "\n" for r in entries))
+        os.utime(path, (when, when))
+        return path
+
+    def test_the_model_is_found_far_behind_the_tail_a_transcript_read_would_stop_at(
+        self,
+    ) -> None:
+        """The whole point of reading this inside the turn scanner.
+
+        Every other Codex display field comes from `analyze_codex_transcript`,
+        which reads the last `tail_bytes` of the rollout. On a real store the
+        last `turn_context` sits a median of 273 KB and up to 3 MB behind EOF,
+        so a tail-sized read reports "no model reported" for better than a third
+        of sessions while passing every small fixture. This fixture is built to
+        fail that way if the source is ever moved.
+        """
+        now = time.time()
+        sid = "33333333-3333-3333-3333-333333333333"
+        entries: list[dict[str, Any]] = [
+            {"type": "session_meta", "payload": {"id": sid, "cwd": "/tmp/project"}},
+            _task_started(now - 60),
+            _turn_context(now - 60, "gpt-5.6-sol"),
+        ]
+        entries += [_padding(now - 30) for _ in range(420)]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(Path(tmp), "rollout-deep.jsonl", entries, now)
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                blob = path.read_bytes()
+                # The fixture is only meaningful if the declaration really is
+                # out of a tail read's reach. Pin that, not just the outcome.
+                self.assertNotIn(b'"turn_context"', blob[-config.tail_bytes :])
+                collected = codex_collector.collect(config, state, now, 24, False)
+
+        (session,) = collected
+        self.assertEqual("gpt-5.6-sol", session["model"])
+        # No source on disk names a vendor, and reading one off the harness
+        # name would be inference.
+        self.assertIsNone(session["provider"])
+
+    def test_a_rollout_that_declares_no_model_reports_none_rather_than_a_guess(
+        self,
+    ) -> None:
+        # Reachable on the current CLI, not only on legacy files: a short
+        # session with a task_started and no turn_context. "No model reported"
+        # is a third state and must not be filled in from anything nearby.
+        now = time.time()
+        sid = "44444444-4444-4444-4444-444444444444"
+        entries: list[dict[str, Any]] = [
+            {"type": "session_meta", "payload": {"id": sid, "cwd": "/tmp/project"}},
+            _task_started(now - 40),
+            _padding(now - 30, filler=20),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(Path(tmp), "rollout-quiet.jsonl", entries, now)
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                collected = codex_collector.collect(config, state, now, 24, False)
+
+        (session,) = collected
+        self.assertIsNone(session["model"])
+        self.assertEqual([], session["subagents"])
+
+    def test_the_last_declaration_in_file_order_is_the_one_published(self) -> None:
+        """The rule is "the model in current use", not "the models used".
+
+        `turn_context` is re-written at the head of every turn, so the newest
+        one is the current setting. This fixture puts two values in one file to
+        pin the overwrite; no live rollout observed carries two, so nothing here
+        claims a mid-session change was measured.
+        """
+        now = time.time()
+        sid = "55555555-5555-5555-5555-555555555555"
+        entries: list[dict[str, Any]] = [
+            {"type": "session_meta", "payload": {"id": sid, "cwd": "/tmp/project"}},
+            _task_started(now - 120),
+            _turn_context(now - 120, "gpt-5.5"),
+            _task_started(now - 40),
+            _turn_context(now - 40, "gpt-5.6-sol"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(Path(tmp), "rollout-two.jsonl", entries, now)
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                collected = codex_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual("gpt-5.6-sol", collected[0]["model"])
+
+    def test_each_subagent_publishes_the_model_its_own_rollout_declares(self) -> None:
+        """A child thread is its own rollout and declares its own model.
+
+        All three children are published with whatever was read, including the
+        one that matches the parent and the one that reported nothing. Deciding
+        which of them is worth showing is the page's job and is made on two
+        measured values; the collector must not pre-empt it, because "matches
+        the parent" and "not measured" are different facts and both have to
+        survive the wire.
+        """
+        now = time.time()
+        parent_id = "66666666-6666-6666-6666-666666666666"
+
+        def child(sid: str, nickname: str, model: Any) -> list[dict[str, Any]]:
+            entries: list[dict[str, Any]] = [
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "id": sid,
+                        "thread_source": "subagent",
+                        "agent_nickname": nickname,
+                        "source": {"subagent": {"thread_spawn": {"parent_thread_id": parent_id}}},
+                    },
+                },
+                _task_started(now - 30),
+            ]
+            if model is not None:
+                entries.append(_turn_context(now - 30, model))
+            return entries
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write(
+                root,
+                "rollout-parent.jsonl",
+                [
+                    {"type": "session_meta", "payload": {"id": parent_id, "cwd": "/tmp/project"}},
+                    _task_started(now - 50),
+                    _turn_context(now - 50, "gpt-5.6-sol"),
+                ],
+                now,
+            )
+            # The only differing pair seen on a live store is a terra child
+            # under a sol parent, so that is the pair the fixture uses.
+            self._write(root, "rollout-a.jsonl", child("c-a", "Confucius", "gpt-5.6-terra"), now)
+            self._write(root, "rollout-b.jsonl", child("c-b", "Meitner", "gpt-5.6-sol"), now)
+            self._write(root, "rollout-c.jsonl", child("c-c", "Ohm", None), now)
+
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                collected = codex_collector.collect(config, state, now, 24, False)
+
+        (session,) = collected
+        self.assertEqual("gpt-5.6-sol", session["model"])
+        self.assertEqual(
+            {"Confucius": "gpt-5.6-terra", "Meitner": "gpt-5.6-sol", "Ohm": None},
+            {a["name"]: a["model"] for a in session["subagents"]},
+        )
+        # `model` is a key on every element, never an absence and never a
+        # suffix on the label: a subagent genuinely named "Ohm · gpt-5" must
+        # stay distinguishable from a reading.
+        for agent in session["subagents"]:
+            self.assertEqual({"name", "model"}, set(agent))
+
+
+class CodexModelPrefixScanTest(RuntimeTestCase):
+    """The branch that runs when a rollout grew past the scanner's budget."""
+
+    def _rollout(self, root: Path, entries: list[dict[str, Any]]) -> Path:
+        path = root / "rollout-big.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in entries))
+        return path
+
+    def test_the_backward_pass_reaches_a_declaration_left_in_the_skipped_prefix(
+        self,
+    ) -> None:
+        # A rollout bigger than the scan budget is read backward from the tail
+        # boundary. `turn_context` is written after its `task_started`, so the
+        # backward walk crosses it before the boundary that ends the walk.
+        base = time.time() - 100_000
+        entries: list[dict[str, Any]] = [
+            {"type": "session_meta", "payload": {"id": "big", "cwd": "/tmp/project"}},
+            _task_started(base),
+            _turn_context(base, "gpt-5.6-sol"),
+        ]
+        entries += [_padding(base + 1 + i) for i in range(20)]
+
+        with tempfile.TemporaryDirectory() as tmp, config_patch(turn_scan_max_bytes=4096):
+            path = self._rollout(Path(tmp), entries)
+            config, state = runtime()
+            self.assertGreater(path.stat().st_size, config.turn_scan_max_bytes)
+            scan = runtime_turns.scan_turns(config, state, str(path), "codex")
+
+        assert scan is not None
+        self.assertEqual("gpt-5.6-sol", scan["model"])
+
+    def test_a_prefix_rescan_that_reads_no_declaration_leaves_the_model_standing(
+        self,
+    ) -> None:
+        """The clobber this arrangement is here to prevent.
+
+        `scan_turns` merges the backward pass's result with `st.update()`. That
+        pass stops at the first turn boundary it meets, so it often has nothing
+        to report about the model — and if it reported that as `None`, the merge
+        would erase a model an earlier pass had already read. It must omit the
+        key instead, so silence stays silence.
+        """
+        base = time.time() - 200_000
+        head: list[dict[str, Any]] = [
+            {"type": "session_meta", "payload": {"id": "grow", "cwd": "/tmp/project"}},
+            _task_started(base),
+            _turn_context(base, "gpt-5.6-sol"),
+            _padding(base + 1, filler=20),
+        ]
+        with tempfile.TemporaryDirectory() as tmp, config_patch(turn_scan_max_bytes=4096):
+            path = self._rollout(Path(tmp), head)
+            config, state = runtime()
+            first = runtime_turns.scan_turns(config, state, str(path), "codex")
+            assert first is not None
+            self.assertEqual("gpt-5.6-sol", first["model"])
+
+            # The session goes quiet, then resumes: a long stretch of output
+            # with a gap in the middle and no further declaration. The backward
+            # pass returns at that gap, having read no model at all.
+            with path.open("a") as handle:
+                for i in range(30):
+                    when = base + 10 + i if i < 15 else base + 100_010 + i
+                    handle.write(json.dumps(_padding(when)) + "\n")
+            self.assertGreater(
+                path.stat().st_size - first["pos"],
+                config.turn_scan_max_bytes,
+            )
+            second = runtime_turns.scan_turns(config, state, str(path), "codex")
+
+        assert second is not None
+        # The re-anchored turn start is the proof the backward pass ran and
+        # returned at the gap rather than walking back to the declaration.
+        self.assertGreater(second["last_start"], base + 50_000)
+        self.assertEqual("gpt-5.6-sol", second["model"])

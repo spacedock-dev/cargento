@@ -178,7 +178,9 @@ class DroidVerificationFixTest(unittest.TestCase):
                 sessions = codex_collector.collect(config, state, self.NOW, 24, True)
 
         self.assertEqual("working", sessions[0]["state"])
-        self.assertEqual(["reviewer"], sessions[0]["subagents"])
+        # The child declares no `turn_context`, so its model is genuinely unread
+        # and the key is present holding None rather than absent.
+        self.assertEqual([{"name": "reviewer", "model": None}], sessions[0]["subagents"])
         self.assertLessEqual(sessions[0]["last_activity"], self.NOW, "skewed mtime displayed")
 
 

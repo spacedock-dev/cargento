@@ -7,6 +7,7 @@ import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 from cargento_runtime import claude_data, notifications, records, spacedock
@@ -702,7 +703,7 @@ class ClaudeCollectorTest(RuntimeTestCase):
         parent = sessions[0]
         self.assertEqual(parent_id[:8], parent["session"])
         self.assertEqual("working", parent["state"])
-        self.assertEqual(["spark-reviewer"], parent["subagents"])
+        self.assertEqual([{"name": "spark-reviewer", "model": None}], parent["subagents"])
         self.assertGreater(parent["rate_per_min"], 0)
 
     def test_a_quiet_child_transcript_stops_counting_as_a_running_subagent(self) -> None:
@@ -889,7 +890,7 @@ class ClaudeCollectorTest(RuntimeTestCase):
                 session = collect_claude(now, 24, False)[0]
 
         self.assertEqual("working", session["state"])
-        self.assertEqual(["detect:backend"], session["subagents"])
+        self.assertEqual([{"name": "detect:backend", "model": None}], session["subagents"])
         # The agent's output is the session's output — a parent that reads
         # Working at 0 tok/min is the same blind spot in the rate panel.
         self.assertGreater(session["rate_per_min"], 0)
@@ -967,6 +968,278 @@ class ClaudeCollectorTest(RuntimeTestCase):
                 sessions = collect_claude(now, 24, False)
 
         self.assertEqual("git-spacedock-subspace", sessions[0]["project"])
+
+
+class ClaudeModelTest(RuntimeTestCase):
+    """The model a Claude session and its subagents report.
+
+    Three states, never two: a measured model, and no model reported, are
+    different facts and stay distinguishable all the way to the page. Nothing
+    here may infer a model from anything other than an assistant record that
+    names one.
+    """
+
+    PARENT = "aaaa1111-0000-0000-0000-000000000000"
+    CHILD = "bbbb2222-0000-0000-0000-000000000000"
+
+    @staticmethod
+    def _write(path: Path, records_out: list[dict[str, Any]]) -> None:
+        path.write_text("\n".join(json.dumps(r) for r in records_out) + "\n")
+
+    def _assistant(self, **fields: Any) -> dict[str, Any]:
+        message: dict[str, Any] = {"role": "assistant", "content": []}
+        for key in ("model", "usage"):
+            if key in fields:
+                message[key] = fields.pop(key)
+        return {"type": "assistant", "message": message, **fields}
+
+    def _analyze(self, records_out: list[dict[str, Any]]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.jsonl"
+            self._write(path, records_out)
+            config, state = runtime()
+            return claude_data.analyze_transcript(config, state, str(path))
+
+    def test_the_synthetic_sentinel_is_never_published_as_a_model(self) -> None:
+        # One top-level transcript in five has "<synthetic>" as its newest
+        # assistant model: Claude's marker for a record it wrote locally, without
+        # the request reaching the API. Published, it renders exactly like a real
+        # model name. Rejected by VALUE, because the isApiErrorMessage flag that
+        # sits beside it is falsy on some synthetic records — a flag gate leaks
+        # the sentinel. When it is all a transcript has, the answer is None.
+        info = self._analyze(
+            [
+                self._assistant(model="<synthetic>", isApiErrorMessage=True),
+                self._assistant(model="<synthetic>", isApiErrorMessage=False),
+                self._assistant(model="<synthetic>"),
+            ]
+        )
+
+        self.assertIsNone(info["model"])
+        self.assertIsNone(info["model_sidechain"])
+
+    def test_a_synthetic_tail_does_not_withdraw_a_measured_model(self) -> None:
+        # A cancellation or an error banner lands after the last real turn. It
+        # says nothing about which model the session is on, so it must not
+        # overwrite the reading the turns before it earned.
+        info = self._analyze(
+            [
+                self._assistant(model="claude-opus-5"),
+                self._assistant(model="<synthetic>", isApiErrorMessage=False),
+            ]
+        )
+
+        self.assertEqual("claude-opus-5", info["model"])
+
+    def test_the_newest_assistant_model_wins_a_mid_session_switch(self) -> None:
+        # Newest-wins, not first-wins: a session that switched plan mid-run is
+        # on the model of its most recent turn. Transcripts do not carry stray
+        # background models, so the newest value is the session's own.
+        info = self._analyze(
+            [
+                self._assistant(model="claude-fable-5"),
+                self._assistant(model="claude-opus-5"),
+            ]
+        )
+
+        self.assertEqual("claude-opus-5", info["model"])
+
+    def test_a_sidechain_record_lands_in_the_sidechain_half(self) -> None:
+        # isSidechain INVERTS between a session and its children: a subagent's
+        # own transcript flags every assistant record as a sidechain, so its
+        # model lands in `model_sidechain` and the session half stays empty.
+        # `child_model` reads the two in that order, which is why a child is
+        # measured at all.
+        info = self._analyze([self._assistant(model="claude-fable-5", isSidechain=True)])
+
+        self.assertIsNone(info["model"])
+        self.assertEqual("claude-fable-5", info["model_sidechain"])
+        self.assertEqual("claude-fable-5", claude_collector.child_model(info))
+
+    def test_child_model_never_falls_back_to_the_parent(self) -> None:
+        # An unread child publishes None. Borrowing the parent's model would make
+        # "the same model as its parent" indistinguishable from "not measured",
+        # which is the one distinction this ticket exists to keep.
+        self.assertIsNone(claude_collector.child_model(None))
+        self.assertIsNone(claude_collector.child_model({}))
+        self.assertIsNone(claude_collector.child_model({"model": None, "model_sidechain": None}))
+        self.assertEqual("claude-opus-5", claude_collector.child_model({"model": "claude-opus-5"}))
+
+    def test_a_model_string_is_bounded_and_stripped_of_control_characters(self) -> None:
+        # Untrusted vendor text on its way to the DOM. Bounded at the only door
+        # it comes through, so no caller can forget.
+        cap = runtime_sessions.MODEL_CAP_CHARS
+        info = self._analyze([self._assistant(model="m\u0007odel" + "x" * (cap * 3))])
+
+        model = info["model"]
+        assert model is not None
+        self.assertEqual(cap, len(model))
+        self.assertTrue(model.startswith("m odel"), model)
+
+    def test_a_non_string_model_field_reports_no_model(self) -> None:
+        # Untyped JSON: a number, an object or an empty string is not a reading.
+        for value in (42, {"name": "opus"}, ["opus"], "", "   ", None):
+            with self.subTest(value=value):
+                self.assertIsNone(claude_data.model_reported(value))
+
+    def test_a_session_and_its_subagent_publish_their_own_models(self) -> None:
+        # End to end, on the modern layout: the parent's model comes from its own
+        # non-sidechain records, the child's from its own sidechain ones, and the
+        # child's rides beside its label rather than replacing it.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        stale_iso = datetime.fromtimestamp(now - 600, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            proj.mkdir(parents=True)
+            parent_fp = proj / f"{self.PARENT}.jsonl"
+            self._write(
+                parent_fp,
+                [
+                    {
+                        "type": "user",
+                        "sessionId": self.PARENT,
+                        "timestamp": stale_iso,
+                        "message": {"role": "user", "content": "build the feature"},
+                    },
+                    self._assistant(
+                        model="claude-opus-5",
+                        sessionId=self.PARENT,
+                        timestamp=stale_iso,
+                    ),
+                ],
+            )
+            child_fp = proj / f"{self.CHILD}.jsonl"
+            self._write(
+                child_fp,
+                [
+                    {
+                        "type": "user",
+                        "sessionId": self.CHILD,
+                        "agentName": "spark-reviewer",
+                        "teamName": f"session-{self.PARENT[:8]}",
+                        "timestamp": iso,
+                        "message": {"role": "user", "content": "review the sparkline"},
+                    },
+                    self._assistant(
+                        model="claude-fable-5",
+                        isSidechain=True,
+                        sessionId=self.CHILD,
+                        agentName="spark-reviewer",
+                        teamName=f"session-{self.PARENT[:8]}",
+                        timestamp=iso,
+                        usage={"output_tokens": 500},
+                    ),
+                ],
+            )
+            old = now - 600
+            os.utime(parent_fp, (old, old))
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            ):
+                sessions = collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        parent = sessions[0]
+        self.assertEqual("claude-opus-5", parent["model"])
+        self.assertEqual(
+            [{"name": "spark-reviewer", "model": "claude-fable-5"}], parent["subagents"]
+        )
+
+    def test_a_legacy_workflow_agent_publishes_the_model_from_its_own_file(self) -> None:
+        # The other layout: agent-*.jsonl beneath the session directory, named by
+        # a sibling .meta.json. Same rule, and a session whose own transcript
+        # names no model still reports None rather than borrowing the child's.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            run = proj / self.PARENT / "subagents"
+            run.mkdir(parents=True)
+            self._write(
+                proj / f"{self.PARENT}.jsonl",
+                [
+                    {
+                        "type": "user",
+                        "sessionId": self.PARENT,
+                        "timestamp": iso,
+                        "message": {"role": "user", "content": "detect the backend"},
+                    }
+                ],
+            )
+            agent_fp = run / "agent-a88a43dd9.jsonl"
+            self._write(
+                agent_fp,
+                [
+                    self._assistant(
+                        model="claude-fable-5",
+                        isSidechain=True,
+                        timestamp=iso,
+                        usage={"output_tokens": 500},
+                    )
+                ],
+            )
+            (run / "agent-a88a43dd9.meta.json").write_text('{"name":"detect:backend"}')
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            ):
+                session = collect_claude(now, 24, False)[0]
+
+        self.assertIsNone(session["model"], "the parent named no model of its own")
+        self.assertEqual(
+            [{"name": "detect:backend", "model": "claude-fable-5"}], session["subagents"]
+        )
+
+    def test_an_unmeasured_subagent_publishes_a_null_model_beside_its_name(self) -> None:
+        # `model` is always present on a subagent element, null meaning not read.
+        # A missing key would leave the page unable to tell the two apart.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = Path(tmp) / "projects" / "-Users-test-repo"
+            run = proj / self.PARENT / "subagents"
+            run.mkdir(parents=True)
+            self._write(
+                proj / f"{self.PARENT}.jsonl",
+                [
+                    {
+                        "type": "user",
+                        "sessionId": self.PARENT,
+                        "timestamp": iso,
+                        "message": {"role": "user", "content": "detect the backend"},
+                    }
+                ],
+            )
+            self._write(
+                run / "agent-a88a43dd9.jsonl",
+                [self._assistant(model="<synthetic>", isSidechain=True, timestamp=iso)],
+            )
+            (run / "agent-a88a43dd9.meta.json").write_text('{"name":"detect:backend"}')
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            ):
+                session = collect_claude(now, 24, False)[0]
+
+        self.assertEqual([{"name": "detect:backend", "model": None}], session["subagents"])
+
+    def test_load_subagents_without_analyses_publishes_no_model(self) -> None:
+        # The callers outside a collection hand no `models` map over. They must
+        # get an explicit null rather than a missing key or a guess.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / self.PARENT / "subagents"
+            run.mkdir(parents=True)
+            transcript = Path(tmp) / f"{self.PARENT}.jsonl"
+            transcript.write_text("{}\n")
+            (run / "agent-1.jsonl").write_text("{}\n")
+            config, _state = runtime()
+
+            agents = claude_collector.load_subagents(config, str(transcript), now)
+
+        self.assertEqual([None], [a["model"] for a in agents])
 
 
 class ClaudeReviewFixTest(unittest.TestCase):

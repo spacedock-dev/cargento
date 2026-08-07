@@ -163,12 +163,32 @@ def stamped(paths: list[str]) -> list[tuple[str, float]]:
     return found
 
 
+def child_model(analysis: dict[str, Any] | None) -> str | None:
+    """The model a subagent's own transcript reports, or None.
+
+    ``model_sidechain`` first, then ``model``, because ``isSidechain`` inverts
+    between a session and its children: a subagent's own assistant records are
+    all flagged as sidechains, so its model lands in the sidechain half of
+    ``claude_data.analyze_transcript``. Reading both, in that order, is what lets
+    one helper serve a legacy ``agent-*.jsonl`` transcript and a modern child
+    ``<uuid>.jsonl`` alike.
+
+    Never falls back to the parent's model: an unread child is published as None
+    so the page can tell "the same model as its parent" from "not measured".
+    """
+    if not analysis:
+        return None
+    value = analysis.get("model_sidechain") or analysis.get("model")
+    return value if isinstance(value, str) and value else None
+
+
 def load_subagents(
     config: RuntimeConfig,
     transcript: str | None,
     now: float,
     *,
     found: list[tuple[str, float]] | None = None,
+    models: dict[str, str | None] | None = None,
 ) -> list[dict[str, Any]]:
     """Running Claude subagents beneath the session directory; fresh mtime =
     running. Covers both layouts in ``SUBAGENT_GLOBS``.
@@ -176,6 +196,11 @@ def load_subagents(
     ``found`` lets a caller that has already listed the directory hand the
     listing over, so one session costs one scan. The collector needs the full
     listing anyway for its parked-parent activity check.
+
+    ``models`` is transcript path -> the model that transcript reports, from the
+    analysis the caller has already run for the session's rate. A path this
+    function is not told about publishes None, which is what a caller with no
+    analyses to hand gets for every agent — never a guess at the parent's model.
     """
     agents: list[dict[str, Any]] = []
     for fp, mtime in agent_transcripts(transcript) if found is None else found:
@@ -195,7 +220,13 @@ def load_subagents(
                 if isinstance(value, str) and value:
                     label = value
                     break
-        agents.append({"label": (label or "subagent")[:70], "mtime": mtime})
+        agents.append(
+            {
+                "label": (label or "subagent")[:70],
+                "mtime": mtime,
+                "model": (models or {}).get(fp),
+            }
+        )
     agents.sort(key=lambda a: -a["mtime"])
     return agents
 
@@ -315,10 +346,28 @@ def collect(
             transcript_mtime = 0
         latest_task_mtime = max((t["updated"] for t in tasks), default=0)
         agent_files = agent_transcripts(transcript, config=config, state=state)
-        subagents = load_subagents(config, transcript, now, found=agent_files)
         children = agent_children.get(prefix, [])
+        # One analysis per child transcript, read once and shared by everything
+        # below that wants it: the session's output rate, and the model published
+        # beside each running subagent's label. The two select on different
+        # windows — `rate_window_sec` for the rate, `working_threshold_sec` for
+        # the pills — so the union of the windows is what keeps this at one read
+        # per file whichever of them a given child falls inside. `is_fresh` is
+        # monotone in its window, so the wider window *is* the union; this must
+        # not become a check against `working_threshold_sec` alone, because
+        # nothing enforces that it is the smaller of the two.
+        child_files = [*agent_files, *((c["path"], c["mtime"]) for c in children)]
+        analyses = {
+            path: claude_data.analyze_transcript(config, state, path)
+            for path, mtime in child_files
+            if runtime_sessions.is_fresh(
+                config, now, mtime, max(config.rate_window_sec, config.working_threshold_sec)
+            )
+        }
+        models = {path: child_model(analysis) for path, analysis in analyses.items()}
+        subagents = load_subagents(config, transcript, now, found=agent_files, models=models)
         subagents += [
-            {"label": c["label"], "mtime": c["mtime"]}
+            {"label": c["label"], "mtime": c["mtime"], "model": models.get(c["path"])}
             for c in children
             if runtime_sessions.is_fresh(
                 config, now, c["mtime"], config.working_threshold_sec
@@ -459,6 +508,10 @@ def collect(
         s.update(
             {
                 "title": (info or {}).get("title"),
+                # The session's own model, from the non-sidechain half of the
+                # analysis: an inactive session is not analyzed at all and
+                # publishes None, which is "not read" and not "no model".
+                "model": (info or {}).get("model"),
                 "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
                 "state": session_state,
                 "state_detail": state_detail,
@@ -471,25 +524,15 @@ def collect(
                 # writing while a permission prompt is still open (DRC-4097).
                 "own_activity": transcript_mtime,
                 # Subagent output lives in the children's own transcripts; fold
-                # it in so the session's rate reflects all its work.
+                # it in so the session's rate reflects all its work. Read from
+                # `analyses` rather than re-analyzing: both layouts are in there
+                # already, and a second pass over the same file per refresh is
+                # the cost this map exists to avoid.
                 "rate_per_min": runtime_sessions.rate_from(info, now, config)
                 + sum(
-                    runtime_sessions.rate_from(
-                        claude_data.analyze_transcript(config, state, path),
-                        now,
-                        config,
-                    )
-                    for path, mtime in agent_files
+                    runtime_sessions.rate_from(analyses[path], now, config)
+                    for path, mtime in child_files
                     if runtime_sessions.is_fresh(config, now, mtime, config.rate_window_sec)
-                )
-                + sum(
-                    runtime_sessions.rate_from(
-                        claude_data.analyze_transcript(config, state, c["path"]),
-                        now,
-                        config,
-                    )
-                    for c in children
-                    if runtime_sessions.is_fresh(config, now, c["mtime"], config.rate_window_sec)
                 ),
                 "total": total,
                 "done": done,
@@ -504,7 +547,7 @@ def collect(
                     now,
                     config,
                 ),
-                "subagents": [a["label"] for a in subagents],
+                "subagents": [{"name": a["label"], "model": a["model"]} for a in subagents],
                 "tasks": tasks,
                 "spacedock": session_spacedock(
                     config, state, transcript, subagents, now, window_hours * 3600
