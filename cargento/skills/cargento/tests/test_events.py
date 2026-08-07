@@ -525,6 +525,73 @@ class ReduceTest(unittest.TestCase):
         patch = events.reduce_overlays(ledger, now=NOW, own_activity=0.0, activity_grace_sec=10.0)
         self.assertEqual("needs_input", patch["state"])
 
+    def test_session_activity_after_the_stop_retires_the_idle_overlay(self) -> None:
+        # The reported shape of DRC-4101: a session that stopped, then resumed on
+        # something other than a user prompt, so no `turn_started` ever arrived to
+        # lift the stop. It was published idle and inactive while writing its
+        # transcript at 4,000 tokens a minute with a subagent running.
+        ledger = [self.overlay(events.OVERLAY_IDLE, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, session_activity=NOW - 5, activity_grace_sec=10.0
+        )
+        self.assertEqual({}, patch, "the collector's Working reading should show, not a stale stop")
+
+    def test_a_quiet_session_still_goes_idle(self) -> None:
+        # The guard must not become "never go idle". Nothing has been written
+        # since the stop, which is what an ended session looks like.
+        ledger = [self.overlay(events.OVERLAY_IDLE, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, session_activity=NOW - 601, activity_grace_sec=10.0
+        )
+        self.assertEqual("idle", patch["state"])
+        self.assertFalse(patch["active"])
+
+    def test_activity_inside_the_grace_does_not_retire_the_stop(self) -> None:
+        # The final flush of the transcript can land just after the Stop hook it
+        # provoked. Only that ordering is what the grace covers.
+        ledger = [self.overlay(events.OVERLAY_IDLE, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, session_activity=NOW - 594, activity_grace_sec=10.0
+        )
+        self.assertEqual("idle", patch["state"])
+
+    def test_an_unreported_session_activity_leaves_the_stop_standing(self) -> None:
+        # Collectors that do not fill the field send 0. Treating that as "active
+        # since the epoch" would mean no session on the board could ever be idle.
+        ledger = [self.overlay(events.OVERLAY_IDLE, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, session_activity=0.0, activity_grace_sec=10.0
+        )
+        self.assertEqual("idle", patch["state"])
+
+    def test_the_two_guards_read_different_activity(self) -> None:
+        # A parked parent with a running child: the whole-tree reading is fresh
+        # and the parent's own is not. Idle must retire (the subagent proves the
+        # session is working) and a wait must stand (a background agent writing
+        # says nothing about whether the human answered).
+        stop = [self.overlay(events.OVERLAY_IDLE, seq=1, at=NOW - 600)]
+        self.assertEqual(
+            {},
+            events.reduce_overlays(
+                stop,
+                now=NOW,
+                own_activity=NOW - 601,
+                session_activity=NOW - 5,
+                activity_grace_sec=10.0,
+            ),
+        )
+        wait = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=1, at=NOW - 600)]
+        self.assertEqual(
+            "needs_input",
+            events.reduce_overlays(
+                wait,
+                now=NOW,
+                own_activity=NOW - 601,
+                session_activity=NOW - 5,
+                activity_grace_sec=10.0,
+            )["state"],
+        )
+
     def test_activity_does_not_disturb_a_working_overlay(self) -> None:
         ledger = [self.overlay(events.OVERLAY_WORKING, seq=1, expires_at=NOW + 90)]
         patch = events.reduce_overlays(ledger, now=NOW, own_activity=NOW, activity_grace_sec=10.0)

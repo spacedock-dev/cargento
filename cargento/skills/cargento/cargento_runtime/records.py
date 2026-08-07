@@ -15,21 +15,74 @@ def safe_text(value: Any, limit: int) -> str:
     return text[:limit]
 
 
-def parse_ts(ts: Any) -> float | None:
-    try:
-        return datetime.fromisoformat(ts).timestamp()
-    except (ValueError, TypeError):
+def iso_epoch(value: Any) -> float | None:
+    """One ISO-8601 string as epoch seconds, or nothing. **The repo-wide rule.**
+
+    Every ISO timestamp Cargento reads comes from outside it — a transcript, a
+    SQLite column, a vendor's usage endpoint, a hook payload — and the one thing
+    they do not agree on is whether the offset is there at all. So the rule is
+    stated once, here, and the parsers that need it call this rather than
+    `fromisoformat().timestamp()`:
+
+    **An offset-less stamp is UTC.**
+
+    That is a decision about which wrong answer is survivable, and it was made
+    against measurement rather than taste (2026-08-06). Every source checked on a
+    live machine sends an explicit offset, and every one of them sends `+00:00`:
+    Claude and Pi transcript records, Copilot's `assistant_usage_events.created_at`,
+    and all four `resets_at` fields on Anthropic's usage endpoint. So a naive stamp
+    from any of them would be one of those same UTC values with the suffix dropped,
+    and reading it as UTC recovers the right instant.
+
+    `.timestamp()` on a naive datetime does the opposite: it reads the value as
+    *server-local*. In UTC+8 that is an eight-hour error in the direction that
+    matters most, making a stamp look older than it is — old enough to fall out of
+    an activity window and hide a live session, which is the failure this codebase
+    treats as the worst kind.
+
+    Display is unaffected and stays local: `sessions.format_reset` and
+    `lifecycle` both `.astimezone()` an epoch value for rendering. This function is
+    about reading an instant, not about showing one.
+
+    `Z` is normalized because `fromisoformat` rejected it before Python 3.11 and
+    the floor is 3.11; keeping the substitution costs nothing and documents the
+    spelling vendors actually send.
+    """
+    if not isinstance(value, str):
         return None
+    text = value.replace("Z", "+00:00") if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.timestamp()
+
+
+def parse_ts(ts: Any) -> float | None:
+    """One ISO-8601 record stamp as epoch seconds, or nothing.
+
+    An offset-less stamp is read as **UTC**, which is the repo-wide rule for every
+    ISO string arriving from outside (see `iso_epoch`). Without the explicit
+    `tzinfo`, `.timestamp()` reads a naive value as *server-local*, so the same
+    transcript produced a reading that moved with the reader's timezone — eight
+    hours out in UTC+8, which is enough to place a live turn outside the activity
+    window and hide the session.
+    """
+    return iso_epoch(ts)
 
 
 def parse_utc_sql(value: Any) -> float:
-    try:
-        timestamp = datetime.fromisoformat(str(value).replace(" ", "T"))
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        return timestamp.timestamp()
-    except (ValueError, TypeError):
-        return 0
+    """One SQL datetime as epoch seconds, or 0.
+
+    SQLite has no timestamp type, so these arrive as text and usually without an
+    offset. Same rule as everywhere else: no offset means UTC. The space-for-T
+    substitution is what makes `fromisoformat` accept SQLite's own default
+    spelling; 0 rather than None because the callers window on this and treat 0 as
+    "not in the window".
+    """
+    return iso_epoch(str(value).replace(" ", "T")) or 0
 
 
 def norm_epoch(value: Any) -> float:

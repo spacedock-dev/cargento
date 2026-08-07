@@ -39,10 +39,10 @@ it has no knowledge of.
 
 from __future__ import annotations
 
-import datetime as dt
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
+from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 
 if TYPE_CHECKING:
@@ -224,17 +224,17 @@ def _parse_timestamp(raw: str | None, *, config: RuntimeConfig, now: float) -> f
     to invent activity. `sessions.age` is the same plausibility filter every
     store timestamp passes through, so a container clock hours ahead cannot pin a
     row here either.
+
+    The parse itself is `records.iso_epoch`, which holds the repo-wide rule that an
+    offset-less stamp is UTC. This path had that rule inline and correct already;
+    routing it through the shared helper is what keeps the four ISO readers from
+    drifting apart again, which is how two of them came to disagree.
     """
     if raw is None:
         return now
-    text = raw.replace("Z", "+00:00") if raw.endswith("Z") else raw
-    try:
-        parsed = dt.datetime.fromisoformat(text)
-    except ValueError:
+    stamp = records.iso_epoch(raw)
+    if stamp is None:
         return now
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=dt.UTC)
-    stamp = parsed.timestamp()
     if runtime_sessions.age(config, now, stamp) is None:
         return now
     return stamp
@@ -456,6 +456,7 @@ def reduce_overlays(
     *,
     now: float,
     own_activity: float = 0.0,
+    session_activity: float = 0.0,
     activity_grace_sec: float = 0.0,
 ) -> dict[str, Any]:
     """The field patch a session's live overlays imply, in `arrival_seq` order.
@@ -487,6 +488,28 @@ def reduce_overlays(
     parent transcript alone and never the subagents below it: a background agent
     writing says nothing about whether the human has answered, and clearing a
     genuine wait is the worse error of the two.
+
+    An idle overlay is superseded the same way, and for the same reason one turn
+    later (DRC-4101). `turn_stopped` is the only overlay that says a session
+    stopped, and nothing lifts it but a later `turn_started` — which a session
+    resumed by anything other than a user prompt never emits. A background task
+    completing, a workflow finishing, any harness-driven continuation: the turn
+    restarts, no hook fires, and the idle overlay from the previous stop applies
+    forever. Without this guard a session writing its transcript at 4,000 tokens
+    a minute with a subagent running was published as `state: "idle"`,
+    `active: false`, because an overlay with no deadline outranked every
+    collected field around it.
+
+    The two guards read *different* activity on purpose, and the difference is
+    the point rather than an oversight. A wait ends only when the parent moves,
+    because the human answers the parent. Idleness ends when *anything under the
+    session* moves, because a running subagent is proof the session is not idle
+    even while the parent transcript is parked — which is exactly the shape of a
+    long workflow, and the shape that produced the bug. So idle takes
+    `session_activity`, the collector's whole-tree reading, where a wait takes
+    `own_activity`. Both default to 0 so a collector that reports neither leaves
+    its overlays standing, which is the safe direction: it keeps the event path
+    authoritative for harnesses whose rows carry no activity stamp.
     """
     ordered = sorted(overlays, key=lambda item: item.arrival_seq)
     # The latest point at which this session was known not to be waiting. Computed
@@ -500,6 +523,8 @@ def reduce_overlays(
         if overlay.kind == OVERLAY_NEEDS_INPUT and overlay.arrival_seq < not_waiting_since:
             continue
         if overlay.kind == OVERLAY_NEEDS_INPUT and own_activity > overlay.at + activity_grace_sec:
+            continue
+        if overlay.kind == OVERLAY_IDLE and session_activity > overlay.at + activity_grace_sec:
             continue
         if not overlay.applies(now=now):
             continue
