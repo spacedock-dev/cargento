@@ -20,7 +20,7 @@ from unittest import mock
 from cargento_runtime import cli, diagnostics, http_api, lifecycle
 from cargento_runtime import io as runtime_io
 
-from .page_harness import APP_JS, PAGE_TEXT, PageJsHarness
+from .page_harness import APP_JS, PAGE_TEXT, STYLES, PageJsHarness
 from .support import (
     REGISTRY,
     STORE_KEYS,
@@ -68,24 +68,24 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b1fb777472fb2d7fa0c92bbab1e4ca2889137fe5ebc1741821bded8e065407ed",
             ),
             "regular.js": (
-                25_814,
-                "a6147d07cb7eca98380962cc7bdaf3a96924e65e283ff8a6a03577f06670b435",
+                33_567,
+                "83d467aa56df901510e8b0384e758976ab5d1109c131a353230b133ea3086ce3",
             ),
             "mode.js": (
                 1_938,
                 "6baf5aa67046d4fca5027646f7797ed55f555c7d96f9e7bf8cfee516316c00a4",
             ),
             "usage.js": (
-                41_207,
-                "96f225d9d7c5e57e499b00f25bc98d98b6ed144bf11e9816ce822ca0df8475d3",
+                51_066,
+                "3eb8d87fb2f809058678218cf57bc6b381bb7750d7523efea0eeb56628db70fe",
             ),
             "controls.js": (
                 3_363,
                 "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
-                35_881,
-                "b1d73d7f0f20322306b91f1b30378aab2ab8c7cb3ef9d73aa8ea4bf663b90904",
+                37_614,
+                "be59ad3b8fce25e5243a13c9aa5521ea3abc060ce237a68592cc6c03d5cec7b7",
             ),
             "notify.js": (
                 3_185,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(40_557, len(styles))
+        self.assertEqual(42_073, len(styles))
         self.assertEqual(
-            "57acb7356a9ccffbafe5e8cb8e109f168d9263df7c8a826c2c77dba1f7cff424",
+            "bc8dcae8f4787a506b79c12bcccc6ef50b531850a067bd3f3dba9a9ff1791c8f",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(188_704, len(assembled))
+        self.assertEqual(209_565, len(assembled))
         self.assertEqual(
-            "c75eff394555636bf04d1589be45ea5a921102ef39dad1a3e0bf521b9d50ccfc",
+            "74b1c98cf9960aff1580c4ff34eda04813e33d5a127f9c90a69ca839d2e03e84",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -675,6 +675,258 @@ class CargentoServerTest(PageJsHarness):
         self.assertTrue(rendered["meta"].startswith(" · "))
         self.assertEqual("", rendered["empty"])
 
+    # A board with one harness that keeps a per-request billing ledger and one
+    # that keeps none, which is every real board: Copilot is the only harness
+    # that fills `consumption`, and the other nine declare it and leave it unset.
+    # `window_hours` is 6 rather than the shipped 24 so a clause that hardcoded a
+    # window instead of reading the payload cannot pass.
+    SPEND_FIXTURE = """
+const sess = (sid, harness, over) => Object.assign({
+  harness, session: sid, sid, project: "proj", title: sid, last_prompt: "",
+  state: "working", state_detail: "running Bash", active: true, last_activity: 990,
+  provider: null, model: null, consumption: null, rate_per_min: 10, total: 0,
+  done: 0, open: 0, progress_pct: 0, eta_h: null, turn: null, subagents: [],
+  tasks: [], spacedock: null}, over || {});
+const board = (sessions, over) => Object.assign(
+  {generated: 1000, window_hours: 6, rate_window_sec: 600, show_all: false,
+   summary: {needs_input: 0, working: 1, rate_per_min: 10, active_sessions: 1,
+             open_tasks: 0, progress_pct: 0, total_tasks: 0, total_done: 0},
+   harnesses: [
+     {key: "copilot", label: "Copilot", discovered: true, error: null, reports_rate: false},
+     {key: "claude", label: "Claude", discovered: true, error: null, reports_rate: true}],
+   sessions}, over || {});
+// Visible text with the tags stripped. The figure also appears inside the
+// element's own tooltip, so an assertion against the HTML cannot tell what the
+// reader sees from what the hover says.
+const seen = h => h.replace(/<[^>]*>/g, "");
+const tipOf = h => (h.match(/title="([^"]*)">used /) || [null, null])[1];
+"""
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_session_consumption_figure_keeps_its_unit_and_is_never_money(self) -> None:
+        # The server publishes this field as text with the unit inside it because
+        # AIU is not currency and the rate that would convert it is not on the
+        # machine. The page therefore prints the string it was handed: pulling the
+        # numeral out and labelling it here is how a subscription unit becomes a
+        # dollar figure nobody can check. Three states, and the third is absence:
+        # nine harnesses in ten leave the field unset, so unset must not read as a
+        # zero, and a measured zero must not read as unset.
+        checks = (
+            self.SPEND_FIXTURE
+            + """
+const out = {};
+const bit = over => consumptionBit(board([]), sess("s", "copilot", over));
+const measured = bit({consumption: "6.43 AIU"});
+const zero = bit({consumption: "0.00 AIU"});
+out.measured = seen(measured);
+out.measuredTip = tipOf(measured);
+out.zero = seen(zero);
+out.zeroTip = tipOf(zero);
+// Unset, on the harness that could have filled it and on one that never does.
+out.unsetCopilot = bit({consumption: null});
+out.unsetClaude = consumptionBit(board([]), sess("s", "claude"));
+// A bare number is refused rather than printed. It is the one shape that would
+// put an unlabelled numeral on the page, and AIU, tokens and dollars would then
+// be three quantities sharing one axis.
+out.bareNumber = bit({consumption: 6.43});
+out.emptyString = bit({consumption: ""});
+// A figure this page cannot parse is still a figure. It falls through to the
+// measured wording rather than being called a zero or dropped.
+const odd = bit({consumption: "AIU 6.43"});
+out.unparsed = [seen(odd), /measured zero/.test(tipOf(odd))];
+// Escaped like every other payload-derived string, in the body and in the
+// tooltip both. The rule is about where a value came from rather than about how
+// much the page trusts today's producer of it, and this page builds HTML by
+// concatenation, so an unescaped figure is markup and an unescaped tooltip is an
+// attribute break.
+const hostile = bit({consumption: '<img src=x> 1 AIU" onmouseover=y'});
+out.hostile = [hostile.includes("<img"), hostile.includes("&lt;img"),
+               hostile.includes('" onmouseover'), hostile.includes("&quot; onmouseover")];
+// What the reader sees may not read as money at all; the tooltip says "not
+// dollars" on purpose, so it is held only to carrying no currency symbol.
+out.visibleMoney = [out.measured, out.zero]
+  .filter(t => /[$€£]/.test(t) || /cost|spend|dollar/i.test(t));
+out.tipSymbols = [out.measuredTip, out.zeroTip].filter(t => /[$€£]/.test(t));
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self._run_page_js(checks)
+        self.assertEqual("used 6.43 AIU", out["measured"])
+        self.assertEqual(
+            "6.43 AIU charged to this session over the last 6h, from the per-request"
+            " billing ledger Copilot keeps. AI Units — not dollars, and the rate that"
+            " would convert them is not on this machine.",
+            out["measuredTip"],
+            "the figure lost the window it was measured over, or its unit disclaimer",
+        )
+        # The zero prints, unadorned, the way the rate meter prints a real 0.
+        # Suppressing it is what would make it indistinguishable from a harness
+        # that keeps no ledger at all.
+        self.assertEqual("used 0.00 AIU", out["zero"])
+        self.assertEqual(
+            "A measured zero, not a missing reading: Copilot kept a billing ledger over"
+            " the last 6h and recorded no charge against this session — or none large"
+            " enough to show at two decimal places.",
+            out["zeroTip"],
+            "a measured zero did not say it was measured",
+        )
+        # No slot, so no dash: absence takes the `used` label with it, and a
+        # metadata line with no `used` in it claims nothing about spend.
+        self.assertEqual("", out["unsetCopilot"], "an unmeasured session rendered a figure")
+        self.assertEqual("", out["unsetClaude"], "a harness with no ledger rendered a figure")
+        self.assertEqual("", out["bareNumber"], "an unlabelled numeral reached the page")
+        self.assertEqual("", out["emptyString"])
+        self.assertEqual(["used AIU 6.43", False], out["unparsed"])
+        self.assertEqual(
+            [False, True, False, True],
+            out["hostile"],
+            "the figure reached the DOM as markup, or broke out of its tooltip",
+        )
+        self.assertEqual([], out["visibleMoney"], "the visible figure read as money")
+        self.assertEqual([], out["tipSymbols"], "a currency symbol reached a tooltip")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_row_the_window_does_not_cover_says_so_where_it_can_be_read(self) -> None:
+        # The figure is a slice of a ledger summed over `window_hours`, and
+        # `?all=1` lists rows whose last event predates that window entirely. Such
+        # a row's share is 0.00 arithmetically rather than by measurement, so the
+        # bare clause had a month-old session announcing it spent nothing while it
+        # meant "nothing in the last 6h". The window therefore has to reach the
+        # visible words: a tooltip is where a reader confirms what they already
+        # read, not where they find out they read it wrong.
+        checks = (
+            self.SPEND_FIXTURE
+            + """
+const out = {};
+const bit = over => consumptionBit(board([]), sess("s", "copilot", over));
+// The predicate is the server's own `active`, so the page is not re-deriving a
+// freshness rule from timestamps the server already compared.
+const stale = bit({consumption: "0.00 AIU", active: false, state: "idle"});
+out.stale = seen(stale);
+out.staleTip = tipOf(stale);
+// A row the window does not cover can still hold a charge inside it — a ledger
+// row younger than the session's last event. It is real spend and prints, but
+// it is the window's share rather than the session's total, and says so.
+const partial = bit({consumption: "6.43 AIU", active: false, state: "idle"});
+out.partial = seen(partial);
+out.partialTip = tipOf(partial);
+// A covered row keeps the short clause. The qualification is not a hedge to
+// sprinkle everywhere: on an active row the window IS the session's, and four
+// words of chrome per card is what that would cost.
+out.covered = seen(bit({consumption: "6.43 AIU", active: true}));
+out.coveredZero = seen(bit({consumption: "0.00 AIU", active: true}));
+// A payload that does not say takes the qualified wording. An absent field is
+// not evidence of coverage, and this is the cheaper of the two mistakes.
+out.unstated = seen(bit({consumption: "0.00 AIU", active: undefined}));
+// The window is the payload's here too, not a literal.
+out.wide = seen(consumptionBit(board([], {window_hours: 168}),
+                               sess("s", "copilot", {consumption: "0.00 AIU", active: false})));
+// Still one span, so the qualifier hovers to the same tooltip rather than
+// going quiet halfway through the phrase.
+out.spans = (stale.match(/<span/g) || []).length;
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self._run_page_js(checks)
+        self.assertEqual("used 0.00 AIU in the last 6h", out["stale"])
+        self.assertEqual(
+            "About the window, not the session: Copilot kept a billing ledger over the"
+            " last 6h and this session wrote nothing inside it, so the zero is what the"
+            " window holds rather than what the session spent. Whatever it ran up while"
+            " it was running is older than the window and is counted nowhere on this page.",
+            out["staleTip"],
+            "an out-of-window zero claimed to be a reading about the session",
+        )
+        self.assertEqual("used 6.43 AIU in the last 6h", out["partial"])
+        self.assertIn("not everything the session spent", out["partialTip"])
+        self.assertEqual("used 6.43 AIU", out["covered"], "a covered row grew a qualifier")
+        self.assertEqual("used 0.00 AIU", out["coveredZero"])
+        self.assertEqual(
+            "used 0.00 AIU in the last 6h",
+            out["unstated"],
+            "an unstated `active` was read as coverage",
+        )
+        self.assertEqual("used 0.00 AIU in the last 168h", out["wide"])
+        self.assertEqual(1, out["spans"], "the qualifier left the tooltip's span")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_consumption_clause_renders_where_the_live_rows_are(self) -> None:
+        # The working card and the needs-input row, beside the borrowed-authority
+        # note and in the same metadata line. Not the idle list, which is clipped
+        # behind a toggle and carries exactly one number — an age — so a second
+        # unit there is the fault calm.js fixed by splitting `signal` in two.
+        # And no dangling separator on the nine harnesses that fill nothing.
+        checks = (
+            self.SPEND_FIXTURE
+            + """
+const out = {};
+const spender = sess("cp1", "copilot", {consumption: "6.43 AIU"});
+const blocked = sess("cp2", "copilot", {consumption: "0.00 AIU",
+  state: "needs_input", state_detail: "open question", blocked_since: 900});
+const stopped = sess("cp3", "copilot", {consumption: "8.94 AIU",
+  state: "idle", state_detail: "awaiting your message"});
+const plain = sess("cl1", "claude", {provider: null, model: null});
+const d = board([spender, blocked, stopped, plain]);
+const metaOf = h => seen((h.match(/class="(?:card|need)-meta">(.*?)<\\/div>/) || [null, ""])[1]);
+out.working = metaOf(workingCard(d, spender));
+out.needs = metaOf(needRow(d, blocked));
+out.idle = seen(idleRow(d, stopped));
+// A row whose harness keeps no ledger ends at its session id: the separator
+// belongs to the helper, so nothing renders a trailing " · ".
+out.plain = metaOf(workingCard(d, plain));
+// The clause sits with the authority note rather than replacing it — a Pi
+// session on Copilot quota would carry both facts, and they are two facts.
+const borrowed = sess("pi1", "pi", {provider: "github-copilot", model: "gpt-5",
+  consumption: "1.20 AIU"});
+out.both = metaOf(workingCard(d, borrowed));
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self._run_page_js(checks)
+        self.assertEqual("proj · cp1 · used 6.43 AIU", out["working"])
+        # The needs row leads with the harness badge, whose tooltip text survives
+        # the tag strip; the clause still lands at the end of the same line.
+        self.assertEqual("Copilotproj · cp2 · used 0.00 AIU", out["needs"])
+        self.assertEqual("proj · cl1", out["plain"], "a session with no ledger drew a stray dot")
+        self.assertEqual("proj · pi1 · via Copilot · gpt-5 · used 1.20 AIU", out["both"])
+        self.assertNotIn("AIU", out["idle"], "the idle drawer grew a second unit")
+        self.assertNotIn("used", out["idle"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_no_board_level_figure_is_summed_out_of_one_harnesss_units(self) -> None:
+        # There is no cross-harness AIU: nine harnesses report none, and GitHub's
+        # conversion rate is not on the machine. A hero numeral or a footer over
+        # this field would repeat the output-rate tile's own fault — one harness's
+        # measurement printed as the board's — so the per-session figures are the
+        # only place the unit appears, and the harness total belongs to the usage
+        # tile, which is the one surface that reads the same ledger.
+        checks = (
+            self.SPEND_FIXTURE
+            + """
+const out = {};
+const d = board([sess("cp1", "copilot", {consumption: "6.43 AIU"}),
+                 sess("cp2", "copilot", {consumption: "8.94 AIU"})],
+                {summary: {needs_input: 0, working: 2, rate_per_min: 20,
+                           active_sessions: 2, open_tasks: 0, progress_pct: 0,
+                           total_tasks: 0, total_done: 0}});
+__els.app = {innerHTML: "", className: ""};
+render(d);
+const html = __els.app.innerHTML;
+out.perSession = ["used 6.43 AIU", "used 8.94 AIU"].map(t => html.includes(t));
+// The sum, at both the precision the field prints and the one a naive add gives.
+out.summed = ["15.37", "15.370", "15.4"].filter(t => html.includes(t));
+// Nothing above the session rows carries the unit: the hero tiles and the
+// subnote are everything the page states about the board as a whole.
+const hero = html.slice(html.indexOf('class="hero"'), html.indexOf('class="stack"'));
+out.heroUnits = /AIU/.test(hero);
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self._run_page_js(checks)
+        self.assertEqual([True, True], out["perSession"], "a session lost its own figure")
+        self.assertEqual([], out["summed"], "the page summed one harness's units into a total")
+        self.assertFalse(out["heroUnits"], "an AIU figure reached a board-level tile")
+
     def test_a_monthly_cycle_renders_its_own_gauge_and_its_money(self) -> None:
         # Cursor meters spend against a monthly billing cycle. Exercised by
         # executing the shipped script rather than reading it, because that is
@@ -710,6 +962,370 @@ class CargentoServerTest(PageJsHarness):
         html = rendered["html"]
         self.assertNotIn("68%", html)
         self.assertIn("$13.50 of $20.00", html)
+
+    # The per-model sub-limits. Anthropic's usage response carries them in
+    # `limits[]` as the elements whose `kind` is `weekly_scoped`, and quota.py
+    # shapes them onto the Claude entry as `models`: a list ordered by label,
+    # each row a percentage that may carry no reset at all — the recorded
+    # response carried none. Every test below executes usageEntry() and reads
+    # the row it produced, because the failure worth catching here is not a
+    # missing row but a row that renders and says the wrong thing.
+    # `cells` takes the entry apart one `.u-wrow` at a time so an assertion is
+    # always about a named row: searching the whole entry for "↺ —" cannot tell
+    # which row lost its countdown, and the harness icon is a percent-encoded
+    # data URI, so a bare search over the entry matches almost anything.
+    _MODELS = r"""
+const cells = html => html.split('<div class="u-wrow">').slice(1).map(r => ({
+  lab: (r.match(/<span class="u-wlab"[^>]*>([^<]*)</) || [])[1],
+  ltitle: (r.match(/<span class="u-wlab" title="([^"]*)"/) || [])[1] || null,
+  pct: (r.match(/<span class="u-pct"[^>]*>([^<]*)</) || [])[1] || null,
+  reset: (r.match(/<span class="u-reset"[^>]*>([^<]*)</) || [])[1] || null,
+  rtitle: (r.match(/<span class="u-reset" title="([^"]*)"/) || [])[1] || null,
+  burn: (r.match(/<span class="u-burn[^>]*>([^<]*)</) || [])[1] || null}));
+const labWidth = html => (html.match(/--ulab:(\d+)px/) || [null, null])[1];
+const claude = models => ({harness: 'claude', state: 'ok', asOf: 1700000000,
+  fiveH: {pct: 41, reset: '14:20', resetAt: nowSec() + 3600},
+  week: {pct: 62, reset: 'Thu 02:00', resetAt: nowSec() + 86400}, models});
+"""
+
+    def test_the_per_model_limits_get_their_own_rows_and_get_them_by_default(self) -> None:
+        # A3's outcome is "switch model instead of stopping", and choosing between
+        # two models means seeing both at once, before the tighter of them blocks
+        # you. So these are rows in the band rather than a disclosure, they sit
+        # under the weekly window they subdivide rather than replacing it, and
+        # they are on by DEFAULT: a comparison nobody has switched on arrives
+        # after the fact, and so does a row that only appears once its own model
+        # becomes the binding constraint.
+        # quota.py owns row order — it sorts on the one field of a row that does
+        # not tick — and a second opinion here is how two polls come to disagree
+        # about which row is where. So the labels are fed in an order NEITHER
+        # direction of a sort produces: two of them would have caught an ascending
+        # sort and passed a descending one, which is a mutation that survived this
+        # test the first time it was swept.
+        rendered = self._run_page_js(
+            self._MODELS + "const e = claude([{label:'Sonnet', pct:31},"
+            " {label:'Fable', pct:7},"
+            " {label:'Opus', pct:96, reset:'Thu 02:00', resetAt: nowSec() + 86400}]);"
+            "console.log(JSON.stringify({cfg: usageCfg.models, cells: cells(usageEntry(e)),"
+            " html: usageEntry(e)}));"
+        )
+        self.assertTrue(rendered["cfg"], "the per-model rows must default to shown")
+        cells = rendered["cells"]
+        self.assertEqual(["5h", "wk", "Sonnet", "Fable", "Opus"], [c["lab"] for c in cells])
+        # Each is a gauge in its own right, with its own percentage and bar.
+        self.assertEqual(["41%", "62%", "31%", "7%", "96%"], [c["pct"] for c in cells])
+        self.assertEqual(5, rendered["html"].count("cm-fill"))
+        # A model name is longer than "wk" and can be truncated by its column, so
+        # every model row carries the whole of its label in a tooltip. The window
+        # labels are two characters and carry none, because a tooltip repeating
+        # visible text is noise the reader learns to ignore.
+        self.assertEqual([None, None, "Sonnet", "Fable", "Opus"], [c["ltitle"] for c in cells])
+
+    def test_a_per_model_row_with_no_reset_reads_as_unknown(self) -> None:
+        # The measured case: the recorded response carried no `resets_at` on its
+        # scoped element at all, so a per-model row can be a percentage with no
+        # countdown behind it. Both halves of the column have to say so. Lending
+        # it the weekly countdown would put a figure on the row that this limit
+        # never published, and a blank column reads as a row still loading.
+        rendered = self._run_page_js(
+            self._MODELS + "const e = claude([{label:'Fable', pct:88}]);"
+            "console.log(JSON.stringify({cells: cells(usageEntry(e))}));"
+        )
+        week, model = rendered["cells"][1], rendered["cells"][2]
+        self.assertEqual("↺ —", model["reset"])
+        self.assertEqual("resets at an unknown time", model["rtitle"])
+        # The percentage it does have is still published: no countdown is not no
+        # figure.
+        self.assertEqual("88%", model["pct"])
+        # The weekly row keeps its own countdown, which is what proves the model
+        # row did not take it: an entry-wide search would match this row.
+        self.assertEqual("↺ 1d 0h", week["reset"])
+        self.assertEqual("resets Thu 02:00", week["rtitle"])
+
+    def test_the_label_column_is_measured_and_capped_rather_than_sized_by_eye(self) -> None:
+        # The column is sized per entry from the longest label that entry
+        # actually draws, so a Codex, Copilot or Cursor tile — which never
+        # receives a model name — keeps the width it had and the full width of
+        # its bar. Widths are asserted as literal pixels rather than against
+        # U_LAB_ADVANCE_PX and U_LAB_MAX_CHARS: an expectation sized off the
+        # constants it is checking moves with them, and holds at any cap.
+        # 7.11px per character is the measured advance (SF Mono at --fs-2xs,
+        # 1266/2048 em, the widest face in the --mono stack), so five characters
+        # are 36px, eight are 57px and ten are 72px. The eight-character case is
+        # there to pin the advance itself: at 7.2px per character five and ten
+        # characters both still round to 36 and 72.
+        rendered = self._run_page_js(
+            self._MODELS + "const long = 'M'.repeat(40);"
+            "console.log(JSON.stringify(Object.fromEntries(["
+            " ['none',    labWidth(usageEntry(claude(undefined)))],"
+            " ['four',    labWidth(usageEntry(claude([{label:'Opus', pct:5}])))],"
+            " ['five',    labWidth(usageEntry(claude([{label:'Fable', pct:5}])))],"
+            " ['eight',   labWidth(usageEntry(claude([{label:'Opus 4.5', pct:5}])))],"
+            " ['ten',     labWidth(usageEntry(claude([{label:'Sonnet 4.5', pct:5}])))],"
+            " ['eleven',  labWidth(usageEntry(claude([{label:'Claude Opus', pct:5}])))],"
+            " ['forty',   labWidth(usageEntry(claude([{label: long, pct:5}])))],"
+            " ['undrawn', labWidth(usageEntry(claude([{label: long, pct: null}])))],"
+            " ['hidden',  (usageCfg.models = false,"
+            "              labWidth(usageEntry(claude([{label: long, pct:5}]))))]])));"
+        )
+        # No model rows, no property: the stylesheet owns the width the window
+        # labels need, and an entry restating it there would make that width
+        # unchangeable from the one place it belongs.
+        self.assertIsNone(rendered["none"])
+        # Four characters are 29px, which is under the floor `used` established,
+        # so the property still does not appear.
+        self.assertIsNone(rendered["four"])
+        self.assertEqual("36", rendered["five"])
+        self.assertEqual("57", rendered["eight"])
+        self.assertEqual("72", rendered["ten"])
+        # Past ten the tile runs out, not the name: eleven characters and forty
+        # get the same column and truncate into it.
+        self.assertEqual("72", rendered["eleven"])
+        self.assertEqual("72", rendered["forty"])
+        # A row that was not drawn must not widen the column it was going to sit
+        # in — neither one the payload gave no percentage nor one the reader
+        # switched off.
+        self.assertIsNone(rendered["undrawn"])
+        self.assertIsNone(rendered["hidden"])
+
+    def test_a_per_model_row_without_a_usable_label_is_not_rendered_at_all(self) -> None:
+        # `scope.model.id` arrived null in the capture, so the display name is the
+        # whole of a row's identity. quota.py drops a row that has none, and the
+        # page must not resurrect one under a placeholder or a coerced value: an
+        # unlabelled bar sitting under the weekly bar reads as a second weekly
+        # figure disagreeing with the first, and "42" or "null" as a model name is
+        # a wrong label on a real percentage.
+        rendered = self._run_page_js(
+            self._MODELS + "const e = claude([{label:null, pct:99}, {label:'', pct:98},"
+            " {label:42, pct:97}, {label:{}, pct:96}, {label:'Fable', pct:88}]);"
+            "console.log(JSON.stringify({cells: cells(usageEntry(e)),"
+            " width: labWidth(usageEntry(e))}));"
+        )
+        self.assertEqual(["5h", "wk", "Fable"], [c["lab"] for c in rendered["cells"]])
+        # Their percentages are gone with them, and asserted row by row: the
+        # harness icon is a percent-encoded data URI, so `assertNotIn("97%")`
+        # over the whole entry matches the icon path and passes for free.
+        self.assertEqual(["41%", "62%", "88%"], [c["pct"] for c in rendered["cells"]])
+        # Nor may a dropped row size the column: `Fable` is five characters.
+        self.assertEqual("36", rendered["width"])
+
+    def test_a_hostile_model_label_is_escaped_and_kept_whole_in_its_tooltip(self) -> None:
+        # The label is vendor text on its way into markup the page builds by
+        # concatenation. quota.py bounds it to 40 characters and collapses control
+        # characters, and says plainly that markup passes through verbatim — so
+        # the escape is this side's job and nothing else does it.
+        rendered = self._run_page_js(
+            self._MODELS + "const label = '<img src=x onerror=alert(1)>';"
+            "const e = claude([{label, pct:88}]);"
+            "console.log(JSON.stringify({cells: cells(usageEntry(e)),"
+            " html: usageEntry(e)}));"
+        )
+        self.assertNotIn("<img", rendered["html"])
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", rendered["html"])
+        # The whole label, not a leading fragment of it: a column this narrow
+        # truncates on screen, and the tooltip is where the rest of the name
+        # lives. Asserted as an equality, because assertIn on a fragment passes
+        # on a fragment.
+        self.assertEqual("&lt;img src=x onerror=alert(1)&gt;", rendered["cells"][2]["ltitle"])
+        # The truncation itself is the stylesheet's half of this, and the two
+        # files can only agree by name: the script writes `--ulab` on the entry
+        # and the row rule reads it, and without the clip a long label escapes its
+        # cell and collides with the bar instead of ellipsing. The floor is
+        # declared here rather than passed as a `var()` fallback, so the width the
+        # window labels need is a value in the stylesheet that can be found and
+        # changed rather than an argument buried in a shorthand.
+        self.assertIn("--ulab:30px}", STYLES)
+        self.assertIn("grid-template-columns:var(--ulab) ", STYLES)
+        rule = re.search(r"\.u-wlab\{([^}]*)\}", STYLES)
+        assert rule is not None
+        for declaration in ("overflow:hidden", "text-overflow:ellipsis", "white-space:nowrap"):
+            self.assertIn(declaration, rule.group(1))
+
+    def test_a_per_model_row_is_never_given_a_burn_projection(self) -> None:
+        # The decision, and the governing principle of this band decides it. A
+        # per-model row's only identity is a vendor display name that two rows can
+        # share, so one buffer would hold two series and publish the first row's
+        # slope on the second. And the recorded response gave the scoped element
+        # no reset instant, which is exactly the input burnPush() needs to notice
+        # a limit rolling: a fall is the only other sign, and a limit that rolls
+        # and then climbs past where the old one stood never falls. The fit would
+        # span two allowances and read SLOWER than the truth, pushing its wall
+        # out — the reassuring direction, on a series nobody has watched move.
+        # So nothing is sampled and nothing is fitted. With the projection on the
+        # row SAYS that, rather than going quiet: a silent model row beneath a
+        # weekly row reading "~4%/h · wall 2h 10m" is read as a limit that is not
+        # filling, and an absence that reads as good news is the failure this
+        # whole band was rebuilt to avoid.
+        rendered = self._run_page_js(
+            self._MODELS + "const e = claude([{label:'Fable', pct:88},"
+            " {label:'Sonnet 4.5', pct:12}]);"
+            "const off = usageEntry(e);"
+            "usageCfg.burn = true;"
+            # Through usageBody(), which is the one sampling point, so the window
+            # buffers really do fill while the model rows really do not.
+            "usageBody({usage: [e]});"
+            "usageBody({usage: [Object.assign({}, e, {asOf: 1700000300})]});"
+            "console.log(JSON.stringify({slots: BURN_SLOTS, keys: [...burnHistory.keys()],"
+            " off: cells(off).map(c => c.burn), on: cells(usageEntry(e)).map(c => c.burn)}));"
+        )
+        # The buffers the payload filled, and they are the window slots only. A
+        # model key here would mean a series keyed on a display name.
+        self.assertEqual(["fiveH", "week", "month"], rendered["slots"])
+        self.assertEqual(["claude:fiveH", "claude:week"], sorted(rendered["keys"]))
+        # Off is off for every row, model rows included: no dimmed line, no
+        # reserved space.
+        self.assertEqual([None, None, None, None], rendered["off"])
+        five, week, fable, sonnet = rendered["on"]
+        self.assertEqual("warming up · 2 of 3", five)
+        self.assertEqual("warming up · 2 of 3", week)
+        # Not a rate, not a ceiling, not a warm-up that will never finish — the
+        # third answer, and it is stated rather than left as a gap.
+        for reading in (fable, sonnet):
+            self.assertEqual("not projected", reading)
+            self.assertNotIn("%/h", reading)
+            self.assertNotIn("warming", reading)
+
+    def test_the_unprojected_model_row_says_why_in_its_own_words(self) -> None:
+        # The word alone reads as a Cargento fault, exactly as bare "stale" did.
+        # The hover has to name the two reasons and point at the row that does
+        # carry a rate, or the reader is left to assume the figure was simply
+        # dropped.
+        rendered = self._run_page_js(
+            self._MODELS + "usageCfg.burn = true;"
+            "const e = claude([{label:'Fable', pct:88}]);"
+            "const row = usageEntry(e).split('<div class=\"u-wrow\">')[3];"
+            "console.log(JSON.stringify({title:"
+            ' (row.match(/<span class="u-burn" title="([^"]*)"/) || [])[1] || null}));'
+        )
+        title = rendered["title"]
+        self.assertIsNotNone(title, "the model row carried no burn tooltip at all")
+        self.assertIn("display name", title)
+        self.assertIn("no reset instant", title)
+        self.assertIn("read slower than the truth", title)
+        self.assertIn("weekly", title)
+
+    def test_the_unprojected_tooltip_does_not_claim_a_parent_row_that_is_absent(self) -> None:
+        # The tooltip pointed the reader at "the weekly window these subdivide has
+        # its own row in this tile" unconditionally. Two states make that false and
+        # the reader can see both: the weekly stat switched off, and an entry that
+        # carries fiveH and models but no week at all, which the fetch permits
+        # because it only bails when BOTH named windows are missing. Claiming a row
+        # that is not on screen is the same defect as claiming a measurement that
+        # was not taken, one layer down.
+        for setup, case in (
+            ("usageCfg.week = false;", "weekly switched off"),
+            ("", "entry carries no week"),
+        ):
+            entry = (
+                "const e = claude([{label:'Fable', pct:88}]);"
+                if setup
+                else "const e = claude([{label:'Fable', pct:88}]); delete e.week;"
+            )
+            rendered = self._run_page_js(
+                self._MODELS
+                + "usageCfg.burn = true;"
+                + setup
+                + entry
+                + "const rows = usageEntry(e).split('<div class=\"u-wrow\">');"
+                "console.log(JSON.stringify({title:"
+                ' (rows[rows.length - 1].match(/<span class="u-burn" title="([^"]*)"/)'
+                " || [])[1] || null}));"
+            )
+            title = rendered["title"]
+            self.assertIsNotNone(title, case)
+            self.assertIn("not on screen", title, case)
+            self.assertNotIn("has its own row in this tile", title, case)
+
+        # And the claim survives where it is true, so the fix is not "never say it".
+        rendered = self._run_page_js(
+            self._MODELS + "usageCfg.burn = true;"
+            "const e = claude([{label:'Fable', pct:88}]);"
+            "const rows = usageEntry(e).split('<div class=\"u-wrow\">');"
+            "console.log(JSON.stringify({title:"
+            ' (rows[rows.length - 1].match(/<span class="u-burn" title="([^"]*)"/)'
+            " || [])[1] || null}));"
+        )
+        self.assertIn("has its own row in this tile", rendered["title"])
+        self.assertNotIn("not on screen", rendered["title"])
+
+    def test_the_per_model_rows_have_a_switch_and_the_last_stat_lock_covers_it(self) -> None:
+        # A row with no entry in the popover can never be turned back on once
+        # off, and the last shown stat must refuse to be turned off at all: a band
+        # with every stat hidden is indistinguishable from a broken one.
+        rendered = self._run_page_js(
+            self._MODELS + "const out = {label: USAGE_STATS.find(s => s[0] === 'models')[1]};"
+            # Everything else off, one call at a time, exactly as a reader clicks.
+            "for(const k of ['fiveH', 'week', 'month']) usageAction('ustat', k);"
+            "out.only = USAGE_STATS.filter(([k]) => usageCfg[k]).map(([k]) => k);"
+            "usageCfgOpen = true;"
+            'out.locked = /data-arg="models"[^>]*aria-disabled="true"/.test(usageCfgPop());'
+            "usageAction('ustat', 'models');"
+            "out.stillOn = usageCfg.models;"
+            # And the rows are the only thing left in the band, which is the state
+            # the lock exists to keep reachable.
+            "out.cells = cells(usageEntry(claude([{label:'Fable', pct:88}])));"
+            "console.log(JSON.stringify(out));"
+        )
+        # Named as limits rather than as models: the row is a quota, and "models"
+        # alone would read as a list of what the harness is running.
+        self.assertEqual("per-model limits", rendered["label"])
+        self.assertEqual(["models"], rendered["only"])
+        self.assertTrue(rendered["locked"], "the last shown stat was offered as switchable")
+        self.assertTrue(rendered["stillOn"], "the last shown stat was switched off")
+        self.assertEqual(["Fable"], [c["lab"] for c in rendered["cells"]])
+
+    def test_both_bands_render_the_per_model_rows(self) -> None:
+        # Two surfaces consume this list — the regular view's card and the calm
+        # view's strip — and they are assembled separately. Copilot's `used` row
+        # existed and rendered in neither for exactly this reason.
+        rendered = self._run_page_js(
+            self._MODELS + "const d = {usage: [claude([{label:'Fable', pct:88}])]};"
+            "console.log(JSON.stringify({calm: usageBandCalm(d),"
+            " regular: usageSectionRegular(d)}));"
+        )
+        for view in ("calm", "regular"):
+            with self.subTest(view=view):
+                html = rendered[view]
+                self.assertIn('<span class="u-wlab" title="Fable">Fable</span>', html)
+                self.assertIn("88%", html)
+                self.assertIn("--ulab:36px", html)
+
+    def test_a_stat_added_after_a_reader_last_saved_keeps_its_own_default(self) -> None:
+        # The saved config is adopted key by key, and only for the keys it
+        # carries. Rewriting every key from the stored object was the old
+        # behaviour, and under it every default-on stat added from here on would
+        # ship switched off for exactly the readers who had once opened
+        # `configure` — silently, and looking like the feature never landed.
+        def prelude(cfg: dict[str, bool]) -> str:
+            store = json.dumps({"cargento.usageCfg": json.dumps(cfg)})
+            return (
+                f"let __store = {store};\nconst localStorage = {{"
+                "getItem(k){ return Object.prototype.hasOwnProperty.call(__store, k)"
+                " ? __store[k] : null; }, setItem(k, v){ __store[k] = String(v); }};\n"
+            )
+
+        stale = {
+            "fiveH": True,
+            "week": True,
+            "month": True,
+            "burn": False,
+            "today": False,
+            "cost": False,
+        }
+        rendered = self._run_page_js(
+            "console.log(JSON.stringify(usageCfg));", prelude=prelude(stale)
+        )
+        self.assertTrue(rendered["models"], "a key the saved config never had was read as off")
+        # Everything the reader did choose is still honoured, so this is not a
+        # loader that ignores storage.
+        self.assertFalse(rendered["burn"])
+        self.assertTrue(rendered["week"])
+        # And an explicit choice about the new stat outranks its default.
+        chosen = self._run_page_js(
+            "console.log(JSON.stringify(usageCfg));",
+            prelude=prelude({**stale, "models": False}),
+        )
+        self.assertFalse(chosen["models"], "an explicit off was overridden by the default")
 
     # The burn projection's series is built in the page from the percentages as
     # they arrive, so every one of these tests drives the real sampler by

@@ -1059,7 +1059,7 @@
       "signal": "Reach the user away from the desk",
       "outcome": "the walk-away actually works",
       "archetype": "attention",
-      "impact": 84,
+      "impact": 78,
       "build": 55,
       "state": "new",
       "column": "mid",

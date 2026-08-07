@@ -177,6 +177,106 @@ function burnRacers(rows, rateOf){
   return Math.max(0, ...rows.map(rateOf)) > 0 ? rows : [];
 }
 
+/* What one session spent, and the words both views must use for it. `consumption`
+   arrives preformatted and carrying its own unit ("6.43 AIU") — the page prints
+   the string it was given and never reformats it, because AIU is not money and
+   the rate that would convert it is not on this machine. A page that pulled the
+   numeral out and put its own label on it is exactly how a subscription unit
+   becomes a dollar figure nobody can check.
+
+   Copilot is the only harness that fills the field, the way Pi is the only one
+   that fills `provider`, so this follows authorityBit(): an inline clause where
+   there is something to say, and nothing at all where there is not.
+
+   Nothing — not the rate column's dash — and the difference is what the surface
+   is. A dash belongs to a slot. The rate meter occupies the same corner of every
+   working card and the rate tile draws a row for every discovered harness, so an
+   empty one there reads as a zero and has to say otherwise in its own words. This
+   is not a slot: absence takes the `used` label away with it, and a metadata line
+   with no `used` in it claims nothing about spend, exactly as a Claude row with no
+   `via` claims nothing about whose quota it is on.
+
+   There is also no fourth state to draw, and that is a property of the reducer
+   rather than a simplification. `_read_ledger` runs once per collection, so within
+   one payload a harness's rows are all measured or all unmeasured — a Copilot row
+   can never be the unreadable one beside siblings that were read. When that read
+   fails the harness's usage tile goes quiet with it, so the payload has stopped
+   claiming Copilot keeps a ledger at all, and a per-row "could not be read" would
+   be the page asserting what the server declined to.
+
+   A measured zero prints, unadorned, the way the rate meter prints a real 0.
+   Suppressing it is the one move that would make it indistinguishable from a
+   harness with no accounting, which is the distinction the server spent a whole
+   extra ledger row on. The tooltip is where the two zeroes are told apart, and
+   where the unit says out loud that it is not currency.
+
+   Unadorned on the rows the window covers, that is. The figure is a slice of a
+   ledger summed over `window_hours`, and on an active row that window is also the
+   session's: it wrote something inside it, so "used 6.43 AIU" is about the session
+   the reader is looking at. `?all=1` breaks that. It lists rows whose last event
+   predates the window entirely, and such a row's share of the window is 0.00 for
+   an arithmetic reason rather than a measured one — a session that ran hard for a
+   week a month ago, printing that it spent nothing. So a row the window does not
+   cover names the window in the clause instead of only in the tooltip. Not a
+   fourth state, and not a hedge: the reading is the same measurement either way,
+   but "in the last 24h" is the difference between a fact about the session and a
+   fact about the window, and the tooltip is the wrong place to keep that when the
+   visible words are the ones that get believed.
+
+   Summed nowhere. There is no cross-harness AIU — nine of the ten harnesses
+   report none, and GitHub's conversion rate is not on the machine — so a
+   board-level figure over this field would repeat the output-rate tile's own
+   fault: one harness's measurement printed as the board's. */
+function consumptionBit(d, sess){
+  const text = sess ? sess.consumption : null;
+  if(typeof text !== "string" || !text) return "";
+  const name = own(HARNESS, sess.harness, {}).name || sess.harness;
+  const win = d.window_hours + "h";
+  /* Whether the window this figure was summed over is one the session was alive
+     in. `active` is the server's own "wrote something inside the display window",
+     the same field calm's `running` reads, so the page is not re-deriving a
+     freshness rule the server already applied. Strictly `=== true`, so a payload
+     that does not say takes the qualified wording: an unstated field is not
+     evidence of coverage, and of the two ways to be wrong here, naming a window
+     that turns out to be the session's whole life costs a reader four words. */
+  const covered = sess.active === true;
+  /* parseFloat reads the amount off the very string being displayed, and only to
+     choose between two wordings. A format it cannot read falls through to the
+     measured branch, which is what the string is either way. */
+  const zero = parseFloat(text) === 0;
+  const title = covered
+    ? (zero
+        ? "A measured zero, not a missing reading: " + name + " kept a billing ledger over" +
+          " the last " + win + " and recorded no charge against this session — or none large" +
+          " enough to show at two decimal places."
+        : text + " charged to this session over the last " + win + ", from the per-request" +
+          " billing ledger " + name + " keeps. AI Units — not dollars, and the rate that" +
+          " would convert them is not on this machine.")
+    : (zero
+        ? "About the window, not the session: " + name + " kept a billing ledger over the" +
+          " last " + win + " and this session wrote nothing inside it, so the zero is what" +
+          " the window holds rather than what the session spent. Whatever it ran up while" +
+          " it was running is older than the window and is counted nowhere on this page."
+        : text + " charged to this session inside the last " + win + ", though its own last" +
+          " event is older than that window — so this is the window's share, not everything" +
+          " the session spent. AI Units — not dollars, and the rate that would convert them" +
+          " is not on this machine.");
+  /* Held off wrapping for authorityBit()'s reason: "used 6.43 AIU" is one phrase,
+     and a line break through the middle of it reads as two facts. The window
+     clause is inside the same span for the same reason — it is what the figure
+     means, not a note beside it — and inside the same tooltip so that hovering
+     the qualifier answers rather than going quiet. */
+  const qual = covered ? "" : " in the last " + esc(win);
+  return `<span style="white-space:nowrap" title="${esc(title)}">used ${esc(text)}${qual}</span>`;
+}
+
+/* Separator included, so a session with no accounting renders no stray dot. The
+   shape authorityMeta() has, because it sits in the same metadata lines. */
+function consumptionMeta(d, sess){
+  const bit = consumptionBit(d, sess);
+  return bit ? " · " + bit : "";
+}
+
 /* How many ranked rows the tile has room for. The cap belongs to the ranked rows
    alone. The unmeasured rows sort last by construction, so a cap taken over both
    groups cut them first, and the row the measured/unmeasured distinction exists
@@ -419,7 +519,7 @@ function workingCard(d, sess){
     leadPill + badge(sess.harness, true) + `</div>` +
     `<div class="card-title">${esc(sess.title || sess.project)}</div>` +
     `<div class="card-meta">${esc(sess.project)} · ${esc(sess.session)}` +
-    `${authorityMeta(sess)}</div>${bitsLine}` +
+    `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>${bitsLine}` +
     `</div>${rateMeter}</div>` +
     `<div class="now"><span class="now-k">now</span>` +
     `<span title="${esc(sess.state_detail)}">${esc(humanTool(sess.state_detail))}</span></div>` +
@@ -430,7 +530,7 @@ function needRow(d, sess){
   const blocked = fmtDur(d.generated - (sess.blocked_since || sess.last_activity));
   return `<div class="need"><div style="min-width:0">` +
     `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)} · ${esc(sess.session)}` +
-    `${authorityMeta(sess)}</div>` +
+    `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>` +
     `<div class="need-title">${esc(sess.title || sess.last_prompt || sess.project)}</div>` +
     `<div class="need-detail" title="${esc(sess.state_detail)}">` +
     `${esc(humanTool(sess.state_detail))}</div></div>` +
@@ -445,7 +545,24 @@ function idleRow(d, sess){
     /* No authority here on purpose. This cell already truncates at a max-width
        with an ellipsis, so appending would silently swallow it, and an idle
        session is spending nobody's quota. It shows where consumption is live:
-       the working card, the needs-input row, and the calm detail panel. */
+       the working card, the needs-input row, and the calm detail panel.
+
+       No consumption figure either, and that one is a closer call, because what
+       an idle session already spent is as real as a working session's and is in
+       the harness tile's total. It loses on where this list is: an idle row is
+       clipped behind `Show all N idle` and carries exactly one number, an age, so
+       an AIU figure landing here is a second unit in a drawer nobody reads
+       numbers off — the fault calm.js fixed by splitting `signal` into two
+       columns. The same three surfaces answer for it, and calm's panel opens on
+       every row whatever its state, so the figure is one keystroke away rather
+       than gone.
+
+       What is one keystroke away is the windowed figure and nothing more. The
+       ledger is summed over `window_hours`, so an idle row still inside the window
+       gets its real share, and a row `Show all N idle` dragged in from a month ago
+       gets a clause that says "in the last 24h" rather than a bare zero. Neither
+       surface holds a session lifetime total, and none of the three pretends to —
+       consumptionBit() carries that distinction in its visible words. */
     `<span class="idle-proj">${esc(sess.project)} · ${esc(sess.session)}${t}</span>` +
     `<span class="idle-age">idle ${esc(age)}</span></div>`;
 }

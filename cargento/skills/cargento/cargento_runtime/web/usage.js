@@ -11,6 +11,7 @@
       fiveH: {pct, reset},          // integer percent, short reset text
       week:  {pct, reset},
       month: {pct, reset},
+      models: [{label, pct, reset}], // per-model sub-limits of the weekly one
       used,                         // spend, preformatted
       today, cost}                  // optional extras, preformatted strings
    Every window slot is optional and a harness fills only the ones it has.
@@ -20,6 +21,16 @@
    `month` exists because Cursor meters money against a monthly billing cycle
    rather than a rolling window; borrowing `week` for it would put a wrong
    label on a real number, which is the one thing this band cannot afford.
+   `models` is the one quota field that is not a named slot, and it is a list
+   for the reason the slots are slots: a per-model sub-limit is labelled by the
+   vendor, and there is no telling in advance how many arrive, so minting a
+   `weekOpus` beside the others would put this table in the business of tracking
+   another company's model line-up (quota.py argues the same from its end). Each
+   row carries a label and a percentage. The label is vendor text — bounded to 40
+   characters there, escaped here — and `reset`/`resetAt` are optional on these
+   rows in a way they are not on the window slots: the recorded response carried
+   no reset time for its scoped limit at all, so a per-model row can be a
+   percentage with no countdown behind it.
    `used` carries spend, as money or as units. It stands alone for a harness
    that reports what it spent but not what it is allowed: Copilot bills in AI
    Units and keeps the entitlement server-side, so there is no denominator and
@@ -37,6 +48,7 @@ const USAGE_ENABLED_KEY = "cargento.usageEnabled";  /* the feature switch */
 const USAGE_MODAL_KEY = "cargento.usageModalSeen";
 const USAGE_STATS = [
   ["fiveH", "5h window"], ["week", "weekly window"], ["month", "monthly window"],
+  ["models", "per-model limits"],
   ["burn", "burn projection"], ["today", "tokens today"], ["cost", "cost today"]];
 
 let usageOpen = true;
@@ -52,9 +64,20 @@ let usageCfgOpen = false;   /* the popover is transient, never persisted */
    first load teaches the reader that the band is half-built; an opt-in one is
    asked for by someone who has read what it measures. Turning it on is one
    click in `configure`, and the samples accrue whether or not it is shown, so
-   the switch is instant rather than the start of another wait. */
-let usageCfg = {fiveH: true, week: true, month: true, burn: false, today: false,
-                cost: false};
+   the switch is instant rather than the start of another wait.
+   `models` defaults on, and it is the one default here argued from what the row
+   is for rather than from what it costs. A weekly allowance can be spent per
+   model, so Opus at 96% beside Sonnet at 31% is the difference between stopping
+   work and switching model — and that comparison is only worth anything BEFORE
+   the tighter of the two blocks you. Behind a switch nobody has flipped, it
+   arrives after the fact, and showing a model only once it becomes the binding
+   constraint is the same thing one step later. It is cheap in the way `burn` is
+   not: these are levels the payload already carries, so the row has something
+   true to say the first time it renders rather than a warm-up to sit through.
+   And the field is absent rather than empty when an account has no sub-limits,
+   so an account without them pays no rows for the default. */
+let usageCfg = {fiveH: true, week: true, month: true, models: true, burn: false,
+                today: false, cost: false};
 try{
   if(localStorage.getItem(USAGE_OPEN_KEY) === "0") usageOpen = false;
   if(localStorage.getItem(USAGE_ENABLED_KEY) === "0") usageEnabled = false;
@@ -64,7 +87,17 @@ try{
      config that still shows at least one stat. */
   if(savedCfg && typeof savedCfg === "object" &&
      USAGE_STATS.some(([k]) => savedCfg[k] === true)){
-    for(const [k] of USAGE_STATS) usageCfg[k] = savedCfg[k] === true;
+    /* Key by key, and only the keys the stored object actually carries, so a
+       stat added after a reader last opened `configure` keeps its own default
+       instead of being read off as false. Rewriting every key from the stored
+       object was the old behaviour and it has one bad case: every default-on
+       stat added from here on would ship switched off for exactly the readers
+       who had used the popover, silently, which looks like the feature never
+       landed. An unknown key in the stored object is ignored, because this loop
+       walks the stats the page has rather than the ones it found. */
+    for(const [k] of USAGE_STATS){
+      if(Object.prototype.hasOwnProperty.call(savedCfg, k)) usageCfg[k] = savedCfg[k] === true;
+    }
   }
 }catch(e){ /* private mode, or a context with no storage — defaults hold */ }
 
@@ -231,6 +264,10 @@ const BURN_STALE_SEC = 600;
    the band, slope − band, is still at least band and so still positive, which is
    what lets a resolved rate publish a wall with two finite ends. */
 const BURN_RESOLUTION_FACTOR = 2;
+/* The slots a projection is fitted over, and the whole of them. The per-model
+   rows are deliberately not among them, so nothing samples them and no buffer is
+   ever keyed on a model — the argument is in burnUnprojected(), which is what
+   those rows render instead. */
 const BURN_SLOTS = ["fiveH", "week", "month"];
 /* "harness:slot" -> [{t, v, r}]: the instant, the percentage, and the reset
    instant the reading was taken under. */
@@ -541,6 +578,62 @@ function burnRow(harness, slot, w){
     ` title="${esc(words.title)}">${esc(words.text)}</span>`;
 }
 
+/* What a per-model row puts in the burn slot, which is a sentence rather than a
+   rate. Rendered only while the projection is switched on, and rendered rather
+   than left blank: a model row sitting silent beneath a weekly row that reads
+   "~4%/h · wall 2h 10m" is read as a limit that is not filling, and an absence
+   that reads as good news is the failure the rest of this block was rebuilt to
+   avoid. So the row says which of the three answers this is — measured, measured
+   zero, or not measured — and this one is the third.
+   Two reasons nothing is fitted, and both are about identity rather than about
+   the arithmetic. A per-model row's only identity is the vendor's own display
+   name: two rows can carry the same one, and a buffer keyed on it would then hold
+   two series interleaved and publish the first row's slope on the second. And the
+   recorded response carried no reset instant for its scoped limit at all, which
+   is exactly the input burnPush() needs to notice a limit rolling — a fall is the
+   only other sign, and a limit that rolls and then climbs straight past where the
+   old one stood never falls. A fit would span two allowances and read SLOWER than
+   the truth, pushing its wall out, which is the reassuring direction, on a signal
+   nobody has yet watched move: one scoped row, on one account, at one moment. The
+   weekly row above is the window these subdivide, it carries a reset instant, and
+   it is projected — that is where a reader gets a rate. */
+/* `parentShown` is whether the weekly row these subdivide is actually drawn: it
+   can be switched off in `configure`, and an entry can carry `fiveH` and `models`
+   with no `week` at all, since the fetch only bails when BOTH named windows are
+   missing. The tooltip used to assert the parent was on screen unconditionally,
+   which is a claim the reader can see is false in either of those states. */
+function burnUnprojected(parentShown){
+  if(!usageCfg.burn) return "";
+  const why = "No rate is fitted to a per-model limit." +
+    " Its only identity is the vendor's own display name, and the recorded response" +
+    " carried no reset instant for it — without one, a limit that rolls and then" +
+    " climbs past where the old one stood never falls, so a fitted rate would span" +
+    " two allowances and read slower than the truth.";
+  const parent = parentShown
+    ? " The weekly window these subdivide has its own row in this tile, and that one is projected."
+    : " The weekly window these subdivide is not on screen, so there is no projected row to read" +
+      " them against.";
+  return `<span class="u-burn" title="${esc(why + parent)}">not projected</span>`;
+}
+
+/* The label column is sized per entry rather than once in the stylesheet, and
+   these are the three numbers that size it. A window row's label is two
+   characters and a per-model row's is a model's display name, so one width for
+   the whole band would spend the same 42px of every Codex, Copilot and Cursor bar
+   to hold a name those harnesses never send. Instead each entry asks for what its
+   own longest label needs, floored at the width the window labels already had and
+   capped where the tile runs out — styles.css states both measurements and declares
+   the default. Bars stay aligned inside a tile, because every row in it reads the
+   one value; they no longer align across tiles, which is the cost of this and is
+   the cheaper cost, since a bar is read against its own row's percentage and the
+   other windows of its own harness, never against another harness's allowance.
+   Lengths are counted in UTF-16 code units, which over-counts an astral pair and
+   under-counts a combining mark. Both land inside the cap and the ellipsis, so the
+   error shows up as a column a few pixels off rather than as text escaping it. */
+const U_LAB_ADVANCE_PX = 7.11;
+const U_LAB_MIN_PX = 30;
+const U_LAB_MAX_CHARS = 10;
+
 function usageEntry(u){
   const h = own(HARNESS, u.harness, null) ||
     {code: String(u.harness || "?").slice(0, 2).toUpperCase(), name: u.harness};
@@ -558,18 +651,36 @@ function usageEntry(u){
       `<div class="u-expired"><span class="u-excl" role="img" aria-label="attention">!</span>` +
       `<span>token expired — sign in again in ${esc(h.name || u.harness)}</span></div></div>`;
   }
-  const win = (label, slot, w) => {
+  /* One gauge row. `label` arrives ready for the markup, because the window
+     labels are literals here and a model's is vendor text that has to go through
+     esc() first. `slot` names the burn buffer this row's readings feed, and null
+     says this row is not sampled at all — see burnUnprojected(). `full` is the
+     label before the column truncates it, for a label long enough to need the
+     hover; the two-character window labels pass nothing and get no tooltip. */
+  /* The weekly row is drawn only when the reader has it switched on AND the
+     entry carries one. Per-model rows subdivide it, so they have to know: a
+     sub-limit is still a real measured percentage without its parent on screen,
+     and it still renders, but nothing may claim the parent is there to read it
+     against. */
+  const weekShown = !!(usageCfg.week && u.week && u.week.pct != null);
+  const win = (label, slot, w, full) => {
     if(!w || w.pct == null) return "";
     const pct = Math.max(0, Math.min(100, Math.round(Number(w.pct) || 0)));
     const tone = usageTone(pct);
-    return `<div class="u-wrow"><span class="u-wlab">${label}</span>` +
+    return `<div class="u-wrow">` +
+      `<span class="u-wlab"${full ? ` title="${esc(full)}"` : ""}>${label}</span>` +
       `<span class="cm-track"><span class="cm-fill" style="width:${pct}%;` +
       `background:${tone.bar}"></span></span>` +
       `<span class="u-pct" style="color:${tone.ink}">${pct}%</span>` +
       /* The tooltip keeps the wall-clock time the countdown replaced, so the
-         exact moment is still one hover away. */
+         exact moment is still one hover away. A per-model row can arrive with no
+         reset at all, and then both halves say so: "↺ —" on the row and "resets
+         at an unknown time" on the hover. A blank column would read as a row
+         still loading, and a borrowed weekly countdown would be a figure this
+         limit never published. */
       `<span class="u-reset" title="resets ${esc(String(w.reset || "at an unknown time"))}">` +
-      `↺ ${esc(usageReset(w))}</span>` + burnRow(u.harness, slot, w) + `</div>`;
+      `↺ ${esc(usageReset(w))}</span>` +
+      (slot ? burnRow(u.harness, slot, w) : burnUnprojected(weekShown)) + `</div>`;
   };
   /* No bar and no percentage: there is no limit to be a fraction of. The
      label says "used" rather than a window name so it cannot be misread as a
@@ -578,8 +689,32 @@ function usageEntry(u){
     ? ""
     : `<div class="u-wrow"><span class="u-wlab">used</span>` +
       `<span class="u-used">${esc(String(u.used))}</span></div>`;
+  /* The per-model sub-limits, each a row of its own directly under the weekly bar
+     they subdivide. Their own rows rather than a disclosure or a swap: choosing
+     between two models means seeing both at once, and a row that only appears
+     once its model becomes the tighter constraint appears too late to switch.
+     Nothing here sorts or slices — the server already ordered these by label and
+     bounded how many it sends, and a second opinion about row order is how two
+     polls come to disagree about it. */
+  const modelRows = [];
+  let modelChars = 0;
+  if(usageCfg.models && Array.isArray(u.models)){
+    for(const m of u.models){
+      /* No name, no row. An unlabelled bar under the weekly one reads as a second
+         weekly figure disagreeing with the first, which is worse than the row's
+         absence; quota.py drops the same case on its way out, for the same
+         reason. A row with no percentage is dropped by win() itself, and the
+         column is measured off the rows that survive both — a label whose row was
+         never drawn must not widen the column it was going to sit in. */
+      if(!m || typeof m.label !== "string" || !m.label) continue;
+      const row = win(esc(m.label), null, m, m.label);
+      if(!row) continue;
+      modelChars = Math.max(modelChars, m.label.length);
+      modelRows.push(row);
+    }
+  }
   const wins = usedRow + (usageCfg.fiveH ? win("5h", "fiveH", u.fiveH) : "") +
-    (usageCfg.week ? win("wk", "week", u.week) : "") +
+    (usageCfg.week ? win("wk", "week", u.week) : "") + modelRows.join("") +
     (usageCfg.month ? win("mo", "month", u.month) : "");
   const extras = [];
   if(usageCfg.today && u.today != null) extras.push(["today", u.today]);
@@ -590,7 +725,14 @@ function usageEntry(u){
       extras.map(([k, v]) => `<span>${k} <b>${esc(String(v))}</b></span>`).join("") +
       (asOf ? `<span class="u-asof">${esc(asOf)}</span>` : "") + `</div>`
     : "";
-  return `<div class="u-entry">${head}${wins}${tail}</div>`;
+  /* The label column, sized here and nowhere else — see the three constants
+     above. Only a rendered model row can widen it, and an entry that has none
+     carries no property at all rather than one restating the default: the
+     stylesheet owns the width the window labels need, and a harness that never
+     sends a model name should be able to change it there alone. */
+  const lab = Math.ceil(Math.min(U_LAB_MAX_CHARS, modelChars) * U_LAB_ADVANCE_PX);
+  const width = lab > U_LAB_MIN_PX ? ` style="--ulab:${lab}px"` : "";
+  return `<div class="u-entry"${width}>${head}${wins}${tail}</div>`;
 }
 
 function usageCfgPop(){

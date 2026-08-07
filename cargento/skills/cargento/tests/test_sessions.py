@@ -94,6 +94,53 @@ class CargentoServerTest(RuntimeTestCase):
         self.assertEqual("session-", s["session"])  # display stays 8 chars
         self.assertEqual("session-abcdef123", s["sid"])  # identity stays full
 
+    # The payload's declared field set, written out here rather than derived from
+    # base_session(), so the two sides cannot move together. Comparing a function
+    # against the table it reads from holds no matter how wrong the table is.
+    DECLARED_SESSION_FIELDS = frozenset(
+        {
+            "session",
+            "sid",
+            "harness",
+            "project",
+            "provider",
+            "model",
+            "consumption",
+            "title",
+            "last_prompt",
+            "state",
+            "state_detail",
+            "active",
+            "last_activity",
+            "own_activity",
+            "rate_per_min",
+            "total",
+            "done",
+            "open",
+            "progress_pct",
+            "eta_h",
+            "turn",
+            "subagents",
+            "tasks",
+            "spacedock",
+        }
+    )
+
+    def test_every_session_row_declares_the_same_field_set(self) -> None:
+        # Why the set is fixed at all: a key that appears for only some harnesses
+        # makes every consumer test for presence rather than for a value. So a
+        # field arriving for one harness is declared for all of them, and this
+        # test is the place that has to be edited to say so.
+        for harness in ("claude", "copilot", "goose", "pi"):
+            with self.subTest(harness=harness):
+                row = runtime_sessions.base_session(harness, f"{harness}-1", "proj")
+                self.assertEqual(self.DECLARED_SESSION_FIELDS, set(row))
+
+    def test_consumption_ships_unfilled_for_a_harness_that_keeps_no_ledger(self) -> None:
+        # Copilot's collector fills this; every other harness leaves the declared
+        # None, which reads as "no accounting", never as "spent nothing".
+        self.assertIsNone(runtime_sessions.base_session("goose", "abc", "proj")["consumption"])
+
     def test_turn_clock_reanchors_after_quiet_gap(self) -> None:
         # Time blocked on a human (permission prompt, AskUserQuestion, sleep)
         # writes nothing to the transcript. A quiet gap longer than

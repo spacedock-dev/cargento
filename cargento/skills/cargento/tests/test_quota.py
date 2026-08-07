@@ -12,6 +12,7 @@ import dataclasses
 import email.message
 import http.client
 import json
+import math
 import tempfile
 import threading
 import time
@@ -139,12 +140,57 @@ def _opener(
     return opener
 
 
-def _usage_body(five: float = 42, week: float = 61) -> dict[str, Any]:
-    return {
+def _limit(kind: str, percent: Any, **changes: Any) -> dict[str, Any]:
+    """One `limits[]` element carrying exactly the keys the capture recorded.
+
+    Every element in the live response had the identical key set, so a fixture
+    that omitted the fields the parser must ignore would make "ignored" vacuous:
+    a parser that read `severity` would pass against a fixture that never sent
+    one. `scope` is null except on the scoped kind, which is how it arrived.
+    """
+    element: dict[str, Any] = {
+        "group": "session" if kind == "session" else "weekly",
+        # Present because the capture records it on every element, and False
+        # here for every kind on purpose: the recorded readings disagree about
+        # which element is true, so pinning one arrangement in a fixture would
+        # be inventing a measurement. Nothing reads it, which is the point.
+        "is_active": False,
+        "kind": kind,
+        "percent": percent,
+        "resets_at": NOW + 4 * 86400,
+        "scope": None,
+        "severity": "normal",
+    }
+    element.update(changes)
+    return element
+
+
+def _scoped(display_name: Any, percent: Any = 37, **changes: Any) -> dict[str, Any]:
+    """A `weekly_scoped` element, the per-model shape.
+
+    `id` is null and `resets_at` is absent because that is how the one recorded
+    scoped element arrived: the display name is the only label available and the
+    row carried no countdown at all.
+    """
+    element = _limit(
+        "weekly_scoped",
+        percent,
+        scope={"model": {"display_name": display_name, "id": None}, "surface": "claude_code"},
+    )
+    element.pop("resets_at")
+    element.update(changes)
+    return element
+
+
+def _usage_body(five: float = 42, week: float = 61, **changes: Any) -> dict[str, Any]:
+    """The two named windows plus the three-element `limits[]` the capture had."""
+    body: dict[str, Any] = {
         "five_hour": {"utilization": five, "resets_at": NOW + 3600},
         "seven_day": {"utilization": week, "resets_at": NOW + 4 * 86400},
-        "limits": [{"model": "opus", "utilization": 12}],
+        "limits": [_limit("session", 18), _limit("weekly_all", 61), _scoped("Fable", 37)],
     }
+    body.update(changes)
+    return body
 
 
 def _forbidden_opener() -> Any:
@@ -301,6 +347,422 @@ class FetchRequestTest(unittest.TestCase):
                 self.assertNotIn(TOKEN, note or "")
 
 
+class PerModelLimitTest(unittest.TestCase):
+    """`limits[]`: the per-model sub-limits published as the `models` field.
+
+    Element keys, types and the one absent `resets_at` come from a live response
+    recorded off macOS on 2026-08-06, not from vendor documentation. That capture
+    held exactly one scoped element, so the fixtures here deliberately run to
+    several: the field is designed for an unknown number and verified against one.
+    """
+
+    def _models(self, body: dict[str, Any]) -> Any:
+        entries, note = quota._fetch_windows(_config(), TOKEN, NOW, _opener(body))
+        self.assertIsNone(note)
+        (entry,) = entries
+        return entry.get("models")
+
+    def test_the_captured_shape_publishes_one_labelled_row(self) -> None:
+        # Whole-list equality, not a field probe. It is what pins the shape the
+        # page is being asked to render: the label, the integer percent, and
+        # nothing else at all.
+        self.assertEqual([{"label": "Fable", "pct": 37}], self._models(_usage_body()))
+
+    def test_several_rows_publish_and_are_ordered_by_label(self) -> None:
+        # Sent worst-first, labelled out of alphabetical order, and with the
+        # percentages arranged so that ordering on `pct` in either direction
+        # gives a different answer from ordering on the label. A percentage
+        # ticks; rows sorted on one would move under the reader between polls.
+        body = _usage_body(
+            limits=[_scoped("Sonnet", 90), _scoped("Opus", 10), _scoped("Fable", 50)]
+        )
+        self.assertEqual(
+            [
+                {"label": "Fable", "pct": 50},
+                {"label": "Opus", "pct": 10},
+                {"label": "Sonnet", "pct": 90},
+            ],
+            self._models(body),
+        )
+
+    def test_a_response_with_no_scoped_limits_omits_the_field(self) -> None:
+        # Absent, never an empty list: the window slots work the same way, and a
+        # zero-row `models` on the wire invites a header with nothing under it.
+        cases: list[tuple[str, Any]] = [
+            ("no limits key", None),
+            ("limits empty", []),
+            ("limits not a list", {"kind": "weekly_scoped"}),
+            ("limits is a string", "weekly_scoped"),
+            ("only the two duplicate kinds", [_limit("session", 18), _limit("weekly_all", 61)]),
+        ]
+        for label, limits in cases:
+            with self.subTest(case=label):
+                body = _usage_body()
+                if limits is None:
+                    del body["limits"]
+                else:
+                    body["limits"] = limits
+                self.assertIsNone(self._models(body))
+
+    def test_a_scoped_limit_with_a_reset_carries_both_halves_of_the_pair(self) -> None:
+        # The recorded scoped element had no `resets_at`, but the field exists on
+        # the kinds that do, so a vendor that starts sending one must be read.
+        resets = NOW + 3 * 86400
+        body = _usage_body(limits=[_scoped("Fable", 37, resets_at=resets)])
+        (row,) = self._models(body)
+        self.assertEqual(sessions.format_reset(NOW, resets), row["reset"])
+        self.assertEqual(int(resets), row["resetAt"])
+        # An ISO stamp is the shape the capture actually carries on the windows,
+        # and it must read as the same instant here.
+        iso_body = _usage_body(
+            limits=[
+                _scoped("Fable", 37, resets_at=datetime.fromtimestamp(resets, tz=UTC).isoformat())
+            ]
+        )
+        self.assertEqual([row], self._models(iso_body))
+
+    def test_a_missing_reset_stays_missing_rather_than_defaulting(self) -> None:
+        # Neither half of the pair may appear alone, and neither may be invented:
+        # a per-model row is allowed to be a percentage with no countdown.
+        cases: tuple[Any, ...] = (None, "", "not-a-date", 0, -1, True, [1], {})
+        for raw in cases:
+            with self.subTest(resets_at=raw):
+                (row,) = self._models(_usage_body(limits=[_scoped("Fable", 37, resets_at=raw)]))
+                self.assertEqual({"label": "Fable", "pct": 37}, row)
+
+    def test_a_malformed_element_is_dropped_and_the_good_ones_survive(self) -> None:
+        # One bad element in the list must not take the readable rows with it,
+        # and must not become a row of its own.
+        body = _usage_body(
+            limits=[
+                _scoped("Fable", 37),
+                None,
+                "weekly_scoped",
+                [{"kind": "weekly_scoped"}],
+                _scoped("Nameless", 40, scope=None),
+                _scoped("Nameless", 40, scope={"model": None}),
+                _scoped("Nameless", 40, scope={"model": {"display_name": None, "id": None}}),
+                _scoped("Nameless", 40, scope={"model": {"display_name": "   ", "id": None}}),
+                # A label that is not text at all. The repr of a number or an
+                # object is not the model's name, so the row is refused rather
+                # than published under it.
+                _scoped(12, 40),
+                _scoped(True, 40),
+                _scoped({"display_name": "Opus"}, 40),
+                # A percentage that is not a number, or is a bool.
+                _scoped("Sonnet", "40"),
+                _scoped("Sonnet", None),
+                _scoped("Sonnet", True),
+                _scoped("Opus", 55),
+            ]
+        )
+        self.assertEqual(
+            [{"label": "Fable", "pct": 37}, {"label": "Opus", "pct": 55}],
+            self._models(body),
+        )
+
+    def test_a_hostile_label_is_bounded_and_sanitised(self) -> None:
+        # The bound is written out as a literal, not read from
+        # `MODEL_LABEL_CAP_CHARS`. Sizing the input and the expectation off the
+        # constant moves both sides together, so raising the cap to four thousand
+        # would still pass: the test would restate the implementation instead of
+        # pinning it. Raising it should have to be a deliberate edit here too.
+        (row,) = self._models(_usage_body(limits=[_scoped("O" * 400, 12)]))
+        # Whole-value equality, not substring membership: `assertIn` matches a
+        # fragment and would prove nothing about the truncation. Forty characters
+        # out, and the cut taken from the middle rather than the end — the shape
+        # is pinned here as a literal for the same reason the count is.
+        self.assertEqual("O" * 20 + "…" + "O" * 19, row["label"])
+        self.assertEqual(40, len(row["label"]))
+
+        # Control characters collapse to a space, so a label cannot inject a
+        # line into anything that renders it.
+        (row,) = self._models(_usage_body(limits=[_scoped("Op\x00\x07us\nX", 12)]))
+        self.assertEqual("Op us X", row["label"])
+
+        # Markup is bounded here and escaped by the page, not stripped here.
+        # Asserting it passes through verbatim is what documents that split: a
+        # server that half-sanitised markup would leave the page unsure whether
+        # it still had to escape.
+        markup = "<img src=x onerror=alert(1)>"
+        (row,) = self._models(_usage_body(limits=[_scoped(markup, 12)]))
+        self.assertEqual(markup, row["label"])
+        self.assertLessEqual(len(row["label"]), 40)
+
+        # A label made only of control characters is nothing once sanitised, and
+        # an unnamed bar under the weekly bar reads as a second weekly figure.
+        self.assertIsNone(self._models(_usage_body(limits=[_scoped("\x00\x01\x02", 12)])))
+
+    def test_two_models_that_agree_to_the_cap_still_publish_two_labels(self) -> None:
+        # The reproduction. `scope.model.id` is null, so the label is a row's
+        # whole identity, and two names agreeing for the first forty characters
+        # used to publish two rows reading `Claude Opus 4.5 (Extended Thinking,
+        # Max` with different percentages — the same string in the row and in the
+        # hover, nowhere left to look, two limits presented as one.
+        shared = "Claude Opus 4.5 (Extended Thinking, Max"
+        rows = self._models(
+            _usage_body(limits=[_scoped(shared + " Plan A", 12), _scoped(shared + " Plan B", 91)])
+        )
+        labels = [row["label"] for row in rows]
+        self.assertEqual(len(set(labels)), len(labels), "two models published one label")
+        # Distinct is not enough on its own: the difference has to be the one the
+        # names actually carry, so each label is pinned whole. The cut lands in
+        # the middle, which is what keeps the trailing `Plan A` / `Plan B`.
+        self.assertEqual(
+            [
+                "Claude Opus 4.5 (Ext…hinking, Max Plan A",
+                "Claude Opus 4.5 (Ext…hinking, Max Plan B",
+            ],
+            labels,
+        )
+        self.assertEqual([40, 40], [len(label) for label in labels])
+
+    def test_names_differing_past_the_cut_are_told_apart_within_the_bound(self) -> None:
+        # The case the elision cannot reach: two names that share both ends and
+        # differ only in the middle, where no forty-character window can show it.
+        # The rows are relabelled with a tag derived from the name, which is what
+        # keeps them two rows; the label stays inside the same bound, because a
+        # fix that let vendor text grow would be trading one defect for another.
+        head, tail = "Claude Opus 4.5 with a very ", " long trailing qualifier here"
+        limits = [_scoped(head + "A" * 40 + tail, 12), _scoped(head + "B" * 40 + tail, 91)]
+        rows = self._models(_usage_body(limits=limits))
+        labels = [row["label"] for row in rows]
+        self.assertEqual(2, len(set(labels)))
+        for label in labels:
+            self.assertLessEqual(len(label), 40)
+        # Stable in the name and in nothing else. Sending the same two elements
+        # in the other order is the same two labels: a discriminator that counted
+        # positions would renumber the rows under the reader between polls.
+        reversed_rows = self._models(_usage_body(limits=list(reversed(limits))))
+        self.assertEqual(rows, reversed_rows)
+
+    def test_one_name_sent_twice_becomes_one_row_at_the_worse_figure(self) -> None:
+        # Two elements the vendor itself gives no way to tell apart. A tag cannot
+        # help — it would be the same tag — so they collapse, and the survivor is
+        # the binding constraint, which is the resolution `shape_statusline`
+        # already uses when two families report one window. Publishing both would
+        # put two contradictory numbers under one name.
+        rows = self._models(_usage_body(limits=[_scoped("Fable", 12), _scoped("Fable", 91)]))
+        self.assertEqual([{"label": "Fable", "pct": 91}], rows)
+
+    def test_the_duplicate_kinds_are_ignored_and_the_named_windows_stay_canonical(self) -> None:
+        # `limits[]` restates the session and whole-plan weekly figures. The
+        # top-level objects remain the source for those two, so the fixture gives
+        # the list different numbers: a parser that read them would show them.
+        body = _usage_body(
+            five=42,
+            week=61,
+            limits=[_limit("session", 7), _limit("weekly_all", 8), _scoped("Fable", 9)],
+        )
+        entries, note = quota._fetch_windows(_config(), TOKEN, NOW, _opener(body))
+        self.assertIsNone(note)
+        (entry,) = entries
+        self.assertEqual(42, entry["fiveH"]["pct"])
+        self.assertEqual(61, entry["week"]["pct"])
+        self.assertEqual([{"label": "Fable", "pct": 9}], entry["models"])
+        self.assertEqual({"harness", "state", "asOf", "fiveH", "week", "models"}, set(entry))
+
+    def test_kind_is_the_discriminator_and_group_is_not_consulted(self) -> None:
+        # The capture's central finding: three kinds collapse onto two groups, so
+        # `group` cannot tell the whole-plan weekly limit from a per-model one.
+        #
+        # On the recorded account that mistake is invisible, because the two
+        # duplicate elements arrived with a null `scope` and would be dropped for
+        # having no label whichever field was read. So this fixture deliberately
+        # departs from the capture: it gives the `weekly_all` element a scope it
+        # has never been observed to carry. That is the point. If Anthropic ever
+        # attaches one, a parser keyed on `group` starts publishing the whole-plan
+        # weekly figure as a model row sitting beside the identical weekly bar,
+        # and only a test written against a shape the capture lacks catches it.
+        labelled_all = _limit(
+            "weekly_all",
+            61,
+            scope={"model": {"display_name": "Whole plan", "id": None}, "surface": "claude_code"},
+        )
+        body = _usage_body(limits=[labelled_all, _scoped("Fable", 37)])
+        self.assertEqual([{"label": "Fable", "pct": 37}], self._models(body))
+
+        # And the inverse: `group` absent altogether changes nothing, because it
+        # is never read. A parser that required it would drop every row here.
+        scoped = _scoped("Fable", 37)
+        del scoped["group"]
+        self.assertEqual(
+            [{"label": "Fable", "pct": 37}], self._models(_usage_body(limits=[scoped]))
+        )
+
+        # An element with no `kind` at all is not a row either. Defaulting an
+        # absent discriminator to the scoped kind would publish the session and
+        # whole-plan figures as model rows on any response that stopped sending it.
+        nameless = _scoped("Fable", 37)
+        del nameless["kind"]
+        self.assertIsNone(self._models(_usage_body(limits=[nameless])))
+
+    def test_no_field_of_unestablished_meaning_reaches_the_payload(self) -> None:
+        # `is_active` MOVES: the two recorded readings in
+        # docs/captures/claude/usage-endpoint-macos.jsonl are a day apart and
+        # disagree about which element carries it, so it tracks something that
+        # varies rather than the kind of limit. `severity` is a vendor enum only
+        # ever seen as `normal`. Neither may drive display or appear in the
+        # payload until a measurement says what it means. The fixture sends both
+        # on every element, so a parser that started reading one would fail here.
+        body = _usage_body(limits=[_scoped("Fable", 37, is_active=False, severity="warning")])
+        (row,) = self._models(body)
+        self.assertEqual({"label", "pct"}, set(row))
+        self.assertNotIn("warning", json.dumps(row))
+        # And an inactive element still publishes: "inactive means ignore this"
+        # would be a guess, and a row silently dropped on it is worse than a
+        # percentage the reader can judge.
+        self.assertEqual(37, row["pct"])
+
+    def test_percentages_are_read_on_the_0_to_100_scale_and_clamped(self) -> None:
+        # Measured as an int here and as a float on the windows, both already on
+        # a percent scale. A fraction misread as a percent publishes 1 for a
+        # model at 90, which is the failure the shared reader exists to prevent.
+        body = _usage_body(
+            limits=[
+                _scoped("Fable", 90),
+                _scoped("Opus", 141),
+                _scoped("Sonnet", -3),
+                _scoped("Zed", 63.5),
+            ]
+        )
+        self.assertEqual(
+            [
+                {"label": "Fable", "pct": 90},
+                {"label": "Opus", "pct": 100},
+                {"label": "Sonnet", "pct": 0},
+                {"label": "Zed", "pct": 64},
+            ],
+            self._models(body),
+        )
+        # The windows round identically, because both go through `_percent`.
+        self.assertEqual({"pct": 64}, quota._shape_window(NOW, {"utilization": 63.5}))
+
+    def test_the_row_count_is_bounded_at_what_the_vendor_sent(self) -> None:
+        # Eight is written out rather than read from `MAX_SCOPED_LIMITS`, for the
+        # same reason the label cap is: a bound sized off its own constant is not
+        # a bound, because raising the constant raises the expectation with it.
+        #
+        # Sent in reverse-alphabetical order so the expected labels distinguish
+        # bound-then-sort from sort-then-bound. Which rows survive an over-long
+        # list is arbitrary either way; that the list is bounded is not.
+        names = [f"model-{n:02d}" for n in reversed(range(11))]
+        rows = self._models(_usage_body(limits=[_scoped(name, 20) for name in names]))
+        self.assertEqual(8, len(rows))
+        expected = ["model-03", "model-04", "model-05", "model-06"]
+        expected += ["model-07", "model-08", "model-09", "model-10"]
+        self.assertEqual(expected, [row["label"] for row in rows])
+
+    def test_scoped_rows_do_not_rescue_a_response_with_no_named_windows(self) -> None:
+        # A per-model limit is a sub-limit *of* the weekly window. Children with
+        # no parent figure to be a fraction of are worth less than the category
+        # naming what the response failed to carry.
+        entries, note = quota._fetch_windows(
+            _config(), TOKEN, NOW, _opener({"limits": [_scoped("Fable", 37)]})
+        )
+        self.assertEqual([], entries)
+        self.assertEqual("response carried no windows", note)
+
+
+class NonFiniteNumberTest(unittest.TestCase):
+    """`NaN`, `Infinity`, and integers with no width, which JSON gives for free.
+
+    Nothing in this class is a hostile-input scenario. `json.loads` accepts bare
+    `NaN` and `Infinity` in its default configuration, and a JSON integer literal
+    has no width at all, so any of these reaches a parser here the moment a
+    vendor's serializer emits one. `round()` and `int()` raise on the first two,
+    `float()` raises on an integer too large to hold, and `datetime.fromtimestamp`
+    raises outside `time_t` — and a parser that raises instead of declining is
+    what turned the five-minute floor into a request-per-refresh loop.
+    `fetch_usage` now survives that, but a value is refused *here*, in the reader
+    that read it, so the failure stays a named category rather than the blanket
+    `reader ValueError` of last resort.
+    """
+
+    def _entry(self, body: str) -> dict[str, Any]:
+        entries, note = quota._fetch_windows(_config(), TOKEN, NOW, _opener(raw=body.encode()))
+        self.assertIsNone(note)
+        (entry,) = entries
+        return entry
+
+    def test_json_really_does_hand_these_over_by_default(self) -> None:
+        # The premise of the class, asserted rather than assumed. No flag is set
+        # and no dialect chosen: this is what `json.loads` does out of the box,
+        # which is why every reader below has to expect it.
+        self.assertEqual([float("inf"), float("-inf")], json.loads("[Infinity, -Infinity]"))
+        self.assertTrue(math.isnan(json.loads("NaN")))
+        self.assertEqual(10**400, json.loads("1" + "0" * 400))
+
+    def test_a_non_finite_window_reads_as_no_window_not_as_a_crash(self) -> None:
+        entries, note = quota._fetch_windows(
+            _config(),
+            TOKEN,
+            NOW,
+            _opener(
+                raw=b'{"five_hour": {"utilization": NaN, "resets_at": 1700003600},'
+                b' "seven_day": {"utilization": Infinity}}'
+            ),
+        )
+        # The category the response earns, not the one an exception would have
+        # produced: both windows were unreadable, so there is no entry at all.
+        self.assertEqual(([], "response carried no windows"), (entries, note))
+
+    def test_a_non_finite_percentage_drops_only_its_own_row(self) -> None:
+        for literal in ("NaN", "Infinity", "-Infinity", "1" + "0" * 400):
+            with self.subTest(percent=literal):
+                entry = self._entry(
+                    '{"five_hour": {"utilization": 42}, "limits": [{"kind": "weekly_scoped",'
+                    f' "percent": {literal},'
+                    ' "scope": {"model": {"display_name": "Fable", "id": null}}}]}'
+                )
+                # The window beside it still publishes: one unreadable number is
+                # a missing row, never a missing tile.
+                self.assertEqual(42, entry["fiveH"]["pct"])
+                self.assertNotIn("models", entry)
+
+    def test_an_unreadable_reset_leaves_the_percentage_without_a_countdown(self) -> None:
+        # `Infinity` and a finite stamp past every plausible reset both reach
+        # `datetime.fromtimestamp`, which raises rather than declines outside
+        # `time_t`. Neither may take the percentage down with it.
+        for literal in ("Infinity", "-Infinity", "NaN", "1e300", "1" + "0" * 400):
+            with self.subTest(resets_at=literal):
+                entry = self._entry(
+                    f'{{"five_hour": {{"utilization": 42, "resets_at": {literal}}}}}'
+                )
+                self.assertEqual({"pct": 42}, entry["fiveH"])
+
+    def test_cursors_money_and_cycle_end_refuse_the_same_values(self) -> None:
+        # Same defect class, the other fetch vendor: `int()` raises on both, and
+        # Cursor's parser is reached from its own reader.
+        self.assertEqual(
+            ([], "response carried no plan usage"),
+            quota._cursor_parse(NOW, b'{"planUsage": {"totalSpend": NaN}}'),
+        )
+        # An unreadable limit is a plan with no denominator, which already has a
+        # published shape: the money, and no gauge pretending to be one.
+        entries, note = quota._cursor_parse(
+            NOW, b'{"planUsage": {"totalSpend": 18, "limit": Infinity}}'
+        )
+        self.assertIsNone(note)
+        self.assertEqual(
+            {"harness": "cursor", "state": "ok", "asOf": int(NOW), "used": "$0.18"}, entries[0]
+        )
+        # An unreadable cycle end is a bar with no countdown, not a lost bar.
+        entries, note = quota._cursor_parse(
+            NOW, b'{"planUsage": {"totalSpend": 18, "limit": 2000}, "billingCycleEnd": Infinity}'
+        )
+        self.assertIsNone(note)
+        self.assertEqual({"pct": 1}, entries[0]["month"])
+
+    def test_a_non_finite_receipt_fraction_is_dropped(self) -> None:
+        # The pushed path reads its own numbers, and its body is parsed by the
+        # same `json.loads` at the endpoint, so it inherits the same values.
+        for value in (float("nan"), float("inf"), float("-inf"), 10**400):
+            with self.subTest(remaining_fraction=value):
+                payload = {"quota": {"gemini-5h": {"remaining_fraction": value}}}
+                self.assertEqual([], quota.shape_statusline(payload, NOW))
+
+
 class FetchLifecycleTest(unittest.TestCase):
     def _darwin(self, **changes: Any) -> tuple[RuntimeConfig, RuntimeState]:
         config = _config(platform_name="darwin", **changes)
@@ -453,6 +915,57 @@ class FetchLifecycleTest(unittest.TestCase):
             quota.request_fetch(config, state, clock=lambda: NOW, spawn=lambda run: run())
         with state.usage_fetch_lock:
             self.assertEqual(set(), state.usage_fetch_inflight)
+
+    def test_a_raising_reader_stamps_the_attempt_and_arms_the_floor(self) -> None:
+        # The cache write is what the floor reads, so it has to happen on the way
+        # out of every failure, including the one nobody wrote a branch for. The
+        # note names the exception type and no more: an exception raised while
+        # parsing a response can carry that response in its own message, and the
+        # module's diagnostics are fixed words plus type names for that reason.
+        config, state = self._darwin()
+        log: list[str] = []
+
+        def raiser(*_args: Any) -> Any:
+            raise ValueError(f"cannot convert {TOKEN}")
+
+        quota.fetch_usage(
+            config,
+            state,
+            "claude",
+            raiser,
+            clock=lambda: NOW,
+            diagnostic_sink=log.append,
+        )
+        self.assertEqual(["[claude] usage fetch: reader ValueError"], log)
+        with state.usage_fetch_lock:
+            self.assertEqual({"ts": NOW, "entries": []}, state.usage_fetch_cache["claude"])
+
+    def test_a_raising_reader_cannot_become_a_request_per_refresh(self) -> None:
+        # The consequence, measured the way it was reproduced: four consented
+        # requests one second apart, well inside the five-minute floor. Before
+        # the fix each one started an outbound fetch, because the thread died
+        # before the cache write that arms the floor. "At most one request per
+        # vendor every five minutes" is a SECURITY.md promise, and a parser bug
+        # is not an exemption from it.
+        config, state = self._darwin()
+        attempts: list[float] = []
+        ticks = [NOW]
+
+        def raiser(_config: Any, now: float, _opener: Any, _runner: Any) -> Any:
+            attempts.append(now)
+            raise ValueError("a parser, on a payload nobody expected")
+
+        with mock.patch.object(quota, "FETCH_VENDORS", (("claude", raiser),)):
+            for tick in range(4):
+                ticks[0] = NOW + tick
+                quota.request_fetch(
+                    config,
+                    state,
+                    clock=lambda: ticks[0],
+                    diagnostic_sink=lambda _line: None,
+                    spawn=lambda run: run(),
+                )
+        self.assertEqual([NOW], attempts)
 
     def test_the_default_spawn_runs_on_a_daemon_thread(self) -> None:
         seen: list[bool] = []
@@ -741,6 +1254,9 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
         (claude_entry,) = [u for u in data["usage"] if u.get("harness") == "claude"]
         self.assertEqual("ok", claude_entry["state"])
         self.assertEqual(42, claude_entry["fiveH"]["pct"])
+        # The per-model rows travel the whole way too. Shaping them in the
+        # fetcher is no use if the collection or the serializer drops them.
+        self.assertEqual([{"label": "Fable", "pct": 37}], claude_entry["models"])
 
 
 class StatuslineReceiptTest(unittest.TestCase):

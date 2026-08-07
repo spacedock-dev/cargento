@@ -30,8 +30,11 @@ account email that must never reach `/api/data`.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import math
 import ntpath
+import operator
 import posixpath
 import subprocess
 import threading
@@ -85,6 +88,38 @@ KEYCHAIN_TIMEOUT_SEC = 120.0
 # visible: reading these as dollars overstates every figure a hundredfold,
 # which a small balance hides rather than reveals.
 CENTS_PER_UNIT = 100
+# Anthropic's `limits[]` carries one element per metered limit, and the
+# per-model sub-limits are the elements whose `kind` is this word. `kind` is the
+# discriminator and `group` cannot be: the recorded response collapsed three
+# kinds onto two groups, so `group` cannot tell a whole-plan weekly limit from a
+# per-model one, and those are exactly the two that have to be labelled apart.
+SCOPED_LIMIT_KIND = "weekly_scoped"
+# A model's display name is vendor text on its way to the page, so it is bounded
+# here as well as escaped there. Forty characters holds any product name the
+# endpoint has business sending and refuses a paragraph.
+MODEL_LABEL_CAP_CHARS = 40
+# How much of a name is read before the label is cut out of it. The published
+# label stays at the cap above; this is the bound on the text that cap is applied
+# *to*, and the two have to differ because a name has to be read past the cap to
+# be cut anywhere but the end. Four times the cap is generous for a product name
+# and still refuses a paragraph, and it bounds the digest's input as well.
+MODEL_NAME_CAP_CHARS = 160
+# Hex characters of the tag that separates two names the cap alone cannot. Eight
+# is 32 bits: with the eight rows this field publishes at most, two distinct
+# names landing on one tag is a one-in-a-hundred-million event, against a plain
+# truncation that collides whenever two names share their first forty characters.
+MODEL_LABEL_DIGEST_CHARS = 8
+# The furthest ahead a reset stamp is read at all, a century past the epoch.
+# `datetime.fromtimestamp` raises outside the platform's `time_t` and a JSON
+# number carries no such bound, so an absurd stamp is refused here rather than
+# left to raise inside the formatter. Nothing resets in 2070: a stamp past this
+# is a broken field, and refusing it costs a countdown nobody could have used.
+MAX_RESET_EPOCH = 3_155_760_000.0
+# How many per-model rows may be published. The recorded account carried exactly
+# one, so this is a design-for-N bound rather than a measured one: a plan that
+# metered every model family Anthropic offers still fits well inside it, and a
+# list that ran away cannot fill the band.
+MAX_SCOPED_LIMITS = 8
 
 
 def credentials_path(config: RuntimeConfig) -> str:
@@ -164,6 +199,31 @@ def _read_token(
     return token, expiry, None
 
 
+def _finite(raw: Any) -> float | None:
+    """A real, finite number, or nothing. **Every numeric read starts here.**
+
+    JSON is not the constraint it is usually assumed to be. `json.loads` accepts
+    bare `NaN`, `Infinity` and `-Infinity` by default, and an integer literal in
+    JSON has no width at all, so a vendor response or a pushed receipt can put
+    any of those into any field this module reads. `round()` and `int()` raise on
+    the first two, `float()` raises on an integer too large to hold, and
+    `datetime.fromtimestamp` raises on an infinity — so a parser that reached one
+    would raise instead of returning a category, and a raising parser is what
+    turns the five-minute floor into an unbounded fetch loop (see `fetch_usage`,
+    which now survives one, and this, which stops it happening).
+
+    Booleans are refused for the older reason: `True` is an `int` in Python, and
+    a bar drawn at 1 percent is not what a vendor sending `true` meant.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    try:
+        value = float(raw)
+    except OverflowError:
+        return None
+    return value if math.isfinite(value) else None
+
+
 def _epoch(raw: Any) -> float | None:
     """A reset stamp as epoch seconds: the endpoint has sent both shapes.
 
@@ -173,10 +233,17 @@ def _epoch(raw: Any) -> float | None:
     countdown and, since A5 landed, the burn projection that fires off it. The
     live capture records all four `resets_at` fields arriving with an explicit
     `+00:00`, so the naive branch is a guard rather than the normal case.
+
+    Both branches end at the same plausibility bound, because both feed
+    `sessions.reset_fields` and it formats through `datetime.fromtimestamp`,
+    which raises rather than declines on a stamp outside `time_t`.
     """
-    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0:
-        return float(raw)
-    return records.iso_epoch(raw)
+    value = _finite(raw)
+    if value is None:
+        value = records.iso_epoch(raw)
+    if value is None or not 0 < value <= MAX_RESET_EPOCH:
+        return None
+    return value
 
 
 def _epoch_millis(raw: Any) -> float | None:
@@ -194,22 +261,248 @@ def _epoch_millis(raw: Any) -> float | None:
             raw = int(raw)
         except ValueError:
             return None
-    if not isinstance(raw, (int, float)) or raw <= 0:
+    value = _finite(raw)
+    if value is None or not 0 < value / 1000.0 <= MAX_RESET_EPOCH:
         return None
-    return float(raw) / 1000.0
+    return value / 1000.0
+
+
+def _percent(raw: Any) -> int | None:
+    """A number already on a 0-to-100 percent scale, as an integer, or nothing.
+
+    Shared between the named windows and the per-model sub-limits, and the
+    sharing is a decision rather than a convenience. The two arrive under
+    different keys and in different types — `five_hour.utilization` is a float,
+    `limits[].percent` an int — so this is not one field with two spellings and
+    it does not read either of them. What it holds is the one step they do have
+    in common: how a number on that scale becomes a bar. Keeping the clamp and
+    the rounding in one place is what stops the two from disagreeing about
+    whether 63.5 is 63 or 64, which the page would show as two bars at different
+    heights for the same figure.
+
+    Both sides are measured on that scale (see design-usage-quota.md Q-2), so
+    the round is a round and never a conversion. A fraction read as a percent
+    would publish 1 for a window at 90, and a band reading almost-empty while
+    the allowance is nearly gone is the failure this module exists to avoid.
+
+    The clamp does not make the round safe on its own — `round()` raises on a
+    non-finite float and never reaches it — which is why the number is taken
+    through `_finite` first.
+    """
+    value = _finite(raw)
+    if value is None:
+        return None
+    return max(0, min(100, round(value)))
 
 
 def _shape_window(now: float, raw: Any) -> dict[str, Any] | None:
     """One usage window mapped onto the payload contract, or nothing."""
     win = records.as_dict(raw)
-    pct = win.get("utilization")
-    if not isinstance(pct, (int, float)) or isinstance(pct, bool):
+    pct = _percent(win.get("utilization"))
+    if pct is None:
         return None
-    shaped: dict[str, Any] = {"pct": max(0, min(100, round(pct)))}
+    shaped: dict[str, Any] = {"pct": pct}
     resets = _epoch(win.get("resets_at"))
     if resets:
         shaped.update(sessions.reset_fields(now, resets))
     return shaped
+
+
+def _elide(text: str, limit: int) -> str:
+    """`text` bounded to `limit` characters, cut in the middle rather than at the end.
+
+    The end of a model name is where it says which model it is. The vendor's
+    names run family, then version, then qualifier — the shared part first and
+    the distinguishing part last — so a plain truncation keeps exactly the half
+    that two long names have in common and throws away the half that tells them
+    apart. Eliding the middle spends the same bound on both ends, which is why
+    the cap can stay where it is: the fix for two names colliding at forty
+    characters is not a bigger forty.
+    """
+    if len(text) <= limit:
+        return text
+    keep = limit - 1
+    head = (keep + 1) // 2
+    tail = keep - head
+    return text[:head] + "…" + (text[-tail:] if tail else "")
+
+
+def _label_digest(name: str) -> str:
+    """A short stable tag for one model name, used only to tell two rows apart.
+
+    Stable in the name and in nothing else. The obvious discriminator — the
+    element's position in `limits[]` — would renumber the rows whenever the
+    vendor reordered the list or metered one more model, so a row's identity
+    would shift under the reader between two polls, which is the failure this
+    whole field is being held to. A digest of the name moves only when the name
+    does. It is not a security boundary and is not treated as one: it separates
+    two labels, and nothing downstream reads it as anything else.
+    """
+    return hashlib.blake2s(
+        name.encode("utf-8"), digest_size=MODEL_LABEL_DIGEST_CHARS // 2
+    ).hexdigest()
+
+
+def _distinct_labels(rows: list[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Rows whose labels tell their models apart, from rows that may not.
+
+    A per-model row's label is its whole identity. `scope.model.id` arrived null
+    in the capture, so there is no other field to hang identity on, and the page
+    renders the label twice: once in a column ten characters wide, and once in
+    the hover, which is the only place the whole of it is legible. Two models
+    whose names agree to the cap therefore render as two stacked bars, same
+    label, different percentages, and the hover repeats the same string — a
+    reader cannot tell which figure belongs to which model, and there is nothing
+    further to open. Two limits presented as one is the failure mode this module
+    is written against, so the labels are made distinct before they are
+    published, in two steps and for two different reasons:
+
+    **Same name, twice.** The vendor sent two elements the vendor itself gives no
+    way to tell apart — the same name as far as `MODEL_NAME_CAP_CHARS` reads it,
+    which is the outer edge of what this module can distinguish at all. They
+    collapse to one row carrying the worse percentage,
+    the same resolution `shape_statusline` uses for two families reporting one
+    window: the band answers "am I about to run out", so the binding constraint
+    is the honest figure. Publishing both would put two contradictory numbers
+    under one name, which reads as a rendering bug rather than as two limits.
+
+    **Different names, one label.** The elision has already spent the bound on
+    both ends, so names that reach here differ somewhere in the middle that no
+    forty-character window can show. They are relabelled with a shorter elision
+    plus `_label_digest`, which keeps the label inside the cap and makes it
+    injective in the name: the reader still cannot read the difference, but the
+    rows no longer claim to be the same model, and the hover text differs, which
+    is what turns "these are one thing" back into "these are two".
+    """
+    groups: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for name, row in rows:
+        groups.setdefault(row["label"], []).append((name, row))
+    published: list[dict[str, Any]] = []
+    for group in groups.values():
+        worst: dict[str, dict[str, Any]] = {}
+        for name, row in group:
+            standing = worst.get(name)
+            if standing is None or row["pct"] > standing["pct"]:
+                worst[name] = row
+        if len(worst) == 1:
+            published.extend(worst.values())
+            continue
+        for name, row in worst.items():
+            head = _elide(name, MODEL_LABEL_CAP_CHARS - 1 - MODEL_LABEL_DIGEST_CHARS)
+            row["label"] = f"{head}…{_label_digest(name)}"
+            published.append(row)
+    return published
+
+
+def _scoped_limit(now: float, raw: Any) -> tuple[str, dict[str, Any]] | None:
+    """One `limits[]` element as (model name, published row), or nothing.
+
+    The name is returned beside the row because the row's label is a bounded cut
+    of it and the cut is not injective: `_distinct_labels` needs the whole name
+    to tell two rows apart, and it is deliberately not carried as a field on the
+    row, because a field on the row is a field on the wire.
+
+    Elements of any other `kind` are not rows: see `_scoped_limits` for why the
+    list is only partly consumed.
+    """
+    element = records.as_dict(raw)
+    if element.get("kind") != SCOPED_LIMIT_KIND:
+        return None
+    model = records.as_dict(records.as_dict(element.get("scope")).get("model"))
+    # `scope.model.id` arrived null in the capture, so the display name is the
+    # only label there is, and it is untrusted vendor text: bounded here, escaped
+    # by the page. Two ways of having no label, both refused. An element with
+    # nothing usable is dropped rather than published under a placeholder,
+    # because an unnamed per-model bar sitting beneath the weekly bar reads as a
+    # second weekly figure disagreeing with the first. And a name that is not a
+    # string is refused before bounding rather than coerced: `safe_text` would
+    # happily publish the repr of whatever arrived, and the repr of a number or
+    # an object is not the model's name — it is a wrong label on a real
+    # percentage. The number beside it is refused just as strictly, in `_percent`.
+    raw_label = model.get("display_name")
+    name = (
+        records.safe_text(raw_label, MODEL_NAME_CAP_CHARS).strip()
+        if isinstance(raw_label, str)
+        else ""
+    )
+    pct = _percent(element.get("percent"))
+    if not name or pct is None:
+        return None
+    row: dict[str, Any] = {"label": _elide(name, MODEL_LABEL_CAP_CHARS), "pct": pct}
+    # The scoped element in the capture carried no `resets_at` at all, so a
+    # per-model row is a percentage that may have no countdown behind it. Missing
+    # stays missing rather than defaulting to anything, and `reset_fields` is the
+    # only writer of the pair, so the words and the instant are either both here
+    # or both absent.
+    resets = _epoch(element.get("resets_at"))
+    if resets:
+        row.update(sessions.reset_fields(now, resets))
+    return name, row
+
+
+def _scoped_limits(now: float, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """The response's per-model sub-limits, shaped for the `models` field.
+
+    **The published shape.** An entry's existing quota fields are named window
+    slots — `fiveH`, `week`, `month` — whose meaning the page knows in advance.
+    Per-model limits are not that: they are a list of unknown length whose rows
+    are labelled by the vendor, so no slot can hold them and minting `weekOpus`
+    and `weekSonnet` beside the others would put this repository in the business
+    of tracking Anthropic's model line-up in a frontend table. The field is
+    therefore a list of its own:
+
+        models: [{label, pct, reset, resetAt}, ...]
+
+    `label` is the vendor's display name, bounded to `MODEL_LABEL_CAP_CHARS` and
+    guaranteed to differ from every other label in the list — see
+    `_distinct_labels` for why that guarantee is the point rather than a nicety.
+    `pct` is an integer percent on the same scale as every other bar on the
+    band. `reset` and `resetAt` come as a pair from `sessions.reset_fields` and
+    are present only when the vendor sent a stamp. The list is absent rather
+    than empty when there is nothing to say, exactly like the window slots, and
+    it is capped at `MAX_SCOPED_LIMITS` rows.
+
+    Rows are ordered by label, which is the one field on a row that does not
+    tick. Ordering on `pct` would move rows under the reader between polls, and
+    the vendor's own order is nowhere documented to be stable, so inheriting it
+    would make the order a coin flip that only shows up as flicker. The sort
+    runs after the labels are made distinct, since that is the step that decides
+    what a label finally says.
+
+    **Only `weekly_scoped` elements are read, on purpose.** The list also carries
+    a `session` element and a `weekly_all` element, and those two are the same
+    figures the top-level `five_hour` and `seven_day` objects already publish.
+    Those stay the canonical source for the two named windows, so a list that is
+    parsed and then only partly consumed is the intended outcome here rather than
+    an oversight.
+
+    **`is_active` and `severity` are deliberately not read.** Both are in the
+    capture and neither has established semantics. `is_active` **moves**: the two
+    recorded readings a day apart disagree about which element carries it, so it
+    describes something that varies rather than the kind of limit, and a renderer
+    keyed on it would call the 5h window the live constraint one day and the
+    weekly one the next with nothing to say which was right. `severity` is a
+    vendor-computed enum
+    of which only `normal` has ever been observed. Publishing a field the page
+    cannot honestly render is how that guess would get made downstream, so they
+    stay out of the payload until a measurement says what they mean.
+    """
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for raw in records.as_list(payload.get("limits")):
+        shaped = _scoped_limit(now, raw)
+        if shaped is None:
+            continue
+        rows.append(shaped)
+    # Bound by severity, not by arrival. Which rows survive an over-long list is
+    # arbitrary as to *identity* and emphatically not as to *severity*: taking the
+    # first eight as they arrived published eight rows at 3% and dropped a row at
+    # 99%, because the vendor happened to send it last. That is the same rule
+    # `_distinct_labels` applies to a same-name collision one function up, and for
+    # the same reason — this band answers "am I about to run out", so the binding
+    # constraint is the row that has to survive. Deduplicate first, so a name that
+    # collides cannot occupy two of the eight places.
+    kept = sorted(_distinct_labels(rows), key=operator.itemgetter("pct"), reverse=True)
+    return sorted(kept[:MAX_SCOPED_LIMITS], key=operator.itemgetter("label"))
 
 
 def _expired_entry(now: float, harness: str) -> dict[str, Any]:
@@ -254,7 +547,15 @@ def _fetch_windows(
         if shaped:
             entry[key] = shaped
     if "fiveH" not in entry and "week" not in entry:
+        # A per-model row cannot rescue this. Every one of them is a sub-limit
+        # *of* the weekly window, so a response that lost `seven_day` and kept
+        # its scoped children is one this parser no longer understands, and the
+        # diagnostic category is worth more than a row of children with no
+        # parent figure to be a fraction of.
         return [], "response carried no windows"
+    scoped = _scoped_limits(now, payload)
+    if scoped:
+        entry["models"] = scoped
     return [entry], None
 
 
@@ -277,9 +578,10 @@ def _claude_entries(
 
 def _cents(amount: Any) -> int | None:
     """A non-negative integer cent amount, or nothing."""
-    if isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount < 0:
+    value = _finite(amount)
+    if value is None or value < 0:
         return None
-    return int(amount)
+    return int(value)
 
 
 def _money(cents: int) -> str:
@@ -408,13 +710,31 @@ def fetch_usage(
     attempt, and the poll floor reads that stamp, so a broken endpoint or a
     missing credential is retried on the same five-minute cadence as success,
     never in a storm.
+
+    **A reader that raises is a failure like any other, and that is the whole
+    reason for the catch.** Without it the cache write never runs, so the floor
+    never arms, so the next `/api/data` request starts another fetch — one
+    outbound request per page refresh instead of one per five minutes, against a
+    vendor endpoint, carrying a credential. The module header calls that class of
+    thing a security bug rather than a defect, and it does not depend on which
+    line raised: any reader, any exception, one cadence. So the catch is
+    deliberately blind, and the diagnostic stays inside the fixed vocabulary the
+    rest of the module uses — a category word and an exception type name, never a
+    message, because an exception raised while parsing a response can carry the
+    response into its own text.
+
+    The stamp is written before the note is reported, so a diagnostic sink that
+    fails cannot cost the floor either.
     """
     now = clock()
-    entries, note = reader(config, now, opener, runner)
-    if note:
-        runtime_io.diag(f"[{vendor}] usage fetch: {note}", diagnostic_sink)
+    try:
+        entries, note = reader(config, now, opener, runner)
+    except Exception as exc:  # noqa: BLE001 — a raising reader must still arm the floor
+        entries, note = [], f"reader {type(exc).__name__}"
     with state.usage_fetch_lock:
         state.usage_fetch_cache[vendor] = {"ts": clock(), "entries": entries}
+    if note:
+        runtime_io.diag(f"[{vendor}] usage fetch: {note}", diagnostic_sink)
 
 
 def _spawn_thread(run: Callable[[], None]) -> None:
@@ -512,11 +832,11 @@ _RECEIPT_WINDOWS = (("-5h", "fiveH"), ("-weekly", "week"))
 def _receipt_window(now: float, raw: Any) -> tuple[int, dict[str, Any]] | None:
     """One status-line bucket as (percent used, shaped window), or nothing."""
     bucket = records.as_dict(raw)
-    remaining = bucket.get("remaining_fraction")
-    if not isinstance(remaining, (int, float)) or isinstance(remaining, bool):
+    remaining = _finite(bucket.get("remaining_fraction"))
+    if remaining is None:
         return None
     # The payload reports what is LEFT; the contract publishes what is USED.
-    pct = max(0, min(100, round((1.0 - float(remaining)) * 100)))
+    pct = max(0, min(100, round((1.0 - remaining) * 100)))
     shaped: dict[str, Any] = {"pct": pct}
     resets = _epoch(bucket.get("reset_time"))
     if resets:

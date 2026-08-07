@@ -500,6 +500,123 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["noEchoedPrompt"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_consumption_figure_reaches_the_detail_panel_and_earns_no_column(self) -> None:
+        # Copilot is the only harness that fills `consumption`, so a column of its
+        # own would hold a dash in nine rows out of ten — a permanent column of
+        # chrome restating per row what the harness strip states once, which is the
+        # inverse of the fault the `signal` split fixed and no better than it. The
+        # figure goes where the borrowed-authority note goes: the detail panel,
+        # which unlike the regular view's card column opens on an idle row too, and
+        # so is where an idle session's spend is still readable.
+        checks = """
+const out = {};
+const spender = mk({harness: "copilot", sid: "cp1", session: "cp1", title: "Ship it",
+  state: "working", active: true, last_activity: 99990, consumption: "6.43 AIU"});
+const stopped = mk({harness: "copilot", sid: "cp2", session: "cp2", title: "Quiet one",
+  last_activity: 99000, consumption: "0.00 AIU"});
+render(payload([spender, stopped, quiet]));
+const collapsed = __els.app.innerHTML;
+// The grid keeps exactly the headings it had, and no row carries the figure.
+out.headings = [...((collapsed.match(/class="cm-head">([\\s\\S]*?)<\\/div>/) || [null, ""])[1])
+  .matchAll(/<span[^>]*>([^<]*)<\\/span>/g)].map(m => m[1]);
+out.collapsedFigure = /used [\\d.]+ AIU/.test(collapsed);
+const panelOf = h => h.slice(h.indexOf('class="cm-exp"'));
+calmAction("open", "copilot:cp1");
+out.working = panelOf(__els.app.innerHTML).includes("used 6.43 AIU");
+// A measured zero is a reading and prints as one, on a row that is not working.
+calmAction("open", "copilot:cp2");
+out.idle = panelOf(__els.app.innerHTML).includes("used 0.00 AIU");
+// A harness that keeps no ledger says nothing rather than dashing.
+calmAction("open", "claude:ccc3");
+const bare = panelOf(__els.app.innerHTML);
+out.bare = [/AIU/.test(bare), bare.includes("used")];
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual(
+            ["", "", "session", "where", "doing", "flag", "rate", "idle / wait", "", ""],
+            out["headings"],
+            "the ledger grid gained or lost a column",
+        )
+        self.assertFalse(out["collapsedFigure"], "the figure reached the collapsed ledger row")
+        self.assertTrue(out["working"], "the panel dropped the figure")
+        self.assertTrue(out["idle"], "an idle session lost the one surface that shows its spend")
+        self.assertEqual([False, False], out["bare"], "a harness with no ledger drew a figure")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_panel_names_the_window_the_figure_was_measured_over(self) -> None:
+        # The figure is windowed — the same window the harness usage tile sums, so
+        # a reader comparing a row against the tile compares like with like — and
+        # the window is the payload's to choose. The panel therefore reads it off
+        # the payload it is rendering rather than off a literal, which is the whole
+        # reason `calmRowHTML` and `calmExpansion` are handed one at all.
+        checks = """
+const out = {};
+const spender = mk({harness: "copilot", sid: "cp1", session: "cp1", title: "Ship it",
+  state: "working", active: true, last_activity: 99990, consumption: "6.43 AIU"});
+const tip = hours => {
+  // Opened by state rather than by a toggle: two calls to the open action on one
+  // key would close the row the second time and read a tooltip that is not there.
+  calmOpenKey = "copilot:cp1";
+  render(Object.assign(payload([spender]), {window_hours: hours}));
+  const h = __els.app.innerHTML;
+  return (h.match(/title="([^"]*)">used /) || [null, null])[1];
+};
+out.narrow = tip(3);
+out.wide = tip(168);
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual(
+            "6.43 AIU charged to this session over the last 3h, from the per-request"
+            " billing ledger Copilot keeps. AI Units — not dollars, and the rate that"
+            " would convert them is not on this machine.",
+            out["narrow"],
+        )
+        self.assertIn("over the last 168h", out["wide"], "the window was not read off the payload")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_panel_qualifies_a_figure_for_a_session_the_window_outlived(self) -> None:
+        # The panel is the one surface that opens on an idle row, and `Show all`
+        # drags in rows whose last event predates the window entirely. Their share
+        # of a windowed ledger is 0.00 by arithmetic, so the panel was answering
+        # "what did this session spend?" with a zero that meant "nothing in the
+        # last 24h". The wording belongs to consumptionBit(); what the row shape
+        # owes it is `active`, and this is the test that the field survives the
+        # trip from the payload into the row the panel renders.
+        checks = """
+const out = {};
+// A month old, listed only because `Show all` asked for it. The payload's own
+// `active` is the flag: the row shape is the only thing between it and the bit.
+const ancient = mk({harness: "copilot", sid: "cp9", session: "cp9", title: "Last month",
+  active: false, last_activity: 100000 - 30 * 86400, consumption: "0.00 AIU"});
+const live = mk({harness: "copilot", sid: "cp1", session: "cp1", title: "Ship it",
+  state: "working", active: true, last_activity: 99990, consumption: "6.43 AIU"});
+render(Object.assign(payload([ancient, live]), {show_all: true}));
+const panelOf = h => h.slice(h.indexOf('class="cm-exp"'));
+// The clause's own element, so the assertion reads what sits between one pair of
+// tags rather than every meta span run together by the tag strip.
+const clause = h => (panelOf(h).match(/>(used [^<]*)</) || [null, null])[1];
+calmAction("open", "copilot:cp9");
+const stalePanel = panelOf(__els.app.innerHTML);
+out.stale = clause(__els.app.innerHTML);
+out.staleTip = (stalePanel.match(/title="([^"]*)">used /) || [null, null])[1];
+calmAction("open", "copilot:cp1");
+out.live = clause(__els.app.innerHTML);
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual(
+            "used 0.00 AIU in the last 24h",
+            out["stale"],
+            "a month-old row still read as a session that spent nothing",
+        )
+        self.assertIn("About the window, not the session", out["staleTip"])
+        # And the covered row is untouched: the qualifier appears where the window
+        # and the session have come apart, not on every panel that opens.
+        self.assertEqual("used 6.43 AIU", out["live"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_hostile_session_text_cannot_reach_the_dom_as_markup(self) -> None:
         # Titles, prompts, task subjects and subagent names all come from files
         # a project can write. Calm mode builds HTML strings, so every one of

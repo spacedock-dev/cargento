@@ -200,6 +200,21 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
     # `provider` is the vendor's own id, unmapped (`openai-codex`, not
     # `codex`). Naming is presentation and belongs to the page, which has the
     # harness table; the payload stays the raw reading.
+    #
+    # `consumption` is what the session has spent, and it is declared here for
+    # the same reason as those two: only Copilot fills it, because Copilot is the
+    # one harness that keeps a per-request billing ledger beside its sessions.
+    # It carries its own unit as text ("16.61 AIU"), because a bare number is not
+    # comparable across harnesses — AIU, tokens and dollars are three different
+    # quantities, and a naked `consumption: 16.61` invites one axis through all
+    # of them. Text also matches the harness usage tile's `used`, so a reader
+    # checking a row against the tile beside it compares like with like.
+    #
+    # None and "0.00 AIU" are different readings and both are published: no
+    # accounting for this session at all, versus a ledger that covers the window
+    # and records nothing against it. A collector that cannot tell those apart
+    # leaves None. The window is the payload's own `window_hours`, the same span
+    # the tile sums, so a row and the tile cannot disagree about one session.
     return {
         "session": str(sid)[:8],
         "sid": str(sid),
@@ -207,6 +222,7 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "project": project,
         "provider": None,
         "model": None,
+        "consumption": None,
         "title": None,
         "last_prompt": "",
         "state": "idle",

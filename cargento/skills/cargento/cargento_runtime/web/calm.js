@@ -97,8 +97,28 @@ function calmRow(d, x){
     harness: x.harness, project: x.project, session: x.session,
     /* Carried for the detail panel only. The ledger row itself is a fixed grid
        whose columns are compared down their own length, and `cm-where` already
-       gives up the project name to truncation, so there is no room to spend. */
+       gives up the project name to truncation, so there is no room to spend.
+
+       `consumption` joins them, and for a stronger version of the same reason. A
+       column earns its width by being readable down its own length, and this one
+       could never be: Copilot is the only harness that fills the field, so nine
+       rows in ten would hold a dash forever — a permanent column of chrome
+       restating per row what the harness strip states once. That is the inverse of
+       the fault the `signal` split fixed and no better than it. The panel is also
+       the one surface that opens on an idle row, so it is where an idle session's
+       figure is readable at all: regular.js draws it on the working card and the
+       needs-input row and says there why it stops.
+
+       Readable, not answered. The figure is a slice of a ledger summed over
+       `window_hours`, so what the panel gives an idle row is that row's share of
+       the window — its whole spend where the window still covers it, and a clause
+       that says so where it does not. `active` rides along for exactly that: it is
+       the predicate consumptionBit() picks the wording with, and this row shape is
+       the only thing standing between it and the payload. Passing the figure
+       without it is what made a month-old session read `used 0.00 AIU` and mean
+       "nothing in the last 24 hours". */
     provider: x.provider || null, model: x.model || null,
+    consumption: x.consumption || null, active: !!x.active,
     st, title, doing: humanTool(x.state_detail), doingRaw: x.state_detail,
     ageSec, waitSec, turn, flag, tone, why,
     sortAge: st === "work" ? 0 : ageSec,   /* see byAge — a working row's age is noise */
@@ -425,7 +445,11 @@ function calmHarnessCell(r){
   return `<span class="cm-hcell" title="${esc(h.name || r.harness)}">${inner}</span>`;
 }
 
-function calmExpansion(r){
+/* Takes the payload as well as the row for one thing: the consumption clause
+   names the window it measured, and the window is the payload's. Threaded rather
+   than precomputed into the row, because the clause is markup and building it
+   twice is how the two views came to word `fastest` differently twice over. */
+function calmExpansion(r, d){
   const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
   const why = r.flag
     ? `<div class="cm-why"><span class="cm-why-g" style="color:${tone.ink}">◆</span>` +
@@ -449,7 +473,7 @@ function calmExpansion(r){
     : "";
   const meta = `<div class="cm-meta">` +
     `<span>${esc(own(HARNESS, r.harness, {}).name || r.harness)}</span>` +
-    authorityBit(r) +
+    authorityBit(r) + consumptionBit(d, r) +
     `<span>${esc(r.project)}</span><span>session ${esc(r.session)}</span>` +
     `<span>${esc(r.detailAge)}</span>` +
     (r.tasks.length ? `<span>${esc(r.taskNote)}</span>` : "") + `</div>`;
@@ -479,7 +503,7 @@ function calmExpansion(r){
     `<div class="cm-exp-side">${turn}${subs}${acts}</div></div>`;
 }
 
-function calmRowHTML(r, focusSid){
+function calmRowHTML(r, focusSid, d){
   const open = calmOpenKey === r.key;
   const focus = r.key === focusSid;
   const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
@@ -518,7 +542,7 @@ function calmRowHTML(r, focusSid){
     ` data-arg="${esc(r.key)}" title="copy this session's id">` +
     `${copied ? esc(calmCopyNote.text) : "copy id"}</button></span>` +
     `<span class="cm-caret">${open ? "–" : "+"}</span></div>` +
-    (open ? calmExpansion(r) : "") + `</div>`;
+    (open ? calmExpansion(r, d) : "") + `</div>`;
 }
 
 /* Whether the footer's total is a figure or a floor. The ledger dashes the rows
@@ -578,7 +602,7 @@ function calmLedger(d){
       `<button type="button" class="cm-link" data-calm="clear">Show all ${all.length}` +
       `</button></div></div>`;
   } else {
-    body = entries.map(e => e.row ? calmRowHTML(e.row, focusSid)
+    body = entries.map(e => e.row ? calmRowHTML(e.row, focusSid, d)
       : `<div class="cm-div"><span class="cm-div-k">${esc(e.divider.label)}</span>` +
         `<span class="cm-div-n">${e.divider.count}</span>` +
         `<span class="cm-div-rule"></span>` +

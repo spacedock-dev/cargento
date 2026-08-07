@@ -19,6 +19,7 @@ A usage entry is the same shape whoever produced it:
  fiveH: {pct, reset, resetAt},              // a gauge: used out of a limit
  week: {pct, reset, resetAt},
  month: {pct, reset, resetAt},              // the same, for a billing cycle
+ models: [{label, pct, reset, resetAt}],    // sub-limits of the weekly one, one row per model
  used}                                      // a figure: spend
 ```
 
@@ -32,9 +33,28 @@ server-rendered countdown also keeps the figure true between polls instead of ag
 interval. Past its reset the page reads "due", which says the window has rolled without pretending to
 know the new number.
 
+The pair is optional as well as paired, and a row can carry a percentage with no reset at all. That
+is not hypothetical: the scoped element in the capture behind Q-2 published a per-model percentage
+and no `resets_at`, so `_shape_window` and `_scoped_limit` both omit the pair rather than defaulting
+it. Such a row prints an em dash where the countdown goes and says "resets at an unknown time" on the
+hover. Both halves are deliberate. A blank column reads as a row still loading, and borrowing the
+weekly countdown would put a figure on the row that this limit never published.
+
 Every window slot is optional, and a harness fills only the ones it genuinely has. That is the
 whole reason `month` exists rather than Cursor borrowing `week`: the slot names are what the page
 labels the bar, so a monthly cycle rendered as "wk" would put a wrong label on a correct number.
+
+`models` is the one quota field that is not a named slot, and it is a list for the same reason the
+slots are slots. A per-model sub-limit is labelled by the vendor and arrives in a list of unknown
+length, so no slot can hold it, and minting `weekOpus` and `weekSonnet` beside the others would put
+this repository in the business of tracking another company's model line-up. Each row carries a
+`label`, a `pct` on the same 0-to-100 scale as every bar in the band, and the same optional reset
+pair. The label is the vendor's own display name, bounded to 40 characters on the way out and
+guaranteed to differ from every other label in the list, because a per-model row has no other
+identity to be told apart by. The list is absent rather than empty when there is nothing to say,
+exactly like the window slots, and it is capped at eight rows. Only Claude fills it today, its rows
+are sub-limits of `week` rather than a fourth horizon, and the page draws them directly under the
+weekly bar they subdivide. Q-2 owns which elements of the response become one.
 
 - Codex publishes from disk. The CLI writes a `rate_limits` snapshot beside every token count in
   its rollout files, so `collectors/codex.py` reads the newest one. Windows arrive as durations
@@ -62,8 +82,39 @@ That table was read from a live store on 2026-08-06 rather than taken from the C
 which does not describe it. Two facts from that read are worth keeping: it carries a `session_id`,
 and those values matched the `session-state/<uuid>` directory names the Copilot collector already
 publishes as a session id. So a per-session slice of AIU spend is available from the same rows the
-harness figure is summed from, with no second identity to reconcile, which is what any future
-per-session cost display would need and is the reason not to key one on anything else.
+harness figure is summed from, with no second identity to reconcile.
+
+That slice now ships, as a `consumption` string on every session row, and the design of it is one
+question: what a row means when it has no figure. One reducer answers for both surfaces.
+`_read_ledger` returns nothing at all unless it could read the window to its end, so a store that is
+absent, unreadable, drifted, or longer than the row cap without the read reaching past the window's
+far edge takes every session figure with it and the harness tile with them. Below that, a single row
+that cannot be accounted for withdraws only what it would have fed: the tile's total always, because
+a sum with an unknown addend is not a sum, and the figure of the session it names, if it names one.
+On top of that, three readings and three different renderings:
+
+- A figure is the session's own rows inside `window_hours`, formatted by the same function the
+  harness tile uses, so one quantity cannot render two ways. It carries its unit as text
+  ("6.43 AIU") rather than as a bare number, because AIU, tokens and dollars are three different
+  quantities and a naked `consumption: 6.43` invites one axis through all of them.
+- "0.00 AIU" is a measured zero: the window was read to its end, it covers this session, and it holds
+  no row against it. It is shown unadorned, the same way the rate meter prints a real 0. Suppressing
+  it is the one move that would make it indistinguishable from a harness that keeps no ledger, which
+  is the distinction the extra bookkeeping exists for.
+- None is no ledger for this harness at all, or a row naming this session that could not be accounted
+  for, which knows there was spend and not how much. The page draws nothing for it: no label, no
+  dash. Absence takes the "used" word away with it, so a metadata line with no figure claims nothing
+  about spend, in the way a Claude row with no `via` claims nothing about whose quota it is on.
+
+Two consequences that are easy to get backwards. A zero is a claim about coverage, so it is only
+available for a session the window covers: an idle session older than the window is outside it
+entirely, and one dragged back in by `?all=1` gets None rather than a zero that would report a
+week of work as free. A session the window does not cover that *does* appear in the ledger keeps its
+figure and gets the window named in the visible words ("used 2.10 AIU in the last 24h"), because that
+number is the window's share and not the session's life, and the tooltip is the wrong place to keep
+the difference. And the per-session figures need not add up to the tile's total: a ledger row naming
+no session is real consumption, so it counts towards the harness figure and towards nobody's row. The
+gap is honest, and the alternative, attributing such a row to some session, is worse than the gap.
 
 The entitlement is the part that does not exist locally. GitHub keeps it server-side and the CLI
 never writes it down, which was confirmed by searching every file under `~/.copilot`: `entitlement`
@@ -100,16 +151,20 @@ a forecast. Q-9 fits its slope on a published percentage and projects when that 
 ## Q-2: The response fields Cargento reads
 
 From `GET https://api.anthropic.com/api/oauth/usage` (with `anthropic-beta: oauth-2025-04-20`), two
-fields per window are consumed. The shapes below are measured rather than inferred: one live
-response was recorded on 2026-08-06 from macOS, on a subscription account with extra-usage credits
-disabled:
+fields per window are consumed. The shapes below are measured rather than inferred: two live
+responses a day apart were recorded on 2026-08-06 and 2026-08-07 from macOS, on a subscription
+account with extra-usage credits disabled, the second to test which fields hold still:
 [`captures/claude/usage-endpoint-macos.jsonl`](captures/claude/usage-endpoint-macos.jsonl).
 
 | Field | Used as |
 |---|---|
 | `five_hour.utilization`, `seven_day.utilization` | The window percentage, rounded and clamped to 0 to 100. Measured as a float already on a 0-to-100 percent scale, so the round is a rounding and not a conversion. |
 | `five_hour.resets_at`, `seven_day.resets_at` | The reset stamp. Both shapes the endpoint has sent are accepted: epoch seconds, or an ISO-8601 string, which is what the capture carries. |
-| `limits[]` | Documented here, not read. `_fetch_windows` shapes `five_hour` and `seven_day` and drops the rest of the body, so the per-model rows are ignored rather than parsed into something unpublished. Their shape is written out below, so the roadmap item that renders them (A3 on the Visibility board) starts from a measurement. |
+| `limits[].kind` | The discriminator. Only `weekly_scoped` elements become rows; `session` and `weekly_all` restate `five_hour` and `seven_day`, which stay canonical for those two windows. `group` is never read; see below for why it cannot be. |
+| `limits[].scope.model.display_name` | The model row's label, bounded to 40 characters and required. `scope.model.id` was null in the capture, so the display name is the only label there is, and an element without a usable one is dropped rather than published unnamed. |
+| `limits[].percent` | The model row's percentage. Measured as an *integer* on the same 0-to-100 scale as `utilization`, which is a float: the two go through one `_percent` reader so the rounding cannot diverge, but neither field is read by the other's name. |
+| `limits[].resets_at` | The model row's reset stamp, when there is one. The scoped element in the capture carried none at all, so a per-model row can be a percentage with no countdown; missing stays missing. |
+| `limits[].is_active`, `limits[].severity` | Present in the capture, deliberately unread. Neither has established semantics. `is_active` moves: the two recorded readings a day apart disagree about which element carries it, and a third observation during development showed a third arrangement, so it describes something that varies rather than the kind of limit. Only `severity: normal` has ever been observed, so publishing either would hand the page a field it cannot honestly render. |
 
 Anything else in the response is ignored. The endpoint is undocumented for third parties, so the
 parse is defensive throughout: a malformed body or a response with no recognizable window caches
@@ -128,23 +183,43 @@ The capture records three elements whose key sets are identical: `group`, `is_ac
 `utilization`. `kind` discriminates the rows as `session`, `weekly_all` and `weekly_scoped`; `group`
 collapses those three into two, `session` and `weekly`. So `kind` can key a renderer and `group`
 cannot: keying on `group` merges `weekly_all` with `weekly_scoped`, which are precisely the two rows
-A3 has to label differently, and only `weekly_scoped` arrives without a `resets_at`. `severity` is
-a vendor-computed enum of which only `normal` was observed, which makes it something to display
-rather than something to branch on.
+the band has to label differently, and only `weekly_scoped` arrives without a `resets_at`.
+`severity` is a vendor-computed enum of which only `normal` was observed, which makes it something
+to display rather than something to branch on.
 
-Two constraints fall out, and both belong to whoever renders these rather than to the parse:
+Two constraints fall out. The parse now honours the first; the second is a warning about where the
+per-model figures are not:
 
 - **A `weekly_scoped` element may arrive with no `resets_at`.** The scoped element in the capture is
   the per-model one: it names its model at `scope.model.display_name`, `scope.model.id` was null, so
   the display name is the only label available, and it carried a percentage with no countdown at
-  all. The contract in Q-1 already allows a window with `pct` and no `resetAt`, and the page falls
-  back to an em dash when neither the instant nor the words arrive, so nothing breaks. The decision
-  left open is whether an em dash is the right thing to print for a window that genuinely has no
-  reset, which is a choice to make deliberately rather than to inherit.
+  all. The contract in Q-1 allows exactly that, and `_scoped_limit` omits the pair rather than
+  defaulting it. What the page prints for such a row was decided rather than inherited: an em dash
+  in the countdown column, with "resets at an unknown time" on the hover, so the row says it has no
+  reset instead of implying one. The two alternatives were a blank column, which reads as a row
+  still loading, and the weekly countdown borrowed down onto the model rows, which would print a
+  figure this limit never published beside a percentage it did.
 - **`seven_day_opus` and `seven_day_sonnet` are dead names on a subscription plan.** Both exist as
   top-level keys and both were null, as were three similarly named siblings. Per-model work written
   against those field names reads nothing and reports nothing, with no error to explain the silence.
   `limits[]` is where the per-model figures actually are.
+
+**Publishing these rows was rejected once, and the reversal is recorded here rather than left in the
+rejected list (2026-08-07).** The old entry was called "Publishing `limits[]` now" and it made two
+arguments. The first was that the shape was unknown, and that half did not survive contact with a
+response: it had been written from field names read around the endpoint rather than from anything
+this repository had received, and the capture settled every one of them, including the two no amount
+of reasoning would have produced. `percent` is an integer where `utilization` is a float, so one
+reader for both is a decision rather than a tidy-up, and the scoped element carried no `resets_at` at
+all. The second argument was that publishing would freeze a payload shape ahead of the renderer that
+has to label the rows. That one expired differently: the parse and the renderer shipped in the same
+change, so the shape was settled with its rendering rather than in front of it, and the missing reset
+was the first thing decided rather than the thing inherited (see the bullet above). The entry is not
+kept under "Rejected alternatives worth keeping rejected", because every other entry there describes
+something Cargento does not do, and a heading that promises a standing rejection over an entry the
+code has overtaken misleads any reader who skims the headings. What is worth carrying forward is the
+sequence: prose about a payload was wrong in a way tests could not catch, and one recorded response
+both settled it and changed the decision.
 
 The capture also pins two fields the parse still ignores on purpose. Each window carries
 `limit_dollars`, `remaining_dollars` and `used_dollars`, all null on a subscription plan, so a
@@ -353,6 +428,24 @@ on first load and teach the reader that the band is half-built, whereas an opt-i
 by someone who has read what it measures. The buffers fill whether or not the stat is shown, so
 turning it on is instant rather than the start of another ten-minute wait.
 
+**A per-model row is not projected, and says so rather than sitting blank.** `BURN_SLOTS` is the
+three window slots and nothing else, so nothing under `models` (Q-1) is ever sampled and no buffer is
+keyed on a model. While the projection is on, those rows read "not projected" with the reason on the
+hover, which is the sixth answer this block can give and the only one that is a property of the row
+rather than of its samples. Printing something is the point: a model row sitting silent beneath a
+weekly row that reads "~4%/h" is read as a limit that is not filling, and an absence that reads as
+good news is the failure the rest of this section was rebuilt around. Two reasons nothing is fitted,
+and both are about identity rather than arithmetic. The row's only identity is its label, and the
+label is stable only while the vendor's set of names is: a second model whose name collides with the
+first relabels both (`_distinct_labels`), so a key built from it can change under a series that is
+still running. And the scoped element in the capture carried no reset instant, which is exactly the
+input the restart rule above needs, so a per-model row is left with the fall in the percentage as its
+only sign of a roll, and a limit that rolls and then climbs straight past where the old one stood
+never falls. A fit spanning two allowances reads slower than the truth and pushes its wall out, which
+is the reassuring direction, on a signal that has been observed once: one scoped row, on one account,
+at one moment. The weekly window those rows subdivide has a projection of its own, immediately above
+them, and that is where a reader gets a rate.
+
 ## Q-3: Consent rides on the poll
 
 The fetch trigger lives in `/api/data` handling, not in collection, and fires only for requests
@@ -468,6 +561,168 @@ its network half, and it also drops the quota fields at ingest so a receipt push
 set is not retained. The endpoint still answers 200: a status-line command must never see an error
 from Cargento.
 
+## Q-10: A capacity comparison is between authorities, inside one horizon, with its holes on screen
+
+Board item A4, "capacity across subscriptions and harnesses" (Linear DRC-4007), asks for one
+reading: Claude at 95%, Codex at 10%, so move the work to Codex and carry on. None of that
+comparison exists today, and the part that is missing is not the integrations. Five of the ten
+harness rows already publish quota into the band above. What has never been agreed is what those
+figures mean placed side by side, and a comparison built without settling that does not skip the
+question, it answers it silently in whatever way the first renderer happens to. So this section
+settles it before anything is built: what the unit of comparison is, which authorities may enter
+one, what Cargento refuses to compute, and what the surface says on a machine where it can compare
+nothing. DEC-1's consent posture is unchanged by any of it.
+
+### What each authority publishes, and when it is there
+
+Six authorities are named in Cargento today, five of them with a reader, and the table below is the
+whole of question one. It is not a closed list of what a user can spend. Pi supports twenty-odd
+providers, most of them direct API keys with no Cargento presence at all, and a Gemini CLI session
+on an enterprise Code Assist or API-key route is Google again, with nothing saying its allowance is
+the one Antigravity's receipt reports. Those are absent from the table because nothing reads them,
+which is itself one of the states question three has to render rather than hide.
+
+| Authority | Harness rows spending it | What Cargento reads | There when |
+|---|---|---|---|
+| Anthropic | Claude Code, and any harness signed in to the same subscription | percent of a 5 hour and a 7 day rolling window (Q-2) | the store exists and the disclosure has been answered |
+| OpenAI | Codex | percent per window, classified by the window's own length (Q-1) | Codex left a snapshot inside `window_hours` |
+| Google | Antigravity | percent per named bucket, the worse of two model families (Q-7) | the user pointed the status line at `/api/usage` and the harness ran inside `window_hours` |
+| Cursor | Cursor CLI | spend in cents against a monthly billing cycle, macOS only (Q-8) | the Keychain token reads and the disclosure has been answered |
+| GitHub | Copilot CLI | AI Units consumed, with the entitlement nowhere on the machine (Q-6) | a usage row landed inside `window_hours` |
+| Factory | Droid | nothing | never, so far as anything here knows |
+
+Two rows in that table are absences of different kinds, and a comparison that treats them alike gets
+question one wrong. GitHub publishes a numerator and no denominator, which is a measured fact:
+`entitlement` and `allowance` appear in no file under `~/.copilot`, and Q-6 is the record of
+looking. Factory publishes nothing that anyone here has looked for. Droid is not installed on the
+machine this work was done against, so its store has never been read, and "Factory keeps no local
+quota" is not a finding but the absence of one. Every field this document treats as measured
+(Copilot's `total_nano_aiu`, Cursor's cents, Anthropic's `limits[]`) came from a live store or a
+live response. The Antigravity attempt below is the reason to hold even a searched-for absence
+loosely: its local forensics were thorough, and the number it concluded was out of reach ships
+today, arriving by the pushed path in Q-7 instead. An absence found by looking can still be
+overturned by a route nobody enumerated, so an absence nobody has looked for is worth nothing at
+all, and Factory stays unmeasured in writing rather than written down as empty.
+
+Anthropic's row also says something the other rows do not, and it decides the unit of comparison.
+That percentage is the account's, not Claude Code's: SECURITY.md names the authority as "Claude
+Code, and any harness signed in with the same Claude subscription", and `codex.usage` says the same
+thing about its own snapshot, that the CLI reports account quota rather than per-session quota. So
+per-harness headroom is not a quantity that exists anywhere. What exists is one allowance per
+authority, which several harnesses may already be drawing on. The row of a comparison is therefore
+the authority, and a harness appears as a route to one. A4's title says "across subscriptions and
+harnesses"; the subscription is the thing being compared and the harness is how the reader reaches
+it.
+
+### Which authorities may enter, and what will not be computed
+
+An authority enters a headroom comparison only when it publishes a fraction of a limit that
+authority states itself. That admits Anthropic, OpenAI, Google and Cursor. It excludes GitHub, whose
+figure is consumption with nothing to be consumption of, and Factory, which has not been read.
+Copilot's `used` keeps its place on the band, where it is a measured quantity that names its own
+unit and claims nothing further. Q-6's argument for that does not weaken with distance: an
+entitlement inferred from observed spend, or from a plan name, would print as a percentage no reader
+could tell apart from the four that were measured.
+
+Percentages are compared inside one horizon and never across it. A percentage is a fraction of an
+allowance over a period, and the period is half the quantity: 95% of a 5 hour window refills within
+five hours, and 95% of a billing cycle may be three weeks from refilling. Both read "95% used" and
+they answer different questions. The horizon classes are the payload's own slots from Q-1, `fiveH`,
+`week` and `month`, so the class is read off the contract rather than being a second taxonomy that
+can drift from it. A comparison names its class, and a class holding one authority is not published
+as a comparison at all, because ranking a set of one manufactures a winner. Cursor has only a
+`month`, so today it is comparable against nothing, and that is a true statement about Cursor rather
+than a gap in the design.
+
+Nothing is converted to make two rows comparable. No AI Units into a percentage, no dollars into a
+percentage, no per-plan weighting that puts five subscriptions on one axis. Each of those needs a
+number no authority publishes, an entitlement or a price or a plan equivalence, so it would be
+invented here, and an invented percentage renders identically to a measured one. This is the rule
+that already keeps Q-6's figure out of the burn projection, applied one layer out.
+
+Cargento also does not name the harness to move to. It publishes each authority's percentage, the
+horizon that percentage is over, and the authorities it could not read, and the reader picks. Two
+reasons, and the second is the one that is easy to lose. A destination depends on facts Cargento
+does not hold: whether the task needs a particular model, which tools and servers are wired into
+that harness, whether the repository is even checked out where it runs. And a recommendation is a
+verdict composed over inputs that can be missing, which is what killed A9 on the Visibility board
+and what the burn row's deleted verdict is a worked example of. The failure mode is identical. A
+wrong percentage looks wrong; "you have room on Codex" looks like good news.
+
+### The authority most likely to be missing is the one being migrated to
+
+This is the finding that shapes what the surface has to say, and it falls out of the table above
+rather than out of any policy. Anthropic and Cursor are fetched, so they report while their harness
+sits idle. OpenAI, Google and GitHub are read from what their harness wrote or pushed, and all three
+drop out once the newest reading is older than `window_hours`, 24 hours by default: `codex.usage`
+tests the snapshot's freshness, `quota.receipt_entries` tests the receipt's, and Copilot's sum only
+counts rows inside the window. Usage is also read only for a discovered harness, so a harness that
+has never run publishes nothing at all.
+
+Put that beside A4's example. The harness at 95% is the one being used, which is the one that
+certainly reports. The harness at 10% is the one not being used, which is the one whose figure most
+easily is not there. So the case the feature exists for is the case where one side of the comparison
+is structurally absent, and the naive rendering of an absent Codex row is that Codex is untouched,
+which happens to be the answer the example wants and is not an answer the evidence gives.
+
+Hence the rule that a comparison surface publishes the roster rather than the rows that answered.
+Every authority in the table appears, and one with no percentage says which kind of nothing it has:
+awaiting the disclosure, nothing inside the window, off this platform, no integration measured.
+Three legible states rather than two, per authority. Absence being invisible is tolerable in the
+band that ships today, where each tile is a claim about one harness and a missing tile claims
+nothing; it is not tolerable in a comparison, which is a claim about a set, and where dropping the
+unreadable rows leaves a picture that looks complete.
+
+One of those states is already in the payload, which is why this is a discipline the band has rather
+than a new one. Q-5 splits a rejected token, published as `state: "expired"` and rendered as a
+pointer at signing in again, from an unreadable one, which keeps the harness out of the band
+entirely, because "sign in again" is wrong advice when the harness session may be fine. That is the
+same distinction between two kinds of nothing, made once per tile. A comparison owes it across the
+whole roster at once.
+
+### A passthrough harness has no capacity of its own, and that is a prerequisite
+
+Three harness rows spend somebody else's allowance. DEC-1 records it in its own cost note: Goose,
+OpenCode and Pi borrow their provider's quota, so one Anthropic fetch answers for every harness on
+that subscription. Counting such a row as its own authority double counts one allowance, and the
+error runs in the dangerous direction. A reader with one Anthropic subscription behind three harness
+rows would be shown three hatches and have one.
+
+What exists today is one third of the attribution needed. `base_session` declares `provider` and
+`model` on every row at `None`, so the payload's shape does not depend on which collector filled it,
+and only Pi populates them, because Pi is the one harness where the answer is not already the
+harness name. Pi's values come from the assistant message that spent the tokens, or from a newer
+`model_change`, and they carry the vendor's own unmapped id. D-5 in
+[design-session-identity.md](design-session-identity.md) owns that decision and its rejected
+alternatives. Goose and OpenCode read neither field, and whether their stores record one has not
+been measured: neither harness is installed here, and this document's standing rule is that a
+payload gets captured before a parser gets written.
+
+So attribution for every passthrough harness, measured against a live store, is a precondition for
+the comparison rather than a detail of it. Until a row names the authority its turns spend, that row
+enters no total: it renders as a route Cargento cannot attribute, which is a third state again, and
+not as its own authority and not folded into a guess. The obvious guess is available and is refused
+below.
+
+### On a fresh install the surface is a roster of reasons, and no comparison
+
+Both fetch authorities sit behind the first-run disclosure. The page sends `usage=1` only once the
+switch is on and the modal has been answered (Q-3), so until then nothing is fetched and Anthropic
+and Cursor have no reading. The three local authorities need something to have arrived inside
+`window_hours`. On a machine where nothing has run yet, that is every authority empty, and A4's
+worked example has no side to it at all.
+
+The decision is that this renders as the roster with a reason on each row and no comparison
+published. An authority with no reading is never drawn as 0%, never as headroom, and never left out.
+Nothing is ranked until two authorities in one horizon class each carry a measured percentage, and
+below that the surface says what it is waiting for: the disclosure, for the two fetched rows, and a
+turn in the harness for the local ones. The reader who answers the modal has Anthropic and Cursor a
+poll later; Codex arrives the next time Codex runs.
+
+That is a deliberately unimpressive first load, and it is the point. The alternative on identical
+evidence is "Codex at 10%" printed beside an absent Anthropic row, which is a migration
+recommendation assembled out of one reading and one silence.
+
 ## Rejected alternatives worth keeping rejected
 
 ### Refreshing an expired token
@@ -494,15 +749,6 @@ A POST endpoint writing the switch into server state would survive across browse
 the dashboard's only persistent setting live in two places (localStorage drives the UI either
 way), adds a mutating endpoint to a surface that deliberately has almost none, and still needs
 the query parameter for the first-run case. The parameter alone is the smaller contract.
-
-### Publishing `limits[]` now
-
-The per-model rows have no rendering yet. Part of the old argument was that their shape was unknown,
-and that half has expired: the capture in Q-2 measures it. What remains is that publishing them
-would freeze a payload shape ahead of the renderer that has to label them, and the scoped row's
-missing `resets_at` is exactly the kind of thing a renderer should decide about rather than inherit
-from whatever the first parse happened to emit. So the body is read for its two named windows only
-and the measured shape is documented in Q-2.
 
 ### Cursor's nicer-looking usage endpoint, and its two dead legacy ones
 
@@ -631,3 +877,42 @@ verdict composed over uncertain evidence fails toward confident green, and a fal
 than no light. It is written down here because reintroducing it will look like an improvement rather
 than a regression. A wall in 40 minutes printed beside a reset in 50 is asking to be collapsed into
 one word, and that word is the defect.
+
+### Five shapes for a cross-authority comparison (2026-08-07)
+
+Q-10 settles what comparing capacity across authorities means. These are the shapes that were
+considered for it and are not being built. Each one is smaller than the rule that replaced it, which
+is why they will be proposed again.
+
+One normalized headroom score per authority, so that a percentage, a dollar figure and an AI Unit
+count all land on a 0 to 100 axis. It needs an exchange rate between a subscription window and a
+metered dollar and a unit whose entitlement is not published, and no authority publishes any of
+those, so the rate would be chosen here. The number would then be a Cargento opinion rendered in the
+same type as four measured percentages, and the reader would have no way to tell which was which.
+
+Giving Copilot a denominator by inferring an entitlement from observed spend, or from the plan name,
+so that GitHub can join the comparison instead of sitting out of it. This is Q-6's missing
+denominator with a guess in the hole. The guess sets the percentage, so a wrong guess reads as
+headroom, and a reader looking at five percentages cannot see that one of them was derived from an
+assumption.
+
+One axis holding a rolling window and a billing cycle together, on the grounds that both are
+percentages of an allowance. They are, and the allowances refill on schedules a factor of about a
+hundred and fifty apart: 95% of five hours is an inconvenience, and 95% of a monthly cycle in week
+one is the month. Putting them side by side without naming the horizon invites the substitution the
+numbers do not support, which is why Q-10 compares inside a horizon class and prints the class.
+
+Comparing only the authorities that returned a figure, and leaving the rest off the surface, because
+a row with nothing in it is noise. It is the opposite of noise here. The authorities that go absent
+are the fetched ones before the disclosure is answered and the local ones outside `window_hours`,
+which is to say the harness that has not been used lately, which is the harness A4 exists to send
+work to. A comparison over the answering subset offers the reader capacity that was never measured,
+and the reader cannot see the omission from the surface.
+
+Naming a passthrough harness's authority from its configuration, so that Goose and OpenCode can be
+folded into a total before per-session attribution exists. D-5 in
+[design-session-identity.md](design-session-identity.md) already rejected this for Pi, where reading
+`defaultProvider` would attribute today's default setting to an older session's history, and the
+argument gets worse rather than better in a comparison: a misattributed row moves a real allowance's
+percentage, and a row attributed to an authority it never spent invents capacity somewhere the
+reader may already be at the ceiling. An unattributed row is published as unattributed.

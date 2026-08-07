@@ -373,16 +373,36 @@
   .u-link:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
   .u-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 28px}
   @media (max-width:1000px){.u-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  .u-entry{display:flex;flex-direction:column;gap:6px;min-width:0}
+  /* `--ulab` is the label column, declared on the entry because that is the
+     scope every row in one harness's tile shares and the scope usage.js
+     overrides when a per-model row needs a wider one. See .u-wrow below for
+     what the two numbers are. */
+  .u-entry{display:flex;flex-direction:column;gap:6px;min-width:0;--ulab:30px}
   .u-hrow{display:flex;align-items:center;gap:8px}
   .u-hname{font-size:var(--fs-xs);font-weight:600;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  /* Column one holds the row label, and the widest is `used` at 28px measured
-     in this font: at 18px it overflowed its cell and collided with the figure
-     beside it, which is what `used16.61 AIU` was. Column four holds the reset
-     countdown, whose widest form (`10d 22h`) measures 75px, so 84px leaves
-     headroom rather than sitting a pixel inside the ellipsis. */
-  .u-wrow{display:grid;grid-template-columns:30px minmax(0,1fr) 40px 84px;align-items:center;gap:7px;font-family:var(--mono)}
-  .u-wlab{font-size:var(--fs-2xs);font-weight:700;color:var(--ink3)}
+  /* Column one holds the row label, and the 30px `--ulab` above is what the
+     window labels need on their own: the widest of those is `used`, and no font
+     in the --mono stack advances more than 7.11px per character at --fs-2xs —
+     measured off the faces themselves, where SF Mono's 1266/2048 em is the widest
+     and Menlo and DejaVu Sans Mono (1233/2048), Space Mono (600/1000) and Consolas
+     are all narrower — which puts four characters at 28.4px. At 18px `used`
+     overflowed its cell and collided with the figure beside it, which is what
+     `used16.61 AIU` was; the ellipsis below is now the guard against that, so the
+     width is only about not truncating.
+     A per-model row carries a model's display name instead, so usage.js overrides
+     `--ulab` per entry with what that entry's own longest label needs, up to ten
+     characters (72px). Ten is where the tile runs out rather than where model
+     names do: the tightest layout the band renders in is the four-up grid inside
+     the 1240px regular wrap — a 262px tile, of which 175px is already spoken for
+     — so ten characters spend 42px of an 87px track and leave 45px of bar. A
+     longer name truncates here and keeps the whole of itself in the row's
+     tooltip; there is no width that holds the forty characters the server allows
+     and still leaves a bar worth reading.
+     Column four holds the reset countdown, whose widest form (`↺ 10d 22h`)
+     measures 75px, so 84px leaves headroom rather than sitting a pixel inside the
+     ellipsis. */
+  .u-wrow{display:grid;grid-template-columns:var(--ulab) minmax(0,1fr) 40px 84px;align-items:center;gap:7px;font-family:var(--mono)}
+  .u-wlab{font-size:var(--fs-2xs);font-weight:700;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .u-pct{font-size:var(--fs-2xs);font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
   .u-reset{font-size:var(--fs-2xs);color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* Spans the track, percent and reset columns: a used figure has no bar to
