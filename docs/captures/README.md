@@ -79,6 +79,38 @@ is a model name attached to one person's plan. Null-valued keys are written down
 than dropped, so a field name that exists and is dead on a plan stays distinguishable from one that
 was never sent — which is the whole finding about `seven_day_opus`.
 
+## Two shapes measured with no file to capture
+
+Publishing the model each session runs on reads two store records that no hook carries, so
+`capture_hook.py` had nothing to intercept and no file was written for either. The field names are
+recorded here anyway, because the parsers are written against names and a name is the whole
+contract. Names and counts only, as everywhere else in this directory: no payload values, no blob
+bytes, and never a `blobEncryptionKey`, which is a credential whatever the store it sits in.
+
+Codex writes a `turn_context` record at the head of every turn, one to six lines after each
+`task_started`. Across 364 rollout files on codex-cli 0.146.0, macOS, its `payload` carried these
+keys and no others: `approval_policy`, `collaboration_mode`, `comp_hash`, `current_date`, `cwd`,
+`effort`, `file_system_sandbox_policy`, `model`, `multi_agent_version`, `permission_profile`,
+`personality`, `realtime_active`, `sandbox_policy`, `summary`, `timezone`, `turn_id`,
+`workspace_roots`. `model` is the only one read. There is no provider key, which is why a Codex row
+leaves `provider` unset rather than deriving one from the model name.
+
+Two timings settle where that record has to be read from, and they are the reason it is not read
+where every other Codex display field is. The last `turn_context` in a rollout sits beyond the
+400 KB transcript tail in 117 of 312 files that have one, which is 37.5%, at a distance from the end
+of file with a median of 273 KB and a maximum of 3.0 MB. It sits inside the 8 MB turn-scan budget in
+312 of 312. A parser written against the tail passes every small fixture and reports no model for a
+third of real sessions.
+
+Copilot's `subagent.started` event carries the child's label and the child's model on one object,
+which is why the two need no join. Inside `data`: `model`, and the label under `name` with
+`agentName`, `agent` and `agentType` as the fallback spellings the reader tries in that order. At
+the top level of the event: `agentId`, which holds the same value on `subagent.started`,
+`subagent.completed` and `subagent.failed`, and is also the value the billing ledger's `agent_id`
+column holds. The top-level `id` does not: `completed` carries a different one from `started`, so a
+reader keyed on `id` never matches and falls through to a drop-oldest fallback, which is right for
+one child and wrong for two.
+
 ## Reading one
 
 One directory per harness, because the reporter summarises a whole directory and two harnesses with

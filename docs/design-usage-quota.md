@@ -723,6 +723,153 @@ That is a deliberately unimpressive first load, and it is the point. The alterna
 evidence is "Codex at 10%" printed beside an absent Anthropic row, which is a migration
 recommendation assembled out of one reading and one silence.
 
+## Q-11: Every row names the model it runs on, and a row that cannot read one says so
+
+DRC-4117 promotes `model` from one harness's field to a slot on every session card. Six of the ten
+harnesses fill it, each out of bytes its collector already reads, so the whole reading costs no new
+file, no new query and no new connection. Four fill nothing, and that is the case the design is
+built around.
+
+| Harness | Session model | Subagent model |
+|---|---|---|
+| Claude | `message.model` on `type: "assistant"` records whose `isSidechain` is falsy, last write wins. The literal `<synthetic>` is rejected by value, never on the `isApiErrorMessage` flag beside it: 18 of the `<synthetic>` records measured carry that flag falsy. | The child's own transcript, under a second key, because the flag inverts there. Every `agent-*.jsonl` child is `isSidechain: true`, so the parent rule would read nothing. |
+| Codex | `turn_context.payload.model`, last occurrence in file order, read inside `turns.scan_turns`. | The child rollout's own `turn_context`, read the same way. 198 of 364 rollouts measured are subagent threads and each carries its own. |
+| Copilot | `assistant_usage_events.model` on the rows whose `agent_id` is SQL NULL, keyed `(session_id, agent_id)`, first hit in the SELECT's existing `ORDER BY id DESC`. Two extra columns on one statement that already ran. | `subagent.started`, then `data.model`, in `events.jsonl`. It is the same JSON object the label comes from, so the pair is correct by construction. |
+| Antigravity | `gen_metadata.data`, protobuf field 1 then field 21, read as a 64-byte tail on the connection `_session_info` already opens. | The child's own conversation store, the same read. Each subagent owns a store, so each is measured rather than inherited. |
+| Pi | The newest active-branch entry that carries one: an assistant message, or a `model_change` switched to and not yet spent. D-5 in [design-session-identity.md](design-session-identity.md) owns that reading. | Pi publishes no subagents. |
+| Cursor | `providerOptions.cursor.modelName` inside the newest message blob, reached through the root blob's child list, both reads bounded by `substr` inside SQLite. | Cursor's subagents are published as peer top-level rows rather than under a parent, so there is no child list to carry one. Its own ticket. |
+| Gemini, Goose, OpenCode, Droid | Not read. Whether these stores record a model has not been measured, and this document's standing rule is that a payload gets captured before a parser gets written. | Gemini, Goose and OpenCode publish a child element with `model` at null. Droid publishes no subagents. |
+
+Nothing here is inferred. Not from a plan name, not from a token count, not from a timestamp join,
+not from which quota bucket moved. A guessed model renders in the same type as a measured one, and
+the reader has no way to tell them apart, which is the collapse the rest of this section exists to
+prevent.
+
+### Three states, because absence here is not a measurement
+
+Q-6 gives consumption a vanishing clause: a row with no figure draws no label and no dash, and the
+words are simply not there. `model` gets the opposite treatment, a slot that is always drawn, and
+the difference between the two is the whole decision.
+
+Consumption's absence is a fact about the harness. Nine harnesses keep no billing ledger, so a line
+with no `used` in it is telling the truth about the world: there is nothing to report. Model's
+absence is never a fact about the world. Every session runs on some model, so an unset value is only
+a gap in Cargento's reading, and a blank slot is indistinguishable from a measurement. That is the
+same argument the rate meter already settled, where an omitted meter left a blank corner reading as
+zero and the fix was to print "rate unknown" instead.
+
+So `authorityBit` has three states rather than two:
+
+- provider and model both read: `via Codex · gpt-5.6-sol`, unchanged.
+- model only: `model gpt-5`, where the bare value used to sit. The label is what gives the dash in
+  the third state a referent, since a lone dash in a metadata line says nothing is missing in
+  particular.
+- neither: `model —`, with a tooltip naming the harness and saying the model is unknown rather than
+  unset.
+
+A fourth combination exists and is easy to miss: a provider read with no model, which happens on
+every Pi session whose newest branch entry names an authority and no model. It renders
+`via Codex · model —`. Letting the provider clause absorb the dash would reintroduce the two-state
+collapse on exactly the rows that already have the most to say.
+
+Four of ten harnesses report no model today, so the dash is the common case and not an edge. That
+cost is accepted. It is the board disclosing what it does not know, and the mitigation is the
+tooltip wording, never suppressing the dash: suppression is the single move that returns the field
+to two states.
+
+`idleRow` still draws no authority at all, and not by inheritance from the consumption rule. Its
+written reason is that an idle session is spending nobody's quota, and a model is not quota spend,
+so that reason had to be re-argued rather than reused. The one that holds is narrower: the idle
+row's cell already truncates at a max width with an ellipsis, so appending to it silently swallows
+what is appended.
+
+### A subagent's model shows only where two readings disagree
+
+A child's model is worth space on a card only where it is not the parent's. Repeating the parent's
+model under every pill is noise on the surface with the least room for it, and the interesting fact
+is a subagent running somewhere else.
+
+**"Differs" is decided on two measured values, never on one measured against one absent.** Written
+as `child !== parent`, the predicate is true whenever the parent is null, and a null parent is the
+common case: four harnesses in ten report no model at all. That spelling would mark every measured
+child as differing on all four and read as a finding. The rule requires both sides to be non-empty
+strings and unequal, and it is stated once, in the frontend, because the card and the calm panel
+both need it and a second copy is how two views come to disagree.
+
+Equality is string equality. No case folding, no suffix stripping, no prefix matching. Two vendor
+strings name the same model when they are the same string, and deciding otherwise is inference,
+which renders identically to a reading.
+
+The wire shape that carries this is `subagents: [{"name": str, "model": str | None}]`, with `model`
+always present. Two cheaper shapes for it, a parallel map of only the differing children and a
+suffix on the label, were dropped and are recorded under rejected alternatives below.
+
+### `provider` stays Pi's alone, and `model` no longer is
+
+`provider` answers "whose allowance is this burning", and nine harnesses answer it with their own
+name. Pi is the one that does not, which is why D-5 gave it the field. Nothing in this work changes
+that. Copilot's own vendor id is `github-copilot`, and filling the field with it would print "via
+Copilot" beside a Copilot badge. Cursor's on-disk namespace is literally `cursor`, so filling it
+would be a measurement rather than a guess and would still be noise. Codex's `turn_context` payload has no provider key at all, and
+Antigravity's only vendor-adjacent fields are per-generation booleans and an opaque
+`MODEL_PLACEHOLDER_*` enum, where reading "google" off the string "Gemini" is inference.
+
+`model` is a different question with a different answer, which is why the two fields part company
+here after arriving together.
+
+### Two caps of 40 characters, two symbols, on purpose
+
+`quota.MODEL_LABEL_CAP_CHARS` bounds a per-model usage row's label. `sessions.MODEL_CAP_CHARS`
+bounds a session's or a subagent's model. They hold the same number and are deliberately not one
+import.
+
+The mechanical reason is that `quota.py` imports `sessions`, so importing back is a cycle. The real
+reason is that they bound different requirements. Quota's cap is an input to a distinctness rule: a
+per-model row has no identity but its label, so an elided label keeps a digest and two long names
+sharing a prefix stay two rows (Q-1). A session row has one model and nothing to tell it apart from,
+so it truncates and stops. The numbers agree by coincidence of purpose, and either may move without
+the other.
+
+Both are applied through `records.safe_text` at the collector, which is the one door a model string
+comes through on its way to the payload. It is untrusted vendor text reaching the DOM, so it is
+bounded there and escaped again at every render site.
+
+### Antigravity rests on an observed serialization, and checks itself for it
+
+Every other source in the table is a named field: a JSON key, or a column. Antigravity's is not.
+`conversations/<sid>.db` has no model column anywhere in its schema, which is why an earlier
+`PRAGMA table_info` survey concluded the harness does not report one. The value is inside the
+protobuf blob in `gen_metadata.data`, at top-level field 1 then nested field 21, as the product
+display name.
+
+That is a weaker footing than a key, so the parse carries its own guard. Field 21 is the terminal
+field of every blob observed, so the read is `SELECT substr(data,-64) FROM gen_metadata ORDER BY idx
+DESC LIMIT 1`, and the parse is accepted only when the decoded string runs exactly to the last byte
+of the tail. If a future Antigravity build appends a field, the length check fails and the session
+reports no model rather than a wrong one. Verified on 15 of 15 readable stores on a live macOS
+machine; two further stores hold zero `gen_metadata` rows, which is a session that never got a reply
+and maps to the dash.
+
+Field 19 on the same blob also carries a model id and is never preferred: it is an internal alias
+(`gemini-pro-default`) where field 21 gives the name the product shows.
+
+The 64-byte window is a privacy bound as well as a cost one. A 700-byte tail on the same row carries
+verbatim system-prompt text, and widening the window buys nothing.
+
+### What a failed reading withdraws
+
+A failure withdraws exactly what it feeds. The Antigravity model read has its own exception handler
+inside `_session_info`, so a store with no `gen_metadata` table still returns the parent id it was
+opened for. A Copilot row whose model cell is unusable does not touch the consumption figure beside
+it, does not set the ledger's measured flag, and does not skip the row; the two quantities are
+withdrawn independently in both directions. A Claude transcript whose newest assistant record names
+`<synthetic>` keeps the real model read before it, rather than having the sentinel overwrite it.
+
+One residual is accepted and worth naming. `_read_ledger`'s truncation guard returns nothing for the
+whole Copilot ledger when the window could not be read to its end, and the measured models go with
+it. Those rows degrade to the dash, which is the honest reading, but it is a wider withdrawal than
+the per-row rule above.
+
 ## Rejected alternatives worth keeping rejected
 
 ### Refreshing an expired token
@@ -916,3 +1063,32 @@ folded into a total before per-session attribution exists. D-5 in
 argument gets worse rather than better in a comparison: a misattributed row moves a real allowance's
 percentage, and a row attributed to an authority it never spent invents capacity somewhere the
 reader may already be at the ceiling. An unattributed row is published as unattributed.
+
+### Cheaper shapes for the model slot (2026-08-07)
+
+Q-11 settles how a model reaches the page. These three are smaller than what shipped, which is why
+each will be proposed again.
+
+A parallel map of only the children whose model differs from their parent's, alongside the existing
+list of labels, so the subagent element never has to grow. Three things kill it and any one is
+enough. Absence from such a map means either "matches the parent" or "not measured", which collapses
+in the wire format the exact two facts this field exists to keep apart. There is no sound join key
+to build it on: subagent labels are non-unique by construction, several collectors fall back to a
+bare "subagent", so two unnamed children collide and one child's model gets attributed to its
+sibling. Index-parallel arrays are worse, because the Claude collector sorts its children by
+descending mtime after they are collected. Fixing the join means publishing a stable child id, which
+is the shape change the map was meant to avoid.
+
+Suffixing the model onto the label, `f"{label} · {model}"`, which is the cheapest option by call
+site count and touches no frontend at all. It makes a subagent genuinely named `foo · gpt-5`
+indistinguishable from a measurement, gives the model no tooltip of its own, and puts a rendering
+decision in the collector where a later change to the separator has to be made in seven files. It is
+a data-modelling lie that would have to be undone before anything else could be done with the value.
+
+A model column in the calm ledger, on the grounds that calm is the dense view and a dense view
+should carry the field. Calm needed zero code to show it: its row normalizer already copies `model`,
+and its detail panel already calls the same renderer the card does, so the model arrives in the
+panel for free. A column costs the ledger's fixed column count in two places and is guarded by a
+hard assertion on the heading row, and it repeats an argument calm has already made twice about what
+earns a column: one unit per column, so it can be compared down its own length. A model name is not
+a quantity and compares against nothing.

@@ -55,15 +55,15 @@ Everything else lives in one file per responsibility:
 | `probe.py` | The coarse store probe: a bounded stat sweep answering whether anything on disk moved. Stat only, no globbing or reads, and a hint rather than authority. |
 | `observation.py` | The event coordinator, and the only runtime module that starts a thread. Owns the bounded overlay ledger and pending map, the dirty generations, one collection lane, the collection floor, the coalescing window, probe-gated periodic ticks, the reconciliation interval and deterministic shutdown. Constructed inert so a coordinator built before the daemon fork is never inherited half-running; `lifecycle.serve` starts it after the last fork. |
 | `events.py` | The untrusted event envelope: its accepted version range, its vocabulary, per-harness identity normalization onto the collector's key, the mapping from event to overlay, and the reducer that turns live overlays into a field patch. Pure by design, so ordering and precedence are testable without a server: no locks, no counters, no clock and no filesystem. The mutable pending map and overlay ledger belong to the coordinator that bounds them, not here. |
-| `records.py` | Parsing and normalizing untrusted records from disk, and the one place the repo-wide ISO-8601 rule lives: `iso_epoch` decides that an **offset-less stamp means UTC**, and the transcript, SQLite, quota and event readers all defer to it. That rule was four separate copies until two of them disagreed, so it is stated once here and imported rather than reimplemented. |
-| `sessions.py` | Session identity and shape (including the row's declared field set, `base_session`), freshness, display ids, deterministic aggregation. |
+| `records.py` | Parsing and normalizing untrusted records from disk, and the one place the repo-wide ISO-8601 rule lives: `iso_epoch` decides that an **offset-less stamp means UTC**, and the transcript, SQLite, quota and event readers all defer to it. That rule was four separate copies until two of them disagreed, so it is stated once here and imported rather than reimplemented. It also holds `model_signal`, the model a Codex `turn_context` record declares, gated on the harness because `scan_turns` runs over five harnesses' transcripts and an ungated read would let any of them publish a model out of a record that merely shares a type name. |
+| `sessions.py` | Session identity and shape, freshness, display ids, deterministic aggregation. The row's declared field set is `base_session`, and two contracts hang off it: `MODEL_CAP_CHARS`, the width every collector bounds a published model to, and the `subagents` element shape, `{"name": str, "model": str \| None}` with `model` always present. |
 | `transcripts.py` | Shared metadata readers, prompt titles, the non-Claude analyzers. |
-| `turns.py` | Generic incremental turn scanning and turn display. |
-| `claude_data.py` | Claude transcript reads shared by the collector and the hook path. |
+| `turns.py` | Generic incremental turn scanning and turn display, including the model a Codex rollout declares. It rides on the scan state, so both the forward pass and the backward one a file past the scan budget takes reach it, and the reading never falls back to the 400 KB transcript tail, where it is absent on 37.5% of real rollouts. |
+| `claude_data.py` | Claude transcript reads shared by the collector and the hook path, including the model a session ran on and the one each of its sidechain children ran on, kept apart because the `isSidechain` flag inverts between the two. |
 | `spacedock.py` | Spacedock workflow and entity cartography. |
 | `quota.py` | Quota acquisition: the per-vendor credential reads and outbound requests, the receipts a harness pushes in, and the shared cache with its per-vendor floor. The whole outbound network surface (see [design-usage-quota.md](design-usage-quota.md)). |
 | `notifications.py` | Hook state, popup policy, the native notifier, hook payload handling. |
-| `collectors/*.py` | One harness each: a discovery predicate and a collector. |
+| `collectors/*.py` | One harness each: a discovery predicate and a collector. Two of them, Cursor and Antigravity, reach a value through a bounded read inside a stored blob rather than off a column, and both bound the read in SQLite (`substr`) so the whole blob is never materialized. |
 | `aggregate.py` | `HarnessSpec`, the registry, the per-harness failure boundary, `Application`. |
 | `diagnostics.py` | Store-path reporting for `--diagnose`. |
 | `http_api.py` | The loopback server, its request handler, and network helpers. |
@@ -107,7 +107,11 @@ allowlist. Two rules matter more than the table:
   a reader has to follow, and exempting it would make the allowlist describe less than the truth.
 
 The allowlist changes only in a PR that makes a reviewed ownership decision, never to make the test
-pass.
+pass. Two edges arrived that way with the per-session model. `claude_data` gained `sessions`, and
+`collectors/cursor` gained `records`, because each bounds a model string through `records.safe_text`
+at the width `sessions.MODEL_CAP_CHARS` declares. Neither is a layering break: `sessions` imports
+nothing from inside the package, and every collector already depends on it. The alternative was a
+second literal 40 beside the declared one, which is how two caps drift apart.
 
 ## R-3: The runtime package is imported by its top-level name
 
