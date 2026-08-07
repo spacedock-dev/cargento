@@ -62,6 +62,32 @@ The accurate obstacle, since the wrong one was named for two phases:
 
 `scripts/bench_event_latency.py` measures what the floor actually costs, so that
 trade is decided by a number rather than by this paragraph.
+
+## How each overlay kind retires
+
+Stated together because handling two of the three and forgetting the third is the
+defect this table exists to prevent. Twice now a kind has been given a retirement
+rule one ticket at a time (DRC-4097, then DRC-4101), and both times the gap was
+found from a screenshot rather than from a test.
+
+| Kind | Deadline | Retired by activity |
+| -- | -- | -- |
+| Working | `overlay_working_ttl_sec` after its event | n/a — the state activity implies |
+| Needs input | none: a real wait outlasts any timeout | `own_activity`, the parent alone |
+| Idle | none: a stop is a fact, not a guess | `session_activity`, the whole tree |
+
+The two activity rules differ because the questions differ. A wait ends when the
+*parent* moves, since the parent is what a human answers; a background agent
+writing says nothing about whether anyone replied. Idleness ends when *anything
+under the session* moves, since a running subagent proves the session is not idle
+however long its parent transcript has been parked — which is what a long
+workflow looks like from here, and what made a session generating 4,000 tokens a
+minute publish as Idle.
+
+Both guards are one-sided on purpose: they suppress an overlay, never invent one.
+An unreported activity stamp arrives as 0 and leaves the overlay standing, so a
+harness whose collector fills neither field keeps the event path authoritative
+rather than losing its alerts to a field it never sets.
 """
 
 from __future__ import annotations
