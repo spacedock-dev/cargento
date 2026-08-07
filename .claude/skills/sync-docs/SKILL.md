@@ -358,8 +358,16 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    #    matches nothing stays literal and makes grep exit 2 on a "No such file" error.
    #    The explicit if/else is here because a bare `grep && echo` exits 1 when the docs are
    #    CLEAN, which reads as failure to anyone (or anything) checking the status.
-   if grep -n '—\|–\|[“”‘’]' $(ls README.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
-        docs/design-*.md docs/plans/*.md 2>/dev/null); then
+   #    Inline code spans are stripped first. A backticked span is a quoted literal, not prose:
+   #    the dashed model slot renders as a real em dash, and a doc that documents that string
+   #    has to contain it. Matching inside code spans made the check permanently red, which
+   #    ends with someone mangling a documented literal to quiet it.
+   #    The per-file loop keeps the filename in the output; piping every doc through one sed
+   #    would report a line number with nothing to open.
+   if for f in $(ls README.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
+        docs/design-*.md docs/plans/*.md 2>/dev/null); do
+        sed 's/`[^`]*`//g' "$f" | grep -n '—\|–\|[“”‘’]' | sed "s|^|$f:|"
+      done | grep .; then
      echo "TONE DRIFT: reapply Voice and tone to the files listed above"
    else
      echo "tone clean"
