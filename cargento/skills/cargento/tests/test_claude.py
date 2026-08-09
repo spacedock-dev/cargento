@@ -1716,3 +1716,57 @@ class OwnActivityTest(RuntimeTestCase):
 
         parent = next(s for s in sessions if s["sid"].startswith("12345678"))
         self.assertAlmostEqual(now - 5, parent["own_activity"], delta=1.0)
+
+    def _store_with_trailing_bookkeeping(
+        self, root: Path, *, assistant_at: float, bookkeeping_at: float
+    ) -> Path:
+        """A parent transcript whose newest record is not the agent speaking."""
+        projects = root / "projects"
+        project = projects / "-w-proj"
+        project.mkdir(parents=True)
+        parent = project / "12345678-1111-2222-3333-444444444444.jsonl"
+        parent.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": datetime.fromtimestamp(assistant_at, UTC).isoformat(),
+                    "message": {"content": []},
+                }
+            )
+            + "\n"
+            + json.dumps(
+                {
+                    "type": "queue-operation",
+                    "timestamp": datetime.fromtimestamp(bookkeeping_at, UTC).isoformat(),
+                }
+            )
+            + "\n"
+        )
+        os.utime(parent, (bookkeeping_at, bookkeeping_at))
+        return projects
+
+    def test_a_bookkeeping_write_does_not_move_own_activity(self) -> None:
+        """Only the agent speaking moves `own_activity`, not any write at all.
+
+        A background task completing appends `queue-operation` and `attachment`
+        records to the *parent* transcript while a question is still open on
+        screen. Those are not the human answering, but they move the file's
+        mtime, and the reducer's wait guard reads `own_activity` as "the agent
+        resumed, so the wait is over". Keyed on mtime, one background task
+        completing retired a live gate for the whole rest of its life — the
+        session read `working` while it sat blocked, and `Needs you` said 0.
+        """
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = self._store_with_trailing_bookkeeping(
+                Path(tmp), assistant_at=now - 600, bookkeeping_at=now - 5
+            )
+            with (
+                store_patch(PROJECTS_DIR=str(projects)),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
+                mock.patch.object(notifications, "notify_mac"),
+            ):
+                sessions = collect_claude(now, 24, False)
+
+        parent = next(s for s in sessions if s["sid"].startswith("12345678"))
+        self.assertAlmostEqual(now - 600, parent["own_activity"], delta=1.0)

@@ -183,6 +183,11 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         "pending_input_tool": None,  # {"name", "ts"} awaiting the human
         "last_tool": None,
         "last_event_ts": 0,
+        # Newest record the *agent* wrote, which is not the same as the newest
+        # record in the file. Bookkeeping records land in a parked transcript
+        # from causes that are not the agent resuming, so a wait guard that
+        # reads "has this session moved on" has to read this and not the mtime.
+        "last_assistant_ts": 0,
         "last_user_event": last_user_event(config, state, path),
     }
     pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts"} for INPUT_TOOLS only
@@ -200,6 +205,8 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         if t == "last-prompt":
             info["last_prompt"] = d.get("lastPrompt")
         elif t == "assistant":
+            if ep:
+                info["last_assistant_ts"] = max(info["last_assistant_ts"], ep)
             msg = records.message_dict(d)
             model = model_reported(msg.get("model"))
             if model:

@@ -522,7 +522,20 @@ def collect(
                 # subagent and task mtimes folded into `last_activity` above:
                 # this is what tells a resumed turn from a background agent
                 # writing while a permission prompt is still open (DRC-4097).
-                "own_activity": transcript_mtime,
+                #
+                # The agent's own records, not the file's mtime, and the
+                # difference is the whole point. A parked transcript still
+                # receives `queue-operation` and `attachment` records when a
+                # background task finishes, so mtime answers "did anything
+                # write" when the reducer is asking "did the agent resume".
+                # Read as mtime, one background task completing retired a live
+                # question for the rest of its life: the row published
+                # `working` while the session sat on an open gate, and the
+                # Needs-you tile counted zero. A transcript with no assistant
+                # record in its tail reports 0, which leaves the wait standing
+                # — the safe direction, and the same one an unreported value
+                # already takes in the reducer.
+                "own_activity": (info or {}).get("last_assistant_ts") or 0,
                 # Subagent output lives in the children's own transcripts; fold
                 # it in so the session's rate reflects all its work. Read from
                 # `analyses` rather than re-analyzing: both layouts are in there
