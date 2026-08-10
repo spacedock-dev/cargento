@@ -17,19 +17,33 @@ if TYPE_CHECKING:
     from cargento_runtime.state import RuntimeState
 
 
-# Claude Code's documented Notification matcher values. ``idle_timeout`` is
-# accepted as a compatibility alias, while current payloads use ``idle_prompt``.
+# Claude Code's Notification matcher values. ``idle_timeout`` is accepted as a
+# compatibility alias, while current payloads use ``idle_prompt``.
 # These three sets are deliberately not exhaustive: an unrecognised structured
 # type stays actionable (see notification_disposition), so a type Claude Code
 # adds tomorrow surfaces rather than disappearing.
+#
+# Four values below are observed rather than documented, and the distinction is
+# worth keeping: Claude Code's own hook metadata advertises eight
+# ``notification_type`` values, but its callers pass these four as well
+# (measured on 2.1.226). Fail-visible treats all four as actionable, which is
+# right for exactly one of them, ``worker_permission_prompt``, and wrong for the
+# other three: ``computer_use_enter`` and its pair carry "Claude is using your
+# computer", a status line rather than a question, and ``push_notification`` is
+# the delivery wrapper rather than a prompt of its own. So classifying them
+# explicitly is what stops an unknown-type default from deciding a user-facing
+# band. Do not prune them back to the advertised list.
 IDLE_NOTIFICATION_TYPES = {"idle_prompt", "idle_timeout"}
 
 
 INFORMATIONAL_NOTIFICATION_TYPES = {
     "agent_completed",
     "auth_success",
+    "computer_use_enter",  # observed: "Claude is using your computer"
+    "computer_use_exit",  # observed: its pair
     "elicitation_complete",
     "elicitation_response",
+    "push_notification",  # observed: the push wrapper, not a question of its own
 }
 
 
@@ -37,9 +51,21 @@ ACTIONABLE_NOTIFICATION_TYPES = {
     "agent_needs_input",
     "elicitation_dialog",
     "permission_prompt",
+    # observed: a leader raising a worker's tool or network request. It arrives on
+    # the *leader's* session_id, so prefix_is_agent never fires and the parent row
+    # is the one that shows it — which is also the row the human answers from.
+    # The network half has no PermissionRequest behind it (that hook is
+    # tool-scoped), so this is its only signal. See DRC-4121.
+    "worker_permission_prompt",
 }
 
 
+# Narrower than "everything informational", on purpose. Clearing retires a
+# standing hook, so a type earns a place here only by meaning "the thing that was
+# waiting is over" — which is why ``auth_success`` has never been here, and why
+# the newly classified informational types are not either. A status line
+# ("Claude is using your computer") arriving while a permission prompt stands
+# must leave that prompt standing.
 CLEARING_NOTIFICATION_TYPES = IDLE_NOTIFICATION_TYPES | {
     "agent_completed",
     "elicitation_complete",

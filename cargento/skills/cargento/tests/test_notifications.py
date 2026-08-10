@@ -431,9 +431,17 @@ class CargentoServerTest(RuntimeTestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
-    def test_notification_disposition_covers_documented_types(self) -> None:
+    def test_notification_disposition_covers_documented_and_observed_types(self) -> None:
+        # Three groups. Eight are Claude Code's advertised matcher values. Four
+        # are observed on 2.1.226 and absent from that list; they are here
+        # because the unknown-type default would otherwise decide them, and it
+        # decides `computer_use_enter` wrongly (DRC-4121). And `idle_timeout` is
+        # in neither group: it is a deliberately retained compatibility alias for
+        # `idle_prompt`, kept for hooks predating the rename, so it has to be
+        # asserted here or nothing would catch its removal.
         expected = {
             "idle_prompt": (False, True),
+            "idle_timeout": (False, True),
             "permission_prompt": (True, True),
             "auth_success": (False, False),
             "elicitation_dialog": (True, True),
@@ -441,6 +449,10 @@ class CargentoServerTest(RuntimeTestCase):
             "elicitation_response": (False, False),
             "agent_needs_input": (True, True),
             "agent_completed": (False, False),
+            "worker_permission_prompt": (True, True),
+            "computer_use_enter": (False, False),
+            "computer_use_exit": (False, False),
+            "push_notification": (False, False),
         }
         for notification_type, disposition in expected.items():
             with self.subTest(notification_type=notification_type):
@@ -470,6 +482,39 @@ class CargentoServerTest(RuntimeTestCase):
             )
             with state_of().hook_lock:
                 self.assertNotIn("feed1234", state_of().hook_notifications)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_informational_status_notification_leaves_a_standing_prompt(self) -> None:
+        # Informational is not the same as clearing. A computer-use status line
+        # arriving while a permission prompt stands must not retire the prompt —
+        # the human still has a question waiting. Pins the deliberate asymmetry
+        # between INFORMATIONAL_NOTIFICATION_TYPES and CLEARING_NOTIFICATION_TYPES.
+        with state_of().hook_lock:
+            state_of().hook_notifications["beef5678"] = {
+                "ts": time.time() - 30,
+                "message": "Claude needs your permission to use Bash",
+            }
+        httpd = make_server()
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self._post_notify(
+                httpd.server_port,
+                {
+                    "session_id": "beef5678",
+                    "hook_event_name": "Notification",
+                    "notification_type": "computer_use_enter",
+                    "message": "Claude is using your computer \xb7 press Esc to stop",
+                },
+            )
+            with state_of().hook_lock:
+                standing = state_of().hook_notifications.get("beef5678")
+            self.assertIsNotNone(standing)
+            assert standing is not None
+            self.assertIn("permission", standing["message"])
         finally:
             httpd.shutdown()
             httpd.server_close()
