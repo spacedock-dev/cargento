@@ -85,4 +85,4 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-<!-- docs-synced-through: de211ac (2026-08-09) -->
+<!-- docs-synced-through: 5149b36 (2026-08-10) -->
