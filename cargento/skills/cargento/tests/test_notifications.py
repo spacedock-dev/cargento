@@ -794,6 +794,8 @@ class CargentoServerTest(RuntimeTestCase):
             self._state_with_fanout_hook("some_future_type", "something happened"),
         )
 
+
+class NotifyHookTest(unittest.TestCase):
     """The forwarder replaces a curl one-liner that only worked in POSIX shells."""
 
     HOOK = str(HOOK_PATH)
