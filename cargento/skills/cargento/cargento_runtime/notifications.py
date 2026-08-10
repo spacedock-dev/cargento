@@ -11,7 +11,7 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.state import RuntimeState
@@ -156,6 +156,24 @@ def current_hook(
         return hook
 
 
+def hook_is_actionable_prompt(hook: Mapping[str, Any] | None) -> bool:
+    """True when a stored hook is a *recognised* actionable prompt.
+
+    Recognised is the operative word, and it is why this is not simply
+    ``needs_input``. Every hook that reaches the collector is already actionable
+    as far as the ingress can tell: `notification_disposition` fails an unknown
+    structured type visible rather than dropping it, which is right for storing
+    and popping. But an unknown type is a claim, not a measurement, and this
+    predicate gates a *precedence* decision -- whether a prompt may override a
+    session that looks busy. Only a type this module names actionable earns that;
+    an unknown one waits for the session to go quiet, exactly as before.
+
+    A hook stored before `kind` was carried through has no `kind` at all, which
+    reads as unrecognised and keeps the old behavior. That is the safe direction.
+    """
+    return hook is not None and hook.get("kind", "") in ACTIONABLE_NOTIFICATION_TYPES
+
+
 # `/api/notify` is Claude's own hook forwarder: the payload shape is Claude
 # Code's `Notification` hook and nothing else posts there. So this label is a
 # property of the route rather than something to look up, and a second harness
@@ -279,7 +297,12 @@ def handle_payload(
     if prefix and claude_data.prefix_is_agent(config, state, prefix):
         return {"ok": True, "suppressed": "subagent"}
 
-    hook: dict[str, Any] = {"ts": now, "message": message}
+    # `kind` is carried, not just consumed. The disposition above decides whether
+    # to store the hook at all; the collector separately needs to know *what kind*
+    # of prompt it is holding, because a recognised prompt outranks a live
+    # subagent and an unrecognised one does not. Dropping it here left the
+    # collector unable to tell a permission prompt from a status line.
+    hook: dict[str, Any] = {"ts": now, "message": message, "kind": kind}
     transcript_path = payload.get("transcript_path")
     if prefix and isinstance(transcript_path, str):
         found, user_event = claude_data.hook_user_event(config, state, transcript_path, prefix)

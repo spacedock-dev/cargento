@@ -430,22 +430,34 @@ def collect(
             if active
             else None
         )
+        # Whether the standing hook is a prompt this build recognises. Only a
+        # recognised one is allowed to outrank a live subagent below.
+        actionable_prompt = notifications.hook_is_actionable_prompt(hook)
         if info and info["pending_input_tool"]:
             p = info["pending_input_tool"]
             session_state = "needs_input"
             blocked_since = p["ts"] or last_activity
             state_detail = f"open question ({p['name']}), waiting {runtime_sessions.fmt_duration(runtime_sessions.age(config, now, p['ts'])) if p['ts'] else '?'}"
-        # Fresh activity beats a hook: Claude Code emits "waiting for your
-        # input" notifications for sessions that keep running via background
-        # tasks and will resume on their own. A hook only surfaces as
-        # needs-input once the session actually goes quiet; permission-prompt
-        # popups are unaffected (they fire on the POST itself).
-        elif subagents or runtime_sessions.is_fresh(
+        # Fresh activity in the session's *own* transcript still beats a hook:
+        # Claude Code emits "waiting for your input" notifications for sessions
+        # that keep running via background tasks and will resume on their own.
+        # That window self-clears, because an open prompt leaves the parent
+        # transcript quiet -- the tool_use record is written before the prompt is
+        # raised and the tool_result only after it is answered -- so a genuinely
+        # blocked session falls out of the window and surfaces.
+        #
+        # A live subagent is different, and used to be tested here as if it were
+        # the same. It never lapses: one running subagent pinned this branch for
+        # as long as the workflow ran, so on a fan-out -- the sessions most likely
+        # to be holding a prompt -- a recognised prompt could not surface at all.
+        # It now yields to one. An unrecognised hook still waits for quiet, so a
+        # notification type added upstream cannot invent a red band here.
+        elif runtime_sessions.is_fresh(
             config,
             now,
             runtime_sessions.newest_plausible(config, now, last_event_sources),
             config.working_threshold_sec,
-        ):
+        ) or (subagents and not actionable_prompt):
             session_state = "working"
             in_prog = next((t for t in tasks if t["status"] == "in_progress"), None)
             if in_prog:

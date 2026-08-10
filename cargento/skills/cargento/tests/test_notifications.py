@@ -697,8 +697,103 @@ class CargentoServerTest(RuntimeTestCase):
                 httpd.server_close()
                 thread.join(timeout=2)
 
+    def _subagent_fanout(self, tmp: str, now: float) -> tuple[Path, str]:
+        """A parent parked for 10 minutes with one fresh subagent under it.
 
-class NotifyHookTest(unittest.TestCase):
+        This shape reads Working on the strength of the subagent alone, which is
+        the state DRC-4121 is about: the parent's own transcript is long quiet, so
+        the freshness half of the working test has lapsed and only the subagent
+        clause is holding the row.
+        """
+        parent_id = "f00d9999-0000-0000-0000-000000000000"
+        child_id = "f00daaaa-0000-0000-0000-000000000000"
+        proj = Path(tmp) / "projects" / "-Users-test-repo"
+        proj.mkdir(parents=True)
+        parent_fp = proj / f"{parent_id}.jsonl"
+        parent_fp.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": parent_id,
+                    "uuid": "u-1",
+                    "timestamp": datetime.fromtimestamp(now - 600, UTC).isoformat(),
+                    "message": {"role": "user", "content": "run the fan-out"},
+                }
+            )
+            + "\n"
+        )
+        (proj / f"{child_id}.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": child_id,
+                    "agentName": "fanout-worker",
+                    "teamName": f"session-{parent_id[:8]}",
+                    "timestamp": datetime.fromtimestamp(now - 5, UTC).isoformat(),
+                    "message": {"role": "user", "content": "do the work"},
+                }
+            )
+            + "\n"
+        )
+        old = now - 600
+        os.utime(parent_fp, (old, old))
+        return parent_fp, parent_id
+
+    def _state_with_fanout_hook(self, notification_type: str, message: str) -> str:
+        """Collect the parent's state after one real notify POST reaches it."""
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            patches = (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            )
+            with patches[0], patches[1]:
+                parent_fp, parent_id = self._subagent_fanout(tmp, now)
+                # Built inside the patches: config is captured at construction.
+                httpd = make_server()
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with patches[0], patches[1], mock.patch.object(notifications, "notify_mac"):
+                    self._post_notify(
+                        httpd.server_port,
+                        {
+                            "session_id": parent_id,
+                            "hook_event_name": "Notification",
+                            "notification_type": notification_type,
+                            "message": message,
+                            "transcript_path": str(parent_fp),
+                        },
+                    )
+                    sessions = collect_claude(now, 24, False)
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=2)
+        row = next(s for s in sessions if s["session"] == parent_id[:8])
+        self.assertEqual(1, len(row["subagents"]), "fixture must have a live subagent")
+        return str(row["state"])
+
+    def test_recognised_prompt_outranks_a_live_subagent(self) -> None:
+        # An MCP elicitation has no PermissionRequest behind it, so this POST is
+        # the only signal that exists for it. Before DRC-4121 the live subagent
+        # pinned the row to Working for as long as the fan-out ran, and the
+        # question was never shown.
+        self.assertEqual(
+            "needs_input",
+            self._state_with_fanout_hook("elicitation_dialog", "Claude Code needs your input"),
+        )
+
+    def test_an_unrecognised_notification_type_still_waits_for_quiet(self) -> None:
+        # The other half of the same decision. An unknown structured type is
+        # stored and popped -- fail-visible at the ingress is deliberate -- but it
+        # does not get to outrank a busy session, because unknown is a claim and
+        # not a measurement. It surfaces once the session goes quiet, as before.
+        self.assertEqual(
+            "working",
+            self._state_with_fanout_hook("some_future_type", "something happened"),
+        )
+
     """The forwarder replaces a curl one-liner that only worked in POSIX shells."""
 
     HOOK = str(HOOK_PATH)
