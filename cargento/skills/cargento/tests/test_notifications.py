@@ -432,12 +432,16 @@ class CargentoServerTest(RuntimeTestCase):
             thread.join(timeout=2)
 
     def test_notification_disposition_covers_documented_and_observed_types(self) -> None:
-        # The first eight are Claude Code's advertised matcher values. The last
-        # four are observed on 2.1.226 and absent from that list; they are here
+        # Three groups. Eight are Claude Code's advertised matcher values. Four
+        # are observed on 2.1.226 and absent from that list; they are here
         # because the unknown-type default would otherwise decide them, and it
-        # decides `computer_use_enter` wrongly (DRC-4121).
+        # decides `computer_use_enter` wrongly (DRC-4121). And `idle_timeout` is
+        # in neither group: it is a deliberately retained compatibility alias for
+        # `idle_prompt`, kept for hooks predating the rename, so it has to be
+        # asserted here or nothing would catch its removal.
         expected = {
             "idle_prompt": (False, True),
+            "idle_timeout": (False, True),
             "permission_prompt": (True, True),
             "auth_success": (False, False),
             "elicitation_dialog": (True, True),

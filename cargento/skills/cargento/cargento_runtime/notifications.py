@@ -26,11 +26,13 @@ if TYPE_CHECKING:
 # Four values below are observed rather than documented, and the distinction is
 # worth keeping: Claude Code's own hook metadata advertises eight
 # ``notification_type`` values, but its callers pass these four as well
-# (measured on 2.1.226). Fail-visible got two of them right by accident and one
-# wrong — ``computer_use_enter`` carries "Claude is using your computer", which
-# is a status line and not a question — so classifying them explicitly is what
-# stops an unknown-type default from deciding a user-facing band. Do not prune
-# them back to the advertised list.
+# (measured on 2.1.226). Fail-visible treats all four as actionable, which is
+# right for exactly one of them, ``worker_permission_prompt``, and wrong for the
+# other three: ``computer_use_enter`` and its pair carry "Claude is using your
+# computer", a status line rather than a question, and ``push_notification`` is
+# the delivery wrapper rather than a prompt of its own. So classifying them
+# explicitly is what stops an unknown-type default from deciding a user-facing
+# band. Do not prune them back to the advertised list.
 IDLE_NOTIFICATION_TYPES = {"idle_prompt", "idle_timeout"}
 
 
