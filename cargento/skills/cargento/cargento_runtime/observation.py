@@ -360,8 +360,14 @@ class Observation:
         session UUID for every other harness, both of which `/api/data` already
         publishes per row.
         """
-        now = self.clock()
         with self._lock:
+            # Sampled inside, unlike `_record`, which reads the clock before it
+            # takes the lock because it only stamps arrival. This is a snapshot,
+            # and `now`, the rows and every `time_gate_open` computed from them
+            # have to be one instant or the report contradicts itself: an overlay
+            # that expired while this call waited on the lock would otherwise be
+            # reported open, against a `now` that predates its own ledger.
+            now = self.clock()
             rows = [
                 {
                     "harness": harness,

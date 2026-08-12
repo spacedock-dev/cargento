@@ -191,6 +191,13 @@ wrong file. There are four readings, and the report carries what separates all o
 | no needs-input overlay, and a counter moved | the envelope arrived and was dropped | ingress, not the reducer |
 | no needs-input overlay, and no counter moved | nothing was ever posted | the hook, or the wire |
 
+The bottom two rows are not decidable from a single read, because the counters are cumulative since
+the process started: a lone `reject.rate: 3` says nothing about whether any of the three belong to
+the gate in front of you. Read the report before reproducing and again after, and diff. The top two
+are decidable from one read, with one caveat: a row only reflects an overlay once a collection has
+run, so compare the report's `now` against `/api/data`'s `generated` before concluding anything
+inside the collection floor.
+
 The second row is why `arrival_seq` is published rather than implied by list order. Delivery is
 at-least-once and may reorder, so a `turn_started` can land after the `input_requested` it precedes
 in real time, and the result is a needs-input overlay that is present, inside its window, and skipped
@@ -198,10 +205,12 @@ anyway. Attributing that to the grace and going to change the grace is exactly t
 failure DRC-4134 exists to stop.
 
 The third row is why `counters` rides along. An envelope can arrive and still leave no overlay:
-rate-limited (`reject.rate`), refused at the session cap (`overlay.refused`), expired while waiting
-for a collection to produce its row (`pending.expired`), or retired by a `session_ended`, which
-Claude fires on `/clear` (`retired`). `pending_rows` names the sessions currently in that waiting
-state. None of this is visible in `overlays`, because in every case there is nothing there to see.
+rate-limited (`reject.rate`), rejected at validation (`reject.unmappable-id` is the one that means
+the id matched no session, and the other `reject.*` reasons cover a malformed, incompatible or
+unknown event), refused at the session cap (`overlay.refused`), expired while waiting for a
+collection to produce its row (`pending.expired`), or retired by a `session_ended`, which Claude
+fires on `/clear` (`retired`). `pending_rows` names the sessions currently in that waiting state.
+None of this is visible in `overlays`, because in every case there is nothing there to see.
 
 A fifth thing the ledger cannot tell you: whether an overlay it shows actually won. `time_gate_open`
 is the overlay's own gate only. The reducer's ordering and its activity guards both run afterwards,
