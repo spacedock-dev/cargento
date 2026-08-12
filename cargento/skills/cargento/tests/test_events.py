@@ -500,8 +500,10 @@ class ReduceTest(unittest.TestCase):
         self.assertEqual({}, patch, "the collector's own state should show, not a stale wait")
 
     def test_own_activity_before_the_request_leaves_the_wait_standing(self) -> None:
-        # The ordinary open prompt: the tool_use record was written just before
-        # the prompt was raised, and nothing has been written since.
+        # The ordinary open prompt: the session's last write landed before the
+        # request, and nothing has been written since. What that last write was
+        # does not matter here, and is not guaranteed to be the tool_use record:
+        # see docs/design-needs-input.md (N-2).
         ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=1, at=NOW - 600)]
         patch = events.reduce_overlays(
             ledger, now=NOW, own_activity=NOW - 601, activity_grace_sec=10.0

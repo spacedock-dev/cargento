@@ -442,9 +442,11 @@ def collect(
         # Claude Code emits "waiting for your input" notifications for sessions
         # that keep running via background tasks and will resume on their own.
         # That window self-clears, because an open prompt leaves the parent
-        # transcript quiet -- the tool_use record is written before the prompt is
-        # raised and the tool_result only after it is answered -- so a genuinely
-        # blocked session falls out of the window and surfaces.
+        # transcript quiet, so a genuinely blocked session falls out of the window
+        # and surfaces. The quiet does not rest on the tool_use record being
+        # written ahead of the prompt: it is written on no schedule at all, and a
+        # record that never arrives leaves the file quieter still. See
+        # docs/design-needs-input.md (N-2).
         #
         # A live subagent is different, and used to be tested here as if it were
         # the same. It never lapses: one running subagent pinned this branch for

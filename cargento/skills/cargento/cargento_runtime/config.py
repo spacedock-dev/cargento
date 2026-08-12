@@ -141,11 +141,13 @@ class RuntimeConfig:
     # new prompt resolves inside one publish instead of flapping the row.
     # A needs-input overlay has no deadline, because a real permission wait can
     # last hours. What ends it, absent a hook that says so, is the session's own
-    # transcript moving again: the tool_use record is written before the prompt
-    # is raised, so an open prompt leaves the file quiet and the tool_result that
-    # follows a grant advances it. The grace absorbs the ordering between a hook
-    # process and the write that provoked it, and nothing else -- a wait that
-    # ends is over within one write, not within a minute.
+    # transcript moving again: an open prompt leaves the file quiet, and the
+    # tool_result that follows a grant advances it. What that quiet is not is a
+    # tool_use record written ahead of the prompt -- Claude Code writes it on no
+    # schedule at all, and often not while the gate stands, which leaves the file
+    # quieter still. See docs/design-needs-input.md (N-2). The grace absorbs the
+    # ordering between a hook process and the write that provoked it, and nothing
+    # else -- a wait that ends is over within one write, not within a minute.
     overlay_wait_activity_grace_sec: float
     overlay_working_ttl_sec: float
     overlay_idle_dwell_sec: float
