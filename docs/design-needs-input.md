@@ -13,9 +13,15 @@ it was dead. Three independent mechanisms can put a Claude row into Needs input:
 
 | Path | Source | Covers |
 |---|---|---|
-| Transcript | a pending question found by reading the session's records | `AskUserQuestion`, `ExitPlanMode` |
-| Event overlay | the plugin-bundled `PermissionRequest` hook | any tool permission gate, including a subagent's |
+| Transcript | a pending question found by reading the session's records | `AskUserQuestion`, `ExitPlanMode`, and only when the record has reached disk. See N-4 |
+| Event overlay | the plugin-bundled `PermissionRequest` hook | any tool gate, including `AskUserQuestion` and `ExitPlanMode` and a subagent's. Measured, see N-4 |
 | Notification | the user-installed `Notification` hook, posted to the loopback API | MCP elicitation dialogs, worker permission and network requests |
+
+The first two rows overlap, which is easy to miss and was missed here. `AskUserQuestion` and
+`ExitPlanMode` are gated tools, so `PermissionRequest` fires for them like any other tool call, and
+the event overlay carries them independently of whether the transcript ever shows them. An earlier
+draft of this table listed those two under the transcript row alone, which read as though the event
+path did not cover them. It does, and N-4 is the measurement.
 
 The event overlay is the one that carries ordinary permission prompts, and its patch is written over
 whatever the collector decided, so the collector's own ordering cannot suppress it. That is why the
@@ -91,10 +97,10 @@ N-1 sorted the three paths by what they cover. This section sorts them by how of
 fire, which is a different question and was answered later, by holding real sessions at real gates
 and reading both the transcript and `/api/data` while the question was still on screen.
 
-| Path | Live gates seen on it | |
+| Path | Live gates seen on it | Breakdown |
 |---|---|---|
 | Transcript (`pending_input_tool`) | 3 of 6 | `ExitPlanMode` 2/4, `AskUserQuestion` 1/2 |
-| Event overlay (`PermissionRequest`) | 4 of 5 | one miss read `working` with `acquisition: event` |
+| Event overlay (`PermissionRequest`) | 4 of 5 | all `ExitPlanMode`; one miss read `working` with `acquisition: event` |
 
 Neither number is a rate anybody should quote as a constant. What they establish is qualitative and
 firm: the transcript branch fires roughly half the time, the event path fires much more often than
