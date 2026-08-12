@@ -8,8 +8,14 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-# C0 and DEL, then the zero-width, bidi-embedding and isolate ranges.
-_UNSAFE_CHARS = re.compile("[\\x00-\\x1f\\x7f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069]+")
+# C0 and DEL, the zero-width space, the two directional marks, and the bidi
+# embedding and isolate ranges. Listed one by one across U+200B to U+200F rather
+# than as a range, because U+200C and U+200D are inside it and must survive:
+# ZWNJ is orthographic in Persian and several Indic scripts, sitting inside
+# words, and ZWJ is what composes an emoji sequence. Neither can reorder text,
+# so keeping them costs no protection, and stripping them would break a title in
+# those scripts anywhere in the product, not only on the row that prompted this.
+_UNSAFE_CHARS = re.compile("[\\x00-\\x1f\\x7f\\u200b\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]+")
 
 
 def safe_text(value: Any, limit: int) -> str:

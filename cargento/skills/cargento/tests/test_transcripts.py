@@ -832,6 +832,32 @@ class MalformedRecordTest(unittest.TestCase):
         self.assertEqual("a b c", records.safe_text("a\x00b\nc", 10))
         self.assertEqual("abc", records.safe_text("abcdef", 3))
 
+    def test_safe_text_strips_what_can_reorder_a_row(self) -> None:
+        # A record that reorders its own rendering can make a row read as
+        # something it does not say. Escapes rather than literals here for the
+        # same reason ruff bans them in source: this file has to stay readable.
+        for name, char in (
+            ("zero-width space", "\u200b"),
+            ("left-to-right mark", "\u200e"),
+            ("right-to-left mark", "\u200f"),
+            ("right-to-left override", "\u202e"),
+            ("first strong isolate", "\u2068"),
+            ("pop directional isolate", "\u2069"),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual("a b", records.safe_text(f"a{char}b", 10))
+
+    def test_safe_text_keeps_the_joiners_that_words_are_spelled_with(self) -> None:
+        # ZWNJ sits inside Persian and Indic words and ZWJ composes an emoji
+        # sequence. Neither can reorder anything, and stripping them would break
+        # a title in those scripts anywhere in the product.
+        for name, text in (
+            ("persian zwnj", "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"),
+            ("emoji zwj", "\U0001f468\u200d\U0001f4bb"),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(text, records.safe_text(text, 50))
+
 
 class ReviewFixTest(unittest.TestCase):
     """Regressions found by the adversarial review passes on PR #7."""
