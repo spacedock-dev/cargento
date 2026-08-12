@@ -31,7 +31,7 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 | State | Meaning | Derived from |
 |---|---|---|
-| **Needs input** (red, popup fired) | Claude is blocked on the human | Best effort, never guaranteed, from three sources in descending reliability: the bundled `PermissionRequest` hook (any tool gate, including `AskUserQuestion` and `ExitPlanMode`); an actionable Notification-hook POST (MCP elicitation, a worker's permission or network request); and last a pending input tool seen in the transcript, which Claude Code flushes on its own schedule and often not until the gate has already been answered. Claude only — other harnesses have no needs-input detection |
+| **Needs input** (red, popup fired) | Claude is blocked on the human | Best effort, never guaranteed, from three sources that cover different things rather than ranking cleanly. The bundled `PermissionRequest` hook is the main one for tool gates, seen directly for `ExitPlanMode` and in the wild for `AskUserQuestion`. An actionable Notification-hook POST is the *only* source for an MCP elicitation or a worker's permission or network request. A pending input tool seen in the transcript is an opportunistic extra, because Claude Code flushes that record on its own schedule and sometimes not until the gate has been answered. Claude only — other harnesses have no needs-input detection |
 | **Working** (blue) | Actively generating | transcript/subagent/DB activity within the last 90s; detail = in-progress task's activeForm, else running subagents, else last tool |
 | **Idle** (gray) | Turn ended | anything else — "awaiting your message" |
 
@@ -131,7 +131,7 @@ posts once.
 
 ## Notifications
 
-Two paths manage needs-input state, and two layers can deliver the popup. **Exactly one of them fires for any given transition**, so nobody is notified twice:
+Three paths manage needs-input state, and two layers can deliver the popup. **Exactly one of them fires for any given transition**, so nobody is notified twice:
 
 - **macOS** — the server fires `osascript display notification` (60s per-session cooldown plus a 15s global floor). This works with no browser tab open, which is what the lifecycle-hook path below needs.
 - **Linux and Windows** — the server has no native backend yet, so the dashboard page raises a browser notification instead. `/api/data` reports which layer is active as `native_notify`. Browser notifications need permission: an "Enable notifications" button appears in the header when it has not been granted, and the header says so if the browser has blocked them. They only fire while a dashboard tab is open — so on these platforms the hook path below still delivers no popup when no tab is open.
@@ -238,7 +238,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 
 ## Interpretation notes (share with the user if asked)
 
-- **A quiet row is not proof nothing is waiting.** Needs-input detection is best effort on every path, so a session sitting at a gate can read Working for a while before the red band appears. The band appearing is reliable; its absence is not evidence.
+- **A quiet row is not proof nothing is waiting.** Needs-input detection is best effort on every path, so a session sitting at a gate can read Working for a while before the red band appears. Absence of the band is not evidence that nothing is blocked. The band is worth acting on, but it is not proof either: an unrecognised notification type is deliberately treated as actionable so a new kind of prompt cannot vanish, and that same rule can raise the band for something that turns out not to need you.
 - **Age** = time since the task file was created (birthtime where the platform has it — macOS, and Windows on Python 3.12+; elsewhere it falls back to mtime). For completed tasks it is creation → last update.
 - **Output rate** = output tokens over the last 10 minutes. Generation rate, not billed input/cache tokens. Claude, Codex, Pi, Gemini CLI, Antigravity CLI, and Goose expose per-message or per-generation token data. Copilot, OpenCode, Cursor, and Droid expose no usable live token totals, so their sessions are missing from this tile rather than being zero in it. When one of them is active the number is prefixed `≥` and the line beneath counts the active sessions the total could not see, naming their harnesses on hover; a working card for such a session reads `rate unknown` in place of its meter, and in calm mode its `rate` cell is a dash. A discovered harness whose collector failed this scan makes the total a floor for the other reason — none of its sessions reached the sum at all — so the same line counts it, its row in the per-harness split reads a dash rather than a zero, and the harness strip badges it `collector error`. An absent measurement and a measured zero are different facts, and only the second one means the session is quiet.
 - **Rate sparklines** (the trend under the Output rate number, and the mini one beside each working card's tok/min) trail the last 5 minutes and are client-side only: they start filling when the page opens, discard points that age out of the window, and reset on page reload. Hover or focus the tile sparkline for exact values.
