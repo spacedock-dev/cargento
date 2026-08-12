@@ -146,8 +146,10 @@ both off the server instance. `cli.main` is the only place that assembles all of
 The payoff is testability of the awkward cases. Platform decisions take their environment as an
 argument (see D-4 in [design-cross-platform.md](design-cross-platform.md)), so one runner exercises
 the Linux, macOS and Windows branches. And two servers can run in one interpreter without crossing: a
-contract test proves `/`, `/api/data`, `/api/health` and notification POSTs each answer only for their
-owner, including that a `SessionEnd` on one leaves the other's standing hook and generation untouched.
+contract test proves `/`, `/api/data`, `/api/health`, `/api/overlays` and notification POSTs each
+answer only for their owner, including that a `SessionEnd` on one leaves the other's standing hook and
+generation untouched, and that an event submitted to one server's coordinator stays out of the other's
+ledger.
 
 `RuntimeConfig` carries `state_home` as a string alongside `state_dir` as a `Path`, because a native
 `Path` rewrites separators on Windows: an override of `C:/plugin/state` would come back as

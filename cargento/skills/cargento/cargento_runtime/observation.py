@@ -330,6 +330,55 @@ class Observation:
             ledger = self._overlays.get((harness, sid))
             return list(ledger.values()) if ledger else []
 
+    def ledger_report(self) -> dict[str, Any]:
+        """Every live overlay, flattened, for `/api/overlays`.
+
+        A diagnostic read and nothing else: it takes the lock, copies, and
+        returns. It exists because the reducer's inputs were otherwise
+        unobservable from outside the process, and two different faults produce
+        the same visible row. A wait suppressed by the activity grace and a
+        `PermissionRequest` that never arrived both leave a session reading
+        Working with `acquisition: event`, and `/api/data` cannot tell them
+        apart: one has a needs-input overlay in the ledger and the other has
+        none. See docs/design-needs-input.md (N-5).
+
+        `applies` is evaluated here rather than left to the caller, because it
+        reads three fields against a clock and a reader comparing them by hand is
+        how a diagnostic starts lying. It is the overlay's own gate only; the
+        reducer's activity guards are not applied, since their inputs live on the
+        collected row rather than here.
+
+        Carries no user content. An overlay is a session key, a kind, and three
+        timestamps.
+        """
+        now = self.clock()
+        with self._lock:
+            rows = [
+                {
+                    "harness": harness,
+                    "sid": sid,
+                    "kind": overlay.kind,
+                    "arrival_seq": overlay.arrival_seq,
+                    "at": overlay.at,
+                    "effective_at": overlay.effective_at,
+                    "expires_at": overlay.expires_at,
+                    "subagent_id": overlay.subagent_id,
+                    "applies": overlay.applies(now=now),
+                }
+                for (harness, sid), ledger in sorted(self._overlays.items())
+                for overlay in sorted(ledger.values(), key=lambda o: o.arrival_seq)
+            ]
+            pending = sorted(f"{harness}/{sid}" for harness, sid in self._pending)
+            counters = dict(self.counters)
+            arrival_seq = self._arrival_seq
+        return {
+            "now": now,
+            "arrival_seq": arrival_seq,
+            "overlays": rows,
+            "pending_rows": pending,
+            "counters": counters,
+        }
+
     def note_rows(self, keys: set[SessionKey]) -> None:
         """Tell the ledger which rows a collection actually produced.
 

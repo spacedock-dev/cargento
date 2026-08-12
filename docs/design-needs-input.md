@@ -154,6 +154,52 @@ investigation measured it once and nearly concluded it was live. Both readings c
 reads. Anything in this area needs n greater than one before it goes in writing, and the desk read
 and the timestamp replay that the original report warned about are not the only ways to get it wrong.
 
+## N-5: two different faults produce the same row, so the ledger is now readable
+
+The event path's one miss (N-4, tracked as DRC-4134) could not be diagnosed from outside the
+process, and the reason is worth stating in general terms because it will happen again. A row
+reading `state: working` with `acquisition: event` at a live gate has at least two causes, and
+`/api/data` shows the same three fields for both:
+
+- a needs-input overlay exists but the reducer suppressed it, leaving the turn's working overlay as
+  the last applicable writer;
+- no needs-input overlay ever existed, because the hook did not fire, did not reach the server, or
+  did not match a session key.
+
+The fixes have nothing in common. The first is a reducer change; the second is a delivery problem
+where changing the reducer would do nothing at all. Guessing between them was the mistake DRC-4134
+was opened to stop, and the issue's own first draft guessed wrong: it proposed a `PostToolUse`
+landing after the request and retiring the wait through `ENDS_A_WAIT`. `PostToolUse` maps to
+`store_changed`, which produces no overlay, so it can never enter that set. Only `UserPromptSubmit`
+and `Stop` end a wait, and in an ordinary turn both arrive before the gate.
+
+`GET /api/overlays` publishes the ledger the reducer reads: one row per live overlay, with its kind,
+`arrival_seq`, timestamps, and whether it currently applies. The two cases above are one lookup
+apart, because one has a needs-input overlay recorded and the other has none.
+
+Three notes on its shape, each of which was a choice:
+
+- **It publishes the inputs, not a verdict.** The reducer's activity guards read `own_activity` and
+  `last_activity` off the collected row, which `/api/data` already carries. Recomputing the patch
+  here would mean sampling a second collection and reporting a decision the server never actually
+  made.
+- **It is same-origin only**, unlike `/api/data`. `do_GET` relaxes its cross-site check so that a
+  link to the dashboard opens. Nothing renders this route, so the relaxation has no reason to reach
+  it.
+- **No coordinator answers 503, not 404.** Under `--no-events` the route exists and the ledger does
+  not. A 404 would read as a build too old to have the route, which is a bad thing to conclude while
+  chasing a missing overlay.
+
+### Rejected
+
+- **A `debug=1` parameter on `/api/data`.** That response is a published snapshot, revision-
+  qualified and shared between clients, and a per-request variant of it either doubles the snapshot
+  keyspace or serves one caller's debug view to another. The ledger is a different object with a
+  different lifetime, so it is a different route.
+- **Logging the ledger on every collection.** It would answer the question after the fact, and only
+  for whoever had the log level raised before the fault. Nothing rotates the log either, so a
+  standing gate would write the same rows every few seconds for as long as it stood.
+
 ## What is still not measured
 
 `notification_type` is present on every Notification payload, and its value list was read from the

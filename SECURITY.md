@@ -180,6 +180,13 @@ consequence: any local process that can reach the port could already read every 
 machine through `/api/data`, and can now also stop the server. That is a smaller capability inside
 the same trust boundary described above, not a new one.
 
+`GET /api/overlays` reads the event overlay ledger and is a diagnostic, described in
+[`docs/design-needs-input.md`](docs/design-needs-input.md#n-5-two-different-faults-produce-the-same-row-so-the-ledger-is-now-readable).
+It carries no session content: an overlay is a harness name, a truncated session id, a state kind,
+and three timestamps, all of which `/api/data` already exposes in richer form. It applies the strict
+same-origin check rather than the relaxed one `/api/data` uses for navigations, and answers 503 when
+the process runs without a coordinator.
+
 ## Known and accepted
 
 Loopback is not a per-user boundary. Any other account on the same machine can `GET /api/data` and

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, http_api, notifications, records
+from cargento_runtime import aggregate, cli, http_api, notifications, observation, records
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
@@ -238,9 +238,15 @@ class ApplicationIsolationTest(unittest.TestCase):
             notifier="notifier-b",
             harnesses=(self._spec("beta"),),
         )
+        coordinators = [
+            observation.Observation(app, diagnostic_sink=lambda _message: None)
+            for app in (first, second)
+        ]
         servers = [
-            http_api.CargentoHTTPServer(("127.0.0.1", 0), app, page)
-            for app, page in ((first, b"<page-a>"), (second, b"<page-b>"))
+            http_api.CargentoHTTPServer(("127.0.0.1", 0), app, page, coordinator)
+            for (app, page), coordinator in zip(
+                ((first, b"<page-a>"), (second, b"<page-b>")), coordinators, strict=True
+            )
         ]
         threads = [serve_until_closed(httpd) for httpd in servers]
         port_a, port_b = (httpd.server_port for httpd in servers)
@@ -287,6 +293,27 @@ class ApplicationIsolationTest(unittest.TestCase):
             self.assertEqual(1, state_a.hook_generation["aaaaaaaa"])
             self.assertEqual(0, state_b.hook_generation.get("aaaaaaaa", 0))
             self.assertNotEqual(config_a.home, config_b.home)
+
+            # /api/overlays reads the coordinator off the instance too. An event
+            # submitted to A's coordinator must not appear in B's ledger, or the
+            # diagnostic would attribute one server's overlays to the other,
+            # which is the exact mistake it exists to prevent.
+            coordinators[0].submit(
+                "claude",
+                {
+                    "v": 1,
+                    "event": "input_requested",
+                    "session_id": "aaaaaaaa-0000-0000-0000-0000000a",
+                },
+            )
+            self.assertEqual(
+                ["needs_input"],
+                [
+                    row["kind"]
+                    for row in json.loads(self._get(port_a, "/api/overlays")[1])["overlays"]
+                ],
+            )
+            self.assertEqual([], json.loads(self._get(port_b, "/api/overlays")[1])["overlays"])
         finally:
             for httpd, thread in zip(servers, threads, strict=True):
                 httpd.shutdown()

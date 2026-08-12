@@ -22,6 +22,7 @@ from unittest import mock
 
 from cargento_runtime import aggregate, cli, http_api, lifecycle, notifications
 from cargento_runtime import io as runtime_io
+from cargento_runtime import observation as observation_module
 
 from .support import (
     PAGE_BYTES,
@@ -334,6 +335,74 @@ class CargentoServerTest(RuntimeTestCase):
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=2)
+
+
+class OverlayLedgerEndpointTest(RuntimeTestCase):
+    """`/api/overlays`: the reducer's inputs, for a row `/api/data` cannot explain."""
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _serving(observation: Any) -> Any:
+        httpd = make_server(observation=observation)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield httpd.server_port
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    @staticmethod
+    def _get(port: int, headers: dict[str, str] | None = None) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", "/api/overlays", headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def test_the_ledger_is_served_as_json(self) -> None:
+        coordinator = observation_module.Observation(
+            _application(os.name), diagnostic_sink=lambda _message: None
+        )
+        coordinator.submit(
+            "claude",
+            {
+                "v": 1,
+                "event": "input_requested",
+                "session_id": "abcdef12-3456-7890-abcd-ef1234567890",
+            },
+        )
+        with self._serving(coordinator) as port:
+            code, body = self._get(port)
+        self.assertEqual(200, code)
+        report = json.loads(body)
+        self.assertEqual(["needs_input"], [row["kind"] for row in report["overlays"]])
+        self.assertEqual("abcdef12", report["overlays"][0]["sid"])
+
+    def test_no_coordinator_answers_503_rather_than_404(self) -> None:
+        # Under `--no-events` the route exists and the ledger does not. A 404
+        # would read as a build too old to have the route, which is the wrong
+        # thing to conclude while debugging a missing overlay.
+        with self._serving(None) as port:
+            code, _body = self._get(port)
+        self.assertEqual(503, code)
+
+    def test_a_cross_site_navigation_is_refused_unlike_api_data(self) -> None:
+        # `do_GET` relaxes its check so a link to the dashboard works. Nothing
+        # renders this route, so the relaxation has no reason to reach it.
+        with self._serving(None) as port:
+            code, _body = self._get(
+                port,
+                {
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                },
+            )
+        self.assertEqual(403, code)
 
 
 class UsageReceiptOptOutTest(RuntimeTestCase):
