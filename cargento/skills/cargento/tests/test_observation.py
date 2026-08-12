@@ -215,6 +215,101 @@ class LedgerTest(ObservationTestCase):
         self.assertEqual(2, len(coordinator.overlays_for("claude", PREFIX)))
 
 
+class LedgerReportTest(ObservationTestCase):
+    """The diagnostic read. Its job is to separate two identical-looking rows."""
+
+    def test_the_report_carries_every_field_the_reducer_orders_on(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        report = coordinator.ledger_report()
+        self.assertEqual(NOW, report["now"])
+        self.assertEqual(2, report["arrival_seq"])
+        self.assertEqual(
+            [(events.OVERLAY_WORKING, 1), (events.OVERLAY_NEEDS_INPUT, 2)],
+            [(row["kind"], row["arrival_seq"]) for row in report["overlays"]],
+        )
+        for row in report["overlays"]:
+            self.assertEqual(("claude", PREFIX), (row["harness"], row["sid"]))
+        # By value, not by presence: a report that swapped `at` for
+        # `effective_at` would satisfy a membership check.
+        working = report["overlays"][0]
+        self.assertEqual(NOW, working["at"])
+        self.assertEqual(0.0, working["effective_at"])
+        self.assertEqual(NOW + self.config.overlay_working_ttl_sec, working["expires_at"])
+        self.assertIsNone(report["overlays"][1]["expires_at"], "a wait has no deadline")
+
+    def test_the_time_gate_is_evaluated_against_the_clock_rather_than_by_the_reader(self) -> None:
+        # A working overlay expires; a wait does not.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.now += self.config.overlay_working_ttl_sec + 1
+        gates = {
+            row["kind"]: row["time_gate_open"] for row in coordinator.ledger_report()["overlays"]
+        }
+        self.assertEqual({events.OVERLAY_WORKING: False, events.OVERLAY_NEEDS_INPUT: True}, gates)
+
+    def test_an_arrived_envelope_that_left_no_overlay_shows_up_in_the_counters(self) -> None:
+        # Arrived-and-dropped versus never-posted: both leave `overlays` empty,
+        # and only the counters separate them. N-5.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        report = coordinator.ledger_report()
+        self.assertEqual([], report["overlays"])
+        self.assertEqual(1, report["counters"]["retired"])
+        self.assertEqual(1, report["counters"]["event.input_requested"])
+
+    def test_the_ledger_separates_a_suppressed_wait_from_a_wait_that_never_arrived(self) -> None:
+        # The whole reason the route exists: both produce the same three fields
+        # on /api/data, and their fixes have nothing in common. DRC-4134.
+        suppressed = self.build()
+        suppressed.submit("claude", self.envelope(event="turn_started"))
+        suppressed.submit("claude", self.envelope(event="input_requested"))
+        never_arrived = self.build()
+        never_arrived.submit("claude", self.envelope(event="turn_started"))
+
+        # Past the grace, the row each one produces is identical.
+        for coordinator in (suppressed, never_arrived):
+            row: dict[str, Any] = {"state": "needs_input", "state_detail": "open question"}
+            events.apply_patch(
+                row,
+                events.reduce_overlays(
+                    coordinator.overlays_for("claude", PREFIX),
+                    now=NOW,
+                    own_activity=NOW + self.config.overlay_wait_activity_grace_sec + 1,
+                    activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
+                ),
+            )
+            self.assertEqual(
+                ("working", "event", None), (row["state"], row["acquisition"], row["state_detail"])
+            )
+
+        # The ledger is where they differ, and it is the only place they do.
+        self.assertIn(
+            events.OVERLAY_NEEDS_INPUT,
+            [row["kind"] for row in suppressed.ledger_report()["overlays"]],
+        )
+        self.assertNotIn(
+            events.OVERLAY_NEEDS_INPUT,
+            [row["kind"] for row in never_arrived.ledger_report()["overlays"]],
+        )
+
+    def test_the_report_names_the_rows_still_waiting_for_a_collection(self) -> None:
+        # An overlay for a session no collection has produced is the third way a
+        # gate goes missing, and it is invisible in `overlays` alone.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        coordinator.note_rows(set())
+        self.assertEqual([f"claude/{PREFIX}"], coordinator.ledger_report()["pending_rows"])
+
+    def test_an_empty_ledger_reports_empty_rather_than_failing(self) -> None:
+        report = self.build().ledger_report()
+        self.assertEqual([], report["overlays"])
+        self.assertEqual([], report["pending_rows"])
+
+
 class PendingTest(ObservationTestCase):
     def test_an_overlay_for_a_collected_row_leaves_no_pending_entry(self) -> None:
         coordinator = self.build()

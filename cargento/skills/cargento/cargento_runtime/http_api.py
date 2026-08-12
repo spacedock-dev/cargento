@@ -351,6 +351,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 "application/json",
                 headers={"X-Cargento-Revision": runtime_snapshot.format_revision(revision)},
             )
+        elif url.path == "/api/overlays":
+            self._overlays()
         elif url.path == "/api/stream":
             self._stream()
         elif url.path == "/api/health":
@@ -359,6 +361,25 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._send(self.server.page_bytes, "text/html; charset=utf-8")
         else:
             self.send_error(404)
+
+    def _overlays(self) -> None:
+        """The live overlay ledger, for diagnosing a row the reducer produced.
+
+        Strictly same-origin, unlike `/api/data`: nothing renders this, so
+        `do_GET`'s navigation relaxation has no reason to reach it.
+
+        503 rather than 404 with no coordinator, because under `--no-events` the
+        route exists and the ledger does not, and a 404 would read as a build too
+        old to have the route.
+        """
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        observation = self.server.observation
+        if observation is None:
+            self.send_error(503, "no event coordinator on this server")
+            return
+        self._send(json.dumps(observation.ledger_report()).encode(), "application/json")
 
     def _stream(self) -> None:
         """The SSE revision stream.

@@ -218,12 +218,18 @@ def make_server(
     application: Any = None,
     page_bytes: bytes | None = None,
     window_hours: float = 24,
+    observation: Any = None,
 ) -> Any:
-    """A CargentoHTTPServer over the shared runtime, with CLI-equivalent defaults."""
+    """A CargentoHTTPServer over the shared runtime, with CLI-equivalent defaults.
+
+    ``observation`` defaults to None, which is what `--no-events` produces and
+    what every test that only needs a page and an application wants.
+    """
     return http_api.CargentoHTTPServer(
         ("127.0.0.1", port),
         application if application is not None else build_app(window_hours),
         PAGE_BYTES if page_bytes is None else page_bytes,
+        observation,
     )
 
 

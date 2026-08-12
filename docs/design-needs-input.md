@@ -154,6 +154,92 @@ investigation measured it once and nearly concluded it was live. Both readings c
 reads. Anything in this area needs n greater than one before it goes in writing, and the desk read
 and the timestamp replay that the original report warned about are not the only ways to get it wrong.
 
+## N-5: two different faults produce the same row, so the ledger is now readable
+
+The event path's one miss (N-4, tracked as DRC-4134) could not be diagnosed from outside the
+process, and the reason is worth stating in general terms because it will happen again. A row
+reading `state: working` with `acquisition: event` at a live gate has at least two causes, and
+`/api/data` shows the same three fields for both:
+
+- a needs-input overlay exists but the reducer suppressed it, leaving the turn's working overlay as
+  the last applicable writer;
+- no needs-input overlay ever existed, because the hook did not fire, did not reach the server, or
+  did not match a session key.
+
+The fixes have nothing in common. The first is a reducer change; the second is a delivery problem
+where changing the reducer would do nothing at all. Guessing between them was the mistake DRC-4134
+was opened to stop, and the issue's own first draft guessed wrong: it proposed a `PostToolUse`
+landing after the request and retiring the wait through `ENDS_A_WAIT`. `PostToolUse` maps to
+`store_changed`, which produces no overlay, so it can never enter that set. Only `UserPromptSubmit`
+and `Stop` end a wait by outranking it, and in an ordinary turn both arrive before the gate.
+`SessionEnd` ends one too, by retiring the whole ledger for that session rather than by outranking
+anything, and Claude fires it on `/clear`.
+
+`GET /api/overlays` publishes the ledger the reducer reads: one row per live overlay, with its kind,
+`arrival_seq`, timestamps, and `time_gate_open`, which is the overlay's own effective and expiry
+window and nothing more.
+
+### Reading it
+
+Two causes is the short version, and the short version is the one that sends an investigator to the
+wrong file. There are four readings, and the report carries what separates all of them:
+
+| The ledger shows | The reading | Where the fault is |
+|---|---|---|
+| a needs-input overlay, `arrival_seq` above every working and idle row | the activity grace suppressed it (`events.py:525`) | the reducer's grace |
+| a needs-input overlay, `arrival_seq` below a working or idle row | it was outranked and permanently superseded (`events.py:523`) | ordering, the DRC-4095 family |
+| no needs-input overlay, and a counter moved | the envelope arrived and was dropped | ingress, not the reducer |
+| no needs-input overlay, and no counter moved | nothing was ever posted | the hook, or the wire |
+
+The bottom two rows are not decidable from a single read, because the counters are cumulative since
+the process started: a lone `reject.rate: 3` says nothing about whether any of the three belong to
+the gate in front of you. Read the report before reproducing and again after, and diff. The top two
+are decidable from one read, with one caveat: a row only reflects an overlay once a collection has
+run, so compare the report's `now` against `/api/data`'s `generated` before concluding anything
+inside the collection floor.
+
+The second row is why `arrival_seq` is published rather than implied by list order. Delivery is
+at-least-once and may reorder, so a `turn_started` can land after the `input_requested` it precedes
+in real time, and the result is a needs-input overlay that is present, inside its window, and skipped
+anyway. Attributing that to the grace and going to change the grace is exactly the wrong-guess
+failure DRC-4134 exists to stop.
+
+The third row is why `counters` rides along. An envelope can arrive and still leave no overlay:
+rate-limited (`reject.rate`), rejected at validation (`reject.unmappable-id` is the one that means
+the id matched no session, and the other `reject.*` reasons cover a malformed, incompatible or
+unknown event), refused at the session cap (`overlay.refused`), expired while waiting for a
+collection to produce its row (`pending.expired`), or retired by a `session_ended`, which Claude
+fires on `/clear` (`retired`). `pending_rows` names the sessions currently in that waiting state.
+None of this is visible in `overlays`, because in every case there is nothing there to see.
+
+A fifth thing the ledger cannot tell you: whether an overlay it shows actually won. `time_gate_open`
+is the overlay's own gate only. The reducer's ordering and its activity guards both run afterwards,
+and their inputs (`own_activity`, `last_activity`) live on the collected row, which is `/api/data`'s
+to publish. Read the two together.
+
+Three notes on its shape, each of which was a choice:
+
+- **It publishes the inputs, not a verdict.** The reducer's activity guards read `own_activity` and
+  `last_activity` off the collected row, which `/api/data` already carries. Recomputing the patch
+  here would mean sampling a second collection and reporting a decision the server never actually
+  made.
+- **It is same-origin only**, unlike `/api/data`. `do_GET` relaxes its cross-site check so that a
+  link to the dashboard opens. Nothing renders this route, so the relaxation has no reason to reach
+  it.
+- **No coordinator answers 503, not 404.** Under `--no-events` the route exists and the ledger does
+  not. A 404 would read as a build too old to have the route, which is a bad thing to conclude while
+  chasing a missing overlay.
+
+### Rejected
+
+- **A `debug=1` parameter on `/api/data`.** That response is a published snapshot, revision-
+  qualified and shared between clients, and a per-request variant of it either doubles the snapshot
+  keyspace or serves one caller's debug view to another. The ledger is a different object with a
+  different lifetime, so it is a different route.
+- **Logging the ledger on every collection.** It would answer the question after the fact, and only
+  for whoever had the log level raised before the fault. Nothing rotates the log either, so a
+  standing gate would write the same rows every few seconds for as long as it stood.
+
 ## What is still not measured
 
 `notification_type` is present on every Notification payload, and its value list was read from the

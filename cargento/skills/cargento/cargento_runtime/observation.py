@@ -330,6 +330,51 @@ class Observation:
             ledger = self._overlays.get((harness, sid))
             return list(ledger.values()) if ledger else []
 
+    def ledger_report(self) -> dict[str, Any]:
+        """Every live overlay, flattened, for `/api/overlays`.
+
+        Read-only, and it publishes the reducer's inputs rather than a verdict.
+        Why it exists, how to read it, and what `counters` disambiguates are in
+        docs/design-needs-input.md (N-5).
+
+        `time_gate_open` is `Overlay.applies`, named for what it is because
+        `applies` on the wire reads as "this overlay won", which it does not
+        mean: ordering and the activity guards both run after this.
+
+        Carries no session content: a collector key, a kind, three timestamps,
+        and a hook-supplied subagent id capped at ingress, all of which
+        `/api/data` already publishes per row.
+        """
+        with self._lock:
+            # Inside, unlike `_record`: this returns `now` and values computed
+            # from it, so they have to be one instant.
+            now = self.clock()
+            rows = [
+                {
+                    "harness": harness,
+                    "sid": sid,
+                    "kind": overlay.kind,
+                    "arrival_seq": overlay.arrival_seq,
+                    "at": overlay.at,
+                    "effective_at": overlay.effective_at,
+                    "expires_at": overlay.expires_at,
+                    "subagent_id": overlay.subagent_id,
+                    "time_gate_open": overlay.applies(now=now),
+                }
+                for (harness, sid), ledger in sorted(self._overlays.items())
+                for overlay in sorted(ledger.values(), key=lambda o: o.arrival_seq)
+            ]
+            pending = sorted(f"{harness}/{sid}" for harness, sid in self._pending)
+            counters = dict(self.counters)
+            arrival_seq = self._arrival_seq
+        return {
+            "now": now,
+            "arrival_seq": arrival_seq,
+            "overlays": rows,
+            "pending_rows": pending,
+            "counters": counters,
+        }
+
     def note_rows(self, keys: set[SessionKey]) -> None:
         """Tell the ledger which rows a collection actually produced.
 
