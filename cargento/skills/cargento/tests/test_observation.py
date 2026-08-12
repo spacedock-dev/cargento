@@ -739,14 +739,20 @@ class StateDisputeTest(unittest.TestCase):
         self.state = support.reset_runtime()
 
     class Source:
-        def __init__(self, overlays: list[events.Overlay]) -> None:
+        def __init__(
+            self, overlays: list[events.Overlay], counters: dict[str, int] | None = None
+        ) -> None:
             self.overlays = overlays
+            self.counters = counters or {}
 
         def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
             return self.overlays if (harness, sid) == ("claude", PREFIX) else []
 
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
+
+        def drop_counters(self) -> dict[str, int]:
+            return dict(self.counters)
 
     def _apply(self, collected: str, kinds: list[str], **row: Any) -> dict[str, Any]:
         """One row through the real patch path, with a hand-set collector state."""
@@ -849,12 +855,141 @@ class StateDisputeTest(unittest.TestCase):
         self.assertEqual("working", session["state"])
         self.assertEqual(1, self.state.dispute_total)
 
+    def test_a_standing_disagreement_is_one_record_however_often_it_is_collected(self) -> None:
+        # Collections run at the memo floor, so a 90-second disagreement was
+        # writing dozens of records: the ring filled with one episode and
+        # `dispute_total` counted polls rather than faults.
+        overlays = [
+            events.Overlay(
+                harness="claude",
+                sid=PREFIX,
+                arrival_seq=1,
+                kind=events.OVERLAY_WORKING,
+                at=support.SERVER_STARTED - 10,
+            )
+        ]
+        app = support.build_app()
+        app.overlays = self.Source(overlays)
+        for tick in range(12):
+            session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+            app._apply_overlays([session], now=support.SERVER_STARTED + tick)
+        self.assertEqual(1, self.state.dispute_total)
+        self.assertEqual(1, len(self.state.disputes))
+        record = self.state.disputes[0]
+        self.assertEqual(11, record["repeats"], "the repeats count is how long it stood")
+        self.assertEqual(support.SERVER_STARTED, record["at"])
+        self.assertEqual(support.SERVER_STARTED + 11, record["last_seen_at"])
+
+    def test_a_new_overlay_arriving_starts_a_new_episode(self) -> None:
+        # The shape changed, so this is a second fault rather than the same one
+        # seen again, and merging them would hide it.
+        app = support.build_app()
+        for seq in (1, 2):
+            app.overlays = self.Source(
+                [
+                    events.Overlay(
+                        harness="claude",
+                        sid=PREFIX,
+                        arrival_seq=seq,
+                        kind=events.OVERLAY_WORKING,
+                        at=support.SERVER_STARTED,
+                    )
+                ]
+            )
+            session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+            app._apply_overlays([session], now=support.SERVER_STARTED)
+        self.assertEqual(2, self.state.dispute_total)
+
+    def test_agreement_closes_the_episode_so_the_next_one_is_its_own_record(self) -> None:
+        app = support.build_app()
+        overlays = [
+            events.Overlay(
+                harness="claude",
+                sid=PREFIX,
+                arrival_seq=1,
+                kind=events.OVERLAY_WORKING,
+                at=support.SERVER_STARTED,
+            )
+        ]
+        app.overlays = self.Source(overlays)
+        for collected in ("needs_input", "working", "needs_input"):
+            session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": collected}
+            app._apply_overlays([session], now=support.SERVER_STARTED)
+        self.assertEqual(2, self.state.dispute_total)
+
+    def test_an_emptied_ledger_closes_the_episode_too(self) -> None:
+        # `_note_dispute` is not reached at all when a row has no overlays, so
+        # the close has to happen on that branch or the episode never ends.
+        app = support.build_app()
+        session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+        app.overlays = self.Source(
+            [
+                events.Overlay(
+                    harness="claude",
+                    sid=PREFIX,
+                    arrival_seq=1,
+                    kind=events.OVERLAY_WORKING,
+                    at=support.SERVER_STARTED,
+                )
+            ]
+        )
+        app._apply_overlays([dict(session)], now=support.SERVER_STARTED)
+        app.overlays = self.Source([])
+        app._apply_overlays([dict(session)], now=support.SERVER_STARTED)
+        self.assertEqual({}, self.state.dispute_episodes)
+
+    def test_the_record_carries_the_drop_counters_and_the_grace_it_was_read_against(self) -> None:
+        # Readings 3 and 4 in N-5 are a counter comparison, and the live counters
+        # are cumulative: a record read tomorrow can only bracket itself against
+        # its neighbours if it carries its own copy. The grace is here for the
+        # same reason, since a build can move the constant.
+        app = support.build_app()
+        app.overlays = self.Source(
+            [
+                events.Overlay(
+                    harness="claude",
+                    sid=PREFIX,
+                    arrival_seq=1,
+                    kind=events.OVERLAY_WORKING,
+                    at=support.SERVER_STARTED,
+                )
+            ],
+            counters={"reject.unmappable-id": 4, "pending.expired": 1},
+        )
+        session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+        app._apply_overlays([session], now=support.SERVER_STARTED)
+        record = self.state.disputes[0]
+        self.assertEqual({"reject.unmappable-id": 4, "pending.expired": 1}, record["drop_counters"])
+        self.assertEqual(
+            support.cfg().overlay_wait_activity_grace_sec, record["activity_grace_sec"]
+        )
+
+    def test_the_ring_is_bounded_by_config_rather_than_by_luck(self) -> None:
+        # Without the maxlen wiring in __post_init__ the ring is unbounded, and
+        # every other test here still passes.
+        self.assertEqual(support.cfg().dispute_log_max, self.state.disputes.maxlen)
+
     def test_the_ring_is_bounded_while_the_total_keeps_counting(self) -> None:
         # A machine should be able to report "this happened 60 times" long after
-        # the ring has turned over.
+        # the ring has turned over. Six separate episodes, not one seen six
+        # times: each overlay carries its own arrival sequence, which is what
+        # makes it a new fault rather than the same one still standing.
         self.state.disputes = deque(maxlen=4)
-        for _ in range(6):
-            self._apply("needs_input", [events.OVERLAY_WORKING])
+        app = support.build_app()
+        for seq in range(1, 7):
+            app.overlays = self.Source(
+                [
+                    events.Overlay(
+                        harness="claude",
+                        sid=PREFIX,
+                        arrival_seq=seq,
+                        kind=events.OVERLAY_WORKING,
+                        at=support.SERVER_STARTED,
+                    )
+                ]
+            )
+            session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+            app._apply_overlays([session], now=support.SERVER_STARTED)
         self.assertEqual(4, len(self.state.disputes))
         self.assertEqual(6, self.state.dispute_total)
 

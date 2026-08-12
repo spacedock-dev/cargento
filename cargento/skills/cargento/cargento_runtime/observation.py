@@ -365,6 +365,19 @@ class Observation:
             "counters": counters,
         }
 
+    def drop_counters(self) -> dict[str, int]:
+        """The counters that mean an envelope arrived and left no overlay.
+
+        The whole set would work and would also carry `event.*`, which moves on
+        every hook and would swamp the comparison a dispute record is kept for.
+        """
+        with self._lock:
+            return {
+                name: count
+                for name, count in self.counters.items()
+                if name.startswith(("reject.", "overlay.", "pending.")) or name == "retired"
+            }
+
     def note_rows(self, keys: set[SessionKey]) -> None:
         """Tell the ledger which rows a collection actually produced.
 

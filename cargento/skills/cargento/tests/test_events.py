@@ -408,6 +408,9 @@ class _StubOverlays:
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         del keys  # the real coordinator ages unmatched overlays here; a stub has none
 
+    def drop_counters(self) -> dict[str, int]:
+        return {}
+
 
 class ReduceTest(unittest.TestCase):
     def setUp(self) -> None:

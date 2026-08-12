@@ -265,6 +265,34 @@ the oldest costs a sample, and refusing new ones would stop recording exactly wh
 worse. The running total is separate and never resets, so a machine can still report that this
 happened sixty times after the ring has turned over four times.
 
+### Reading what it collected
+
+`GET /api/overlays` carries `dispute_total`, a count of episodes since the process started, and
+`disputes`, the last `dispute_log_max` of them. For each record:
+
+1. Walk its own `overlays` against the four-reading table above. The record carries `own_activity`,
+   `last_activity` and the `activity_grace_sec` it was read against, so the first two readings are
+   decidable from the record alone, without the live process and without `/api/data`.
+2. For the second two, diff its `drop_counters` against the record before it. The live counters
+   cannot do this job hours later, because they are cumulative and a single read cannot be
+   bracketed; two consecutive records can, because each carries its own copy.
+3. `repeats` and `last_seen_at` say how long it stood. A high `repeats` on a working overlay that
+   expired on schedule is the ordinary lapse; one that outlives the working TTL is not.
+
+### It is one direction, and it is Claude-only
+
+Two scope limits, both easy to read past.
+
+Zero disputes is not evidence of zero faults. This catches a contradiction the collector can see,
+which means the collector has to have found the wait. Where a fault starves both paths at once, a
+hook that never fired leaves the event path empty and the collector's own notification state unset,
+so both halves say Working, they agree, and nothing is recorded. That case is real and is the fourth
+reading in N-5.
+
+Only the Claude collector ever produces a `needs_input` row, so no other harness can raise a dispute.
+That is correct rather than a gap, since no other harness has a needs-input signal at all, but a
+reader should not take a zero on a Codex machine as a measurement.
+
 ### Only one direction counts
 
 A collector Idle row that an overlay promotes to Working is the ordinary path, and counting it would
@@ -285,8 +313,14 @@ was not. Their fix is exactly that a later working overlay retires an earlier wa
 pin it. The two directions cannot both be loosened.
 
 Which way to move is a question about how often each side is right, and nobody has that number. This
-is the thing that produces it. Deciding first and measuring afterwards is how DRC-4134 got a
-mechanism that turned out to be impossible.
+produces half of it: how often an overlay overrules a collected wait. The other half, how often an
+overlay wait wrongly stands over a session that is generating, is deliberately not recorded here,
+because that shape is the ordinary event-ahead-of-scan path at every permission prompt and counting
+it would bury this one. It is DRC-4095 and DRC-4097 territory and would need its own detector.
+
+Half a number is still the half that was missing, and it is the half this milestone is about.
+Deciding first and measuring afterwards is how DRC-4134 got a mechanism that turned out to be
+impossible.
 
 ## What is still not measured
 

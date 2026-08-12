@@ -92,6 +92,13 @@ class RuntimeState:
     dispute_lock: LockType = field(default_factory=threading.Lock)
     dispute_total: int = 0
     disputes: deque[dict[str, Any]] = field(default_factory=deque)
+    # The open episode per session: its shape, and the record to update in place
+    # while it lasts. Without this a standing disagreement writes one record per
+    # collection, so a single 90-second one fills the ring and `dispute_total`
+    # counts polls rather than faults.
+    dispute_episodes: dict[tuple[str, str], tuple[tuple[str, str, int], dict[str, Any]]] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         # Built here rather than by a default_factory because they need fields of
