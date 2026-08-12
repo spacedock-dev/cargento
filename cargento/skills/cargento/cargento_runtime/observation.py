@@ -333,40 +333,21 @@ class Observation:
     def ledger_report(self) -> dict[str, Any]:
         """Every live overlay, flattened, for `/api/overlays`.
 
-        A diagnostic read and nothing else: it takes the lock, copies, and
-        returns. It exists because the reducer's inputs were otherwise
-        unobservable from outside the process, and two different faults produce
-        the same visible row. A wait suppressed by the activity grace and a
-        `PermissionRequest` that never arrived both leave a session reading
-        Working with `acquisition: event`, and `/api/data` cannot tell them
-        apart: one has a needs-input overlay in the ledger and the other has
-        none. See docs/design-needs-input.md (N-5).
+        Read-only, and it publishes the reducer's inputs rather than a verdict.
+        Why it exists, how to read it, and what `counters` disambiguates are in
+        docs/design-needs-input.md (N-5).
 
-        `time_gate_open` is `Overlay.applies`, evaluated here rather than left to
-        the caller, because it reads three fields against a clock and a reader
-        comparing them by hand is how a diagnostic starts lying. It is named for
-        what it is and not for the method, because `applies` on the wire reads as
-        "this overlay won" and it does not mean that: the reducer's ordering and
-        its activity guards both come after, and their inputs live on the
-        collected row rather than here.
+        `time_gate_open` is `Overlay.applies`, named for what it is because
+        `applies` on the wire reads as "this overlay won", which it does not
+        mean: ordering and the activity guards both run after this.
 
-        `counters` rides along because it is the only disclosure of an envelope
-        that arrived and left no overlay behind. A rate-limited, refused, expired
-        or retired event is absent from `overlays` and present here.
-
-        Carries no session content. An overlay is a collector key, a kind, three
-        timestamps, and a subagent id the hook supplied, capped at ingress. The
-        collector key is Claude's eight-character transcript prefix and the whole
-        session UUID for every other harness, both of which `/api/data` already
-        publishes per row.
+        Carries no session content: a collector key, a kind, three timestamps,
+        and a hook-supplied subagent id capped at ingress, all of which
+        `/api/data` already publishes per row.
         """
         with self._lock:
-            # Sampled inside, unlike `_record`, which reads the clock before it
-            # takes the lock because it only stamps arrival. This is a snapshot,
-            # and `now`, the rows and every `time_gate_open` computed from them
-            # have to be one instant or the report contradicts itself: an overlay
-            # that expired while this call waited on the lock would otherwise be
-            # reported open, against a `now` that predates its own ledger.
+            # Inside, unlike `_record`: this returns `now` and values computed
+            # from it, so they have to be one instant.
             now = self.clock()
             rows = [
                 {

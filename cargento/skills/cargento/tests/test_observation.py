@@ -231,9 +231,8 @@ class LedgerReportTest(ObservationTestCase):
         )
         for row in report["overlays"]:
             self.assertEqual(("claude", PREFIX), (row["harness"], row["sid"]))
-        # Pinned by value, not by presence: a report that swapped `at` for
-        # `effective_at` would satisfy a membership check and mislead every
-        # reader of it. The working overlay is the one carrying all three.
+        # By value, not by presence: a report that swapped `at` for
+        # `effective_at` would satisfy a membership check.
         working = report["overlays"][0]
         self.assertEqual(NOW, working["at"])
         self.assertEqual(0.0, working["effective_at"])
@@ -241,10 +240,7 @@ class LedgerReportTest(ObservationTestCase):
         self.assertIsNone(report["overlays"][1]["expires_at"], "a wait has no deadline")
 
     def test_the_time_gate_is_evaluated_against_the_clock_rather_than_by_the_reader(self) -> None:
-        # A working overlay expires; a wait does not. A reader comparing three
-        # fields by hand is how a diagnostic starts lying, so the report answers.
-        # The field is not called `applies`, because on the wire that reads as
-        # "this overlay won" and the reducer has not run yet.
+        # A working overlay expires; a wait does not.
         coordinator = self.build()
         coordinator.submit("claude", self.envelope(event="turn_started"))
         coordinator.submit("claude", self.envelope(event="input_requested"))
@@ -255,9 +251,8 @@ class LedgerReportTest(ObservationTestCase):
         self.assertEqual({events.OVERLAY_WORKING: False, events.OVERLAY_NEEDS_INPUT: True}, gates)
 
     def test_an_arrived_envelope_that_left_no_overlay_shows_up_in_the_counters(self) -> None:
-        # The absent case splits in two, and only the counters split it: an
-        # envelope that arrived and was dropped versus one never posted at all.
-        # Both leave `overlays` empty. See N-5.
+        # Arrived-and-dropped versus never-posted: both leave `overlays` empty,
+        # and only the counters separate them. N-5.
         coordinator = self.build()
         coordinator.submit("claude", self.envelope(event="input_requested"))
         coordinator.submit("claude", self.envelope(event="session_ended"))
@@ -267,17 +262,15 @@ class LedgerReportTest(ObservationTestCase):
         self.assertEqual(1, report["counters"]["event.input_requested"])
 
     def test_the_ledger_separates_a_suppressed_wait_from_a_wait_that_never_arrived(self) -> None:
-        # This is the whole reason the route exists. Both of these produce
-        # `state: working, acquisition: event, detail: None` on /api/data, and
-        # the fixes for them have nothing in common. See DRC-4134.
+        # The whole reason the route exists: both produce the same three fields
+        # on /api/data, and their fixes have nothing in common. DRC-4134.
         suppressed = self.build()
         suppressed.submit("claude", self.envelope(event="turn_started"))
         suppressed.submit("claude", self.envelope(event="input_requested"))
         never_arrived = self.build()
         never_arrived.submit("claude", self.envelope(event="turn_started"))
 
-        # The row each one produces, once the session's own transcript has moved
-        # past the grace, is identical.
+        # Past the grace, the row each one produces is identical.
         for coordinator in (suppressed, never_arrived):
             row: dict[str, Any] = {"state": "needs_input", "state_detail": "open question"}
             events.apply_patch(

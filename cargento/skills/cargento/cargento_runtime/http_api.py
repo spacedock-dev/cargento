@@ -365,14 +365,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
     def _overlays(self) -> None:
         """The live overlay ledger, for diagnosing a row the reducer produced.
 
-        Strictly same-origin, like `/api/stream` and unlike `/api/data`: nothing
-        renders this, so the navigation relaxation `do_GET` grants has no reason
-        to reach it.
+        Strictly same-origin, unlike `/api/data`: nothing renders this, so
+        `do_GET`'s navigation relaxation has no reason to reach it.
 
-        503 rather than 404 when no coordinator is attached. Under `--no-events`
-        the route exists and the ledger does not, and a 404 would read as a build
-        too old to have the route at all, which is the wrong thing to conclude
-        while debugging one.
+        503 rather than 404 with no coordinator, because under `--no-events` the
+        route exists and the ledger does not, and a 404 would read as a build too
+        old to have the route.
         """
         if not self._local_ok():
             self.send_error(403)
