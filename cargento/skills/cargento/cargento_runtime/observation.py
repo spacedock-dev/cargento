@@ -350,18 +350,8 @@ class Observation:
             # from it, so they have to be one instant.
             now = self.clock()
             rows = [
-                {
-                    "harness": harness,
-                    "sid": sid,
-                    "kind": overlay.kind,
-                    "arrival_seq": overlay.arrival_seq,
-                    "at": overlay.at,
-                    "effective_at": overlay.effective_at,
-                    "expires_at": overlay.expires_at,
-                    "subagent_id": overlay.subagent_id,
-                    "time_gate_open": overlay.applies(now=now),
-                }
-                for (harness, sid), ledger in sorted(self._overlays.items())
+                runtime_events.overlay_row(overlay, now=now)
+                for _key, ledger in sorted(self._overlays.items())
                 for overlay in sorted(ledger.values(), key=lambda o: o.arrival_seq)
             ]
             pending = sorted(f"{harness}/{sid}" for harness, sid in self._pending)

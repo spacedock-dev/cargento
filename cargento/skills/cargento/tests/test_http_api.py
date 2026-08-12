@@ -382,6 +382,23 @@ class OverlayLedgerEndpointTest(RuntimeTestCase):
         self.assertEqual(["needs_input"], [row["kind"] for row in report["overlays"]])
         self.assertEqual("abcdef12", report["overlays"][0]["sid"])
 
+    def test_recorded_disputes_are_served_beside_the_ledger(self) -> None:
+        # One request, not two: a dispute is read against the ledger that
+        # produced it, and two requests would be two instants.
+        coordinator = observation_module.Observation(
+            _application(os.name), diagnostic_sink=lambda _message: None
+        )
+        state = state_of()
+        state.dispute_total = 3
+        state.disputes.append({"sid": "abcdef12", "collector_state": "needs_input"})
+        with self._serving(coordinator) as port:
+            code, body = self._get(port)
+        self.assertEqual(200, code)
+        report = json.loads(body)
+        self.assertEqual(3, report["dispute_total"], "the total outlives the ring")
+        self.assertEqual(["abcdef12"], [row["sid"] for row in report["disputes"]])
+        self.assertIn("overlays", report, "the ledger still rides in the same response")
+
     def test_no_coordinator_answers_503_rather_than_404(self) -> None:
         # Under `--no-events` the route exists and the ledger does not. A 404
         # would read as a build too old to have the route, which is the wrong

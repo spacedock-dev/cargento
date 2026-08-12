@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from collections import deque
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -729,6 +730,113 @@ class WorkerLifecycleTest(ObservationTestCase):
             self.assertTrue(collected.wait(timeout=3), "the coordinator did not wake on the event")
         finally:
             coordinator.stop(timeout=5)
+
+
+class StateDisputeTest(unittest.TestCase):
+    """When an overlay overrules a collector that had found a wait. DRC-4139."""
+
+    def setUp(self) -> None:
+        self.state = support.reset_runtime()
+
+    class Source:
+        def __init__(self, overlays: list[events.Overlay]) -> None:
+            self.overlays = overlays
+
+        def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+            return self.overlays if (harness, sid) == ("claude", PREFIX) else []
+
+        def note_rows(self, keys: set[tuple[str, str]]) -> None:
+            pass
+
+    def _apply(self, collected: str, kinds: list[str], **row: Any) -> dict[str, Any]:
+        """One row through the real patch path, with a hand-set collector state."""
+        overlays = [
+            events.Overlay(
+                harness="claude",
+                sid=PREFIX,
+                arrival_seq=seq,
+                kind=kind,
+                at=support.SERVER_STARTED - 10,
+            )
+            for seq, kind in enumerate(kinds, start=1)
+        ]
+        session: dict[str, Any] = {
+            "harness": "claude",
+            "sid": PREFIX,
+            "state": collected,
+            "state_detail": "open question (ExitPlanMode), waiting 2m",
+            "title": "a prompt the user typed",
+            **row,
+        }
+        app = support.build_app()
+        app.overlays = self.Source(overlays)
+        app._apply_overlays([session], now=support.SERVER_STARTED)
+        return session
+
+    def test_an_overlay_overruling_a_collected_wait_is_recorded(self) -> None:
+        self._apply("needs_input", [events.OVERLAY_WORKING])
+        self.assertEqual(1, self.state.dispute_total)
+        record = self.state.disputes[0]
+        self.assertEqual(("claude", PREFIX), (record["harness"], record["sid"]))
+        self.assertEqual(
+            ("needs_input", "working"), (record["collector_state"], record["overlay_state"])
+        )
+
+    def test_the_record_carries_the_ledger_that_produced_it(self) -> None:
+        # Without the overlays a record says a disagreement happened and nothing
+        # about which of the four readings in N-5 it was.
+        self._apply("needs_input", [events.OVERLAY_WORKING])
+        overlays = self.state.disputes[0]["overlays"]
+        self.assertEqual([events.OVERLAY_WORKING], [row["kind"] for row in overlays])
+        self.assertEqual([1], [row["arrival_seq"] for row in overlays])
+        self.assertIn("time_gate_open", overlays[0])
+
+    def test_the_record_carries_the_activity_the_guards_read(self) -> None:
+        # The grace reading is only reconstructible with these two, and they are
+        # gone from the row by the time anybody looks.
+        self._apply(
+            "needs_input", [events.OVERLAY_WORKING], own_activity=1234.0, last_activity=5678.0
+        )
+        record = self.state.disputes[0]
+        self.assertEqual((1234.0, 5678.0), (record["own_activity"], record["last_activity"]))
+
+    def test_the_record_holds_no_session_content(self) -> None:
+        self._apply("needs_input", [events.OVERLAY_WORKING])
+        flattened = json.dumps(self.state.disputes[0])
+        self.assertNotIn("a prompt the user typed", flattened)
+        self.assertNotIn("ExitPlanMode", flattened)
+
+    def test_promoting_an_idle_row_to_working_is_not_a_dispute(self) -> None:
+        # The ordinary path. Counting it would bury the case this exists to find.
+        self._apply("idle", [events.OVERLAY_WORKING])
+        self.assertEqual(0, self.state.dispute_total)
+        self.assertEqual([], list(self.state.disputes))
+
+    def test_an_overlay_agreeing_with_a_collected_wait_is_not_a_dispute(self) -> None:
+        self._apply("needs_input", [events.OVERLAY_NEEDS_INPUT])
+        self.assertEqual(0, self.state.dispute_total)
+
+    def test_an_overlay_retiring_a_wait_to_idle_is_recorded_too(self) -> None:
+        # Idle is as wrong as Working for a session holding a question, and the
+        # dwell makes it the likelier of the two to arrive late.
+        self._apply("needs_input", [events.OVERLAY_IDLE])
+        self.assertEqual("idle", self.state.disputes[0]["overlay_state"])
+
+    def test_the_patch_is_applied_either_way(self) -> None:
+        # Recording is not deciding. Changing the outcome here is the follow-up,
+        # and it needs the counts this produces.
+        session = self._apply("needs_input", [events.OVERLAY_WORKING])
+        self.assertEqual("working", session["state"])
+        self.assertEqual(1, self.state.dispute_total)
+
+    def test_the_ring_is_bounded_while_the_total_keeps_counting(self) -> None:
+        # A machine should be able to report "this happened 60 times" long after
+        # the ring has turned over.
+        self.state.disputes = deque(maxlen=4)
+        for _ in range(6):
+            self._apply("needs_input", [events.OVERLAY_WORKING])
+        self.assertEqual(4, len(self.state.disputes))
+        self.assertEqual(6, self.state.dispute_total)
 
 
 class ApplicationOverlayTest(unittest.TestCase):

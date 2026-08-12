@@ -240,6 +240,54 @@ Three notes on its shape, each of which was a choice:
   for whoever had the log level raised before the fault. Nothing rotates the log either, so a
   standing gate would write the same rows every few seconds for as long as it stood.
 
+## N-6: the server records its own contradictions, because nobody else will
+
+N-5 gave a person a way to read the ledger. It assumed the person knows to look, and that
+assumption does not survive contact with the product: the dashboard exists so that nobody opens
+every session, so a row wrongly reading Working is a row nobody visits. The one instance behind
+DRC-4134 was found because somebody was deliberately holding a gate open under `tmux` while reading
+the API. That is not a detector, it is a person, and it stops the moment they stop.
+
+Nor is it recoverable afterwards. Overlays expire, the ledger is memory, and an hour later there is
+nothing to read.
+
+So the server records the disagreement itself. `Application._apply_overlays` already holds both
+halves at the moment they conflict: the row a collector produced, and the patch the ledger reduced
+to. When the collector says `needs_input` and the patch says `working` or `idle`, that is one source
+of truth overruling another about the single fact the product exists to report, and it is written to
+a bounded ring on `RuntimeState` with the ledger attached. `/api/overlays` serves it alongside the
+live ledger, in the same response, because a dispute is read against the ledger and two requests
+would be two instants.
+
+The ring is a ring, unlike the ledger and pending caps, which refuse rather than evict. Those hold
+live alerts, where dropping the oldest could drop a standing prompt. A dispute is evidence: losing
+the oldest costs a sample, and refusing new ones would stop recording exactly when the fault got
+worse. The running total is separate and never resets, so a machine can still report that this
+happened sixty times after the ring has turned over four times.
+
+### Only one direction counts
+
+A collector Idle row that an overlay promotes to Working is the ordinary path, and counting it would
+bury the case worth finding under every ordinary one. So would a collector `needs_input` that an
+overlay agrees with.
+
+Both `working` and `idle` count as overruling a wait. Idle is as wrong as Working for a session
+holding a question, and the idle dwell makes it the likelier of the two to arrive late.
+
+### It records, it does not decide
+
+The patch is applied either way, and the row still reads whatever the reducer said.
+
+The tempting change is to let the collector's `needs_input` win, on the fail-visible principle N-3
+applies to unrecognised notification types. It is not made here, and the reason is that DRC-4095 and
+DRC-4097 are this same disagreement resolved the other way: a wait that should have been retired and
+was not. Their fix is exactly that a later working overlay retires an earlier wait, and their tests
+pin it. The two directions cannot both be loosened.
+
+Which way to move is a question about how often each side is right, and nobody has that number. This
+is the thing that produces it. Deciding first and measuring afterwards is how DRC-4134 got a
+mechanism that turned out to be impossible.
+
 ## What is still not measured
 
 `notification_type` is present on every Notification payload, and its value list was read from the

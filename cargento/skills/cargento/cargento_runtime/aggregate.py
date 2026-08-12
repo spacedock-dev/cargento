@@ -14,6 +14,8 @@ from . import quota, sessions
 from . import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from .config import RuntimeConfig
     from .events import Overlay
     from .sessions import Session
@@ -333,25 +335,59 @@ class Application:
             harness, sid = str(session["harness"]), str(session["sid"])
             overlays = source.overlays_for(harness, sid)
             if overlays:
-                runtime_events.apply_patch(
-                    session,
-                    runtime_events.reduce_overlays(
-                        overlays,
-                        now=now,
-                        # The row's own reading of when the session last wrote,
-                        # which is the only evidence that outlives a wait no hook
-                        # ever closes. Collectors that do not report it send 0,
-                        # and the wait then stands.
-                        own_activity=float(session.get("own_activity") or 0.0),
-                        # The whole-tree reading, subagents included, which is
-                        # what retires a stop no `turn_started` ever follows. A
-                        # parked parent with a running child is working, so idle
-                        # cannot key on `own_activity` the way a wait does.
-                        session_activity=float(session.get("last_activity") or 0.0),
-                        activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
-                    ),
+                patch = runtime_events.reduce_overlays(
+                    overlays,
+                    now=now,
+                    # The row's own reading of when the session last wrote,
+                    # which is the only evidence that outlives a wait no hook
+                    # ever closes. Collectors that do not report it send 0,
+                    # and the wait then stands.
+                    own_activity=float(session.get("own_activity") or 0.0),
+                    # The whole-tree reading, subagents included, which is
+                    # what retires a stop no `turn_started` ever follows. A
+                    # parked parent with a running child is working, so idle
+                    # cannot key on `own_activity` the way a wait does.
+                    session_activity=float(session.get("last_activity") or 0.0),
+                    activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
                 )
+                self._note_dispute(session, patch, overlays, now=now)
+                runtime_events.apply_patch(session, patch)
         source.note_rows({(str(s["harness"]), str(s["sid"])) for s in out_sessions})
+
+    def _note_dispute(
+        self,
+        session: Session,
+        patch: Mapping[str, Any],
+        overlays: list[Overlay],
+        *,
+        now: float,
+    ) -> None:
+        """Record an overlay overruling a collector that had found a wait.
+
+        Only that direction. A collector Idle row an overlay promotes to Working
+        is the ordinary path and says nothing, so counting it would bury the case
+        this exists to find. See docs/design-needs-input.md (N-6).
+
+        Records rather than decides: the patch is applied either way. Which side
+        is right is not knowable here, and DRC-4095 and DRC-4097 are the same
+        disagreement resolved the other way round.
+        """
+        patched = patch.get("state")
+        if session.get("state") != "needs_input" or patched not in {"working", "idle"}:
+            return
+        record = {
+            "at": now,
+            "harness": str(session["harness"]),
+            "sid": str(session["sid"]),
+            "collector_state": "needs_input",
+            "overlay_state": patched,
+            "own_activity": float(session.get("own_activity") or 0.0),
+            "last_activity": float(session.get("last_activity") or 0.0),
+            "overlays": [runtime_events.overlay_row(overlay, now=now) for overlay in overlays],
+        }
+        with self.state.dispute_lock:
+            self.state.dispute_total += 1
+            self.state.disputes.append(record)
 
     def request_usage_fetch(self) -> bool:
         """Maybe start a background quota fetch; the gates live in `quota`.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypedDict
 
@@ -82,12 +83,23 @@ class RuntimeState:
     # way and guarded by the same lock: one cache, two ways to fill it. In
     # memory only, so Cargento's two written paths are unchanged.
     usage_receipts: dict[str, UsageFetchEntry] = field(default_factory=dict)
+    # State disputes: an overlay overruling a collector that had found a wait.
+    # A running total that never resets, so a machine can report "this happened
+    # 40 times" long after the ring has turned over, plus the ring itself. The
+    # lock is its own for the reason `usage_fetch_lock` is: this is written
+    # inside a collection and read by a request handler, and neither should wait
+    # on the other's cache work.
+    dispute_lock: LockType = field(default_factory=threading.Lock)
+    dispute_total: int = 0
+    disputes: deque[dict[str, Any]] = field(default_factory=deque)
 
     def __post_init__(self) -> None:
-        # Built here rather than by a default_factory because it needs
-        # server_started, which is a field of this same dataclass.
+        # Built here rather than by a default_factory because they need fields of
+        # this same dataclass: the snapshot needs `server_started`, and the
+        # dispute ring needs its bound from `config`.
         self.snapshot = runtime_snapshot.Snapshot(server_started=self.server_started)
         self.streams = runtime_stream.StreamRegistry()
+        self.disputes = deque(self.disputes, maxlen=self.config.dispute_log_max)
 
 
 def build_runtime_state(config: RuntimeConfig, *, started: float) -> RuntimeState:

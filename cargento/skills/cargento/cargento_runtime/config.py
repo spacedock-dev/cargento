@@ -163,6 +163,11 @@ class RuntimeConfig:
     event_pending_max: int
     event_pending_ttl_sec: float
     reconcile_interval_sec: float
+    # How many recent state disputes to keep. A ring, unlike the two caps above,
+    # because a dispute is evidence rather than a live alert: losing the oldest
+    # costs a sample, and refusing new ones would stop recording exactly when the
+    # fault became frequent.
+    dispute_log_max: int
     # Event ingress. The body cap is far below the notification cap because the
     # envelope is nine short fields and nothing else is read from it. The rate
     # ceiling is independent of the capability: a looping or compromised adapter
@@ -383,6 +388,7 @@ def build_runtime_config(
         event_pending_max=256,
         event_pending_ttl_sec=60.0,
         reconcile_interval_sec=30.0,
+        dispute_log_max=50,
         event_body_cap_bytes=8_192,
         event_rate_per_sec=20.0,
         event_burst_max=40,

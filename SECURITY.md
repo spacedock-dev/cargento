@@ -189,6 +189,11 @@ and Gemini CLI, and `/api/data` already publishes both, along with titles and pr
 never sees. It applies the strict same-origin check rather than the relaxed one `/api/data` uses for
 navigations, and answers 503 when the process runs without a coordinator.
 
+The same route serves the bounded record of state disputes, where an event overruled a session the
+dashboard had read as waiting. A record holds the same fields plus the two activity timestamps the
+reducer compared, and no more: the row's title and its state detail are deliberately absent, because
+a state detail can carry a permission prompt's own text.
+
 ## Known and accepted
 
 Loopback is not a per-user boundary. Any other account on the same machine can `GET /api/data` and
