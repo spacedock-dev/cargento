@@ -1770,3 +1770,91 @@ class OwnActivityTest(RuntimeTestCase):
 
         parent = next(s for s in sessions if s["sid"].startswith("12345678"))
         self.assertAlmostEqual(now - 600, parent["own_activity"], delta=1.0)
+
+
+class InputSummaryTest(unittest.TestCase):
+    """What an open gate is asking, reduced to one bounded line. DRC-4015."""
+
+    @staticmethod
+    def _block(name: str, payload: Any) -> dict[str, Any]:
+        return {"type": "tool_use", "id": "q-1", "name": name, "input": payload}
+
+    def test_a_question_is_summarised_as_the_question(self) -> None:
+        summary = claude_data.input_summary(
+            self._block(
+                "AskUserQuestion",
+                {"questions": [{"header": "Auth", "question": "Which auth method?"}]},
+            ),
+            limit=160,
+        )
+        self.assertEqual("Which auth method?", summary)
+
+    def test_several_questions_name_the_first_and_count_the_rest(self) -> None:
+        summary = claude_data.input_summary(
+            self._block(
+                "AskUserQuestion",
+                {"questions": [{"question": "Which one?"}, {"question": "And then?"}]},
+            ),
+            limit=160,
+        )
+        self.assertEqual("Which one? (+1 more)", summary)
+
+    def test_a_plan_is_reduced_to_its_first_line(self) -> None:
+        # Option B of three: a plan runs to thousands of words, and its first
+        # line is its title in practice. A row is not where a document goes.
+        plan = "# Rewrite the collector\n\nStep one, do the thing.\n" + ("x" * 5_000)
+        summary = claude_data.input_summary(self._block("ExitPlanMode", {"plan": plan}), limit=160)
+        self.assertEqual("Rewrite the collector", summary)
+
+    def test_every_summary_is_capped(self) -> None:
+        long_question = "y" * 400
+        for block in (
+            self._block("AskUserQuestion", {"questions": [{"question": long_question}]}),
+            self._block("ExitPlanMode", {"plan": long_question}),
+        ):
+            self.assertEqual(40, len(claude_data.input_summary(block, limit=40)))
+
+    def test_control_characters_do_not_reach_a_row(self) -> None:
+        # A transcript is a file Cargento does not write, and this text lands in
+        # the DOM.
+        summary = claude_data.input_summary(
+            self._block("AskUserQuestion", {"questions": [{"question": "we\x00ird\nthing"}]}),
+            limit=160,
+        )
+        self.assertNotIn("\x00", summary)
+        self.assertNotIn("\n", summary)
+
+    def test_a_shape_that_is_not_there_summarises_to_nothing(self) -> None:
+        # The record reaches disk on no schedule and its shape is Claude Code's
+        # rather than something this repo pins, so absent has to be ordinary.
+        payloads: list[dict[str, Any]] = [
+            {},
+            {"questions": []},
+            {"questions": "not a list"},
+            {"plan": None},
+        ]
+        for payload in payloads:
+            for name in ("AskUserQuestion", "ExitPlanMode"):
+                self.assertEqual(
+                    "", claude_data.input_summary(self._block(name, payload), limit=160)
+                )
+
+    def test_a_pending_question_carries_its_text_through_the_transcript_read(self) -> None:
+        record = {
+            "type": "assistant",
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    self._block(
+                        "AskUserQuestion", {"questions": [{"question": "Force push to main?"}]}
+                    )
+                ],
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "session.jsonl"
+            transcript.write_text(json.dumps(record) + "\n")
+            config, state = runtime()
+            info = claude_data.analyze_transcript(config, state, str(transcript))
+        self.assertEqual("Force push to main?", info["pending_input_tool"]["asks"])

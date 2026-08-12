@@ -19,11 +19,48 @@ from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import state as runtime_state
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.state import RuntimeState
 
 # Tools that mean Claude is blocked on the human, not just running long.
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
+
+
+def input_summary(block: Mapping[str, Any], *, limit: int) -> str:
+    """What an input tool is actually asking, in one bounded line, or "".
+
+    Summarised at parse time rather than kept raw, so the question is the only
+    thing that survives the read. `ExitPlanMode` carries a whole plan, which can
+    run to thousands of words and has no business sitting in a session row or in
+    the caches one is built from.
+
+    The two shapes are Claude Code's, read off 160 real records rather than a
+    page: `AskUserQuestion` carries `questions`, a list of objects with a
+    `question`, and `ExitPlanMode` carries `plan`. Both are treated as untrusted,
+    because a transcript is a file on disk that Cargento does not write.
+
+    A plan is reduced to its first line, which is the plan's own title in
+    practice. Anything longer is a document, and a row is not where a document
+    goes.
+    """
+    payload = records.as_dict(block.get("input"))
+    if block.get("name") == "ExitPlanMode":
+        # Split before scrubbing, not after: `safe_text` turns a newline into a
+        # space, so a plan scrubbed first has no line to take the first of.
+        first_line = str(payload.get("plan") or "").split("\n", 1)[0]
+        return records.safe_text(first_line, limit).strip().lstrip("#").strip()[:limit]
+    questions = [
+        text
+        for item in records.as_list(payload.get("questions"))
+        if (text := records.safe_text(records.as_dict(item).get("question"), limit).strip())
+    ]
+    if not questions:
+        return ""
+    extra = len(questions) - 1
+    return f"{questions[0]} (+{extra} more)"[:limit] if extra else questions[0][:limit]
+
 
 # Claude's own sentinel for an assistant record it generated locally, without
 # the request ever reaching the API: a cancellation notice, an error banner, a
@@ -180,7 +217,7 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         "model": None,
         "model_sidechain": None,
         "usage_events": [],  # (epoch, output_tokens)
-        "pending_input_tool": None,  # {"name", "ts"} awaiting the human
+        "pending_input_tool": None,  # {"name", "ts", "asks"} awaiting the human
         "last_tool": None,
         "last_event_ts": 0,
         # Newest record the *agent* wrote, which is not the same as the newest
@@ -190,7 +227,7 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
         "last_assistant_ts": 0,
         "last_user_event": last_user_event(config, state, path),
     }
-    pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts"} for INPUT_TOOLS only
+    pending: dict[Any, Any] = {}  # tool_use id -> {"name", "ts", "asks"} for INPUT_TOOLS only
     for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
             continue
@@ -221,7 +258,11 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
                 if isinstance(c, dict) and c.get("type") == "tool_use":
                     info["last_tool"] = c.get("name")
                     if c.get("name") in INPUT_TOOLS:
-                        pending[c.get("id")] = {"name": c.get("name"), "ts": ep}
+                        pending[c.get("id")] = {
+                            "name": c.get("name"),
+                            "ts": ep,
+                            "asks": input_summary(c, limit=config.input_summary_cap_chars),
+                        }
         elif t == "user":
             for c in records.as_list(records.message_dict(d).get("content")):
                 if isinstance(c, dict) and c.get("type") == "tool_result":

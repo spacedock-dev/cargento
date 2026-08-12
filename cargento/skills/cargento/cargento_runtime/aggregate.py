@@ -22,6 +22,27 @@ if TYPE_CHECKING:
     from .state import RuntimeState
 
 
+def _keep_wait_detail(session: Session, patch: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The patch, minus a `state_detail` that would blank a standing wait.
+
+    No overlay constructor sets `detail`, so every needs-input patch carries
+    None, and applying it erased whatever the collector had found. For a Claude
+    row that is the open question itself, which is the one thing a person
+    stopped at a gate wants to read.
+
+    Narrow on purpose. It applies only when the row was already Needs input and
+    stays Needs input, because the overlay is then agreeing about the state and
+    disagreeing about nothing. Working and Idle must keep clearing the field, or
+    a working detail such as `running Bash` follows the row into a wait, and a
+    question that has been answered outlives the overlay that retired it.
+    """
+    if session.get("state") != "needs_input" or patch.get("state") != "needs_input":
+        return patch
+    if patch.get("state_detail") is not None or not session.get("state_detail"):
+        return patch
+    return {key: value for key, value in patch.items() if key != "state_detail"}
+
+
 class OverlaySource(Protocol):
     """The narrow view of the coordinator that a collection needs.
 
@@ -358,7 +379,7 @@ class Application:
                     activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
                 )
                 self._note_dispute(session, patch, overlays, now=now)
-                runtime_events.apply_patch(session, patch)
+                runtime_events.apply_patch(session, _keep_wait_detail(session, patch))
             else:
                 # No ledger for this row means nothing can be disagreeing with it.
                 self._clear_dispute(harness, sid)

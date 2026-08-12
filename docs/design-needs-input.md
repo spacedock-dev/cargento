@@ -330,7 +330,44 @@ Half a number is still the half that was missing, and it is the half this milest
 Deciding first and measuring afterwards is how DRC-4134 got a mechanism that turned out to be
 impossible.
 
-## What is still not measured
+## N-7: saying what it is waiting for, and why that is two changes rather than one
+
+Knowing a session is blocked is worth less than knowing what it is blocked on. "Force push to main?"
+is a decision a person can make from the board; "open question (AskUserQuestion)" is a reason to go
+and look, which is the trip the row exists to save (DRC-4015).
+
+The board note that opened that issue said this was pure rendering, over data already parsed. Half of
+that was right and the half that was wrong is where the work is.
+
+**The parse threw the text away.** A pending input tool was kept as `{name, ts}`, and the question
+lives in the `tool_use` block's `input`, which was dropped on the floor. Summarising it at parse time
+rather than keeping it raw is deliberate: `ExitPlanMode` carries a whole plan, sometimes thousands of
+words, and a plan has no business in a session row or in the caches a row is built from. A plan is
+reduced to its first line, which is its own title in practice. A question is the first question, with
+a count of the rest.
+
+**An agreeing overlay then blanked it anyway.** No overlay constructor sets `detail`, so every
+needs-input patch carried None and `apply_patch` wrote that over whatever the collector had found.
+On a default install, where the bundled hook is present, that erasure happened every time. The fix
+is narrow on purpose: the collector's detail survives only when the row was already Needs input and
+stays Needs input, which is the case where the overlay agrees about the state and contradicts
+nothing.
+
+Working and Idle still clear the field, and that is not an oversight. A working detail such as
+`running Bash` is true of a session that is running and false of one stopped at a gate, so it must
+not follow the row into a wait. And a question that has been answered must not outlive the overlay
+that retired the wait, which is exactly DRC-4095 and DRC-4097.
+
+### What it deliberately does not do
+
+The text still comes from the transcript alone, so it appears when the record has reached disk and
+does not when it has not (N-4). The row says a question is open either way; it can only sometimes say
+which. That is stated in `SKILL.md` rather than smoothed over, because a field that is usually there
+teaches a reader to trust it and then fails silently on the sessions that matter.
+
+Sourcing the text from the event path instead would make it reliable and is not a rendering change:
+the envelope drops the tool name and the tool input at the hook, deliberately, and `SECURITY.md`
+states that as a property. Reopening it is a security decision, not this one.
 
 `notification_type` is present on every Notification payload, and its value list was read from the
 emit sites in an installed 2.1.226 bundle rather than observed on the wire. No capture in

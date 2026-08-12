@@ -437,7 +437,21 @@ def collect(
             p = info["pending_input_tool"]
             session_state = "needs_input"
             blocked_since = p["ts"] or last_activity
-            state_detail = f"open question ({p['name']}), waiting {runtime_sessions.fmt_duration(runtime_sessions.age(config, now, p['ts'])) if p['ts'] else '?'}"
+            waited = (
+                runtime_sessions.fmt_duration(runtime_sessions.age(config, now, p["ts"]))
+                if p["ts"]
+                else "?"
+            )
+            # The question itself when the record carried it, the tool's name when
+            # it did not. Both happen: the record reaches disk on no schedule, so
+            # this reads as one or the other rather than appearing and vanishing
+            # for the same session. See docs/design-needs-input.md (N-4).
+            asks = p.get("asks") or ""
+            state_detail = (
+                f"{asks}, waiting {waited}"
+                if asks
+                else f"open question ({p['name']}), waiting {waited}"
+            )
         # Fresh activity in the session's *own* transcript still beats a hook:
         # Claude Code emits "waiting for your input" notifications for sessions
         # that keep running via background tasks and will resume on their own.

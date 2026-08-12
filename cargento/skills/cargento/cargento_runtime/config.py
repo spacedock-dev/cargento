@@ -122,6 +122,10 @@ class RuntimeConfig:
     prompt_path_collapse_min_length: int
     first_line_json_cap_bytes: int
     notification_body_cap_bytes: int
+    # What an open question may occupy on a row. Characters, not bytes: this one
+    # is measured where it is read, and a plan's first line is prose rather than
+    # a payload.
+    input_summary_cap_chars: int
     # The quota fetch (SECURITY.md, "Usage quota reads"): the contract's
     # five-minute floor between requests to one vendor, the request timeout,
     # and the read caps on the credential file and the response body.
@@ -375,6 +379,7 @@ def build_runtime_config(
         prompt_path_collapse_min_length=25,
         first_line_json_cap_bytes=200_000,
         notification_body_cap_bytes=65_536,
+        input_summary_cap_chars=160,
         usage_poll_floor_sec=300,
         usage_fetch_timeout_sec=10,
         usage_credentials_cap_bytes=65_536,

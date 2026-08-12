@@ -732,6 +732,73 @@ class WorkerLifecycleTest(ObservationTestCase):
             coordinator.stop(timeout=5)
 
 
+class WaitDetailTest(unittest.TestCase):
+    """An agreeing overlay must not blank the question the collector found."""
+
+    def setUp(self) -> None:
+        self.state = support.reset_runtime()
+
+    class Source:
+        def __init__(self, kind: str) -> None:
+            self.kind = kind
+
+        def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+            del harness, sid
+            return [
+                events.Overlay(
+                    harness="claude",
+                    sid=PREFIX,
+                    arrival_seq=1,
+                    kind=self.kind,
+                    at=support.SERVER_STARTED,
+                )
+            ]
+
+        def note_rows(self, keys: set[tuple[str, str]]) -> None:
+            pass
+
+        def drop_counters(self) -> dict[str, int]:
+            return {}
+
+    def _apply(self, kind: str, collected: str, detail: str | None) -> dict[str, Any]:
+        app = support.build_app()
+        app.overlays = self.Source(kind)
+        session: dict[str, Any] = {
+            "harness": "claude",
+            "sid": PREFIX,
+            "state": collected,
+            "state_detail": detail,
+        }
+        app._apply_overlays([session], now=support.SERVER_STARTED)
+        return session
+
+    def test_an_agreeing_wait_overlay_leaves_the_question_on_the_row(self) -> None:
+        # No overlay constructor sets `detail`, so the patch always carried None
+        # and applying it blanked the one thing a person at a gate wants to read.
+        session = self._apply(events.OVERLAY_NEEDS_INPUT, "needs_input", "Force push to main?")
+        self.assertEqual("needs_input", session["state"])
+        self.assertEqual("Force push to main?", session["state_detail"])
+        self.assertEqual("event", session["acquisition"], "the rest of the patch still applied")
+
+    def test_a_working_overlay_still_clears_it(self) -> None:
+        # Otherwise a question that has been answered outlives the overlay that
+        # retired the wait, which is DRC-4095 and DRC-4097 territory.
+        session = self._apply(events.OVERLAY_WORKING, "needs_input", "Force push to main?")
+        self.assertEqual("working", session["state"])
+        self.assertIsNone(session["state_detail"])
+
+    def test_a_wait_overlay_over_a_working_row_does_not_carry_its_detail_in(self) -> None:
+        # `running Bash` is true of a session that is working and false of one
+        # stopped at a gate, so it must not follow the row into the wait.
+        session = self._apply(events.OVERLAY_NEEDS_INPUT, "working", "running Bash")
+        self.assertEqual("needs_input", session["state"])
+        self.assertIsNone(session["state_detail"])
+
+    def test_a_row_with_no_detail_of_its_own_is_unchanged(self) -> None:
+        session = self._apply(events.OVERLAY_NEEDS_INPUT, "needs_input", None)
+        self.assertIsNone(session["state_detail"])
+
+
 class StateDisputeTest(unittest.TestCase):
     """When an overlay overrules a collector that had found a wait. DRC-4139."""
 
