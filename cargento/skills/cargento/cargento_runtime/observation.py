@@ -342,14 +342,23 @@ class Observation:
         apart: one has a needs-input overlay in the ledger and the other has
         none. See docs/design-needs-input.md (N-5).
 
-        `applies` is evaluated here rather than left to the caller, because it
-        reads three fields against a clock and a reader comparing them by hand is
-        how a diagnostic starts lying. It is the overlay's own gate only; the
-        reducer's activity guards are not applied, since their inputs live on the
+        `time_gate_open` is `Overlay.applies`, evaluated here rather than left to
+        the caller, because it reads three fields against a clock and a reader
+        comparing them by hand is how a diagnostic starts lying. It is named for
+        what it is and not for the method, because `applies` on the wire reads as
+        "this overlay won" and it does not mean that: the reducer's ordering and
+        its activity guards both come after, and their inputs live on the
         collected row rather than here.
 
-        Carries no user content. An overlay is a session key, a kind, and three
-        timestamps.
+        `counters` rides along because it is the only disclosure of an envelope
+        that arrived and left no overlay behind. A rate-limited, refused, expired
+        or retired event is absent from `overlays` and present here.
+
+        Carries no session content. An overlay is a collector key, a kind, three
+        timestamps, and a subagent id the hook supplied, capped at ingress. The
+        collector key is Claude's eight-character transcript prefix and the whole
+        session UUID for every other harness, both of which `/api/data` already
+        publishes per row.
         """
         now = self.clock()
         with self._lock:
@@ -363,7 +372,7 @@ class Observation:
                     "effective_at": overlay.effective_at,
                     "expires_at": overlay.expires_at,
                     "subagent_id": overlay.subagent_id,
-                    "applies": overlay.applies(now=now),
+                    "time_gate_open": overlay.applies(now=now),
                 }
                 for (harness, sid), ledger in sorted(self._overlays.items())
                 for overlay in sorted(ledger.values(), key=lambda o: o.arrival_seq)

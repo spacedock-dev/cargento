@@ -231,19 +231,40 @@ class LedgerReportTest(ObservationTestCase):
         )
         for row in report["overlays"]:
             self.assertEqual(("claude", PREFIX), (row["harness"], row["sid"]))
-            self.assertIn("at", row)
-            self.assertIn("effective_at", row)
-            self.assertIn("expires_at", row)
+        # Pinned by value, not by presence: a report that swapped `at` for
+        # `effective_at` would satisfy a membership check and mislead every
+        # reader of it. The working overlay is the one carrying all three.
+        working = report["overlays"][0]
+        self.assertEqual(NOW, working["at"])
+        self.assertEqual(0.0, working["effective_at"])
+        self.assertEqual(NOW + self.config.overlay_working_ttl_sec, working["expires_at"])
+        self.assertIsNone(report["overlays"][1]["expires_at"], "a wait has no deadline")
 
-    def test_applies_is_evaluated_against_the_clock_rather_than_left_to_the_reader(self) -> None:
+    def test_the_time_gate_is_evaluated_against_the_clock_rather_than_by_the_reader(self) -> None:
         # A working overlay expires; a wait does not. A reader comparing three
         # fields by hand is how a diagnostic starts lying, so the report answers.
+        # The field is not called `applies`, because on the wire that reads as
+        # "this overlay won" and the reducer has not run yet.
         coordinator = self.build()
         coordinator.submit("claude", self.envelope(event="turn_started"))
         coordinator.submit("claude", self.envelope(event="input_requested"))
         self.now += self.config.overlay_working_ttl_sec + 1
-        applies = {row["kind"]: row["applies"] for row in coordinator.ledger_report()["overlays"]}
-        self.assertEqual({events.OVERLAY_WORKING: False, events.OVERLAY_NEEDS_INPUT: True}, applies)
+        gates = {
+            row["kind"]: row["time_gate_open"] for row in coordinator.ledger_report()["overlays"]
+        }
+        self.assertEqual({events.OVERLAY_WORKING: False, events.OVERLAY_NEEDS_INPUT: True}, gates)
+
+    def test_an_arrived_envelope_that_left_no_overlay_shows_up_in_the_counters(self) -> None:
+        # The absent case splits in two, and only the counters split it: an
+        # envelope that arrived and was dropped versus one never posted at all.
+        # Both leave `overlays` empty. See N-5.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        report = coordinator.ledger_report()
+        self.assertEqual([], report["overlays"])
+        self.assertEqual(1, report["counters"]["retired"])
+        self.assertEqual(1, report["counters"]["event.input_requested"])
 
     def test_the_ledger_separates_a_suppressed_wait_from_a_wait_that_never_arrived(self) -> None:
         # This is the whole reason the route exists. Both of these produce

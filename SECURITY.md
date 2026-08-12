@@ -182,10 +182,12 @@ the same trust boundary described above, not a new one.
 
 `GET /api/overlays` reads the event overlay ledger and is a diagnostic, described in
 [`docs/design-needs-input.md`](docs/design-needs-input.md#n-5-two-different-faults-produce-the-same-row-so-the-ledger-is-now-readable).
-It carries no session content: an overlay is a harness name, a truncated session id, a state kind,
-and three timestamps, all of which `/api/data` already exposes in richer form. It applies the strict
-same-origin check rather than the relaxed one `/api/data` uses for navigations, and answers 503 when
-the process runs without a coordinator.
+It carries no session content: an overlay is a harness name, the collector key for the session, a
+state kind, three timestamps, and a subagent id the hook supplied, capped at ingress. The collector
+key is Claude's eight-character transcript prefix and the whole session UUID for Codex, Antigravity
+and Gemini CLI, and `/api/data` already publishes both, along with titles and prompts this route
+never sees. It applies the strict same-origin check rather than the relaxed one `/api/data` uses for
+navigations, and answers 503 when the process runs without a coordinator.
 
 ## Known and accepted
 

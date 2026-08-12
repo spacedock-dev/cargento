@@ -171,11 +171,42 @@ where changing the reducer would do nothing at all. Guessing between them was th
 was opened to stop, and the issue's own first draft guessed wrong: it proposed a `PostToolUse`
 landing after the request and retiring the wait through `ENDS_A_WAIT`. `PostToolUse` maps to
 `store_changed`, which produces no overlay, so it can never enter that set. Only `UserPromptSubmit`
-and `Stop` end a wait, and in an ordinary turn both arrive before the gate.
+and `Stop` end a wait by outranking it, and in an ordinary turn both arrive before the gate.
+`SessionEnd` ends one too, by retiring the whole ledger for that session rather than by outranking
+anything, and Claude fires it on `/clear`.
 
 `GET /api/overlays` publishes the ledger the reducer reads: one row per live overlay, with its kind,
-`arrival_seq`, timestamps, and whether it currently applies. The two cases above are one lookup
-apart, because one has a needs-input overlay recorded and the other has none.
+`arrival_seq`, timestamps, and `time_gate_open`, which is the overlay's own effective and expiry
+window and nothing more.
+
+### Reading it
+
+Two causes is the short version, and the short version is the one that sends an investigator to the
+wrong file. There are four readings, and the report carries what separates all of them:
+
+| The ledger shows | The reading | Where the fault is |
+|---|---|---|
+| a needs-input overlay, `arrival_seq` above every working and idle row | the activity grace suppressed it (`events.py:525`) | the reducer's grace |
+| a needs-input overlay, `arrival_seq` below a working or idle row | it was outranked and permanently superseded (`events.py:523`) | ordering, the DRC-4095 family |
+| no needs-input overlay, and a counter moved | the envelope arrived and was dropped | ingress, not the reducer |
+| no needs-input overlay, and no counter moved | nothing was ever posted | the hook, or the wire |
+
+The second row is why `arrival_seq` is published rather than implied by list order. Delivery is
+at-least-once and may reorder, so a `turn_started` can land after the `input_requested` it precedes
+in real time, and the result is a needs-input overlay that is present, inside its window, and skipped
+anyway. Attributing that to the grace and going to change the grace is exactly the wrong-guess
+failure DRC-4134 exists to stop.
+
+The third row is why `counters` rides along. An envelope can arrive and still leave no overlay:
+rate-limited (`reject.rate`), refused at the session cap (`overlay.refused`), expired while waiting
+for a collection to produce its row (`pending.expired`), or retired by a `session_ended`, which
+Claude fires on `/clear` (`retired`). `pending_rows` names the sessions currently in that waiting
+state. None of this is visible in `overlays`, because in every case there is nothing there to see.
+
+A fifth thing the ledger cannot tell you: whether an overlay it shows actually won. `time_gate_open`
+is the overlay's own gate only. The reducer's ordering and its activity guards both run afterwards,
+and their inputs (`own_activity`, `last_activity`) live on the collected row, which is `/api/data`'s
+to publish. Read the two together.
 
 Three notes on its shape, each of which was a choice:
 
