@@ -8,10 +8,20 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+# C0 and DEL, then the zero-width, bidi-embedding and isolate ranges.
+_UNSAFE_CHARS = re.compile("[\\x00-\\x1f\\x7f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069]+")
+
 
 def safe_text(value: Any, limit: int) -> str:
+    """Untrusted text, safe to put on a row: no control characters, bounded.
+
+    The bidi and isolate ranges are stripped alongside the C0 set, and not for
+    tidiness: those characters reorder how the text after them renders, so a
+    harness record could make a row read as something it does not say. Legitimate
+    right-to-left text does not need them, since bidi resolves implicitly.
+    """
     text = str(value or "").encode("utf-8", "replace").decode("utf-8")
-    text = re.sub(r"[\x00-\x1f\x7f]+", " ", text)
+    text = _UNSAFE_CHARS.sub(" ", text)
     return text[:limit]
 
 

@@ -49,8 +49,13 @@ def input_summary(block: Mapping[str, Any], *, limit: int) -> str:
     if block.get("name") == "ExitPlanMode":
         # Split before scrubbing, not after: `safe_text` turns a newline into a
         # space, so a plan scrubbed first has no line to take the first of.
-        first_line = str(payload.get("plan") or "").split("\n", 1)[0]
-        return records.safe_text(first_line, limit).strip().lstrip("#").strip()[:limit]
+        # The first *usable* line rather than the first line, because a plan can
+        # open with a blank, a fence or a bullet, and none of those name it.
+        for raw_line in str(payload.get("plan") or "").split("\n"):
+            line = records.safe_text(raw_line, limit).strip().lstrip("#*->` ").strip()
+            if line:
+                return line[:limit]
+        return ""
     questions = [
         text
         for item in records.as_list(payload.get("questions"))

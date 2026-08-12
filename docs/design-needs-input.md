@@ -348,10 +348,18 @@ a count of the rest.
 
 **An agreeing overlay then blanked it anyway.** No overlay constructor sets `detail`, so every
 needs-input patch carried None and `apply_patch` wrote that over whatever the collector had found.
-On a default install, where the bundled hook is present, that erasure happened every time. The fix
-is narrow on purpose: the collector's detail survives only when the row was already Needs input and
-stays Needs input, which is the case where the overlay agrees about the state and contradicts
-nothing.
+The fix is narrow on purpose: the collector's detail survives only when the row was already Needs
+input and stays Needs input, which is the case where the overlay agrees about the state and
+contradicts nothing.
+
+How often that erasure fired is **not measured**, and an earlier draft of this paragraph said it
+happened on every default install, which the repository cannot support. It needs an `input_requested`
+overlay, which only `PermissionRequest` mints, and `captures/` holds no Claude `PermissionRequest`
+record at all: the only capture of that name is Codex's, and it is a negative result. Whether the
+hook fires for `AskUserQuestion` and `ExitPlanMode`, as opposed to only for tool-permission prompts,
+is an adapter claim of exactly the kind this repository requires a capture for. Until there is one,
+the honest statement is that the erasure is reachable and its frequency is unknown. The fix is
+correct and costs nothing either way.
 
 Working and Idle still clear the field, and that is not an oversight. A working detail such as
 `running Bash` is true of a session that is running and false of one stopped at a gate, so it must
@@ -364,6 +372,14 @@ The text still comes from the transcript alone, so it appears when the record ha
 does not when it has not (N-4). The row says a question is open either way; it can only sometimes say
 which. That is stated in `SKILL.md` rather than smoothed over, because a field that is usually there
 teaches a reader to trust it and then fails silently on the sessions that matter.
+
+There is a second window, and it is the ordinary one rather than the exotic one. For up to
+`overlay_working_ttl_sec` after a turn starts, a live working overlay overrules the collector
+outright: the row reads Working, the detail is cleared, and the question is invisible even when the
+record is on disk and the parse has it. `_keep_wait_detail` cannot help there, because it only holds
+when the patch agrees the row is waiting, and this patch says Working. That window is bounded, it is
+the disagreement N-6's recorder exists to count, and it is the reason the sentence above applies to a
+default install and not only to an unlucky flush.
 
 Sourcing the text from the event path instead would make it reliable and is not a rendering change:
 the envelope drops the tool name and the tool input at the hook, deliberately, and `SECURITY.md`

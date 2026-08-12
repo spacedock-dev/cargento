@@ -192,7 +192,7 @@ navigations, and answers 503 when the process runs without a coordinator.
 The same route serves the bounded record of state disputes, where an event overruled a session the
 dashboard had read as waiting. A record holds the same fields plus the two activity timestamps the
 reducer compared, and no more: the row's title and its state detail are deliberately absent, because
-a state detail can carry a permission prompt's own text.
+a state detail can carry a permission prompt's own text, an open question's, or a plan's first line.
 
 ## Known and accepted
 

@@ -1806,6 +1806,16 @@ class InputSummaryTest(unittest.TestCase):
         summary = claude_data.input_summary(self._block("ExitPlanMode", {"plan": plan}), limit=160)
         self.assertEqual("Rewrite the collector", summary)
 
+    def test_a_plan_that_opens_with_furniture_skips_to_the_line_that_names_it(self) -> None:
+        # A plan can open with a blank line, a fence or a bullet, and none of
+        # those name it. "```, waiting 2m" is a worse row than the tool's name.
+        for opening in ("\n\n# Real title\nbody", "```\nReal title\nbody", "- Real title\nbody"):
+            with self.subTest(opening=opening.split("\n")[0] or "(blank)"):
+                summary = claude_data.input_summary(
+                    self._block("ExitPlanMode", {"plan": opening}), limit=160
+                )
+                self.assertEqual("Real title", summary)
+
     def test_every_summary_is_capped(self) -> None:
         long_question = "y" * 400
         for block in (
@@ -1858,3 +1868,59 @@ class InputSummaryTest(unittest.TestCase):
             config, state = runtime()
             info = claude_data.analyze_transcript(config, state, str(transcript))
         self.assertEqual("Force push to main?", info["pending_input_tool"]["asks"])
+
+
+class QuestionOnTheRowTest(RuntimeTestCase):
+    """The seam between the parse and the row, which nothing else covers."""
+
+    def _row(self, tmp: str, payload: Any) -> dict[str, Any]:
+        projects = Path(tmp) / "projects"
+        project = projects / "-w-proj"
+        project.mkdir(parents=True)
+        transcript = project / "abcdef12-0000-0000-0000-000000000000.jsonl"
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "timestamp": datetime.fromtimestamp(time.time() - 120, UTC).isoformat(),
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "q-1",
+                                "name": "AskUserQuestion",
+                                "input": payload,
+                            }
+                        ],
+                    },
+                }
+            )
+            + "\n"
+        )
+        with (
+            store_patch(PROJECTS_DIR=str(projects)),
+            store_patch(TASKS_DIR=str(projects / "tasks")),
+        ):
+            sessions = collect()["sessions"]
+        return next(s for s in sessions if s["sid"].startswith("abcdef12"))
+
+    def test_the_question_reaches_the_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            row = self._row(tmp, {"questions": [{"question": "Force push to main?"}]})
+        self.assertEqual("needs_input", row["state"])
+        self.assertTrue(
+            row["state_detail"].startswith("Force push to main?, waiting"),
+            row["state_detail"],
+        )
+
+    def test_a_record_carrying_no_question_keeps_the_old_wording(self) -> None:
+        # The record reaches disk on no schedule and its shape is Claude Code's,
+        # so absent has to read as ordinary rather than as an empty row.
+        with tempfile.TemporaryDirectory() as tmp:
+            row = self._row(tmp, {})
+        self.assertEqual("needs_input", row["state"])
+        self.assertTrue(
+            row["state_detail"].startswith("open question (AskUserQuestion), waiting"),
+            row["state_detail"],
+        )
