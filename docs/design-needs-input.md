@@ -85,6 +85,46 @@ unrecognised. That is the safe direction on an upgrade.
   ingress and the precedence test want opposite defaults, which is why they are two decisions and not
   one.
 
+## N-4: every path is probabilistic, so the docs rank them instead of trusting one
+
+N-1 sorted the three paths by what they cover. This section sorts them by how often they actually
+fire, which is a different question and was answered later, by holding real sessions at real gates
+and reading both the transcript and `/api/data` while the question was still on screen.
+
+| Path | Live gates seen on it | |
+|---|---|---|
+| Transcript (`pending_input_tool`) | 3 of 6 | `ExitPlanMode` 2/4, `AskUserQuestion` 1/2 |
+| Event overlay (`PermissionRequest`) | 4 of 5 | one miss read `working` with `acquisition: event` |
+
+Neither number is a rate anybody should quote as a constant. What they establish is qualitative and
+firm: the transcript branch fires roughly half the time, the event path fires much more often than
+that, and **neither is a guarantee**.
+
+The transcript case is the strange one. Claude Code does not write the `tool_use` record for an
+input tool on a fixed schedule. Two consecutive questions in a single session, same version, same
+prompt shape, behaved differently: the first had its record on disk with no matching `tool_result`
+while the gate stood, and the second had no record at all after five minutes of waiting. That is not
+a slow flush, it is a flush that had not been triggered. So the branch is neither dead nor live, it
+is opportunistic, and it is documented that way rather than removed. Removing it would cost the one
+population that has nothing else: a user running without the bundled hooks, for whom this is the only
+needs-input source there is.
+
+The event path's single miss is a different defect and belongs to the DRC-4095 family: a working
+overlay arriving after the wait and retiring it. It is not addressed here.
+
+### The methodology this cost us
+
+A single live read is one coin toss, not a measurement. The first `ExitPlanMode` observation showed
+the record present and detected, and stopping there would have produced a confident write-up saying
+the transcript branch works. Three more trials made it 2 of 4. The same trap ran the other way on the
+event path: one trial showed `working` at a live gate, which looked exactly like a released-version
+regression worth an emergency release, and the next two showed `needs_input` and killed that reading.
+
+The original report on this behavior measured it once and concluded the branch was dead. This
+investigation measured it once and nearly concluded it was live. Both readings came from honest live
+reads. Anything in this area needs n greater than one before it goes in writing, and the desk read
+and the timestamp replay that the original report warned about are not the only ways to get it wrong.
+
 ## What is still not measured
 
 `notification_type` is present on every Notification payload, and its value list was read from the
