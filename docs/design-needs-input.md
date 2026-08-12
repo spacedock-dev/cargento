@@ -275,9 +275,17 @@ happened sixty times after the ring has turned over four times.
    decidable from the record alone, without the live process and without `/api/data`.
 2. For the second two, diff its `drop_counters` against the record before it. The live counters
    cannot do this job hours later, because they are cumulative and a single read cannot be
-   bracketed; two consecutive records can, because each carries its own copy.
-3. `repeats` and `last_seen_at` say how long it stood. A high `repeats` on a working overlay that
-   expired on schedule is the ordinary lapse; one that outlives the working TTL is not.
+   bracketed; two consecutive records can, because each carries its own copy. Two things to know
+   before reading that diff: the first record in the ring has no neighbour, so its counters are the
+   totals since the process started rather than a delta, and the counters are process-wide, so the
+   window between two records covers every session rather than the one the records are about.
+3. `repeats` and `last_seen_at` say how long the episode stood, and what that means depends on which
+   state overruled the wait. On an `idle` record it is the whole answer, since an idle overlay has no
+   deadline and a long one is a stale overlay pinning a live wait. On a `working` record it can never
+   exceed the working TTL, because a refreshed working overlay carries a new arrival sequence and
+   therefore opens a new record. The signature to look for there is not one long record but a chain
+   of consecutive records for the same session, each a fresh working overlay over the same standing
+   wait.
 
 ### It is one direction, and it is Claude-only
 

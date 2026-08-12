@@ -387,7 +387,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         state = self.server.application.state
         with state.dispute_lock:
             report["dispute_total"] = state.dispute_total
-            report["disputes"] = list(state.disputes)
+            # Copied, not referenced: an open episode's record is updated in
+            # place under that lock, and serializing the live dict outside it
+            # could publish a fresh `repeats` beside a stale `last_seen_at`.
+            # Shallow is enough; the nested values are written once.
+            report["disputes"] = [dict(record) for record in state.disputes]
         self._send(json.dumps(report).encode(), "application/json")
 
     def _stream(self) -> None:

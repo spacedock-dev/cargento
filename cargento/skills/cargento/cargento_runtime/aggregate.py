@@ -362,7 +362,14 @@ class Application:
             else:
                 # No ledger for this row means nothing can be disagreeing with it.
                 self._clear_dispute(harness, sid)
-        source.note_rows({(str(s["harness"]), str(s["sid"])) for s in out_sessions})
+        collected = {(str(s["harness"]), str(s["sid"])) for s in out_sessions}
+        source.note_rows(collected)
+        # A session that vanishes mid-dispute reaches neither branch above, so
+        # its episode would be held open forever, pinning a record the ring has
+        # already evicted.
+        with self.state.dispute_lock:
+            for key in [k for k in self.state.dispute_episodes if k not in collected]:
+                del self.state.dispute_episodes[key]
 
     def _note_dispute(
         self,
@@ -394,7 +401,24 @@ class Application:
         if session.get("state") != "needs_input" or patched not in {"working", "idle"}:
             self._clear_dispute(*key)
             return
-        shape = ("needs_input", str(patched), max(overlay.arrival_seq for overlay in overlays))
+        # Subagent overlays are excluded from the shape deliberately. They patch
+        # no state, so a child starting or stopping changes the disagreement not
+        # at all, but each is remembered under its own slot with a fresh
+        # sequence. Counting them split one standing wait into a record per child
+        # transition, on fan-outs, which DRC-4121 established are the sessions
+        # most likely to be holding a prompt in the first place.
+        shape = (
+            "needs_input",
+            str(patched),
+            max(
+                (o.arrival_seq for o in overlays if o.kind != runtime_events.OVERLAY_SUBAGENT),
+                default=-1,
+            ),
+        )
+        # Read before the lock, not inside it: `drop_counters` takes the
+        # coordinator's lock, and nesting one under the other would make an
+        # ordering load-bearing that nothing else in the file relies on.
+        counters = self.overlays.drop_counters() if self.overlays else {}
         with self.state.dispute_lock:
             open_episode = self.state.dispute_episodes.get(key)
             if open_episode is not None and open_episode[0] == shape:
@@ -420,7 +444,7 @@ class Application:
                 # never posted, is a counter comparison. The live counters are
                 # cumulative, so a record read tomorrow can only bracket itself
                 # against its neighbours if it carries its own copy.
-                "drop_counters": self.overlays.drop_counters() if self.overlays else {},
+                "drop_counters": counters,
             }
             self.state.dispute_total += 1
             self.state.disputes.append(record)

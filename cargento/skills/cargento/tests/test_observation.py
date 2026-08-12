@@ -900,6 +900,58 @@ class StateDisputeTest(unittest.TestCase):
             app._apply_overlays([session], now=support.SERVER_STARTED)
         self.assertEqual(2, self.state.dispute_total)
 
+    def test_a_churning_fan_out_underneath_a_standing_wait_is_still_one_episode(self) -> None:
+        # Subagent overlays patch no state, so a child transition changes the
+        # disagreement not at all, but each is remembered with a fresh sequence.
+        # Counting them split one wait into a record per child, on exactly the
+        # sessions DRC-4121 established are likeliest to be holding a prompt.
+        working = events.Overlay(
+            harness="claude",
+            sid=PREFIX,
+            arrival_seq=1,
+            kind=events.OVERLAY_WORKING,
+            at=support.SERVER_STARTED,
+        )
+        children: list[events.Overlay] = []
+        app = support.build_app()
+        for child in range(6):
+            children.append(
+                events.Overlay(
+                    harness="claude",
+                    sid=PREFIX,
+                    arrival_seq=2 + child,
+                    kind=events.OVERLAY_SUBAGENT,
+                    at=support.SERVER_STARTED,
+                    subagent_id=f"child-{child}",
+                )
+            )
+            app.overlays = self.Source([working, *children])
+            session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+            app._apply_overlays([session], now=support.SERVER_STARTED)
+        self.assertEqual(1, self.state.dispute_total)
+        self.assertEqual(5, self.state.disputes[0]["repeats"])
+
+    def test_an_episode_for_a_session_that_vanished_does_not_stay_open(self) -> None:
+        # A row that ages out reaches neither branch, so its episode would be
+        # held open forever, pinning a record the ring may already have evicted.
+        app = support.build_app()
+        app.overlays = self.Source(
+            [
+                events.Overlay(
+                    harness="claude",
+                    sid=PREFIX,
+                    arrival_seq=1,
+                    kind=events.OVERLAY_WORKING,
+                    at=support.SERVER_STARTED,
+                )
+            ]
+        )
+        session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+        app._apply_overlays([session], now=support.SERVER_STARTED)
+        self.assertEqual(1, len(self.state.dispute_episodes))
+        app._apply_overlays([], now=support.SERVER_STARTED)
+        self.assertEqual({}, self.state.dispute_episodes)
+
     def test_agreement_closes_the_episode_so_the_next_one_is_its_own_record(self) -> None:
         app = support.build_app()
         overlays = [
