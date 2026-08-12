@@ -378,6 +378,21 @@ def parse(
     )
 
 
+def overlay_rows(overlays: Iterable[Overlay], *, now: float) -> list[dict[str, Any]]:
+    """Reportable overlays in `arrival_seq` order, for the ledger and a dispute.
+
+    Sorted here rather than by either caller, because a ledger holds one overlay
+    per kind and re-recording a kind leaves it in its original dict slot: a wait
+    at seq 2 outranked by a working overlay at seq 3 comes back working-first.
+    That is the one case a reader most needs to see in order, since comparing the
+    two sequences is how N-5's second reading is told from its first.
+    """
+    return [
+        overlay_row(overlay, now=now)
+        for overlay in sorted(overlays, key=lambda overlay: overlay.arrival_seq)
+    ]
+
+
 def overlay_row(overlay: Overlay, *, now: float) -> dict[str, Any]:
     """One overlay as reportable fields, for `/api/overlays` and dispute records.
 

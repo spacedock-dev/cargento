@@ -350,9 +350,9 @@ class Observation:
             # from it, so they have to be one instant.
             now = self.clock()
             rows = [
-                runtime_events.overlay_row(overlay, now=now)
+                row
                 for _key, ledger in sorted(self._overlays.items())
-                for overlay in sorted(ledger.values(), key=lambda o: o.arrival_seq)
+                for row in runtime_events.overlay_rows(ledger.values(), now=now)
             ]
             pending = sorted(f"{harness}/{sid}" for harness, sid in self._pending)
             counters = dict(self.counters)

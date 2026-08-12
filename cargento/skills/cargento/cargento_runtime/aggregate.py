@@ -383,7 +383,7 @@ class Application:
             "overlay_state": patched,
             "own_activity": float(session.get("own_activity") or 0.0),
             "last_activity": float(session.get("last_activity") or 0.0),
-            "overlays": [runtime_events.overlay_row(overlay, now=now) for overlay in overlays],
+            "overlays": runtime_events.overlay_rows(overlays, now=now),
         }
         with self.state.dispute_lock:
             self.state.dispute_total += 1

@@ -791,6 +791,26 @@ class StateDisputeTest(unittest.TestCase):
         self.assertEqual([1], [row["arrival_seq"] for row in overlays])
         self.assertIn("time_gate_open", overlays[0])
 
+    def test_the_recorded_ledger_is_in_arrival_order_like_the_live_one(self) -> None:
+        # A ledger holds one overlay per kind, so re-recording a kind leaves it
+        # in its original dict slot and `overlays_for` hands back a wait at seq 2
+        # after a working overlay at seq 3. That pair is exactly what tells N-5's
+        # second reading from its first, so a record in the other order from the
+        # live ledger is worse than no record.
+        out_of_order = [
+            events.Overlay(
+                harness="claude", sid=PREFIX, arrival_seq=3, kind=events.OVERLAY_WORKING, at=1.0
+            ),
+            events.Overlay(
+                harness="claude", sid=PREFIX, arrival_seq=2, kind=events.OVERLAY_NEEDS_INPUT, at=1.0
+            ),
+        ]
+        session: dict[str, Any] = {"harness": "claude", "sid": PREFIX, "state": "needs_input"}
+        app = support.build_app()
+        app.overlays = self.Source(out_of_order)
+        app._apply_overlays([session], now=support.SERVER_STARTED)
+        self.assertEqual([2, 3], [row["arrival_seq"] for row in self.state.disputes[0]["overlays"]])
+
     def test_the_record_carries_the_activity_the_guards_read(self) -> None:
         # The grace reading is only reconstructible with these two, and they are
         # gone from the row by the time anybody looks.
