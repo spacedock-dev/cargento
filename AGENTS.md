@@ -157,6 +157,22 @@ without skill discovery should read that file and follow it.
 
 Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor, the full unittest suite under `coverage` with the `fail_under` threshold from `pyproject.toml`, and `platform-tests` — the same unit suite re-run natively on Ubuntu, macOS and Windows. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
 
+## Code Comments
+
+Comments record decisions. The code already says what it does, and a comment that restates it goes stale the first time the line changes.
+
+Write one when the reader could not otherwise know:
+
+- **Why not the obvious alternative.** A constant that looks arbitrary, a branch that looks inconsistent with the one beside it, an ordering that someone could "tidy up" into a bug. This is the common case here, because the alternative is not in the file.
+- **What was measured.** A value derived from a real observation, with the observation named.
+- **What was tried and rejected.** If it is small, a comment. If re-deriving it would cost a day, it belongs in `docs/design-*.md` and the comment is a pointer.
+
+Do not write one to restate the line below it, to summarize a function its name already summarizes, or to defend every small choice.
+
+Length follows the decision, not the code. A one-line change can deserve two lines of why; it rarely deserves six. If the explanation runs longer than the code it explains, the reason is durable enough for `docs/design-*.md`, and the comment shrinks to a reference.
+
+Nothing in CI checks this. It is a review standard, like the voice standard `/sync-docs` holds the prose docs to.
+
 ## Versioning and Releases
 
 The plugin version must be identical in three places: `cargento/.claude-plugin/plugin.json` (the
