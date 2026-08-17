@@ -81,12 +81,12 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 
 | Script part | Owns |
 |---|---|
-| `web/spark.js` | Shared page state, rate buffers, and the sparkline with its hover machinery. |
-| `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows. |
+| `web/spark.js` | Shared page state, rate buffers, the sparkline with its hover machinery, and the gate queue both views read. |
+| `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows, and the gate band's cursor. |
 | `web/mode.js` | Display-mode state, its switch, and the calm ledger's mutable state (sort, filters, open row, cursor, scroll). |
 | `web/usage.js` | The usage band, the configure popover, and the quota disclosure modal. |
 | `web/controls.js` | The stop control, the stopped panel, and the mode bar. |
-| `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. |
+| `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. The click and keydown listeners are the page's, not calm's: both modes route their controls through them. |
 | `web/notify.js` | Desktop notifications. |
 | `web/main.js` | `render()` and `refresh()`. |
 | `web/live.js` | Leader election across tabs, the SSE stream, and the fallback poll. |

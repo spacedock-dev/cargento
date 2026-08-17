@@ -401,14 +401,14 @@ which gates you have dealt with.
 That is the obvious feature and it was rejected. A "handled" mark would be the page asserting
 something no collector measured: Cargento never writes to a session and cannot observe an answer, so
 the mark could only record that a person clicked something. Two failure modes follow, and the second
-is the serious one. A mark that is right is redundant — the session leaves `needs_input` within a
+is the serious one. A mark that is right is redundant: the session leaves `needs_input` within a
 poll and the row goes on its own. A mark that is wrong **hides a gate that is still open**, which is
 the exact failure the needs-input band exists to prevent, now caused by the surface built to prevent
 it. The asymmetry decides it: the redundant case costs nothing and the wrong case costs everything.
 
 So the pass is driven entirely by the payload. You answer in the session's own terminal; the
 collector stops calling that session blocked; the row leaves the queue on the next refresh. The
-cursor is held as a session key rather than an index precisely so this works — `gateFocusKey()`
+cursor is held as a session key rather than an index precisely so this works. `gateFocusKey()`
 resolves a key that has left the queue to the current head instead of writing the fallback back, so
 answering the row you are standing on advances the pass, and answering a row above the one you are
 standing on does not slide the cursor onto a different session. A cursor held as an index would do
