@@ -8,6 +8,25 @@ let latestSettledRefresh = 0;
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+/* The gates, in the order a person should work them, defined once. Three
+   readers — the band, the `Needs you` tile and title count, and the keyboard
+   cursor that steps through them — and a cursor walking a different order than
+   the band renders would put the highlight on the wrong row.
+
+   The payload already arrives longest-blocked first (see aggregate.py's sort),
+   so this filters and does not re-sort. Re-deriving the order here is precisely
+   how the two would come to disagree, and the page cannot see `blocked_since`
+   any more reliably than the server that sent it. */
+function gateQueue(d){
+  return d.sessions.filter(x => x.active && x.state === "needs_input");
+}
+/* The regular view's cursor through that queue. Held as a session key rather
+   than an index, so a gate answered above the cursor does not silently move it
+   onto a different row — see gateFocusKey(), which resolves a key that has left
+   the queue to the new head rather than writing the fallback back here. */
+let gateCursorKey = null;
+let gateRevealCursor = false;   /* scroll the cursor into view after this render */
+
 function fmtDur(sec){
   if(sec == null || sec < 0) return "–";
   sec = Math.floor(sec);

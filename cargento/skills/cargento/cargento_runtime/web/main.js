@@ -14,7 +14,7 @@ function render(d){
   lastData = d;
   syncNotifications(d);
   const app = document.getElementById("app");
-  const needs = d.sessions.filter(x => x.active && x.state === "needs_input");
+  const needs = gateQueue(d);
   if(!app){
     document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
     return;
@@ -59,10 +59,23 @@ function render(d){
       `<span>${s.total_done}/${s.total_tasks} tracked tasks done</span>`
     : `<span>no active session uses tracked tasks</span>`;
 
+  /* One pass, top to bottom, rather than N context switches. The band was
+     already this list; what it was missing was an order that means something
+     (longest-blocked first, set server-side), a position so it reads as a queue
+     that shrinks, and a handle per row so taking one does not mean reading a
+     session id off the screen by eye.
+
+     The keys are advertised here because the regular view has no legend footer
+     to put them in, and `j k step` only when there is more than one row to step
+     between — a hint for a movement that cannot move is noise. */
+  const hint = (needs.length > 1 ? "j k step · " : "") + "⏎ copy id";
+  const gateFocus = gateFocusKey(needs);
   const bandHtml = needs.length
     ? `<div class="band"><div class="band-head"><span class="band-dot"></span>` +
-      `<span class="band-k">Needs your input</span></div>` +
-      needs.map(n => needRow(d, n)).join("") + `</div>`
+      `<span class="band-k">Needs your input</span>` +
+      `<span class="band-n">${needs.length} waiting</span>` +
+      `<span class="band-rule"></span><span class="band-keys">${hint}</span></div>` +
+      needs.map((n, i) => needRow(d, n, i + 1, gateFocus)).join("") + `</div>`
     : "";
 
   let workingHtml = "";
@@ -109,6 +122,7 @@ function render(d){
 
   restoreSparkState(sparkFocused, savedPointer);
   restoreStopFocus();
+  restoreGateCursor();
   document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
 }
 

@@ -105,10 +105,36 @@
   .band-head{display:flex;align-items:center;gap:9px}
   .band-dot{width:9px;height:9px;border-radius:50%;background:var(--alert);animation:pulse 1.1s infinite}
   .band-k{font-family:var(--mono);font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--alert)}
-  .need{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+  .band-n{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
+  .band-rule{flex:1;height:1px;background:color-mix(in oklab,var(--alert) 24%,transparent)}
+  .band-keys{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3)}
+  /* The queue position sits in a column of its own so the ordinals line up down
+     the band — a number tucked inline with the meta could not be read as a
+     count. Fixed width, because the band is a queue of gates and not a list that
+     runs to three digits. */
+  .need{display:flex;align-items:flex-start;gap:14px;
+        border-radius:12px;padding:6px 10px;margin:0 -10px;box-shadow:inset 0 0 0 1px transparent}
+  .need.cursor{background:color-mix(in oklab,var(--alert) 8%,transparent);
+               box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--alert) 38%,transparent)}
+  /* `flex:1` rather than the bare min-width:0 it replaced: with the ordinal now
+     a sibling, space-between pushed the number to the far edge of the band and
+     left it reading as its own column rather than as this row's place. */
+  .need-main{flex:1;min-width:0}
+  .need-n{flex:none;width:18px;font-family:var(--mono);font-size:var(--fs-lg);font-weight:700;
+          color:color-mix(in oklab,var(--alert) 62%,var(--ink3));line-height:1.6;text-align:right}
   .need-meta{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
   .need-title{font-size:var(--fs-2xl);font-weight:600;line-height:1.3;letter-spacing:-.01em}
   .need-detail{font-size:var(--fs-md);color:var(--ink2);margin-top:6px}
+  /* A statement of absence, not a detail. It reads at --ink3 so a row that
+     cannot say what it wants is visibly distinct from one that did. */
+  .need-detail.none{color:var(--ink3);font-style:italic}
+  /* The blocked figure keeps the top line — it is the row's headline number and
+     lines up with the meta it belongs to. The handle sits under it, where it
+     does not compete for that line. */
+  .need-act{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+  .need-copy{font-family:var(--mono);font-size:var(--fs-2xs);font-weight:700;color:var(--ink2);background:transparent;border:1px solid var(--line2);border-radius:6px;padding:3px 8px;cursor:pointer;transition:color .12s,border-color .12s}
+  .need-copy:hover{color:var(--ink);border-color:var(--ink3)}
+  .need-copy:focus-visible{outline:none;color:var(--ink);box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent);border-radius:6px}
   .blocked-k{font-family:var(--mono);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);text-align:right}
   .blocked-v{font-family:var(--mono);font-size:var(--fs-num);font-weight:700;color:var(--alert);line-height:1.1;text-align:right}
 
@@ -299,6 +325,9 @@
   .cm-proj{min-width:0;overflow:hidden;text-overflow:ellipsis}
   .cm-sess{flex:none;margin-left:.55ch}
   .cm-doing{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* A statement of absence, not a detail — the same distinction the band's
+     `.need-detail.none` draws, drawn the same way. */
+  .cm-doing.unread{color:var(--ink3);font-style:italic}
   .cm-flag{display:inline-block;max-width:100%;font-family:var(--mono);font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;padding:3px 8px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line2)}
   /* The rate cell carries the current request's two facts together: how fast it
      is producing, and how far through it is. They used to sit in separate

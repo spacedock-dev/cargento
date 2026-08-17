@@ -6,7 +6,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
+from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
 from . import events as runtime_events
 from . import io as runtime_io
@@ -20,6 +20,34 @@ if TYPE_CHECKING:
     from .events import Overlay
     from .sessions import Session
     from .state import RuntimeState
+
+
+_STATE_RANK: Final = {"needs_input": 0, "working": 1, "idle": 2}
+
+
+def row_order(session: Session) -> tuple[int, float, str]:
+    """Where a row sits in the published payload: state, then wait, then id.
+
+    Session id as the last tiebreaker (not last_activity) so rows don't reshuffle
+    on every refresh while sessions are generating.
+
+    The middle key is the gate queue, and it is only ever non-zero for a blocked
+    row: those arrive longest-blocked first, which is the order a person should
+    work them in. Session id is an arbitrary order to be stopped in, and the gate
+    that has held someone up longest is the one still costing something. It ranks
+    on `blocked_since`, a fixed timestamp rather than an elapsed time, so the
+    order does not churn between refreshes — the rule CONTRIBUTING.md states for
+    the frontend, and the same one applies to the payload the frontend renders in
+    the order it arrives.
+
+    Working rows pass 0 and fall through to the id exactly as before. They have no
+    standing wait to rank on, and ranking them at all is D7's question rather than
+    this one's.
+    """
+    wait = 0.0
+    if session["state"] == "needs_input":
+        wait = float(session.get("blocked_since") or session.get("last_activity") or 0)
+    return (_STATE_RANK.get(session["state"], 3), wait, str(session["sid"]))
 
 
 def _keep_wait_detail(session: Session, patch: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -302,10 +330,7 @@ class Application:
         # from the patched rows for the same reason.
         self._apply_overlays(out_sessions, now=now)
         sessions.assign_display_ids(config, out_sessions)
-        state_rank = {"needs_input": 0, "working": 1, "idle": 2}
-        # Session id as tiebreaker (not last_activity) so rows don't reshuffle
-        # on every refresh while sessions are generating.
-        out_sessions.sort(key=lambda x: (state_rank.get(x["state"], 3), x["sid"]))
+        out_sessions.sort(key=row_order)
         active_sessions = [x for x in out_sessions if x["active"]]
         total_tasks = sum(x["total"] for x in out_sessions)
         total_done = sum(x["done"] for x in out_sessions)

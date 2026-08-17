@@ -440,6 +440,122 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["realChangeMoves"], "a session that changed state did not move")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_attention_order_leads_with_the_gate_that_has_waited_longest(self) -> None:
+        # Newest-first is right for a row you are watching and wrong for one
+        # waiting on you: it put the gate you just saw open above the one that
+        # had held you up for an hour. Only the blocked group changes — `recent`
+        # keeps genuine newest-first for every state, including this one.
+        checks = """
+const out = {};
+const at = (sid, since) => mk({sid, session: sid, title: "gate-" + sid,
+  state: "needs_input", active: true, last_activity: since, blocked_since: since,
+  state_detail: "permission needed"});
+// Deliberately not in wait order, and not in id order either, so neither the
+// payload's sequence nor the tiebreaker can produce the expected answer alone.
+const gates = [at("mid", 99400), at("newest", 99900), at("oldest", 98000)];
+const order = () => [...__els.app.innerHTML.matchAll(
+  /class="cm-title"[^>]*>gate-([a-z]+)</g)].map(m => m[1]);
+render(payload(gates.concat([busy, quiet])));
+out.attention = order();
+calmAction("sort", "recent");
+out.recent = order();
+calmAction("sort", "attention");
+// Same payload, later clock: waiting longer must not reshuffle the queue.
+render({...payload(gates.concat([busy, quiet])), generated: 100600});
+out.stable = order();
+// Two gates blocked at the same instant fall through to the session id, the
+// same last tiebreaker every other ordering uses.
+render(payload([at("bbb", 99000), at("aaa", 99000)]));
+out.ties = order();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual(["oldest", "mid", "newest"], out["attention"])
+        self.assertEqual(["newest", "mid", "oldest"], out["recent"], "recent stopped being by age")
+        self.assertEqual(["oldest", "mid", "newest"], out["stable"], "the queue churned as it aged")
+        self.assertEqual(["aaa", "bbb"], out["ties"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_blank_doing_cell_on_a_blocked_row_says_which_blank_it_is(self) -> None:
+        # An empty cell already means "not applicable" in this ledger — it is
+        # what a row that is not working leaves in `rate`. On a blocked row the
+        # same blank would mean "nobody could read what it wants", so the queue
+        # names it here as it does in the band. Only for blocked rows: an idle
+        # session is not asking for anything, so nothing is missing.
+        checks = """
+const out = {};
+const doing = () => [...__els.app.innerHTML.matchAll(
+  /class="cm-doing( unread)?"[^>]*>([^<]*)</g)].map(m => (m[1] ? "!" : "") + m[2]);
+render(payload([
+  mk({sid: "said", session: "said", state: "needs_input", active: true,
+      last_activity: 99700, blocked_since: 99700, state_detail: "Force push to main?"}),
+  mk({sid: "mute", session: "mute", state: "needs_input", active: true,
+      last_activity: 99500, blocked_since: 99500, state_detail: null}),
+  mk({sid: "quiet", session: "quiet", state_detail: null})
+]));
+out.cells = doing();
+out.tip = /class="cm-doing unread" title="([^"]*)"/.exec(__els.app.innerHTML)[1];
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        # `mute` has waited longer, so the queue order leads with it.
+        self.assertEqual(["!not readable", "Force push to main?", ""], out["cells"])
+        self.assertIn("nothing this session has written", out["tip"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_g_reaches_the_gate_queue_from_either_mode(self) -> None:
+        # The queue is the one thing on the board that is waiting on the reader.
+        # Which rendering they happen to be in is not a reason to make it harder
+        # to reach from one of them, and both must land on the same session.
+        checks = """
+const out = {};
+const at = (sid, since) => mk({sid, session: sid, title: "gate-" + sid,
+  state: "needs_input", active: true, last_activity: since, blocked_since: since,
+  state_detail: "permission needed"});
+const gates = [at("oldest", 98000), at("newest", 99900)];
+const g = () => __fire("keydown", {key: "g", target: {tagName: "BODY"},
+                                   preventDefault(){}});
+render(payload(gates.concat([busy, quiet])));
+g();
+out.calmFiltered = calmStateOnly;
+out.calmCursor = calmCursorKey;
+out.calmNarrowed = rows();
+out.calmDrewCursor = __els.app.innerHTML.includes('class="cm-row focus');
+
+// The same key in the regular view, on the same payload.
+setDisplayMode("regular");
+render(payload(gates.concat([busy, quiet])));
+g();
+out.regularCursor = gateCursorKey;
+out.regularDrewCursor = /class="need cursor">[\\s\\S]*?gate-oldest</.test(__els.app.innerHTML);
+
+// And with nothing waiting, it does nothing rather than filtering the board
+// down to an empty list.
+gateCursorKey = null;
+render(payload([busy, quiet]));
+g();
+out.noGatesCursor = gateCursorKey;
+setDisplayMode("calm");
+calmAction("clear", null);
+render(payload([busy, quiet]));
+g();
+out.noGatesFilter = calmStateOnly;
+out.noGatesRows = rows();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual("needs", out["calmFiltered"])
+        self.assertEqual("claude:oldest", out["calmCursor"], "calm did not park on the head gate")
+        self.assertEqual(2, out["calmNarrowed"])
+        self.assertTrue(out["calmDrewCursor"])
+        # Both modes walk gateQueue(), so both land on the same session.
+        self.assertEqual("claude:oldest", out["regularCursor"])
+        self.assertTrue(out["regularDrewCursor"], "the regular band did not draw the cursor")
+        self.assertIsNone(out["noGatesCursor"])
+        self.assertIsNone(out["noGatesFilter"], "an empty queue still filtered the board")
+        self.assertEqual(2, out["noGatesRows"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_an_expanded_row_shows_what_the_regular_card_shows(self) -> None:
         checks = """
 const out = {};

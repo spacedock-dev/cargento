@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                27_200,
-                "a973a4b15fe39d99cd41f8344b63985094b94462bea4b4b6d3e3cc1fe0e1f07a",
+                28_318,
+                "c98b28416844bf829a5e9d611ff55a906a163c08a00f389642b387c2cfb2aa3a",
             ),
             "regular.js": (
-                34_808,
-                "bb040630d3d7777f33babc9053bf52aa1019540dbead6f2b7670619cdc596c4d",
+                38_171,
+                "1a76150cc70b3667de4472e6f44fd72824f2c3b0387171e05cbb44bdf813df19",
             ),
             "mode.js": (
                 1_938,
@@ -84,16 +84,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
-                38_380,
-                "00e047f8dc4cef7fd7cb8c41e85ba30113a7cdb3c9d9c82c4595b2f8369d376c",
+                41_889,
+                "961d31609de1a5b0c4203491e9120bc0c92e9e4d7029facae6625776d1c5e20f",
             ),
             "notify.js": (
                 3_185,
                 "afd7a8ff735ea52b95e31a22f60f024d0bb752b7063860abc0e7bb1ae1c0fcae",
             ),
             "main.js": (
-                7_985,
-                "d756dcc8bfc7a67fab0e2aa085e897e52d611ac8a96c4f1bb3e1f42b6fa59faf",
+                8_820,
+                "3b807bda2f69452e5bfbac3b2a3e0b3e033945f6b92c2650166eb4b316494593",
             ),
             "live.js": (
                 6_176,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(42_779, len(styles))
+        self.assertEqual(45_127, len(styles))
         self.assertEqual(
-            "7b0f4c93d4d1f55ab1b709b4efe26878e05262c1e85fcde944c5cbdebbd76883",
+            "609466c6574d03af45b0c11059ff9cdc48f39d9aa3a5095b5501f3eef6a8e6c4",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(217_176, len(assembled))
+        self.assertEqual(228_349, len(assembled))
         self.assertEqual(
-            "5a75bd634b5578013300c0caaa94c7388aca89d171dbcf9cbebd89df8caf5659",
+            "fb390cedf9ec553e62c768b1547588f4c29bf5911ab61ca09e7130f189362ea8",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -2960,13 +2960,13 @@ const data = {
            open_tasks:0, progress_pct:0, total_tasks:0, total_done:0},
   sessions:[activeNeed, inactiveNeed]
 };
-const row = needRow(data, activeNeed);
+const row = needRow(data, activeNeed, 1);
 render(data);
 console.log(JSON.stringify({
   rowUsesPrompt: row.includes("Fallback prompt"),
   rowUsesAnchor: row.includes(">30s<"),
   title: document.title,
-  shownNeeds: (__els.app.innerHTML.match(/class="need"/g) || []).length
+  shownNeeds: (__els.app.innerHTML.match(/class="need[ "]/g) || []).length
 }));
 """
         out = self._run_page_js(checks)
@@ -2979,6 +2979,225 @@ console.log(JSON.stringify({
             },
             out,
         )
+
+    # ── the gate queue ──────────────────────────────────────────────────────
+    # The blocked sessions were already a list on screen. These are about the
+    # queue it became: an order that means something, a position, a handle per
+    # row, and a cursor that walks it. Every one executes the page rather than
+    # matching its source, because a queue is behaviour.
+
+    # `blocked_since` values are what the payload's own sort ranks on, so the
+    # fixture states them in the order the server would have published — this
+    # exercises the page's job, which is to render that order and number it,
+    # not to re-derive it. row_order() in aggregate.py is tested for the sort.
+    GATE_FIXTURE = """
+let __revealed = 0;
+const __app = {innerHTML: "", className: "",
+  // Selector-aware: a stub that answers everything makes "the cursor was
+  // scrolled into view" pass even when the page asked for the wrong element.
+  querySelector(sel){
+    if(sel !== ".need.cursor") return null;
+    if(!__app.innerHTML.includes('class="need cursor"')) return null;
+    return {scrollIntoView(){ __revealed++; }};
+  }};
+__els.app = __app;
+const gate = (sid, blockedSince, detail) => ({
+  harness: "claude", session: sid, sid: sid, project: "repo/proj",
+  title: "gate-" + sid, last_prompt: "p", state: "needs_input",
+  state_detail: detail === undefined ? "permission needed" : detail,
+  active: true, last_activity: 900, blocked_since: blockedSince,
+  rate_per_min: 0, total: 0, done: 0, open: 0, progress_pct: 0, eta_h: null,
+  turn: null, subagents: [], tasks: [], spacedock: null
+});
+const gateBoard = sessions => ({
+  generated: 1000, window_hours: 24, show_all: false, harnesses: [],
+  summary: {needs_input: sessions.length, working: 0, rate_per_min: 0,
+            active_sessions: sessions.length, open_tasks: 0, progress_pct: 0,
+            total_tasks: 0, total_done: 0},
+  sessions
+});
+// The queue as rendered: each row's ordinal and which session it belongs to,
+// read back off the DOM rather than from the model that produced it.
+const queueOnScreen = () => [...__app.innerHTML.matchAll(
+  /class="need(?: cursor)?"><span class="need-n">(\\d+)<[\\s\\S]*?class="need-title">gate-([^<]*)</g)]
+  .map(m => m[1] + ":" + m[2]);
+const cursorOn = () => (__app.innerHTML.match(
+  /class="need cursor">[\\s\\S]*?class="need-title">gate-([^<]*)</) || [])[1] || null;
+const key = e => __fire("keydown", Object.assign(
+  {target: {tagName: "BODY"}, preventDefault(){}}, e));
+"""
+
+    def run_gates(self, checks: str, *, clipboard: str = "none") -> Any:
+        clip = {
+            "none": "const navigator = {};",
+            "ok": (
+                "let __wrote = [];\nconst navigator = {clipboard: {writeText(s){"
+                " __wrote.push(s); return Promise.resolve(); }}};"
+            ),
+        }[clipboard]
+        prelude = (
+            "const localStorage = {getItem: () => null, setItem(){}};\n"
+            + clip
+            + "\nlet __timers = [];\nconst setTimeout = fn => { __timers.push(fn); };\n"
+        )
+        return self._run_page_js(self.GATE_FIXTURE + checks, prelude=prelude)
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_band_renders_the_gates_as_a_numbered_queue(self) -> None:
+        # Three separate pings cost more attention than one list of three, and a
+        # list only reads as a queue if it says where you are in it and how much
+        # is left. The band head carries the total; the rows carry their place.
+        checks = """
+render(gateBoard([gate("aaa", 100), gate("bbb", 500), gate("ccc", 800)]));
+const h = __app.innerHTML;
+console.log(JSON.stringify({
+  queue: queueOnScreen(),
+  waiting: (h.match(/class="band-n">([^<]*)</) || [])[1],
+  hint: (h.match(/class="band-keys">([^<]*)</) || [])[1],
+  handles: (h.match(/class="need-copy"/g) || []).length,
+  title: document.title
+}));
+"""
+        out = self.run_gates(checks)
+        # Payload order preserved and numbered from the top: the page does not
+        # re-sort what the server already ranked.
+        self.assertEqual(["1:aaa", "2:bbb", "3:ccc"], out["queue"])
+        self.assertEqual("3 waiting", out["waiting"])
+        self.assertEqual("j k step · ⏎ copy id", out["hint"])
+        self.assertEqual(3, out["handles"], "a gate row with no way to take it")
+        self.assertEqual("(3!) Cargento", out["title"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_single_gate_is_not_told_to_step_between_rows(self) -> None:
+        # A hint for a movement that cannot move is noise, and the copy handle
+        # is exactly as useful with one row as with five.
+        checks = """
+render(gateBoard([gate("solo", 100)]));
+console.log(JSON.stringify({
+  hint: (__app.innerHTML.match(/class="band-keys">([^<]*)</) || [])[1],
+  waiting: (__app.innerHTML.match(/class="band-n">([^<]*)</) || [])[1]
+}));
+"""
+        out = self.run_gates(checks)
+        self.assertEqual("⏎ copy id", out["hint"])
+        self.assertEqual("1 waiting", out["waiting"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_queue_cursor_steps_and_survives_the_poll(self) -> None:
+        # #app is rebuilt from scratch every poll, so a cursor that lives in the
+        # DOM is a cursor that lasts five seconds. It also must not move on its
+        # own: a highlight that wanders between polls is worse than none.
+        checks = """
+const board = gateBoard([gate("aaa", 100), gate("bbb", 500), gate("ccc", 800)]);
+const out = {};
+render(board);
+out.startsAtHead = cursorOn();
+key({key: "j"});
+out.afterJ = cursorOn();
+out.revealedOnMove = __revealed;
+render(board);                       // the next poll, same payload
+out.afterPoll = cursorOn();
+out.revealedOnPoll = __revealed;     // must not have grown
+key({key: "k"});
+out.afterK = cursorOn();
+key({key: "k"});
+out.clampsAtTop = cursorOn();
+key({key: "ArrowDown"}); key({key: "ArrowDown"}); key({key: "ArrowDown"});
+out.clampsAtBottom = cursorOn();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_gates(checks)
+        self.assertEqual("aaa", out["startsAtHead"], "the queue opens somewhere other than the top")
+        self.assertEqual("bbb", out["afterJ"])
+        self.assertEqual(1, out["revealedOnMove"])
+        self.assertEqual("bbb", out["afterPoll"], "the poll moved the cursor")
+        # Scrolling on every poll would drag the page under a reader looking
+        # somewhere else; only a keystroke earns it.
+        self.assertEqual(1, out["revealedOnPoll"])
+        self.assertEqual("aaa", out["afterK"])
+        self.assertEqual("aaa", out["clampsAtTop"])
+        self.assertEqual("ccc", out["clampsAtBottom"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_answering_a_gate_advances_the_pass_without_stranding_the_cursor(self) -> None:
+        # The whole mechanism: nothing marks a gate handled locally, because a
+        # local mark is a claim the page did not measure and a wrong one hides a
+        # gate that is still open. The server stops calling the session
+        # needs_input, its row leaves the payload, and the cursor inherits.
+        checks = """
+const out = {};
+render(gateBoard([gate("aaa", 100), gate("bbb", 500), gate("ccc", 800)]));
+out.head = cursorOn();
+// Answer the head gate: the next payload simply does not carry it.
+render(gateBoard([gate("bbb", 500), gate("ccc", 800)]));
+out.afterHeadCleared = cursorOn();
+out.renumbered = queueOnScreen();
+// Now stand on the tail and answer something above it. An index-based cursor
+// would slide onto a different session here; a key-based one does not.
+key({key: "j"});
+out.movedToTail = cursorOn();
+render(gateBoard([gate("ccc", 800)]));
+out.tailKept = cursorOn();
+render(gateBoard([]));
+out.emptyQueue = cursorOn();
+out.bandGone = !__app.innerHTML.includes("Needs your input");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_gates(checks)
+        self.assertEqual("aaa", out["head"])
+        self.assertEqual(
+            "bbb", out["afterHeadCleared"], "the cursor was stranded on an answered gate"
+        )
+        self.assertEqual(["1:bbb", "2:ccc"], out["renumbered"])
+        self.assertEqual("ccc", out["movedToTail"])
+        self.assertEqual("ccc", out["tailKept"], "answering another gate moved the cursor off mine")
+        self.assertIsNone(out["emptyQueue"])
+        self.assertTrue(out["bandGone"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_gate_that_cannot_say_what_it_wants_says_so(self) -> None:
+        # The per-row text reaches disk only sometimes (docs/design-needs-input.md).
+        # An empty detail used to render an empty div — the same blank a row with
+        # nothing more to add would leave — so the one row a reader cannot triage
+        # was also the one row that looked ordinary.
+        checks = """
+render(gateBoard([gate("has", 100, "Force push to main?"),
+                  gate("none", 500, null),
+                  gate("empty", 800, "")]));
+const h = __app.innerHTML;
+console.log(JSON.stringify({
+  spoken: h.includes(">Force push to main?<"),
+  unreadable: (h.match(/class="need-detail none"/g) || []).length,
+  says: h.includes(">what it wants is not readable here<"),
+  neverUndefined: !h.includes("undefined") && !h.includes("null<")
+}));
+"""
+        out = self.run_gates(checks)
+        self.assertTrue(out["spoken"], "a detail that exists was not rendered")
+        self.assertEqual(2, out["unreadable"], "an absent detail rendered as a blank line")
+        self.assertTrue(out["says"])
+        self.assertTrue(out["neverUndefined"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_enter_takes_the_gate_the_cursor_is_on(self) -> None:
+        # Answering happens in the session's own terminal, so the act the queue
+        # can offer is the id that finds it. Enter must take the row under the
+        # cursor and not, say, the first one.
+        checks = """
+const out = {};
+render(gateBoard([gate("aaa", 100), gate("bbb", 500)]));
+key({key: "j"});
+key({key: "Enter"});
+await __settle();
+out.wrote = __wrote;
+out.labelled = __app.innerHTML.includes(">copied<");
+out.othersUnchanged = (__app.innerHTML.match(/>copy id</g) || []).length;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_gates(checks, clipboard="ok")
+        self.assertEqual(["bbb"], out["wrote"], "Enter copied the wrong session's id")
+        self.assertTrue(out["labelled"], "no feedback that the id was copied")
+        self.assertEqual(1, out["othersUnchanged"])
 
     def test_long_turn_warning_uses_styled_tooltip_not_native_title(self) -> None:
         # The (!) icon must use the app's styled tooltip (fast, themed), not

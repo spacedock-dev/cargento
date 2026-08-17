@@ -536,15 +536,75 @@ function workingCard(d, sess){
     turnBlock(sess.turn) + subs + sdBlock(sess) + taskBlock(sess) + `</div>`;
 }
 
-function needRow(d, sess){
+/* Which gate the cursor is on. A key that has left the queue resolves to the
+   head rather than being written back, so answering the row you are standing on
+   advances the pass by itself: the server stops calling it needs_input, the row
+   leaves the payload, and the next gate inherits the cursor. That is the whole
+   mechanism — nothing here marks a gate handled, because a local mark is a claim
+   the page did not measure, and a wrong one hides a gate that is still open. */
+function gateFocusKey(queue){
+  if(gateCursorKey && queue.some(x => sessKey(x) === gateCursorKey)) return gateCursorKey;
+  return queue.length ? sessKey(queue[0]) : null;
+}
+
+function gateMove(step){
+  if(!lastData) return;
+  const keys = gateQueue(lastData).map(sessKey);
+  if(!keys.length) return;
+  const i = keys.indexOf(gateFocusKey(gateQueue(lastData)));
+  gateCursorKey = keys[Math.max(0, Math.min(keys.length - 1, (i < 0 ? 0 : i + step)))];
+  gateRevealCursor = true;
+  render(lastData);
+}
+
+/* render() rebuilds #app every poll, so the cursor's scroll position goes with
+   it — the same reason calmRestoreScroll() exists. Only ever after a keystroke
+   moved it: scrolling the band into view on every poll would drag the page
+   around under a reader who is looking somewhere else. */
+function restoreGateCursor(){
+  if(!gateRevealCursor) return;
+  gateRevealCursor = false;
+  const app = document.getElementById("app");
+  const row = (app && app.querySelector) ? app.querySelector(".need.cursor") : null;
+  if(row && row.scrollIntoView) row.scrollIntoView({block: "nearest"});
+}
+
+/* `focusKey` is what gateFocusKey() resolved, not the raw cursor: Enter acts on
+   the head of the queue before anything has been pressed, so the head has to
+   show that it is the target. A selection the keyboard honours and the page does
+   not draw is a hidden one. */
+function needRow(d, sess, pos, focusKey){
   const blocked = fmtDur(d.generated - (sess.blocked_since || sess.last_activity));
-  return `<div class="need"><div style="min-width:0">` +
+  const key = sessKey(sess);
+  /* A blocked row with no detail used to render an empty div: the same blank a
+     row that simply has nothing more to say would leave, which in a queue reads
+     as "nothing to add" rather than "not readable". The text is on disk only
+     sometimes — see docs/design-needs-input.md — so the queue has to be able to
+     say it does not have it, and a queue row that says nothing at all is the one
+     row a person cannot triage. */
+  const detail = humanTool(sess.state_detail);
+  const detailHtml = detail
+    ? `<div class="need-detail" title="${esc(sess.state_detail)}">${esc(detail)}</div>`
+    : `<div class="need-detail none" title="This session is blocked on you, but nothing` +
+      ` it has written says what it is asking for. Open it to read the prompt.">` +
+      `what it wants is not readable here</div>`;
+  const copied = calmCopyNote && calmCopyNote.key === key;
+  return `<div class="need${focusKey === key ? " cursor" : ""}">` +
+    `<span class="need-n">${pos}</span><div class="need-main">` +
     `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)} · ${esc(sess.session)}` +
     `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>` +
     `<div class="need-title">${esc(sess.title || sess.last_prompt || sess.project)}</div>` +
-    `<div class="need-detail" title="${esc(sess.state_detail)}">` +
-    `${esc(humanTool(sess.state_detail))}</div></div>` +
-    `<div style="flex:none"><div class="blocked-k">blocked</div><div class="blocked-v">${esc(blocked)}</div></div></div>`;
+    detailHtml + `</div>` +
+    /* The queue's one handle. `data-calm` is the page's single action channel,
+       not a calm-mode one — the document listener that routes it is global — and
+       reusing it is what keeps one copy-to-clipboard implementation instead of
+       two that report success differently. Renaming the attribute would touch
+       calm.js, controls.js, usage.js and their tests for no behaviour. */
+    `<div class="need-act"><div class="blocked-k">blocked</div>` +
+    `<div class="blocked-v">${esc(blocked)}</div>` +
+    `<button type="button" class="need-copy" data-calm="copy"` +
+    ` data-arg="${esc(key)}" title="copy this session's id">` +
+    `${copied ? esc(calmCopyNote.text) : "copy id"}</button></div></div>`;
 }
 
 function idleRow(d, sess){
