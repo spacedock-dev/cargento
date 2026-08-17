@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                28_318,
-                "c98b28416844bf829a5e9d611ff55a906a163c08a00f389642b387c2cfb2aa3a",
+                28_084,
+                "287f0971ff09de7a7df3869cdfe93ad002a74450ff0e97f87b9500324acc385c",
             ),
             "regular.js": (
-                38_171,
-                "1a76150cc70b3667de4472e6f44fd72824f2c3b0387171e05cbb44bdf813df19",
+                37_479,
+                "b519bc26d48488a6121de581057c5249d676832305165ce6bf7782e5d5f054e2",
             ),
             "mode.js": (
                 1_938,
@@ -84,16 +84,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
-                41_889,
-                "961d31609de1a5b0c4203491e9120bc0c92e9e4d7029facae6625776d1c5e20f",
+                42_009,
+                "413e946d188c56ecb7403d199d79042777f6e2e022c31b2b70bc1520a426ae30",
             ),
             "notify.js": (
                 3_185,
                 "afd7a8ff735ea52b95e31a22f60f024d0bb752b7063860abc0e7bb1ae1c0fcae",
             ),
             "main.js": (
-                8_820,
-                "3b807bda2f69452e5bfbac3b2a3e0b3e033945f6b92c2650166eb4b316494593",
+                9_094,
+                "7ce44003973ca6845f63d5dc1be20e100ce254cd7221d4b8c47d70baa836f920",
             ),
             "live.js": (
                 6_176,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(45_127, len(styles))
+        self.assertEqual(44_998, len(styles))
         self.assertEqual(
-            "609466c6574d03af45b0c11059ff9cdc48f39d9aa3a5095b5501f3eef6a8e6c4",
+            "505bdf665d67465e48364105c43f211c7a59102309c6c4be7e53dedff92ba1f0",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(228_349, len(assembled))
+        self.assertEqual(227_688, len(assembled))
         self.assertEqual(
-            "fb390cedf9ec553e62c768b1547588f4c29bf5911ab61ca09e7130f189362ea8",
+            "e81de7a1056c4eca5a5a374209f4bf837662547c839281ebcd5421c74246252e",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1116,7 +1116,7 @@ const plain = sess("cl1", "claude", {provider: null, model: null});
 const d = board([spender, blocked, stopped, plain]);
 const metaOf = h => seen((h.match(/class="(?:card|need)-meta">(.*?)<\\/div>/) || [null, ""])[1]);
 out.working = metaOf(workingCard(d, spender));
-out.needs = metaOf(needRow(d, blocked));
+out.needs = metaOf(needRow(d, blocked, 1));
 out.idle = seen(idleRow(d, stopped));
 // A row whose harness keeps no ledger ends at its session id: the separator
 // belongs to the helper, so nothing renders a trailing " · ".
@@ -2992,7 +2992,17 @@ console.log(JSON.stringify({
     # not to re-derive it. row_order() in aggregate.py is tested for the sort.
     GATE_FIXTURE = """
 let __revealed = 0;
+let __focused = null;
+// Every [data-calm] control in the rendered markup, as something that answers
+// getAttribute() and focus() the way a real element would.
+const __controls = () => [...__app.innerHTML.matchAll(
+    /data-calm="([^"]*)"(?: data-arg="([^"]*)")?/g)].map(m => ({
+  getAttribute: a => a === "data-calm" ? m[1]
+    : (a === "data-arg" ? (m[2] === undefined ? null : m[2]) : null),
+  focus(){ __focused = m[1] + ":" + (m[2] === undefined ? "" : m[2]); }
+}));
 const __app = {innerHTML: "", className: "",
+  querySelectorAll: () => __controls(),
   // Selector-aware: a stub that answers everything makes "the cursor was
   // scrolled into view" pass even when the page asked for the wrong element.
   querySelector(sel){
@@ -3102,7 +3112,7 @@ key({key: "k"});
 out.afterK = cursorOn();
 key({key: "k"});
 out.clampsAtTop = cursorOn();
-key({key: "ArrowDown"}); key({key: "ArrowDown"}); key({key: "ArrowDown"});
+key({key: "j"}); key({key: "j"}); key({key: "j"});
 out.clampsAtBottom = cursorOn();
 console.log(JSON.stringify(out));
 """
@@ -3198,6 +3208,107 @@ console.log(JSON.stringify(out));
         self.assertEqual(["bbb"], out["wrote"], "Enter copied the wrong session's id")
         self.assertTrue(out["labelled"], "no feedback that the id was copied")
         self.assertEqual(1, out["othersUnchanged"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_bands_copy_button_reaches_the_one_clipboard_implementation(self) -> None:
+        # The band's handle is a [data-calm] control routed by the global click
+        # listener, which lives in calm.js. Fired as a click, not by calling the
+        # action directly: a guard added to that listener — a displayMode check,
+        # say — would take the button out of service, and every other test here
+        # drives it through the keyboard, which does not go through the listener.
+        checks = """
+render(gateBoard([gate("aaa", 100), gate("bbb", 500)]));
+const btn = /data-calm="copy" data-arg="([^"]*)"/g;
+const args = [...__app.innerHTML.matchAll(btn)].map(m => m[1]);
+// The second row's button, resolved the way closest() would resolve it.
+__fire("click", {target: {closest: sel => sel === "[data-calm]" ? {
+  getAttribute: a => a === "data-calm" ? "copy" : (a === "data-arg" ? args[1] : null)
+} : null}});
+await __settle();
+console.log(JSON.stringify({
+  args, wrote: __wrote, labelled: __app.innerHTML.includes(">copied<")
+}));
+"""
+        out = self.run_gates(checks, clipboard="ok")
+        self.assertEqual(["claude:aaa", "claude:bbb"], out["args"])
+        self.assertEqual(["bbb"], out["wrote"], "the click did not reach calmCopyId")
+        self.assertTrue(out["labelled"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_regular_view_leaves_the_pages_own_scroll_keys_alone(self) -> None:
+        # Calm binds the arrows and Space because its ledger scrolls inside its
+        # own frame. The regular view is an ordinary long page, so taking those
+        # would remove paging and line-scrolling — and remove them only while
+        # something is blocked, since the branch returns early on an empty queue.
+        checks = """
+const out = {};
+let prevented = [];
+const press = k => __fire("keydown", {key: k, target: {tagName: "BODY"},
+                                      preventDefault(){ prevented.push(k); }});
+render(gateBoard([gate("aaa", 100), gate("bbb", 500)]));
+for(const k of [" ", "ArrowDown", "ArrowUp", "PageDown", "Home"]) press(k);
+out.scrollKeysFree = prevented;
+out.cursorUnmoved = cursorOn();
+// Snapshot: `__wrote` is the same array the Enter below pushes to.
+out.nothingCopied = [...__wrote];
+prevented = [];
+for(const k of ["j", "k", "Enter"]) press(k);
+out.queueKeysTaken = prevented;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_gates(checks, clipboard="ok")
+        self.assertEqual([], out["scrollKeysFree"], "the band swallowed a page scroll key")
+        self.assertEqual("aaa", out["cursorUnmoved"], "an arrow key moved the queue cursor")
+        self.assertEqual([], out["nothingCopied"], "Space copied a session id")
+        self.assertEqual(["j", "k", "Enter"], out["queueKeysTaken"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_keyboard_focus_on_a_gate_handle_survives_the_render_it_triggers(self) -> None:
+        # #app is rebuilt wholesale, so the focused element stops existing.
+        # Activating `copy id` from the keyboard re-renders to show "copied", and
+        # without the hand-off calm mode already does, focus lands on <body> and
+        # the next Tab restarts at the top of the document. Same control, same
+        # rebuild, so it needs the same treatment in both views.
+        checks = """
+const out = {};
+render(gateBoard([gate("aaa", 100), gate("bbb", 500)]));
+// Tab to the second row's handle, then activate it.
+document.activeElement = {getAttribute: a => a === "data-calm" ? "copy"
+  : (a === "data-arg" ? "claude:bbb" : null)};
+calmAction("copy", "claude:bbb");
+await __settle();
+out.afterActivation = __focused;
+// And an ordinary poll must not drop it either.
+__focused = null;
+render(gateBoard([gate("aaa", 100), gate("bbb", 500)]));
+out.afterPoll = __focused;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_gates(checks, clipboard="ok")
+        self.assertEqual("copy:claude:bbb", out["afterActivation"], "focus fell off the handle")
+        self.assertEqual("copy:claude:bbb", out["afterPoll"], "the poll dropped keyboard focus")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_an_emptied_queue_does_not_keep_its_cursor(self) -> None:
+        # Otherwise the key outlives the queue, and the same session blocking
+        # again later inherits a cursor that should have been on whichever gate
+        # has waited longest.
+        checks = """
+const out = {};
+render(gateBoard([gate("aaa", 100), gate("bbb", 500)]));
+key({key: "j"});
+out.moved = cursorOn();
+render(gateBoard([]));            // every gate answered
+out.cleared = gateCursorKey;
+// `bbb` blocks again, behind a gate that has waited longer.
+render(gateBoard([gate("ccc", 50), gate("bbb", 900)]));
+out.head = cursorOn();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_gates(checks)
+        self.assertEqual("bbb", out["moved"])
+        self.assertIsNone(out["cleared"], "the cursor outlived the queue")
+        self.assertEqual("ccc", out["head"], "a stale cursor beat the longest-waiting gate")
 
     def test_long_turn_warning_uses_styled_tooltip_not_native_title(self) -> None:
         # The (!) icon must use the app's styled tooltip (fast, themed), not

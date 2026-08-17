@@ -15,6 +15,10 @@ function render(d){
   syncNotifications(d);
   const app = document.getElementById("app");
   const needs = gateQueue(d);
+  /* An answered queue leaves its cursor behind otherwise, and the same session
+     blocking again later would inherit it — landing the cursor mid-queue on a
+     board whose head is a gate that has waited longer. */
+  if(!needs.length) gateCursorKey = null;
   if(!app){
     document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
     return;
@@ -37,6 +41,11 @@ function render(d){
     return;
   }
   const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
+  /* The band's `copy id` is a [data-calm] control like calm's, and this view
+     rebuilds #app the same way, so it needs the same focus hand-off: without it,
+     activating the button from the keyboard drops focus to <body> and the next
+     Tab restarts at the top of the document. */
+  const actionFocused = calmFocusKey();
   // Capture pointer position before render so we can restore it afterward, even if
   // pointermove fires during the render operation.
   const savedPointer = sparkPointer ? {x: sparkPointer.x, y: sparkPointer.y} : null;
@@ -59,13 +68,7 @@ function render(d){
       `<span>${s.total_done}/${s.total_tasks} tracked tasks done</span>`
     : `<span>no active session uses tracked tasks</span>`;
 
-  /* One pass, top to bottom, rather than N context switches. The band was
-     already this list; what it was missing was an order that means something
-     (longest-blocked first, set server-side), a position so it reads as a queue
-     that shrinks, and a handle per row so taking one does not mean reading a
-     session id off the screen by eye.
-
-     The keys are advertised here because the regular view has no legend footer
+  /* The keys are advertised here because the regular view has no legend footer
      to put them in, and `j k step` only when there is more than one row to step
      between — a hint for a movement that cannot move is noise. */
   const hint = (needs.length > 1 ? "j k step · " : "") + "⏎ copy id";
@@ -121,6 +124,7 @@ function render(d){
   renderInProgress = false;
 
   restoreSparkState(sparkFocused, savedPointer);
+  calmRestoreFocus(actionFocused);
   restoreStopFocus();
   restoreGateCursor();
   document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";

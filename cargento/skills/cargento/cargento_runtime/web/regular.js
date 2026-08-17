@@ -536,12 +536,10 @@ function workingCard(d, sess){
     turnBlock(sess.turn) + subs + sdBlock(sess) + taskBlock(sess) + `</div>`;
 }
 
-/* Which gate the cursor is on. A key that has left the queue resolves to the
-   head rather than being written back, so answering the row you are standing on
-   advances the pass by itself: the server stops calling it needs_input, the row
-   leaves the payload, and the next gate inherits the cursor. That is the whole
-   mechanism — nothing here marks a gate handled, because a local mark is a claim
-   the page did not measure, and a wrong one hides a gate that is still open. */
+/* Resolved, not written back: a cursor whose gate has left the queue falls to
+   the head, which is what advances the pass when you answer the row you are
+   standing on. See docs/design-needs-input.md for why the page tracks no
+   handled state of its own. */
 function gateFocusKey(queue){
   if(gateCursorKey && queue.some(x => sessKey(x) === gateCursorKey)) return gateCursorKey;
   return queue.length ? sessKey(queue[0]) : null;
@@ -549,18 +547,17 @@ function gateFocusKey(queue){
 
 function gateMove(step){
   if(!lastData) return;
-  const keys = gateQueue(lastData).map(sessKey);
-  if(!keys.length) return;
-  const i = keys.indexOf(gateFocusKey(gateQueue(lastData)));
+  const queue = gateQueue(lastData);
+  if(!queue.length) return;
+  const keys = queue.map(sessKey);
+  const i = keys.indexOf(gateFocusKey(queue));
   gateCursorKey = keys[Math.max(0, Math.min(keys.length - 1, (i < 0 ? 0 : i + step)))];
   gateRevealCursor = true;
   render(lastData);
 }
 
-/* render() rebuilds #app every poll, so the cursor's scroll position goes with
-   it — the same reason calmRestoreScroll() exists. Only ever after a keystroke
-   moved it: scrolling the band into view on every poll would drag the page
-   around under a reader who is looking somewhere else. */
+/* Flagged rather than unconditional: scrolling the band into view on every poll
+   would drag the page around under a reader who is looking somewhere else. */
 function restoreGateCursor(){
   if(!gateRevealCursor) return;
   gateRevealCursor = false;
@@ -576,12 +573,9 @@ function restoreGateCursor(){
 function needRow(d, sess, pos, focusKey){
   const blocked = fmtDur(d.generated - (sess.blocked_since || sess.last_activity));
   const key = sessKey(sess);
-  /* A blocked row with no detail used to render an empty div: the same blank a
-     row that simply has nothing more to say would leave, which in a queue reads
-     as "nothing to add" rather than "not readable". The text is on disk only
-     sometimes — see docs/design-needs-input.md — so the queue has to be able to
-     say it does not have it, and a queue row that says nothing at all is the one
-     row a person cannot triage. */
+  /* An empty div here is the same blank a row with nothing to add would leave,
+     so the row that cannot be triaged was the row that looked ordinary. The text
+     reaches disk only sometimes: docs/design-needs-input.md. */
   const detail = humanTool(sess.state_detail);
   const detailHtml = detail
     ? `<div class="need-detail" title="${esc(sess.state_detail)}">${esc(detail)}</div>`
@@ -595,11 +589,10 @@ function needRow(d, sess, pos, focusKey){
     `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>` +
     `<div class="need-title">${esc(sess.title || sess.last_prompt || sess.project)}</div>` +
     detailHtml + `</div>` +
-    /* The queue's one handle. `data-calm` is the page's single action channel,
-       not a calm-mode one — the document listener that routes it is global — and
-       reusing it is what keeps one copy-to-clipboard implementation instead of
-       two that report success differently. Renaming the attribute would touch
-       calm.js, controls.js, usage.js and their tests for no behaviour. */
+    /* `data-calm` is the page's single action channel, not a calm-mode one — the
+       document listener that routes it is global — so this row reaches the same
+       clipboard implementation rather than a second one that would report
+       success differently. */
     `<div class="need-act"><div class="blocked-k">blocked</div>` +
     `<div class="blocked-v">${esc(blocked)}</div>` +
     `<button type="button" class="need-copy" data-calm="copy"` +

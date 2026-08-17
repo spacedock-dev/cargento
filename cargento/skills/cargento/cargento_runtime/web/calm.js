@@ -121,13 +121,10 @@ function calmRow(d, x){
     consumption: x.consumption || null, active: !!x.active,
     st,
     title,
-    /* An empty `doing` cell means "not applicable" everywhere else in this
-       ledger — it is what a row that is not working leaves in `rate`. On a
-       blocked row it would mean something quite different and read the same, so
-       the queue says which it is here as well as in the band. Shorter wording
-       than the band's because the column truncates; the tooltip carries the
-       rest. Only for `needs`: an idle or working row with no detail has nothing
-       it is asking for, so there is nothing to be missing. */
+    /* An empty `doing` cell already means "not applicable" in this ledger — it is
+       what a row that is not working leaves in `rate`. On a blocked row the same
+       blank means "nobody could read what it wants", so it says which. Shorter
+       than the band's wording because this column truncates. */
     doing: humanTool(x.state_detail) ||
       (st === "needs" ? "not readable" : ""),
     doingUnread: st === "needs" && !humanTool(x.state_detail),
@@ -136,6 +133,8 @@ function calmRow(d, x){
         ? "Blocked on you, but nothing this session has written says what it is asking for."
         : null),
     ageSec, waitSec, turn, flag, tone, why,
+    /* What byWait ranks on, unclamped, beside the `waitSec` that renders. */
+    blockedAt: x.blocked_since || x.last_activity || 0,
     sortAge: st === "work" ? 0 : ageSec,   /* see byAge — a working row's age is noise */
     rail: CALM_RAIL[st] || CALM_RAIL.idle,
     /* The prompt is only worth quoting when the title is not already it. */
@@ -208,17 +207,18 @@ function calmFilter(all){
    makes server-side for the same reason. */
 const bySid = (a, b) => (a.sid < b.sid ? -1 : (a.sid > b.sid ? 1 : 0));
 const byAge = (a, b) => a.sortAge - b.sortAge || bySid(a, b);
-/* Longest-blocked first, and only ever applied to the needs rows — the queue
-   order, the same one aggregate.py gives the payload so the band and the ledger
-   cannot disagree about which gate is at the head. `waitSec` is a fixed
-   `blocked_since` subtracted from the payload's one clock, so every row shifts
-   by the same amount per poll and the order is as stable as byAge's. */
-const byWait = (a, b) => b.waitSec - a.waitSec || bySid(a, b);
+/* Longest-blocked first: the queue order, ranked on the same raw field
+   aggregate.py sorts the payload by. Not on `waitSec`, which is the rendered
+   elapsed time and floors at 0 — two rows carrying implausibly future stamps
+   would both clamp to zero here and fall to the id, while the server still
+   ordered them by the stamps, and the two views would name a different gate at
+   the head. A fixed timestamp is also what keeps the order stable across a
+   poll, which an elapsed time is not. */
+const byWait = (a, b) => a.blockedAt - b.blockedAt || bySid(a, b);
 /* Newest-first is right for a row you are watching and wrong for one that is
    waiting on you: it puts the gate you just saw open above the one that has held
-   you up for an hour. Rank 0 is exactly the needs rows — `attn` is the only tone
-   set for them and the only tone ranked 0 — so this branch reaches nothing else,
-   and the `recent` ordering keeps genuine newest-first for every state. */
+   you up for an hour. `recent` keeps genuine newest-first for every state,
+   because it takes byAge directly. */
 const byRank = (a, b) => a.rank - b.rank ||
   (a.st === "needs" && b.st === "needs" ? byWait(a, b) : byAge(a, b));
 /* Fastest known rate first. Only ever applied to working rows whose rate is
@@ -425,6 +425,11 @@ function gateJump(){
   const queue = gateQueue(lastData);
   if(!queue.length) return;
   if(displayMode === "calm"){
+    /* The ordering too, not just the filter. Narrowing to the blocked rows under
+       `recent` renders the queue exactly backwards with the cursor on the last
+       row, and under `fastest` files them beneath "not working now". `g` names a
+       queue, so it has to leave the reader in the queue's order. */
+    calmSort = "attention";
     calmStateOnly = "needs";
     calmOpenKey = null;
     calmCursorKey = sessKey(queue[0]);
@@ -465,25 +470,24 @@ document.addEventListener("keydown", e => {
   if(disarmStop() && lastData) render(lastData);
   /* `c` works in both modes — it is the way back out of calm. */
   if(k === "c"){ stop(); setDisplayMode(displayMode === "calm" ? "regular" : "calm"); return; }
-  /* So does `g`, for the same reason: the queue is the one thing on the board
-     that is waiting on the reader, and which rendering they happen to be in is
-     not a reason to make it harder to reach from one of them. */
+  /* And so does `g` — the queue is reachable from whichever mode you are in. */
   if(k === "g"){ stop(); gateJump(); return; }
   if(!lastData) return;
   /* A focused button already answers Enter and Space itself. */
   if((k === "Enter" || k === " ") && e.target && e.target.closest &&
      e.target.closest("a[href],button,select,textarea,input,[tabindex]")) return;
-  /* The regular view's keyboard is the gate queue and nothing else. There is no
-     cursor over working cards or the idle list to collide with — ordering those
-     is D7's question, not this one — so `j`/`k` here mean "step the queue", and
-     Enter takes the row you are on: copying the id is the act, since answering
-     happens in the session's own terminal and finding it is the trip left. */
+  /* `j`/`k` and nothing else. Calm binds the arrows and Space as well, and can:
+     its ledger scrolls inside its own frame, under its own cursor. The regular
+     view is an ordinary long page, so preventDefault on those would take away
+     paging and line-scrolling — and take them away only while something is
+     blocked, since the guard below returns early on an empty queue. Scroll keys
+     that work or not depending on the payload are worse than no bindings. */
   if(displayMode !== "calm"){
     const queue = gateQueue(lastData);
     if(!queue.length) return;
-    if(k === "j" || k === "ArrowDown"){ stop(); gateMove(1); }
-    else if(k === "k" || k === "ArrowUp"){ stop(); gateMove(-1); }
-    else if(k === "Enter" || k === " "){
+    if(k === "j"){ stop(); gateMove(1); }
+    else if(k === "k"){ stop(); gateMove(-1); }
+    else if(k === "Enter"){
       stop();
       const key = gateFocusKey(queue);
       if(key) calmAction("copy", key);

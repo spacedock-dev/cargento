@@ -515,8 +515,15 @@ const at = (sid, since) => mk({sid, session: sid, title: "gate-" + sid,
 const gates = [at("oldest", 98000), at("newest", 99900)];
 const g = () => __fire("keydown", {key: "g", target: {tagName: "BODY"},
                                    preventDefault(){}});
+// From `recent`, which orders these rows the exact opposite way. Narrowing
+// without re-ordering would render the queue backwards with the cursor on the
+// last row, so `g` has to set the ordering as well as the filter.
+calmAction("sort", "recent");
 render(payload(gates.concat([busy, quiet])));
 g();
+out.calmSorted = calmSort;
+out.calmOrder = [...__els.app.innerHTML.matchAll(
+  /class="cm-title"[^>]*>gate-([a-z]+)</g)].map(m => m[1]);
 out.calmFiltered = calmStateOnly;
 out.calmCursor = calmCursorKey;
 out.calmNarrowed = rows();
@@ -530,8 +537,8 @@ out.regularCursor = gateCursorKey;
 out.regularDrewCursor = /class="need cursor">[\\s\\S]*?gate-oldest</.test(__els.app.innerHTML);
 
 // And with nothing waiting, it does nothing rather than filtering the board
-// down to an empty list.
-gateCursorKey = null;
+// down to an empty list. The render clears the cursor with the queue, so this
+// needs no reset of its own.
 render(payload([busy, quiet]));
 g();
 out.noGatesCursor = gateCursorKey;
@@ -544,6 +551,8 @@ out.noGatesRows = rows();
 console.log(JSON.stringify(out));
 """
         out = self.run_calm(checks)
+        self.assertEqual("attention", out["calmSorted"], "`g` narrowed but left the wrong order")
+        self.assertEqual(["oldest", "newest"], out["calmOrder"])
         self.assertEqual("needs", out["calmFiltered"])
         self.assertEqual("claude:oldest", out["calmCursor"], "calm did not park on the head gate")
         self.assertEqual(2, out["calmNarrowed"])

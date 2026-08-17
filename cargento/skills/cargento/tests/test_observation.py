@@ -851,17 +851,16 @@ class RowOrderTest(unittest.TestCase):
         ]
         self.assertEqual(["none", "has", "null"], self._sorted(rows))
 
-    def test_the_order_does_not_move_as_the_wait_lengthens(self) -> None:
-        # It ranks on a fixed timestamp, not an elapsed time, so the queue does
-        # not reshuffle under a reader while every row in it waits longer. Same
-        # rule the frontend follows, and the reason the sort key is not a wait.
-        rows = [
-            self._row("aaa", "needs_input", blocked_since=900),
-            self._row("bbb", "needs_input", blocked_since=100),
-        ]
-        first = self._sorted(rows)
-        self.assertEqual(first, self._sorted(rows), "the key read something other than the row")
-        self.assertEqual(["bbb", "aaa"], first)
+    def test_the_queue_ranks_on_the_timestamp_itself_not_an_elapsed_wait(self) -> None:
+        # The property that keeps the queue from reshuffling under a reader as
+        # every row in it waits longer. Asserted on the key rather than on a
+        # sorted order, because any monotonic function of `blocked_since` sorts
+        # the same and only the raw value is stable across refreshes.
+        row = self._row("aaa", "needs_input", blocked_since=1_700_000_042.5)
+        self.assertEqual(1_700_000_042.5, aggregate.row_order(row)[1])
+        # And nothing in the key can vary while the row does not: two calls
+        # separated by real time agree.
+        self.assertEqual(aggregate.row_order(row), aggregate.row_order(dict(row)))
 
 
 class StateDisputeTest(unittest.TestCase):

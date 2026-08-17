@@ -31,18 +31,16 @@ def row_order(session: Session) -> tuple[int, float, str]:
     Session id as the last tiebreaker (not last_activity) so rows don't reshuffle
     on every refresh while sessions are generating.
 
-    The middle key is the gate queue, and it is only ever non-zero for a blocked
-    row: those arrive longest-blocked first, which is the order a person should
-    work them in. Session id is an arbitrary order to be stopped in, and the gate
-    that has held someone up longest is the one still costing something. It ranks
-    on `blocked_since`, a fixed timestamp rather than an elapsed time, so the
-    order does not churn between refreshes — the rule CONTRIBUTING.md states for
-    the frontend, and the same one applies to the payload the frontend renders in
-    the order it arrives.
+    The middle key is the gate queue: blocked rows arrive longest-blocked first,
+    because session id is an arbitrary order to be stopped in and the gate that
+    has held someone up longest is the one still costing something. It ranks on
+    the timestamp rather than on the elapsed wait so that the order cannot churn
+    as every row in it waits longer.
 
-    Working rows pass 0 and fall through to the id exactly as before. They have no
-    standing wait to rank on, and ranking them at all is D7's question rather than
-    this one's.
+    `last_activity` stands in where a wait carries no `blocked_since`: only
+    Claude's collector and the event overlays set that field, and a harness
+    without it must still take a place in the queue rather than sorting to the
+    front on a zero.
     """
     wait = 0.0
     if session["state"] == "needs_input":

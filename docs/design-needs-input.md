@@ -391,3 +391,38 @@ emit sites in an installed 2.1.226 bundle rather than observed on the wire. No c
 so getting one needs an interactive session. Two specific values are inferred rather than seen: which
 one a plain main-session permission prompt carries, and that a worker's network request has no
 `PermissionRequest` behind it.
+
+## N-8: the queue clears itself out of measurements, and holds no state of its own
+
+The gates were on screen before they were a queue (DRC-4018). What B7 added was an order that means
+something, a position, a handle, and a cursor. What it deliberately did not add is any record of
+which gates you have dealt with.
+
+That is the obvious feature and it was rejected. A "handled" mark would be the page asserting
+something no collector measured: Cargento never writes to a session and cannot observe an answer, so
+the mark could only record that a person clicked something. Two failure modes follow, and the second
+is the serious one. A mark that is right is redundant — the session leaves `needs_input` within a
+poll and the row goes on its own. A mark that is wrong **hides a gate that is still open**, which is
+the exact failure the needs-input band exists to prevent, now caused by the surface built to prevent
+it. The asymmetry decides it: the redundant case costs nothing and the wrong case costs everything.
+
+So the pass is driven entirely by the payload. You answer in the session's own terminal; the
+collector stops calling that session blocked; the row leaves the queue on the next refresh. The
+cursor is held as a session key rather than an index precisely so this works — `gateFocusKey()`
+resolves a key that has left the queue to the current head instead of writing the fallback back, so
+answering the row you are standing on advances the pass, and answering a row above the one you are
+standing on does not slide the cursor onto a different session. A cursor held as an index would do
+the second thing silently.
+
+The same reasoning is why the queue's order is published by the server rather than derived in the
+page. `row_order()` in `aggregate.py` ranks blocked rows by `blocked_since`; both views render that
+order rather than each re-deriving it, so the band and the ledger cannot name a different gate at the
+head. Calm's `attention` ordering ranks on the raw timestamp for the same reason, not on the elapsed
+`waitSec` it displays: that value floors at zero, so two implausibly future stamps would tie in the
+ledger while the server still separated them.
+
+### What it deliberately does not do
+
+It does not tell you how long answering will take, which gate is cheapest to clear, or which is most
+urgent beyond how long it has waited. Waiting time is the only ranking signal the payload actually
+carries; anything richer would be a guess dressed as an ordering.

@@ -51,16 +51,6 @@ its own.
 
 MCP tools appear under the service being called rather than their wire name — `Linear · list issues`, not the double-underscored triple the harness records. The full original string is in the row's tooltip.
 
-## The gate queue
-
-Every session blocked on you is one list, worked top to bottom, rather than a ping per session. It is the `Needs your input` band in regular mode and the `needs you` filter in calm; `g` goes there from either. Both are the same queue in the same order, because both read the order the server published.
-
-That order is longest-blocked first. The gate that has held you up longest is the one still costing something, and the one you are least likely to have remembered; the gate that just opened is the one you already know about. Rows are numbered from the top and the head says how many are waiting, so the queue reads as a queue and you can watch it shrink. It ranks on when each wait began rather than on how long it has run, so nothing reshuffles under you while you read. Two gates blocked at the same instant fall through to the session id, the same last tiebreaker every other ordering uses. Only the blocked rows are ordered this way — calm's `recent` is still genuinely newest-first, for these rows as for every other.
-
-Each row carries what the session is waiting for where that reached disk, and says so plainly where it did not: `what it wants is not readable here` rather than a blank line, because the one row you cannot triage should not be the one row that looks ordinary. Which gates supply the text and which cannot is [Session states](#session-states) above — Claude Code flushes the record on its own schedule, so a permission prompt usually reads and an open question sometimes does not.
-
-Keys: `j`/`k` or arrows step the queue, `⏎` copies the id of the gate you are on, `g` jumps back to the head. Nothing here marks a gate answered — Cargento does not write to a session, and a mark it did not measure would hide a gate that is still open. Answer in the session's own terminal and the row leaves the queue on its own, on the next refresh, because the server stopped calling it blocked. The cursor moves to whatever is now at the top.
-
 Calm mode's own controls: the three state counts in the header filter by state, `order` sorts by `attention` (flagged and blocking states first, longest-blocked first within the blocked rows and newest within every other group), `recent`, `repo` (grouped, with a heading per project), or `fastest` (working rows only, highest token rate first, under a heading naming the window that rate is a mean over; nothing the ordering cannot rank is sorted to the bottom of the descending list as if it were the slowest, so rows whose harness reports no rate and rows that are not working each sit under a heading saying which of the two they are — a trailing mean still credits a session that stopped a minute ago, and leading with that row would send you to an agent doing nothing; and when every rate it can read is zero there is no race to rank, so those rows keep their own heading instead of being presented in an arbitrary order as a ranking), and the `◆ N flagged` pill narrows to flagged rows. Keys: `j`/`k` or arrows move the cursor, `⏎` expands, `f` toggles the flagged filter, `g` narrows to the gate queue, `c` switches mode, `esc` clears filters. Row order is stable across a refresh in the first three orderings, so rows do not move under the cursor while you read; `fastest` is the deliberate exception, because it ranks on a number that changes and an order that could not change would not answer the question it was picked to answer.
 
 Three flags appear in the `flag` column, and only these three — each is a signal the server actually detects, so no flag means nothing is known to be wrong:
@@ -70,6 +60,18 @@ Three flags appear in the `flag` column, and only these three — each is a sign
 | **your call** (red) | Needs input. You are the blocker. |
 | **long turn** (amber) | Working, and this request has run or is estimated to run ≥15 min (`LONG_TURN_WARN_SEC`) — the same signal as the regular view's ⚠️. |
 | **stale** (gray) | Idle with no activity for ≥2h. Either it finished quietly and nobody read the result, or it is waiting on a reply that never came. |
+
+## The gate queue
+
+Every session blocked on you is one list, worked top to bottom, rather than a ping per session. It is the `Needs your input` band in regular mode and the `needs you` filter in calm; `g` goes there from either, and in calm it also switches the order to `attention`, so both land you on the same gate in the same order — the one the server published.
+
+That order is longest-blocked first. The gate that has held you up longest is the one still costing something, and the one you are least likely to have remembered; the gate that just opened is the one you already know about. Rows are numbered from the top and the head says how many are waiting, so the queue reads as a queue and you can watch it shrink. It ranks on when each wait began rather than on how long it has run, so nothing reshuffles under you while you read. Two gates blocked at the same instant fall through to the session id, the same last tiebreaker every other ordering uses. Only the blocked rows are ordered this way, and only where an ordering ranks by attention at all: calm's `attention` and its `repo` groups put them longest-blocked first, `recent` is still genuinely newest-first for every state, and `fastest` ranks working rows and files the blocked ones under a heading of their own.
+
+Each row carries what the session is waiting for where that reached disk, and says so plainly where it did not: `what it wants is not readable here` rather than a blank line, because the one row you cannot triage should not be the one row that looks ordinary. Which gates supply the text and which cannot is [Session states](#session-states) above — Claude Code flushes the record on its own schedule, so a permission prompt usually reads and an open question sometimes does not.
+
+Keys: `g` reaches the queue and puts the cursor on its head from either mode. In regular mode `j`/`k` then step it and `⏎` copies the id of the gate you are on — and only those, so the arrows and space still scroll the page. In calm mode the ledger's own keys take over, where `⏎` expands a row rather than copying it; every row there carries a `copy id` button.
+
+Nothing marks a gate answered. Cargento does not write to a session, so a mark would record only that you clicked something, and a wrong one would hide a gate that is still open — the exact failure this band exists to prevent. Answer in the session's own terminal instead and the row leaves the queue on its own, on the next refresh, because the server stopped calling it blocked. The cursor moves to whatever is now at the top.
 
 ## Usage and rate limits
 
