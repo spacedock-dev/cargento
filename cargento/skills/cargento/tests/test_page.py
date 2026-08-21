@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                36_918,
-                "cf837c0430c6417c2e58ccee57750f8d761a98414b4cfffcb55faf4298a30892",
+                37_827,
+                "d3831f32bb45814d77f2c942ac3be32677d62a15d382105638de7f5c93f9e8fa",
             ),
             "regular.js": (
-                37_745,
-                "e35d6e3c2bc35b277b441bff98c261b6f1cc26d9cff44f2ad54c7ab19d96cce7",
+                38_568,
+                "3098bbed6ba1e69217d6fc59ec68af3e5041cffa03605f7110a2de4294a0644a",
             ),
             "mode.js": (
                 2_172,
@@ -84,8 +84,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
-                44_081,
-                "9b24d470bdc95dbc1aaa54d944befd99bb3f230b60dd4a4f6f2ab40f3241a3fc",
+                45_341,
+                "87f07eb292d64de49e73f89a361d6a43a75558300337c06a7afbbc7bcd15321e",
             ),
             "notify.js": (
                 3_185,
@@ -115,9 +115,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(240_196, len(assembled))
+        self.assertEqual(243_188, len(assembled))
         self.assertEqual(
-            "5750e7b8be64c45e2747d3dac6d164064d66c06bb8e31286e93e83ff387466f5",
+            "c003647782d178ae25701cd8c7e269aa9ee9bf05b9843aa7511c476cd603f47e",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -2288,6 +2288,44 @@ console.log(JSON.stringify({
         self.assertEqual([1, 1], out["bothHaveTrack"], "a working card dropped its track")
         self.assertEqual([False, True], out["onlyOneIndeterminate"])
         self.assertTrue(out["noTaskFiller"], "the empty-task filler line came back")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_detected_loop_reaches_the_card_whatever_the_turn_is_doing(self) -> None:
+        # The ⚠️ only appears past 15 minutes, so hanging the loop off it alone
+        # would hide the case worth catching earliest. The card states it either
+        # way, and the ⚠️ — when the duration does raise it — says which of the
+        # two the reader is looking at.
+        checks = """
+const base = {
+  harness:"claude", session:"12345678", sid:"12345678", project:"proj",
+  title:"t", last_prompt:"", state:"working", state_detail:"running Bash",
+  active:true, last_activity:990, rate_per_min:100, total:0, done:0, open:0,
+  progress_pct:0, eta_h:null, subagents:[], tasks:[]
+};
+const loop = {errors:4, tool:"Bash"};
+const card = extra => workingCard({generated:1000}, {...base, ...extra});
+const short = card({loop, turn:{elapsed_h:"2m", eta_h:"3m", pct:26, long:false}});
+const long = card({loop, turn:{elapsed_h:"40m", eta_h:null, pct:99, long:true}});
+const clean = card({turn:{elapsed_h:"40m", eta_h:null, pct:99, long:true}});
+const mcp = card({loop:{errors:5, tool:"mcp__claude_ai_Linear__save_issue"},
+                  turn:{elapsed_h:"2m", eta_h:"3m", pct:26, long:false}});
+console.log(JSON.stringify({
+  statedOnShortTurn: short.includes("4 tool calls in a row came back as errors"),
+  noWarnOnShortTurn: !short.includes('class="lwarn"'),
+  warnSaysWhich: long.includes('class="lwarn"') &&
+    long.includes("4 tool calls in a row came back as errors (most recently Bash)"),
+  warnKeepsItsOwnWordingWithoutALoop: clean.includes("This request is running long") &&
+    !clean.includes("tool calls in a row"),
+  mcpNamed: mcp.includes("Linear · save issue"),
+  wireNameHidden: !mcp.includes("mcp__claude_ai_Linear")}));
+"""
+        out = self._run_page_js(checks)
+        self.assertTrue(out["statedOnShortTurn"], "a loop under 15 minutes went unsaid")
+        self.assertTrue(out["noWarnOnShortTurn"], "the loop raised the long-turn mark")
+        self.assertTrue(out["warnSaysWhich"])
+        self.assertTrue(out["warnKeepsItsOwnWordingWithoutALoop"])
+        self.assertTrue(out["mcpNamed"])
+        self.assertTrue(out["wireNameHidden"])
 
     # A board of working sessions plus the strip that says, per harness, whether
     # a rate from it is a measurement at all. Copilot is the rate-less row: its

@@ -66,6 +66,14 @@ function calmRow(d, x){
   } else if(st === "work" && turn && turn.long){
     flag = "long turn"; tone = "warn"; why = LONG_TURN_NOTE;
   }
+  const loop = x.loop || null;
+  /* The chip keeps firing on duration alone, and keeps its word. Raising `long
+     turn` on a three-minute turn because four calls failed would put a claim on
+     screen the row cannot back, and a third word is not available — the column
+     is capped at two, each one a state the server detects. What the loop changes
+     is the sentence behind the chip, which is where the reader was going to find
+     out whether this is worth walking over for. */
+  if(flag === "long turn" && loop) why = loopNote(loop);
   /* No third flag. `stale` used to fire here for an idle row past
      CALM_STALE_SEC, which made two words for one bucket: every stale row was an
      idle row, and the difference was only "quiet for a while" — which the row's
@@ -139,7 +147,7 @@ function calmRow(d, x){
       (st === "needs"
         ? "Blocked on you, but nothing this session has written says what it is asking for."
         : null),
-    ageSec, waitSec, turn, flag, tone, why,
+    ageSec, waitSec, turn, loop, flag, tone, why,
     /* The marker for two live sessions on one project label, as markup rather
        than as facts to re-render here: the card view draws the same chip, and a
        second rendering of it is how two surfaces come to word one claim two
@@ -528,6 +536,16 @@ function calmExpansion(r, d){
       `<span class="cm-why-t"><b style="color:${tone.ink}">${esc(r.flag)}</b>` +
       ` — ${esc(r.why)}</span></div>`
     : "";
+  /* In the panel whatever the duration, and whatever the state. The chip column
+     holds two words and a loop is not one of them, so a loop that never ran long
+     — or one on a row whose chip is already spent on `your call` — has nowhere
+     else to be read. No label of its own: a bold word here would be the third
+     flag by another route, and the sentence says what it is.
+     Suppressed only where the flag's explanation is already this sentence. */
+  const loop = (r.loop && r.why !== loopNote(r.loop))
+    ? `<div class="cm-why"><span class="cm-why-g" style="color:${CALM_TONE.warn.ink}">◆</span>` +
+      `<span class="cm-why-t">${esc(loopNote(r.loop))}</span></div>`
+    : "";
   const quote = r.excerpt
     ? `<div class="cm-quote"><span class="cm-subk">last prompt</span>` +
       `<div class="cm-quote-t">${esc(r.excerpt)}</div></div>`
@@ -578,7 +596,7 @@ function calmExpansion(r, d){
     ` data-arg="${esc(r.key)}">${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
     `<button type="button" class="cm-act" data-calm="open"` +
     ` data-arg="${esc(r.key)}">collapse</button></div>`;
-  return `<div class="cm-exp"><div class="cm-exp-main">${why}${quote}${tasks}` +
+  return `<div class="cm-exp"><div class="cm-exp-main">${why}${loop}${quote}${tasks}` +
     sdBlock({spacedock: r.spacedock}) + meta + `</div>` +
     `<div class="cm-exp-side">${turn}${subs}${acts}</div></div>`;
 }

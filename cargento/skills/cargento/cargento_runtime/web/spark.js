@@ -195,6 +195,21 @@ function fmtDur(sec){
 const LONG_TURN_NOTE = "This request is running long (or estimated to). " +
   "Double-check what the agent is doing matches your expectations.";
 
+// One wording for the loop signal, for the reason LONG_TURN_NOTE is one
+// sentence: the calm ledger's flag explanation, calm's detail panel and the
+// working card all say it, and three copies are three chances to word it three
+// ways. The count is the server's, and the tool is named because "it is looping"
+// and "it is slow" are different answers to the only question this line is
+// asked — whether to walk over to the machine.
+function loopNote(loop){
+  const runs = (loop && loop.errors) || 0;
+  // Through humanTool() because an MCP call reaches the payload under its wire
+  // name, and this sentence is one of the places a reader meets a tool name.
+  const tool = (loop && loop.tool) ? " (most recently " + humanTool(loop.tool) + ")" : "";
+  return runs + " tool calls in a row came back as errors" + tool +
+    ". Check the agent is working the problem rather than repeating the failure.";
+}
+
 // MCP tools reach the payload under their wire name — a mangled
 // `mcp` + server + tool triple joined by double underscores. Rendering that raw
 // puts the transport's naming convention on screen where the reader wants to

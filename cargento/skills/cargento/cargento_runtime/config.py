@@ -61,6 +61,7 @@ class RuntimeConfig:
     global_popup_cooldown_sec: float
     popup_repeat_suppress_sec: float
     long_turn_warn_sec: float
+    loop_error_run_threshold: int
     future_skew_tolerance_sec: float
     sql_message_limit: int
     max_cache_entries: int
@@ -341,6 +342,16 @@ def build_runtime_config(
         global_popup_cooldown_sec=15,
         popup_repeat_suppress_sec=600,
         long_turn_warn_sec=900,
+        # Consecutive failed tool calls before a turn is called a loop.
+        # Measured, twice, over the 25 most recent local Claude transcripts:
+        # run lengths came out {1: 56, 2: 4, 4: 1}, so 3 and 4 both fire in
+        # 1 session of 25 and 5 fires in none. 4 buys the same yield as 3 with
+        # strictly less exposure to the benign runs the sample was full of — an
+        # `ls` that found nothing, a `git` in a deleted worktree. Lower is the
+        # expensive direction: the pattern this keys on is also what iterating
+        # on a failing test looks like, and a flag a reader learns to ignore
+        # costs more than no flag.
+        loop_error_run_threshold=4,
         future_skew_tolerance_sec=120,
         sql_message_limit=400,
         max_cache_entries=8192,

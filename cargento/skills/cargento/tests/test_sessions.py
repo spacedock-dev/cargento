@@ -90,6 +90,183 @@ class CargentoServerTest(RuntimeTestCase):
         assert turns is not None
         self.assertEqual(records.parse_ts(second_time), turns["turn_start"])
 
+    # One turn's worth of a tight failure loop: a prompt, then `count` tool
+    # calls each answered by a failing result. The shape is the measured one —
+    # `is_error` rides the `tool_result` block, and the tool name is only ever on
+    # the `tool_use` block whose id the result points back to.
+    @staticmethod
+    def _loop_transcript(count: int, *, tool: str = "Bash", minute: int = 0) -> list[Any]:
+        out: list[Any] = [
+            {
+                "type": "user",
+                "timestamp": f"2026-01-01T00:{minute:02d}:00Z",
+                "message": {"content": "fix the thing"},
+            }
+        ]
+        for i in range(count):
+            out.append(
+                {
+                    "type": "assistant",
+                    "timestamp": f"2026-01-01T00:{minute:02d}:{i * 2 + 1:02d}Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"t{i}", "name": tool}]},
+                }
+            )
+            out.append(
+                {
+                    "type": "user",
+                    "timestamp": f"2026-01-01T00:{minute:02d}:{i * 2 + 2:02d}Z",
+                    "message": {
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": f"t{i}", "is_error": True}
+                        ]
+                    },
+                }
+            )
+        return out
+
+    @staticmethod
+    def _scan(written: list[Any], path: Path, **overrides: Any) -> dict[str, Any]:
+        path.write_text("\n".join(json.dumps(record) for record in written) + "\n")
+        config, state = make_runtime(**overrides)
+        scan = runtime_turns.scan_turns(config, state, str(path), "claude")
+        assert scan is not None
+        return scan
+
+    def test_a_run_of_failing_tool_results_is_counted_and_named(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(self._loop_transcript(4), Path(tmp) / "loop.jsonl")
+        self.assertEqual(4, scan["err_peak"])
+        self.assertEqual("Bash", scan["err_tool"])
+
+    def test_a_successful_call_breaks_the_run_but_not_the_peak(self) -> None:
+        # Two facts in one test because they are one decision: "consecutive"
+        # means the live run resets on any success, and what the turn publishes
+        # is the peak, which does not — a loop that has just stopped failing is
+        # exactly when the reader walks back to the machine.
+        written = self._loop_transcript(4)
+        written.append(
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:20Z",
+                "message": {
+                    "content": [{"type": "tool_result", "tool_use_id": "t3", "is_error": False}]
+                },
+            }
+        )
+        written.extend(self._loop_transcript(1)[1:])
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "loop.jsonl")
+        self.assertEqual(1, scan["err_run"])
+        self.assertEqual(4, scan["err_peak"])
+
+    def test_the_next_prompt_clears_the_loop_signal(self) -> None:
+        written = self._loop_transcript(4) + self._loop_transcript(1, minute=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "loop.jsonl")
+        self.assertEqual(1, scan["err_peak"])
+
+    def test_the_loop_threshold_is_what_decides_the_signal(self) -> None:
+        # The threshold IS the product: at 3 and at 4 the detector fired in the
+        # same 1 of 25 local transcripts, so the extra rung costs no yield and
+        # buys distance from the benign runs the sample was full of. A run one
+        # short of it publishes nothing at all, not a smaller signal.
+        config, _ = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            short = self._scan(self._loop_transcript(3), Path(tmp) / "short.jsonl")
+            long_enough = self._scan(self._loop_transcript(4), Path(tmp) / "long.jsonl")
+        self.assertEqual(4, config.loop_error_run_threshold)
+        self.assertIsNone(runtime_turns.loop_signal(short, config))
+        self.assertEqual(
+            {"errors": 4, "tool": "Bash"}, runtime_turns.loop_signal(long_enough, config)
+        )
+        self.assertIsNone(runtime_turns.loop_signal(None, config))
+
+    def test_only_claude_records_report_a_failed_tool_call(self) -> None:
+        # Every other harness gets nothing, and the assertion is the absence:
+        # Codex's tool-output records carry no error field, Copilot's analyzer
+        # reads no tool-end record, and Droid's block shape matches Claude's but
+        # no failing Droid call has been captured. An unmeasured semantic must
+        # not arrive as a measurement — so the same transcript scanned as
+        # another harness counts nothing.
+        for harness in ("droid", "codex", "copilot", "gemini"):
+            with self.subTest(harness=harness), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "loop.jsonl"
+                path.write_text("\n".join(json.dumps(r) for r in self._loop_transcript(6)) + "\n")
+                config, state = make_runtime()
+                scan = runtime_turns.scan_turns(config, state, str(path), harness)
+                assert scan is not None
+                self.assertEqual(0, scan["err_peak"])
+                self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+    def test_a_run_split_by_a_quiet_stretch_is_not_a_loop(self) -> None:
+        # A permission prompt or an open question parks a turn for minutes at a
+        # time, and the scanner already re-anchors the clock there. Failures on
+        # either side of that gap are not a tight loop, so the run goes with it.
+        written = self._loop_transcript(2)
+        later = self._loop_transcript(2, minute=30)[1:]  # same turn, after the gap
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written + later, Path(tmp) / "gap.jsonl")
+        self.assertEqual(2, scan["err_peak"])
+
+    def test_the_run_survives_an_incremental_scan_without_double_counting(self) -> None:
+        # The scanner carries state between /api/data requests, so a counter is
+        # exactly the shape that double-advances when the second call re-reads a
+        # record the first already applied.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "growing.jsonl"
+            written = self._loop_transcript(4)
+            path.write_text("\n".join(json.dumps(r) for r in written) + "\n")
+            config, state = make_runtime()
+            first = runtime_turns.scan_turns(config, state, str(path), "claude")
+            assert first is not None
+            # Read now, not after the second call: the scanner hands back its
+            # live state, so the two calls return one dict.
+            after_first = first["err_peak"]
+            with path.open("a") as output:
+                for record in self._loop_transcript(1, minute=1)[1:]:
+                    output.write(json.dumps(record) + "\n")
+            second = runtime_turns.scan_turns(config, state, str(path), "claude")
+        assert second is not None
+        self.assertEqual(4, after_first)
+        self.assertEqual(5, second["err_peak"])
+
+    def test_a_failure_is_attributed_to_the_tool_that_failed(self) -> None:
+        # The name is only on the `tool_use` block, so the id is the whole join.
+        # Two calls issued in one batch and answered out of order is where a
+        # "most recent name wins" shortcut names the wrong tool.
+        written: list[Any] = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"content": "fix the thing"},
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "id": "a", "name": "Bash"},
+                        {"type": "tool_use", "id": "b", "name": "Edit"},
+                    ]
+                },
+            },
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "message": {
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "b", "is_error": True},
+                        {"type": "tool_result", "tool_use_id": "a", "is_error": True},
+                    ]
+                },
+            },
+        ]
+        written.extend(self._loop_transcript(2, tool="Read")[1:])
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "batch.jsonl")
+        self.assertEqual(4, scan["err_peak"])
+        self.assertEqual("Read", scan["err_tool"])
+
     def test_base_session_exposes_full_sid_and_truncated_display_id(self) -> None:
         s = runtime_sessions.base_session("gemini", "session-abcdef123", "proj")
         self.assertEqual("session-", s["session"])  # display stays 8 chars
@@ -121,6 +298,7 @@ class CargentoServerTest(RuntimeTestCase):
             "progress_pct",
             "eta_h",
             "turn",
+            "loop",
             "subagents",
             "tasks",
             "spacedock",

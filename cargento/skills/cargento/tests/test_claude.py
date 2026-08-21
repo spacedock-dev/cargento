@@ -895,6 +895,60 @@ class ClaudeCollectorTest(RuntimeTestCase):
         # Working at 0 tok/min is the same blind spot in the rate panel.
         self.assertGreater(session["rate_per_min"], 0)
 
+    def test_a_finished_loop_is_still_published_after_the_session_goes_quiet(self) -> None:
+        # The whole point of the top-level field. `turn` is None for anything
+        # that is not working, so a loop signal carried there would vanish the
+        # moment the failures stopped — which is when the human walks back to
+        # the machine and asks what happened.
+        now = time.time()
+        session_id = "10000000-0000-0000-0000-000000000000"
+        quiet = now - 600  # past the working threshold, inside the 24h window
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "sample"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            lines = [
+                {
+                    "type": "user",
+                    "timestamp": datetime.fromtimestamp(quiet - 60, UTC).isoformat(),
+                    "message": {"role": "user", "content": "run the suite"},
+                }
+            ]
+            for i in range(4):
+                lines.append(
+                    {
+                        "type": "assistant",
+                        "timestamp": datetime.fromtimestamp(quiet - 50 + i * 10, UTC).isoformat(),
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "tool_use", "id": f"t{i}", "name": "Bash"}],
+                        },
+                    }
+                )
+                lines.append(
+                    {
+                        "type": "user",
+                        "timestamp": datetime.fromtimestamp(quiet - 45 + i * 10, UTC).isoformat(),
+                        "message": {
+                            "role": "user",
+                            "content": [
+                                {"type": "tool_result", "tool_use_id": f"t{i}", "is_error": True}
+                            ],
+                        },
+                    }
+                )
+            transcript.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+            os.utime(transcript, (quiet, quiet))
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            ):
+                session = collect_claude(now, 24, False)[0]
+
+        self.assertNotEqual("working", session["state"])
+        self.assertIsNone(session["turn"])
+        self.assertEqual({"errors": 4, "tool": "Bash"}, session["loop"])
+
     def test_workflow_agent_activity_holds_a_session_in_the_window(self) -> None:
         # last_activity drives both the freshness window and the "idle 23h"
         # age. A stale parent whose workflow agents wrote a minute ago has to

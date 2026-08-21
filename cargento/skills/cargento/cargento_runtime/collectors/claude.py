@@ -532,6 +532,14 @@ def collect(
                 + " ago"
             )
 
+        # One scan, read twice: the turn estimate and the failure run come out of
+        # the same incremental state, and calling the scanner again would advance
+        # its position past the records the second reading needs.
+        scan = (
+            runtime_turns.scan_turns(config, state, transcript, "claude")
+            if (info and transcript)
+            else None
+        )
         s = runtime_sessions.base_session("claude", prefix, project)
         s.update(
             {
@@ -580,14 +588,8 @@ def collect(
                 "open": open_count,
                 "progress_pct": round(done * 100 / total) if total else 0,
                 "eta_h": runtime_sessions.fmt_duration(eta_sec) if eta_sec else None,
-                "turn": runtime_turns.turn_progress(
-                    runtime_turns.scan_turns(config, state, transcript, "claude")
-                    if (info and transcript)
-                    else None,
-                    session_state,
-                    now,
-                    config,
-                ),
+                "turn": runtime_turns.turn_progress(scan, session_state, now, config),
+                "loop": runtime_turns.loop_signal(scan, config),
                 "subagents": [{"name": a["label"], "model": a["model"]} for a in subagents],
                 "tasks": tasks,
                 "spacedock": session_spacedock(

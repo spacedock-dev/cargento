@@ -196,6 +196,13 @@ def newest_plausible(config: RuntimeConfig, now: float, timestamps: Iterable[flo
 # either may move without the other.
 MODEL_CAP_CHARS = 40
 
+# Wider than the model cap because the long case here is an MCP tool's wire name
+# — a `mcp` + server + tool triple joined by double underscores, 33 characters
+# for `mcp__claude_ai_Linear__save_issue` and longer for a nested server. The
+# page rewrites those to "server · tool name" at the render site, so truncating
+# them to 40 here would cut the half that says which tool ran.
+TOOL_NAME_CAP_CHARS = 60
+
 
 def base_session(harness: str, sid: Any, project: str) -> Session:
     # "session" is the display id. The 8 below is the floor and must match
@@ -281,6 +288,15 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "progress_pct": 0,
         "eta_h": None,
         "turn": None,
+        # `{"errors": int, "tool": str | None}` where a run of failed tool calls
+        # was measured inside the current turn, else None. Top-level rather than
+        # a key on `turn`, because `turn_progress` publishes nothing for a
+        # session that is not working: riding on `turn` would delete the flag the
+        # moment the loop stopped, which is exactly when the human walks back to
+        # the machine. It is cleared at the next prompt instead — by then they
+        # have seen it. Claude only, since Claude is the only harness that
+        # records whether a tool call failed (see records.tool_outcome).
+        "loop": None,
         # One element per subagent: `{"name": str, "model": str | None}`. `model`
         # is always present, and None means the same thing it means on the parent
         # — not read. It is a key rather than a parallel list of only the children

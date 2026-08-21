@@ -206,6 +206,57 @@ def model_signal(record: dict[str, Any], harness: str, limit: int) -> str | None
     return safe_text(value, limit).strip() or None
 
 
+def tool_outcome(
+    record: dict[str, Any], harness: str, limit: int
+) -> tuple[dict[str, str], list[tuple[str, bool]]]:
+    """The tool calls a record issues and the outcomes a record reports, as
+    ``({tool_use_id: tool name}, [(tool_use_id, failed)])``.
+
+    Claude only. Every other harness gets two empty containers, which read as
+    "not measured" rather than as "nothing failed": Codex's tool-output records
+    carry no error field at all (measured over 15 local rollouts), Copilot's
+    analyzer sees no tool-end record, and Droid's block shape looks the same as
+    Claude's but no failing Droid call has ever been captured — unmeasured
+    semantics do not ship here. Gated on the harness for the same reason
+    `_turn_signal` and `model_signal` are: `scan_turns` runs this over five
+    harnesses' transcripts, and it is also the cheap way to keep the cost of
+    walking content blocks off the four that would learn nothing from it.
+
+    The name and the outcome arrive on different records — the name on the
+    `tool_use` block, `is_error` on the `tool_result` block that points back at
+    its id — so the id is the only join between them and both halves are
+    returned rather than one flattened answer.
+
+    A tool NAME, never its input. The input is the user's command text, and
+    nothing here needs it: the consumer counts a run and names the tool it ran
+    (see docs/design-runtime-architecture.md for who owns that count).
+    """
+    if harness != "claude" or record.get("type") not in ("assistant", "user"):
+        return ({}, [])
+    content = message_dict(record).get("content")
+    if not isinstance(content, list):
+        return ({}, [])
+    calls: dict[str, str] = {}
+    results: list[tuple[str, bool]] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "tool_use":
+            block_id, name = block.get("id"), block.get("name")
+            if isinstance(block_id, str) and block_id and isinstance(name, str):
+                # Untrusted vendor text on its way to the DOM: bounded here,
+                # escaped again at the render site.
+                bounded = safe_text(name, limit).strip()
+                if bounded:
+                    calls[block_id] = bounded
+        elif block_type == "tool_result":
+            block_id = block.get("tool_use_id")
+            if isinstance(block_id, str) and block_id:
+                results.append((block_id, bool(block.get("is_error"))))
+    return (calls, results)
+
+
 def _turn_signal(record: dict[str, Any], harness: str) -> tuple[str, Any] | None:
     record_type = record.get("type")
     if harness == "codex":

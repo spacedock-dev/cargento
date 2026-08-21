@@ -14,6 +14,38 @@ if TYPE_CHECKING:
     from .state import RuntimeState
 
 
+def _clear_error_run(st: dict[str, Any]) -> None:
+    """Forget the failure run. Called at every turn boundary, and at the
+    mid-turn quiet gap that re-anchors the clock: a run of failures split by
+    five minutes of silence is a session waiting on a person, not a loop, which
+    is the only thing this count is for."""
+    st["err_run"] = 0
+    st["err_peak"] = 0
+    st["err_tool"] = None
+
+
+def _apply_tool_outcome(st: dict[str, Any], record: Any, harness: str) -> None:
+    """Track the run of consecutive failed tool calls inside this turn."""
+    calls, results = records.tool_outcome(record, harness, sessions.TOOL_NAME_CAP_CHARS)
+    if calls:
+        # Replace rather than merge. Claude writes a batch's results before the
+        # next assistant record, so the batch just issued is the only one whose
+        # ids can still be looked up — which bounds this map to one batch by
+        # construction, with no cap and no eviction rule to get wrong.
+        st["tool_names"] = calls
+    for tool_id, failed in results:
+        if not failed:
+            st["err_run"] = 0
+            continue
+        st["err_run"] += 1
+        if st["err_run"] > st["err_peak"]:
+            # The peak, not the live run, is what the turn publishes, and the
+            # tool is named at the peak so it is the most recent failure rather
+            # than the one that opened the run.
+            st["err_peak"] = st["err_run"]
+            st["err_tool"] = st["tool_names"].get(tool_id)
+
+
 def _apply_turn_record(
     config: RuntimeConfig,
     st: dict[str, Any],
@@ -44,6 +76,7 @@ def _apply_turn_record(
             st["durations"].append(st["prev_ts"] - st["turn_start"])
         st["turn_start"] = ep
         st["last_start"] = ep
+        _clear_error_run(st)
     sig = records._turn_signal(record, harness)  # noqa: SLF001
     if sig:
         kind, override = sig
@@ -62,6 +95,10 @@ def _apply_turn_record(
             start = records.norm_epoch(override) or ep
             st["turn_start"] = start
             st["last_start"] = start
+        _clear_error_run(st)
+    # Last, so the ordering against the boundary resets above is stated rather
+    # than incidental: an outcome belongs to the turn its own record sits in.
+    _apply_tool_outcome(st, record, harness)
     st["prev_ts"] = ep
 
 
@@ -168,6 +205,15 @@ def scan_turns(
                 # of 273 KB and up to 3 MB — while this scanner's budget is
                 # 8 MB and reaches every one of them.
                 "model": None,
+                # The failure run inside the current turn: the live count, the
+                # peak it reached, the tool that failed at the peak, and the
+                # id → name map the last tool batch declared. All four are turn
+                # state, so an evicted or rotated file recomputes them on the
+                # way forward rather than carrying a stale count.
+                "err_run": 0,
+                "err_peak": 0,
+                "err_tool": None,
+                "tool_names": {},
                 "gemini_seen": {},
                 "gemini_snapshot_count": 0,
                 "gemini_snapshot_tail": None,
@@ -225,6 +271,23 @@ def turns_from_events(events: list[tuple[float, bool]]) -> dict[str, Any]:
             turn_start = ep
         prev = ep
     return {"turn_start": turn_start, "durations": durations[-50:]}
+
+
+def loop_signal(scan: dict[str, Any] | None, config: RuntimeConfig) -> dict[str, Any] | None:
+    """The failure run inside the current turn, once it is long enough to be
+    worth saying out loud, else None.
+
+    Read off the peak rather than the live run, and not gated on the session
+    state the way `turn_progress` is: both would retract the signal the instant
+    the loop stopped, and a loop that has stopped is what the reader is walking
+    back to the machine to find.
+    """
+    if not scan:
+        return None
+    peak = scan.get("err_peak") or 0
+    if peak < config.loop_error_run_threshold:
+        return None
+    return {"errors": peak, "tool": scan.get("err_tool")}
 
 
 def turn_progress(

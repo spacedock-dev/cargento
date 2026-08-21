@@ -423,11 +423,15 @@ function sdBlock(sess){
     `<span class="sd-role">${esc(role)}</span></div>${rows}</div>`;
 }
 
-function turnBlock(t){
+function turnBlock(t, loop){
   if(!t) return "";
+  /* Same rule as calm's chip: the ⚠️ still fires on duration, and what a
+     detected loop changes is what it says when you reach for it. Escaped now
+     that the sentence can carry a tool name out of the payload. */
+  const note = esc(loop ? loopNote(loop) : LONG_TURN_NOTE);
   const warn = t.long ? `<span class="lwarn" tabindex="0" role="note"` +
-    ` aria-label="${LONG_TURN_NOTE}">!` +
-    `<span class="ltip">${LONG_TURN_NOTE}</span></span>` : "";
+    ` aria-label="${note}">!` +
+    `<span class="ltip">${note}</span></span>` : "";
   const pct = (t.pct != null) ? `<span class="pct">${t.pct}%</span>` : "";
   /* Both shapes draw a track. A turn with no estimate used to drop the bar
      entirely, so two cards stacked in the same column had different anatomy and
@@ -508,6 +512,14 @@ function workingCard(d, sess){
   if(sess.total) bits.push(`${sess.done}/${sess.total} done · ${sess.progress_pct}%`);
   if(sess.eta_h) bits.push(`~${sess.eta_h} left`);
   const bitsLine = bits.length ? `<div class="card-bits">${esc(bits.join(" · "))}</div>` : "";
+  /* On the card whatever the turn is doing, for the reason calm's panel carries
+     it: the ⚠️ it would otherwise hide behind only appears past 15 minutes, and
+     a loop that has not run that long yet is exactly the one worth catching. The
+     warn ink rather than a chip of its own — a card already carries the pills
+     that say what state this session is in, and this is not one. */
+  const loopLine = sess.loop
+    ? `<div class="card-bits" style="color:var(--warnink)">${esc(loopNote(sess.loop))}</div>`
+    : "";
   /* The model chip appears only where the child's and the parent's are both
      measured and unequal — childModelShown() owns that rule for both views, and
      re-deriving it inline is how the two came to disagree about `fastest`. Its
@@ -530,11 +542,11 @@ function workingCard(d, sess){
     `<div class="card-title">${esc(sess.title || sess.project)}</div>` +
     `<div class="card-meta">${esc(sess.project)}${dupMark(d, sess)}` +
     ` · ${esc(sess.session)}` +
-    `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>${bitsLine}` +
+    `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>${bitsLine}${loopLine}` +
     `</div>${rateMeter}</div>` +
     `<div class="now"><span class="now-k">now</span>` +
     `<span title="${esc(sess.state_detail)}">${esc(humanTool(sess.state_detail))}</span></div>` +
-    turnBlock(sess.turn) + subs + sdBlock(sess) + taskBlock(sess) + `</div>`;
+    turnBlock(sess.turn, sess.loop) + subs + sdBlock(sess) + taskBlock(sess) + `</div>`;
 }
 
 /* Resolved, not written back: a cursor whose gate has left the queue falls to

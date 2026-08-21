@@ -287,6 +287,80 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["flagChipZero"])
         self.assertTrue(out["freshIdleUnflagged"])
 
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_detected_loop_sharpens_the_flag_without_becoming_a_third_one(self) -> None:
+        # The `flag` column holds two words, each a state the server detects, and
+        # a loop is not a third state — it is what makes one of the two worth
+        # acting on. So the chip is unchanged and the explanation behind it is
+        # not, and a loop the chip cannot carry is still readable in the panel.
+        checks = """
+const out = {};
+const loop = {errors: 4, tool: "Bash"};
+const looping = mk({sid: "ddd4", session: "ddd4", title: "Retrying", state: "working",
+  active: true, last_activity: 99990, loop,
+  turn: {elapsed_h: "40m", eta_h: null, pct: 99, long: true}});
+const quick = mk({sid: "eee5", session: "eee5", title: "Quick", state: "working",
+  active: true, last_activity: 99990, loop,
+  turn: {elapsed_h: "2m", eta_h: "3m", pct: 20, long: false}});
+const gated = mk({sid: "fff6", session: "fff6", title: "Ask", state: "needs_input",
+  active: true, last_activity: 99700, blocked_since: 99700, loop,
+  state_detail: "open question (AskUserQuestion), waiting 5m"});
+render(payload([looping, quick, gated]));
+const opened = k => { calmAction("open", k); const h = __els.app.innerHTML;
+  calmAction("open", k); return h; };
+const hl = opened(K("claude", "ddd4")), hq = opened(K("claude", "eee5")),
+      hg = opened(K("claude", "fff6"));
+out.chipStillLongTurn = hl.includes(">long turn<");
+out.whyNamesTheLoop = hl.includes("4 tool calls in a row came back as errors" +
+  " (most recently Bash)");
+out.whySwapsForItRatherThanRepeating = !hl.includes("This request is running long");
+out.loopStatedOnce = (hl.match(/tool calls in a row/g) || []).length;
+// The chip fires on duration and nothing else, so a two-minute turn that has
+// come back with four errors does not join the flagged count.
+out.shortTurnStillSaysSo = hq.includes("4 tool calls in a row came back as errors");
+out.flaggedCount = __els.app.innerHTML.includes("◆ 2 flagged");
+// A blocked row has already spent its one chip on the gate.
+out.gateKeepsItsChip = hg.includes(">your call<");
+out.gateSaysSoToo = hg.includes("4 tool calls in a row came back as errors");
+// Every chip word on the whole board, which is the cap itself.
+out.chipWords = [...new Set([...__els.app.innerHTML
+  .matchAll(/class="cm-flag"[^>]*>([^<]+)</g)].map(m => m[1]))].sort();
+// Alone on the board, so the absence is this row's and not read off a sibling.
+render(payload([quick]));
+out.shortTurnUnchipped = !__els.app.innerHTML.includes('class="cm-flag"');
+// An MCP call reaches the payload under its wire name; the sentence is one of
+// the places a reader meets a tool name, so the same rewrite applies.
+render(payload([mk({sid: "ggg7", session: "ggg7", state: "working", active: true,
+  last_activity: 99990, loop: {errors: 5, tool: "mcp__claude_ai_Linear__save_issue"}})]));
+const hm = opened(K("claude", "ggg7"));
+out.mcpNamed = hm.includes("Linear · save issue");
+out.wireNameHidden = !hm.includes("mcp__claude_ai_Linear");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["chipStillLongTurn"], "the loop retitled the chip")
+        self.assertTrue(out["whyNamesTheLoop"])
+        self.assertTrue(out["whySwapsForItRatherThanRepeating"])
+        self.assertEqual(1, out["loopStatedOnce"], "the panel stated the loop twice")
+        self.assertTrue(out["shortTurnStillSaysSo"], "a loop with no chip is unreadable")
+        self.assertTrue(out["flaggedCount"], "the flagged count moved with the loop")
+        self.assertTrue(out["gateKeepsItsChip"])
+        self.assertTrue(out["gateSaysSoToo"])
+        self.assertEqual(["long turn", "your call"], out["chipWords"])
+        self.assertTrue(out["shortTurnUnchipped"], "a short turn was flagged for looping")
+        self.assertTrue(out["mcpNamed"])
+        self.assertTrue(out["wireNameHidden"])
+
+    def test_the_loop_wording_has_exactly_one_source(self) -> None:
+        # Three surfaces say it — the calm chip's explanation, calm's panel and
+        # the working card — so it is built in one place, like LONG_TURN_NOTE.
+        self.assertIn("function loopNote(", APP_JS)
+        self.assertEqual(
+            1,
+            APP_JS.count("tool calls in a row came back as errors"),
+            "the loop sentence is duplicated instead of shared",
+        )
+
     def test_the_long_turn_wording_has_exactly_one_source(self) -> None:
         # The ⚠️ tooltip and the calm flag explanation are the same sentence;
         # two copies is how they drift apart.
