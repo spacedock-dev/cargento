@@ -25,6 +25,74 @@ function gateQueue(d){
 let gateCursorKey = null;
 let gateRevealCursor = false;   /* scroll the cursor into view after this render */
 
+/* The attention ordering — what needs you above what is merely running — stated
+   once for both views. Calm applies it as the order of one whole ledger; the
+   card view applies it inside the three sections it already draws. Two rules for
+   one ladder is the fault burnRacers() exists to prevent, on the more visible of
+   the two rules: this one decides which working card a reader reaches first, and
+   which idle rows the clip lets them see at all.
+
+   Takes a RAW payload session and returns only the fields the comparators rank
+   on, so neither view has to hand its row shape over — the same boundary
+   burnRacers() draws with its rate accessor. */
+function attentionKey(d, x){
+  const st = x.state === "needs_input" ? "needs" : (x.state === "working" ? "work" : "idle");
+  /* The rungs: blocked on you 0, working a turn that is running long 1, working
+     2, idle 4. Two things live here rather than beside the tone that renders the
+     flag, because a table holding both let a flag be added to one and ranked by
+     neither.
+
+     Hoisting the long-turn rung is a card moving under the reader, which the
+     `fastest` marker refuses to do — the refusal does not carry across. `long`
+     latches within a turn (turns.py picks a median of the candidates that could
+     still be running, which cannot fall as elapsed grows), so a card moves at
+     most once per turn, where a rate ordering would move it every poll. */
+  const rank = st === "needs" ? 0
+    : (st === "work" ? (x.turn && x.turn.long ? 1 : 2) : 4);
+  return {
+    st, rank, sid: x.sid,
+    /* What byWait ranks on, unclamped, beside the elapsed wait that renders. */
+    blockedAt: x.blocked_since || x.last_activity || 0,
+    sortAge: st === "work" ? 0 : Math.max(0, d.generated - (x.last_activity || 0))
+  };
+}
+
+/* Ordering has to be STABLE across the 5s poll — a row that swaps places under
+   the reader's cursor is worse than a row in the wrong place. Age is stable by
+   construction everywhere it means something: it is a fixed per-session
+   timestamp subtracted from one clock shared by the whole payload, so two idle
+   rows keep their relative order forever. The exception is a WORKING row,
+   whose last activity is always within WORKING_THRESHOLD_SEC of now — ordering
+   those by age sorts on nothing but which one wrote most recently, which flips
+   every poll. `sortAge` pins them level (see attentionKey) and the session id,
+   which never changes, breaks every remaining tie. This is the same call
+   collect() makes server-side for the same reason. */
+const bySid = (a, b) => (a.sid < b.sid ? -1 : (a.sid > b.sid ? 1 : 0));
+const byAge = (a, b) => a.sortAge - b.sortAge || bySid(a, b);
+/* Longest-blocked first: the queue order, ranked on the same raw field
+   aggregate.py sorts the payload by. Not on the rendered elapsed wait, which
+   floors at 0 — two rows carrying implausibly future stamps would both clamp to
+   zero here and fall to the id, while the server still ordered them by the
+   stamps, and the two views would name a different gate at the head. A fixed
+   timestamp is also what keeps the order stable across a poll, which an elapsed
+   time is not. */
+const byWait = (a, b) => a.blockedAt - b.blockedAt || bySid(a, b);
+/* Newest-first is right for a row you are watching and wrong for one that is
+   waiting on you: it puts the gate you just saw open above the one that has held
+   you up for an hour. `recent` keeps genuine newest-first for every state,
+   because it takes byAge directly. */
+const byRank = (a, b) => a.rank - b.rank ||
+  (a.st === "needs" && b.st === "needs" ? byWait(a, b) : byAge(a, b));
+
+/* The same ladder over raw payload sessions, for the view that builds no row
+   model to rank: decorate, sort, undecorate. Twice per render over the whole
+   session list, and deliberately uncached — burnLeaders() caches because it is
+   asked once per card, and this is asked once per render. */
+function attentionSort(d, rows){
+  return rows.map(x => ({x, k: attentionKey(d, x)}))
+    .sort((a, b) => byRank(a.k, b.k)).map(e => e.x);
+}
+
 function fmtDur(sec){
   if(sec == null || sec < 0) return "–";
   sec = Math.floor(sec);

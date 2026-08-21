@@ -2,12 +2,16 @@
    "you are the blocker" and --warn for "worth a look". Nothing for "gone quiet",
    which is what the clipped idle block is for rather than a chip. The fixture's
    stalled/failed flags have no server-side detector, so calm mode does not
-   invent them either. */
+   invent them either.
+
+   Colour only. The rank each tone used to carry lives in attentionKey's ladder,
+   which both views read: a table that defined the sort position beside the
+   colour let a flag be added here and ranked nowhere. */
 const CALM_TONE = {
-  attn: {rank:0, ink:"var(--alert)",
+  attn: {ink:"var(--alert)",
          bg:"color-mix(in oklab,var(--alert) 13%,transparent)",
          bd:"color-mix(in oklab,var(--alert) 34%,transparent)"},
-  warn: {rank:1, ink:"var(--warnink)",
+  warn: {ink:"var(--warnink)",
          bg:"color-mix(in oklab,var(--warn) 26%,transparent)",
          bd:"color-mix(in oklab,var(--warn) 42%,transparent)"},
 };
@@ -44,7 +48,13 @@ function own(table, key, fallback){
 /* One ledger row per session. Every session lands in exactly one of the three
    buckets — a ledger that silently drops a row is worse than useless. */
 function calmRow(d, x){
-  const st = x.state === "needs_input" ? "needs" : (x.state === "working" ? "work" : "idle");
+  /* The sort key comes from the shared ladder rather than from this row's tone:
+     the card view ranks the same sessions off the same key, and a second
+     derivation here is where the two views drift. A new flag has to extend
+     attentionKey's ladder, not just CALM_TONE, or it will render as urgent and
+     sort as ordinary. */
+  const sortKey = attentionKey(d, x);
+  const st = sortKey.st;
   const ageSec = Math.max(0, d.generated - (x.last_activity || 0));
   const waitSec = Math.max(0, d.generated - (x.blocked_since || x.last_activity || 0));
   const turn = x.turn || null;
@@ -130,9 +140,7 @@ function calmRow(d, x){
         ? "Blocked on you, but nothing this session has written says what it is asking for."
         : null),
     ageSec, waitSec, turn, flag, tone, why,
-    /* What byWait ranks on, unclamped, beside the `waitSec` that renders. */
-    blockedAt: x.blocked_since || x.last_activity || 0,
-    sortAge: st === "work" ? 0 : ageSec,   /* see byAge — a working row's age is noise */
+    blockedAt: sortKey.blockedAt, sortAge: sortKey.sortAge, rank: sortKey.rank,
     rail: CALM_RAIL[st] || CALM_RAIL.idle,
     /* The prompt is only worth quoting when the title is not already it. */
     excerpt: (prompt && prompt !== String(title).trim()) ? prompt : "",
@@ -142,7 +150,6 @@ function calmRow(d, x){
        name with model null rather than reaching the renderer as a raw string. */
     subagents: (x.subagents || []).map(a => ({name: subName(a), model: subModel(a)})),
     spacedock: x.spacedock || null,
-    rank: flag ? CALM_TONE[tone].rank : (st === "work" ? 2 : 4),
     /* Whether the burn ordering may rank this row at all: `state === "working"
        && active`, which is the predicate regular.js's burnLeaders() takes,
        rather than the `work` bucket alone. `active` is the server's "wrote
@@ -192,32 +199,6 @@ function calmFilter(all){
                          (!calmStateOnly || r.st === calmStateOnly));
 }
 
-/* Ordering has to be STABLE across the 5s poll — a row that swaps places under
-   the reader's cursor is worse than a row in the wrong place. Age is stable by
-   construction everywhere it means something: it is a fixed per-session
-   timestamp subtracted from one clock shared by the whole payload, so two idle
-   rows keep their relative order forever. The exception is a WORKING row,
-   whose last activity is always within WORKING_THRESHOLD_SEC of now — ordering
-   those by age sorts on nothing but which one wrote most recently, which flips
-   every poll. `sortAge` pins them level (see calmRow) and the session id, which
-   never changes, breaks every remaining tie. This is the same call collect()
-   makes server-side for the same reason. */
-const bySid = (a, b) => (a.sid < b.sid ? -1 : (a.sid > b.sid ? 1 : 0));
-const byAge = (a, b) => a.sortAge - b.sortAge || bySid(a, b);
-/* Longest-blocked first: the queue order, ranked on the same raw field
-   aggregate.py sorts the payload by. Not on `waitSec`, which is the rendered
-   elapsed time and floors at 0 — two rows carrying implausibly future stamps
-   would both clamp to zero here and fall to the id, while the server still
-   ordered them by the stamps, and the two views would name a different gate at
-   the head. A fixed timestamp is also what keeps the order stable across a
-   poll, which an elapsed time is not. */
-const byWait = (a, b) => a.blockedAt - b.blockedAt || bySid(a, b);
-/* Newest-first is right for a row you are watching and wrong for one that is
-   waiting on you: it puts the gate you just saw open above the one that has held
-   you up for an hour. `recent` keeps genuine newest-first for every state,
-   because it takes byAge directly. */
-const byRank = (a, b) => a.rank - b.rank ||
-  (a.st === "needs" && b.st === "needs" ? byWait(a, b) : byAge(a, b));
 /* Fastest known rate first. Only ever applied to working rows whose rate is
    known: see the burn branch below for where the others go, which is not "the
    bottom". */

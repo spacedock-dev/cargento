@@ -81,7 +81,7 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 
 | Script part | Owns |
 |---|---|
-| `web/spark.js` | Shared page state, rate buffers, the sparkline with its hover machinery, and the gate queue both views read. |
+| `web/spark.js` | Shared page state, rate buffers, the sparkline with its hover machinery, and the two rules both views read: the gate queue, and the attention ordering (its key, its comparators, and the sort the card view applies). |
 | `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows, and the gate band's cursor. |
 | `web/mode.js` | Display-mode state, its switch, and the calm ledger's mutable state (sort, filters, open row, cursor, scroll). |
 | `web/usage.js` | The usage band, the configure popover, and the quota disclosure modal. |

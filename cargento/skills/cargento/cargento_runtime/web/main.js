@@ -14,6 +14,9 @@ function render(d){
   lastData = d;
   syncNotifications(d);
   const app = document.getElementById("app");
+  /* Not attentionSort'd, deliberately: the server already publishes this section
+     longest-blocked first, and re-sorting it here would be a second definition of
+     the queue order — the one gateQueue() exists to refuse. */
   const needs = gateQueue(d);
   /* An answered queue leaves its cursor behind otherwise, and the same session
      blocking again later would inherit it — landing the cursor mid-queue on a
@@ -50,8 +53,13 @@ function render(d){
   // pointermove fires during the render operation.
   const savedPointer = sparkPointer ? {x: sparkPointer.x, y: sparkPointer.y} : null;
   const s = d.summary;
-  const working = d.sessions.filter(x => x.state === "working");
-  const idle = d.sessions.filter(x => x.state === "idle");
+  /* Both sections in attention order, off the same key calm ranks its ledger by
+     — the payload arrives in bare session-id order inside these two states, and
+     an id is not a reason to read one card before another. The idle order is the
+     load-bearing one: the block below is clipped, so it decides which idle rows
+     a reader ever sees without clicking. */
+  const working = attentionSort(d, d.sessions.filter(x => x.state === "working"));
+  const idle = attentionSort(d, d.sessions.filter(x => x.state === "idle"));
 
   const tiles =
     countTile("Needs you", {line: "sessions blocked on you",
