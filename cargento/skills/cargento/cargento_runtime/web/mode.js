@@ -9,7 +9,7 @@ const CALM_STALE_SEC = 7200;   // an idle session quiet this long is flagged "st
 let displayMode = "regular";
 try{
   const saved = localStorage.getItem(DISPLAY_MODE_KEY);
-  if(saved === "calm" || saved === "regular") displayMode = saved;
+  if(saved === "calm" || saved === "regular" || saved === "session") displayMode = saved;
 }catch(e){ /* private mode, or a context with no storage — regular it is */ }
 
 let calmSort = "attention";   /* attention | recent | repo | burn */
@@ -29,9 +29,16 @@ let calmScrollTop = 0;        /* ledger scroll survives the 5s re-render */
 let calmRevealFocus = false;  /* scroll the cursor into view after this render */
 let calmResetScroll = false;  /* re-filtered: the next render starts at the top */
 
+/* The session view's target: a (harness, sid) key for the session to render.
+   Not persisted — a stale session on reload is worse than a fresh start in the
+   overview. Set by clicking a session card or row; cleared when the view is
+   left. */
+let sessionViewKey = null;
+
 function setDisplayMode(mode){
-  if(mode !== "calm" && mode !== "regular" || mode === displayMode) return;
+  if(mode !== "calm" && mode !== "regular" && mode !== "session" || mode === displayMode) return;
   displayMode = mode;
+  if(mode !== "session") sessionViewKey = null;
   try{ localStorage.setItem(DISPLAY_MODE_KEY, mode); }catch(e){ /* nothing to persist to */ }
   calmResetScroll = true;
   if(lastData) render(lastData);

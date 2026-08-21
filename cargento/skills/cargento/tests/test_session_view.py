@@ -1,0 +1,220 @@
+from __future__ import annotations
+
+import json
+import shutil
+import unittest
+from typing import Any
+
+from .page_harness import PageJsHarness
+
+
+class SessionViewTest(PageJsHarness):
+    """The session display mode: one session's dispatch tree and goal line.
+
+    These execute the shipped app.js: every assertion is about what the page
+    does with a payload, not about the assembled document's source text.
+    """
+
+    # Globals the page reads at load (localStorage) and a stub for the session
+    # picker's click channel.
+    @staticmethod
+    def prelude(saved: str | None = None) -> str:
+        seed = "{}" if saved is None else json.dumps({"cargento.displayMode": saved})
+        return f"""
+let __store = {seed};
+const localStorage = {{
+  getItem(k){{ return Object.prototype.hasOwnProperty.call(__store, k) ? __store[k] : null; }},
+  setItem(k, v){{ __store[k] = String(v); }}
+}};
+let __timers = [];
+const setTimeout = fn => {{ __timers.push(fn); return __timers.length; }};
+"""
+
+    # A fixture FO session with two workflows and three entities at different
+    # stages. The goal is the workflow frontmatter `title` scalar, already
+    # published as `workflow.goal` by spacedock.read_workflow.
+    FIXTURE = """
+const mk = o => Object.assign({
+  harness: "claude", session: "1234abcd", sid: "1234abcd", project: "repo/proj",
+  title: "Active dispatch", last_prompt: "", state: "working", state_detail: "running Bash",
+  active: true, last_activity: 990, rate_per_min: 10, total: 0, done: 0, open: 0,
+  progress_pct: 0, eta_h: null, turn: null, subagents: [], tasks: [], spacedock: null
+}, o);
+const sdWf = (over) => Object.assign({
+  workflow: "debug-flywheel", stages: ["intake", "review", "fix-and-harden"],
+  goal: "", entities: []
+}, over);
+const ent = (slug, stage, live, cycle) => ({slug, stage, live: !!live, cycle: cycle || ""});
+const fo = mk({
+  spacedock: {
+    role: "first-officer",
+    workflows: [
+      sdWf({goal: "Ship session view", entities: [
+        ent("drc-1", "review", false, "c2"),
+        ent("drc-2", "fix-and-harden", true),
+        ent("drc-3", "intake", false)
+      ]}),
+      sdWf({workflow: "other-wf", goal: "", stages: ["intake", "posted"], entities: [
+        ent("pr-7", "posted", false)
+      ]})
+    ]
+  }
+});
+const board = sessions => ({
+  generated: 100000, window_hours: 24, show_all: false,
+  rate_window_sec: 600,
+  harnesses: [{key: "claude", label: "Claude Code", discovered: true, error: null, reports_rate: true}],
+  summary: {needs_input: 0, working: 1, rate_per_min: 10, active_sessions: 1,
+            open_tasks: 0, progress_pct: 0, total_tasks: 0, total_done: 0},
+  sessions
+});
+"""
+
+    def run_session(self, checks: str, *, saved: str | None = None) -> Any:
+        return self._run_page_js(self.FIXTURE + checks, prelude=self.prelude(saved))
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_ac1_session_view_renders_dispatch_tree(self) -> None:
+        """AC-1: the session view renders one tree per workflow, with entity
+        slugs, stage names, and the sd-live class on live entities. Fails if
+        the tree-rendering branch is deleted."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+const h = sessionView(board([fo]));
+out.hasWf1 = h.includes("debug-flywheel");
+out.hasWf2 = h.includes("other-wf");
+// AC-1: every entity slug is present.
+out.slugs = ["drc-1", "drc-2", "drc-3", "pr-7"].map(s => h.includes(s));
+// AC-1: every stage name is present.
+out.stages = ["intake", "review", "fix-and-harden", "posted"].map(s => h.includes(s));
+// AC-1: the live entity (drc-2) carries the sd-live class.
+out.liveClass = h.includes('class="sv-ent sd-live"');
+// A non-live entity must NOT carry sd-live.
+out.parkedNotLive = !h.includes('sv-ent sd-live">drc-1') && !h.includes('sv-ent sd-live">drc-3');
+// Cycle label present on drc-1.
+out.cycle = h.includes("c2");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["hasWf1"])
+        self.assertTrue(out["hasWf2"])
+        self.assertEqual([True, True, True, True], out["slugs"], "an entity slug is missing")
+        self.assertEqual([True, True, True, True], out["stages"], "a stage name is missing")
+        self.assertTrue(out["liveClass"], "the live entity does not carry sd-live")
+        self.assertTrue(out["parkedNotLive"], "a parked entity was marked live")
+        self.assertTrue(out["cycle"], "the cycle label is missing")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_ac2a_goal_line_shows_stated_goal(self) -> None:
+        """AC-2a: when the workflow frontmatter carries a title, the session
+        view renders it as a one-line goal header. Fails if the goal field is
+        dropped from the payload."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+const h = sessionView(board([fo]));
+out.hasGoal = h.includes('class="sv-goal"');
+out.goalText = h.includes("Ship session view");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["hasGoal"], "the goal header element is missing")
+        self.assertTrue(out["goalText"], "the goal text is missing from the header")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_ac2b_no_goal_line_when_title_absent(self) -> None:
+        """AC-2b: when the workflow frontmatter carries no title, no goal line
+        renders. Fails if the renderer emits a goal element when goal is empty."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+// The second workflow (other-wf) has goal: "" — it must not render a goal.
+const h = sessionView(board([fo]));
+// Check that no sv-goal element appears for the other-wf section. The
+// first workflow has a goal, so we need to check per-workflow. The session
+// view renders workflows in order, so we look at the HTML after "other-wf".
+const wf2Start = h.indexOf("other-wf");
+const wf2Section = h.slice(wf2Start);
+out.noGoalForWf2 = !wf2Section.includes('class="sv-goal"');
+// Also test with a session whose only workflow has no goal.
+const noGoal = mk({
+  spacedock: {
+    role: "first-officer",
+    workflows: [sdWf({goal: "", entities: [ent("drc-1", "review", false)]})]
+  }
+});
+const h2 = sessionView(board([noGoal]));
+out.noGoalAtAll = !h2.includes('class="sv-goal"');
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["noGoalForWf2"], "a goal was fabricated for a workflow with no title")
+        self.assertTrue(out["noGoalAtAll"], "a goal was fabricated when no title is present")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_ac2_no_hardcoded_goal_fallback(self) -> None:
+        """AC-2 falsifying edit: hardcoding a goal string as a fallback when
+        goal is absent must fail this test. No fabricated or placeholder text
+        should appear."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+const noGoal = mk({
+  spacedock: {
+    role: "first-officer",
+    workflows: [sdWf({goal: "", entities: [ent("drc-1", "review", false)]})]
+  }
+});
+const h = sessionView(board([noGoal]));
+out.noCurrentSprint = !h.includes("Current sprint");
+out.noGoalLabel = !h.includes('class="sv-goal"');
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["noCurrentSprint"], "a hardcoded goal fallback was rendered")
+        self.assertTrue(out["noGoalLabel"], "a goal element was rendered for an empty goal")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_session_picker_shown_when_no_key(self) -> None:
+        """Entering session mode with no session selected shows a picker, not
+        a blank or fabricated view."""
+        checks = """
+const out = {};
+sessionViewKey = null;
+const h = sessionView(board([fo]));
+out.hasPicker = h.includes("sv-picker");
+out.hasPickRow = h.includes('data-calm="session" data-arg="claude:1234abcd"');
+out.noGoalWhenPicking = !h.includes('class="sv-goal"');
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["hasPicker"], "the picker was not shown for a null key")
+        self.assertTrue(out["hasPickRow"], "the picker row is missing")
+        self.assertTrue(out["noGoalWhenPicking"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_set_display_mode_accepts_session(self) -> None:
+        """Test plan item 4: setDisplayMode("session") sets displayMode to
+        "session", persists to localStorage, and triggers render(lastData).
+        setDisplayMode("invalid") is a no-op."""
+        checks = """
+const out = {};
+const d = board([fo]);
+render(d);
+out.before = displayMode;
+setDisplayMode("session");
+out.mode = displayMode;
+out.stored = __store["cargento.displayMode"];
+out.sessionKeyCleared = sessionViewKey === null;
+// An invalid value is a no-op.
+setDisplayMode("invalid");
+out.rejectsJunk = displayMode;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertEqual("regular", out["before"])
+        self.assertEqual("session", out["mode"], "setDisplayMode did not accept 'session'")
+        self.assertEqual("session", out["stored"], "the mode was not persisted")
+        self.assertTrue(out["sessionKeyCleared"], "entering session mode left a stale key")
+        self.assertEqual("session", out["rejectsJunk"], "an invalid mode was accepted")

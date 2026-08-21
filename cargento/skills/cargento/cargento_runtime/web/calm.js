@@ -364,6 +364,11 @@ function calmCopyId(key){
 
 function calmAction(act, arg){
   if(act === "mode"){ setDisplayMode(arg); return; }
+  if(act === "session"){
+    sessionViewKey = arg;
+    setDisplayMode("session");
+    return;
+  }
   if(usageAction(act, arg)) return;
   if(act === "stop"){
     if(!stopArmed){

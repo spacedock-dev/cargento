@@ -175,6 +175,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/usage.js",
     "skills/cargento/cargento_runtime/web/controls.js",
     "skills/cargento/cargento_runtime/web/calm.js",
+    "skills/cargento/cargento_runtime/web/session.js",
     "skills/cargento/cargento_runtime/web/notify.js",
     "skills/cargento/cargento_runtime/web/main.js",
     "skills/cargento/cargento_runtime/web/live.js",

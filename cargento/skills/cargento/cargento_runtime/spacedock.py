@@ -459,6 +459,7 @@ def read_workflow(
                 "resting": [
                     entry["name"] for entry in entries if entry["initial"] or entry["terminal"]
                 ],
+                "goal": scalar(lines, "title"),
             }
     with state.cache_lock:
         runtime_state.bounded_put(
@@ -672,6 +673,7 @@ def session_workflows(
         out.append(
             {
                 "workflow": info["name"],
+                "goal": info.get("goal", ""),
                 "stages": stages,
                 "entities": entities[: config.spacedock_max_entities],
             }

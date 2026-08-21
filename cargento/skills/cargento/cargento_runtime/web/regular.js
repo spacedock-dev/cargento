@@ -524,7 +524,7 @@ function workingCard(d, sess){
       (sess.subagents.length > 6 ? `<span class="subs-k">+${sess.subagents.length-6} more</span>` : "") +
       `</div>`
     : "";
-  return `<div class="card"><div class="card-top"><div class="card-main">` +
+  return `<div class="card" data-calm="session" data-arg="${esc(sessKey(sess))}"><div class="card-top"><div class="card-main">` +
     `<div class="card-headrow"><span class="pill pill-work"><span class="pill-dot"></span>Working</span>` +
     leadPill + badge(sess.harness, true) + `</div>` +
     `<div class="card-title">${esc(sess.title || sess.project)}</div>` +
@@ -603,7 +603,7 @@ function needRow(d, sess, pos, focusKey){
 function idleRow(d, sess){
   const age = fmtDur(d.generated - sess.last_activity);
   const t = sess.total ? ` · ${sess.done}/${sess.total}` : "";
-  return `<div class="idle-row"><span class="idle-dot"></span>${badge(sess.harness, false)}` +
+  return `<div class="idle-row" data-calm="session" data-arg="${esc(sessKey(sess))}"><span class="idle-dot"></span>${badge(sess.harness, false)}` +
     `<span class="idle-title">${esc(sess.title || sess.last_prompt || sess.project)}</span>` +
     /* No authority here on purpose. This cell already truncates at a max-width
        with an ellipsis, so appending would silently swallow it, and an idle
