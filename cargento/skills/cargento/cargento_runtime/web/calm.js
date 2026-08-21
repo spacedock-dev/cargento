@@ -140,6 +140,13 @@ function calmRow(d, x){
         ? "Blocked on you, but nothing this session has written says what it is asking for."
         : null),
     ageSec, waitSec, turn, flag, tone, why,
+    /* The marker for two live sessions on one project label, as markup rather
+       than as facts to re-render here: the card view draws the same chip, and a
+       second rendering of it is how two surfaces come to word one claim two
+       ways. Placed on the project cell rather than the flag column — a
+       needs_input row has already spent that single chip slot on `your call`,
+       and the collision is a property of the project either way. */
+    dup: dupMark(d, x),
     blockedAt: sortKey.blockedAt, sortAge: sortKey.sortAge, rank: sortKey.rank,
     rail: CALM_RAIL[st] || CALM_RAIL.idle,
     /* The prompt is only worth quoting when the title is not already it. */
@@ -289,8 +296,13 @@ function calmEntries(shown, d){
     const out = [];
     for(const key of Array.from(by.keys()).sort()){
       const g = by.get(key).sort(byRank);
+      /* The ordering that groups by project is the one place the collision
+         is a property of the heading, so the heading says it — for the label,
+         not for the rows shown under it, so a filter that hides one of the two
+         cannot quietly turn the group back into an ordinary one. */
       out.push({divider: {label: key, count: g.length,
-                          flagged: g.filter(r => r.flag).length}});
+                          flagged: g.filter(r => r.flag).length,
+                          dup: dupNote(d, key, null)}});
       for(const r of g) out.push({row: r});
     }
     return out;
@@ -598,7 +610,7 @@ function calmRowHTML(r, focusSid, d){
     /* Real project names fill the whole cell, and tail truncation would eat the
        session id — the part that identifies the row. Only the project gives way. */
     `<span class="cm-where" title="${esc(r.project + " · " + r.session)}">` +
-    `<span class="cm-proj">${esc(r.project)}</span>` +
+    `<span class="cm-proj">${esc(r.project)}</span>${r.dup}` +
     `<span class="cm-sess">· ${esc(r.session)}</span></span>` +
     `<span class="cm-doing${r.doingUnread ? " unread" : ""}"` +
     ` title="${esc(r.doingRaw)}">${esc(r.doing)}</span>` +
@@ -695,6 +707,10 @@ function calmLedger(d){
     const html = e => e.row ? calmRowHTML(e.row, focusSid, d)
       : `<div class="cm-div"><span class="cm-div-k">${esc(e.divider.label)}</span>` +
         `<span class="cm-div-n">${e.divider.count}</span>` +
+        (e.divider.dup
+          ? `<span class="cm-div-d" title="${esc(e.divider.dup.tip)}">` +
+            `${esc(e.divider.dup.text)}</span>`
+          : "") +
         `<span class="cm-div-rule"></span>` +
         (e.divider.flagged ? `<span class="cm-div-f">◆ ${e.divider.flagged}</span>` : "") +
         `</div>`;

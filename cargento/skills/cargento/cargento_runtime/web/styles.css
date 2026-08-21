@@ -149,6 +149,7 @@
   .card-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:11px}
   .card-headrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .pill{display:inline-flex;align-items:center;gap:7px;padding:5px 13px 5px 10px;border-radius:999px;font-size:var(--fs-sm);font-weight:600}
+  .dupmark{display:inline-block;flex:none;font-family:var(--mono);font-size:var(--fs-2xs);font-weight:700;letter-spacing:.02em;padding:2px 6px;margin-left:.6ch;border-radius:5px;white-space:nowrap;cursor:help;background:color-mix(in oklab,var(--warn) 26%,transparent);color:var(--warnink);border:1px solid color-mix(in oklab,var(--warn) 42%,transparent)}
   .pill-work{background:color-mix(in oklab,var(--accent) 18%,transparent);color:var(--ink)}
   .pill-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1.5s infinite}
   .card-title{font-size:var(--fs-2xl);font-weight:600;line-height:1.25;letter-spacing:-.012em}
@@ -307,6 +308,7 @@
   .cm-div-n{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);flex:none}
   .cm-div-rule{flex:1;height:1px;background:var(--line)}
   /* A per-repo count across all three flag tones, so it wears none of them. */
+  .cm-div-d{font-family:var(--mono);font-size:var(--fs-2xs);font-weight:700;color:var(--warnink);flex:none}
   .cm-div-f{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink2);flex:none}
   .cm-item{border-bottom:1px solid var(--line)}
   .cm-row{position:relative;display:grid;grid-template-columns:var(--cmcols);align-items:center;gap:14px;padding:0 24px;min-height:42px;cursor:pointer;background:transparent;transition:background .12s}

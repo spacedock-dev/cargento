@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                32_169,
-                "171c40cbfa54f80a2ed27b8ebd63011220319cf9f87f1f01a18040a668ea669e",
+                36_888,
+                "14a993910fc6397098a9d0986e8699039c649bbd2663cf7c5d64080137218bc8",
             ),
             "regular.js": (
-                37_479,
-                "b519bc26d48488a6121de581057c5249d676832305165ce6bf7782e5d5f054e2",
+                37_745,
+                "e35d6e3c2bc35b277b441bff98c261b6f1cc26d9cff44f2ad54c7ab19d96cce7",
             ),
             "mode.js": (
                 2_172,
@@ -84,8 +84,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
-                43_067,
-                "fe4ebeb2ed7615cfa225e4467cda3d63f8c4eb16ffbd79364857781278fef332",
+                44_081,
+                "9b24d470bdc95dbc1aaa54d944befd99bb3f230b60dd4a4f6f2ab40f3241a3fc",
             ),
             "notify.js": (
                 3_185,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(44_998, len(styles))
+        self.assertEqual(45_461, len(styles))
         self.assertEqual(
-            "505bdf665d67465e48364105c43f211c7a59102309c6c4be7e53dedff92ba1f0",
+            "b7c05297001a082073f7d2c8e6e8571348047a8fb91e5c8d11a59b32d8ed34bc",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(233_704, len(assembled))
+        self.assertEqual(240_166, len(assembled))
         self.assertEqual(
-            "9738fb2200472ff09d150b49c92f374d63955e85785857df6c49fe8b737d3363",
+            "d55245ecd6f0a526b97fc7c3709b7c4edf8d6ce7c820fa01206a94a07e5eb9ee",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1133,16 +1133,20 @@ console.log(JSON.stringify(out));
         # Copilot fills `consumption` and, on this fixture, no model — so the same
         # line carries a printed figure and an unread dash, which is the pairing
         # that makes the two absences readable side by side.
-        self.assertEqual("proj · cp1 · model — · used 6.43 AIU", out["working"])
+        # Four sessions on the label `proj`, three of them live, so these two
+        # rows also carry the shared-label marker. Pinned in the same string
+        # rather than dodged with a per-row label, because a board of four
+        # sessions in one project is what this fixture is.
+        self.assertEqual("proj 3 live · cp1 · model — · used 6.43 AIU", out["working"])
         # The needs row leads with the harness badge, whose tooltip text survives
         # the tag strip; the clause still lands at the end of the same line.
-        self.assertEqual("Copilotproj · cp2 · model — · used 0.00 AIU", out["needs"])
+        self.assertEqual("Copilotproj 3 live · cp2 · model — · used 0.00 AIU", out["needs"])
         # A harness with no ledger says nothing about spend and still declares the
         # model slot: the consumption clause vanishes, the model dash does not.
         # The two absences are different — no `used` claims nothing, whereas every
         # session does run on some model.
         self.assertEqual(
-            "proj · cl1 · model —", out["plain"], "a session with no ledger drew a stray dot"
+            "proj 3 live · cl1 · model —", out["plain"], "a session with no ledger drew a stray dot"
         )
         self.assertEqual("proj · pi1 · via Copilot · gpt-5 · used 1.20 AIU", out["both"])
         self.assertNotIn("AIU", out["idle"], "the idle drawer grew a second unit")
@@ -2362,6 +2366,56 @@ console.log(JSON.stringify(out));
         self.assertEqual([None, None], out["allUnknown"], "ranked harnesses that report no rate")
         self.assertEqual("fastest", out["idleIgnored"][0])
         self.assertIn("the highest of the 1 working session that report", out["idleIgnored"][1])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_card_column_says_when_two_live_sessions_share_a_project_label(self) -> None:
+        # The card view has no grouping to lean on, so without a marker the two
+        # agents about to overwrite each other read as two unrelated cards. The
+        # gate row carries it for the same reason it counts as live: answering
+        # that gate is the keystroke that lets one session write over the other.
+        checks = """
+const base = {harness: "claude", session: "aaa", sid: "aaa", project: "repo/proj",
+  title: "t", last_prompt: "", state: "working", state_detail: "running Bash",
+  active: true, last_activity: 990, rate_per_min: 100, total: 0, done: 0, open: 0,
+  progress_pct: 0, eta_h: null, turn: null, subagents: [], tasks: [], spacedock: null};
+const s = o => Object.assign({}, base, o);
+const mate = s({sid: "bbb", session: "bbb", harness: "codex", rate_per_min: 3000});
+const gate = s({sid: "ccc", session: "ccc", state: "needs_input",
+                state_detail: "permission needed", blocked_since: 900});
+const solo = s({sid: "ddd", session: "ddd", project: "repo/solo"});
+const dead = s({sid: "eee", session: "eee", state: "idle", active: false,
+                last_activity: 400});
+const strip = [
+  {key: "claude", label: "Claude", discovered: true, error: null, reports_rate: true},
+  {key: "codex", label: "Codex", discovered: true, error: null, reports_rate: true}];
+const d = {generated: 1000, rate_window_sec: 600, harnesses: strip,
+           summary: {rate_per_min: 0}, sessions: [base, mate, gate, solo, dead]};
+const has = h => h.includes('class="dupmark"');
+const out = {};
+out.card = has(workingCard(d, base));
+out.mate = has(workingCard(d, mate));
+out.solo = has(workingCard(d, solo));
+out.gate = has(needRow(d, gate, 1, null));
+// An idle row on the same label is not one of the sessions in the collision:
+// it has stopped, so it is not about to write anything.
+out.dead = has(idleRow(d, dead));
+// The marker sits with the project label it is about, not in the pill row —
+// the card's pills claim things about burn, and this claims nothing about burn.
+out.headrow = workingCard(d, base).split('class="card-title"')[0];
+out.pillTip = (workingCard(d, mate).match(/class="pill" title="([^"]*)"/) || [])[1];
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(
+            [True, True, False, True, False],
+            [out["card"], out["mate"], out["solo"], out["gate"], out["dead"]],
+            "the shared-label marker is on the wrong set of rows",
+        )
+        self.assertNotIn("dupmark", out["headrow"], "the marker landed in the pill row")
+        self.assertTrue(
+            (out["pillTip"] or "").startswith("3,000 tok/min, the highest of the"),
+            f"the fastest pill's tooltip is no longer the card's first pill: {out['pillTip']}",
+        )
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_a_working_card_says_when_the_rate_is_unknown_rather_than_zero(self) -> None:

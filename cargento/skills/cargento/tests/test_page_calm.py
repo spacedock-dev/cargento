@@ -377,6 +377,82 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["noData"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_two_live_sessions_in_one_project_are_marked_in_every_ordering(self) -> None:
+        # Grouping was passive. A `repo` heading over two rows reads identically
+        # whether they are one agent and one long-dead session or two agents
+        # about to write over each other, and a reader who never picks that
+        # ordering never sees the grouping at all. The marker rides the project
+        # label instead, so it renders in all four orderings — and on the
+        # divider of the one ordering that exists for this question.
+        checks = """
+const out = {};
+const gate = mk({sid: "gate1", session: "gate1", title: "Approve deploy?",
+  state: "needs_input", active: true, last_activity: 99700, blocked_since: 99700,
+  state_detail: "permission needed"});
+const mate = mk({sid: "mate2", session: "mate2", harness: "codex",
+  title: "Migrate sync", state: "working", active: true, last_activity: 99990,
+  state_detail: "running Bash"});
+const solo = mk({sid: "solo3", session: "solo3", project: "repo/solo",
+  title: "Alone", state: "working", active: true, last_activity: 99990,
+  state_detail: "running Bash"});
+const dead = mk({sid: "dead4", session: "dead4", title: "Finished",
+  last_activity: 90000});
+// Two Cursor windows whose workspace files did not resolve. Nine collectors
+// fall back to their own harness key there, so both rows label `cursor` while
+// sharing no directory at all.
+const cu = n => mk({sid: "cu" + n, session: "cu" + n, harness: "cursor",
+  project: "cursor", title: "cursor " + n, state: "working", active: true,
+  last_activity: 99990, state_detail: "running Bash"});
+// Which ROWS carry the marker, read per row rather than off the whole page, so
+// a marker on the wrong row cannot pass as a marker on the right one.
+const marked = () => __els.app.innerHTML.split('class="cm-item"').slice(1)
+  .map(chunk => chunk.includes('class="dupmark"')
+    ? (chunk.match(/data-arg="[a-z]+:([\\w-]+)" role="button"/) || [])[1] : null)
+  .filter(Boolean);
+const shared = payload([gate, mate, solo, dead, cu(1), cu(2)]);
+for(const sort of ["attention", "recent", "repo", "burn"]){
+  calmAction("sort", sort);
+  render(shared);
+  out[sort] = marked().sort();
+}
+calmAction("sort", "repo");
+render(shared);
+out.dividers = __els.app.innerHTML.split('<div class="cm-div">').slice(1).map(chunk => {
+  const head = chunk.split('class="cm-item"')[0];
+  return [(head.match(/cm-div-k">([^<]*)/) || [])[1], head.includes("cm-div-d")];
+});
+out.tip = (__els.app.innerHTML.match(/class="dupmark" title="([^"]*)"/) || [])[1];
+// The stock board puts a blocked row and an idle row on one label. One live
+// session is not a collision, which is also what keeps the flagged counts
+// this suite already pins unchanged.
+calmAction("sort", "attention");
+render(board());
+out.stock = marked();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        for sort in ("attention", "recent", "repo", "burn"):
+            with self.subTest(sort=sort):
+                self.assertEqual(
+                    ["gate1", "mate2"],
+                    out[sort],
+                    "the two live sessions sharing a project label are not both marked",
+                )
+        self.assertEqual(
+            [["cursor", False], ["repo/proj", True], ["repo/solo", False]],
+            out["dividers"],
+            "the repo divider does not say which group collides",
+        )
+        # The claim is about the LABEL, which is the last two path segments, so
+        # two worktrees read alike. Saying "the same repo" would assert a
+        # directory the payload does not carry.
+        self.assertIn("project label", out["tip"] or "")
+        self.assertIn("not proof of the same directory", out["tip"] or "")
+        self.assertNotIn("same repo", out["tip"] or "")
+        self.assertIn("Codex mate2", out["tip"] or "", "the marker does not name the other session")
+        self.assertEqual([], out["stock"], "one live session on a label was marked as a collision")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_row_order_does_not_churn_between_polls(self) -> None:
         # A row that swaps places under the cursor is worse than a row in the
         # wrong place. Every ordering has to be a function of things that do not

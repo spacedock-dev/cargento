@@ -528,7 +528,8 @@ function workingCard(d, sess){
     `<div class="card-headrow"><span class="pill pill-work"><span class="pill-dot"></span>Working</span>` +
     leadPill + badge(sess.harness, true) + `</div>` +
     `<div class="card-title">${esc(sess.title || sess.project)}</div>` +
-    `<div class="card-meta">${esc(sess.project)} · ${esc(sess.session)}` +
+    `<div class="card-meta">${esc(sess.project)}${dupMark(d, sess)}` +
+    ` · ${esc(sess.session)}` +
     `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>${bitsLine}` +
     `</div>${rateMeter}</div>` +
     `<div class="now"><span class="now-k">now</span>` +
@@ -585,7 +586,11 @@ function needRow(d, sess, pos, focusKey){
   const copied = calmCopyNote && calmCopyNote.key === key;
   return `<div class="need${focusKey === key ? " cursor" : ""}">` +
     `<span class="need-n">${pos}</span><div class="need-main">` +
-    `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)} · ${esc(sess.session)}` +
+    /* The gate row carries the marker for the same reason a blocked session
+       counts as live at all: answering this gate is the keystroke that lets one
+       of the two sessions write over the other. */
+    `<div class="need-meta">${badge(sess.harness, true)}${esc(sess.project)}` +
+    `${dupMark(d, sess)} · ${esc(sess.session)}` +
     `${authorityMeta(sess)}${consumptionMeta(d, sess)}</div>` +
     `<div class="need-title">${esc(sess.title || sess.last_prompt || sess.project)}</div>` +
     detailHtml + `</div>` +

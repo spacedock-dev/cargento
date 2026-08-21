@@ -93,6 +93,94 @@ function attentionSort(d, rows){
     .sort((a, b) => byRank(a.k, b.k)).map(e => e.x);
 }
 
+/* Two live sessions carrying one project label — the collision the board could
+   always see and never said out loud. The `repo` ordering put the rows next to
+   each other, which is passive: the heading over two agents about to write over
+   one another is byte-identical to the heading over one working session and a
+   fortnight-old idle one, and a reader who never picks that ordering never sees
+   the grouping at all. So this is a marker rather than a view, and it rides the
+   project label, which both views print in every ordering.
+
+   Live is `working` or `needs_input`. A blocked session is half of the commonest
+   real collision: it holds a dirty tree and resumes the instant you answer the
+   gate, straight over the other agent's edits — so leaving it out would miss
+   both the case and the keystroke that causes it. Idle is out, because a stopped
+   session writes nothing and an `?all=1` board is mostly pairs of them.
+
+   What it compares is the LABEL. `project` is "/".join(parts[-2:]) (sessions.py),
+   two segments chosen precisely because sibling worktrees share them, so
+   `cargento/main` twice may be two checkouts with nothing in common but a name.
+   Every rendering's wording says so, the same hedge `fastest known` makes rather
+   than claim a maximum over rows it cannot see. Comparing real directories would
+   need a cwd in the payload, and SECURITY.md keeps cwd a matching hint that is
+   never echoed to /api/data.
+
+   Bare harness names are excluded, and that exclusion is the whole difference
+   between a marker and one that fires on any machine with two Cursor windows
+   open: nine collectors fall back to their own harness key when no cwd resolves,
+   so two unreadable Cursor workspaces both label `cursor` and share nothing at
+   all. A label with no separator in it that is also a harness key is that
+   fallback, and groups nobody. It does not cover Cursor's other false positive —
+   that collector publishes subagents as peer top-level rows, and those resolve a
+   real two-segment label, so a parent and its own child read as a collision
+   until the collector is fixed.
+
+   Cached on payload object identity, exactly as burnLeaders() is and for the
+   same reason: the answer is a property of the payload, every row asks it of the
+   same object, and both views ask once per row every five seconds. */
+let collisionsFor = null;   // {d, found} for the last payload asked about
+function projectCollisions(d){
+  if(collisionsFor && collisionsFor.d === d) return collisionsFor.found;
+  const live = new Map();
+  for(const x of (d && d.sessions) || []){
+    if(x.state !== "working" && x.state !== "needs_input") continue;
+    const label = String(x.project == null ? "" : x.project);
+    if(!label) continue;
+    if(label.indexOf("/") < 0 && own(HARNESS, label, null)) continue;
+    if(!live.has(label)) live.set(label, []);
+    live.get(label).push(x);
+  }
+  const found = {groups: new Map(), keys: new Set()};
+  for(const [label, group] of live){
+    if(group.length < 2) continue;
+    found.groups.set(label, group);
+    for(const x of group) found.keys.add(sessKey(x));
+  }
+  collisionsFor = {d, found};
+  return found;
+}
+
+/* The words for it, once, for all four surfaces that carry them — calm's project
+   cell and its `repo` divider, the working card's metadata line, the gate row's.
+   A collision described four ways is four claims, and the three that drift are
+   the ones that would overstate what a shared label proves. */
+const DUP_LIMIT = " Same label is not proof of the same directory: the label is the" +
+  " last two segments of each session's path, so sibling worktrees read alike.";
+function dupNote(d, label, self){
+  const group = projectCollisions(d).groups.get(label);
+  if(!group) return null;
+  const named = group.filter(x => !self || sessKey(x) !== sessKey(self))
+    .map(x => (own(HARNESS, x.harness, {}).name || x.harness) + " " + x.session);
+  return {
+    text: group.length + " live",
+    tip: group.length + " sessions on the project label " + label +
+      " are working or waiting on you" + (self ? " — this one and " : ": ") +
+      named.join(", ") + "." + DUP_LIMIT
+  };
+}
+
+/* The marker, for a row that is one of the colliding sessions itself. An idle
+   row on a colliding label gets nothing: the claim is about the sessions that
+   are about to write, and that one has stopped. The markup is emitted here
+   rather than per view for the reason the sentence is — one chip, or four. */
+function dupMark(d, x){
+  if(!projectCollisions(d).keys.has(sessKey(x))) return "";
+  const note = dupNote(d, x.project, x);
+  return note
+    ? ` <span class="dupmark" title="${esc(note.tip)}">${esc(note.text)}</span>`
+    : "";
+}
+
 function fmtDur(sec){
   if(sec == null || sec < 0) return "–";
   sec = Math.floor(sec);
