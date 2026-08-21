@@ -17,6 +17,7 @@ from unittest import mock
 
 from cargento_runtime import aggregate, cli, events, http_api, lifecycle, observation
 from cargento_runtime import io as runtime_io
+from cargento_runtime import sessions as runtime_sessions
 
 from . import support
 
@@ -188,6 +189,30 @@ class LedgerTest(ObservationTestCase):
         self.assertEqual([], coordinator.overlays_for("claude", PREFIX))
         self.assertEqual(1, coordinator.counters["retired"])
 
+    def test_a_stop_is_remembered_outside_the_ledger_it_gets_retired_with(self) -> None:
+        # DRC-4035's motivating case is `claude -p`: the stop and the exit arrive
+        # back to back, so a mark held in the ledger is destroyed milliseconds
+        # after the only session it describes finished.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.assertEqual([], coordinator.overlays_for("claude", PREFIX))
+        self.assertEqual(NOW, coordinator.finished_at("claude", PREFIX))
+
+    def test_a_session_that_works_again_is_no_longer_finished(self) -> None:
+        # The DRC-4101 failure class: the mark outlives the ledger by design, so
+        # a resumption has to remove it rather than be outranked by it.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        self.assertEqual(0.0, coordinator.finished_at("claude", PREFIX))
+
+    def test_a_gate_after_a_stop_is_not_a_finished_session(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.assertEqual(0.0, coordinator.finished_at("claude", PREFIX))
+
     def test_a_clear_followed_by_a_prompt_inside_one_window_reads_as_working(self) -> None:
         # Claude fires session_ended on /clear as well as on exit, so this exact
         # order arrives in practice and must not leave the row retired.
@@ -335,6 +360,33 @@ class PendingTest(ObservationTestCase):
         coordinator.note_rows({("claude", PREFIX)})
         self.assertEqual({}, coordinator._pending)
         self.assertEqual(1, len(coordinator.overlays_for("claude", PREFIX)))
+
+    def test_a_completion_mark_is_dropped_once_no_collection_produces_its_row(self) -> None:
+        # No event retires the mark, so this is its only bound: a session the
+        # collector has stopped publishing can never render it again.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        coordinator.note_rows({("claude", PREFIX)})
+        self.assertEqual(NOW, coordinator.finished_at("claude", PREFIX))
+        coordinator.note_rows(set())
+        self.assertEqual(0.0, coordinator.finished_at("claude", PREFIX))
+
+    def test_a_mark_survives_a_collection_that_had_not_seen_its_session_yet(self) -> None:
+        # A collection already in flight when the stop arrived reports a key set
+        # that predates it. Its overlay is pending, so the mark waits with it.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.note_rows(set())
+        self.assertEqual(NOW, coordinator.finished_at("claude", PREFIX))
+
+    def test_completion_marks_are_capped_like_the_ledger_and_count_the_refusal(self) -> None:
+        coordinator = self.build(event_overlay_max_sessions=1)
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="turn_stopped", session_id=OTHER))
+        self.assertEqual(NOW, coordinator.finished_at("claude", PREFIX))
+        self.assertEqual(0.0, coordinator.finished_at("claude", OTHER_PREFIX))
+        self.assertEqual(1, coordinator.counters["finished.refused"])
 
     def test_a_waiting_overlay_expires_after_the_ttl_with_a_counter(self) -> None:
         coordinator = self.build()
@@ -754,6 +806,10 @@ class WaitDetailTest(unittest.TestCase):
                 )
             ]
 
+        def finished_at(self, harness: str, sid: str) -> float:
+            del harness, sid  # this stub remembers no stop
+            return 0.0
+
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
 
@@ -878,6 +934,10 @@ class StateDisputeTest(unittest.TestCase):
 
         def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
             return self.overlays if (harness, sid) == ("claude", PREFIX) else []
+
+        def finished_at(self, harness: str, sid: str) -> float:
+            del harness, sid  # this stub remembers no stop
+            return 0.0
 
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
@@ -1239,6 +1299,10 @@ class ApplicationOverlayTest(unittest.TestCase):
                     )
                 ]
 
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid  # this stub remembers no stop
+                return 0.0
+
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 self.noted = keys
 
@@ -1265,11 +1329,73 @@ class ApplicationOverlayTest(unittest.TestCase):
                     )
                 ]
 
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid  # this stub remembers no stop
+                return 0.0
+
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
 
         collection = self._collect_with(Source())
         self.assertEqual(1, collection["summary"]["needs_input"])
+
+    def test_a_remembered_stop_reaches_the_row_with_no_overlay_left(self) -> None:
+        # The `claude -p` row: the ledger is gone, the mark is not, and the
+        # session still has to publish that its turn ended.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                if (harness, sid) != ("claude", PREFIX):
+                    return 0.0
+                # After the transcript's last write, which is what a session
+                # that stopped and stayed stopped looks like.
+                return support.SERVER_STARTED - 200
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        row = self._row(self._collect_with(Source()))
+        self.assertEqual("idle", row["state"], "the collector still owns the state")
+        self.assertEqual(support.SERVER_STARTED - 200, row["finished_at"])
+
+    def test_a_harness_with_no_event_adapter_publishes_that_it_is_scan_only(self) -> None:
+        # DRC-4035 D4: six harnesses can never earn a stop, so their idle rows
+        # must say the answer is unknowable here rather than share the silence of
+        # a Claude row that simply has not finished.
+        config, state = support.runtime()
+
+        def collect_one(harness: str) -> Any:
+            def collect(
+                _config: Any, _state: Any, _when: float, _window: float, _show_all: bool
+            ) -> list[Any]:
+                return [runtime_sessions.base_session(harness, f"{harness}-1", "proj")]
+
+            return collect
+
+        application = aggregate.Application(
+            config,
+            state,
+            tuple(
+                aggregate.HarnessSpec(
+                    key=key, label=key, discover=lambda *_: True, collect=collect_one(key)
+                )
+                for key in ("claude", "goose")
+            ),
+            native_notifier=lambda _platform: "",
+            popup_notifier=lambda *_: None,
+            diagnostic_sink=lambda _message: None,
+            clock=lambda: support.SERVER_STARTED,
+        )
+        rows = {str(row["harness"]): row for row in application.collect(show_all=True)["sessions"]}
+        self.assertEqual(events.ACQUISITION_SCAN, rows["goose"]["acquisition"])
+        self.assertNotIn(
+            "acquisition",
+            rows["claude"],
+            "a harness that can earn a stop must not be marked unknowable",
+        )
 
     def test_an_overlay_for_an_unknown_session_creates_no_row(self) -> None:
         class Source:
@@ -1287,6 +1413,10 @@ class ApplicationOverlayTest(unittest.TestCase):
                         at=support.SERVER_STARTED,
                     )
                 ]
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid  # this stub remembers no stop
+                return 0.0
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass

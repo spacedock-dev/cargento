@@ -287,6 +287,63 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["flagChipZero"])
         self.assertTrue(out["freshIdleUnflagged"])
 
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_finished_idle_row_says_so_without_becoming_a_third_flag(self) -> None:
+        # DRC-4035. Idle is two situations wearing one word: a turn that ended
+        # and nobody read, and a session still waiting on a reply. The published
+        # stop separates them — inside the `idle / wait` cell, because a third
+        # flag would contradict the two-flag cap and drag in the flagged count,
+        # the `f` filter and the attention ordering.
+        checks = """
+const out = {};
+const done = mk({sid: "d1", session: "d1", title: "Finished thing",
+  last_activity: 90000, finished_at: 90000});
+const fresh = mk({sid: "d2", session: "d2", title: "Just stopped",
+  last_activity: 99900, finished_at: 99900});
+const unseen = mk({sid: "d3", session: "d3", title: "No stop seen", last_activity: 90000});
+const blind = mk({sid: "d4", session: "d4", harness: "goose", title: "No adapter",
+  last_activity: 90000, acquisition: "scan-only"});
+render(payload([done, fresh, unseen, blind]));
+const html = __els.app.innerHTML;
+const chunk = needle => html.split('class="cm-item"').find(s => s.includes(needle)) || "";
+out.doneWord = /class="fin-mark"[^>]*>done</.test(chunk("Finished thing"));
+out.doneAge = chunk("Finished thing").includes("2h 46m");
+// Inside the gate the mark would be Idle restated in a second vocabulary.
+out.freshQuiet = !chunk("Just stopped").includes("fin-mark");
+out.unseenQuiet = !chunk("No stop seen").includes("fin-mark");
+out.blindQuiet = !chunk("No adapter").includes("fin-mark");
+// The six harnesses with no event adapter say the answer is unknowable rather
+// than sharing the silence of a row that simply has not finished.
+out.blindTip = chunk("No adapter").includes("cannot be known here");
+out.unseenTip = chunk("No stop seen").includes("cannot be known here");
+out.noFlag = !html.includes('class="cm-flag"');
+out.flagChipZero = html.includes("\\u25c6 0 flagged");
+out.toggle = (html.match(/class="idle-toggle"[^>]*>([^<]*)</) || [null, ""])[1];
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["doneWord"], "a finished-and-unread row said nothing")
+        self.assertTrue(out["doneAge"], "the mark replaced the age instead of joining it")
+        self.assertTrue(out["freshQuiet"], "a turn that just ended is not news")
+        self.assertTrue(out["unseenQuiet"])
+        self.assertTrue(out["blindQuiet"], "a harness with no adapter cannot claim a finish")
+        self.assertTrue(out["blindTip"], "the unknowable case is not disclosed")
+        self.assertFalse(out["unseenTip"], "a harness that can earn a stop was called blind")
+        self.assertTrue(out["noFlag"], "the mark became a third flag")
+        self.assertTrue(out["flagChipZero"], "the mark reached the flagged count")
+        # The reward this exists to collect is inside a block collapsed by
+        # default, so the toggle has to say how much of it is in there.
+        self.assertEqual("4 idle · 1 done · quiet up to 2h 46m", out["toggle"])
+
+    def test_the_finished_wording_and_its_threshold_have_exactly_one_source(self) -> None:
+        # Both views draw this marker and both word the tooltip, so two copies
+        # would be the `fastest` drift again — twice over, since the threshold
+        # decides which rows carry it at all.
+        self.assertIn("const FINISHED_UNREAD_SEC =", APP_JS)
+        self.assertEqual(1, APP_JS.count("nothing has come back to read it"))
+        self.assertEqual(1, APP_JS.count('class="fin-mark"'))
+        self.assertEqual(1, APP_JS.count("cannot be known here"))
+
     def test_the_long_turn_wording_has_exactly_one_source(self) -> None:
         # The ⚠️ tooltip and the calm flag explanation are the same sentence;
         # two copies is how they drift apart.

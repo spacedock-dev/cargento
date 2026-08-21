@@ -336,6 +336,13 @@
   .cm-track{display:block;width:100%;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
   .cm-fill{display:block;height:100%;border-radius:3px}
   .cm-metric{font-family:var(--mono);font-size:var(--fs-sm);text-align:right;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+  /* The idle/wait cell holds two things on a finished row: which of the two
+     kinds of idle it is, and for how long. The word takes the smaller step and
+     the dimmer ink so the number stays the cell's headline, and the metric keeps
+     its own ellipsis — if the pair ever outgrows the column the age is what
+     survives, since a mark with no duration answers nothing. */
+  .cm-quiet{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
+  .fin-mark{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);white-space:nowrap;flex:none;cursor:help}
   /* Held at reduced emphasis rather than hidden: an action nobody can see is an
      action nobody uses, and hover-only reveals do not exist for the keyboard. */
   .cm-q{display:flex;justify-content:flex-end;gap:9px;opacity:.6;transition:opacity .12s ease}

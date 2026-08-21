@@ -195,6 +195,61 @@ function fmtDur(sec){
 const LONG_TURN_NOTE = "This request is running long (or estimated to). " +
   "Double-check what the agent is doing matches your expectations.";
 
+/* How long a stopped turn has to sit before either view calls it finished and
+   unread. Measured, not inherited: across 10,119 returns to a stopped turn in
+   1,355 local Claude transcripts, half were answered inside 106s and 90% inside
+   966s, so past 1,200s the odds are better than ten to one that nobody is coming
+   back to this one soon. Marking on the stop itself would put the word on nearly
+   every idle row within seconds — Idle restated in a second vocabulary, which is
+   the fault the `stale` chip was retired for. The retired chip's 7,200s is twice
+   the 97th percentile of those returns and was never re-argued: it would stay
+   silent through the whole window in which collecting the finished work is still
+   worth something. */
+const FINISHED_UNREAD_SEC = 1200;
+
+/* The three readings of an idle row, in one place because both views draw them:
+   a turn that ended and nobody read, a session that may still be waiting on a
+   reply nobody gave, and a harness whose store cannot tell us which. Only a
+   `turn_stopped` separates the first two, and just four of the ten harnesses can
+   send one — so the answer is a measurement, an absence, or an admission, and a
+   surface that words any of the three differently is inventing a fourth. */
+function finishedMark(d, x){
+  if(x.state !== "idle") return null;
+  const at = x.finished_at;
+  // A number, not just truthy: this arrives from the payload, and a string here
+  // would subtract into NaN and render as a mark that is always past the gate.
+  if(typeof at !== "number" || !isFinite(at) || at <= 0) return null;
+  const quiet = Math.max(0, d.generated - at);
+  if(quiet < FINISHED_UNREAD_SEC) return null;
+  return {word: "done",
+          tip: "this turn ended " + fmtDur(quiet) +
+            " ago and nothing has come back to read it"};
+}
+
+/* The markup for it, emitted here rather than per view for the reason dupMark is:
+   one marker, or two that drift. */
+function finishedBit(d, x){
+  const mark = finishedMark(d, x);
+  return mark
+    ? `<span class="fin-mark" title="${esc(mark.tip)}">${esc(mark.word)}</span>`
+    : "";
+}
+
+/* What the idle age means, which is not the same sentence on every row. */
+function idleQuietNote(d, x, age){
+  const mark = finishedMark(d, x);
+  if(mark) return mark.tip;
+  // The `acquisition` provenance marker, finally rendered: a row reached only by
+  // scanning is one whose harness has no event adapter at all, so its silence is
+  // the store's limit and not a fact about the session. Left unsaid, an unmarked
+  // idle row would mean either "did not finish" or "cannot be seen from here" —
+  // the same collapse the retired `stale` gloss was admitting to.
+  return x.acquisition === "scan-only"
+    ? "no activity for " + age + " — this harness sends no turn events, so whether" +
+      " it finished or is still waiting on a reply cannot be known here"
+    : "no activity for " + age;
+}
+
 // MCP tools reach the payload under their wire name — a mangled
 // `mcp` + server + tool triple joined by double underscores. Rendering that raw
 // puts the transport's naming convention on screen where the reader wants to

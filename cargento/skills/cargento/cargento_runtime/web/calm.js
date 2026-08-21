@@ -191,11 +191,19 @@ function calmRow(d, x){
       : "",
     quiet: st === "needs" ? fmtDur(waitSec) : (st === "idle" ? fmtDur(ageSec) : ""),
     quietTip: st === "needs" ? "blocked on you for " + fmtDur(waitSec)
-      : (st === "idle" ? "no activity for " + fmtDur(ageSec) : ""),
+      : (st === "idle" ? idleQuietNote(d, x, fmtDur(ageSec)) : ""),
     quietInk: st === "needs" ? "var(--alert)" : "var(--ink3)",
+    /* Which of the two idle situations this row is, as markup, beside the number
+       rather than in the flag column: a third chip would contradict the two-flag
+       cap and pull in the flagged count, the `f` filter and the attention
+       ordering, and "it finished" is not "look at this". Empty on every row the
+       server cannot answer for, which is what `quietTip` says instead. */
+    finished: st === "idle" ? finishedBit(d, x) : "",
     titleInk: st === "idle" ? "var(--ink2)" : "var(--ink)",
     detailAge: st === "needs" ? "blocked " + fmtDur(waitSec)
-      : (st === "work" ? "last event " + fmtDur(ageSec) + " ago" : "idle " + fmtDur(ageSec)),
+      : (st === "work" ? "last event " + fmtDur(ageSec) + " ago"
+        : (finishedMark(d, x) ? "finished " + fmtDur(ageSec) + " ago, unread"
+          : "idle " + fmtDur(ageSec))),
     turnLine: turn ? turn.elapsed_h + " elapsed · " +
       (turn.eta_h ? "~" + turn.eta_h + " left (est)" : "running longer than recent turns") : ""
   };
@@ -617,8 +625,9 @@ function calmRowHTML(r, focusSid, d){
     `<span>${flag}</span>` +
     `<span class="cm-rate"><span class="cm-metric" style="color:var(--ink2)"` +
     ` title="${esc(r.rateTip)}">${esc(r.rate)}</span>${bar}</span>` +
+    `<span class="cm-quiet">${r.finished}` +
     `<span class="cm-metric" style="color:${r.quietInk}"` +
-    ` title="${esc(r.quietTip)}">${esc(r.quiet)}</span>` +
+    ` title="${esc(r.quietTip)}">${esc(r.quiet)}</span></span>` +
     `<span class="cm-q"><button type="button" class="cm-qb" data-calm="copy"` +
     ` data-arg="${esc(r.key)}" title="copy this session's id">` +
     `${copied ? esc(calmCopyNote.text) : "copy id"}</button></span>` +
@@ -724,6 +733,14 @@ function calmLedger(d){
          rows instead of an empty ledger that reads as a fault. */
       const hidden = entries.slice(cut).filter(e => e.row).map(e => e.row);
       const quietest = hidden.reduce((m, r) => Math.max(m, r.ageSec), 0);
+      /* How much of what is hidden is work already paid for. The clip collapses
+         the idle run by default and a finished-unread session is idle, so
+         without this the one thing in there worth opening the block for is the
+         one thing the toggle does not mention. Only when there is some: a
+         `· 0 done` on a board with no event hooks installed would be a number
+         that never moves. */
+      const collected = hidden.filter(r => r.finished).length;
+      const collectedBit = collected ? collected + " done · " : "";
       body = entries.slice(0, cut).map(html).join("") +
         `<div class="idle-wrap"><div class="idle-clip" style="max-height:` +
         (calmIdleExpanded ? "3000px" : "148px") + `">` +
@@ -732,7 +749,7 @@ function calmLedger(d){
         `<div class="idle-toggle-wrap"><button type="button" class="idle-toggle"` +
         ` data-calm="idle" aria-expanded="${calmIdleExpanded}">` +
         (calmIdleExpanded ? "Show less"
-          : `${hidden.length} idle · quiet up to ${fmtDur(quietest)}`) +
+          : `${hidden.length} idle · ${collectedBit}quiet up to ${fmtDur(quietest)}`) +
         `</button></div></div>`;
     }
   }

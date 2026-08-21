@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                36_918,
-                "cf837c0430c6417c2e58ccee57750f8d761a98414b4cfffcb55faf4298a30892",
+                39_838,
+                "653f609e13c6f2ae19df473ec55571a64cd4fe1e9139e7e913b1d48acbd30ab2",
             ),
             "regular.js": (
-                37_745,
-                "e35d6e3c2bc35b277b441bff98c261b6f1cc26d9cff44f2ad54c7ab19d96cce7",
+                38_203,
+                "2934645b619fd060c23833ea81e712cda745eba984c86ce1c82972cbcc7cf074",
             ),
             "mode.js": (
                 2_172,
@@ -84,8 +84,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
             ),
             "calm.js": (
-                44_081,
-                "9b24d470bdc95dbc1aaa54d944befd99bb3f230b60dd4a4f6f2ab40f3241a3fc",
+                45_239,
+                "ae67a349013b603e5b9e1866c45011d26c11d665214ddecf3116b36af7f63834",
             ),
             "notify.js": (
                 3_185,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(45_461, len(styles))
+        self.assertEqual(46_054, len(styles))
         self.assertEqual(
-            "b7c05297001a082073f7d2c8e6e8571348047a8fb91e5c8d11a59b32d8ed34bc",
+            "29df58603ac6615a799e0b3ebd1f0885417c6693dfab2f9bb0738685107a6865",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(240_196, len(assembled))
+        self.assertEqual(245_325, len(assembled))
         self.assertEqual(
-            "5750e7b8be64c45e2747d3dac6d164064d66c06bb8e31286e93e83ff387466f5",
+            "e55b49c04a32e2f1f443bbcc8e644dbb48a778e2b30a7e4c54816cf58c81f47c",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1151,6 +1151,40 @@ console.log(JSON.stringify(out));
         self.assertEqual("proj · pi1 · via Copilot · gpt-5 · used 1.20 AIU", out["both"])
         self.assertNotIn("AIU", out["idle"], "the idle drawer grew a second unit")
         self.assertNotIn("used", out["idle"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_idle_list_tells_a_finished_session_from_a_quiet_one(self) -> None:
+        # The same distinction calm's `idle / wait` cell draws, from the same
+        # shared rule: the two views may not disagree about one session, and the
+        # regular view's idle row is where its reader meets that session.
+        checks = (
+            self.SPEND_FIXTURE
+            + """
+const out = {};
+const stopped = sess("i1", "claude", {state: "idle", active: false,
+  last_activity: 100, finished_at: 100});
+const fresh = sess("i2", "claude", {state: "idle", active: false,
+  last_activity: 9500, finished_at: 9500});
+const blind = sess("i3", "goose", {state: "idle", active: false,
+  last_activity: 100, acquisition: "scan-only"});
+const d = board([stopped, fresh, blind], {generated: 10000});
+out.stopped = seen(idleRow(d, stopped));
+out.fresh = seen(idleRow(d, fresh));
+out.freshMarked = idleRow(d, fresh).includes("fin-mark");
+out.blindMarked = idleRow(d, blind).includes("fin-mark");
+out.blindTip = idleRow(d, blind).includes("cannot be known here");
+out.stoppedTip = idleRow(d, stopped).includes("nothing has come back to read it");
+console.log(JSON.stringify(out));
+"""
+        )
+        out = self._run_page_js(checks)
+        self.assertIn("done", out["stopped"], "the idle list cannot say a turn ended")
+        self.assertIn("idle 2h 45m", out["stopped"], "the mark replaced the age")
+        self.assertNotIn("done", out["fresh"], "a turn that just ended is not news")
+        self.assertFalse(out["freshMarked"])
+        self.assertFalse(out["blindMarked"], "a harness with no adapter claimed a finish")
+        self.assertTrue(out["blindTip"], "the unknowable case is not disclosed")
+        self.assertTrue(out["stoppedTip"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_no_board_level_figure_is_summed_out_of_one_harnesss_units(self) -> None:

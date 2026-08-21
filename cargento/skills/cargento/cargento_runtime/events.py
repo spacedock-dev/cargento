@@ -96,7 +96,15 @@ ALLOWED_FIELDS: Final = frozenset(
 # reached by events reads "event", and one reached only by scanning reads
 # "scan-only", which is how the latency of a harness with no healthy event
 # source gets disclosed instead of hidden.
-PATCHABLE: Final = frozenset({"state", "state_detail", "active", "blocked_since", "acquisition"})
+#
+# `finished_at` is the stamp of the stop this session last had observed, and it
+# is here rather than derived from `state` because Idle is two different
+# situations wearing one word: a turn that ended, and a session still waiting on
+# a reply nobody gave (DRC-4035). Only a `turn_stopped` separates them, so the
+# distinction cannot be recovered from a collected row.
+PATCHABLE: Final = frozenset(
+    {"state", "state_detail", "active", "blocked_since", "acquisition", "finished_at"}
+)
 
 ACQUISITION_EVENT: Final = "event"
 ACQUISITION_SCAN: Final = "scan-only"
@@ -496,6 +504,7 @@ def reduce_overlays(
     own_activity: float = 0.0,
     session_activity: float = 0.0,
     activity_grace_sec: float = 0.0,
+    finished_at: float = 0.0,
 ) -> dict[str, Any]:
     """The field patch a session's live overlays imply, in `arrival_seq` order.
 
@@ -548,6 +557,17 @@ def reduce_overlays(
     `own_activity`. Both default to 0 so a collector that reports neither leaves
     its overlays standing, which is the safe direction: it keeps the event path
     authoritative for harnesses whose rows carry no activity stamp.
+
+    `finished_at` is a stop the coordinator remembers *outside* the ledger, and
+    it is a separate argument rather than a fifth overlay kind because the ledger
+    is popped whole on `session_ended` — which for `claude -p` arrives
+    milliseconds after the stop, destroying the mark for precisely the sessions
+    that finished and were never read (DRC-4035). It is reduced here, and not
+    written onto the row by whoever remembers it, so that it passes through the
+    same activity guard the idle overlay does: a mark applied outside this
+    function would survive a session resuming and reintroduce DRC-4101 by
+    another door. A live overlay still wins over it — a working or waiting row
+    clears the mark, and a live stop restates its own stamp.
     """
     ordered = sorted(overlays, key=lambda item: item.arrival_seq)
     # The latest point at which this session was known not to be waiting. Computed
@@ -557,6 +577,8 @@ def reduce_overlays(
         default=-1,
     )
     patch: dict[str, Any] = {}
+    if finished_at and not session_activity > finished_at + activity_grace_sec:
+        patch["finished_at"] = finished_at
     for overlay in ordered:
         if overlay.kind == OVERLAY_NEEDS_INPUT and overlay.arrival_seq < not_waiting_since:
             continue
@@ -574,6 +596,7 @@ def reduce_overlays(
                     "active": True,
                     "blocked_since": None,
                     "acquisition": ACQUISITION_EVENT,
+                    "finished_at": None,
                 }
             )
         elif overlay.kind == OVERLAY_NEEDS_INPUT:
@@ -584,6 +607,9 @@ def reduce_overlays(
                     "active": True,
                     "blocked_since": overlay.at,
                     "acquisition": ACQUISITION_EVENT,
+                    # A gate is the other kind of idle, so the mark from an
+                    # earlier turn must not still be claiming this one ended.
+                    "finished_at": None,
                 }
             )
         elif overlay.kind == OVERLAY_IDLE:
@@ -594,6 +620,7 @@ def reduce_overlays(
                     "active": False,
                     "blocked_since": None,
                     "acquisition": ACQUISITION_EVENT,
+                    "finished_at": overlay.at,
                 }
             )
     return patch

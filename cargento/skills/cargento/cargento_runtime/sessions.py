@@ -274,6 +274,15 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # the collector does not report it, and the overlay reducer then leaves a
         # wait standing rather than guessing.
         "own_activity": 0,
+        # When this session's turn was last observed to stop, which is the only
+        # thing that separates the two situations Idle covers: a turn that ended
+        # and nobody read, and a session still waiting on a reply that never came
+        # (DRC-4035). None means "no stop observed" and never "did not finish" —
+        # only the four harnesses in the event vocabulary can supply one at all,
+        # and no collector may infer it, for the reason `model` above may not: a
+        # guessed completion renders identically to a measured one. A row that
+        # cannot ever carry it says so through `acquisition` instead.
+        "finished_at": None,
         "rate_per_min": 0,
         "total": 0,
         "done": 0,

@@ -641,7 +641,14 @@ function idleRow(d, sess){
        surface holds a session lifetime total, and none of the three pretends to —
        consumptionBit() carries that distinction in its visible words. */
     `<span class="idle-proj">${esc(sess.project)} · ${esc(sess.session)}${t}</span>` +
-    `<span class="idle-age">idle ${esc(age)}</span></div>`;
+    /* Beside the age rather than inside it: `.idle-age` is a fixed width holding
+       one nowrap figure, so a second clause in there would push the number out of
+       the row. Same markup and same wording as calm's cell — one rule read twice
+       is what keeps the two views from telling one reader a session finished and
+       the other that it merely went quiet. */
+    finishedBit(d, sess) +
+    `<span class="idle-age" title="${esc(idleQuietNote(d, sess, age))}">` +
+    `idle ${esc(age)}</span></div>`;
 }
 
 function toggleIdle(){ idleExpanded = !idleExpanded; if(lastData) render(lastData); }

@@ -33,7 +33,7 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 |---|---|---|
 | **Needs input** (red, popup fired) | Claude is blocked on the human | Best effort, never guaranteed, from three sources that cover different things rather than ranking cleanly. The bundled `PermissionRequest` hook is the main one for tool gates, seen directly for `ExitPlanMode` and in the wild for `AskUserQuestion`. An actionable Notification-hook POST is the *only* source for an MCP elicitation or a worker's permission or network request. A pending input tool seen in the transcript is an opportunistic extra, because Claude Code flushes that record on its own schedule and sometimes not until the gate has been answered. Claude only — other harnesses have no needs-input detection |
 | **Working** (blue) | Actively generating | transcript/subagent/DB activity within the last 90s; detail = in-progress task's activeForm, else running subagents, else last tool |
-| **Idle** (gray) | Turn ended | anything else — "awaiting your message" |
+| **Idle** (gray) | Turn ended | anything else — "awaiting your message". Two situations wear the one word: a turn that ended and nobody read the result, and a session still waiting on a reply that never came. Only a turn-end event tells them apart, so only the four harnesses with an event adapter can — Claude Code, Codex, Gemini CLI and Antigravity, and only with their hooks installed. On the other six the row says the answer cannot be known there, rather than guessing at it |
 
 ## Display modes
 
@@ -61,6 +61,8 @@ Two flags appear in the `flag` column, and only these two — each is a signal t
 | **long turn** (amber) | Working, and this request has run or is estimated to run ≥15 min (`LONG_TURN_WARN_SEC`) — the same signal as the regular view's ⚠️. |
 
 A flag means "look at this", so a session that has simply gone quiet does not carry one. How long an idle session has been idle is in its own `idle / wait` cell, and how many of them there are is on the collapsed block's toggle.
+
+An idle session whose turn was seen to end, and which nobody has come back to for 20 minutes, is marked `done` beside that age — in the cell and in the regular view's idle row, never as a third flag. Finished work is worth collecting, not worth alarming about, and the 20 minutes is measured rather than picked: on real local transcripts, nine returns in ten to a stopped turn land inside sixteen. The collapsed toggle counts them too, since the block it hides is where they sit. Hovering the age says which of the three readings a row is: finished and unread, quiet with no turn-end seen, or a harness that sends no turn events at all.
 
 ## The gate queue
 

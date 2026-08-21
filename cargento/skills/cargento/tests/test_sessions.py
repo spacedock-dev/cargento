@@ -114,6 +114,7 @@ class CargentoServerTest(RuntimeTestCase):
             "active",
             "last_activity",
             "own_activity",
+            "finished_at",
             "rate_per_min",
             "total",
             "done",
@@ -136,6 +137,20 @@ class CargentoServerTest(RuntimeTestCase):
             with self.subTest(harness=harness):
                 row = runtime_sessions.base_session(harness, f"{harness}-1", "proj")
                 self.assertEqual(self.DECLARED_SESSION_FIELDS, set(row))
+
+    def test_no_collector_may_fill_the_completion_stamp(self) -> None:
+        # Only the event path can observe a turn ending. A collector inferring it
+        # from a last-record kind would render identically to a measurement, and
+        # six of the ten harnesses have nothing to infer it from at all — so the
+        # declared None has to survive every collector in the registry.
+        self.assertIsNone(runtime_sessions.base_session("claude", "abc", "proj")["finished_at"])
+        source = Path(runtime_sessions.__file__).parent
+        writers = [
+            path.name
+            for path in sorted((source / "collectors").glob("*.py"))
+            if '"finished_at"' in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual([], writers, "a collector is guessing at completion")
 
     def test_consumption_ships_unfilled_for_a_harness_that_keeps_no_ledger(self) -> None:
         # Copilot's collector fills this; every other harness leaves the declared
