@@ -180,6 +180,15 @@ class RuntimeConfig:
     event_body_cap_bytes: int
     event_rate_per_sec: float
     event_burst_max: int
+    # The observer analyzer: a read-only bystander that derives goal + stage +
+    # block from a target session's transcript head and its workflow entity dir.
+    # The head bound is what it reads from the transcript's opening records; the
+    # goal and block caps bound the two derived strings it publishes. The model
+    # is parameterized as a callable rather than a config field, so the model id
+    # (haiku by default; luna if it lands) swaps without changing the analyzer.
+    observer_head_bytes: int
+    observer_goal_cap_chars: int
+    observer_block_cap_chars: int
 
 
 def resolve_store_roots(
@@ -397,6 +406,9 @@ def build_runtime_config(
         event_body_cap_bytes=8_192,
         event_rate_per_sec=20.0,
         event_burst_max=40,
+        observer_head_bytes=65_536,
+        observer_goal_cap_chars=200,
+        observer_block_cap_chars=200,
     )
 
 

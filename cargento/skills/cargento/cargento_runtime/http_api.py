@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import notifications, quota
+from cargento_runtime import observer as runtime_observer
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
 
@@ -357,10 +358,41 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._stream()
         elif url.path == "/api/health":
             self._health()
+        elif url.path == "/api/observe":
+            self._observe(url)
         elif url.path == "/":
             self._send(self.server.page_bytes, "text/html; charset=utf-8")
         else:
             self.send_error(404)
+
+    def _observe(self, url: Any) -> None:
+        """Trigger the observer analyzer on demand and return the sidecar JSON.
+
+        A thin trigger, not a polling endpoint: read the transcript + entity
+        dir, derive goal + stage + block, write the sidecar, return the JSON.
+        The operator triggers it by clicking "observe" on a session card.
+        Strictly same-origin: the route answers only loopback requests.
+        """
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        query = parse_qs(url.query)
+        harness = query.get("harness", [""])[0]
+        sid = query.get("sid", [""])[0]
+        if not harness or not sid:
+            self.send_error(400, "harness and sid are required")
+            return
+        application = self.server.application
+        config = application.config
+        state = application.state
+        transcript_path = runtime_observer.resolve_transcript(config, state, harness, sid)
+        if transcript_path is None:
+            self.send_error(404, "session transcript not found")
+            return
+        entity_dir = runtime_observer.resolve_entity_dir(config, state, transcript_path)
+        result = runtime_observer.analyze(config, state, transcript_path, entity_dir=entity_dir)
+        runtime_observer.write_sidecar(config, harness, sid, result)
+        self._send(json.dumps(result).encode(), "application/json")
 
     def _overlays(self) -> None:
         """The live overlay ledger, for diagnosing a row the reducer produced.
