@@ -614,7 +614,12 @@ function needRow(d, sess, pos, focusKey){
     `<div class="blocked-v">${esc(blocked)}</div>` +
     `<button type="button" class="need-copy" data-calm="copy"` +
     ` data-arg="${esc(key)}" title="copy this session's id">` +
-    `${copied ? esc(calmCopyNote.text) : "copy id"}</button></div></div>`;
+    `${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
+    /* A gate IS clearable, and clearing it also stops its desktop popup. A gate
+       the reader has decided to answer somewhere else is exactly the row they
+       want off the board, and a control that removed it from the board while the
+       notifications kept arriving would read as broken. */
+    handledButton(d, dismissKey(sess), "need-copy") + `</div></div>`;
 }
 
 function idleRow(d, sess){
@@ -653,7 +658,14 @@ function idleRow(d, sess){
        surface holds a session lifetime total, and none of the three pretends to —
        consumptionBit() carries that distinction in its visible words. */
     `<span class="idle-proj">${esc(sess.project)} · ${esc(sess.session)}${t}</span>` +
-    `<span class="idle-age">idle ${esc(age)}</span></div>`;
+    /* Beside the age rather than inside it: `.idle-age` is a fixed width holding
+       one nowrap figure, so a second clause in there would push the number out of
+       the row. Same markup and same wording as calm's cell — one rule read twice
+       is what keeps the two views from telling one reader a session finished and
+       the other that it merely went quiet. */
+    finishedBit(d, sess) +
+    `<span class="idle-age" title="${esc(idleQuietNote(d, sess, age))}">` +
+    `idle ${esc(age)}</span></div>`;
 }
 
 function toggleIdle(){ idleExpanded = !idleExpanded; if(lastData) render(lastData); }

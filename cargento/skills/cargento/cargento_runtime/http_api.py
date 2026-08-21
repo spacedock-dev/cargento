@@ -13,9 +13,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
+from cargento_runtime import dismissals, notifications, quota
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
-from cargento_runtime import notifications, quota
 from cargento_runtime import snapshot as runtime_snapshot
 from cargento_runtime import stream as runtime_stream
 
@@ -353,6 +353,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             )
         elif url.path == "/api/overlays":
             self._overlays()
+        elif url.path == "/api/cleared":
+            self._cleared()
         elif url.path == "/api/stream":
             self._stream()
         elif url.path == "/api/health":
@@ -465,6 +467,32 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _cleared(self) -> None:
+        """The sessions marked handled: two identifiers and a timestamp each.
+
+        Strictly same-origin, like `/api/overlays`: nothing navigates here, so
+        `do_GET`'s navigation relaxation has no reason to reach it.
+
+        A route of its own rather than a variant of `/api/data`. Publishing the
+        cleared rows back into `sessions` behind a query flag would put them in
+        front of every consumer that derives a total from that array — the tab
+        title, the gate queue, calm's idle clip — and each would need to know
+        which request it was answering. This answers a different question, so it
+        is a different response.
+        """
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        application = self.server.application
+        if not application.config.dismissals_enabled:
+            self.send_error(503, "dismissals are disabled on this server")
+            return
+        entries = dismissals.active(application.config, application.state)
+        self._send(
+            json.dumps({"cleared": dismissals.rows(entries)}, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
     def _usage_receipt(self) -> None:
         """A harness's own quota, forwarded here by its status-line command.
 
@@ -494,6 +522,71 @@ class _RequestHandler(BaseHTTPRequestHandler):
             config=application.config,
         )
         self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
+
+    def _dismiss(self) -> None:
+        """Mark one session handled, or put one back.
+
+        Guarded exactly like `/api/usage`: `_local_ok()` has already run, the
+        declared length is checked before any read, and a malformed or non-object
+        body degrades to `{}` — which names no session and therefore does nothing.
+
+        No capability token, and that is deliberate rather than an omission. This
+        is an action the page takes on the reader's behalf, and `/api/shutdown` —
+        a strictly larger power over the same server — is gated by `_local_ok()`
+        alone. The body carries no timestamp, so the worst a forged request can do
+        is hide a row until that session's next write.
+
+        `persisted` is answered honestly: an unwritable home still hides the row
+        for this run, and the page says so rather than implying the mark will
+        survive a restart.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.dismissals_enabled:
+            # 503, not 404, for the reason `/api/overlays` answers 503 with no
+            # coordinator: under `--no-dismiss` the route exists and the store
+            # does not, and a 404 would read as a build too old to have it.
+            self._reject(503)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.dismissal_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        state = application.state
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if payload.get("clear") is False:
+            persisted = dismissals.restore(
+                config, state, harness, sid, diagnostic_sink=application.diagnostic_sink
+            )
+        else:
+            persisted = dismissals.dismiss(
+                config,
+                state,
+                harness,
+                sid,
+                now=application.clock(),
+                diagnostic_sink=application.diagnostic_sink,
+            )
+        # The published bodies are dropped rather than waited out. Without this
+        # the next GET would serve the pre-dismissal payload for up to
+        # `collect_memo_sec`, and a row that stays put for two seconds after the
+        # click reads as a control that did not work.
+        state.snapshot.clear()
+        answer = {
+            "ok": True,
+            "persisted": persisted,
+            "cleared": len(dismissals.active(config, state)),
+        }
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
     def _events(self, harness: str) -> None:
         """A harness's lifecycle events, forwarded by its own hook.
@@ -546,19 +639,26 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(403)
             return
         path = urlparse(self.path).path
-        if path == "/api/shutdown":
-            self._shutdown()
-            return
-        if path == "/api/usage":
-            self._usage_receipt()
-            return
+        # Prefix-matched, so it cannot join the exact-match table below.
         if path.startswith("/api/events/"):
             self._events(path[len("/api/events/") :])
             return
-        if path != "/api/notify":
+        # A table rather than a ladder of ifs: every entry is one route to one
+        # handler, and the ladder had grown to the point where the last branch
+        # carried a whole request body inline while the ones above it did not.
+        route = {
+            "/api/shutdown": self._shutdown,
+            "/api/usage": self._usage_receipt,
+            "/api/dismiss": self._dismiss,
+            "/api/notify": self._notify,
+        }.get(path)
+        if route is None:
             self._reject(404)
             return
-        # Claude Code Notification-hook payload: {"session_id": ..., "message": ..., ...}
+        route()
+
+    def _notify(self) -> None:
+        """Claude Code's Notification hook: {"session_id": ..., "message": ..., ...}."""
         application = self.server.application
         try:
             length = int(self.headers.get("Content-Length") or 0)

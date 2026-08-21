@@ -53,8 +53,9 @@ The accurate obstacle, since the wrong one was named for two phases:
   every time and never from its own previous output, so it is idempotent over a
   fixed row set and re-running it is safe.
 - `events.apply_patch` is. It overwrites `state`, `state_detail`, `active`,
-  `blocked_since` and `acquisition` in place with no unpatched base kept, so the
-  collector's own values are gone and an expiring overlay cannot be undone.
+  `blocked_since`, `acquisition` and `finished_at` in place with no unpatched
+  base kept, so the collector's own values are gone and an expiring overlay
+  cannot be undone.
 - Two things would also have to be redone per republish: the Claude collector
   writes clock-derived `elapsed_h` and `updated_ago` into the task dicts embedded
   in a row, and `collect()` both sorts on `state` and counts its summary from
@@ -75,6 +76,13 @@ found from a screenshot rather than from a test.
 | Working | `overlay_working_ttl_sec` after its event | n/a — the state activity implies |
 | Needs input | none: a real wait outlasts any timeout | `own_activity`, the parent alone |
 | Idle | none: a stop is a fact, not a guess | `session_activity`, the whole tree |
+
+The completion mark is in the table's spirit but not in the ledger: `_finished`
+holds the last stop per session outside `_overlays`, because `session_ended` pops
+that ledger whole and a `claude -p` run's stop and exit arrive together. It is
+retired by an overlay saying the session is working or waiting, by the reducer's
+`session_activity` guard on the way to the row, and by a collection that stops
+producing the row at all — the third being its only bound, since no event ends it.
 
 The two activity rules differ because the questions differ. A wait ends when the
 *parent* moves, since the parent is what a human answers; a background agent
@@ -160,6 +168,14 @@ class Observation:
         # by definition, so the ceiling has to be independent of it.
         self._budget: dict[str, tuple[float, float]] = {}
         self._overlays: dict[SessionKey, dict[OverlayKey, runtime_events.Overlay]] = {}
+        # (harness, sid) -> the stamp of the last stop observed for it. Outside
+        # `_overlays` on purpose: `session_ended` pops that ledger whole, and for
+        # `claude -p` the stop and the exit arrive back to back, so a mark held
+        # there is destroyed milliseconds after the only sessions this answers
+        # for have finished (DRC-4035). Narrowing what `session_ended` retires
+        # was the alternative, and it is worse: the event covers `/clear` as well
+        # as exit, so a cleared session would read finished forever.
+        self._finished: dict[SessionKey, float] = {}
         # sid -> (first seen, attempts). An event whose session no collection has
         # produced yet waits here. It never renders and never creates a row.
         self._pending: dict[SessionKey, tuple[float, int]] = {}
@@ -275,6 +291,7 @@ class Observation:
                 self._bump("retired")
             elif overlay is not None:
                 self._remember(key, overlay)
+                self._mark_finished(key, overlay)
             if runtime_events.requires_reconcile(event):
                 # Force the next pass to be a real collection rather than one the
                 # probe may skip: a rewritten transcript is not repaired by
@@ -317,6 +334,40 @@ class Observation:
             self._bump("overlay.stale")
             return
         ledger[slot] = overlay
+
+    def _mark_finished(self, key: SessionKey, overlay: runtime_events.Overlay) -> None:
+        """Remember, or forget, the stop this session last had observed.
+
+        A subagent overlay is neither. A child transition says nothing about
+        whether the parent's turn ended, and the reducer's activity guard already
+        retires the mark when anything under the session writes.
+        """
+        if overlay.kind in {runtime_events.OVERLAY_WORKING, runtime_events.OVERLAY_NEEDS_INPUT}:
+            self._finished.pop(key, None)
+            return
+        if overlay.kind != runtime_events.OVERLAY_IDLE:
+            return
+        if key not in self._finished and len(self._finished) >= (
+            self.config.event_overlay_max_sessions
+        ):
+            # Refused rather than evicted, for the reason `_remember` gives: this
+            # is bounded by the same cap and a mark is worth less than the alert
+            # an eviction would drop, so it does not get to make room either.
+            self._bump("finished.refused")
+            return
+        # max, not assignment: delivery is at-least-once and possibly reordered,
+        # so a redelivered older stop must not pull the mark backwards.
+        self._finished[key] = max(self._finished.get(key, 0.0), overlay.at)
+
+    def finished_at(self, harness: str, sid: str) -> float:
+        """When this row's turn last stopped, or 0.0 if no stop was ever seen.
+
+        0.0 means "not observed", never "did not finish": the six harnesses with
+        no event adapter can never earn a value here, which is what the row's
+        `acquisition` marker discloses instead.
+        """
+        with self._lock:
+            return self._finished.get((harness, sid), 0.0)
 
     def _bump(self, name: str) -> None:
         """Count something, under `_lock`. Diagnostics only, never control flow."""
@@ -386,9 +437,17 @@ class Observation:
         a later collection, and expires with a counter if none ever comes. That
         preserves a first-session permission prompt without letting a forged or
         mistyped id invent a session.
+
+        It is also the only bound on the completion marks, which no event
+        retires: a mark for a session no longer collected and holding no overlay
+        can never render again, so it goes. Holding it while an overlay is still
+        pending is what stops a collection already in flight when the stop
+        arrived from dropping the mark of a session it had not yet seen.
         """
         now = self.clock()
         with self._lock:
+            for key in [k for k in self._finished if k not in keys and k not in self._overlays]:
+                del self._finished[key]
             for key in list(self._overlays):
                 if key in keys:
                     self._pending.pop(key, None)

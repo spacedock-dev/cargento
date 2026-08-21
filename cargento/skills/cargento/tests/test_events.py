@@ -405,6 +405,10 @@ class _StubOverlays:
             return [self.overlay]
         return []
 
+    def finished_at(self, harness: str, sid: str) -> float:
+        del harness, sid  # this stub remembers no stop
+        return 0.0
+
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         del keys  # the real coordinator ages unmatched overlays here; a stub has none
 
@@ -550,6 +554,51 @@ class ReduceTest(unittest.TestCase):
         )
         self.assertEqual("idle", patch["state"])
         self.assertFalse(patch["active"])
+
+    def test_a_stop_publishes_when_the_turn_ended(self) -> None:
+        # DRC-4035: "finished, and nobody read it" needs the stop's own stamp on
+        # the row, not just the Idle state, because Idle alone cannot say whether
+        # the turn ended or the session is still waiting on a reply nobody gave.
+        ledger = [self.overlay(events.OVERLAY_IDLE, seq=1, at=NOW - 600)]
+        patch = events.reduce_overlays(
+            ledger, now=NOW, session_activity=NOW - 601, activity_grace_sec=10.0
+        )
+        self.assertEqual(NOW - 600, patch["finished_at"])
+
+    def test_a_remembered_stop_survives_the_ledger_being_retired(self) -> None:
+        # The `claude -p` case: Stop then SessionEnd arrive back to back, the
+        # ledger is popped, and the row that finished has no overlay left. The
+        # mark is reduced from the coordinator's own memory instead, and it
+        # patches nothing else — the collector still owns the state.
+        patch = events.reduce_overlays(
+            [], now=NOW, session_activity=NOW - 601, activity_grace_sec=10.0, finished_at=NOW - 600
+        )
+        self.assertEqual({"finished_at": NOW - 600}, patch)
+
+    def test_activity_after_a_remembered_stop_clears_the_mark(self) -> None:
+        # DRC-4101 by another door. The mark outlives the ledger by design, so
+        # nothing but this guard stops a session resumed by a background task
+        # from reading "finished" while it generates.
+        patch = events.reduce_overlays(
+            [], now=NOW, session_activity=NOW - 5, activity_grace_sec=10.0, finished_at=NOW - 600
+        )
+        self.assertEqual({}, patch, "a session that worked again is not finished")
+
+    def test_a_live_working_overlay_outranks_a_remembered_stop(self) -> None:
+        # The other way a stop is superseded: a prompt arrived, so the row is
+        # working and the mark from the previous turn must go with it.
+        ledger = [self.overlay(events.OVERLAY_WORKING, seq=2, at=NOW - 5)]
+        patch = events.reduce_overlays(ledger, now=NOW, finished_at=NOW - 600)
+        self.assertEqual("working", patch["state"])
+        self.assertIsNone(patch["finished_at"])
+
+    def test_a_gate_outranks_a_remembered_stop(self) -> None:
+        # A session waiting on a person is the other kind of idle, and it is the
+        # one this mark exists to be told apart from.
+        ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=2, at=NOW - 5)]
+        patch = events.reduce_overlays(ledger, now=NOW, finished_at=NOW - 600)
+        self.assertEqual("needs_input", patch["state"])
+        self.assertIsNone(patch["finished_at"])
 
     def test_activity_inside_the_grace_does_not_retire_the_stop(self) -> None:
         # The final flush of the transcript can land just after the Stop hook it
@@ -782,9 +831,9 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual("real title", session["title"])
         self.assertEqual(1234, session["tokens"])
 
-    def test_the_patchable_set_is_exactly_the_documented_five(self) -> None:
+    def test_the_patchable_set_is_exactly_the_documented_six(self) -> None:
         self.assertEqual(
-            {"state", "state_detail", "active", "blocked_since", "acquisition"},
+            {"state", "state_detail", "active", "blocked_since", "acquisition", "finished_at"},
             set(events.PATCHABLE),
         )
 

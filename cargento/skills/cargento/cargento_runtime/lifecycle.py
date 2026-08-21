@@ -557,6 +557,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-usage")
     if args.no_events:
         argv.append("--no-events")
+    if args.no_dismiss:
+        argv.append("--no-dismiss")
     return argv
 
 

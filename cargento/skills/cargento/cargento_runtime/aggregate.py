@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
+from . import dismissals, quota, sessions
 from . import events as runtime_events
 from . import io as runtime_io
-from . import quota, sessions
 from . import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
@@ -82,9 +82,15 @@ class OverlaySource(Protocol):
     it is here because an envelope that arrived and was dropped leaves no overlay
     to find. Without it a record cannot separate that from one never posted,
     which is two of the four readings in docs/design-needs-input.md (N-5).
+
+    `finished_at` is separate from `overlays_for` because it deliberately
+    outlives the ledger: `session_ended` retires a session's overlays, and a
+    `claude -p` run that finished and exited is exactly the row the mark is for.
     """
 
     def overlays_for(self, harness: str, sid: str) -> list[Overlay]: ...
+
+    def finished_at(self, harness: str, sid: str) -> float: ...
 
     def note_rows(self, keys: set[tuple[str, str]]) -> None: ...
 
@@ -271,6 +277,12 @@ class Application:
         config, state = self.config, self.state
         window_hours = config.window_hours
         now = self.clock()
+        # Read before the harness loop, not after it. A collector can raise a
+        # native popup mid-loop (Claude's does), and the popup gate has to be
+        # answering off the same set as the subtraction below — a popup for a row
+        # this collection is about to remove is the visible half of the feature
+        # failing.
+        cleared_marks = dismissals.refresh(config, state)
         out_sessions: list[Session] = []
         harnesses: list[dict[str, Any]] = []
         usage: list[dict[str, Any]] = []
@@ -321,12 +333,31 @@ class Application:
                 )
 
         out_sessions = sessions.dedupe_sessions(out_sessions)
+        self._mark_unreachable_by_events(out_sessions)
         # Between dedupe and the sort, deliberately. Dedupe keys on
         # (harness, sid), which no overlay changes, and the sort ranks on `state`,
         # which an overlay does change: patching after the sort would leave a row
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
         self._apply_overlays(out_sessions, now=now)
+        # After the overlays and before the display ids, and both halves matter.
+        # After, because `_apply_overlays` ends in `note_rows`, which expires any
+        # overlay whose key was not reported — subtract first and a dismissed
+        # session that comes back has lost its pending permission overlay. Before
+        # `assign_display_ids`, so the id widths describe the rows actually on
+        # screen.
+        kept = [
+            session
+            for session in out_sessions
+            if not dismissals.holds(
+                cleared_marks,
+                str(session["harness"]),
+                str(session["sid"]),
+                float(session.get("last_activity") or 0.0),
+            )
+        ]
+        cleared = len(out_sessions) - len(kept)
+        out_sessions = kept
         sessions.assign_display_ids(config, out_sessions)
         out_sessions.sort(key=row_order)
         active_sessions = [x for x in out_sessions if x["active"]]
@@ -341,6 +372,11 @@ class Application:
             # the day this configuration changed it.
             "rate_window_sec": config.rate_window_sec,
             "show_all": show_all,
+            # How many rows this payload dropped because the reader marked them
+            # handled. A count and not a flag on the rows: the tab title, the
+            # gate queue and calm's idle clip all derive from `sessions`, and a
+            # per-row flag is a thing each of them would have to remember.
+            "cleared": cleared,
             # Which layer owns needs-input popups. Empty means the page should
             # raise its own; a backend name means the server already did.
             "native_notify": self.native_notifier(config.platform_name),
@@ -357,6 +393,11 @@ class Application:
             },
             "sessions": out_sessions,
         }
+        if config.dismissals_enabled:
+            # The capability flag, keyed the way `usage_fetch` is: present exactly
+            # when the store is live, so `--no-dismiss` leaves the page with no
+            # control to offer rather than one that answers 503.
+            collection["dismiss"] = True
         if usage_supported:
             # Present even when empty: the page distinguishes "no quota data
             # yet" (key with no entries) from "nothing here publishes quota"
@@ -369,6 +410,25 @@ class Application:
             # a disk-read provider or with the fetch disabled.
             collection["usage_fetch"] = True
         return collection
+
+    def _mark_unreachable_by_events(self, out_sessions: list[Session]) -> None:
+        """Disclose the rows no event can ever reach, before any overlay lands.
+
+        Six of the ten harnesses have no entry in the event vocabulary, so
+        `events.parse` refuses their envelopes outright and their rows are read
+        off disk and nothing else. Their idle rows therefore cannot say whether a
+        turn ended, and without this an unmarked row would mean either "did not
+        finish" or "cannot be seen from here" — the same collapse the retired
+        `stale` gloss was admitting to (DRC-4035 D4).
+
+        A property of the harness, not of this process, so it is stated whether or
+        not a coordinator is attached. Written before `_apply_overlays` on
+        purpose: an adapter harness's own overlay owns this field, and the two
+        must not be able to disagree about one row.
+        """
+        for session in out_sessions:
+            if str(session["harness"]) not in runtime_events.IDENTITY_NORMALIZERS:
+                session["acquisition"] = runtime_events.ACQUISITION_SCAN
 
     def _apply_overlays(self, out_sessions: list[Session], *, now: float) -> None:
         """Patch collected rows from the live overlay ledger, if one is attached.
@@ -385,7 +445,8 @@ class Application:
         for session in out_sessions:
             harness, sid = str(session["harness"]), str(session["sid"])
             overlays = source.overlays_for(harness, sid)
-            if overlays:
+            finished_at = source.finished_at(harness, sid)
+            if overlays or finished_at:
                 patch = runtime_events.reduce_overlays(
                     overlays,
                     now=now,
@@ -400,6 +461,10 @@ class Application:
                     # cannot key on `own_activity` the way a wait does.
                     session_activity=float(session.get("last_activity") or 0.0),
                     activity_grace_sec=self.config.overlay_wait_activity_grace_sec,
+                    # Reduced rather than written straight onto the row, so the
+                    # mark passes the same activity guard the idle overlay does
+                    # even though it outlives the ledger that overlay lives in.
+                    finished_at=finished_at,
                 )
                 self._note_dispute(session, patch, overlays, now=now)
                 runtime_events.apply_patch(session, _keep_wait_detail(session, patch))

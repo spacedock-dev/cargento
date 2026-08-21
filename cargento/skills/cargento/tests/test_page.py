@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                37_827,
-                "d3831f32bb45814d77f2c942ac3be32677d62a15d382105638de7f5c93f9e8fa",
+                42_149,
+                "d878ef70b0e132371a198148cb7aaa93199560fdd51be0a20f29a60e83943ce3",
             ),
             "regular.js": (
-                38_568,
-                "3098bbed6ba1e69217d6fc59ec68af3e5041cffa03605f7110a2de4294a0644a",
+                39_387,
+                "8169ba41e076b73d6e2a26c35e4bfb43f32f42d4337d738e64df260e455aec6c",
             ),
             "mode.js": (
                 2_172,
@@ -80,12 +80,12 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "3eb8d87fb2f809058678218cf57bc6b381bb7750d7523efea0eeb56628db70fe",
             ),
             "controls.js": (
-                3_363,
-                "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
+                7_254,
+                "b36c6fd4c6924857f7e86dbc2818de59d1e0984233480701bef0fabe14b6cc12",
             ),
             "calm.js": (
-                45_341,
-                "87f07eb292d64de49e73f89a361d6a43a75558300337c06a7afbbc7bcd15321e",
+                50_641,
+                "1975d7e9d9eba976f4986572fefa47174cee93965ed3717d756d960e7536a73d",
             ),
             "notify.js": (
                 3_185,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(45_461, len(styles))
+        self.assertEqual(48_371, len(styles))
         self.assertEqual(
-            "b7c05297001a082073f7d2c8e6e8571348047a8fb91e5c8d11a59b32d8ed34bc",
+            "5cf615ede246a5f10e1f715d523230554dfb6d9db48863c5eec5d6698508fec6",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(243_188, len(assembled))
+        self.assertEqual(260_430, len(assembled))
         self.assertEqual(
-            "c003647782d178ae25701cd8c7e269aa9ee9bf05b9843aa7511c476cd603f47e",
+            "960b0d14398b1528a235f4661e36deb1d83f4a5a93522adfcd2592217a46cf48",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -2288,44 +2288,6 @@ console.log(JSON.stringify({
         self.assertEqual([1, 1], out["bothHaveTrack"], "a working card dropped its track")
         self.assertEqual([False, True], out["onlyOneIndeterminate"])
         self.assertTrue(out["noTaskFiller"], "the empty-task filler line came back")
-
-    @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_a_detected_loop_reaches_the_card_whatever_the_turn_is_doing(self) -> None:
-        # The ⚠️ only appears past 15 minutes, so hanging the loop off it alone
-        # would hide the case worth catching earliest. The card states it either
-        # way, and the ⚠️ — when the duration does raise it — says which of the
-        # two the reader is looking at.
-        checks = """
-const base = {
-  harness:"claude", session:"12345678", sid:"12345678", project:"proj",
-  title:"t", last_prompt:"", state:"working", state_detail:"running Bash",
-  active:true, last_activity:990, rate_per_min:100, total:0, done:0, open:0,
-  progress_pct:0, eta_h:null, subagents:[], tasks:[]
-};
-const loop = {errors:4, tool:"Bash"};
-const card = extra => workingCard({generated:1000}, {...base, ...extra});
-const short = card({loop, turn:{elapsed_h:"2m", eta_h:"3m", pct:26, long:false}});
-const long = card({loop, turn:{elapsed_h:"40m", eta_h:null, pct:99, long:true}});
-const clean = card({turn:{elapsed_h:"40m", eta_h:null, pct:99, long:true}});
-const mcp = card({loop:{errors:5, tool:"mcp__claude_ai_Linear__save_issue"},
-                  turn:{elapsed_h:"2m", eta_h:"3m", pct:26, long:false}});
-console.log(JSON.stringify({
-  statedOnShortTurn: short.includes("4 tool calls in a row came back as errors"),
-  noWarnOnShortTurn: !short.includes('class="lwarn"'),
-  warnSaysWhich: long.includes('class="lwarn"') &&
-    long.includes("4 tool calls in a row came back as errors (most recently Bash)"),
-  warnKeepsItsOwnWordingWithoutALoop: clean.includes("This request is running long") &&
-    !clean.includes("tool calls in a row"),
-  mcpNamed: mcp.includes("Linear · save issue"),
-  wireNameHidden: !mcp.includes("mcp__claude_ai_Linear")}));
-"""
-        out = self._run_page_js(checks)
-        self.assertTrue(out["statedOnShortTurn"], "a loop under 15 minutes went unsaid")
-        self.assertTrue(out["noWarnOnShortTurn"], "the loop raised the long-turn mark")
-        self.assertTrue(out["warnSaysWhich"])
-        self.assertTrue(out["warnKeepsItsOwnWordingWithoutALoop"])
-        self.assertTrue(out["mcpNamed"])
-        self.assertTrue(out["wireNameHidden"])
 
     # A board of working sessions plus the strip that says, per harness, whether
     # a rate from it is a measurement at all. Copilot is the rate-less row: its

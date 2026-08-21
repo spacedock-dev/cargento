@@ -109,6 +109,11 @@ function calmRow(d, x){
   const showRate = st === "work";
   return {
     key: sessKey(x), sid: x.sid,
+    /* The (harness, sid) pair the dismissal store keys on, resolved here rather
+       than at the render site so the row shape stays the only thing that reads
+       the payload. Empty for a row with no sid, which is what stops the control
+       being drawn for a session the server could not match a mark to. */
+    dismiss: dismissKey(x),
     harness: x.harness, project: x.project, session: x.session,
     /* Carried for the detail panel only. The ledger row itself is a fixed grid
        whose columns are compared down their own length, and `cm-where` already
@@ -199,11 +204,19 @@ function calmRow(d, x){
       : "",
     quiet: st === "needs" ? fmtDur(waitSec) : (st === "idle" ? fmtDur(ageSec) : ""),
     quietTip: st === "needs" ? "blocked on you for " + fmtDur(waitSec)
-      : (st === "idle" ? "no activity for " + fmtDur(ageSec) : ""),
+      : (st === "idle" ? idleQuietNote(d, x, fmtDur(ageSec)) : ""),
     quietInk: st === "needs" ? "var(--alert)" : "var(--ink3)",
+    /* Which of the two idle situations this row is, as markup, beside the number
+       rather than in the flag column: a third chip would contradict the two-flag
+       cap and pull in the flagged count, the `f` filter and the attention
+       ordering, and "it finished" is not "look at this". Empty on every row the
+       server cannot answer for, which is what `quietTip` says instead. */
+    finished: st === "idle" ? finishedBit(d, x) : "",
     titleInk: st === "idle" ? "var(--ink2)" : "var(--ink)",
     detailAge: st === "needs" ? "blocked " + fmtDur(waitSec)
-      : (st === "work" ? "last event " + fmtDur(ageSec) + " ago" : "idle " + fmtDur(ageSec)),
+      : (st === "work" ? "last event " + fmtDur(ageSec) + " ago"
+        : (finishedMark(d, x) ? "finished " + fmtDur(ageSec) + " ago, unread"
+          : "idle " + fmtDur(ageSec))),
     turnLine: turn ? turn.elapsed_h + " elapsed · " +
       (turn.eta_h ? "~" + turn.eta_h + " left (est)" : "running longer than recent turns") : ""
   };
@@ -363,6 +376,60 @@ function calmCopyId(key){
   else note("blocked");
 }
 
+/* Mark one session handled, or put one back. The server subtracts it from the
+   payload before the summary is counted, so nothing here filters anything: the
+   next poll simply arrives without the row, and the tile, the tab title and both
+   views follow without knowing this control exists.
+
+   No optimistic hide. The board is a claim about what is running, and a row
+   removed locally before the server agreed is the one lie this page must not
+   tell — a failed POST would leave the reader believing they had cleared
+   something. So the refresh below is what removes it, and a write that could not
+   reach disk says so instead. */
+async function markHandled(key, clear){
+  const pair = splitDismissKey(key);
+  if(!pair) return;
+  let answer = null;
+  try{
+    const r = await fetch("/api/dismiss", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({harness: pair.harness, sid: pair.sid, clear: !!clear})
+    });
+    if(!r.ok) throw new Error("status " + r.status);
+    answer = await r.json();
+  }catch(e){
+    console.error("dashboard could not mark a session handled", e);
+    clearedNote = clear ? "clear failed" : "restore failed";
+    if(lastData) render(lastData);
+    return;
+  }
+  /* The mark is in force either way — the server holds it in memory — but a
+     write that never reached disk will not survive a restart, and saying so is
+     the difference between a durable action and one that looks durable. */
+  clearedNote = (answer && answer.persisted === false)
+    ? "cleared for this run only — could not write the store" : "";
+  if(clearedOpen) await loadCleared();
+  await refresh();
+}
+
+/* What the handled panel lists. A second request, because these rows are not in
+   the payload: the whole point of the subtraction is that no consumer of
+   `sessions` has to remember they exist. */
+async function loadCleared(){
+  try{
+    const r = await fetch("/api/cleared");
+    if(!r.ok) throw new Error("status " + r.status);
+    const data = await r.json();
+    clearedRows = Array.isArray(data.cleared) ? data.cleared : [];
+  }catch(e){
+    console.error("dashboard could not read the handled list", e);
+    clearedRows = [];
+    clearedNote = "could not read the handled list";
+  }
+  if(lastData) render(lastData);
+}
+
 function calmAction(act, arg){
   if(act === "mode"){ setDisplayMode(arg); return; }
   if(usageAction(act, arg)) return;
@@ -376,6 +443,21 @@ function calmAction(act, arg){
     return;
   }
   if(act === "copy"){ calmCopyId(arg); return; }
+  /* These three answer over the network, so they return rather than falling
+     through to the synchronous render below — each paints when its own request
+     settles. */
+  if(act === "handled"){ markHandled(arg, true); return; }
+  if(act === "restore"){ markHandled(arg, false); return; }
+  if(act === "cleared"){
+    clearedOpen = !clearedOpen;
+    clearedNote = "";
+    /* Re-read on every open, not once: a second dashboard on this machine writes
+       the same store, and a list cached from the first open would be stale in
+       exactly the case the panel exists to explain. */
+    if(clearedOpen) loadCleared();
+    else if(lastData) render(lastData);
+    return;
+  }
   if(act === "sort"){
     if(calmSort === arg) return;
     calmSort = arg; calmResetScroll = true;
@@ -505,6 +587,15 @@ document.addEventListener("keydown", e => {
     if(sid) calmAction("open", sid);
   }
   else if(k === "f"){ stop(); calmAction("flag", null); }
+  else if(k === "x" && lastData.dismiss){
+    /* The one-keystroke path the ledger's row deliberately does not carry as an
+       eleventh column. It acts on the cursor row, which is drawn, so the reader
+       can see what they are about to remove. */
+    stop();
+    const order = calmOrder(lastData);
+    const focus = order.find(r => r.key === calmEffectiveFocus(order));
+    if(focus && focus.dismiss) calmAction("handled", focus.dismiss);
+  }
   else if(k === "u" && usagePresent(lastData)){ stop(); usageAction("usage", null); }
   else if(k === "Escape"){
     stop();
@@ -592,8 +683,13 @@ function calmExpansion(r, d){
         : "") + `</div>`
     : "";
   const copied = calmCopyNote && calmCopyNote.key === r.key;
+  /* The drawer, not the row. The row is ten grid columns wide already, and an
+     eleventh for a control that removes a session would sit one pixel from the
+     caret that merely opens it. Calm's keyboard covers the one-keystroke path:
+     `x` on the cursor row. */
   const acts = `<div class="cm-acts"><button type="button" class="cm-act" data-calm="copy"` +
     ` data-arg="${esc(r.key)}">${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
+    handledButton(d, r.dismiss, "cm-act") +
     `<button type="button" class="cm-act" data-calm="open"` +
     ` data-arg="${esc(r.key)}">collapse</button></div>`;
   return `<div class="cm-exp"><div class="cm-exp-main">${why}${loop}${quote}${tasks}` +
@@ -635,8 +731,9 @@ function calmRowHTML(r, focusSid, d){
     `<span>${flag}</span>` +
     `<span class="cm-rate"><span class="cm-metric" style="color:var(--ink2)"` +
     ` title="${esc(r.rateTip)}">${esc(r.rate)}</span>${bar}</span>` +
+    `<span class="cm-quiet">${r.finished}` +
     `<span class="cm-metric" style="color:${r.quietInk}"` +
-    ` title="${esc(r.quietTip)}">${esc(r.quiet)}</span>` +
+    ` title="${esc(r.quietTip)}">${esc(r.quiet)}</span></span>` +
     `<span class="cm-q"><button type="button" class="cm-qb" data-calm="copy"` +
     ` data-arg="${esc(r.key)}" title="copy this session's id">` +
     `${copied ? esc(calmCopyNote.text) : "copy id"}</button></span>` +
@@ -742,6 +839,14 @@ function calmLedger(d){
          rows instead of an empty ledger that reads as a fault. */
       const hidden = entries.slice(cut).filter(e => e.row).map(e => e.row);
       const quietest = hidden.reduce((m, r) => Math.max(m, r.ageSec), 0);
+      /* How much of what is hidden is work already paid for. The clip collapses
+         the idle run by default and a finished-unread session is idle, so
+         without this the one thing in there worth opening the block for is the
+         one thing the toggle does not mention. Only when there is some: a
+         `· 0 done` on a board with no event hooks installed would be a number
+         that never moves. */
+      const collected = hidden.filter(r => r.finished).length;
+      const collectedBit = collected ? collected + " done · " : "";
       body = entries.slice(0, cut).map(html).join("") +
         `<div class="idle-wrap"><div class="idle-clip" style="max-height:` +
         (calmIdleExpanded ? "3000px" : "148px") + `">` +
@@ -750,7 +855,7 @@ function calmLedger(d){
         `<div class="idle-toggle-wrap"><button type="button" class="idle-toggle"` +
         ` data-calm="idle" aria-expanded="${calmIdleExpanded}">` +
         (calmIdleExpanded ? "Show less"
-          : `${hidden.length} idle · quiet up to ${fmtDur(quietest)}`) +
+          : `${hidden.length} idle · ${collectedBit}quiet up to ${fmtDur(quietest)}`) +
         `</button></div></div>`;
     }
   }
@@ -795,6 +900,7 @@ function calmLedger(d){
     `</span><span class="cm-sp"></span>` +
     `<span class="cm-keys"><span>j k move</span><span>⏎ expand</span><span>f flagged</span>` +
     `<span>g gates</span>` +
+    (d.dismiss ? `<span>x handled</span>` : "") +
     (usagePresent(d) ? `<span>u usage</span>` : "") +
     `<span>c mode</span><span>esc clear</span></span></div></div>`;
 }

@@ -426,3 +426,44 @@ ledger while the server still separated them.
 It does not tell you how long answering will take, which gate is cheapest to clear, or which is most
 urgent beyond how long it has waited. Waiting time is the only ranking signal the payload actually
 carries; anything richer would be a guess dressed as an ordering.
+
+## N-9: Idle was two situations, and only an event can separate them
+
+Idle covered a turn that ended and nobody read the result, and a session still waiting on a reply
+that never came. Nothing on a collected row separates them, because both are a transcript that
+stopped changing. Only an observed `turn_stopped` does, so a row now carries `finished_at`, the stamp
+of the last stop seen for it, and both views read the two apart instead of printing the one word.
+
+The stamp is held outside the overlay ledger, and that is the one place this design departs from
+N-5's rule that `session_ended` retires everything a session's events wrote. The coordinator keeps it
+in a map of its own: `session_ended` pops the ledger whole, and for `claude -p` the stop and the exit
+arrive back to back, so a mark kept in the ledger would be destroyed for exactly the sessions the
+mark answers for. It is still reduced through `events.reduce_overlays` rather than written straight
+onto the row, so it passes the same `session_activity` guard the idle overlay does and a session
+resumed by a background task loses it. A working or waiting overlay clears it, and a collection that
+stops producing the row is its only other bound, since no event ends it.
+
+**The display threshold is measured, not inherited.** Across 10,119 returns to a stopped turn in
+1,355 local Claude transcripts, half were answered inside 106 seconds and nine in ten inside 966, so
+past 1,200 the odds are better than ten to one that nobody is coming back to that one soon. That is
+the gate both views apply. `SKILL.md` states it in minutes, and a documentation test reads the
+constant and requires the prose to agree, because otherwise the two can only match by accident.
+
+### Rejected
+
+- **Marking on the stop itself.** It puts the word on nearly every idle row within seconds, which is
+  Idle restated in a second vocabulary: the fault the retired `stale` chip was dropped for. That
+  chip's 7,200 seconds is twice the 97th percentile of these returns and was never re-argued, so it
+  stayed silent through the whole window in which collecting the finished work is still worth
+  something.
+- **Narrowing what `session_ended` retires**, which would have let the mark live in the ledger after
+  all. Claude fires that event on `/clear` as well as on exit (N-5), so a cleared session would read
+  finished forever, which is DRC-4101's failure class by another door.
+- **A third flag.** The two-flag cap is a shipped decision, and finished work is worth collecting
+  rather than worth alarming about, so the word sits in the `idle / wait` cell and in the regular
+  view's idle row. A chip would also pull the count into the flagged total, the `f` filter and the
+  attention ordering, none of which should move because a turn ended tidily.
+- **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
+  completion renders identically to a measured one, so those rows disclose `scan-only` through
+  `acquisition`, which was defined for this and rendered nowhere until now. A test holds the
+  collectors to it.

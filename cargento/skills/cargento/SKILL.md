@@ -33,7 +33,7 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 |---|---|---|
 | **Needs input** (red, popup fired) | Claude is blocked on the human | Best effort, never guaranteed, from three sources that cover different things rather than ranking cleanly. The bundled `PermissionRequest` hook is the main one for tool gates, seen directly for `ExitPlanMode` and in the wild for `AskUserQuestion`. An actionable Notification-hook POST is the *only* source for an MCP elicitation or a worker's permission or network request. A pending input tool seen in the transcript is an opportunistic extra, because Claude Code flushes that record on its own schedule and sometimes not until the gate has been answered. Claude only — other harnesses have no needs-input detection |
 | **Working** (blue) | Actively generating | transcript/subagent/DB activity within the last 90s; detail = in-progress task's activeForm, else running subagents, else last tool |
-| **Idle** (gray) | Turn ended | anything else — "awaiting your message" |
+| **Idle** (gray) | Turn ended | anything else — "awaiting your message". Two situations wear the one word: a turn that ended and nobody read the result, and a session still waiting on a reply that never came. Only a turn-end event tells them apart, so only the four harnesses with an event adapter can — Claude Code, Codex, Gemini CLI and Antigravity, and only with their hooks installed. On the other six the row says the answer cannot be known there, rather than guessing at it |
 
 ## Display modes
 
@@ -61,6 +61,8 @@ Two flags appear in the `flag` column, and only these two — each is a signal t
 | **long turn** (amber) | Working, and this request has run or is estimated to run ≥15 min (`LONG_TURN_WARN_SEC`) — the same signal as the regular view's ⚠️. Where the request also came back with a run of failed tool calls, the explanation behind the chip says so and names the tool — see **Loop detection** under [Interpretation notes](#interpretation-notes-share-with-the-user-if-asked). |
 
 A flag means "look at this", so a session that has simply gone quiet does not carry one. How long an idle session has been idle is in its own `idle / wait` cell, and how many of them there are is on the collapsed block's toggle.
+
+An idle session whose turn was seen to end, and which nobody has come back to for 20 minutes, is marked `done` beside that age — in the cell and in the regular view's idle row, never as a third flag. Finished work is worth collecting, not worth alarming about, and the 20 minutes is measured rather than picked: on real local transcripts, nine returns in ten to a stopped turn land inside seventeen. The collapsed toggle counts them too, since the block it hides is where they sit. Hovering the age says which of the three readings a row is: finished and unread, quiet with no turn-end seen, or a harness that sends no turn events at all.
 
 ## The gate queue
 
@@ -136,11 +138,23 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`):
-`cargento-<port>.json`, which records the running instance, and `cargento-<port>.log`, where a
-detached server's output goes. If you wire up Antigravity's status line, `statusline_hook.py` keeps
-one small memo per conversation in the same directory so a status line that fires many times a turn
-posts once.
+The server writes three files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+`cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
+detached server's output goes; and `cargento-dismissals.json`, the sessions marked handled. If you
+wire up Antigravity's status line, `statusline_hook.py` keeps one small memo per conversation in the
+same directory so a status line that fires many times a turn posts once.
+
+### Marking a session handled
+
+A row you have dealt with can leave the board: `handled` on a gate row, or in a calm row's detail
+panel, or `x` on the row the calm cursor is on. The dashboard subtracts it from the payload before it
+counts anything, so the tile, the tab title and both views agree, and a cleared gate raises no
+desktop notification either.
+
+It comes back on its own the next time anything in that session writes — a subagent counts. The
+`N handled` chip beside the display switch lists what is marked and puts any of it back. The marks
+live in `cargento-dismissals.json` and hold a harness name, a session id and two timestamps; delete
+that file to clear them all, or run with `--no-dismiss` to leave it unread for a run.
 
 ## Notifications
 
@@ -178,9 +192,9 @@ Simulate for testing:
 echo '{"session_id":"<id>","message":"test"}' | python3 "<skill-dir>/notify_hook.py"
 ```
 
-3. **Lifecycle events** — the plugin's own bundled hooks at `hooks/hooks.json`, so there is **nothing to add to a settings file**. They forward general lifecycle events to `/api/events/claude`: prompt submitted, turn stopped, permission requested, subagent started or stopped, tasks changed, compaction finished. Where path 2 sets one piece of side state, this drives the session's Working, Needs-input and Idle state directly, so the board reacts to a turn starting instead of waiting for the next scan.
+3. **Lifecycle events** — the plugin's own bundled hooks at `hooks/hooks.json`, so there is **nothing to add to a settings file**. They forward general lifecycle events to `/api/events/claude`: session started and ended, prompt submitted, turn stopped, permission requested, a tool run finishing, subagent started or stopped, tasks changed, compaction finished. Where path 2 sets one piece of side state, this drives the session's Working, Needs-input and Idle state directly, so the board reacts to a turn starting instead of waiting for the next scan.
 
-   Nothing to install: enabling the plugin is enough. Note that a session's overlays are retired when it ends, which is correct and means a one-shot `claude -p` run shows no event-driven state by the time it exits.
+   Nothing to install: enabling the plugin is enough. Note that a session's overlays are retired when it ends, which is correct and means a one-shot `claude -p` run shows no event-driven state by the time it exits. The one thing it keeps is the mark that its turn ended, held outside those overlays on purpose, so a run that finished and was never read can still say so.
 
    Only add the hooks by hand if the user runs `event_hook.py` outside the plugin, for instance against a checkout. In that case:
 
@@ -242,6 +256,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
+| `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board and the page offers no control to clear one. The rollback switch for the one file Cargento writes on your behalf. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
@@ -249,6 +264,8 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `/api/stream` | Server-sent events, one per new revision. This is what keeps an open page current, so it refetches when something changed rather than on a timer; one tab per browser holds the connection. A browser without `EventSource` falls back to polling. |
 | `POST /api/shutdown` | Stop the server. Loopback-only, with the same origin checks as `/api/notify`. |
 | `POST /api/usage` | Receive a harness's own quota, forwarded by its status-line command (see Usage and rate limits). Loopback-only, same origin checks. Stores in memory only. |
+| `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
+| `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 
 ## Interpretation notes (share with the user if asked)
 
