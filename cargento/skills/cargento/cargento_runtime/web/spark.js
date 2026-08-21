@@ -4,6 +4,16 @@ let idleExpanded = false;
 let lastData = null;
 let refreshSequence = 0;
 let latestSettledRefresh = 0;
+/* The handled panel: whether it is open, and the last answer /api/cleared gave.
+   Session-only, like every other reveal on this page — the persistence that
+   matters lives in the server's store, and a panel that reopened itself on a new
+   tab would be a second thing to close. `null` is "not asked yet", which the
+   panel draws as loading rather than as an empty store. */
+let clearedOpen = false;
+let clearedRows = null;
+/* What went wrong, or what only half worked, said where the control was. Held
+   here rather than passed around because #app is rebuilt every poll. */
+let clearedNote = "";
 
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -223,6 +233,22 @@ const nowSec = () => Date.now() / 1000;
 const rateHistory = [];               // overall: [{t, v}]
 const sessRateHistory = new Map();    // "harness:sid" -> [{t, v}]
 const sessKey = x => x.harness + ":" + (x.sid || x.session);
+
+/* The key a dismissal control carries, and the pair the server keys its store
+   on. Deliberately NOT sessKey: that one falls back to the display id when `sid`
+   is blank, which is right for a per-row buffer the page owns and wrong here —
+   the server matches on `sid` alone, so a fallback would write a mark that never
+   matches a row again. A control with no sid to name is not rendered at all. */
+const dismissKey = x => (x.sid ? x.harness + ":" + x.sid : "");
+
+/* Back the other way. Split on the FIRST colon: no harness key contains one and
+   a session id may. */
+function splitDismissKey(key){
+  const at = String(key == null ? "" : key).indexOf(":");
+  if(at < 1) return null;
+  const sid = String(key).slice(at + 1);
+  return sid ? {harness: String(key).slice(0, at), sid} : null;
+}
 let lastGenerated = 0;
 
 function pushPoint(arr, t, v){

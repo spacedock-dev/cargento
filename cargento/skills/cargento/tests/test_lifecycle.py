@@ -244,6 +244,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_spacedock=False,
             no_usage=False,
             no_events=False,
+            no_dismiss=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -317,7 +318,7 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             discovered = json.loads(origin_probe.stdout)
             for origin in [*discovered["origins"].values(), *discovered["assets"].values()]:
                 self.assertTrue(Path(origin).is_relative_to(copied_skill), origin)
-            self.assertEqual(240_196, discovered["page_size"])
+            self.assertEqual(252_309, discovered["page_size"])
             state_path = cargento_home / f"cargento-{port}.json"
             proc = subprocess.Popen(
                 [sys.executable, str(launcher), "--port", str(port)],
@@ -378,6 +379,7 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             no_spacedock=False,
             no_usage=False,
             no_events=False,
+            no_dismiss=False,
             daemon=True,
         )
         with (
@@ -1162,6 +1164,7 @@ class CargentoServerTest(PageJsHarness):
             no_spacedock=True,
             no_usage=False,
             no_events=False,
+            no_dismiss=False,
             daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
@@ -1189,6 +1192,7 @@ class CargentoServerTest(PageJsHarness):
                 no_spacedock=False,
                 no_usage=False,
                 no_events=False,
+                no_dismiss=False,
                 daemon=True,
             ),
         )
@@ -1214,10 +1218,11 @@ class CargentoServerTest(PageJsHarness):
                 no_spacedock=True,
                 no_usage=True,
                 no_events=True,
+                no_dismiss=True,
                 daemon=True,
             ),
         )
-        for flag in ("--no-spacedock", "--no-usage", "--no-events"):
+        for flag in ("--no-spacedock", "--no-usage", "--no-events", "--no-dismiss"):
             self.assertIn(flag, argv)
 
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
@@ -1227,6 +1232,7 @@ class CargentoServerTest(PageJsHarness):
             no_spacedock=False,
             no_usage=False,
             no_events=False,
+            no_dismiss=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1429,6 +1435,7 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_spacedock": False,
             "no_usage": False,
             "no_events": False,
+            "no_dismiss": False,
         }
         base.update(overrides)
         return argparse.Namespace(**base)

@@ -9,9 +9,11 @@ import http.server
 import io
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -458,6 +460,122 @@ class UsageReceiptOptOutTest(RuntimeTestCase):
         self.assertEqual(200, status)
         self.assertEqual(b'{"ok":true,"usage":0}', body)
         self.assertEqual([], state.usage_receipts["antigravity"]["entries"])
+
+
+class DismissEndpointTest(RuntimeTestCase):
+    """POST /api/dismiss and GET /api/cleared over a real socket.
+
+    `test_dismissals` covers the store and the subtraction. This covers the
+    wiring, which is the half that breaks silently: the request has to reach the
+    store this application's config names, and the published bodies have to be
+    dropped or the next GET serves the row for another two and a half seconds.
+    """
+
+    def _runtime(self, **changes: Any) -> Any:
+        home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, home, True)
+        return make_runtime(state_home=home, state_dir=Path(home), **changes)
+
+    @contextlib.contextmanager
+    def _serving(self, application: Any) -> Any:
+        httpd = make_server(application=application)
+        thread = serve_until_closed(httpd)
+        try:
+            yield httpd.server_port
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    @staticmethod
+    def _post(port: int, body: bytes, *, declared: str | None = None) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            if declared is None:
+                conn.request(
+                    "POST", "/api/dismiss", body=body, headers={"Content-Type": "text/plain"}
+                )
+            else:
+                conn.putrequest("POST", "/api/dismiss")
+                conn.putheader("Content-Length", declared)
+                conn.endheaders()
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _get(port: int, path: str, headers: dict[str, str] | None = None) -> tuple[int, bytes]:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        try:
+            conn.request("GET", path, headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.read()
+        finally:
+            conn.close()
+
+    def test_a_mark_reaches_the_store_and_the_next_read_reflects_it(self) -> None:
+        config, state = self._runtime()
+        application = cli.build_application(config, state, clock=time.time)
+        with self._serving(application) as port:
+            # Warm the published body first: without `snapshot.clear()` in the
+            # handler, this is exactly the response the GET below would reuse.
+            first, _ = self._get(port, "/api/data")
+            status, body = self._post(
+                port, json.dumps({"harness": "claude", "sid": "abcd1234"}).encode()
+            )
+            listed_status, listed = self._get(port, "/api/cleared")
+        self.assertEqual((200, 200, 200), (first, status, listed_status))
+        answer = json.loads(body)
+        self.assertIs(True, answer["persisted"])
+        self.assertEqual(1, answer["cleared"])
+        self.assertEqual(
+            [{"harness": "claude", "sid": "abcd1234"}],
+            [{k: v for k, v in row.items() if k != "at"} for row in json.loads(listed)["cleared"]],
+        )
+        self.assertIsNone(
+            state.snapshot.current((config.window_hours, False)),
+            "the published body survived the dismissal and would be served again",
+        )
+
+    def test_an_oversized_declared_length_is_refused_before_any_read(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _body = self._post(port, b"", declared="200000")
+        self.assertEqual(413, status)
+
+    def test_a_body_that_names_nothing_is_a_no_op(self) -> None:
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            for body in (b"[]", b"not json", b"{}", b'{"harness": "claude"}'):
+                with self.subTest(body=body):
+                    status, answer = self._post(port, body)
+                    self.assertEqual(200, status)
+                    self.assertEqual(0, json.loads(answer)["cleared"])
+
+    def test_the_rollback_switch_answers_503_on_both_routes(self) -> None:
+        # 503, not 404: under `--no-dismiss` the route exists and the store does
+        # not, and a 404 would read as a build too old to have the feature.
+        config, state = self._runtime(dismissals_enabled=False)
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            post_status, _ = self._post(port, b'{"harness":"claude","sid":"abcd1234"}')
+            get_status, _ = self._get(port, "/api/cleared")
+        self.assertEqual((503, 503), (post_status, get_status))
+
+    def test_the_reveal_refuses_a_cross_site_navigation_unlike_api_data(self) -> None:
+        # Same reasoning as `/api/overlays`: nothing navigates here, so `do_GET`'s
+        # relaxation for document navigations has no reason to reach it.
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            status, _ = self._get(
+                port,
+                "/api/cleared",
+                {
+                    "Sec-Fetch-Site": "cross-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "document",
+                },
+            )
+        self.assertEqual(403, status)
 
 
 class HostAndSocketTest(unittest.TestCase):

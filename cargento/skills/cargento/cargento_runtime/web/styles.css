@@ -241,6 +241,25 @@
   .modebar{display:flex;align-items:center;justify-content:flex-end;gap:12px}
   .wrap:not(.calm) .modebar{margin-bottom:-20px}
   .modebar-k{font-family:var(--mono);font-size:var(--fs-2xs);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+  /* the handled chip and its panel — one implementation, both display modes,
+     because the subtraction happens on the server and neither view filters */
+  .clearedbar{margin-right:auto;display:flex;align-items:center;gap:10px;min-width:0}
+  .clearedchip{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:.03em;padding:6px 13px;border:1px solid var(--line2);border-radius:999px;cursor:pointer;color:var(--ink2);background:var(--bg);transition:color .12s,background .12s,border-color .12s}
+  .clearedchip:hover{color:var(--ink)}
+  .clearedchip.on{color:var(--ink);background:var(--sel-bg);border-color:var(--sel-bd)}
+  .clearedchip:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .cleared{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+  .cleared-h{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--ink3)}
+  .cleared-n{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;color:var(--ink);letter-spacing:0}
+  .cleared-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-top:1px solid var(--line)}
+  .cleared-sid{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cleared-when{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3);white-space:nowrap}
+  .cleared-act{font-family:var(--mono);font-size:var(--fs-2xs);font-weight:700;color:var(--ink2);background:transparent;border:1px solid var(--line2);border-radius:6px;padding:3px 9px;cursor:pointer;transition:color .12s,border-color .12s}
+  .cleared-act:hover{color:var(--ink);border-color:var(--ink3)}
+  .cleared-act:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent)}
+  .cleared-empty{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
+  .cleared-note{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--alert);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cleared-foot{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);line-height:1.6}
   .modebar-split{width:1px;height:20px;background:var(--line2);margin:0 6px}
   .modeseg{display:flex;align-items:center;gap:2px;padding:3px;border-radius:10px;border:1px solid var(--line2);background:var(--bg)}
   .modebtn{font-family:var(--mono);font-size:var(--fs-xs);font-weight:700;letter-spacing:.03em;padding:6px 15px;border:0;border-radius:7px;cursor:pointer;color:var(--ink3);background:transparent;transition:color .12s,background .12s}

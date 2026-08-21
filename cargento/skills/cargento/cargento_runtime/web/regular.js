@@ -602,7 +602,12 @@ function needRow(d, sess, pos, focusKey){
     `<div class="blocked-v">${esc(blocked)}</div>` +
     `<button type="button" class="need-copy" data-calm="copy"` +
     ` data-arg="${esc(key)}" title="copy this session's id">` +
-    `${copied ? esc(calmCopyNote.text) : "copy id"}</button></div></div>`;
+    `${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
+    /* A gate IS clearable, and clearing it also stops its desktop popup. A gate
+       the reader has decided to answer somewhere else is exactly the row they
+       want off the board, and a control that removed it from the board while the
+       notifications kept arriving would read as broken. */
+    handledButton(d, dismissKey(sess), "need-copy") + `</div></div>`;
 }
 
 function idleRow(d, sess){

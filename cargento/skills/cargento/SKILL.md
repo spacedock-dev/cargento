@@ -136,11 +136,23 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes two files, both under `~/.cargento` (relocatable with `CARGENTO_HOME`):
-`cargento-<port>.json`, which records the running instance, and `cargento-<port>.log`, where a
-detached server's output goes. If you wire up Antigravity's status line, `statusline_hook.py` keeps
-one small memo per conversation in the same directory so a status line that fires many times a turn
-posts once.
+The server writes three files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+`cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
+detached server's output goes; and `cargento-dismissals.json`, the sessions marked handled. If you
+wire up Antigravity's status line, `statusline_hook.py` keeps one small memo per conversation in the
+same directory so a status line that fires many times a turn posts once.
+
+### Marking a session handled
+
+A row you have dealt with can leave the board: `handled` on a gate row, or in a calm row's detail
+panel, or `x` on the row the calm cursor is on. The dashboard subtracts it from the payload before it
+counts anything, so the tile, the tab title and both views agree, and a cleared gate raises no
+desktop notification either.
+
+It comes back on its own the next time anything in that session writes — a subagent counts. The
+`N handled` chip beside the display switch lists what is marked and puts any of it back. The marks
+live in `cargento-dismissals.json` and hold a harness name, a session id and two timestamps; delete
+that file to clear them all, or run with `--no-dismiss` to leave it unread for a run.
 
 ## Notifications
 
@@ -242,6 +254,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
+| `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board and the page offers no control to clear one. The rollback switch for the one file Cargento writes on your behalf. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
@@ -249,6 +262,8 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `/api/stream` | Server-sent events, one per new revision. This is what keeps an open page current, so it refetches when something changed rather than on a timer; one tab per browser holds the connection. A browser without `EventSource` falls back to polling. |
 | `POST /api/shutdown` | Stop the server. Loopback-only, with the same origin checks as `/api/notify`. |
 | `POST /api/usage` | Receive a harness's own quota, forwarded by its status-line command (see Usage and rate limits). Loopback-only, same origin checks. Stores in memory only. |
+| `POST /api/dismiss` | Mark one session handled, or with `{"clear": false}` put one back. Body is `{"harness", "sid"}` and carries no timestamp — the watermark is the server's clock. Answers `persisted: false` when the store could not be written. 503 under `--no-dismiss`. |
+| `/api/cleared` | The sessions marked handled: a harness key, a session id and when each was marked, and nothing else. 503 under `--no-dismiss`. |
 
 ## Interpretation notes (share with the user if asked)
 

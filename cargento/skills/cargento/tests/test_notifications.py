@@ -56,10 +56,11 @@ class CargentoServerTest(RuntimeTestCase):
                 notifications.maybe_popup(
                     config,
                     state,
-                    sid,
+                    notifications.PopupSubject(
+                        harness="claude", label="Claude", prefix=sid, activity=0.0
+                    ),
                     "needs_input",
                     detail,
-                    harness_label="Claude",
                     popup_notifier=notifier,
                 )
 
@@ -1429,28 +1430,32 @@ class HarnessNeutralTitleTest(unittest.TestCase):
         notifications.maybe_popup(
             config,
             state,
-            "abcdef12",
+            notifications.PopupSubject(
+                harness="antigravity", label="Antigravity", prefix="abcdef12", activity=0.0
+            ),
             "needs_input",
             "[proj] a question",
-            harness_label="Antigravity",
             popup_notifier=lambda title, message: fired.append((title, message)),
         )
         self.assertEqual([("Antigravity is waiting on you", "[proj] a question")], fired)
 
-    def test_the_label_has_no_default(self) -> None:
-        # A default would let a second harness's collector wire itself in and
-        # silently claim to be Claude, which is the exact failure this exists to
-        # prevent. mypy catches it, and so does this.
-        config, state = make_runtime()
-        with self.assertRaises(TypeError):
-            notifications.maybe_popup(  # type: ignore[call-arg]
-                config,
-                state,
-                "abcdef12",
-                "needs_input",
-                None,
-                popup_notifier=lambda _title, _message: None,
-            )
+    def test_no_field_of_the_subject_has_a_default(self) -> None:
+        # A defaulted label would let a second harness's collector wire itself in
+        # and silently claim to be Claude, which is the exact failure this exists
+        # to prevent. A defaulted activity reading is the same shape of mistake
+        # one layer down: 0 reads as "this session has not moved", so forgetting
+        # it would keep a lapsed dismissal suppressing the popup forever. mypy
+        # catches both, and so does this.
+        for missing in ("harness", "label", "prefix", "activity"):
+            fields: dict[str, Any] = {
+                "harness": "claude",
+                "label": "Claude",
+                "prefix": "abcdef12",
+                "activity": 0.0,
+            }
+            del fields[missing]
+            with self.subTest(missing=missing), self.assertRaises(TypeError):
+                notifications.PopupSubject(**fields)
 
     def test_the_notify_route_label_is_a_property_of_the_route(self) -> None:
         # /api/notify is Claude Code's own Notification hook and nothing else

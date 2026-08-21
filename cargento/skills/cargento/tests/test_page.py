@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                36_918,
-                "cf837c0430c6417c2e58ccee57750f8d761a98414b4cfffcb55faf4298a30892",
+                38_320,
+                "3d8cfdc9526a50026ba3a8c597f610b547b5a6d5335696f22724eb6653c2052a",
             ),
             "regular.js": (
-                37_745,
-                "e35d6e3c2bc35b277b441bff98c261b6f1cc26d9cff44f2ad54c7ab19d96cce7",
+                38_106,
+                "ff04a42cb943db57e1984cb634ae7e81aae10ddcc069bd2d6c97acd01c426351",
             ),
             "mode.js": (
                 2_172,
@@ -80,12 +80,12 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "3eb8d87fb2f809058678218cf57bc6b381bb7750d7523efea0eeb56628db70fe",
             ),
             "controls.js": (
-                3_363,
-                "b45a331ff631f4293b463765c85f45ae9bc2b5b7b43401034727a5867a1ac0e7",
+                7_254,
+                "b36c6fd4c6924857f7e86dbc2818de59d1e0984233480701bef0fabe14b6cc12",
             ),
             "calm.js": (
-                44_081,
-                "9b24d470bdc95dbc1aaa54d944befd99bb3f230b60dd4a4f6f2ab40f3241a3fc",
+                48_223,
+                "55cfe3e14052768b5d149aba9ce46e011147ed44e5749d9c6a2c03cea80e7393",
             ),
             "notify.js": (
                 3_185,
@@ -108,16 +108,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(45_461, len(styles))
+        self.assertEqual(47_778, len(styles))
         self.assertEqual(
-            "b7c05297001a082073f7d2c8e6e8571348047a8fb91e5c8d11a59b32d8ed34bc",
+            "3c309889cc9f4bb04ce91d0f9feb858bde5970b70045d8b3f82763cd433bdc7c",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(240_196, len(assembled))
+        self.assertEqual(252_309, len(assembled))
         self.assertEqual(
-            "5750e7b8be64c45e2747d3dac6d164064d66c06bb8e31286e93e83ff387466f5",
+            "8c3fe41cfaea1fa3e5edf29feeb6f020c46d3652349006b3bd1f7af70b3640d0",
             hashlib.sha256(assembled).hexdigest(),
         )
 

@@ -797,9 +797,14 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # the rows it just collected and stays below `observation`, which owns the
         # ledger: the coordinator is reached through the `OverlaySource` protocol
         # declared here, so the dependency does not invert.
+        # `dismissals` arrived with the handled control. `aggregate` is the one
+        # place that can subtract a cleared row before `summary` is counted, so
+        # this edge is what keeps every published total honest; `dismissals` is a
+        # leaf beside `records`, so it stays inward.
         "cargento_runtime.aggregate": {
             "cargento_runtime.collectors",
             "cargento_runtime.config",
+            "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.io",
             "cargento_runtime.quota",
@@ -933,8 +938,23 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",
         },
+        # `dismissals` is here because a gate the reader cleared must raise no
+        # popup, and the popup policy is this module's. The alternative was for
+        # the collector to decide and hand the answer in, which would put half of
+        # one rule in a file that owns none of it.
         "cargento_runtime.notifications": {
             "cargento_runtime.claude_data",
+            "cargento_runtime.config",
+            "cargento_runtime.dismissals",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.state",
+        },
+        # The store: `config` for its path and its caps, `records` for the
+        # untrusted-input discipline, `io` for the diagnostic sink, `state` for
+        # the lock and this process's copy. It imports nothing above itself, which
+        # is what lets aggregate, notifications and http_api all consult it.
+        "cargento_runtime.dismissals": {
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.records",
@@ -983,6 +1003,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # decide whether `/api/events/<harness>` exists at all.
         "cargento_runtime.http_api": {
             "cargento_runtime.aggregate",
+            "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.io",
             "cargento_runtime.notifications",

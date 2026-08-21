@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from cargento_runtime import claude_data, records
+from cargento_runtime import claude_data, dismissals, records
 from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
 
@@ -220,14 +222,42 @@ def waiting_title(harness_label: str) -> str:
     return f"{harness_label} is waiting on you"
 
 
+@dataclass(frozen=True)
+class PopupSubject:
+    """Which session a popup would be about, and the readings that gate it.
+
+    One argument rather than four, because they are one fact and were previously
+    drifting apart at every call site as the gate grew: the label without the key
+    cannot find a dismissal, and the key without the activity reading cannot tell
+    a standing one from a lapsed one.
+
+    No defaults, deliberately. ``label`` defaulting to Claude would let a second
+    harness's collector wire itself in and silently claim to be Claude, which is
+    the failure the harness-neutral title exists to prevent; ``activity``
+    defaulting to 0 would make forgetting it look like working code, because 0
+    reads as "this session has not moved" and keeps a dismissal in force. The
+    compiler cannot catch a wrong string, but it can catch a missing field.
+
+    ``harness`` is the registry key and ``label`` is the display name, kept apart
+    because the dismissal store keys on (harness, sid) exactly as
+    ``dedupe_sessions`` does — keying on a label would fold two harnesses together
+    the day one of them is renamed. ``activity`` is the whole-subtree reading, not
+    ``own_activity``: any movement in the tree means the work resumed.
+    """
+
+    harness: str
+    label: str
+    prefix: str
+    activity: float
+
+
 def maybe_popup(
     config: RuntimeConfig,
     state: RuntimeState,
-    prefix: str,
+    subject: PopupSubject,
     session_state: str,
     detail: str | None,
     *,
-    harness_label: str,
     expect_generation: int | None = None,
     popup_notifier: Callable[[str, str], None],
 ) -> None:
@@ -237,12 +267,14 @@ def maybe_popup(
     last-session-state map. Checking it in the caller leaves a window in which a
     SessionEnd commits first, and this would then re-create the state it just
     cleared and fire a popup for a session that has already exited.
-
-    ``harness_label`` is required rather than defaulted to Claude. A default would
-    let a second harness's collector wire itself in and silently claim to be
-    Claude, which is the failure this generalization exists to prevent, and the
-    compiler cannot catch a wrong string but it can catch a missing argument.
     """
+    prefix, harness_label = subject.prefix, subject.label
+    if dismissals.suppresses(config, state, subject.harness, prefix, subject.activity):
+        # Returned before the last-session-state write below, deliberately. This
+        # call is not evidence about the session, so recording a transition from
+        # it would let a dismissal rewrite the history the popup decision after a
+        # restore is made against.
+        return
     now = time.time()
     with state.hook_lock:
         if (
@@ -263,6 +295,21 @@ def maybe_popup(
         runtime_state.bounded_put(state.last_popup, prefix, now, limit=config.max_cache_entries)
         runtime_state.bounded_put(state.last_popup, "_global", now, limit=config.max_cache_entries)
     popup_notifier(waiting_title(harness_label), detail or f"Session {prefix} needs your input")
+
+
+def transcript_mtime(path: Any) -> float:
+    """When a hook payload's transcript was last written, or 0.
+
+    0 rather than an exception for a missing, unreadable or non-string path: the
+    only caller compares it against a dismissal watermark, where 0 reads as "no
+    evidence the session moved" and leaves the mark standing.
+    """
+    if not isinstance(path, str) or not path:
+        return 0.0
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
 
 
 def clear_session(state: RuntimeState, config: RuntimeConfig, prefix: str) -> None:
@@ -334,6 +381,23 @@ def handle_payload(
         found, user_event = claude_data.hook_user_event(config, state, transcript_path, prefix)
         if found:
             hook["user_event"] = user_event
+    # Read before the hook lock, never inside it: this takes the dismissal lock,
+    # and nesting one under the other would make an ordering load-bearing that
+    # nothing else in the file relies on. It gates the popup only — the hook is
+    # still stored below, so restoring the row brings its standing question back
+    # with it rather than a board the ingress had already emptied.
+    cleared = bool(prefix) and dismissals.suppresses(
+        config,
+        state,
+        "claude",
+        prefix,
+        # The transcript's mtime, which is the one activity reading this path has
+        # — the collector's `last_activity` folds in subagent and task mtimes, and
+        # re-deriving those here would be a transcript scan inside a hook. It is
+        # the conservative half of that figure: it can only be older, so this gate
+        # lapses no earlier than the collector's and never later.
+        transcript_mtime(transcript_path),
+    )
 
     with state.hook_lock:
         if prefix and state.hook_generation.get(prefix, 0) != generation:
@@ -356,7 +420,7 @@ def handle_payload(
         # One popup per distinct message per session within the repeat window.
         prev_msg, prev_ts = state.last_popup_message.get(popup_key, ("", 0.0))
         repeat = message == prev_msg and now - prev_ts < config.popup_repeat_suppress_sec
-        fire = popup and session_ready and global_ready and not repeat
+        fire = popup and session_ready and global_ready and not repeat and not cleared
         if fire:
             runtime_state.bounded_put(
                 state.last_popup, popup_key, now, limit=config.max_cache_entries
@@ -369,4 +433,6 @@ def handle_payload(
             )
     if fire:
         popup_notifier(waiting_title(NOTIFY_HARNESS_LABEL), message)
+    if cleared:
+        return {"ok": True, "suppressed": "cleared"}
     return {"ok": True}

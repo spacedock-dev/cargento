@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
+from . import dismissals, quota, sessions
 from . import events as runtime_events
 from . import io as runtime_io
-from . import quota, sessions
 from . import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
@@ -271,6 +271,12 @@ class Application:
         config, state = self.config, self.state
         window_hours = config.window_hours
         now = self.clock()
+        # Read before the harness loop, not after it. A collector can raise a
+        # native popup mid-loop (Claude's does), and the popup gate has to be
+        # answering off the same set as the subtraction below — a popup for a row
+        # this collection is about to remove is the visible half of the feature
+        # failing.
+        cleared_marks = dismissals.refresh(config, state)
         out_sessions: list[Session] = []
         harnesses: list[dict[str, Any]] = []
         usage: list[dict[str, Any]] = []
@@ -327,6 +333,24 @@ class Application:
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
         self._apply_overlays(out_sessions, now=now)
+        # After the overlays and before the display ids, and both halves matter.
+        # After, because `_apply_overlays` ends in `note_rows`, which expires any
+        # overlay whose key was not reported — subtract first and a dismissed
+        # session that comes back has lost its pending permission overlay. Before
+        # `assign_display_ids`, so the id widths describe the rows actually on
+        # screen.
+        kept = [
+            session
+            for session in out_sessions
+            if not dismissals.holds(
+                cleared_marks,
+                str(session["harness"]),
+                str(session["sid"]),
+                float(session.get("last_activity") or 0.0),
+            )
+        ]
+        cleared = len(out_sessions) - len(kept)
+        out_sessions = kept
         sessions.assign_display_ids(config, out_sessions)
         out_sessions.sort(key=row_order)
         active_sessions = [x for x in out_sessions if x["active"]]
@@ -341,6 +365,11 @@ class Application:
             # the day this configuration changed it.
             "rate_window_sec": config.rate_window_sec,
             "show_all": show_all,
+            # How many rows this payload dropped because the reader marked them
+            # handled. A count and not a flag on the rows: the tab title, the
+            # gate queue and calm's idle clip all derive from `sessions`, and a
+            # per-row flag is a thing each of them would have to remember.
+            "cleared": cleared,
             # Which layer owns needs-input popups. Empty means the page should
             # raise its own; a backend name means the server already did.
             "native_notify": self.native_notifier(config.platform_name),
@@ -357,6 +386,11 @@ class Application:
             },
             "sessions": out_sessions,
         }
+        if config.dismissals_enabled:
+            # The capability flag, keyed the way `usage_fetch` is: present exactly
+            # when the store is live, so `--no-dismiss` leaves the page with no
+            # control to offer rather than one that answers 503.
+            collection["dismiss"] = True
         if usage_supported:
             # Present even when empty: the page distinguishes "no quota data
             # yet" (key with no entries) from "nothing here publishes quota"

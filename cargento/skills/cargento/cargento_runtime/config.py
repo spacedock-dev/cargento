@@ -45,6 +45,11 @@ class RuntimeConfig:
     window_hours: float
     spacedock_enabled: bool
     usage_fetch_enabled: bool
+    # Whether the dismissal store is read and written at all. `--no-dismiss` is
+    # the rollback switch, and off means off in both directions: the file is
+    # neither consulted during a collection nor created by a request, so a run
+    # that misbehaves leaves no state a later run would honour.
+    dismissals_enabled: bool
     # The trailing window every published token rate is averaged over. What a
     # row carries is therefore a MEAN and not an instantaneous reading, and at
     # ten minutes it lags a burst by minutes. `sessions.rate_from` divides by it,
@@ -119,6 +124,18 @@ class RuntimeConfig:
     daemon_ready_timeout_sec: float
     stop_release_timeout_sec: float
     state_read_cap_bytes: int
+    # The dismissal store. The read cap is the state file's, because the shape of
+    # the risk is the same: a file this process wrote, which any local process
+    # could have replaced with something enormous or deeply nested. The entry
+    # bound is a count and not a time-to-live — see `dismissals._bounded` for why
+    # a TTL is the wrong shape — and 256 is set against what a reader can
+    # plausibly have marked handled inside one 24-hour window, an order of
+    # magnitude above the busiest board measured (31 sessions).
+    dismissal_read_cap_bytes: int
+    dismissal_max_entries: int
+    # What a dismissal request may declare. Three short fields, so this is far
+    # below even the event cap: nothing else is read from the body.
+    dismissal_body_cap_bytes: int
     prompt_path_collapse_min_length: int
     first_line_json_cap_bytes: int
     notification_body_cap_bytes: int
@@ -286,6 +303,7 @@ def build_runtime_config(
     window_hours: float = 24.0,
     spacedock_enabled: bool = True,
     usage_fetch_enabled: bool = True,
+    dismissals_enabled: bool = True,
 ) -> RuntimeConfig:
     """Construct runtime configuration solely from explicit inputs."""
     windows = platform_name == "win32"
@@ -324,6 +342,7 @@ def build_runtime_config(
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,
         usage_fetch_enabled=usage_fetch_enabled,
+        dismissals_enabled=dismissals_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
         # session "right now", and this window is the reason it cannot have it:
         # narrowing it would re-scale the summary tile, both sparklines and every
@@ -376,6 +395,9 @@ def build_runtime_config(
         daemon_ready_timeout_sec=10.0,
         stop_release_timeout_sec=5.0,
         state_read_cap_bytes=65_536,
+        dismissal_read_cap_bytes=65_536,
+        dismissal_max_entries=256,
+        dismissal_body_cap_bytes=1_024,
         prompt_path_collapse_min_length=25,
         first_line_json_cap_bytes=200_000,
         notification_body_cap_bytes=65_536,
