@@ -269,8 +269,8 @@ presentation:
 
 Cursor rows were hardcoded to the literal `cursor`, so every Cursor session in every
 repository shared one label. The `meta` table was the only place a workspace path could
-plausibly live, so the first pass tried six key spellings inferred from the VS Code lineage —
-`workspacePath`, `workspace`, `rootPath`, `projectPath`, `folder`, `cwd` — ranked by a guess
+plausibly live, so the first pass tried six key spellings inferred from the VS Code lineage
+(`workspacePath`, `workspace`, `rootPath`, `projectPath`, `folder`, `cwd`), ranked by a guess
 at which was most trustworthy, and closed by saying a real store should be read before the
 key list was trusted.
 
@@ -289,12 +289,12 @@ confident-wrong label the ladder exists to prevent.
 
 The isdir gate stays, and applies to the measured value too. In this family `workspace`
 routinely holds a `.code-workspace` *file* and `workspaceStorage/<hash>` paths are everywhere,
-either of which passes an "is it an absolute path" test and yields a confident wrong label —
-worse than no label. So a candidate is accepted only when it resolves to a directory that
+either of which passes an "is it an absolute path" test and yields a confident wrong label,
+which is worse than no label. So a candidate is accepted only when it resolves to a directory that
 exists on this machine, which makes the guess validate itself, and the `file://` spelling is
 accepted alongside a bare path since it is the canonical serialization in that family.
 
-A miss is not a fault. One live agent directory — the subagent's — has no `meta.json` at all,
+A miss is not a fault. One live agent directory, the subagent's, has no `meta.json` at all,
 so an absent, unparseable or truncated file means *this session has no workspace* and never
 *this store is broken*: routing it through `record_store_error` would badge the harness and
 withdraw the title, the model and the workspace of every other Cursor row, which is the same
@@ -312,7 +312,7 @@ inference from timing or a shared hash.
 Three decisions came with it:
 
 - **`rootParentAgentId` before `parentAgentId`.** Nothing on this machine nests deeper than
-  one level — there the two ids are equal — so the rule chosen is the one that cannot orphan a
+  one level (there the two ids are equal), so the rule chosen is the one that cannot orphan a
   grandchild into a peer row, which is the defect being closed. Antigravity already flattens a
   whole subtree onto the root card, and the frontend's tooltip is written for it.
 - **A parent id that names no row promotes the child.** The live store already holds that
