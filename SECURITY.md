@@ -29,8 +29,8 @@ The posture rests on two invariants:
    mutate, and two of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
-   Known and accepted. The third, `POST /api/dismiss`, does write to disk — but it writes Cargento's
-   own state under `~/.cargento` and never a harness store, so the read-only rule above stands
+   Known and accepted. The third, `POST /api/dismiss`, does write to disk, but what it writes is
+   Cargento's own state under `~/.cargento` and never a harness store, so the read-only rule above stands
    unchanged. What that file holds and how to clear it is in Dismissals. One forwarder writes too:
    `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
    name and a timestamp and nothing about the session's content.
@@ -204,22 +204,32 @@ Marking a session handled writes one file, and it is the only thing Cargento wri
 briefly world-readable, written through a temp file and `os.replace` so a reader mid-write sees the
 old file or the new one.
 
-It holds a harness key, a session id, and two timestamps per entry. Nothing else — no title, no
-prompt, no project path, no state detail. So `GET /api/cleared`, which serves it back to the page,
-exposes strictly less than `/api/data` already does. That route applies the strict same-origin check
-rather than the relaxed one `/api/data` uses for navigations, and answers 503 under `--no-dismiss`.
+It holds a harness key, a session id, and two timestamps per entry. Nothing else: no title, no
+prompt, no project path, no state detail. Nothing sends it anywhere either. The one route that reads
+it out is `GET /api/cleared`, on the loopback port, and what that serves back to the page is strictly
+less than `/api/data` already does. It applies the strict same-origin check rather than the relaxed
+one `/api/data` uses for navigations, and answers 503 under `--no-dismiss`.
 
 Two properties bound what a forged `POST /api/dismiss` can do. The body carries no timestamp: the
 watermark that decides how long a mark holds is the server's own clock at the moment it lands, so
 there is no value a caller can send that hides a row past that session's next write. And the file is
 capped at 256 entries, oldest mark evicted first, so nothing can grow it without limit. A corrupt,
-truncated or over-cap file degrades to "no dismissals" — every row visible — rather than raising, and
-one malformed entry is dropped on its own without discarding the rest.
+truncated or over-cap file degrades to "no dismissals", with every row visible, rather than
+raising, and one malformed entry is dropped on its own without discarding the rest.
 
 To clear it, delete the file, or use the page's `handled` chip to restore individual sessions.
-`--no-dismiss` leaves it unread and unwritten for a run. Two dashboards on one machine share the one
-file: each picks up the other's marks on its next collection, and two marks landing in the same
-instant resolve last-writer-wins on the whole file.
+`--no-dismiss` leaves it unread and unwritten for a run.
+
+Two exposures come with the feature and are accepted rather than solved. The first is that clearing a
+session suppresses its desktop popup as well as its row, including a session still waiting on an
+answer, which is what the control is for when the gate was answered somewhere else. It is also the
+most a forged `POST /api/dismiss` can achieve: one session's alert stays silent until that session
+writes again, and its standing question is still on the board the moment the row is restored. The
+second is that two dashboards on one machine share the one file. Each picks up the other's marks on
+its next collection, but two marks landing in the same instant resolve last-writer-wins on the whole
+file, and the losing mark is lost.
+[`docs/design-dismissals.md`](docs/design-dismissals.md) records why that race is stated rather than
+solved.
 
 ## Known and accepted
 
