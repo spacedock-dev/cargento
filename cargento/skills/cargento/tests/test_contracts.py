@@ -940,6 +940,19 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.records",
             "cargento_runtime.state",
         },
+        # The observer analyzer: a read-only bystander that derives goal +
+        # stage + block from a session transcript head and its workflow entity
+        # dir. `spacedock` provides the read-only entity-dir frontmatter reader;
+        # `transcripts` provides the first-line metadata reader the path
+        # resolver uses. Both are lower-level modules that do not import back.
+        "cargento_runtime.observer": {
+            "cargento_runtime.config",
+            "cargento_runtime.io",
+            "cargento_runtime.records",
+            "cargento_runtime.spacedock",
+            "cargento_runtime.state",
+            "cargento_runtime.transcripts",
+        },
         # The quota fetch: the whole outbound network surface, kept below the
         # collectors so the one provider that fetches shares nothing with the
         # eight that read disk.
@@ -987,6 +1000,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.observation",
+            "cargento_runtime.observer",
             "cargento_runtime.quota",
             "cargento_runtime.snapshot",
             "cargento_runtime.stream",
