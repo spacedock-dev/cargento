@@ -557,6 +557,12 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-usage")
     if args.no_events:
         argv.append("--no-events")
+    # Forward the bind host only when the operator chose a non-default address,
+    # so a Windows --daemon re-spawn keeps a --host 0.0.0.0 bind instead of
+    # silently reverting to loopback.
+    host = getattr(args, "host", "127.0.0.1")
+    if host != "127.0.0.1":
+        argv.extend(["--host", host])
     return argv
 
 

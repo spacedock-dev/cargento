@@ -543,6 +543,147 @@ class HostAndSocketTest(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=2)
 
+    def test_local_ok_admits_non_loopback_host_on_wildcard_bind(self) -> None:
+        # AC-2: a remote request to a 0.0.0.0-bound server is served, not 403.
+        # Reverting the _host_admitted relaxation makes _local_ok return False
+        # and the handler sends 403.
+        handler = http_api._RequestHandler.__new__(http_api._RequestHandler)
+        handler.headers = email.message.Message()
+        handler.headers["Host"] = "192.168.0.2:4553"
+        handler.server = mock.Mock(bound_host="0.0.0.0", server_port=4553)
+        self.assertTrue(handler._local_ok())
+
+    def test_local_ok_rejects_non_loopback_host_on_default_bind(self) -> None:
+        # AC-3: the default loopback bind still rejects non-loopback Host
+        # headers (DNS-rebinding defense preserved). Removing the
+        # bind-conditionality so the relaxation always applies makes this fail.
+        handler = http_api._RequestHandler.__new__(http_api._RequestHandler)
+        handler.headers = email.message.Message()
+        handler.headers["Host"] = "192.168.1.5"
+        handler.server = mock.Mock(bound_host="127.0.0.1", server_port=4553)
+        self.assertFalse(handler._local_ok())
+
+    def test_local_ok_admits_explicit_non_loopback_bind_host_only(self) -> None:
+        # An explicit --host 10.0.0.2 bind admits that one address but not
+        # another non-loopback address — the operator chose one interface.
+        handler = http_api._RequestHandler.__new__(http_api._RequestHandler)
+        handler.headers = email.message.Message()
+        handler.server = mock.Mock(bound_host="10.0.0.2", server_port=4553)
+
+        handler.headers["Host"] = "10.0.0.2:4553"
+        self.assertTrue(handler._local_ok())
+
+        handler.headers.replace_header("Host", "10.0.0.3:4553")
+        self.assertFalse(handler._local_ok())
+
+    def test_local_ok_wildcard_still_admits_loopback(self) -> None:
+        # A 0.0.0.0 bind still accepts loopback Host headers — loopback
+        # remains one of its interfaces.
+        handler = http_api._RequestHandler.__new__(http_api._RequestHandler)
+        handler.headers = email.message.Message()
+        handler.headers["Host"] = "127.0.0.1:4553"
+        handler.server = mock.Mock(bound_host="0.0.0.0", server_port=4553)
+        self.assertTrue(handler._local_ok())
+
+    def test_local_ok_wildcard_rejects_empty_and_unspecified(self) -> None:
+        handler = http_api._RequestHandler.__new__(http_api._RequestHandler)
+        handler.headers = email.message.Message()
+        handler.server = mock.Mock(bound_host="0.0.0.0", server_port=4553)
+
+        handler.headers["Host"] = "0.0.0.0:4553"
+        self.assertFalse(handler._local_ok())
+
+        handler.headers.replace_header("Host", "")
+        self.assertFalse(handler._local_ok())
+
+    def test_wildcard_bind_origin_check_admits_non_loopback(self) -> None:
+        # The Origin/Sec-Fetch-Site cross-site checks stay in both modes, but
+        # the Origin hostname gate must admit the non-loopback address a
+        # remote browser would send as same-origin.
+        handler = http_api._RequestHandler.__new__(http_api._RequestHandler)
+        handler.headers = email.message.Message()
+        handler.headers["Host"] = "192.168.0.2:4553"
+        handler.headers["Origin"] = "http://192.168.0.2:4553"
+        handler.server = mock.Mock(bound_host="0.0.0.0", server_port=4553)
+        self.assertTrue(handler._local_ok())
+
+    def test_wildcard_bind_origin_check_rejects_cross_site(self) -> None:
+        # A drive-by web page still cannot POST to a remotely-bound dashboard:
+        # the Sec-Fetch-Site check stays in both modes.
+        handler = http_api._RequestHandler.__new__(http_api._RequestHandler)
+        handler.headers = email.message.Message()
+        handler.headers["Host"] = "192.168.0.2:4553"
+        handler.headers["Sec-Fetch-Site"] = "cross-site"
+        handler.server = mock.Mock(bound_host="0.0.0.0", server_port=4553)
+        self.assertFalse(handler._local_ok(allow_cross_site_navigation=True))
+
+    @staticmethod
+    def _non_loopback_ip() -> str | None:
+        """The machine's primary non-loopback IPv4, or None if there is none."""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            with contextlib.suppress(OSError):
+                s.connect(("8.8.8.8", 80))
+            ip = str(s.getsockname()[0])
+            s.close()
+            if ip not in ("127.0.0.1", "0.0.0.0"):
+                return ip
+        except OSError:
+            pass
+        return None
+
+    def test_wildcard_bind_serves_a_remote_host_header(self) -> None:
+        # AC-1/AC-2: a server bound 0.0.0.0 accepts a connection to the
+        # machine's non-loopback address and serves the page (200, not 403).
+        # Reverting the bind tuple to ("127.0.0.1", args.port) makes the
+        # connection refused; reverting _host_admitted makes it 403.
+        ip = self._non_loopback_ip()
+        if ip is None:
+            self.skipTest("no non-loopback IPv4 address available")
+        httpd = make_server(host="0.0.0.0")
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = httpd.server_port
+            conn = http.client.HTTPConnection(ip, port, timeout=5)
+            conn.putrequest("GET", "/")
+            conn.putheader("Host", f"{ip}:{port}")
+            conn.endheaders()
+            response = conn.getresponse()
+            self.assertEqual(200, response.status)
+            response.read()
+            conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_loopback_bind_refuses_a_non_loopback_connection(self) -> None:
+        # AC-1: the default (no --host) refuses a connection to the machine's
+        # non-loopback address (connection refused). Reverting the bind tuple
+        # to ("0.0.0.0", args.port) makes this fail (connection succeeds).
+        ip = self._non_loopback_ip()
+        if ip is None:
+            self.skipTest("no non-loopback IPv4 address available")
+        httpd = make_server()  # default host 127.0.0.1
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = httpd.server_port
+            refused = False
+            try:
+                conn = http.client.HTTPConnection(ip, port, timeout=2)
+                conn.request("GET", "/")
+                conn.getresponse()
+                conn.close()
+            except OSError:
+                refused = True
+            self.assertTrue(refused, "a loopback bind must refuse non-loopback connections")
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
 
 class ReviewFixTest(unittest.TestCase):
     """Regressions found by the adversarial review passes on PR #7."""

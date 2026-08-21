@@ -1449,6 +1449,20 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         argv = lifecycle.spawn_argv(config, self._args(no_usage=True))
         self.assertNotIn("--daemon", argv)
 
+    def test_host_is_forwarded_when_non_default(self) -> None:
+        # AC-4: a --host 0.0.0.0 --daemon child binds the same address as the
+        # parent requested. Deleting the --host append from spawn_argv makes
+        # this assertion fail.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(host="0.0.0.0"))
+        self.assertIn("--host", argv)
+        self.assertIn("0.0.0.0", argv)
+
+    def test_host_is_absent_when_default(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args())
+        self.assertNotIn("--host", argv)
+
 
 class ProducerTest(support.RuntimeTestCase):
     """The producer keeps the snapshot warm, but only for a connected stream."""

@@ -113,6 +113,33 @@ class CargentoServerTest(RuntimeTestCase):
         self.assertIs(config, state.config)
         self.assertEqual(1234.5, state.server_started)
 
+    def test_build_runtime_threads_host_into_config(self) -> None:
+        # The --host flag reaches RuntimeConfig.host, which build_runtime_config
+        # already carried as a dormant field. Dropping the host=args.host line
+        # in build_runtime makes this fail (config.host stays "127.0.0.1").
+        args = cli.build_parser().parse_args(["--host", "0.0.0.0"])
+        config, _state = cli.build_runtime(args, started=1.0, launcher_path=SERVER_PATH)
+        self.assertEqual("0.0.0.0", config.host)
+
+    def test_host_flag_defaults_to_loopback(self) -> None:
+        args = cli.build_parser().parse_args([])
+        self.assertEqual("127.0.0.1", args.host)
+
+    def test_host_flag_accepts_all_interfaces(self) -> None:
+        args = cli.build_parser().parse_args(["--host", "0.0.0.0"])
+        self.assertEqual("0.0.0.0", args.host)
+
+    def test_host_flag_accepts_explicit_ipv4(self) -> None:
+        args = cli.build_parser().parse_args(["--host", "192.168.1.5"])
+        self.assertEqual("192.168.1.5", args.host)
+
+    def test_host_flag_rejects_ipv6(self) -> None:
+        # IPv6 binds are out of scope (the server is IPv4-only), so the type
+        # validator rejects IPv6 literals at parse time.
+        for value in ("::", "::1", "[::1]", "fe80::1"):
+            with self.subTest(host=value), self.assertRaises(SystemExit):
+                cli.build_parser().parse_args(["--host", value])
+
     def test_build_runtime_has_no_operational_side_effects(self) -> None:
         # --diagnose, --status and --stop are the recovery commands, so assembly
         # must not open a store, a socket or a log on the way to them.

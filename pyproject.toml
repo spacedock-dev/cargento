@@ -121,7 +121,7 @@ max-args = 8
 "cargento/skills/cargento/cargento_runtime/collectors/gemini.py" = ["C901"]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
-"**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001"]
+"**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001", "S104"]
 
 [tool.mypy]
 # Python 3.11 is the supported runtime floor. COMPATIBILITY.md owns the list

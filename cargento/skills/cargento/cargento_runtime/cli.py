@@ -50,10 +50,38 @@ def runtime_environ(home: str | None = None) -> dict[str, str]:
     return environ
 
 
+def bind_host(value: str) -> str:
+    """An argparse type for a bindable IPv4 address (rejects IPv6).
+
+    The server is IPv4-only, so an IPv6 literal like ``::`` or ``::1`` is out
+    of scope and must be rejected at parse time rather than producing a
+    confusing bind failure.
+    """
+    parts = value.split(".")
+    if len(parts) != 4:
+        raise argparse.ArgumentTypeError("must be an IPv4 address (e.g. 127.0.0.1 or 0.0.0.0)")
+    for part in parts:
+        try:
+            octet = int(part)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(
+                "must be an IPv4 address (e.g. 127.0.0.1 or 0.0.0.0)"
+            ) from exc
+        if not 0 <= octet <= 255:
+            raise argparse.ArgumentTypeError("must be an IPv4 address (e.g. 127.0.0.1 or 0.0.0.0)")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The CLI surface. argparse owns --help and its own usage errors."""
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("--port", type=lifecycle.tcp_port, default=4553)
+    parser.add_argument(
+        "--host",
+        type=bind_host,
+        default="127.0.0.1",
+        help="bind address (default 127.0.0.1; use 0.0.0.0 for remote access)",
+    )
     parser.add_argument(
         "--diagnose",
         action="store_true",
@@ -126,6 +154,7 @@ def build_runtime(
         platform_name=sys.platform,
         os_name=os.name,
         launcher_path=launcher_path,
+        host=args.host,
         port=args.port,
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
@@ -240,8 +269,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         runtime_io.diag(message, print)
         return code
 
-    # Bind to loopback only — this exposes local session data.
-    #
     # Bind before detaching. bind_error_message() exists so a busy port gets an
     # explanation rather than a traceback, and SKILL.md tells the agent to look
     # for an already-running dashboard when it sees one. Forking first would
@@ -258,13 +285,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             coordinator = observation.Observation(application)
             application.overlays = coordinator
         server = http_api.CargentoHTTPServer(
-            ("127.0.0.1", args.port),
+            (args.host, args.port),
             application,
             page_bytes,
             coordinator,
         )
     except OSError as exc:
-        runtime_io.diag(http_api.bind_error_message(exc, args.port), print)
+        runtime_io.diag(http_api.bind_error_message(exc, args.port, args.host), print)
         return 1
 
     announce_fd: int | None = None

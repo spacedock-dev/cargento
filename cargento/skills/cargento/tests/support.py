@@ -215,6 +215,7 @@ def collect_claude(
 def make_server(
     *,
     port: int = 0,
+    host: str = "127.0.0.1",
     application: Any = None,
     page_bytes: bytes | None = None,
     window_hours: float = 24,
@@ -226,7 +227,7 @@ def make_server(
     what every test that only needs a page and an application wants.
     """
     return http_api.CargentoHTTPServer(
-        ("127.0.0.1", port),
+        (host, port),
         application if application is not None else build_app(window_hours),
         PAGE_BYTES if page_bytes is None else page_bytes,
         observation,

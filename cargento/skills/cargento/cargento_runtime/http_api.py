@@ -66,7 +66,7 @@ def reuse_address_allowed(os_name: str) -> bool:
     return os_name != "nt"
 
 
-def bind_error_message(exc: OSError, port: int) -> str:
+def bind_error_message(exc: OSError, port: int, host: str = "127.0.0.1") -> str:
     """Explain a failed bind instead of dumping a raw traceback."""
     winerror = getattr(exc, "winerror", None)
     if exc.errno == errno.EADDRINUSE or winerror == 10048:  # WSAEADDRINUSE
@@ -83,7 +83,7 @@ def bind_error_message(exc: OSError, port: int) -> str:
             f"held by another process, reserved by the system, or blocked by "
             f"local policy. Try another port with --port."
         )
-    return f"Cargento: cannot bind 127.0.0.1:{port} — {type(exc).__name__}: {exc}"
+    return f"Cargento: cannot bind {host}:{port} — {type(exc).__name__}: {exc}"
 
 
 class CargentoHTTPServer(ThreadingHTTPServer):
@@ -111,6 +111,10 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         # default would be sampled from the host os.name at import, which is
         # the ambient read D-4 exists to stop.
         self.allow_reuse_address = reuse_address_allowed(application.config.os_name)
+        # The bind host from the constructor address, read by _local_ok to
+        # decide whether a non-loopback Host header is the operator's opt-in
+        # (--host 0.0.0.0) rather than a DNS-rebinding probe.
+        self.bound_host = address[0]
         super().__init__(address, _RequestHandler)
 
     def server_bind(self) -> None:
@@ -209,8 +213,29 @@ class _RequestHandler(BaseHTTPRequestHandler):
         self._drain_body()
         self.send_error(code)
 
+    def _host_admitted(self, host: str) -> bool:
+        """Whether a host string is local enough for this server's bind.
+
+        The default loopback bind keeps the exact LOCAL_HOSTS gate, preserving
+        the DNS-rebinding defense. A non-loopback bind (--host 0.0.0.0 or an
+        explicit address) is the operator's opt-in to remote access, so the
+        Host gate admits the configured address — and for 0.0.0.0, any non-
+        loopback Host, since the operator asked for all interfaces. The
+        Origin/Sec-Fetch-Site cross-site checks still apply in both modes.
+        """
+        if host in self.LOCAL_HOSTS:
+            return True
+        bound = getattr(self.server, "bound_host", "127.0.0.1")
+        if bound == "127.0.0.1":
+            return False
+        if bound == "0.0.0.0":  # noqa: S104
+            # Any real client address; the operator asked for all interfaces.
+            # 0.0.0.0 itself is not a connectable address, and "" is garbage.
+            return bool(host) and host != "0.0.0.0"  # noqa: S104
+        return host == bound
+
     def _local_ok(self, *, allow_cross_site_navigation: bool = False) -> bool:
-        if normalize_host(self.headers.get("Host") or "") not in self.LOCAL_HOSTS:
+        if not self._host_admitted(normalize_host(self.headers.get("Host") or "")):
             return False
         if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site" and not (
             allow_cross_site_navigation and self._is_document_navigation()
@@ -225,7 +250,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # then trusted it. Any unrelated local dev server could POST here
         # (text/plain is CORS-safelisted, so no preflight would stop it).
         parsed = urlparse(origin)
-        if parsed.scheme != "http" or (parsed.hostname or "") not in self.LOCAL_HOSTS:
+        if parsed.scheme != "http" or not self._host_admitted(parsed.hostname or ""):
             return False
         listening_port = getattr(self.server, "server_port", None)
         try:
