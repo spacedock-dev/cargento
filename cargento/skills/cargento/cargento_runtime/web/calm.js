@@ -1,7 +1,8 @@
 /* Two flag tones, and only signals the payload actually carries: --alert for
-   "you are the blocker", --warn for "worth a look", neither for "gone quiet".
-   The fixture's stalled/failed flags have no server-side detector, so calm
-   mode does not invent them. */
+   "you are the blocker" and --warn for "worth a look". Nothing for "gone quiet",
+   which is what the clipped idle block is for rather than a chip. The fixture's
+   stalled/failed flags have no server-side detector, so calm mode does not
+   invent them either. */
 const CALM_TONE = {
   attn: {rank:0, ink:"var(--alert)",
          bg:"color-mix(in oklab,var(--alert) 13%,transparent)",
@@ -9,12 +10,6 @@ const CALM_TONE = {
   warn: {rank:1, ink:"var(--warnink)",
          bg:"color-mix(in oklab,var(--warn) 26%,transparent)",
          bd:"color-mix(in oklab,var(--warn) 42%,transparent)"},
-  /* A real chip, not grey text on a grey row. `stale` is the quietest of the
-     three flags but it is still a flag, and rendering it at --ink3 with a
-     hairline border made it disappear into the column it sits in. */
-  quiet:{rank:3, ink:"var(--ink2)",
-         bg:"color-mix(in oklab,var(--ink3) 14%,transparent)",
-         bd:"var(--line2)"}
 };
 /* The footer legend is generated from the same table the row chips use, and its
    labels are the chip labels verbatim. It used to paraphrase them — "you are the
@@ -22,8 +17,7 @@ const CALM_TONE = {
    reader could not find on any row. */
 const CALM_FLAG_LEGEND = [
   {label:"your call", tone:"attn"},
-  {label:"long turn", tone:"warn"},
-  {label:"stale", tone:"quiet"}
+  {label:"long turn", tone:"warn"}
 ];
 const CALM_RAIL = {needs:"var(--alert)", work:"var(--accent)", idle:"var(--line2)"};
 const CALM_TASK = {
@@ -61,11 +55,14 @@ function calmRow(d, x){
       " — nothing in this session moves until you answer.";
   } else if(st === "work" && turn && turn.long){
     flag = "long turn"; tone = "warn"; why = LONG_TURN_NOTE;
-  } else if(st === "idle" && ageSec >= CALM_STALE_SEC){
-    flag = "stale"; tone = "quiet";
-    why = "No activity for " + fmtDur(ageSec) + ". Either it finished quietly and " +
-      "nobody read the result, or it is waiting on a reply that never came.";
   }
+  /* No third flag. `stale` used to fire here for an idle row past
+     CALM_STALE_SEC, which made two words for one bucket: every stale row was an
+     idle row, and the difference was only "quiet for a while" — which the row's
+     own `idle / wait` cell states as a number. The clip's toggle now carries the
+     count and the oldest age, so what the chip was for survives without a second
+     vocabulary word for the same thing. A flag here means "look at this", and a
+     session that has gone quiet is the opposite of that. */
   const title = x.title || x.last_prompt || x.project;
   const prompt = String(x.last_prompt || "").trim();
   const tasks = (x.tasks || []).slice().sort(
@@ -384,6 +381,11 @@ function calmAction(act, arg){
   } else if(act === "state"){
     calmStateOnly = calmStateOnly === arg ? null : arg;
     calmOpenKey = null; calmCursorKey = null; calmResetScroll = true;
+  } else if(act === "idle"){
+    /* No `calmResetScroll` here, unlike the filters below: revealing the block
+       does not change which rows exist, and resetting the scroll would throw the
+       reader back to the top of a ledger they were already reading. */
+    calmIdleExpanded = !calmIdleExpanded;
   } else if(act === "flag"){
     calmFlagOnly = !calmFlagOnly;
     calmOpenKey = null; calmCursorKey = null; calmResetScroll = true;
@@ -653,6 +655,27 @@ function calmRateFloor(d){
   };
 }
 
+/* The index where the trailing idle run starts, or -1 when there is nothing to
+   clip. Narrow on purpose, and every condition is load-bearing.
+
+   `attention` only, because it is the one ordering whose trailing run IS the idle
+   bucket: byRank gives needs 0, long-turn work 1, work 2, and idle 3 or 4. The
+   other three each break it differently. `recent` sorts everything by age alone,
+   so idle and working rows interleave and a clip would swallow rows out of the
+   middle of a chronology. `repo` puts idle last within each project rather than
+   overall. And `burn`'s trailing group is `!running` — `state === "working" &&
+   active` negated — so a needs_input row lands there too, and clipping it would
+   hide the one row this mode exists to surface.
+
+   Not while a filter is on, because a reader who asked for the idle bucket or for
+   flagged rows has already said what they want on screen. */
+function calmIdleCut(entries){
+  if(calmSort !== "attention" || calmStateOnly || calmFlagOnly) return -1;
+  let i = entries.length;
+  while(i > 0 && entries[i - 1].row && entries[i - 1].row.st === "idle") i--;
+  return i < entries.length ? i : -1;
+}
+
 function calmLedger(d){
   const all = d.sessions.map(x => calmRow(d, x));
   const shown = calmFilter(all);
@@ -688,12 +711,33 @@ function calmLedger(d){
       `<button type="button" class="cm-link" data-calm="clear">Show all ${all.length}` +
       `</button></div></div>`;
   } else {
-    body = entries.map(e => e.row ? calmRowHTML(e.row, focusSid, d)
+    const html = e => e.row ? calmRowHTML(e.row, focusSid, d)
       : `<div class="cm-div"><span class="cm-div-k">${esc(e.divider.label)}</span>` +
         `<span class="cm-div-n">${e.divider.count}</span>` +
         `<span class="cm-div-rule"></span>` +
         (e.divider.flagged ? `<span class="cm-div-f">◆ ${e.divider.flagged}</span>` : "") +
-        `</div>`).join("");
+        `</div>`;
+    const cut = calmIdleCut(entries);
+    if(cut < 0){
+      body = entries.map(html).join("");
+    } else {
+      /* Clipped, never filtered. The rows stay in the document, so the keyboard
+         order, the focus hand-off and anything else reading the ledger see the
+         same set they did before — and an all-idle board still shows its first
+         rows instead of an empty ledger that reads as a fault. */
+      const hidden = entries.slice(cut).filter(e => e.row).map(e => e.row);
+      const quietest = hidden.reduce((m, r) => Math.max(m, r.ageSec), 0);
+      body = entries.slice(0, cut).map(html).join("") +
+        `<div class="idle-wrap"><div class="idle-clip" style="max-height:` +
+        (calmIdleExpanded ? "3000px" : "148px") + `">` +
+        entries.slice(cut).map(html).join("") +
+        (calmIdleExpanded ? "" : `<div class="idle-fade"></div>`) + `</div>` +
+        `<div class="idle-toggle-wrap"><button type="button" class="idle-toggle"` +
+        ` data-calm="idle" aria-expanded="${calmIdleExpanded}">` +
+        (calmIdleExpanded ? "Show less"
+          : `${hidden.length} idle · quiet up to ${fmtDur(quietest)}`) +
+        `</button></div></div>`;
+    }
   }
 
   const found = (d.harnesses || []).filter(h => h.discovered);

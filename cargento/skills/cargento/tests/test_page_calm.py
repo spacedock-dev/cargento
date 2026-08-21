@@ -255,8 +255,11 @@ out.blockedFlag = hb.includes(">your call<");
 out.blockedWhy = hb.includes("Blocked on you for 5m");
 out.longFlag = hw.includes(">long turn<");
 out.longWhy = hw.includes("This request is running long (or estimated to).");
+// `stale` is gone as a word. It was never a state, only an age badge on an
+// idle row, and the row's own `idle / wait` cell already carries the age.
 out.staleFlag = hq.includes(">stale<");
-out.staleWhy = hq.includes("No activity for 2h 46m");
+out.staleWord = /&gt;stale&lt;|>stale</.test(__els.app.innerHTML);
+out.quietAgeStillShown = hq.includes("2h 46m");
 out.noInvented = !/&gt;stalled&lt;|>stalled<|>failed</.test(hb + hw + hq);
 // A working session inside the long-turn threshold carries no flag.
 render(payload([mk({sid: "s", session: "s", state: "working", active: true,
@@ -273,8 +276,12 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["blockedWhy"])
         self.assertTrue(out["longFlag"])
         self.assertTrue(out["longWhy"], "calm mode reworded the long-turn signal")
-        self.assertTrue(out["staleFlag"])
-        self.assertTrue(out["staleWhy"])
+        self.assertFalse(out["staleFlag"], "the stale chip is still rendered")
+        self.assertFalse(out["staleWord"], "the word `stale` survived somewhere on the page")
+        self.assertTrue(
+            out["quietAgeStillShown"],
+            "dropping the chip also dropped the age it was standing in for",
+        )
         self.assertTrue(out["noInvented"], "flagged a signal the payload cannot support")
         self.assertTrue(out["shortTurnUnflagged"])
         self.assertTrue(out["flagChipZero"])
@@ -319,11 +326,14 @@ out.clearOffered = __els.app.innerHTML.includes('data-calm="clear"');
 calmAction("state", "needs");
 out.chipIsAToggle = [calmStateOnly, rows()];
 
-// The flagged chip narrows to flagged rows; every board row is flagged here.
+// The flagged chip narrows to flagged rows, and a quiet session is no longer
+// one of them. `stale` was retired, so a flag means "your call" or "long turn"
+// and nothing else — which is what makes the filter worth having. The idle row
+// drops out of it.
 calmAction("open", "codex:bbb2");
 calmAction("flag", null);
 out.flagFilterResetsRow = [calmOpenKey, calmCursorKey];
-out.flagged = [calmFlagOnly, rows()];
+out.flagged = [calmFlagOnly, rows(), __els.app.innerHTML.includes("Old thing")];
 calmAction("clear", null);
 out.cleared = [calmFlagOnly, calmStateOnly, rows()];
 
@@ -355,7 +365,11 @@ console.log(JSON.stringify(out));
         self.assertEqual([1, True], out["needsOnly"])
         self.assertTrue(out["clearOffered"])
         self.assertEqual([None, 3], out["chipIsAToggle"])
-        self.assertEqual([True, 3], out["flagged"])
+        self.assertEqual(
+            [True, 2, False],
+            out["flagged"],
+            "the flag filter still counts a quiet session as flagged",
+        )
         self.assertEqual([False, None, 3], out["cleared"])
         self.assertTrue(out["emptyState"])
         self.assertEqual(0, out["emptyHasNoRows"])
@@ -2308,3 +2322,120 @@ console.log(JSON.stringify(out));
         # and #live-dot, which the DOM stub does not register, so any such check
         # would pass whatever the code did. The failure count is the observable.
         self.assertEqual(0, out["failures"], "a deliberate stop was counted as a refresh failure")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_idle_block_arrives_clipped_under_the_default_sort(self) -> None:
+        # Calm mode is a minimal view of what is active. Under `attention`,
+        # byRank leaves the idle bucket as the trailing run (ranks 3 and 4), so
+        # it clips the way regular mode clips its own Idle section rather than
+        # spending the ledger on sessions that finished hours ago.
+        checks = """
+const out = {};
+const many = [blocked, busy];
+for(let i = 0; i < 4; i++) many.push(mk({sid: "idle-" + i, session: "idle-" + i,
+  title: "old " + i, last_activity: 99000 - i * 1000}));
+render(payload(many));
+const h = __els.app.innerHTML;
+out.sort = calmSort;
+out.clip = h.includes("idle-clip");
+out.toggle = h.includes('data-calm="idle"');
+out.collapsed = !h.includes("max-height:3000px");
+// Clipped, not filtered: every idle row is still in the document, which is why
+// this cannot hide a row from anything that reads the ledger.
+out.rowsPresent = [0, 1, 2, 3].every(i => h.includes("idle-" + i));
+out.rowCount = rows();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual("attention", out["sort"], "the default sort moved")
+        self.assertTrue(out["clip"], "the idle block rendered without a clip")
+        self.assertTrue(out["toggle"], "no [data-calm=idle] control to reveal the block")
+        self.assertTrue(out["collapsed"], "the idle block arrived expanded")
+        self.assertTrue(out["rowsPresent"], "clipping dropped rows instead of hiding them")
+        self.assertEqual(6, out["rowCount"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_no_sort_but_attention_clips_and_burn_never_does(self) -> None:
+        # `burn` groups its leftovers as `!running`, and `running` is
+        # `state === "working" && active`. A needs_input row is not working, so it
+        # lands in that trailing group: clipping there would hide the one row this
+        # mode exists to surface. `recent` interleaves idle with working rows by
+        # age, and `repo` puts idle last per project rather than overall.
+        checks = """
+const out = {};
+const many = [blocked, busy];
+for(let i = 0; i < 4; i++) many.push(mk({sid: "idle-" + i, session: "idle-" + i,
+  last_activity: 99000 - i * 1000}));
+const clipped = () => __els.app.innerHTML.includes("idle-clip");
+for(const s of ["recent", "repo", "burn", "attention"]){
+  calmAction("sort", s);
+  render(payload(many));
+  out[s] = clipped();
+}
+// The row `burn` would have swallowed is still on screen there.
+calmAction("sort", "burn");
+render(payload(many));
+out.burnKeepsBlocked = __els.app.innerHTML.includes("Approve deploy?");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["attention"], "the default sort stopped clipping")
+        self.assertFalse(out["burn"], "clipping burn's trailing group hides a needs-you row")
+        self.assertFalse(out["recent"], "clipped rows out of the middle of a chronology")
+        self.assertFalse(out["repo"], "clipped a per-project group as if it were the bucket")
+        self.assertTrue(out["burnKeepsBlocked"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_ledger_the_reader_filtered_is_never_clipped(self) -> None:
+        # Asking for the idle bucket, or for flagged rows, is the reader saying
+        # what they want on screen. Clipping it back is the same mistake in a
+        # smaller box.
+        checks = """
+const out = {};
+const many = [blocked, busy];
+for(let i = 0; i < 4; i++) many.push(mk({sid: "idle-" + i, session: "idle-" + i,
+  last_activity: 99000 - i * 1000}));
+const clipped = () => __els.app.innerHTML.includes("idle-clip");
+render(payload(many));
+out.unfiltered = clipped();
+calmAction("state", "idle");
+render(payload(many));
+out.idleFilter = clipped();
+calmAction("clear");
+calmAction("flag");
+render(payload(many));
+out.flagFilter = clipped();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["unfiltered"])
+        self.assertFalse(out["idleFilter"], "clipped the bucket the reader filtered to")
+        self.assertFalse(out["flagFilter"], "clipped a flag-filtered ledger")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_revealing_the_idle_block_keeps_the_readers_place(self) -> None:
+        # `sort`, `state` and `flag` reset the scroll because they change which
+        # rows exist. Revealing the block does not, so throwing the reader back to
+        # the top would be a regression dressed as consistency.
+        checks = """
+const out = {};
+const many = [blocked, busy];
+for(let i = 0; i < 4; i++) many.push(mk({sid: "idle-" + i, session: "idle-" + i,
+  last_activity: 99000 - i * 1000}));
+render(payload(many));
+__scrollTop = 240;
+calmAction("idle");
+render(payload(many));
+out.expanded = __els.app.innerHTML.includes("max-height:3000px");
+out.showLess = __els.app.innerHTML.includes("Show less");
+out.keptScroll = __scrollTop;
+calmAction("idle");
+render(payload(many));
+out.collapsedAgain = !__els.app.innerHTML.includes("max-height:3000px");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertTrue(out["expanded"], "the toggle did not reveal the block")
+        self.assertTrue(out["showLess"])
+        self.assertEqual(240, out["keptScroll"], "revealing the block reset the ledger scroll")
+        self.assertTrue(out["collapsedAgain"], "the toggle does not collapse again")

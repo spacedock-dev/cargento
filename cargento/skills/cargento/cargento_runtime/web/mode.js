@@ -15,6 +15,10 @@ try{
 let calmSort = "attention";   /* attention | recent | repo | burn */
 let calmStateOnly = null;     /* needs | work | idle */
 let calmFlagOnly = false;
+/* The trailing idle block starts clipped. Session-only, like regular mode's
+   `idleExpanded`: a fresh page should open calm, and nothing else in calm mode
+   persists either — `calmSort` does not. */
+let calmIdleExpanded = false;
 /* Rows are identified by sessKey(), the same (harness, sid) pair the rate
    buffers and the notification map use — dedupe_sessions keys on that pair, so
    a bare sid is not unique across harnesses. */
