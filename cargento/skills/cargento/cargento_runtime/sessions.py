@@ -220,9 +220,10 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
     # `model` is not Pi's alone. Claude, Codex, Copilot, Antigravity and Cursor
     # each record the model somewhere their collector already reads, so each
     # fills it; Gemini, Goose, OpenCode and Droid leave it None because nobody
-    # has found where — or whether — those harnesses record it. Cursor fills the
-    # session's own model only: its subagents are still published as peer
-    # top-level rows, so no Cursor row carries a subagent model.
+    # has found where — or whether — those harnesses record it. Cursor fills it
+    # on a child as well as on the parent, out of the child's own store: each
+    # Cursor subagent keeps one, so the reading is the same read done twice
+    # rather than a parent's model attributed downwards.
     #
     # None therefore means "not read", never "no model". Every session runs on
     # some model, so an absent value is a gap in our reading rather than a fact

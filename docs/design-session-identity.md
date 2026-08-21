@@ -268,22 +268,64 @@ presentation:
 ## Cursor
 
 Cursor rows were hardcoded to the literal `cursor`, so every Cursor session in every
-repository shared one label.
+repository shared one label. The `meta` table was the only place a workspace path could
+plausibly live, so the first pass tried six key spellings inferred from the VS Code lineage
+(`workspacePath`, `workspace`, `rootPath`, `projectPath`, `folder`, `cwd`), ranked by a guess
+at which was most trustworthy, and closed by saying a real store should be read before the
+key list was trusted.
 
-Its `meta` table is the only place a workspace path could live, but the payload is
-undocumented and no Cursor store was available to read while this was written. The key
-spellings `_CURSOR_CWD_KEYS` tries are therefore inferred from the VS Code lineage, not
-observed, and the ranking is a guess at which is most trustworthy.
+A real store has now been read, and the answer is that none of the six is there. The decoded
+payload of three live stores holds `agentId`, `blobEncryptionKey`, `createdAt`,
+`isRunEverything`, `latestRootBlobId`, `mode` and `name`, plus `lastUsedModel` on two and
+`subagentInfo` on the third. So the ranked read was always a no-op and every row fell back
+to the harness name. The working directory is `cwd` in a sibling file the collector never
+opened, `<agent dir>/meta.json`, which also carries `title` and `updatedAtMs`.
 
-A shape check alone would not be safe under that uncertainty. In the same family
-`workspace` routinely holds a `.code-workspace` *file*, and `workspaceStorage/<hash>` paths
-are everywhere in chat storage; either passes an "is it an absolute path" test and yields a
-confident wrong label, which is worse than no label. So a candidate is accepted only when it
-resolves to a directory that exists on this machine. That makes the guess validate itself:
-a wrong key almost never points at a real local directory, and when every key misses, the
-row keeps the `cursor` fallback it had before. The `file://` spelling is accepted too, since
-it is the canonical serialization in that family and rejecting it would make the whole read
-a silent no-op indistinguishable from "Cursor records no workspace".
+That file now feeds the same ranked map, seeded under a pseudo-key above all six rather than
+compared against their winner afterwards, so which path a row publishes stays one decision in
+one place. It is ranked first because it is the only value anybody has observed; if some build
+does write a stale `workspace` key, ranking that above the measured one is exactly the
+confident-wrong label the ladder exists to prevent.
 
-This is the one part of the change that is inference rather than observation. It is written
-to fail closed, but a real store should be read before trusting the key list.
+The isdir gate stays, and applies to the measured value too. In this family `workspace`
+routinely holds a `.code-workspace` *file* and `workspaceStorage/<hash>` paths are everywhere,
+either of which passes an "is it an absolute path" test and yields a confident wrong label,
+which is worse than no label. So a candidate is accepted only when it resolves to a directory that
+exists on this machine, which makes the guess validate itself, and the `file://` spelling is
+accepted alongside a bare path since it is the canonical serialization in that family.
+
+A miss is not a fault. One live agent directory, the subagent's, has no `meta.json` at all,
+so an absent, unparseable or truncated file means *this session has no workspace* and never
+*this store is broken*: routing it through `record_store_error` would badge the harness and
+withdraw the title, the model and the workspace of every other Cursor row, which is the same
+argument that keeps a store with no `blobs` table from losing its title.
+
+### Folding a subagent onto its parent
+
+Cursor subagents keep their own store under the same workspace hash and were published as
+peer top-level rows. The parent link is measured rather than inferred: the child's `meta`
+carries `subagentInfo` with `parentAgentId`, `rootParentAgentId`, `toolCallId` and `typeName`,
+and both ids name a sibling agent *directory*, which is exactly the `sid` another row
+publishes, since a Cursor sid **is** the agent directory name. It is an id-to-id edge, not an
+inference from timing or a shared hash.
+
+Three decisions came with it:
+
+- **`rootParentAgentId` before `parentAgentId`.** Nothing on this machine nests deeper than
+  one level (there the two ids are equal), so the rule chosen is the one that cannot orphan a
+  grandchild into a peer row, which is the defect being closed. Antigravity already flattens a
+  whole subtree onto the root card, and the frontend's tooltip is written for it.
+- **A parent id that names no row promotes the child.** The live store already holds that
+  shape, and a dropped row is an invisible failure: the reader cannot tell "folded" from
+  "lost". A payload naming itself is treated the same way rather than nested under itself.
+- **The parent absorbs the subtree's activity**, as Goose and OpenCode do, so a parent parked
+  while a child writes cannot age out of the window; `own_activity` carries the parent's own
+  store mtime beside it, which is what keeps the parent-alone reading absorbing would
+  otherwise throw away.
+
+Every folded child is published as a pill, so nothing disappears from a card, but only the
+children that are moving *now* are counted into the state detail: a child parked hours ago
+must not make its parent read "running 1 subagent". The label is `typeName` (`cursor-guide` on
+the live store) because a child's own `name` is the generic literal `New Agent`, and its model
+is read from its own store rather than inherited, so a child running elsewhere is a
+measurement and not an attribution.

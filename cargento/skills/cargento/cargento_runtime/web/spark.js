@@ -120,10 +120,10 @@ function attentionSort(d, rows){
    open: nine collectors fall back to their own harness key when no cwd resolves,
    so two unreadable Cursor workspaces both label `cursor` and share nothing at
    all. A label with no separator in it that is also a harness key is that
-   fallback, and groups nobody. It does not cover Cursor's other false positive —
-   that collector publishes subagents as peer top-level rows, and those resolve a
-   real two-segment label, so a parent and its own child read as a collision
-   until the collector is fixed.
+   fallback, and groups nobody. It never had to cover Cursor's subagents: that
+   collector published them as peer top-level rows carrying a real two-segment
+   label, so a parent and its own child would have read as a collision, and
+   DRC-4118 folded them under their parent in the same release as this.
 
    Cached on payload object identity, exactly as burnLeaders() is and for the
    same reason: the answer is a property of the payload, every row asks it of the

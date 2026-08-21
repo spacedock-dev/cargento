@@ -64,8 +64,8 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                36_888,
-                "14a993910fc6397098a9d0986e8699039c649bbd2663cf7c5d64080137218bc8",
+                36_918,
+                "cf837c0430c6417c2e58ccee57750f8d761a98414b4cfffcb55faf4298a30892",
             ),
             "regular.js": (
                 37_745,
@@ -115,9 +115,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(240_166, len(assembled))
+        self.assertEqual(240_196, len(assembled))
         self.assertEqual(
-            "d55245ecd6f0a526b97fc7c3709b7c4edf8d6ce7c820fa01206a94a07e5eb9ee",
+            "5750e7b8be64c45e2747d3dac6d164064d66c06bb8e31286e93e83ff387466f5",
             hashlib.sha256(assembled).hexdigest(),
         )
 
