@@ -40,6 +40,15 @@ function render(d){
     document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
     return;
   }
+  if(displayMode === "session"){
+    renderInProgress = true;
+    app.className = "wrap session";
+    app.innerHTML = modeBar() + sessionView(d) + usageModal(d);
+    renderInProgress = false;
+    restoreStopFocus();
+    document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
+    return;
+  }
   const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
   /* The band's `copy id` is a [data-calm] control like calm's, and this view
      rebuilds #app the same way, so it needs the same focus hand-off: without it,

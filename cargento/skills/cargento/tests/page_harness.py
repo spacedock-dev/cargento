@@ -41,7 +41,7 @@ const __fire = (type, ev) => (__listeners[type] || []).forEach(f => f(ev));
 let __nowSec = 1000;
 const __setNow = s => { __nowSec = s; };
 Date.now = () => __nowSec * 1000;
-const location = {search: ""};
+const location = {search: "", hash: ""};
 const document = {
   addEventListener(type, fn){ (__listeners[type] = __listeners[type] || []).push(fn); },
   getElementById(id){ return __els[id] || null; },
