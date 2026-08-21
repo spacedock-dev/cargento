@@ -62,7 +62,7 @@ Two flags appear in the `flag` column, and only these two — each is a signal t
 
 A flag means "look at this", so a session that has simply gone quiet does not carry one. How long an idle session has been idle is in its own `idle / wait` cell, and how many of them there are is on the collapsed block's toggle.
 
-An idle session whose turn was seen to end, and which nobody has come back to for 20 minutes, is marked `done` beside that age — in the cell and in the regular view's idle row, never as a third flag. Finished work is worth collecting, not worth alarming about, and the 20 minutes is measured rather than picked: on real local transcripts, nine returns in ten to a stopped turn land inside sixteen. The collapsed toggle counts them too, since the block it hides is where they sit. Hovering the age says which of the three readings a row is: finished and unread, quiet with no turn-end seen, or a harness that sends no turn events at all.
+An idle session whose turn was seen to end, and which nobody has come back to for 20 minutes, is marked `done` beside that age — in the cell and in the regular view's idle row, never as a third flag. Finished work is worth collecting, not worth alarming about, and the 20 minutes is measured rather than picked: on real local transcripts, nine returns in ten to a stopped turn land inside seventeen. The collapsed toggle counts them too, since the block it hides is where they sit. Hovering the age says which of the three readings a row is: finished and unread, quiet with no turn-end seen, or a harness that sends no turn events at all.
 
 ## The gate queue
 
