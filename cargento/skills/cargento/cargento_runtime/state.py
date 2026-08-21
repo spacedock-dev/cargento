@@ -89,6 +89,17 @@ class RuntimeState:
     # lock is its own for the reason `usage_fetch_lock` is: this is written
     # inside a collection and read by a request handler, and neither should wait
     # on the other's cache work.
+    # The sessions the reader marked handled, as this process last read them off
+    # disk. `None` means no collection has run yet, which is not the same claim
+    # as "nothing is cleared": the notification path can fire first, and an empty
+    # tuple there would raise a popup for a session already handled.
+    #
+    # Its own lock, for the reason `dispute_lock` has one: it is written by a
+    # request handler and read inside a collection, and neither should wait on the
+    # other's cache work. The file, not this tuple, is the record — a second
+    # dashboard's write is picked up by the next `dismissals.refresh`.
+    dismissal_lock: LockType = field(default_factory=threading.Lock)
+    dismissals: tuple[dict[str, Any], ...] | None = None
     dispute_lock: LockType = field(default_factory=threading.Lock)
     dispute_total: int = 0
     disputes: deque[dict[str, Any]] = field(default_factory=deque)
