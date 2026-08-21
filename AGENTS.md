@@ -79,7 +79,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings only, never values. |
-| `.claude/skills/*/SKILL.md` | Repository development skills (`sync-docs`, `visibility-2x2`). Not shipped with the plugin, so the portability rules below do not apply to them. |
+| `.claude/skills/*/SKILL.md` | Repository development skills (`sync-docs`, `visibility-2x2`, `burndown`). Not shipped with the plugin, so the portability rules below do not apply to them. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 
 `scripts/validate_plugins.py` gates the docs as well as the plugin: across the files above it
