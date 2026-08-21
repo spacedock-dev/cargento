@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import io as runtime_io
 from cargento_runtime import records, sessions, transcripts, turns
+from cargento_runtime import spacedock as runtime_spacedock
 
 if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
@@ -390,6 +391,56 @@ def discover(config: RuntimeConfig, state: RuntimeState) -> bool:
     return False
 
 
+def session_spacedock(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    path: str,
+    now: float,
+    window_sec: float,
+) -> dict[str, Any] | None:
+    """Spacedock role and workflow strips for one Pi session, or None.
+
+    Pi writes no ``agentSetting``, so the boot envelope does both jobs here:
+    finding one classifies the session, and its paths feed ``session_workflows``.
+    That is weaker than Claude's launch-time declaration, because tool output is
+    whatever a tool printed, so a session that merely echoed an envelope is
+    badged too. See S-5 in ``docs/design-spacedock.md`` for why that trade was
+    taken and which downstream guards carry it.
+    """
+    boot = runtime_spacedock.transcript_boot(config, state, path)
+    if not boot:
+        return None
+    if not config.spacedock_enabled:
+        # The switch withdraws the project reads, not the role: the boot
+        # envelope is a transcript read, so the classification survives it.
+        return {"role": "first-officer", "workflows": []}
+    return {
+        "role": "first-officer",
+        "workflows": runtime_spacedock.session_workflows(config, state, boot, [], now, window_sec),
+    }
+
+
+def spacedock_or_none(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    path: str,
+    now: float,
+    window_sec: float,
+) -> dict[str, Any] | None:
+    """``session_spacedock``, with a bad envelope costing one strip and no more.
+
+    The paths in an envelope are untrusted text, and `aggregate`'s failure
+    boundary is per harness rather than per session: an exception escaping here
+    blanks every Pi row and badges the harness `collector error` until the
+    session leaves the freshness window. A row without its strip is the better
+    failure.
+    """
+    try:
+        return session_spacedock(config, state, path, now, window_sec)
+    except (OSError, ValueError):
+        return None
+
+
 def collect(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -440,6 +491,7 @@ def collect(
                 "last_activity": last_activity,
                 "rate_per_min": sessions.rate_from(info, now, config),
                 "turn": turns.turn_progress((info or {}).get("turn"), session_state, now, config),
+                "spacedock": spacedock_or_none(config, state, path, now, window_hours * 3600),
             }
         )
         out.append(session)

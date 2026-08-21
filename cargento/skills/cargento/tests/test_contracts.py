@@ -929,6 +929,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.records",
             "cargento_runtime.sessions",
+            # `spacedock` arrived with the Pi first-officer strip. Pi writes no
+            # `agentSetting`, so the collector classifies off the boot envelope the
+            # shared parsers already read, the same inward edge Claude's has.
+            "cargento_runtime.spacedock",
             "cargento_runtime.state",
             "cargento_runtime.transcripts",
             "cargento_runtime.turns",

@@ -204,6 +204,139 @@ class SpacedockParserTest(unittest.TestCase):
         self.assertEqual([], spacedock.boot_records(config, line("text")))
         self.assertEqual([], spacedock.boot_records(config, b'{"not":"jsonl definition_dir"}'))
 
+    def test_boot_records_finds_pi_tool_result_format(self) -> None:
+        """Pi writes tool results as a ``toolResult`` role message whose
+        ``content`` blocks carry ``type: "text"`` — the same provenance as
+        Claude's ``tool_result`` content blocks in a different transcript
+        shape. The boot reader must find the envelope in that format.
+        Falsifying edit: remove the ``toolResult`` branch from
+        ``tool_result_text`` — ``boot_records`` returns []."""
+        config, _runtime = runtime()
+        envelope = (
+            '{"command":"boot","id_style":"slug",'
+            '"definition_dir":"/w/one","entity_dir":"/w/one",'
+            '"dispatchable":[]}'
+        )
+        record = json.dumps(
+            {
+                "type": "message",
+                "id": "tr1",
+                "parentId": "call-1",
+                "timestamp": "2026-08-21T00:00:00Z",
+                "message": {
+                    "role": "toolResult",
+                    "content": [{"type": "text", "text": "=== BOOT ===\n" + envelope}],
+                },
+            }
+        ).encode()
+
+        records = spacedock.boot_records(config, record)
+
+        self.assertEqual(1, len(records))
+        self.assertEqual("/w/one", records[0]["definition_dir"])
+
+    def test_pi_conversation_text_cannot_nominate_a_path(self) -> None:
+        """The negative twin of the Pi format test above.
+
+        Boot output is command output. The ``toolResult`` role is the only thing
+        separating "a tool printed an envelope" from "somebody pasted a workflow
+        path into a chat", and a pasted path would otherwise be canonicalised and
+        opened. Falsifying edit: widen the role gate in ``tool_result_text`` to
+        accept ``user`` or ``assistant`` and this returns one record.
+        """
+        config, _runtime = runtime()
+        envelope = (
+            '{"command":"boot","id_style":"slug",'
+            '"definition_dir":"/w/one","entity_dir":"/w/one",'
+            '"dispatchable":[]}'
+        )
+
+        def line(role: str) -> bytes:
+            return json.dumps(
+                {
+                    "type": "message",
+                    "message": {
+                        "role": role,
+                        "content": [{"type": "text", "text": "=== BOOT ===\n" + envelope}],
+                    },
+                }
+            ).encode()
+
+        self.assertEqual(1, len(spacedock.boot_records(config, line("toolResult"))))
+        for role in ("user", "assistant", "system", "toolCall"):
+            with self.subTest(role=role):
+                self.assertEqual([], spacedock.boot_records(config, line(role)))
+
+    def test_a_tool_result_text_block_that_is_not_a_string_is_skipped(self) -> None:
+        """``isinstance(text, str)`` in the Pi branch is load-bearing.
+
+        A block whose ``text`` is an object reaches ``str.find`` in the boot
+        scanner otherwise, and the ``AttributeError`` escapes the collector to
+        blank every row for that harness. Falsifying edit: drop the isinstance
+        check and this raises instead of returning [].
+        """
+        config, _runtime = runtime()
+        record = json.dumps(
+            {
+                "type": "message",
+                "message": {
+                    "role": "toolResult",
+                    "content": [{"type": "text", "text": {"definition_dir": "/w/x"}}],
+                },
+            }
+        ).encode()
+
+        self.assertEqual([], spacedock.boot_records(config, record))
+
+    def test_a_hostile_envelope_path_never_raises_out_of_the_reader(self) -> None:
+        """The invariant that holds on every platform.
+
+        A lone surrogate survives JSON decoding, so an envelope can carry one.
+        Everything below here is wrapped in ``except OSError``, and the failure
+        boundary above is per harness, so anything that escapes blanks every row
+        for that harness rather than costing one session its strip.
+        """
+        config, runtime_state = runtime()
+        boot = [
+            {
+                "command": "boot",
+                "definition_dir": "/\ud800",
+                "entity_dir": "/\udfff",
+                "dispatchable": [],
+            }
+        ]
+
+        self.assertEqual([], spacedock.session_workflows(config, runtime_state, boot, [], 0.0, 1.0))
+        for workflow_dir in spacedock.workflow_dirs(config, boot):
+            self.assertIsNone(spacedock.read_workflow(config, runtime_state, workflow_dir))
+
+    @unittest.skipIf(
+        os.name == "nt", "Windows encodes lone surrogates (PEP 529 surrogatepass); POSIX cannot"
+    )
+    def test_an_unencodable_envelope_path_is_refused(self) -> None:
+        """On POSIX the guard has to refuse the path outright.
+
+        The filesystem handler is ``surrogateescape``, which cannot encode
+        ``\ud800``, so ``os.fsencode`` raises ``UnicodeEncodeError``. That is a
+        ``ValueError``, not an ``OSError``, so it would sail through every
+        handler below. Windows uses ``surrogatepass`` and encodes it, where the
+        path merely fails to exist and the ordinary ``OSError`` path covers it.
+        Falsifying edit: drop the ``os.fsencode`` probe from ``_usable_dir`` and
+        ``read_workflow`` raises instead of returning None.
+        """
+        config, _runtime = runtime()
+        boot = [
+            {
+                "command": "boot",
+                "definition_dir": "/\ud800",
+                "entity_dir": "/\udfff",
+                "dispatchable": [],
+            }
+        ]
+
+        self.assertEqual([], spacedock.workflow_dirs(config, boot))
+        self.assertEqual("", spacedock.boot_entity_dir(boot, "/\ud800"))
+
     def test_boot_scan_is_bounded_against_decoy_candidates(self) -> None:
         """Every unbalanced candidate used to rescan to the end of the blob."""
         config, _runtime = runtime()

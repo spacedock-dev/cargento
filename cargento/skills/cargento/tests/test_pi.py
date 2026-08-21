@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -861,6 +862,115 @@ class PiCollectorTest(PiScanTestCase):
         self.assertEqual(["future"], [row["sid"] for row in rows])
         self.assertEqual(self.NOW - 20, rows[0]["last_activity"])
         self.assertEqual(0, rows[0]["rate_per_min"])
+
+    def test_pi_fo_session_renders_spacedock_strip(self) -> None:
+        # A Pi first officer writes the same boot envelope a Claude officer
+        # does, as a ``toolResult`` message. Finding it classifies the session
+        # as a first officer and feeds ``session_workflows`` the workflow
+        # directory and entity-state directory. Falsifying edit: remove the
+        # ``toolResult`` branch from ``tool_result_text`` —
+        # ``transcript_boot`` returns [], ``spacedock`` is None, the
+        # assertion fails.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            wf = root / "wf"
+            wf.mkdir()
+            (wf / "README.md").write_text(
+                "---\n"
+                "commissioned-by: spacedock@1.0.0\n"
+                "stages:\n"
+                "  states:\n"
+                "    - name: intake\n"
+                "      initial: true\n"
+                "    - name: review\n"
+                "    - name: posted\n"
+                "      terminal: true\n"
+                "---\n",
+                encoding="utf-8",
+            )
+            entity_state = wf / ".spacedock-state"
+            entity_state.mkdir()
+            entity_file = entity_state / "drc-1.md"
+            entity_file.write_text("---\nstatus: review\n---\n\n# entity\n", encoding="utf-8")
+            os.utime(entity_file, (self.NOW, self.NOW))
+            envelope = json.dumps(
+                {
+                    "command": "boot",
+                    "definition_dir": str(wf),
+                    "entity_dir": str(entity_state),
+                    "dispatchable": [],
+                }
+            )
+            sessions_dir = root / "sessions"
+            sessions_dir.mkdir()
+            _jsonl(
+                sessions_dir / "fo.jsonl",
+                [
+                    self._header("fo"),
+                    self._message("p", None, self.NOW - 30, "user", "Start workflow"),
+                    self._message(
+                        "call",
+                        "p",
+                        self.NOW - 20,
+                        "assistant",
+                        [{"type": "toolCall", "name": "bash"}],
+                    ),
+                    self._message(
+                        "boot",
+                        "call",
+                        self.NOW - 15,
+                        "toolResult",
+                        [{"type": "text", "text": "=== BOOT ===\n" + envelope}],
+                    ),
+                ],
+                self.NOW - 15,
+            )
+            with store_patch(PI_SESSIONS_DIR=str(sessions_dir)):
+                config, state = runtime()
+                rows = pi_collector.collect(config, state, self.NOW, 24, True)
+
+        by_sid = {row["sid"]: row for row in rows}
+        self.assertIn("fo", by_sid)
+        sd = by_sid["fo"]["spacedock"]
+        assert sd is not None
+        self.assertEqual("first-officer", sd["role"])
+        self.assertEqual(1, len(sd["workflows"]))
+        self.assertEqual(["intake", "review", "posted"], sd["workflows"][0]["stages"])
+        # Equality, not membership: `live` and `stage` are the fields a wrong
+        # worker list silently rewrites, and `live` can never be True on Pi
+        # because Pi reports no workers to attribute one to.
+        self.assertEqual(
+            [{"slug": "drc-1", "stage": "review", "cycle": "", "live": False}],
+            sd["workflows"][0]["entities"],
+        )
+
+    def test_pi_non_fo_session_has_no_spacedock(self) -> None:
+        # A Pi session with no boot envelope in its transcript has no
+        # Spacedock strip — the baseline does not move. Falsifying edit:
+        # unconditionally set ``spacedock`` on every Pi session regardless of
+        # boot presence — the test fails, which is the baseline moving the
+        # wrong way.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sessions_dir = root / "sessions"
+            sessions_dir.mkdir()
+            _jsonl(
+                sessions_dir / "plain.jsonl",
+                [
+                    self._header("plain"),
+                    self._message("p", None, self.NOW - 10, "user", "Just a normal session"),
+                    self._message("a", "p", self.NOW - 5, "assistant", "working"),
+                ],
+                self.NOW - 5,
+            )
+            with store_patch(PI_SESSIONS_DIR=str(sessions_dir)):
+                config, state = runtime()
+                rows = pi_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(["plain"], [row["sid"] for row in rows])
+        # Subscript, not `.get`: with `.get` this passes even if the key were
+        # dropped from the published row altogether.
+        self.assertIsNone(rows[0]["spacedock"])
 
 
 class TurnTrackingTest(unittest.TestCase):

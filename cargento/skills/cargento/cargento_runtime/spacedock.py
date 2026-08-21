@@ -12,7 +12,7 @@ import json
 import os
 import re
 import stat as stat_module
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from cargento_runtime import sessions
 from cargento_runtime import state as runtime_state
@@ -183,6 +183,15 @@ def tool_result_text(record: dict[str, Any]) -> list[str]:
     it arrives in a tool result. Scanning the raw line would let ordinary
     conversation text — anything a user pasted or a model echoed — nominate an
     absolute path for Cargento to open.
+
+    Two transcript shapes carry that provenance. Claude writes tool results as
+    ``content`` blocks with ``type: "tool_result"``. Pi writes them as a
+    ``toolResult`` role message whose blocks carry ``type: "text"``.
+
+    The two are read exclusively, not additively: a ``toolResult`` role returns
+    on its own blocks and never falls through to the ``tool_result`` scan below.
+    Nothing writes both shapes in one message today, so no behaviour changes,
+    but a transcript that did would lose the second half.
     """
     message = record.get("message")
     if not isinstance(message, dict):
@@ -191,6 +200,14 @@ def tool_result_text(record: dict[str, Any]) -> list[str]:
     if not isinstance(content, list):
         return []
     out: list[str] = []
+    if message.get("role") == "toolResult":
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
+            text = block.get("text")
+            if isinstance(text, str):
+                out.append(text)
+        return out
     for block in content:
         if not isinstance(block, dict) or block.get("type") != "tool_result":
             continue
@@ -204,6 +221,34 @@ def tool_result_text(record: dict[str, Any]) -> list[str]:
                 if isinstance(part, dict) and isinstance(part.get("text"), str)
             )
     return out
+
+
+def _usable_dir(value: object) -> TypeGuard[str]:
+    """A boot-envelope directory Cargento is willing to touch.
+
+    Absolute and NUL-free, and encodable for this filesystem. That last check is
+    not decoration: a lone surrogate survives JSON decoding, so an envelope can
+    carry one, and every guard below this point is wrapped in ``except OSError``.
+    ``os.fsencode`` raises ``UnicodeEncodeError``, which is a ``ValueError``, so
+    it would sail through those handlers and out of the collector, and one such
+    line in one transcript blanks every row for that harness until the session
+    leaves the freshness window.
+
+    The probe is platform-dependent and deliberately not the only defence.
+    POSIX encodes with ``surrogateescape`` and cannot represent a lone
+    surrogate; Windows uses ``surrogatepass`` and encodes it happily, where the
+    path simply fails to exist. So the readers that consume these paths catch
+    ``ValueError`` beside ``OSError`` rather than trusting this to refuse first.
+    """
+    if not isinstance(value, str) or not value:
+        return False
+    if not os.path.isabs(value) or "\x00" in value:
+        return False
+    try:
+        os.fsencode(value)
+    except (UnicodeEncodeError, ValueError):
+        return False
+    return True
 
 
 def boot_records(config: RuntimeConfig, data: bytes) -> list[dict[str, Any]]:
@@ -256,9 +301,7 @@ def workflow_dirs(config: RuntimeConfig, envelopes: list[dict[str, Any]]) -> lis
     out: list[str] = []
     for record in envelopes:
         value = record.get("definition_dir")
-        if not isinstance(value, str) or not value:
-            continue
-        if not os.path.isabs(value) or "\x00" in value:
+        if not _usable_dir(value):
             continue
         if value not in out:
             out.append(value)
@@ -306,7 +349,7 @@ def boot_entity_dir(envelopes: list[dict[str, Any]], workflow_dir: str) -> str:
         if record.get("definition_dir") != workflow_dir:
             continue
         value = record.get("entity_dir")
-        if isinstance(value, str) and value and os.path.isabs(value) and "\x00" not in value:
+        if _usable_dir(value):
             out = value
     return out
 
@@ -431,7 +474,7 @@ def read_workflow(
         root = os.path.realpath(workflow_dir)
         readme = os.path.join(root, "README.md")
         info = os.stat(readme)
-    except OSError:
+    except (OSError, ValueError):
         return None
     # Containment: the README must resolve inside the directory it was found in,
     # so a symlinked or swapped entry cannot redirect the read elsewhere.
@@ -516,7 +559,7 @@ def entity_files(config: RuntimeConfig, entity_dir: str) -> list[tuple[str, str,
     try:
         with os.scandir(os.path.realpath(entity_dir)) as entries:
             found = list(entries)
-    except OSError:
+    except (OSError, ValueError):
         return []
     out: list[tuple[str, str, os.stat_result]] = []
     for entry in found:
@@ -535,7 +578,7 @@ def entity_files(config: RuntimeConfig, entity_dir: str) -> list[tuple[str, str,
             else:
                 continue
             info = os.lstat(path)
-        except OSError:
+        except (OSError, ValueError):
             continue  # entity written or retired between the listing and the stat
         if not stat_module.S_ISREG(info.st_mode):
             continue  # a symlinked entity file is refused, not followed

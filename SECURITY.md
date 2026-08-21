@@ -40,8 +40,9 @@ writes to harness stores, or the hook client reaching a non-loopback destination
 ## Project reads (Spacedock stage strips)
 
 One feature reads paths that are not under a store root. When a session declares itself a Spacedock
-first officer, Cargento reads YAML frontmatter, and only frontmatter, from two kinds of file, so it
-can show where each entity sits on its workflow's stage spine:
+first officer, or in Pi's case is taken to be one because its transcript carries a boot envelope,
+Cargento reads YAML frontmatter, and only frontmatter, from two kinds of file, so it can show where
+each entity sits on its workflow's stage spine:
 
 1. one workflow `README.md`, for the ordered stage list and which stages are initial or terminal;
 2. the entity files in that workflow's entity-state directory, for each entity's current `status`.
@@ -54,7 +55,9 @@ in its transcript, names the workflow directory and the entity-state directory a
 Cargento uses those values and nothing else. Before any file is opened, all of the following must
 hold, and a path failing any one is skipped silently:
 
-- the directory value is absolute and contains no NUL;
+- the directory value is absolute, contains no NUL, and encodes for this filesystem. A lone
+  surrogate survives JSON decoding, and the checks below it raise `UnicodeEncodeError` rather
+  than `OSError`, so an unencodable path would escape every handler here;
 - the path is canonicalised with `realpath`, and the README must still resolve inside the workflow
   directory (`commonpath` containment), so a swapped entry cannot redirect the read;
 - every file opened is a regular file and not a symlink. This is checked with `lstat`, opened with

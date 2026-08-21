@@ -7,9 +7,10 @@ The rejected ones are the expensive part, because without them they get re-attem
 The security contract these reads operate under is owned by [`SECURITY.md`](../SECURITY.md), and the
 user-facing behaviour is owned by the skill body. This file explains *why*, not *what*.
 
-The parsers live in `cargento_runtime/spacedock.py`, which knows nothing about Claude. The Claude
-collector calls it: `collectors/claude.py` decides whether a session is a first officer, from the
-`agentSetting` in its transcript head, and only then asks for strips. That boundary is what keeps
+The parsers live in `cargento_runtime/spacedock.py`, which knows nothing about any harness. The
+collectors call it, and each decides for itself whether a session is a first officer before asking
+for strips: `collectors/claude.py` from the `agentSetting` in its transcript head,
+`collectors/pi.py` from the boot envelope itself, per S-5. That boundary is what keeps
 Spacedock cartography testable without a transcript, and it is why `spacedock.py` may import
 `claude_data` for shared reads but never a collector. See
 [`design-runtime-architecture.md`](design-runtime-architecture.md).
@@ -21,7 +22,7 @@ identifier across `*.py`, `*.toml` and `*.md` before renumbering anything.
 
 ## The problem these decisions answer
 
-A first officer is one Claude session driving many entities through many workflows, dispatching one
+A first officer is one session driving many entities through many workflows, dispatching one
 ensign subagent per stage of work. The session card shows the subagent pills already, but a pill
 name is not progress: `spacedock-ensign-drc-3832-review` says a worker exists, not that `drc-3832`
 is four stages from done. Cargento is a passive reader. It never runs `spacedock`, never talks to
@@ -86,6 +87,29 @@ Entity files are therefore bounded by the same freshness window every collector 
 session, and it is checked against the `stat` before the file is opened, so stale state costs no
 read. The window arrives as an argument rather than being read from a clock inside the parser, per
 D-4 in [`design-cross-platform.md`](design-cross-platform.md).
+
+## S-5: On Pi, the boot envelope is its own classifier
+
+Claude answers "is this a first officer?" before reading anything: the `agentSetting` sits in the
+transcript head, one cached lookup, and a session with nothing to do with Spacedock opens no project
+file. Pi writes no equivalent. Nothing in a Pi transcript announces the role.
+
+So the Pi collector uses the boot envelope for both jobs. Finding one proves the session is a first
+officer, and the same payload carries the paths. Only a first officer runs `spacedock status --boot`,
+so presence is good evidence, and it needs no new source.
+
+It costs two things, both accepted rather than overlooked. Every Pi session pays a bounded transcript
+head scan on refresh, where Claude pays a cached lookup and stops; the scan is capped at
+`spacedock_boot_scan_bytes` and cached on `(path, size)`, so a settled transcript costs one `stat`.
+And classification now depends on tool output rather than a launch-time declaration, which is a
+weaker signal: tool output is whatever a tool printed. The guards that matter sit downstream and are
+unchanged, so a crafted envelope still has to survive path canonicalisation, the symlink and
+identity checks, and the `commissioned-by: spacedock@` discriminator before anything is published.
+
+Rejected: inventing a Pi-side marker, which needs Spacedock to write something Pi does not write
+today and strands every existing session. Rejected: hoisting classification above the collectors,
+which buys nothing while each harness answers the question from a different field, and moves
+harness knowledge into a module whose whole point is not having any.
 
 ## Rejected alternatives worth keeping rejected
 
