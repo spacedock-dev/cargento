@@ -218,7 +218,8 @@ way. Any process running as the same user can read the token and post events, an
 the trust boundary for the same reason the rest of this section does, since such a process can read
 the user's secret material directly. An overlay may also only ever patch a row a collector produced;
 it can never create or delete one, and it can only write `state`, `state_detail`, `active`,
-`blocked_since` and the acquisition marker. `--no-events` turns the whole path off for a run.
+`blocked_since`, the acquisition marker and `finished_at`, the stamp of the turn's last observed
+stop. `--no-events` turns the whole path off for a run.
 
 The event envelope is allowlisted at both ends. Each adapter builds the nine permitted fields one at
 a time from the native payload, so the prompt, the tool name, the tool input and the tool output are
