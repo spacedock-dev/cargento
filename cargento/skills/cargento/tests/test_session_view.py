@@ -30,6 +30,14 @@ let __timers = [];
 const setTimeout = fn => {{ __timers.push(fn); return __timers.length; }};
 """
 
+    def run_session(
+        self, checks: str, *, saved: str | None = None, hash_val: str | None = None
+    ) -> Any:
+        prelude = self.prelude(saved)
+        if hash_val is not None:
+            prelude += f'\nlocation.hash = "{hash_val}";\n'
+        return self._run_page_js(self.FIXTURE + checks, prelude=prelude)
+
     # A fixture FO session with two workflows and three entities at different
     # stages. The goal is the workflow frontmatter `title` scalar, already
     # published as `workflow.goal` by spacedock.read_workflow.
@@ -69,9 +77,6 @@ const board = sessions => ({
   sessions
 });
 """
-
-    def run_session(self, checks: str, *, saved: str | None = None) -> Any:
-        return self._run_page_js(self.FIXTURE + checks, prelude=self.prelude(saved))
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_ac1_session_view_renders_dispatch_tree(self) -> None:
@@ -218,3 +223,216 @@ console.log(JSON.stringify(out));
         self.assertEqual("session", out["stored"], "the mode was not persisted")
         self.assertTrue(out["sessionKeyCleared"], "entering session mode left a stale key")
         self.assertEqual("session", out["rejectsJunk"], "an invalid mode was accepted")
+
+    # ── rework: routable URL, distinct empty states, calm navigation ─────────
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_url_hash_restores_session_on_init(self) -> None:
+        """Rework BUG 1: a URL hash (#session=<key>) restores the session view
+        on page load. displayMode is "session" and sessionViewKey is the
+        decoded key."""
+        checks = """
+const out = {};
+out.mode = displayMode;
+out.key = sessionViewKey;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks, hash_val="#session=claude:1234abcd")
+        self.assertEqual("session", out["mode"], "hash did not restore session mode")
+        self.assertEqual("claude:1234abcd", out["key"], "hash did not restore the session key")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_url_hash_synced_on_session_enter(self) -> None:
+        """Rework BUG 1: entering session mode via calmAction("session", key)
+        sets location.hash to #session=<encoded key>."""
+        checks = """
+const out = {};
+const d = board([fo]);
+render(d);
+calmAction("session", "claude:1234abcd");
+out.hash = location.hash;
+out.mode = displayMode;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertIn("session=claude", out["hash"], "hash was not set")
+        self.assertEqual("session", out["mode"], "did not enter session mode")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_url_hash_cleared_on_leave(self) -> None:
+        """Rework BUG 1: leaving session mode (back to regular) clears the
+        session hash."""
+        checks = """
+const out = {};
+const d = board([fo]);
+render(d);
+calmAction("session", "claude:1234abcd");
+out.hashWhenSession = location.hash;
+setDisplayMode("regular");
+out.hashAfterLeave = location.hash;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertIn("session=", out["hashWhenSession"], "hash was not set in session mode")
+        self.assertNotIn("session=", out["hashAfterLeave"], "hash was not cleared on leaving")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_hashchange_navigates_back(self) -> None:
+        """Rework BUG 1: a hashchange to no session hash leaves session mode
+        (browser back button)."""
+        checks = """
+const out = {};
+const d = board([fo]);
+render(d);
+calmAction("session", "claude:1234abcd");
+out.modeIn = displayMode;
+// Simulate browser back: hash cleared, hashchange fires.
+suppressHashChange = false;
+location.hash = "";
+__fire("window:hashchange", {});
+out.modeOut = displayMode;
+out.keyOut = sessionViewKey;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertEqual("session", out["modeIn"])
+        self.assertNotEqual("session", out["modeOut"], "did not leave session mode on hashchange")
+        self.assertIsNone(out["keyOut"], "sessionViewKey was not cleared on hashchange")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_empty_state_not_a_spacedock_session(self) -> None:
+        """Rework BUG 3b: a session with spacedock: null shows "Not a
+        Spacedock session", not "no workflows"."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+const notSd = mk({spacedock: null});
+const h = sessionView(board([notSd]));
+out.isNotSpacedock = h.includes("Not a Spacedock session");
+out.noOldMessage = !h.includes("no Spacedock workflows");
+out.hasBack = h.includes("sv-back");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["isNotSpacedock"], "the not-a-Spacedock message is missing")
+        self.assertTrue(out["noOldMessage"], "the old generic message is still shown")
+        self.assertTrue(out["hasBack"], "the back button is missing")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_empty_state_fo_no_entities(self) -> None:
+        """Rework BUG 3c: a first-officer session with empty workflows shows
+        "First officer with no in-flight entities" (pointing at the freshness
+        fix), not a blank panel."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+const foEmpty = mk({
+  spacedock: {role: "first-officer", workflows: []}
+});
+const h = sessionView(board([foEmpty]));
+out.isFoNoEntities = h.includes("First officer with no in-flight entities");
+out.mentionsFreshness = h.includes("freshness");
+out.noOldMessage = !h.includes("no Spacedock workflows");
+out.hasBack = h.includes("sv-back");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["isFoNoEntities"], "the FO no-entities message is missing")
+        self.assertTrue(out["mentionsFreshness"], "the freshness-gate pointer is missing")
+        self.assertTrue(out["noOldMessage"], "the old generic message is still shown")
+        self.assertTrue(out["hasBack"], "the back button is missing")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_empty_state_worker_session(self) -> None:
+        """Rework BUG 3d: a non-FO Spacedock session (ensign/worker) with empty
+        workflows shows the role + "session", not a blank panel."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+const ensign = mk({
+  spacedock: {role: "ensign", workflows: []}
+});
+const h = sessionView(board([ensign]));
+out.isWorkerSession = h.includes("ensign session");
+out.noOldMessage = !h.includes("no Spacedock workflows");
+out.hasBack = h.includes("sv-back");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["isWorkerSession"], "the worker session message is missing")
+        self.assertTrue(out["noOldMessage"], "the old generic message is still shown")
+        self.assertTrue(out["hasBack"], "the back button is missing")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_loading_state_when_session_not_found(self) -> None:
+        """Rework BUG 3a: when the session key is set but the session is not
+        in the current data, a loading state shows — not the picker, not a
+        blank panel."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:deadbeef";
+const h = sessionView(board([fo]));
+out.isLoading = h.includes("sv-loading");
+out.hasBack = h.includes("sv-back");
+out.noPicker = !h.includes("sv-picker");
+out.mentionsKey = h.includes("claude:deadbeef");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["isLoading"], "the loading state is missing")
+        self.assertTrue(out["hasBack"], "the back button is missing")
+        self.assertTrue(out["noPicker"], "the picker was shown instead of loading")
+        self.assertTrue(out["mentionsKey"], "the session key is not in the loading message")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_back_button_in_session_view(self) -> None:
+        """Rework BUG 1: the session view has a back button that navigates to
+        the overview (data-calm="mode" data-arg="regular")."""
+        checks = """
+const out = {};
+sessionViewKey = "claude:1234abcd";
+const h = sessionView(board([fo]));
+out.hasBack = h.includes('data-calm="mode" data-arg="regular"');
+out.hasBackText = h.includes("overview");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["hasBack"], "the back button is missing")
+        self.assertTrue(out["hasBackText"], "the back button text is missing")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_calm_expansion_has_view_button(self) -> None:
+        """Rework BUG 2: the calm expansion panel has a "view" button
+        (data-calm="session") that navigates to the session view."""
+        checks = """
+const out = {};
+const d = board([fo]);
+const row = calmRow(d, fo);
+calmOpenKey = row.key;
+const h = calmExpansion(row, d);
+out.hasViewBtn = h.includes('data-calm="session"');
+out.hasViewText = h.includes(">view<");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertTrue(out["hasViewBtn"], "the view button is missing from calm expansion")
+        self.assertTrue(out["hasViewText"], "the view button text is missing")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_calm_view_button_enters_session_mode(self) -> None:
+        """Rework BUG 2: clicking the calm "view" button enters session mode
+        with the correct session key."""
+        checks = """
+const out = {};
+const d = board([fo]);
+render(d);
+calmAction("session", "claude:1234abcd");
+out.mode = displayMode;
+out.key = sessionViewKey;
+out.hash = location.hash;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_session(checks)
+        self.assertEqual("session", out["mode"], "did not enter session mode")
+        self.assertEqual("claude:1234abcd", out["key"], "session key was not set")
+        self.assertIn("session=", out["hash"], "hash was not synced")

@@ -366,7 +366,13 @@ function calmAction(act, arg){
   if(act === "mode"){ setDisplayMode(arg); return; }
   if(act === "session"){
     sessionViewKey = arg;
-    setDisplayMode("session");
+    syncSessionHash();
+    if(displayMode !== "session"){
+      setDisplayMode("session");
+    } else {
+      calmResetScroll = true;
+      if(lastData) render(lastData);
+    }
     return;
   }
   if(usageAction(act, arg)) return;
@@ -588,6 +594,8 @@ function calmExpansion(r, d){
   const copied = calmCopyNote && calmCopyNote.key === r.key;
   const acts = `<div class="cm-acts"><button type="button" class="cm-act" data-calm="copy"` +
     ` data-arg="${esc(r.key)}">${copied ? esc(calmCopyNote.text) : "copy id"}</button>` +
+    `<button type="button" class="cm-act" data-calm="session"` +
+    ` data-arg="${esc(r.key)}">view</button>` +
     `<button type="button" class="cm-act" data-calm="open"` +
     ` data-arg="${esc(r.key)}">collapse</button></div>`;
   return `<div class="cm-exp"><div class="cm-exp-main">${why}${quote}${tasks}` +

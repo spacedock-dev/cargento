@@ -72,8 +72,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b080f3f4b738ff5a11b2a4f66a012276964e5a522e2085f67329a51d5a1e9d2f",
             ),
             "mode.js": (
-                2_542,
-                "f9f523395324923a7ff85b98c8e57ab3c321c9d4a1dd15dc88ae2d2585722fc9",
+                4_704,
+                "94d72c7790cea6faba7749fbbb4ee619c5caa84d17bcf1dc51bfcb79827d5465",
             ),
             "usage.js": (
                 51_066,
@@ -84,12 +84,12 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "c72970464c0ab3c2f621343eda3b25ee4ab5da8a4d937402f333ecd40876d8ec",
             ),
             "calm.js": (
-                44_724,
-                "47abf6b0a15b73f9edccba9283d83adb0d992a7c8ca6763bbd9f45eb01dc8ecf",
+                44_983,
+                "7e29494bd61dbeba42b6e1097252edebc40515c834691be2384b1ac221534506",
             ),
             "session.js": (
-                4_233,
-                "e69386617ccfed6984e98f5f043c4abad5aca40a94eee618179b9ca03d69980b",
+                6_693,
+                "95946c58f15aa4ccd2fd0f0e1b8c482f58c974244a9f17432089f8b38c10b957",
             ),
             "notify.js": (
                 3_185,
@@ -112,16 +112,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(47_941, len(styles))
+        self.assertEqual(48_596, len(styles))
         self.assertEqual(
-            "95c363aa37e4a018399843a873dc786ee551229edab2c1be15c02e5b718be37b",
+            "41a10e42b0b49f183216e6849cac0dd5eaca5ad06bcfc71537fa4120e6d4072a",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(238_621, len(assembled))
+        self.assertEqual(244_157, len(assembled))
         self.assertEqual(
-            "4ef7648882d1c068337d51e2b941ba244d329de0969d23ca3664e827b9a903ec",
+            "699ca1b863303c55098c7e9688f516ad6c07a00a4844132241975e8bb189e623",
             hashlib.sha256(assembled).hexdigest(),
         )
 

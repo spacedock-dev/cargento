@@ -526,3 +526,12 @@
   .session .sv-ent.sd-live{color:var(--accent-ink);border-color:color-mix(in oklab,var(--accent) 40%,transparent);background:color-mix(in oklab,var(--accent) 10%,transparent);font-weight:700}
   .session .sv-cyc{color:var(--ink3);font-weight:400}
   .session .sv-ent-empty{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);padding:3px 7px}
+  .session .sv-back-bar{padding:8px 16px}
+  .session .sv-back{font-size:var(--fs-sm);color:var(--ink3);background:none;border:none;cursor:pointer;padding:4px 0;text-decoration:none}
+  .session .sv-back:hover{color:var(--ink)}
+  .session .sv-loading{padding:24px 16px}
+  .session .sv-loading-text{font-size:var(--fs-sm);color:var(--ink2);margin-bottom:6px}
+  .session .sv-loading-p{font-size:var(--fs-xs);color:var(--ink3)}
+  .session .sv-loading-p a{color:var(--accent-ink)}
+  .session .sv-empty-h{font-size:var(--fs-sm);font-weight:600;color:var(--ink2);margin-bottom:4px}
+  .session .sv-empty-p{font-size:var(--fs-xs);color:var(--ink3);line-height:1.5}

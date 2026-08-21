@@ -7,12 +7,18 @@
    `stages` spine, with live workers (`live: true`) highlighted, and a one-line
    goal header above the tree when the workflow frontmatter carries a `title`
    scalar (published as `workflow.goal`). When no `title` is present, no goal
-   line renders — the view shows the tree alone, never a fabricated objective. */
+   line renders — the view shows the tree alone, never a fabricated objective.
+
+   The session target is routable via the URL hash (`#session=<harness>:<sid>`),
+   set by mode.js's hash sync. This lets the view be navigated to directly and
+   shared. Distinct empty states cover the four cases a session view can land
+   in: loading (session not found in the current data), not-a-Spacedock-session
+   (spacedock null), first-officer with no in-flight entities (freshness gate),
+   and ensign/worker sessions. */
 
 /* The session picker: rendered when session mode is entered with no target
-   session (null key, or a key that no longer matches a live session). Each row
-   is a `data-calm="session"` control so the existing click channel selects it
-   without a second handler. */
+   session (null key). Each row is a `data-calm="session"` control so the
+   existing click channel selects it without a second handler. */
 function sessionPicker(d){
   const sessions = (d && d.sessions) || [];
   if(!sessions.length){
@@ -27,6 +33,12 @@ function sessionPicker(d){
       `<span class="sv-pick-meta">${esc(s.project)} · ${esc(s.session)}</span></div>`;
   }).join("");
   return `<div class="sv-picker"><div class="sv-picker-h">Select a session to view its dispatch tree</div>${rows}</div>`;
+}
+
+function sessionBackBar(){
+  return `<div class="sv-back-bar">` +
+    `<button type="button" class="sv-back" data-calm="mode" data-arg="regular">← overview</button>` +
+    `</div>`;
 }
 
 function sessionHeader(sess){
@@ -66,18 +78,56 @@ function sessionWorkflow(wf){
     `<div class="sv-tree">${spine}</div></div>`;
 }
 
+/* Distinct empty states for the four cases the session view can land in when
+   the session is found but has no dispatch tree to render. Each gives a
+   heading, a one-line explanation, and a back link — never a blank panel that
+   reads as "stuck". */
+function sessionEmptyState(sess){
+  const sd = sess.spacedock;
+  if(!sd){
+    return sessionHeader(sess) +
+      `<div class="sv-empty sv-empty-type">` +
+      `<div class="sv-empty-h">Not a Spacedock session</div>` +
+      `<div class="sv-empty-p">This session is not driving a Spacedock workflow.</div>` +
+      `</div>`;
+  }
+  if(sd.role === "first-officer"){
+    return sessionHeader(sess) +
+      `<div class="sv-empty sv-empty-fo">` +
+      `<div class="sv-empty-h">First officer with no in-flight entities</div>` +
+      `<div class="sv-empty-p">No workflow entities are fresh enough to show. ` +
+      `This may be a freshness-gate issue (see fix-spacedock-freshness-gate).</div>` +
+      `</div>`;
+  }
+  const role = sd.role || "worker";
+  return sessionHeader(sess) +
+    `<div class="sv-empty sv-empty-worker">` +
+    `<div class="sv-empty-h">${esc(role)} session</div>` +
+    `<div class="sv-empty-p">This Spacedock session has no in-flight workflow entities.</div>` +
+    `</div>`;
+}
+
 function sessionView(d){
   if(!sessionViewKey){
     return sessionPicker(d);
   }
   const sess = ((d && d.sessions) || []).find(s => sessKey(s) === sessionViewKey);
   if(!sess){
-    return sessionPicker(d);
+    /* Loading state: the session was requested (via URL hash or picker) but is
+       not in the current data. On a fresh page load the first fetch may not
+       include it yet; on an established board it may be outside the display
+       window. Either way the reader needs to know the page is working, not
+       stuck on a blank panel. */
+    return sessionBackBar() +
+      `<div class="sv-loading">` +
+      `<div class="sv-loading-text">Looking for session ${esc(sessionViewKey)}…</div>` +
+      `<div class="sv-loading-p">It may be outside the display window. ` +
+      `Try <a href="?all=1${location.hash ? "&" + location.hash.slice(1) : ""}">showing all sessions</a>.` +
+      `</div></div>`;
   }
   const sd = sess.spacedock;
   if(!sd || !sd.workflows || !sd.workflows.length){
-    return sessionHeader(sess) +
-      `<div class="sv-empty">This session has no Spacedock workflows.</div>`;
+    return sessionBackBar() + sessionEmptyState(sess);
   }
-  return sessionHeader(sess) + sd.workflows.map(sessionWorkflow).join("");
+  return sessionBackBar() + sessionHeader(sess) + sd.workflows.map(sessionWorkflow).join("");
 }
