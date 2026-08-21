@@ -7,7 +7,7 @@ import json
 import os
 import re
 from collections import deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 from urllib.parse import unquote, urlparse
 
 from cargento_runtime import io as runtime_io
@@ -56,6 +56,16 @@ def usage(
 
 _CURSOR_CWD_KEYS = ("workspacePath", "workspace", "rootPath", "projectPath", "folder", "cwd")
 
+# The `cwd` of the sibling meta.json, ranked as if it were a seventh key so the
+# selection below stays one decision. It outranks all six because it is the only
+# one anybody has seen: the decoded `meta` payload of three live stores holds
+# agentId, blobEncryptionKey, createdAt, isRunEverything, latestRootBlobId, mode
+# and name — none of the six, which are inferred from the VS Code lineage. If
+# some build writes a stale `workspace` key, ranking it above the measured value
+# is exactly the confident-wrong label the isdir gate exists to prevent.
+_SIBLING_CWD_KEY = "meta.json:cwd"
+_CWD_KEY_RANKING = (_SIBLING_CWD_KEY, *_CURSOR_CWD_KEYS)
+
 
 _ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
 
@@ -84,6 +94,21 @@ def _workspace(value: Any) -> str:
         return value if os.path.isdir(value) else ""
     except OSError:
         return ""
+
+
+def _sibling_cwd(config: RuntimeConfig, db: str) -> str:
+    """The workspace the ``meta.json`` beside one store records, or ``""``.
+
+    An absent, unparseable or truncated file yields nothing and is never a store
+    error: one live agent directory has no meta.json at all, so a miss is an
+    ordinary shape rather than a fault, and badging the harness for it would
+    withdraw the title, the model and the workspace of every other Cursor row.
+
+    The value goes through `_workspace` like any meta key, so being measured
+    buys it the top of the ranking and not an exemption from the isdir gate.
+    """
+    meta_json = os.path.join(os.path.dirname(db), "meta.json")
+    return _workspace(runtime_io.read_first_json(config, meta_json).get("cwd"))
 
 
 _BLOB_ID_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -230,16 +255,30 @@ def _model(config: RuntimeConfig, con: sqlite3_types.Connection, root_id: str) -
     return None
 
 
-def _meta_fields(rows: list[Any]) -> tuple[str | None, str, str]:
-    """(session name, workspace path, root blob id) read out of the meta rows.
+def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, str, str, str]:
+    """(session name, workspace, root blob id, parent agent id, subagent type).
 
     Every value here is untrusted JSON from disk, and each is taken on its own
     terms: a row that fails to parse, or parses to something other than an
     object, costs the reader nothing but that row.
+
+    ``sibling_cwd`` is the meta.json reading, already through `_workspace`. It
+    is seeded into the same ranked map the meta keys fill rather than compared
+    against the winner afterwards, so which path a row publishes stays one
+    decision in one place.
     """
     title = None
     root_id = ""
+    parent_id = ""
+    type_name = ""
     cwd_by_key: dict[str, str] = {}
+    if sibling_cwd:
+        cwd_by_key[_SIBLING_CWD_KEY] = sibling_cwd
+    # What the rows could still beat. The sibling file is read before the loop,
+    # so when it produced a value the best key is already in hand and only the
+    # title and the root id are still worth scanning for; when it did not, the
+    # early exit is the one it always was.
+    best_cwd_key = _SIBLING_CWD_KEY if sibling_cwd else _CURSOR_CWD_KEYS[0]
     for (raw,) in rows:
         v = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
         if not isinstance(v, str):
@@ -280,6 +319,39 @@ def _meta_fields(rows: list[Any]) -> tuple[str | None, str, str]:
                 latest = d.get("latestRootBlobId")
                 if isinstance(latest, str) and _BLOB_ID_RE.match(latest):
                     root_id = latest
+            if not parent_id:
+                # Measured on a live subagent store: `subagentInfo` carries
+                # parentAgentId, rootParentAgentId, toolCallId and typeName,
+                # and both ids name a sibling agent directory that exists —
+                # which is the `sid` another row already publishes, since a
+                # Cursor sid IS the agent directory name. So this is an
+                # id-to-id edge, not an inference from timing or a shared hash.
+                #
+                # The ROOT parent is read first. No live store nests deeper
+                # than one level (there the two ids are equal), so flattening
+                # the subtree onto the root card is the rule that cannot orphan a
+                # grandchild into a peer row, which is the defect being closed.
+                # parentAgentId is the fallback for a payload that carries only
+                # the direct edge.
+                info = d.get("subagentInfo")
+                if isinstance(info, dict):
+                    parent = next(
+                        (
+                            v.strip()
+                            for v in (info.get("rootParentAgentId"), info.get("parentAgentId"))
+                            if isinstance(v, str) and v.strip()
+                        ),
+                        "",
+                    )
+                    if parent:
+                        # Only ever an index key, never displayed; the cap is
+                        # there so an absurd value cannot ride in a cache entry.
+                        parent_id = records.safe_text(parent, 120)
+                        # `name` is the literal "New Agent" on the live subagent
+                        # store, so typeName is the only label that says what
+                        # the child is. Capped at 70 like every other harness's
+                        # subagent label.
+                        type_name = records.safe_text(info.get("typeName"), 70).strip()
             # Keyed by spelling, not by first-seen: the keys are ranked by
             # trust, and a payload may spread them across rows, so a later row
             # holding a better-trusted key must still win.
@@ -289,10 +361,15 @@ def _meta_fields(rows: list[Any]) -> tuple[str | None, str, str]:
                 workspace = _workspace(d.get(key))
                 if workspace:
                     cwd_by_key[key] = workspace
-        if title and root_id and _CURSOR_CWD_KEYS[0] in cwd_by_key:
-            break  # best-trusted key already found; nothing later can beat it
-    cwd = next((cwd_by_key[k] for k in _CURSOR_CWD_KEYS if k in cwd_by_key), "")
-    return title, cwd, root_id
+        if title and root_id and best_cwd_key in cwd_by_key:
+            # Best-trusted key already found; nothing later can beat it. The
+            # parent edge is not in this condition because no value says "there
+            # is no subagentInfo later" — and it does not need to be: every live
+            # store's `meta` holds exactly one row, key `0`, so the row that
+            # satisfies this is the row the edge would be on.
+            break
+    cwd = next((cwd_by_key[k] for k in _CWD_KEY_RANKING if k in cwd_by_key), "")
+    return title, cwd, root_id, parent_id, type_name
 
 
 def _model_key(db: str) -> str:
@@ -308,13 +385,24 @@ def _model_key(db: str) -> str:
     return db + "\x00model"
 
 
+def _subagent_key(db: str) -> str:
+    """The cache key the parent edge and the child's label ride under.
+
+    A third entry for the same reason the model got a second one: they are all
+    memoized on one mtime under one lock, and the alternative is widening
+    `state.cursor_metadata_cache`'s value type, which is a change to a module
+    this collector does not own.
+    """
+    return db + "\x00subagent"
+
+
 def _meta(
     config: RuntimeConfig,
     state: RuntimeState,
     db: str,
     mtime: float,
-) -> tuple[str | None, str, str | None]:
-    """(session name, workspace path, model) from one chat store.
+) -> tuple[str | None, str, str | None, str, str]:
+    """(name, workspace, model, parent agent id, subagent type) for one store.
 
     The first two come from the meta table: hex-encoded UTF-8 JSON (some
     versions store plain JSON; value may be NULL or non-text). mode=ro (not
@@ -328,18 +416,27 @@ def _meta(
     own. A store with no `blobs` table reports no model and keeps its title and
     its workspace: "we did not read a model" and "this store is broken" are
     different facts about different things, and routing the first through the
-    second withdraws two readings that were fine.
+    second withdraws two readings that were fine. The sibling meta.json is read
+    on the same terms and for the same reason.
     """
     with state.cache_lock:
         hit = state.cursor_metadata_cache.get(db)
         model_hit = state.cursor_metadata_cache.get(_model_key(db))
-    if hit and model_hit and hit[0] == mtime and model_hit[0] == mtime:
-        return hit[1], hit[2], model_hit[1]
+        sub_hit = state.cursor_metadata_cache.get(_subagent_key(db))
+    if (
+        hit
+        and model_hit
+        and sub_hit
+        and hit[0] == mtime
+        and model_hit[0] == mtime
+        and sub_hit[0] == mtime
+    ):
+        return hit[1], hit[2], model_hit[1], sub_hit[1] or "", sub_hit[2]
     model: str | None = None
     try:
         con = runtime_io.open_sqlite_read_only(db, state)
     except runtime_io.sqlite_module.Error:
-        return None, "", None
+        return None, "", None, "", ""
     failed = False
     try:
         try:
@@ -349,7 +446,7 @@ def _meta(
         except runtime_io.sqlite_module.Error as exc:
             runtime_io.record_store_error(state, db, exc)
             rows, failed = [], True
-        title, cwd, root_id = _meta_fields(rows)
+        title, cwd, root_id, parent_id, type_name = _meta_fields(rows, _sibling_cwd(config, db))
         if root_id:
             try:
                 model = _model(config, con, root_id)
@@ -359,12 +456,20 @@ def _meta(
         con.close()
     if failed:
         # Transient: do not cache values the query never returned.
-        return None, "", None
+        return None, "", None, "", ""
     with state.cache_lock:
         hit = state.cursor_metadata_cache.get(db)
         model_hit = state.cursor_metadata_cache.get(_model_key(db))
-        if hit and model_hit and hit[0] == mtime and model_hit[0] == mtime:
-            return hit[1], hit[2], model_hit[1]
+        sub_hit = state.cursor_metadata_cache.get(_subagent_key(db))
+        if (
+            hit
+            and model_hit
+            and sub_hit
+            and hit[0] == mtime
+            and model_hit[0] == mtime
+            and sub_hit[0] == mtime
+        ):
+            return hit[1], hit[2], model_hit[1], sub_hit[1] or "", sub_hit[2]
         runtime_state.bounded_put(
             state.cursor_metadata_cache,
             db,
@@ -377,7 +482,30 @@ def _meta(
             (mtime, model, ""),
             limit=config.max_cache_entries,
         )
-        return title, cwd, model
+        runtime_state.bounded_put(
+            state.cursor_metadata_cache,
+            _subagent_key(db),
+            (mtime, parent_id, type_name),
+            limit=config.max_cache_entries,
+        )
+        return title, cwd, model, parent_id, type_name
+
+
+class _Chat(NamedTuple):
+    """One chat store, read but not yet published.
+
+    Two passes are needed because a store cannot be published until every other
+    store has been read: whether this one is a row of its own or a pill on
+    another's card is decided by an id that lives in a sibling's payload.
+    """
+
+    sid: str
+    mtime: float
+    title: str | None
+    project: str
+    model: str | None
+    parent_id: str
+    type_name: str
 
 
 def collect(
@@ -391,11 +519,14 @@ def collect(
         return []
     # One store.db per chat; message content sits in content-addressed blobs
     # with no timestamps, so Cursor rows are discovery + state + title + model
-    # only — no turn ETA. Subagents keep their own store under the same
-    # workspace hash and are published as peer top-level rows here; folding them
-    # into their parent (and the `_CURSOR_CWD_KEYS` defect above) is Cursor's own
-    # ticket, so no Cursor row carries a subagent, or a subagent model, yet.
-    out: list[dict[str, Any]] = []
+    # + subagents only — no turn ETA. A subagent keeps its own store under the
+    # same workspace hash, and its meta payload names the agent it belongs to:
+    # `subagentInfo.rootParentAgentId` is another agent DIRECTORY name, which is
+    # exactly the `sid` another row publishes, so the fold below is an id-to-id
+    # edge and not an inference from timing or a shared hash. The workspace is
+    # not in that payload at all — no spelling of it is — and comes from the
+    # sibling meta.json instead.
+    chats: list[_Chat] = []
     for db in runtime_io.glob_stores(config, "cursor.chats", "*", "*", "store.db"):
         sid = os.path.basename(os.path.dirname(db))
         try:
@@ -405,21 +536,72 @@ def collect(
                 mtime = max(mtime, os.path.getmtime(wal))
         except OSError:
             continue
-        active = sessions.is_fresh(config, now, mtime, window_hours * 3600)
+        if not (sessions.is_fresh(config, now, mtime, window_hours * 3600) or show_all):
+            continue
+        title, cwd, model, parent_id, type_name = _meta(config, state, db, mtime)
+        chats.append(
+            _Chat(
+                sid,
+                mtime,
+                title,
+                sessions.project_from_cwd(config, cwd) or "cursor",
+                model,
+                parent_id,
+                type_name,
+            )
+        )
+
+    known = {chat.sid for chat in chats}
+    children: dict[str, list[_Chat]] = {}
+    tops: list[_Chat] = []
+    for chat in chats:
+        # A parent id that names no store here is not folded but promoted: the
+        # live store already holds that shape, and a dropped row is an invisible
+        # failure, since the reader cannot tell "folded" from "lost". A payload
+        # naming itself is treated the same way, rather than nesting a row under
+        # itself or losing it to an edge that cannot be true.
+        if chat.parent_id and chat.parent_id != chat.sid and chat.parent_id in known:
+            children.setdefault(chat.parent_id, []).append(chat)
+        else:
+            tops.append(chat)
+
+    out: list[dict[str, Any]] = []
+    for chat in tops:
+        kids = sorted(children.get(chat.sid, []), key=lambda k: -k.mtime)
+        subagents = [{"name": k.type_name or "subagent", "model": k.model} for k in kids]
+        # The whole subtree, so a parent parked on a working child does not age
+        # out of the window — the same absorption Goose and OpenCode do, and
+        # `own_activity` below is why it loses nothing: it keeps the parent-alone
+        # reading beside it.
+        last_activity = sessions.newest_plausible(
+            config, now, (chat.mtime, *(k.mtime for k in kids))
+        )
+        active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
         session_state, state_detail = "idle", "awaiting your message"
-        if sessions.is_fresh(config, now, mtime, config.working_threshold_sec):
-            session_state, state_detail = "working", "generating…"
-        title, cwd, model = _meta(config, state, db, mtime)
-        s = sessions.base_session("cursor", sid, sessions.project_from_cwd(config, cwd) or "cursor")
+        if sessions.is_fresh(config, now, last_activity, config.working_threshold_sec):
+            session_state = "working"
+            # Only the children that are moving now, which is a shorter list
+            # than the pills: every folded child is published so that none
+            # disappears, but a child parked hours ago must not make its parent
+            # read "running 1 subagent". `working_detail` counts what it is
+            # given, so the list it is given is the claim being made.
+            running = [
+                k
+                for k in kids
+                if sessions.is_fresh(config, now, k.mtime, config.working_threshold_sec)
+            ]
+            state_detail = sessions.working_detail(None, running)
+        s = sessions.base_session("cursor", chat.sid, chat.project)
         s.update(
             {
-                "title": title if active else None,
+                "title": chat.title if active else None,
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,
-                "last_activity": mtime,
+                "last_activity": last_activity,
+                "own_activity": chat.mtime,
                 # Unlike the title, this is not gated on `active`. A parked
                 # session's last message was still answered by some model, and
                 # that reading does not go stale the way a title does.
@@ -427,7 +609,10 @@ def collect(
                 # `cursor`, so filling it would be a measurement rather than a
                 # guess, but the page would then print "via Cursor" beside a
                 # badge that already says Cursor.
-                "model": model,
+                "model": chat.model,
+                # `typeName` — `cursor-guide` on the live store — rather than the
+                # child's own `name`, which is the literal "New Agent" there.
+                "subagents": subagents,
             }
         )
         out.append(s)

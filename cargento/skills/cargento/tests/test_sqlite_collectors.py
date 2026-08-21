@@ -205,6 +205,7 @@ class SqliteCollectorTest(RuntimeTestCase):
         sid: str,
         rows: list[Any],
         blobs: dict[str, bytes] | None = None,
+        meta_json: dict[str, Any] | None = None,
     ) -> None:
         db = tmp / "chats" / "hash1" / sid / "store.db"
         db.parent.mkdir(parents=True)
@@ -224,6 +225,11 @@ class SqliteCollectorTest(RuntimeTestCase):
             con.commit()
         finally:
             con.close()
+        # The sibling file the real store keeps beside store.db, written only
+        # when asked: one live agent directory — the subagent's — has none, so
+        # its absence is a shape a store really has and not a lazy fixture.
+        if meta_json is not None:
+            (db.parent / "meta.json").write_text(json.dumps(meta_json, separators=(",", ":")))
 
     @staticmethod
     def _cursor_message(model: str | None, text: str = "hi") -> bytes:
@@ -292,6 +298,14 @@ class SqliteCollectorTest(RuntimeTestCase):
             db = next(iter(state.cursor_metadata_cache))
             mtime = state.cursor_metadata_cache[db][0]
 
+            # The parent edge and the child's label ride a third cache entry, on
+            # the same mtime: without one, a five-second refresh would reopen
+            # every store just to re-read an id that cannot have changed.
+            self.assertEqual(
+                (mtime, "", ""),
+                state_of().cursor_metadata_cache[cursor_collector._subagent_key(db)],
+            )
+
             opens: list[str] = []
             real_open = runtime_io.open_sqlite_read_only
 
@@ -301,14 +315,14 @@ class SqliteCollectorTest(RuntimeTestCase):
 
             with mock.patch.object(runtime_io, "open_sqlite_read_only", counting_open):
                 self.assertEqual(
-                    ("Some title", str(workspace), "vega"),
+                    ("Some title", str(workspace), "vega", "", ""),
                     cursor_collector._meta(config, state, db, mtime),
                 )
                 self.assertEqual([], opens, "a memo hit reopened the store")
 
                 # A changed mtime invalidates the memo, so the store is read.
                 self.assertEqual(
-                    ("Some title", str(workspace), "vega"),
+                    ("Some title", str(workspace), "vega", "", ""),
                     cursor_collector._meta(config, state, db, mtime + 1),
                 )
                 self.assertEqual([db], opens)
@@ -599,6 +613,197 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual("spacedock/subspace", sessions[0]["project"])
         self.assertEqual("refactor the parser", sessions[0]["title"])
 
+    def test_cursor_reads_its_project_from_the_sibling_meta_json(self) -> None:
+        # DRC-4118. Measured: the decoded `meta` payload of three live stores
+        # holds agentId, blobEncryptionKey, createdAt, isRunEverything,
+        # latestRootBlobId, mode and name — none of the six `_CURSOR_CWD_KEYS`
+        # spellings — so every Cursor row fell back to the harness name. The
+        # working directory is in the sibling meta.json the collector never
+        # opened.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "git" / "recce" / "cargento"
+            workspace.mkdir(parents=True)
+            self._cursor_store(
+                root,
+                "sess-sibling",
+                [{"agentId": "sess-sibling", "name": "chat", "mode": "agent"}],
+                meta_json={
+                    "schemaVersion": 1,
+                    "cwd": str(workspace),
+                    "title": "chat",
+                    "createdAtMs": 1,
+                    "updatedAtMs": 2,
+                    "hasConversation": True,
+                },
+            )
+            rows = self._collect_cursor(root)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("recce/cargento", rows[0]["project"])
+
+    def _cursor_subagent_meta(self, parent: str, type_name: str = "cursor-guide") -> dict[str, Any]:
+        """The `subagentInfo` shape measured on the live subagent store.
+
+        Both ids are the same there — nothing on this machine nests deeper than
+        one level — and `name` is the generic literal Cursor writes for every
+        child, which is why `typeName` is the label worth publishing.
+        """
+        return {
+            "agentId": "child",
+            "name": "New Agent",
+            "subagentInfo": {
+                "parentAgentId": parent,
+                "rootParentAgentId": parent,
+                "toolCallId": "call-x",
+                "typeName": type_name,
+            },
+        }
+
+    def test_cursor_folds_a_subagent_under_the_parent_its_meta_names(self) -> None:
+        # DRC-4118. Cursor subagents kept their own store under the same
+        # workspace hash and were published as peer top-level rows. The edge is
+        # measured, not inferred: `subagentInfo.rootParentAgentId` names an agent
+        # DIRECTORY, and a Cursor sid IS that directory name, so it is exactly
+        # the sid another row publishes. The child sorts before the parent in the
+        # glob, which is why the fold cannot be done in one pass.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            parent_root, parent_blobs = self._cursor_chat([self._cursor_message("vega")])
+            child_root, child_blobs = self._cursor_chat([self._cursor_message("vega", "sub")])
+            self._cursor_store(
+                root,
+                "child-1",
+                [{**self._cursor_subagent_meta("parent-1"), "latestRootBlobId": child_root}],
+                child_blobs,
+            )
+            self._cursor_store(
+                root,
+                "parent-1",
+                [{"name": "Fix the login bug", "latestRootBlobId": parent_root}],
+                parent_blobs,
+            )
+            rows = self._collect_cursor(root)
+
+        self.assertEqual(["parent-1"], [r["sid"] for r in rows], "a child must not be a peer row")
+        self.assertEqual([{"name": "cursor-guide", "model": "vega"}], rows[0]["subagents"])
+        self.assertEqual("running 1 subagent", rows[0]["state_detail"])
+
+    def test_cursor_shows_a_subagent_model_that_differs_from_its_parent(self) -> None:
+        # SYNTHETIC fixture: `vega` is the only model value present anywhere in
+        # the live Cursor stores, so a differing parent/child pair is fabricated
+        # rather than measured. The payload has to carry both readings whatever
+        # they are, since the page shows a child's model only where the two are
+        # known and unequal, and that rule cannot fire on a value the collector
+        # never published.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            parent_root, parent_blobs = self._cursor_chat([self._cursor_message("vega")])
+            child_root, child_blobs = self._cursor_chat([self._cursor_message("last-week-model")])
+            self._cursor_store(
+                root,
+                "child-2",
+                [{**self._cursor_subagent_meta("parent-2"), "latestRootBlobId": child_root}],
+                child_blobs,
+            )
+            self._cursor_store(
+                root, "parent-2", [{"name": "chat", "latestRootBlobId": parent_root}], parent_blobs
+            )
+            rows = self._collect_cursor(root)
+
+        self.assertEqual("vega", rows[0]["model"])
+        self.assertEqual(
+            [{"name": "cursor-guide", "model": "last-week-model"}], rows[0]["subagents"]
+        )
+
+    def test_cursor_publishes_a_subagent_whose_parent_is_not_present(self) -> None:
+        # A parent id that names no store here promotes the child instead of
+        # folding it. Dropping it would be an invisible failure: the reader
+        # cannot tell "folded under its parent" from "lost".
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_store(root, "orphan-1", [self._cursor_subagent_meta("deleted-parent")])
+            rows = self._collect_cursor(root)
+
+        self.assertEqual(["orphan-1"], [r["sid"] for r in rows])
+        self.assertEqual([], rows[0]["subagents"])
+
+    def test_cursor_ignores_a_subagent_info_that_names_itself(self) -> None:
+        # An edge that cannot be true must cost the row nothing: not nested under
+        # itself, not dropped.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_store(root, "self-1", [self._cursor_subagent_meta("self-1")])
+            rows = self._collect_cursor(root)
+
+        self.assertEqual(["self-1"], [r["sid"] for r in rows])
+        self.assertEqual([], rows[0]["subagents"])
+
+    def test_cursor_keeps_a_parent_working_while_only_its_child_writes(self) -> None:
+        # The parent's own store is quiet for an hour while the child writes, so
+        # without absorbing the subtree the card would read Idle beside a
+        # subagent that is generating. `own_activity` keeps the parent-alone
+        # reading, which is what absorbing would otherwise throw away.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_store(root, "child-3", [self._cursor_subagent_meta("parent-3")])
+            self._cursor_store(root, "parent-3", [{"name": "long workflow"}])
+            parent_db = root / "chats" / "hash1" / "parent-3" / "store.db"
+            quiet = time.time() - 3600
+            os.utime(parent_db, (quiet, quiet))
+            rows = self._collect_cursor(root)
+
+        self.assertEqual(["parent-3"], [r["sid"] for r in rows])
+        self.assertEqual("working", rows[0]["state"])
+        self.assertGreater(rows[0]["last_activity"], rows[0]["own_activity"])
+        self.assertAlmostEqual(quiet, rows[0]["own_activity"], delta=2.0)
+
+    def test_cursor_keeps_its_row_when_the_sibling_meta_json_is_absent_or_unreadable(self) -> None:
+        # The failure that would cost the most. An absent or unreadable meta.json
+        # means NO WORKSPACE, never a FAILED STORE: one live agent directory has
+        # none at all, and routing the miss through record_store_error would badge
+        # the harness and withdraw the title and the model of every Cursor row.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        rows_by_case: dict[str, dict[str, Any]] = {}
+        errors: list[str] = []
+        for case in ("absent", "not json", "cwd that is gone"):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                root_id, blobs = self._cursor_chat([self._cursor_message("vega")])
+                meta_json = None
+                if case == "cwd that is gone":
+                    meta_json = {"cwd": str(root / "deleted" / "checkout"), "title": "chat"}
+                self._cursor_store(
+                    root,
+                    "sess-nometa",
+                    [{"name": "refactor the parser", "latestRootBlobId": root_id}],
+                    blobs,
+                    meta_json=meta_json,
+                )
+                if case == "not json":
+                    (root / "chats" / "hash1" / "sess-nometa" / "meta.json").write_text("{oops")
+                rows_by_case[case] = self._collect_cursor(root)[0]
+                errors += [p for p in dict(state_of().store_errors) if "sess-nometa" in p]
+
+        for case, row in rows_by_case.items():
+            self.assertEqual("cursor", row["project"], case)
+            self.assertEqual("refactor the parser", row["title"], case)
+            self.assertEqual("vega", row["model"], case)
+        self.assertEqual([], errors, "a store with no meta.json is not a broken store")
+
     def test_cursor_rejects_a_meta_value_that_is_not_a_real_directory(self) -> None:
         # The key spellings are inferred from the VS Code lineage, not observed,
         # and in that family "workspace" routinely holds a .code-workspace FILE
@@ -883,7 +1088,7 @@ class SqliteDiagnosticTest(unittest.TestCase):
             with state.cache_lock:
                 state.store_errors.clear()
             self.assertEqual(
-                (None, "", None), cursor_collector._meta(config, state, str(cursor), 1.0)
+                (None, "", None, "", ""), cursor_collector._meta(config, state, str(cursor), 1.0)
             )
             self.assertIn(str(cursor), state.store_errors)
             # A title the query never returned must not be cached as "no title".
