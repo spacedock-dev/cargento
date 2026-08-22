@@ -2,12 +2,12 @@
 
 ## Scope
 
-Cargento ships two components that touch the network. The dashboard server
+Cargento ships three kinds of component that touch the network. The dashboard server
 (`cargento/skills/cargento/server.py`, whose code is the `cargento_runtime` package beside it)
 reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. When the usage feature is on, the server also
 makes one kind of outbound request, the quota poll described in Usage quota reads (the quota
-fetcher); it carries no session data. Three small forwarders ship beside it, each wired into a
+fetcher); it carries no session data. Four small forwarders ship beside it, each wired into a
 harness's own configuration by the user or by the plugin: `notify_hook.py` POSTs a Claude
 `Notification` payload to the dashboard, `event_hook.py` posts command-hook lifecycle events for
 Claude and Codex, `agy_hook.py` posts Antigravity's hook events, and `statusline_hook.py` posts
@@ -19,17 +19,26 @@ that allows, denies or re-prompts a tool call, so a reporting hook there can blo
 `agy_hook.py` prints exactly `{}` and nothing else, on every path including every failure path, and a
 test asserts that for malformed, empty and valid input alike.
 
+The third kind is one stdio MCP server, `mcp_server.py`, described under The ask lane below. It is
+not a forwarder and shares none of the four's transport: a harness spawns it, it speaks JSON-RPC on
+stdin and stdout, and it reaches the dashboard on loopback under the same three guards.
+
 The posture rests on two invariants:
 
-1. Localhost only. The server binds `127.0.0.1` exclusively, and every forwarder refuses to POST
-   anywhere but loopback, ignores proxy environment variables, and does not follow redirects.
+1. Localhost only. The server binds `127.0.0.1` exclusively, and every forwarder and the MCP server
+   refuse to reach anywhere but loopback, ignore proxy environment variables, and do not follow
+   redirects.
    Session data never leaves the machine. The quota poll is the single outbound exception, and it
    carries a vendor token out and quota numbers back, nothing else.
-2. Read-only against harness stores. They are opened read-only and never written. Three endpoints
-   mutate, and two of them only in memory: `POST /api/notify` updates needs-input state, and
+2. Read-only against harness stores. They are opened read-only and never written. Six endpoints
+   mutate, and five of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
-   Known and accepted. The third, `POST /api/dismiss`, does write to disk, but what it writes is
+   Known and accepted, and so do `POST /api/ask` and `POST /api/answer`, which register a question a
+   session asked and record the option the reader chose, both described under The ask lane. The long
+   poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
+   which is the delivery completing rather than a change a caller asked for. The sixth,
+   `POST /api/dismiss`, does write to disk, but what it writes is
    Cargento's own state under `~/.cargento` and never a harness store, so the read-only rule above stands
    unchanged. What that file holds and how to clear it is in Dismissals. One forwarder writes too:
    `statusline_hook.py`'s deduplication memo under the same directory, which holds a normalized state
@@ -140,8 +149,8 @@ Consent and the off switch: the feature is on by default and disclosed before it
 time the dashboard opens with the feature available, a modal explains the token read and the
 request above, and carries the switch that turns the feature off. The setting can be changed later
 from the dashboard's configure panel, and `--no-usage` disables the feature for a run regardless
-of the stored setting. With the feature off, Cargento's network surface is exactly the two
-loopback-bound components described above, and nothing is fetched.
+of the stored setting. With the feature off, Cargento's network surface is exactly the three
+loopback-bound kinds of component described above, and nothing is fetched.
 
 Polling posture: responses are cached, and at most one request per vendor is made every five
 minutes. No polling happens while no dashboard page is connected. `--diagnose` never triggers a
@@ -231,6 +240,52 @@ file, and the losing mark is lost.
 [`docs/design-dismissals.md`](docs/design-dismissals.md) records why that race is stated rather than
 solved.
 
+## The ask lane (`ask_operator`)
+
+Cargento ships one MCP tool. A session that wants a human decision calls `ask_operator`, and the
+question appears in the dashboard for the reader to answer. This is the only path by which anything
+a reader does in Cargento reaches a running session, and it exists because the session asked.
+
+What it is, precisely. Cargento ships a stdio MCP server beside the dashboard. It is not one of the
+four forwarders and shares none of their transport. A harness spawns it, it speaks JSON-RPC on stdin
+and stdout, and it holds the agent's tool call open while the question is outstanding. It registers
+the question with the dashboard over loopback and polls for the answer.
+
+The direction is the invariant. Cargento never reaches into a session. A session can only ever be
+waiting because it asked to be, and a session that never calls the tool is untouched by all of this.
+Nothing is typed into a terminal, no harness store is written, and the tool cannot answer a native
+permission prompt. That last point is not a limitation to be lifted later: answering a harness's own
+gate is refused, and the four probes DEC-2 filed are research rather than a roadmap.
+
+What the reader's click can and cannot say. The question's options are recorded when the question is
+registered. An answer names the question and an option by index, and the MCP server returns its own
+copy of that option to the agent. An answer cannot introduce text. The strongest thing a forged
+answer can do is select the wrong one of the options the asking agent itself wrote, and it cannot put
+new content into that agent's context.
+
+What is bounded. The question text and the option list are bounded when they arrive, and rendered as
+text and never as markup. The number of questions outstanding at once is capped, and the honest
+answer past the cap is a refusal the server turns into a decline rather than an error. A question
+that is never answered expires and declines.
+
+Failure is always a decline, never a hang. If the dashboard is not running, if no reader answers, if
+the deadline passes, or if the process is stopped while a question is outstanding, the tool returns a
+decline and the agent proceeds as it judges best. A stopped dashboard releases every outstanding
+question before it exits.
+
+The standing permission this needs, and what granting it means. At default settings every harness
+gates the first call to this tool in the user's own terminal, before the call reaches Cargento. The
+feature is therefore useless until the user grants the tool once, which on Claude Code writes
+`permissions.allow: ["mcp__plugin_cargento_cargento__ask_operator"]` into that project's
+`.claude/settings.local.json`. Granting it means that project's sessions may pause themselves on a
+Cargento question without asking again. It is scoped to that directory, it is the user's to revoke by
+deleting the line, and Cargento never writes it.
+
+Answering is a real decision. Every other click in the dashboard changes what you see. This one
+changes what an agent does next, with your credentials, in your repository. The exposure that follows
+is recorded under Known and accepted rather than solved here, because loopback is not a per-user
+boundary.
+
 ## Known and accepted
 
 Loopback is not a per-user boundary. Any other account on the same machine can `GET /api/data` and
@@ -267,6 +322,15 @@ transcript path; none of those reach a socket. `statusline_hook.py` also shapes 
 the `quota` block alone, which is what this document asks for a paragraph below rather than sending
 the whole status-line document and relying on the server to discard it. `cwd` and `transcript_path` are
 matching hints and are never echoed to `/api/data`.
+
+The ask lane inherits the loopback exposure above, and it is the first place where that exposure
+reaches beyond what a reader sees. Any local process that can reach the port can answer a question a
+session is waiting on. Two things keep this narrow rather than solved. An answer selects an option by
+index from a list the asking agent wrote, so a forgery cannot introduce text into an agent's context,
+only choose badly among choices the agent already offered. And a session is only ever waiting because
+it asked, so there is no question to answer unless an agent raised one. A per-reader
+authentication would be the real fix, and it is not available: the dashboard page is served as fixed
+bytes with no per-run secret in it, and a local process could read such a secret anyway.
 
 `--diagnose` output is sensitive. It prints the home directory, the interpreter path, the *values* of
 the store relocation variables, every candidate store path, and per-path read errors. Nothing is

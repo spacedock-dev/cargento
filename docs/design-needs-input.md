@@ -405,6 +405,8 @@ is the serious one. A mark that is right is redundant: the session leaves `needs
 poll and the row goes on its own. A mark that is wrong **hides a gate that is still open**, which is
 the exact failure the needs-input band exists to prevent, now caused by the surface built to prevent
 it. The asymmetry decides it: the redundant case costs nothing and the wrong case costs everything.
+One case escapes that argument rather than weakening it, and it is carved out at the end of this
+section.
 
 So the pass is driven entirely by the payload. You answer in the session's own terminal; the
 collector stops calling that session blocked; the row leaves the queue on the next refresh. The
@@ -426,6 +428,27 @@ ledger while the server still separated them.
 It does not tell you how long answering will take, which gate is cheapest to clear, or which is most
 urgent beyond how long it has waited. Waiting time is the only ranking signal the payload actually
 carries; anything richer would be a guess dressed as an ordering.
+
+### The carve-out: a question the session asked is answerable, because it is measured
+
+The rejection above rests on one fact and not on a preference. A native gate is unanswerable here
+because Cargento cannot observe the answer: it never writes to a session, so a mark could only record
+that a person clicked something, which is the page asserting a state no collector measured. Every word
+of that still holds for every gate on the needs-input band, and nothing about it is softened by what
+follows.
+
+The `ask_operator` lane (see [design-ask-lane.md](design-ask-lane.md)) is a different situation on
+exactly the fact the argument turns on. There, the answer *is* measured. The session called the tool
+and is holding the call open until an answer arrives, so the runtime is the thing the session is
+waiting on rather than a bystander guessing at a terminal it cannot see. A click is not an assertion
+about someone else's state; it is the state. The wrong-mark failure mode cannot occur either, because
+there is no gate left open behind the click: the option the reader chose is what the tool returns.
+
+The two therefore stay two surfaces, and the distinction is the load-bearing part. Asks render in
+their own band from `d.asks`, and the needs-input band keeps no handled state of its own. A future
+change that wants to mark a native gate has to overturn the paragraph above on its own merits, and
+cannot borrow this carve-out to do it: an answer the runtime delivered and a click about a terminal
+nobody read are not the same evidence.
 
 ## N-9: Idle was two situations, and only an event can separate them
 

@@ -13,7 +13,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
 
-from cargento_runtime import dismissals, notifications, quota
+from cargento_runtime import asks as runtime_asks
+from cargento_runtime import dismissals, notifications, quota, records
 from cargento_runtime import events as runtime_events
 from cargento_runtime import io as runtime_io
 from cargento_runtime import snapshot as runtime_snapshot
@@ -316,6 +317,14 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # in the socket, so nothing else would tell it to stop.
         with contextlib.suppress(Exception):
             self.server.application.state.streams.close_all()
+        # And every parked poll, for the same reason: a poll is asleep in
+        # wait(), not in the socket, so nothing else would tell it to stop.
+        # Measured without this line, a poll mid-stop holds silently for the rest
+        # of its timeout and then loses the connection when the process exits.
+        # The asking session reads that as a transport failure rather than as the
+        # decline the contract promises it.
+        with contextlib.suppress(Exception):
+            self.server.application.state.asks.decline_all()
         try:
             self._send(b'{"ok":true,"stopping":true}', "application/json")
             with contextlib.suppress(OSError, ValueError):
@@ -355,6 +364,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._overlays()
         elif url.path == "/api/cleared":
             self._cleared()
+        elif url.path.startswith("/api/ask/"):
+            # Prefix-matched, so it cannot join the exact-match arms above. One
+            # arm and not two, deliberately: `do_GET` measures mccabe 9 against
+            # ruff's cap of 10, and this file has never needed a complexity
+            # exemption. A second arm would buy it its first.
+            self._ask_poll(url.path[len("/api/ask/") :])
         elif url.path == "/api/stream":
             self._stream()
         elif url.path == "/api/health":
@@ -492,6 +507,49 @@ class _RequestHandler(BaseHTTPRequestHandler):
             json.dumps({"cleared": dismissals.rows(entries)}, separators=(",", ":")).encode(),
             "application/json",
         )
+
+    def _ask_poll(self, ask_id: str) -> None:
+        """One bounded hold on a question's answer, for the peer that asked it.
+
+        Strictly same-origin, like `/api/cleared`: the poller is a local MCP
+        server, and nothing navigates here.
+
+        Bounded rather than held until a reader clicks. A request that returned
+        only on an answer would pin a handler thread for as long as a human
+        takes, with nothing to join it at shutdown; docs/design-ask-lane.md
+        records why that was rejected in favour of a repeated short poll.
+        """
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        application = self.server.application
+        config = application.config
+        if not config.ask_enabled:
+            # 503 rather than 404, the same call `/api/cleared` makes under
+            # `--no-dismiss`: the route exists and the registry does not.
+            self.send_error(503, "the ask lane is disabled on this server")
+            return
+        ask = application.state.asks.get(ask_id)
+        if ask is None:
+            self.send_error(404)
+            return
+        outcome = ask.wait(timeout=config.ask_poll_timeout_sec)
+        if outcome is None:
+            # 204 rather than an empty 200: "nothing yet, ask again" is already
+            # in the status line, so there is no body for it to disagree with.
+            self.send_response(204)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        name, index = outcome
+        answer: dict[str, Any] = {"state": name}
+        if index is not None:
+            answer["index"] = index
+        # Released before the write, not after: the outcome is settled either
+        # way, and a peer that vanished mid-reply must not leave a resolved ask
+        # in the table for the deadline to sweep.
+        application.state.asks.release(ask_id)
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
 
     def _usage_receipt(self) -> None:
         """A harness's own quota, forwarded here by its status-line command.
@@ -650,6 +708,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/shutdown": self._shutdown,
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
+            "/api/ask": self._ask,
+            "/api/answer": self._answer,
             "/api/notify": self._notify,
         }.get(path)
         if route is None:
@@ -686,6 +746,157 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # hook and race tests assert the exact bytes. json.dumps' default spaces
         # would break them.
         self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
+
+    @staticmethod
+    def _ask_options(value: Any, *, cap_chars: int, max_options: int) -> tuple[str, ...] | None:
+        """The offered options, bounded in count and length, or None if unusable.
+
+        Past `max_options` the leading options are kept rather than a sample,
+        and an option that bounds to empty refuses the whole request rather than
+        being dropped. Both follow from the answer being an index: the asking
+        peer resolves it against its own copy of the list, so keeping a prefix
+        stays aligned with that copy while dropping a member from the middle
+        would silently shift every later index onto the wrong option.
+        """
+        if not isinstance(value, list):
+            return None
+        options = tuple(records.safe_text(item, cap_chars).strip() for item in value[:max_options])
+        # Two is the floor for a question worth putting on the board: one option
+        # is not a choice, and nothing can be rendered from an empty list.
+        return None if len(options) < 2 or not all(options) else options
+
+    def _ask(self) -> None:
+        """Register a question a session is holding its tool call open for.
+
+        Guarded exactly like `/api/dismiss`: `_local_ok()` has already run, the
+        declared length is checked before any read, and a malformed or non-object
+        body degrades to `{}`.
+
+        Where it differs is that an unusable body is a 400 rather than a 200
+        no-op, and the difference is the point. A dismissal naming nothing has
+        nothing to do; a caller here is about to wait for an answer, and has to
+        learn now that none is coming rather than after the deadline.
+
+        This is the only place the question and the options are bounded. `asks`
+        imports nothing, so it cannot reach `records.safe_text`, and every field
+        read below was written by an agent.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.ask_enabled:
+            self._reject(503)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.ask_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        question = records.safe_text(payload.get("question"), config.ask_question_cap_chars).strip()
+        options = self._ask_options(
+            payload.get("options"),
+            cap_chars=config.ask_option_cap_chars,
+            max_options=config.ask_max_options,
+        )
+        if not question or options is None:
+            self._reject(400)
+            return
+        label_cap = config.ask_option_cap_chars
+        ask = runtime_asks.PendingAsk(
+            # harness and session_id share the option cap: they really are short
+            # labels of the same order. `project` does not, and gets its own knob
+            # below, because it is a filesystem path.
+            harness=records.safe_text(payload.get("harness"), label_cap).strip(),
+            session_id=records.safe_text(payload.get("session_id"), label_cap).strip(),
+            project=self._ask_project(payload.get("project")),
+            question=question,
+            options=options,
+            created=application.clock(),
+        )
+        if not application.state.asks.register(ask, limit=config.ask_max_pending):
+            self._reject(503)
+            return
+        # The published bodies are dropped rather than waited out, exactly as a
+        # dismissal drops them. This is also the whole wake path: the next
+        # collection includes the ask and publishes a revision, which is what
+        # reaches an open tab. No new seam into the coordinator was needed.
+        application.state.snapshot.clear()
+        self._send(
+            json.dumps({"ok": True, "id": ask.id}, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
+    def _ask_project(self, value: object) -> str:
+        """The asking session's directory, bounded but still identifiable.
+
+        `safe_text` truncates from the front, which is wrong for a path: the
+        distinctive part is the tail. A 122-character cwd against the old
+        120-char label cap published `.../e2e/adop` for a directory named
+        `adopt2`, so the card named somewhere that does not exist. An over-long
+        path therefore keeps its end and marks the cut.
+        """
+        config = self.server.application.config
+        cap = config.ask_project_cap_chars
+        # Stripped at the request body's own cap, not at `cap`: `safe_text`
+        # truncates from the front, so pre-trimming to anything near `cap` throws
+        # away the very tail this method exists to keep. The body cap already
+        # bounds how much can arrive, so this cannot run long.
+        project = records.safe_text(value, config.ask_body_cap_bytes).strip()
+        if len(project) > cap:
+            return "\u2026" + project[-(cap - 1) :]
+        return project
+
+    def _answer(self) -> None:
+        """Record the option the reader chose.
+
+        Guarded exactly like `/api/dismiss`, and a no-op in the same way: an
+        unknown id, a non-integer index and an out-of-range one all answer 200
+        with `answered: false`. A 404 for an unknown id would turn this route
+        into an oracle for which asks exist, so the page reads `answered` rather
+        than the status line to decide whether anyone heard.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.ask_enabled:
+            self._reject(503)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.ask_answer_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        ask_id, index = payload.get("id"), payload.get("index")
+        answered = (
+            isinstance(ask_id, str)
+            and isinstance(index, int)
+            # A bool IS an int in Python, so `"index": true` would otherwise
+            # answer option 1 for a body that named no option at all.
+            and not isinstance(index, bool)
+            and application.state.asks.answer(ask_id, index)
+        )
+        if answered:
+            # The card has to leave the board on the next collection, or it goes
+            # on offering a choice that has already been made.
+            application.state.snapshot.clear()
+        self._send(
+            json.dumps({"ok": True, "answered": answered}, separators=(",", ":")).encode(),
+            "application/json",
+        )
 
     def log_message(self, *args: Any) -> None:
         pass  # keep the terminal quiet

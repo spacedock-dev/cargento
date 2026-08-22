@@ -86,6 +86,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-ask",
+        action="store_true",
+        help=(
+            "do not let a session ask the reader a question for this run: the "
+            "register, poll and answer routes refuse and the page offers no "
+            "control. The rollback switch for the one feature that answers a "
+            "waiting agent"
+        ),
+    )
+    parser.add_argument(
         "--no-events",
         action="store_true",
         help=(
@@ -141,6 +151,7 @@ def build_runtime(
         spacedock_enabled=not args.no_spacedock,
         usage_fetch_enabled=not args.no_usage,
         dismissals_enabled=not args.no_dismiss,
+        ask_enabled=not args.no_ask,
     )
     return config, runtime_state.build_runtime_state(config, started=started)
 

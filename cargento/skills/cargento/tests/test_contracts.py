@@ -825,6 +825,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.state",
             "cargento_runtime.web",
         },
+        # Outstanding asks and their one-slot answer mailboxes. Imports no
+        # runtime module, for the reason `stream` does not: that is what lets
+        # `state` own the registry while `http_api` and `aggregate` serve from it
+        # without a cycle. The consequence is that it cannot reach
+        # `records.safe_text`, so the HTTP ingress bounds the text instead.
+        "cargento_runtime.asks": set(),
         "cargento_runtime.collectors": set(),
         # `sessions` arrived with the event envelope: an event timestamp passes
         # through the same plausibility filter as every store timestamp, so a
@@ -1001,14 +1007,20 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # through that attribute rather than through a module global. `events`
         # arrived with that route, which reads the registered-harness set to
         # decide whether `/api/events/<harness>` exists at all.
+        # `asks` and `records` arrived together with the ask lane, and for one
+        # reason: `asks` imports nothing, so it cannot bound the untrusted
+        # question and option text it stores. The register route builds the
+        # `PendingAsk` and is therefore the one place that bounding can happen.
         "cargento_runtime.http_api": {
             "cargento_runtime.aggregate",
+            "cargento_runtime.asks",
             "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.observation",
             "cargento_runtime.quota",
+            "cargento_runtime.records",
             "cargento_runtime.snapshot",
             "cargento_runtime.stream",
         },
@@ -1045,6 +1057,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # module, which is what lets state own a registry without a cycle.
         "cargento_runtime.stream": set(),
         "cargento_runtime.state": {
+            "cargento_runtime.asks",
             "cargento_runtime.config",
             "cargento_runtime.snapshot",
             "cargento_runtime.stream",

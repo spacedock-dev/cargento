@@ -1556,3 +1556,96 @@ class WiringTest(unittest.TestCase):
                 diagnostic_sink=lambda _message: None,
             )
         producer.assert_called_once()
+
+
+class AskPayloadTest(unittest.TestCase):
+    """What a collection publishes for the questions a session asked.
+
+    Collection is the only sweep the ask registry gets, so these also stand as
+    the test that a stale ask is retired by being collected rather than by a
+    timer nobody runs.
+    """
+
+    def _runtime(self, **changes: Any) -> tuple[Any, Any]:
+        from cargento_runtime.state import build_runtime_state  # noqa: PLC0415
+
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        fields: dict[str, Any] = {
+            "state_home": home.name,
+            "state_dir": Path(home.name),
+            "os_name": support.os_name(),
+        }
+        fields.update(changes)
+        config = support.make_config(**fields)
+        return config, build_runtime_state(config, started=NOW)
+
+    def _application(self, config: Any, state: Any, *, clock: float = NOW) -> aggregate.Application:
+        return aggregate.Application(
+            config,
+            state,
+            (),
+            native_notifier=lambda _platform: "",
+            popup_notifier=lambda *_: None,
+            diagnostic_sink=lambda _message: None,
+            clock=lambda: clock,
+        )
+
+    def _ask(self, state: Any, *, created: float, question: str = "Ship it?") -> Any:
+        from cargento_runtime import asks as runtime_asks  # noqa: PLC0415
+
+        ask = runtime_asks.PendingAsk(
+            harness="claude",
+            session_id=SESSION,
+            project="cargento",
+            question=question,
+            options=("yes", "no"),
+            created=created,
+        )
+        self.assertTrue(state.asks.register(ask, limit=8))
+        return ask
+
+    def test_a_pending_ask_reaches_the_payload_with_its_age(self) -> None:
+        config, state = self._runtime()
+        ask = self._ask(state, created=NOW - 42.4)
+        data = self._application(config, state).collect(show_all=True)
+
+        self.assertIs(True, data["ask"])
+        self.assertEqual(
+            [
+                {
+                    "id": ask.id,
+                    "harness": "claude",
+                    "session_id": SESSION,
+                    "project": "cargento",
+                    "question": "Ship it?",
+                    "options": ["yes", "no"],
+                    "age_sec": 42,
+                }
+            ],
+            data["asks"],
+        )
+
+    def test_the_flag_and_the_array_are_both_absent_with_the_feature_off(self) -> None:
+        config, state = self._runtime(ask_enabled=False)
+        self._ask(state, created=NOW)
+        data = self._application(config, state).collect(show_all=True)
+
+        self.assertNotIn("ask", data)
+        self.assertNotIn("asks", data)
+
+    def test_the_flag_rises_with_no_ask_outstanding(self) -> None:
+        config, state = self._runtime()
+        data = self._application(config, state).collect(show_all=True)
+
+        self.assertIs(True, data["ask"])
+        self.assertEqual([], data["asks"])
+
+    def test_collecting_is_what_retires_an_ask_past_the_deadline(self) -> None:
+        config, state = self._runtime(ask_deadline_sec=60.0)
+        stale = self._ask(state, created=NOW - 61.0, question="Stale?")
+        live = self._ask(state, created=NOW - 59.0, question="Live?")
+        data = self._application(config, state).collect(show_all=True)
+
+        self.assertEqual([live.id], [entry["id"] for entry in data["asks"]])
+        self.assertEqual(("expired", None), stale.outcome)

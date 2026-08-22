@@ -559,6 +559,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-events")
     if args.no_dismiss:
         argv.append("--no-dismiss")
+    if args.no_ask:
+        argv.append("--no-ask")
     return argv
 
 
@@ -791,6 +793,12 @@ def serve(
         if application is not None:
             with contextlib.suppress(Exception):
                 application.state.streams.close_all()
+            # And every parked ask poll. `POST /api/shutdown` declines them
+            # too, but it is only one way out: a signal, an exception and a
+            # `--stop` from another process all leave through here, and a poll
+            # nobody declined holds silently until the process exits under it.
+            with contextlib.suppress(Exception):
+                application.state.asks.decline_all()
         remove_state(config, port)
         with contextlib.suppress(OSError):
             server.server_close()

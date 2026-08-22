@@ -5,5 +5,13 @@
   "author": {
     "name": "DataRecce",
     "email": "dev@reccehq.com"
+  },
+  "mcpServers": {
+    "cargento": {
+      "command": "python3",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/skills/cargento/mcp_server.py"
+      ]
+    }
   }
 }

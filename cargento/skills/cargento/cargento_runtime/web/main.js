@@ -112,13 +112,19 @@ function render(d){
       `${idleExpanded ? "Show less" : "Show all " + idle.length + " idle"}</button></div></div></div>`;
   }
 
+  /* Assembled outside both branches below, unlike every other section: an ask
+     can come from a session this board is not showing — one outside the display
+     window, or a harness that has since gone quiet — and the empty-board branch
+     would then hide the one card whose session is waiting on a click. */
+  const asksHtml = askBand(d);
   let body;
   if(!d.sessions.length){
-    body = `<div class="empty">No session activity in the last ${esc(d.window_hours)}h.` +
+    body = asksHtml +
+      `<div class="empty">No session activity in the last ${esc(d.window_hours)}h.` +
       (d.show_all ? "" : ` <a href="?all=1">Show all sessions</a>`) + `</div>`;
   } else {
     body = `<div class="hero">${tiles}</div><div class="subnote">${subnote}</div>` +
-      usageSectionRegular(d) + bandHtml + workingHtml + idleHtml;
+      usageSectionRegular(d) + asksHtml + bandHtml + workingHtml + idleHtml;
   }
 
   renderInProgress = true;
