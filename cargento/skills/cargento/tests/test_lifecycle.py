@@ -318,7 +318,11 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             discovered = json.loads(origin_probe.stdout)
             for origin in [*discovered["origins"].values(), *discovered["assets"].values()]:
                 self.assertTrue(Path(origin).is_relative_to(copied_skill), origin)
-            self.assertEqual(260_430, discovered["page_size"])
+            # The repository's own page, not a pinned figure. This subject is whether the
+            # copy assembles from its own files; the exact byte count is test_page.py's
+            # oracle. A second pin here reds this module on any frontend edit, which
+            # reads as a lifecycle break and sends the reader to the wrong file.
+            self.assertEqual(len(frontend_page.load_page()), discovered["page_size"])
             state_path = cargento_home / f"cargento-{port}.json"
             proc = subprocess.Popen(
                 [sys.executable, str(launcher), "--port", str(port)],
