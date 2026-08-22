@@ -76,7 +76,7 @@ Never edit a version field. The tag-driven Release workflow owns them and `versi
 
 Never mark an issue `Done` before its PR is merged to `main`.
 
-One issue per branch. If a second problem turns up, file it and carry on.
+One issue per branch. If a second problem turns up, file it and carry on. Several issues at once means several worktrees, which is normal here and has its own failure modes: read **Parallel Work** in `AGENTS.md` before starting the second one, and hand its contention list to every builder. An agent that has not been told will report a loopback-port collision as a regression.
 
 Never widen scope to make an issue feel complete. The board's estimates assume the narrow reading.
 

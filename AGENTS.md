@@ -70,7 +70,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | File | Owns |
 |---|---|
 | `README.md` | The front door: what Cargento is, install per harness, skill inventory, links out. |
-| `AGENTS.md` | **This file.** The repository contract for agents, and the canonical pre-PR command list. |
+| `AGENTS.md` | **This file.** The repository contract for agents, the canonical pre-PR command list, and the parallel-worktree hazards measured while burning down the roadmap. |
 | `CLAUDE.md` | Claude-Code-only addenda; imports this file. |
 | `CONTRIBUTING.md` | The human contributor journey, and the dashboard implementation constraints. |
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
@@ -153,6 +153,68 @@ up in model-default voice is how that erodes — and greps them for the tone tel
 CI checks that. The optional third-party `humanizer` skill automates that pass but is not required
 and is not vendored here. `/sync-docs` lives at `.claude/skills/sync-docs/SKILL.md`; harnesses
 without skill discovery should read that file and follow it.
+
+## Parallel Work
+
+Burning down the roadmap means several agents in several git worktrees at once, because the
+`burndown` skill's one-issue-per-branch rule and any useful throughput are otherwise in conflict.
+That is the normal shape of work here, not an exception. Everything below was measured while doing
+it, and each item is a thing that produced a wrong answer rather than a thing that might.
+
+**Assume a sibling is running.** Before trusting a red, a merge base or a scratch file, ask whether
+another worktree is mid-flight. `git worktree list` answers it.
+
+**Concurrent test suites manufacture failures.** Three at once took the suite from 73 s to 590 s and
+produced errors that look like regressions and are not:
+
+- `test_http_api` fails on loopback port binds, because two servers want the same port.
+- `test_page.FrontendAssetContractTest` and `test_lifecycle.InstalledContractCharacterizationTest`
+  hit `subprocess.TimeoutExpired` on `server.py --diagnose`, which is a real subprocess racing for
+  CPU rather than a broken launcher.
+- `test_quota` times out on socket reads.
+
+Run the full suite **once**, and confirm any failure in those modules by running that module alone
+before believing it. Report both results rather than the convenient one. A load average above about
+10 makes this near-certain.
+
+**Frontend byte pins are the conflict you will get.** `tests/test_page.py` holds per-part sizes and
+digests plus the assembled page. Two branches that both change a web asset produce a conflict where
+**each side is correct for a tree that no longer exists**, so a textual resolution ships a number
+wrong for both. Recompute from the assets. If only one side changed the page the existing figures
+may still be right, but prove that by running the oracles rather than reasoning about it.
+
+**Three files are conflict hotspots** because every branch wants a line in them:
+
+- `SKILL.md`'s **Project** bullet. Three branches appending to that one sentence collided. Keep
+  `SKILL.md` edits inside the paragraph your feature belongs to.
+- `COMPATIBILITY.md`'s `docs-synced-through` marker. Every parallel `/sync-docs` pass wants to
+  advance it, all of them would collide, and none can honestly vouch for a sibling's work it never
+  read. Leave it alone per branch and stamp it once from `main` after the merges, naming what the
+  range actually covers.
+- `config.py`, where every feature adds a threshold. Usually additive, occasionally not.
+
+**Merges serialize even when builds do not.** A ruleset requires branches be up to date, so landing
+one PR puts every sibling `BEHIND` and each needs `gh pr update-branch` plus a full CI re-run. Plan
+for one cycle per PR and pick the order deliberately: merge the branch that changes the shared file
+first, so the others resolve against it once instead of twice.
+
+**A stale green will mislead you.** A CI run that finished before a branch update is still reported
+green. Check `mergeStateStatus` is `CLEAN` and that the checks belong to the current head before
+merging. Do not trust `git merge-tree`'s three-argument form to reveal conflicts; it did not, and a
+real conflict followed.
+
+**Clean up worktrees before deleting branches.** `gh pr merge --delete-branch` fails while a
+worktree holds the branch, and `git reset --hard` used to shuffle a commit onto a branch will
+discard uncommitted work in the main checkout. It destroyed a file that way once.
+
+**Agents may share one temp directory.** Two agents in separate worktrees, writing a commit message
+to the same scratch path, overwrote each other between the write and the `git commit -F`. Namespace
+scratch files per branch.
+
+**A session you spawn leaves daemons behind.** Driving a harness to reproduce something starts that
+harness's own hooks, and they outlive the sandbox. Thirteen of them survived a deleted directory
+here and drove the load average to 18, which then caused the contention failures above. Kill what
+you started, and scope the kill to what you started.
 
 ## Quality Gate
 

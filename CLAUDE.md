@@ -10,3 +10,23 @@ The shared repository instructions are imported above. The following notes apply
 - Validate the marketplace and the plugin with `claude plugin validate <path> --strict`.
 - Test a plugin session with `claude --plugin-dir ./cargento`.
 - Repository development skills live in `.claude/skills/`. They are Claude-Code-discovered and are **not** part of the shipped plugin; the portability rules in `AGENTS.md` apply to `cargento/skills/` only. `/sync-docs` is the doc-reconciliation step of the pre-PR gate.
+
+## Running several agents at once
+
+`AGENTS.md`'s **Parallel Work** section owns the hazards. These are the Claude Code mechanics for
+hitting them.
+
+- `isolation: "worktree"` on the `Agent` and `Workflow` tools is how a subagent gets its own
+  checkout. Worktrees land under `.claude/worktrees/`, and `git worktree list` from the repository
+  root is the fastest way to see who else is working.
+- A worktree arrives on a generated `worktree-*` branch. An agent told to use a real branch name will
+  usually rename in place, which leaves the generated branch behind. Delete those after removing the
+  worktree, or `gh pr merge --delete-branch` fails on the branch a worktree still holds.
+- **Subagents share the session scratchpad.** It is one directory for the session, not one per
+  worktree, so two agents writing a commit message to the same path will overwrite each other.
+  Namespace scratch files per branch, or write them inside the worktree.
+- Give every parallel builder the contention list from `AGENTS.md` in its prompt. An agent that has
+  not been told will report a loopback-port failure as a regression, and it reads convincingly.
+- Prefer `Monitor` over polling for CI and for sibling completion, and check the event you act on is
+  not from a run that predates a branch update. A monitor armed before an update will happily report
+  the old run's green.
