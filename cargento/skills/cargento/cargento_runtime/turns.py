@@ -171,6 +171,40 @@ def _latest_turn_context(
     return context
 
 
+# What a scan result carries. The scanner's own bookkeeping stays behind — the
+# id-to-name map for the last tool batch, and Gemini's dedup ledger, which no
+# caller reads and which alone costs 5.9 us a call to copy against 0.55 for all
+# of these together.
+_RESULT_FIELDS = (
+    "pos",
+    "turn_start",
+    "last_start",
+    "prev_ts",
+    "model",
+    "err_run",
+    "err_peak",
+    "err_tool",
+)
+
+
+def _snapshot(st: dict[str, Any]) -> dict[str, Any]:
+    """Detach a result from the accumulator ``state.turn_scan`` keeps.
+
+    Returning ``st`` itself made every result an alias of the next one, so a
+    caller holding the first read the second call's numbers — which showed up
+    as a false test failure during DRC-4024 rather than as a bug. ``durations``
+    is copied rather than shared because it is appended to in place and rebound
+    by the tail trim, so a top-level copy alone still points at the list the
+    next call grows.
+
+    0.55 us a call, against a 32 ms collection pass over the `balanced-five`
+    bench profile whose 48 scanned paths make that 0.08% of the pass.
+    """
+    snapshot = {field: st[field] for field in _RESULT_FIELDS}
+    snapshot["durations"] = list(st["durations"])
+    return snapshot
+
+
 def scan_turns(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -183,7 +217,9 @@ def scan_turns(
     bytes appended since the last call and carries state in ``turn_scan``.
 
     Serialized via the scanner lock — concurrent /api/data requests would
-    otherwise double-advance pos and double-count durations."""
+    otherwise double-advance pos and double-count durations.
+
+    Returns a snapshot, never the accumulator itself; see ``_snapshot``."""
     try:
         size = os.path.getsize(path)
     except OSError:
@@ -220,7 +256,7 @@ def scan_turns(
             }
             state.turn_scan[path] = st
         if size == st["pos"]:
-            return st
+            return _snapshot(st)
         if size - st["pos"] > config.turn_scan_max_bytes:
             # Locate the active turn boundary in the skipped prefix by reading
             # backward in chunks, then process the bounded tail forward.
@@ -232,7 +268,7 @@ def scan_turns(
             data = f.read()
         end = data.rfind(b"\n")
         if end < 0:
-            return st  # incomplete line, wait for more bytes
+            return _snapshot(st)  # incomplete line, wait for more bytes
         st["pos"] += end + 1
         for raw in data[:end].split(b"\n"):
             if not raw.startswith(b"{"):
@@ -254,7 +290,7 @@ def scan_turns(
                     st["gemini_seen"][fingerprint] = None
                 _apply_turn_record(config, st, record, harness)
         st["durations"] = st["durations"][-50:]
-        return st
+        return _snapshot(st)
 
 
 def turns_from_events(events: list[tuple[float, bool]]) -> dict[str, Any]:

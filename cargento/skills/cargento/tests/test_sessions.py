@@ -219,8 +219,6 @@ class CargentoServerTest(RuntimeTestCase):
             config, state = make_runtime()
             first = runtime_turns.scan_turns(config, state, str(path), "claude")
             assert first is not None
-            # Read now, not after the second call: the scanner hands back its
-            # live state, so the two calls return one dict.
             after_first = first["err_peak"]
             with path.open("a") as output:
                 for record in self._loop_transcript(1, minute=1)[1:]:
@@ -229,6 +227,33 @@ class CargentoServerTest(RuntimeTestCase):
         assert second is not None
         self.assertEqual(4, after_first)
         self.assertEqual(5, second["err_peak"])
+
+    def test_a_scan_result_is_a_snapshot_not_the_live_accumulator(self) -> None:
+        # The accumulator lives in `state.turn_scan` for the life of the file, so
+        # handing it back by reference makes every result an alias of the next
+        # one. A top-level copy is not enough either: `durations` is appended to
+        # in place, and the tail trim at the end of a scan rebinds it, so a
+        # shallow copy points at the list the NEXT call appends to.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "aliased.jsonl"
+            written = self._loop_transcript(2) + self._loop_transcript(2, minute=1)
+            path.write_text("\n".join(json.dumps(record) for record in written) + "\n")
+            config, state = make_runtime()
+            first = runtime_turns.scan_turns(config, state, str(path), "claude")
+            assert first is not None
+            durations, peak = list(first["durations"]), first["err_peak"]
+            with path.open("a") as output:
+                for record in self._loop_transcript(3, minute=2):
+                    output.write(json.dumps(record) + "\n")
+            second = runtime_turns.scan_turns(config, state, str(path), "claude")
+            assert second is not None
+            self.assertIsNot(first, second)
+            self.assertIsNot(state.turn_scan[str(path)], second)
+        # The two calls disagree, which is what makes the assertions above bite.
+        self.assertNotEqual(durations, second["durations"])
+        self.assertNotEqual(peak, second["err_peak"])
+        self.assertEqual(durations, first["durations"])
+        self.assertEqual(peak, first["err_peak"])
 
     def test_a_failure_is_attributed_to_the_tool_that_failed(self) -> None:
         # The name is only on the `tool_use` block, so the id is the whole join.
