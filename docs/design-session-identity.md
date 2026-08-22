@@ -199,9 +199,10 @@ gpt-5.6-sol`. Four things about that are decisions rather than details.
 
 **Both fields sit on every row, at `None`.** Declaring them per harness would make the payload's
 shape depend on which collector filled a row, and every consumer would then test for presence
-rather than for a value. Only Pi populates them today, because Pi is the only harness where the
-answer is not already the harness name. The remaining half of DRC-4050 (the model for the other
-nine) is a per-collector parse: Claude's path, for one, does not read a model anywhere today.
+rather than for a value. `provider` is Pi's alone, because Pi is the only harness where the answer
+is not already the harness name. `model` is not: which collectors read one, and what a row says
+when none of them can, is owned by [Q-11 in
+design-usage-quota.md](design-usage-quota.md#q-11-every-row-names-the-model-it-runs-on-and-a-row-that-cannot-read-one-says-so).
 
 **The payload carries the vendor's own id, unmapped.** `openai-codex`, not `codex`. Naming is
 presentation, and the page already owns the harness table, so `PROVIDER_HARNESS` lives beside it in
