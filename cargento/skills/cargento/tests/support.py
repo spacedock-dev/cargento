@@ -7,6 +7,7 @@ Redirecting a store is ``mock.patch.dict(STORE_OVERRIDES, {...})``.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import dataclasses
 import importlib
@@ -26,7 +27,7 @@ from unittest import mock
 
 from cargento_runtime import aggregate, cli, diagnostics, http_api, notifications
 from cargento_runtime.collectors import claude as claude_collector
-from cargento_runtime.config import RuntimeConfig, build_runtime_config
+from cargento_runtime.config import CARGENTO_HOME_ENV, RuntimeConfig, build_runtime_config
 from cargento_runtime.state import RuntimeState, build_runtime_state
 
 from .fixtures import STORE_CONSTANTS
@@ -46,6 +47,26 @@ assert HOOK_SPEC.loader is not None
 dashboard_hook = importlib.util.module_from_spec(HOOK_SPEC)
 sys.modules[HOOK_SPEC.name] = dashboard_hook
 HOOK_SPEC.loader.exec_module(dashboard_hook)
+
+# The state home every test gets unless it patches CARGENTO_HOME for itself.
+# Unset, config.py falls back to the developer's real ~/.cargento, and since
+# DRC-4039 that means every collection reads their real dismissal store — the
+# suite's verdict then depends on what they happen to have dismissed. Seeded into
+# the process environment rather than injected inside runtime() so config.py
+# still sees the honest variable in both directions: an explicit patch overwrites
+# it, and an environ built with the key removed still has it removed, which is
+# how the unset-fallback case stays testable. Assigned rather than defaulted: an
+# exported CARGENTO_HOME is the same leak as no CARGENTO_HOME, and letting one
+# through would make the suite's result depend on the developer's shell.
+#
+# One directory per process, not per test: runtime() is also called from classes
+# with no shared setUp of their own, so a per-test directory could not reach them
+# all. Nothing the suite writes here is read back by a later test — every test
+# that exercises the dismissal store points state_home at its own directory.
+_STATE_HOME = tempfile.TemporaryDirectory(prefix="cargento-test-home-")
+STATE_HOME = _STATE_HOME.name
+atexit.register(_STATE_HOME.cleanup)
+os.environ[CARGENTO_HOME_ENV] = STATE_HOME
 
 # Store key -> path. Patch with mock.patch.dict; runtime() folds it into config.
 STORE_OVERRIDES: dict[str, Any] = {}  # str, or a tuple/list of candidates
