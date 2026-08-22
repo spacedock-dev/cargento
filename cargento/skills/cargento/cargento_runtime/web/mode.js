@@ -4,7 +4,6 @@
    /api/data, so the two modes cannot disagree about what a session is
    doing. The switch is remembered in localStorage and bound to `c`. */
 const DISPLAY_MODE_KEY = "cargento.displayMode";
-const CALM_STALE_SEC = 7200;   // an idle session quiet this long is flagged "stale"
 
 let displayMode = "regular";
 try{

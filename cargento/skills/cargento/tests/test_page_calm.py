@@ -417,6 +417,18 @@ console.log(JSON.stringify(out));
         self.assertEqual(1, APP_JS.count('class="fin-mark"'))
         self.assertEqual(1, APP_JS.count("cannot be known here"))
 
+    def test_the_retired_stale_threshold_stays_retired(self) -> None:
+        # The threshold above is the one measure of how long an idle session has
+        # been quiet, and it was measured: 1,200s off 10,119 real returns to a
+        # stopped turn (p50 106s, p90 966s). A second constant of that same shape
+        # sat one file away at 7,200s, orphaned when DRC-4162 retired the `stale`
+        # chip and moved its count-and-oldest-age onto the idle block's toggle.
+        # Only 2.5% of returns land past it, so it would have stayed silent
+        # through the whole window in which collecting finished work is worth
+        # anything — a plausible wrong answer beside the right one. calm.js keeps
+        # the comment saying why the chip went; the constant recorded nothing.
+        self.assertNotIn("const CALM_STALE_SEC", APP_JS)
+
     def test_the_long_turn_wording_has_exactly_one_source(self) -> None:
         # The ⚠️ tooltip and the calm flag explanation are the same sentence;
         # two copies is how they drift apart.
