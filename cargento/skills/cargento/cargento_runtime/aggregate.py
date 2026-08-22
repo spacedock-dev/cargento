@@ -398,6 +398,9 @@ class Application:
             # when the store is live, so `--no-dismiss` leaves the page with no
             # control to offer rather than one that answers 503.
             collection["dismiss"] = True
+        # Folded in rather than branched on here: `collect` sits on ruff's
+        # complexity and statement caps, and an inline `if` puts it over both.
+        collection.update(self._ask_cards(now))
         if usage_supported:
             # Present even when empty: the page distinguishes "no quota data
             # yet" (key with no entries) from "nothing here publishes quota"
@@ -410,6 +413,36 @@ class Application:
             # a disk-read provider or with the fetch disabled.
             collection["usage_fetch"] = True
         return collection
+
+    def _ask_cards(self, now: float) -> dict[str, Any]:
+        """The ask capability flag and its cards, or nothing at all.
+
+        Keyed the way `dismiss` is, and for the same reason: absent means the
+        page draws no control, so `--no-ask` leaves a reader with nothing to
+        click rather than a button whose click answers 503.
+
+        `pending` performs the expiry sweep, which makes a collection the thing
+        that retires a stale ask. Nothing else runs on a cadence, and a timer
+        thread for it would be a second clock to reason about.
+        """
+        config, state = self.config, self.state
+        if not config.ask_enabled:
+            return {}
+        return {
+            "ask": True,
+            "asks": [
+                {
+                    "id": ask.id,
+                    "harness": ask.harness,
+                    "session_id": ask.session_id,
+                    "project": ask.project,
+                    "question": ask.question,
+                    "options": list(ask.options),
+                    "age_sec": round(now - ask.created),
+                }
+                for ask in state.asks.pending(now=now, deadline=config.ask_deadline_sec)
+            ],
+        }
 
     def _mark_unreachable_by_events(self, out_sessions: list[Session]) -> None:
         """Disclose the rows no event can ever reach, before any overlay lands.

@@ -140,6 +140,7 @@ mypy_path = ["cargento/skills/cargento", "scripts"]
 explicit_package_bases = true
 files = [
   "cargento/skills/cargento/cargento_runtime",
+  "cargento/skills/cargento/mcp_server.py",
   "cargento/skills/cargento/notify_hook.py",
   "cargento/skills/cargento/server.py",
   "cargento/skills/cargento/tests",

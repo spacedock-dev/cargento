@@ -51,6 +51,7 @@ Everything else lives in one file per responsibility:
 | `state.py` | Mutable caches, locks, bounded-cache helpers, the server start stamp, and the runtime's published snapshot. |
 | `snapshot.py` | The published response bytes per variant, and the restart-qualified revision that versions them. Imports no runtime module, which is what lets `state`, `aggregate` and `http_api` all depend on it without a cycle. |
 | `stream.py` | Connected SSE clients and their one-slot revision mailboxes, with the connection budget. Imports no runtime module, for the same reason `snapshot.py` does not. `state` owns the registry because a connected stream belongs to the runtime, not to whichever object serves a request. |
+| `asks.py` | Every outstanding `ask_operator` question and its one-slot answer mailbox, with the pending budget, the expiry sweep and the shutdown decline. Imports no runtime module, for the reason `stream.py` does not: `state` owns the registry because an outstanding question belongs to the runtime rather than to whichever request serves it, and a leaf is the only shape that lets `state`, `aggregate` and `http_api` all reach it without a cycle. It therefore cannot call `records.safe_text`, so every text bound is applied at the `http_api` ingress and it stores what it is handed. See [design-ask-lane.md](design-ask-lane.md). |
 | `io.py` | Bounded file reads, safe globbing, read-only SQLite, the diagnostic sink. |
 | `probe.py` | The coarse store probe: a bounded stat sweep answering whether anything on disk moved. Stat only, no globbing or reads, and a hint rather than authority. |
 | `observation.py` | The event coordinator, and the only runtime module that starts a thread. Owns the bounded overlay ledger and pending map, the per-session completion marks it holds outside that ledger (N-9 in [design-needs-input.md](design-needs-input.md)), the dirty generations, one collection lane, the collection floor, the coalescing window, probe-gated periodic ticks, the reconciliation interval and deterministic shutdown. Constructed inert so a coordinator built before the daemon fork is never inherited half-running; `lifecycle.serve` starts it after the last fork. |
@@ -87,6 +88,7 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 | `web/mode.js` | Display-mode state, its switch, and the calm ledger's mutable state (sort, filters, open row, cursor, scroll). |
 | `web/usage.js` | The usage band, the configure popover, and the quota disclosure modal. |
 | `web/controls.js` | The stop control, the stopped panel, and the mode bar. |
+| `web/ask.js` | The asks band: one card per outstanding `ask_operator` question, and the answer POST behind its option buttons. A band of its own rather than a synthetic row in `d.sessions`, for the reason [design-ask-lane.md](design-ask-lane.md) records. |
 | `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. The click and keydown listeners are the page's, not calm's: both modes route their controls through them. |
 | `web/notify.js` | Desktop notifications. |
 | `web/main.js` | `render()` and `refresh()`. |

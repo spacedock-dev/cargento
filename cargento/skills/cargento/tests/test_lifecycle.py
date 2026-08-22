@@ -245,6 +245,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_usage=False,
             no_events=False,
             no_dismiss=False,
+            no_ask=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -384,6 +385,7 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             no_usage=False,
             no_events=False,
             no_dismiss=False,
+            no_ask=False,
             daemon=True,
         )
         with (
@@ -1169,6 +1171,7 @@ class CargentoServerTest(PageJsHarness):
             no_usage=False,
             no_events=False,
             no_dismiss=False,
+            no_ask=False,
             daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
@@ -1197,6 +1200,7 @@ class CargentoServerTest(PageJsHarness):
                 no_usage=False,
                 no_events=False,
                 no_dismiss=False,
+                no_ask=False,
                 daemon=True,
             ),
         )
@@ -1223,6 +1227,7 @@ class CargentoServerTest(PageJsHarness):
                 no_usage=True,
                 no_events=True,
                 no_dismiss=True,
+                no_ask=False,
                 daemon=True,
             ),
         )
@@ -1237,6 +1242,7 @@ class CargentoServerTest(PageJsHarness):
             no_usage=False,
             no_events=False,
             no_dismiss=False,
+            no_ask=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1440,6 +1446,7 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_usage": False,
             "no_events": False,
             "no_dismiss": False,
+            "no_ask": False,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -1453,6 +1460,16 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_usage=False))
         self.assertNotIn("--no-usage", argv)
+
+    def test_no_ask_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_ask=True))
+        self.assertIn("--no-ask", argv)
+
+    def test_no_ask_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_ask=False))
+        self.assertNotIn("--no-ask", argv)
 
     def test_daemon_is_never_forwarded(self) -> None:
         """Forwarding --daemon would respawn forever."""

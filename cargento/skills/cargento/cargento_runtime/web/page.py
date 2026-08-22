@@ -12,6 +12,7 @@ APP_PARTS: tuple[str, ...] = (
     "mode.js",  # display-mode state, its switch, and the calm ledger's mutable state
     "usage.js",  # the usage band, configure, and the disclosure modal
     "controls.js",  # the stop control, stopped panel, and mode bar
+    "ask.js",  # the asks band: a session's question and its answer POST
     "calm.js",  # the calm ledger: tables, actions, listeners, renderers
     "notify.js",  # desktop notifications
     "main.js",  # render() and refresh()

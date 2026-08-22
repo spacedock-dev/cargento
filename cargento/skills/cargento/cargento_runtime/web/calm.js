@@ -442,6 +442,7 @@ async function loadCleared(){
 function calmAction(act, arg){
   if(act === "mode"){ setDisplayMode(arg); return; }
   if(usageAction(act, arg)) return;
+  if(askAction(act, arg)) return;
   if(act === "stop"){
     if(!stopArmed){
       stopArmed = true; stopError = ""; stopFocusPending = true;
@@ -891,6 +892,11 @@ function calmLedger(d){
       : "") +
     `<span class="cm-sp"></span><span class="cm-note">${esc(note)}</span></div>` +
     usageBandCalm(d) +
+    /* Above the ledger, not inside it: an ask is not a session row, and the one
+       thing calm must not do is leave a reader unable to release a session that
+       is holding its call open. Full parity with the ledger's ordering and its
+       keyboard is a follow-up; being answerable is not. */
+    askBand(d) +
     `<div class="cm-body" id="cm-body">` +
     `<div class="cm-head"><span></span><span></span><span>session</span><span>where</span>` +
     `<span>doing</span><span>flag</span><span class="r">rate</span>` +
