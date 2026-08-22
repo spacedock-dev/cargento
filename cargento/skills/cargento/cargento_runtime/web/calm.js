@@ -6,7 +6,16 @@
 
    Colour only. The rank each tone used to carry lives in attentionKey's ladder,
    which both views read: a table that defined the sort position beside the
-   colour let a flag be added here and ranked nowhere. */
+   colour let a flag be added here and ranked nowhere.
+
+   Its three readers all index it with a key this file chose — calmRow's own
+   `tone`, or a legend entry's — never with a payload string, which is why they
+   skip own(). A flagless row carries "quiet", which has no entry here: every
+   dereference sits inside an `if(r.flag)` branch, so a third tone has to arrive
+   with the chip that renders it. There was a `|| CALM_TONE.quiet` fallback
+   standing where that precondition is; it named a key the table has never
+   declared, so it resolved to undefined and read as a safety net that was not
+   one. */
 const CALM_TONE = {
   attn: {ink:"var(--alert)",
          bg:"color-mix(in oklab,var(--alert) 13%,transparent)",
@@ -621,7 +630,7 @@ function calmHarnessCell(r){
    than precomputed into the row, because the clause is markup and building it
    twice is how the two views came to word `fastest` differently twice over. */
 function calmExpansion(r, d){
-  const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
+  const tone = CALM_TONE[r.tone];
   const why = r.flag
     ? `<div class="cm-why"><span class="cm-why-g" style="color:${tone.ink}">◆</span>` +
       `<span class="cm-why-t"><b style="color:${tone.ink}">${esc(r.flag)}</b>` +
@@ -700,7 +709,7 @@ function calmExpansion(r, d){
 function calmRowHTML(r, focusSid, d){
   const open = calmOpenKey === r.key;
   const focus = r.key === focusSid;
-  const tone = CALM_TONE[r.tone] || CALM_TONE.quiet;
+  const tone = CALM_TONE[r.tone];
   const pct = (r.turn && r.turn.pct != null) ? r.turn.pct : null;
   /* The progress bar lives under the rate, not in a column of its own. As a
      separate track it was 46px wide and empty on every row that was not both

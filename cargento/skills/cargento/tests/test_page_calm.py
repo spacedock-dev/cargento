@@ -1091,6 +1091,89 @@ console.log(JSON.stringify({
         self.assertEqual(1, out["rows"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_flagless_row_asks_the_tone_table_for_nothing(self) -> None:
+        # CALM_TONE declares the two flag tones and nothing else, so the "quiet"
+        # tone calmRow hands an unflagged row has no entry to find. What keeps
+        # that safe is the `if(r.flag)` guard around every dereference, not a
+        # fallback — so the guard is what gets pinned, on both surfaces the tone
+        # reaches: the chip in the ledger row and the `why` sentence in the panel.
+        checks = """
+const out = {};
+render(board());
+const h = () => __els.app.innerHTML;
+out.chips = (h().match(/class="cm-flag"/g) || []).length;
+// The flagged rows really do ink their chip, so the unflagged row drawing none
+// below is that row's own state and not a table that quietly stopped resolving.
+out.attnChip = h().includes("color:var(--alert);border-color:");
+out.warnChip = h().includes("color:var(--warnink);border-color:");
+calmAction("open", K("claude", "ccc3"));
+const panel = () => h().slice(h().indexOf('class="cm-exp"'));
+out.quietPanel = [panel().includes("cm-why"), h().includes("undefined")];
+calmAction("open", K("claude", "aaa1"));
+out.attnWhy = panel().includes('class="cm-why-g" style="color:var(--alert)"');
+calmAction("open", K("codex", "bbb2"));
+out.warnWhy = panel().includes('class="cm-why-g" style="color:var(--warnink)"');
+out.clean = !h().includes("undefined");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        self.assertEqual(2, out["chips"], "the board's two flagged rows should carry one chip each")
+        self.assertTrue(out["attnChip"], "the blocked row's chip lost its tone")
+        self.assertTrue(out["warnChip"], "the long-turn row's chip lost its tone")
+        self.assertEqual(
+            [False, False],
+            out["quietPanel"],
+            "an unflagged row reached for a tone the table does not declare",
+        )
+        self.assertTrue(out["attnWhy"], "the blocked row's sentence lost its tone")
+        self.assertTrue(out["warnWhy"], "the long-turn row's sentence lost its tone")
+        self.assertTrue(out["clean"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_a_payload_key_named_for_a_prototype_member_lands_on_the_fallback(self) -> None:
+        # `harness` and a task's `status` are payload strings used as table keys,
+        # and every plain object inherits a truthy `constructor` and a truthy
+        # `__proto__` — enough to sail past an `||` fallback and render an object
+        # as a glyph and as a colour. own() is what stops it. The two keys resolve
+        # to different things (a function, and Object.prototype), so a guard that
+        # special-cases one name catches only half of this.
+        checks = """
+const out = {};
+const rowFor = name => mk({harness: name, sid: "p1", session: "p1",
+  title: "Prototype " + name, last_activity: 99000,
+  tasks: [{status: name, subject: "one task", activeForm: null}]});
+const shot = name => {
+  render(payload([rowFor(name)]));
+  calmAction("open", K(name, "p1"));
+  const h = __els.app.innerHTML;
+  return {
+    rows: (h.match(/class="cm-row/g) || []).length,
+    code: (h.match(/class="cm-icot">([^<]*)</) || [])[1],
+    title: (h.match(/class="cm-hcell" title="([^"]*)"/) || [])[1],
+    task: (h.match(/class="cm-task-g" style="color:([^"]*)">([^<]*)</) || []).slice(1, 3),
+    clean: !h.includes("undefined")
+  };
+};
+out.ctor = shot("constructor");
+out.proto = shot("__proto__");
+console.log(JSON.stringify(out));
+"""
+        out = self.run_calm(checks)
+        for key, code in (("ctor", "CO"), ("proto", "__")):
+            with self.subTest(key=key):
+                got = out[key]
+                self.assertEqual(1, got["rows"])
+                # The unknown-harness fallback: the first two letters of whatever
+                # the payload called it, not a member of Object.prototype.
+                self.assertEqual(code, got["code"])
+                self.assertEqual(
+                    ["var(--ink3)", "·"],
+                    got["task"],
+                    "an unknown task status did not fall back to `pending`",
+                )
+                self.assertTrue(got["clean"], "a prototype member reached the DOM")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_keyboard_drives_the_ledger(self) -> None:
         checks = """
 const out = {};
