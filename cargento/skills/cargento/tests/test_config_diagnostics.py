@@ -28,6 +28,7 @@ from cargento_runtime.state import bounded_put, build_runtime_state
 from .support import (
     REGISTRY,
     SERVER_PATH,
+    STATE_HOME,
     STORE_OVERRIDES,
     RuntimeTestCase,
     cfg,
@@ -62,6 +63,16 @@ class CargentoServerTest(RuntimeTestCase):
         # Both fields name the same location; only the spelling may differ.
         self.assertEqual(Path(override), Path(config.state_home))
         self.assertEqual(Path(override), config.state_dir)
+
+    def test_the_shared_fixture_never_resolves_the_real_user_home(self) -> None:
+        # Since DRC-4039 every collection reads the dismissal store under
+        # state_home, so a fixture that falls through to the real ~/.cargento
+        # makes the suite's verdict depend on what the developer happens to have
+        # dismissed. The default is a temporary directory; this is the assertion
+        # that notices if it ever stops being one.
+        self.assertEqual(STATE_HOME, cfg().state_home)
+        self.assertEqual(STATE_HOME, str(cfg().state_dir))
+        self.assertNotEqual(os.path.join(os.path.expanduser("~"), ".cargento"), cfg().state_home)
 
     def test_cargento_home_honours_the_override_and_defaults_under_home(self) -> None:
         with mock.patch.dict(os.environ, {"CARGENTO_HOME": "/tmp/elsewhere"}):
