@@ -64,9 +64,9 @@ Everything else lives in one file per responsibility:
 | `spacedock.py` | Spacedock workflow and entity cartography. |
 | `quota.py` | Quota acquisition: the per-vendor credential reads and outbound requests, the receipts a harness pushes in, and the shared cache with its per-vendor floor. The whole outbound network surface (see [design-usage-quota.md](design-usage-quota.md)). |
 | `dismissals.py` | The sessions the reader marked handled: the store's path, its bounded read and write, and the rule that decides when a mark lapses. The only module that writes user-authored state, and a leaf beside `records` for that reason: `aggregate` subtracts through it before `summary` is counted, `notifications` gates a popup on it, and `http_api` mutates it, and none of those three could depend on it if it depended on any of them. See [design-dismissals.md](design-dismissals.md). |
-| `notifications.py` | Hook state, popup policy, the native notifier, hook payload handling. |
+| `notifications.py` | Hook state, popup policy for both lanes (needs-input and ask), the native notifier, hook payload handling. |
 | `collectors/*.py` | One harness each: a discovery predicate and a collector. Two of them, Cursor and Antigravity, reach a value through a bounded read inside a stored blob rather than off a column, and both bound the read in SQLite (`substr`) so the whole blob is never materialized. |
-| `aggregate.py` | `HarnessSpec`, the registry, the per-harness failure boundary, `Application`. |
+| `aggregate.py` | `HarnessSpec`, the registry and its label lookup, the per-harness failure boundary, `Application`. |
 | `diagnostics.py` | Store-path reporting for `--diagnose`. |
 | `http_api.py` | The loopback server, its request handler, and network helpers. |
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. |

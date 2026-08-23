@@ -267,7 +267,11 @@ new content into that agent's context.
 What is bounded. The question text and the option list are bounded when they arrive, and rendered as
 text and never as markup. The number of questions outstanding at once is capped, and the honest
 answer past the cap is a refusal the server turns into a decline rather than an error. A question
-that is never answered expires and declines.
+that is never answered expires and declines. The question is also delivered as a notification: on macOS by the server,
+through the same truncation and AppleScript escaping the needs-input popup uses, and elsewhere by the page, which
+passes the text to the browser's own notification API and applies neither (it is not building a
+shell command, and the text is already bounded at the ingress); the notification is a pointer rather than a decision surface, and an option can
+only ever be chosen back in the page.
 
 Failure is always a decline, never a hang. If the dashboard is not running, if no reader answers, if
 the deadline passes, or if the process is stopped while a question is outstanding, the tool returns a
@@ -346,7 +350,13 @@ a forged attribution cannot alter a row, a state, a count or a dismissal
 records why the band is separate); and answering the card still
 only selects among options its own registrant wrote, so the forger gains nothing from being answered.
 What a forgery does buy is plausibility, at the one place in the dashboard where a reader makes a
-decision, which is why it is named here rather than left implicit in the loopback paragraph above.
+decision, which is why it is named here rather than left implicit in the loopback paragraph above. That
+plausibility now reaches a reader with no tab open, because the question also raises a notification. The
+title renders the display label of the harness key the registration claimed, and neither the key nor the
+claim is verified. A registration that inherits or forges the harness environment variable titles the
+banner with that harness. What the registry lookup does buy is that the title is a name the registry
+carries or nothing at all, so a 120-character agent-authored string cannot reach it, and an
+unattributable question is announced as "An agent" rather than under a borrowed name.
 Verifying it would need a per-session secret that the sessions do not have and that the loopback
 boundary could not keep.
 

@@ -778,6 +778,27 @@ class HarnessRegistryTest(RuntimeTestCase):
         # naming the wrong harness, and the body assertion above cannot see that.
         self.assertEqual("Claude is waiting on you", fired[0][0])
 
+    def test_a_harness_label_resolves_only_through_the_registry(self) -> None:
+        # The popup title for an ask goes through this, and an ask's `harness` is
+        # agent-authored text bounded only at `ask_option_cap_chars` — the
+        # shipped stdio server sends the literal "unknown" for every client but
+        # Claude Code. So "" and never the key echoed back: the page's session-row
+        # fallback IS the key, which is right there (a row's harness comes from a
+        # collector and is a registry key by construction) and would title the
+        # common case here "unknown is asking you".
+        application = aggregate.Application(
+            *make_runtime(),
+            aggregate.default_harnesses(lambda _title, _message: None),
+            native_notifier=lambda _platform: "",
+            popup_notifier=lambda _title, _message: None,
+            diagnostic_sink=lambda _line: None,
+        )
+        self.assertEqual("Claude", application.harness_label("claude"))
+        self.assertEqual("Antigravity", application.harness_label("antigravity"))
+        for key in ("unknown", "", "claude ", "x" * 120):
+            with self.subTest(key=key):
+                self.assertEqual("", application.harness_label(key))
+
     def test_the_registry_keys_and_labels_match_the_runtime_default(self) -> None:
         # default_harnesses binds Claude's notifier; nothing downstream may
         # otherwise rewrite the registry the runtime declares.

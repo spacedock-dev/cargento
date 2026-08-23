@@ -815,6 +815,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         nothing to do; a caller here is about to wait for an answer, and has to
         learn now that none is coming rather than after the deadline.
 
+        This route also owns the server half of the ask notification, below the
+        reply. The browser half is gated by `native_notify` in the payload, which
+        is the same reading this makes — exactly one layer alerts for one
+        question.
+
         This is the only place the question and the options are bounded. `asks`
         imports nothing, so it cannot reach `records.safe_text`, and every field
         read below was written by an agent.
@@ -898,6 +903,31 @@ class _RequestHandler(BaseHTTPRequestHandler):
             json.dumps({"ok": True, "id": ask.id}, separators=(",", ":")).encode(),
             "application/json",
         )
+        # Gated on the same expression `/api/data` publishes as `native_notify`,
+        # and not on `notify_mac`'s own platform guard: the page decides whether
+        # to raise its own notification by reading that field, so a second,
+        # independent reading is a second place the one-layer rule can drift —
+        # and it does drift for an injected notifier.
+        #
+        # After `_send` and not before, unlike `/api/notify`. osascript runs on
+        # this handler thread with a 5s timeout, against the stdio client's 3s
+        # register POST: a lost reply is not a retry there, it walks to the next
+        # candidate port and registers the question on a second dashboard while
+        # this one keeps a card nobody can withdraw, because its id was in the
+        # reply that never arrived. `_send` writes through an unbuffered wfile, so
+        # the bytes are on the socket by the time this runs.
+        if application.native_notifier(config.platform_name):
+            notifications.maybe_ask_popup(
+                config,
+                application.state,
+                notifications.AskSubject(
+                    label=application.harness_label(ask.harness),
+                    question=ask.question,
+                    project=ask.project,
+                ),
+                now=ask.created,
+                popup_notifier=application.popup_notifier,
+            )
 
     def _ask_project(self, value: object) -> str:
         """The asking session's directory, bounded but still identifiable.
