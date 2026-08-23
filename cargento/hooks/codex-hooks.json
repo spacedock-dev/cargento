@@ -22,6 +22,17 @@
         ]
       }
     ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/skills/cargento/event_hook.py\" codex"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "",

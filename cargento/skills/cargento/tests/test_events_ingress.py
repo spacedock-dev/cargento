@@ -643,18 +643,55 @@ class CodexAdapterTest(unittest.TestCase):
         # double every tool call for no gain.
         self.assertIsNone(self.envelope("PreToolUse"))
 
-    def test_the_permission_hook_stays_unmapped_because_exec_cannot_fire_it(self) -> None:
-        """Measured, and the reason changed without the outcome changing.
+    def test_the_permission_hook_reports_a_gate_because_it_was_finally_measured(self) -> None:
+        """The negative this test used to pin was the mode's, not the event's.
 
-        The event is real and the name registers: a hooks file listing it beside the
-        five mapped names left all five firing normally, twice. But `codex exec`
-        pins `approval_policy` to `never`, so no approval is ever requested and the
-        hook has nothing to be asked about. Its payload is unmeasured, and
-        `input_requested` is the overlay with no dedicated clearing event, so a
-        guessed mapping is the most expensive kind to get wrong.
+        `codex exec` pins `approval_policy` to `never`, so under `exec` nothing ever
+        asks and the hook has nothing to be asked about. Driven interactively on
+        0.149.0 it fires with a real gate standing open, and its payload carries the
+        session id this envelope needs
+        (`docs/captures/codex/permission-hook-interactive-0.149.0-macos.jsonl`).
+
+        Mapping it reports; it does not decide. `main()` writes nothing to stdout on
+        any of its five exit paths, and emitting nothing is Codex's documented way to
+        decline, so this adapter cannot answer a gate even by accident. That is the
+        mirror image of Antigravity, where an empty object denies.
         """
-        self.assertIsNone(self.envelope("PermissionRequest"))
-        self.assertNotIn("PermissionRequest", event_hook.CODEX_EVENTS)
+        built = self.envelope("PermissionRequest")
+        self.assertIsNotNone(built)
+        assert built is not None
+        self.assertEqual("input_requested", built["event"])
+        self.assertEqual("input_requested", event_hook.CODEX_EVENTS["PermissionRequest"])
+
+    def test_no_codex_hook_path_writes_anything_a_gate_could_read(self) -> None:
+        """The safety property behind the mapping above, asserted rather than read.
+
+        Codex blocks the tool call on this hook and applies whatever comes back, and
+        it validates the shape: a malformed output is refused by name and fails
+        closed. So the one thing this script must never do is print. Every exit in
+        `main()` returns 0 with an empty stdout, and this pins that for the paths a
+        real install actually takes -- no dashboard, unparseable stdin, an unmapped
+        name -- rather than trusting the docstring above it.
+        """
+        gate = json.dumps(
+            {"hook_event_name": "PermissionRequest", "session_id": CODEX_SESSION, "cwd": "/w"}
+        )
+        with tempfile.TemporaryDirectory() as empty_home:
+            for label, stdin in (
+                ("a real gate, no dashboard", gate),
+                ("unparseable stdin", "not json"),
+                ("empty stdin", ""),
+                ("an unmapped name", json.dumps({"hook_event_name": "Nope"})),
+            ):
+                with self.subTest(label):
+                    out = io.StringIO()
+                    with (
+                        unittest.mock.patch.dict(os.environ, {"CARGENTO_HOME": empty_home}),
+                        unittest.mock.patch.object(sys, "stdin", io.StringIO(stdin)),
+                        unittest.mock.patch.object(sys, "stdout", out),
+                    ):
+                        self.assertEqual(0, event_hook.main(["event_hook.py", "codex"]))
+                    self.assertEqual("", out.getvalue())
 
     def test_the_subagent_pair_maps_because_it_was_measured(self) -> None:
         # Measured for DRC-4093 from a `codex exec` turn that really did spawn one.

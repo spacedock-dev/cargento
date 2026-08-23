@@ -107,32 +107,42 @@ CLAUDE_EVENTS = {
 # `agent_id` to `subagent_id` rename is all that was needed. One subagent produced
 # exactly one start and one stop.
 #
-# `PermissionRequest` remains absent, and the reason has changed from "unmeasured"
-# to "measured, and deliberately declined". It fires and it decides: on 0.149.0,
-# interactively, its payload was captured, `behavior: allow` skipped the approval
-# prompt entirely, `behavior: deny` refused the call, and Codex held the hook
-# open at 25 seconds on allow and at 70 seconds on deny rather than timing out
-# (`docs/captures/codex/permission-hook-interactive-0.149.0-macos.jsonl`).
+# `PermissionRequest` is mapped, and it took three readings to get there. It was
+# "unmeasured", then "measured, and deliberately declined", and both of those
+# conflated two questions this entry finally separates: whether to REPORT a gate,
+# and whether to ANSWER one.
 #
-# What was measured before, and is still true, is narrower than it reads: `codex
-# exec` pins `approval_policy` to `never`, so under `exec` nothing ever asks. That
-# is a property of the mode, not of the event. Note also that
-# `approval_policy = "untrusted"`, which that earlier run passed, is a hard error
-# on 0.149.0.
+# Measured on 0.149.0, driven interactively
+# (`docs/captures/codex/permission-hook-interactive-0.149.0-macos.jsonl`): it
+# fires with a real approval prompt standing open, its payload carries
+# `session_id`, and Codex blocks the tool call on the hook -- honoured at 25
+# seconds on allow and 70 on deny rather than timing out. The earlier negative
+# was narrower than it read: `codex exec` pins `approval_policy` to `never`, so
+# under `exec` nothing ever asks. That is a property of the mode, not the event.
+# (`approval_policy = "untrusted"`, which that run passed, is now a hard error.)
 #
-# So this is now a choice rather than a limitation, and it is the one that matters
-# most in this file. Alone among Codex's hooks this one gets to decide, and Codex
-# validates what comes back: `hookSpecificOutput` requires `hookEventName`, and
-# `decision.behavior` is exactly `allow` or `deny`. Emitting nothing is the
-# documented way to decline, which is what this script does on every path. Three
-# reserved `decision` fields fail closed, so a forwarder that grew one by mistake
-# would block a user's tool call -- and unlike Claude, where the field is unread
-# and a mistake is inert, here a mistake lands. Registering this event is a
-# product decision (DEC-2 / B4), not a mapping. See the design doc.
+# **Reporting is separable from answering, and this file can only report.** Alone
+# among Codex's hooks this one gets to decide, and Codex validates what comes
+# back: `hookSpecificOutput` requires `hookEventName`, `decision.behavior` is
+# exactly `allow` or `deny`, and three reserved fields fail closed. But `main()`
+# writes nothing to stdout on any of its five exit paths, and emitting nothing is
+# the documented way to decline -- so declining is not a choice this script makes
+# correctly, it is the only thing it can do. A test pins that for every path a
+# real install takes, because the property is what makes this entry safe rather
+# than a comment claiming it is.
+#
+# Note the asymmetry with Antigravity, which is exactly inverted and is why
+# `agy_hook.py` cannot borrow this reasoning: there an empty object is a DENY, so
+# the harmless-looking output gates the call. Here empty output is the safe one.
+#
+# Answering a gate is still a product decision (DEC-2 / B4) and nothing here
+# advances it. What this ships is a red row, on the harness where a gate was the
+# one thing the board could not see.
 CODEX_EVENTS = {
     "SessionStart": "session_started",
     "UserPromptSubmit": "turn_started",
     "Stop": "turn_stopped",
+    "PermissionRequest": "input_requested",
     "PostToolUse": "store_changed",
     "PostCompact": "reconcile_required",
     "SubagentStart": "subagent_started",

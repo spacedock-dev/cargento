@@ -67,8 +67,8 @@ function render(d){
   const idle = attentionSort(d, d.sessions.filter(x => x.state === "idle"));
 
   const tiles =
-    countTile("Needs you", {line: needsLine(needs, waiting),
-      empty: "Nothing is waiting on you."}, waiting, true) +
+    countTile("Needs you", {...gateEmpty(d), line: needsLine(needs, waiting)},
+      waiting, true) +
     countTile("Working now", {line: "sessions generating",
       empty: "No agent is generating right now."}, working, false) +
     rateTile(d);

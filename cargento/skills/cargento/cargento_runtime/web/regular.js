@@ -14,11 +14,30 @@ function badge(key, active, name, tipSuffix){
          `<span class="htip">${esc(label)}${esc(tipSuffix || "")}</span></span>`;
 }
 
+/* Whether this strip row can observe a gate, or `null` for a payload that never
+   said. Nine of the ten cannot, and unlike `reports_rate` there is no dash to
+   draw: a harness with no detection publishes no needs-input row, which is the
+   same nothing the one WITH detection publishes when nobody is waiting. So the
+   strip is the only place the fact fits, and it has to be the strip's own field
+   rather than an inference — `=== false` and not `!h.reports_needs_input`,
+   because "Cargento cannot see gates here" is a claim about the harness's design
+   and an absent field has not earned it. Same discipline harnessRateKnown()
+   applies to its fallback, and the same reason spark.js gives for the model
+   dash: telling a reader the gap is deliberate is how a bug report does not get
+   filed. */
+function gateBlind(h){
+  return h && h.discovered && !h.error && h.reports_needs_input === false;
+}
 function harnessStrip(harnesses){
   if(!harnesses || !harnesses.length) return "";
   const chips = harnesses.map(h => {
     const healthy = h.discovered && !h.error;
-    const suffix = h.error ? " — collector error" : (h.discovered ? "" : " — no data");
+    /* `error` still outranks it. A collector that raised never read the store, so
+       what the harness could report in principle is not the fact to lead with —
+       the same precedence this row already gives `error` over `no data`. */
+    const suffix = h.error
+      ? " — collector error"
+      : (h.discovered ? (gateBlind(h) ? " — no gate detection" : "") : " — no data");
     return badge(h.key, healthy, h.label, suffix);
   }).join("");
   return `<span class="hstrip-k">harnesses</span>${chips}`;
@@ -359,6 +378,32 @@ function needsLine(gates, waiting){
   return "sessions and questions waiting on you";
 }
 
+/* What a ZERO in that tile is allowed to say. "Nothing is waiting on you." over a
+   board where one harness in ten can detect a gate is the same false reassurance
+   cargento#116 was filed for, and waitingOnYou() only fixed the half of it the
+   ask lane caused. So the sentence names the rows that could not have told,
+   which makes it a quantity rather than a hedge.
+
+   Scoped to the empty case on purpose. A non-zero tile draws its per-harness
+   breakdown, so a reader can already see which rows the number came from; adding
+   the caveat there too would put it where it is least load-bearing and crowd the
+   count. The ask lane is deliberately left out of the sentence and put in the
+   tooltip: any harness can raise a question, so the blind rows are not silent
+   about everything, and a line that implied otherwise would trade one wrong
+   impression for another. */
+function gateEmpty(d){
+  const blind = ((d && d.harnesses) || []).filter(gateBlind);
+  if(!blind.length) return {line: "", empty: "Nothing is waiting on you."};
+  const names = blind.map(h => own(HARNESS, h.key, {}).name || h.key).join(", ");
+  return {
+    line: "",
+    empty: "Nothing waiting that Cargento can see.",
+    emptyTip: "No gate detection on " + names + ", so a quiet row there is not " +
+      "evidence that nothing is waiting. A session on any harness can still " +
+      "raise a question through the ask lane, and those do appear here."
+  };
+}
+
 function countTile(label, sub, sessions, alert){
   const byH = new Map();
   for(const x of sessions) byH.set(x.harness, (byH.get(x.harness) || 0) + 1);
@@ -371,9 +416,10 @@ function countTile(label, sub, sessions, alert){
         `<span class="tile-bname">${esc(name)}</span>` +
         `<span class="tile-bnum">${n}</span></div>`;
     }).join("");
+  const emptyTip = sub.emptyTip ? ` title="${esc(sub.emptyTip)}"` : "";
   const body = rows
     ? `<div class="tile-break">${rows}</div>`
-    : `<div class="tile-none">${esc(sub.empty)}</div>`;
+    : `<div class="tile-none"${emptyTip}>${esc(sub.empty)}</div>`;
   const val = sessions.length && alert
     ? `<div class="tile-val alert">${sessions.length}</div>`
     : `<div class="tile-val">${sessions.length}</div>`;

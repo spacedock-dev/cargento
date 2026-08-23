@@ -733,10 +733,11 @@ HOOK_FILE_VOCABULARY = {
                 "PostCompact",
                 # Recognised, and measured as such: a hooks file listing it beside
                 # the seven mapped names installed cleanly and left all seven
-                # firing. This set is what the harness *accepts*, which is a
-                # different question from what the adapter maps -- `CODEX_EVENTS`
-                # omits it because `codex exec` pins `approval_policy` to `never`
-                # so its payload could not be captured.
+                # firing. `CODEX_EVENTS` now maps it too -- driven interactively on
+                # 0.149.0 it fires with a real gate open and carries `session_id`,
+                # and the `codex exec` negative that kept it unmapped turned out to
+                # be a property of that mode, which pins `approval_policy` to
+                # `never` so nothing ever asks.
                 "PermissionRequest",
             }
         ),
