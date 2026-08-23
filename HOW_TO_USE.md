@@ -290,10 +290,10 @@ The per-harness store variables `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_H
 than its default. Set one and confirm with `--diagnose` that the store line moved, rather than
 assuming it did.
 
-One asymmetry worth knowing, because it wastes time: `--status` does not need `CARGENTO_HOME` and
-`--stop` does. Status probes the port first, so it finds a live instance whatever the home is set to.
-Stop reads the state file, so with the wrong home it prints that nothing is running, exits 0, and
-leaves the stale file behind.
+Both `--status` and `--stop` find a live instance by probing the port, so neither needs the home the
+dashboard was started with. Tested: a dashboard started under a scratch `CARGENTO_HOME` was stopped
+by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
+the process removes its own on the way out.
 
 ## Turn a feature off
 
@@ -323,14 +323,14 @@ including what is sent, what comes back, and what is never touched.
 CARGENTO_HOME="$HOME/.cargento" python3 "$SKILL/server.py" --port 4553 --stop
 ```
 
-Pass the same `CARGENTO_HOME` the dashboard was started with, per the asymmetry above.
 [SKILL.md](cargento/skills/cargento/SKILL.md#stop) owns the last-resort per-platform commands for a
 port that stays held.
 
-State files accumulate. Each dashboard writes one per port and `--stop` clears its own; nothing
-sweeps the rest, so a machine that has run many dashboards on many ports keeps a file for each. They
-are inert, and they carry that dead run's capability tokens, so they are worth deleting by hand if
-you have collected a pile.
+State files accumulate, but only from runs that never exited cleanly. A dashboard removes its own on
+the way out, so a kill, a crash or a sleeping machine is what leaves one behind. They are inert, since
+a stale record is told from a live instance by probing the port, but each one holds that dead run's
+capability tokens and nothing sweeps them, so they are worth deleting by hand if you have collected a
+pile. Tracked as DRC-4181.
 
 ## Troubleshooting
 
@@ -341,7 +341,6 @@ you have collected a pile.
 | A question never appears | The lane is off, or the first call was gated in the terminal | Check `"ask":true` in the payload, then check the grant |
 | The session says no dashboard is running | It is looking at a different `CARGENTO_HOME` or port | Export `CARGENTO_HOME` in the shell that launches the harness |
 | The session says the lane is switched off | The dashboard was started with `--no-ask` | Restart without the flag |
-| `--stop` says nothing is running, but something is | Wrong `CARGENTO_HOME` | Pass the home the dashboard was started with |
 | A hook works in one shell and not another | Two Pythons on the PATH | Use one interpreter for everything |
 
 Anything that looks like a defect rather than a configuration problem belongs in an issue. The
