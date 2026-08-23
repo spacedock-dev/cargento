@@ -499,7 +499,7 @@ class MixedArrivalTypeTests(unittest.TestCase):
     """
 
     def test_a_date_string_at_does_not_break_the_ordering(self) -> None:
-        entries = [
+        entries: list[dict[str, Any]] = [
             {"at": "2026-08-23", "event": "_provenance", "session": ""},
             {"at": 200.0, "event": "Stop", "session": "aaaa1111"},
             {"at": 100.0, "event": "UserPromptSubmit", "session": "aaaa1111"},
