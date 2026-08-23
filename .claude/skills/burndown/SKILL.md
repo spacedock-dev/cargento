@@ -62,7 +62,15 @@ This is why the skill exists. Roadmap work here has repeatedly desynced: a miles
 2. Fix the owning milestone description wherever the merge made it false. Keep the older dated section and label it historical rather than deleting it.
 3. Refresh the project overview's "As of" block. Every derived number lives there, so it is one edit.
 4. Check the closed issue's `blocks`. Move anything newly free to `Todo`.
-5. If the closed issue still blocks something that no longer depends on it, remove the relation. A closed issue holding a live gate reads as a real blocker to everyone.
+5. If the closed issue still blocks something that no longer depends on it, remove the relation, and add
+   `relatedTo` in its place so the closed evidence stays reachable from the item it unblocked. A closed
+   issue holding a live gate reads as a real blocker to everyone.
+
+   **Only when the blocked side is still open.** An edge between two closed issues gates nothing and is
+   part of the record of what waited on what, so leave it. Removing those turns a satisfied dependency
+   into no dependency, which is a different and less true statement. The rule exists because an audit
+   found six such edges and the honest question was whether to sweep them or say why not; this is the
+   why not.
 
 Then report: issue worked, milestone updated, overview refreshed, what became unblocked, what is next.
 
