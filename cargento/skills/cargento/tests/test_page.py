@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import cli, diagnostics, http_api, lifecycle
+from cargento_runtime import cli, diagnostics, http_api, lifecycle, notifications
 from cargento_runtime import io as runtime_io
 
 from .page_harness import APP_JS, PAGE_TEXT, STYLES, PageJsHarness
@@ -92,8 +92,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "e12da1641dfa3328e0b5a9037163d380ba7f419b60d1709ef64ce18602cbe463",
             ),
             "notify.js": (
-                3_185,
-                "afd7a8ff735ea52b95e31a22f60f024d0bb752b7063860abc0e7bb1ae1c0fcae",
+                7_797,
+                "d340a6d8870d2cb210c6e961afbfb6015e4ca915dce41e0193f7aed95c193154",
             ),
             "main.js": (
                 10_446,
@@ -119,11 +119,29 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(274_502, len(assembled))
+        self.assertEqual(279_114, len(assembled))
         self.assertEqual(
-            "fb7f72aa560af387e91b3b1f51c3dd902f2258d3dd726602f594b95613ffa6cc",
+            "751eacec7aea0b3b599f1abcad69df0ff31687ec812ffd6bf4275a1a7423cb7c",
             hashlib.sha256(assembled).hexdigest(),
         )
+
+    def test_both_layers_render_the_same_ask_sentence(self) -> None:
+        # The two layers hardcode this sentence in two languages, and nothing
+        # else compares them: `waiting_title`'s docstring records the gate lane
+        # drifting apart the moment more than one harness could raise it. No node
+        # needed — the JS is read as text.
+        source = frontend_page.asset_path("notify.js").read_text(encoding="utf-8")
+        # Matched in CODE rather than anywhere in the file. An `assertIn` over the
+        # whole source is satisfied by a comment mentioning the sentence, so the
+        # literal this test exists to pin could be changed while it stayed green.
+        code = "\n".join(
+            line for line in source.splitlines() if not line.lstrip().startswith(("/*", "*", "//"))
+        )
+        fallback = notifications.ASK_HARNESS_FALLBACK
+        self.assertIn(f'|| "{fallback}") + " is asking you"', code)
+        self.assertEqual(f"{fallback} is asking you", notifications.asking_title(""))
+        # And the Python side composes it the same way round.
+        self.assertEqual("Claude is asking you", notifications.asking_title("Claude"))
 
     def test_load_page_names_a_missing_asset(self) -> None:
         with (
@@ -2890,6 +2908,113 @@ console.log(JSON.stringify(out));
         self.assertEqual(0, out["primed"], "popped for a pre-existing block on first paint")
         self.assertEqual(0, out["ungranted"])
         self.assertEqual(0, out["inactive"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_browser_notifications_cover_an_arriving_ask_where_the_server_cannot(self) -> None:
+        # The same split as a gate (design decision D-3), keyed on the ask id
+        # rather than on a transition: a question has no prior state, and it
+        # leaves the payload for good once answered, withdrawn or expired.
+        checks = """
+__els.app = {innerHTML:""};
+const blocked = {
+  harness:"claude", session:"12345678", sid:"12345678", project:"proj",
+  title:null, last_prompt:"", state:"needs_input", state_detail:"open question",
+  active:true, last_activity:100, blocked_since:970, rate_per_min:0,
+  total:0, done:0, open:0, progress_pct:0, eta_h:null, turn:null,
+  subagents:[], tasks:[]
+};
+const idle = {...blocked, state:"idle", state_detail:"awaiting your message"};
+const ask = (id, over) => Object.assign({
+  id, harness:"claude", session_id:"12345678-90ab-cdef-1234-567890abcdef",
+  project:"repo/proj", question:"Ship it?", options:["yes", "no"], age_sec:1
+}, over || {});
+/* A registry row, because a label is only ever resolved through one: with
+   harnesses:[] every case below would read "An agent" and prove nothing. */
+const registry = [{key:"claude", label:"Claude", discovered:true, error:null}];
+const payload = (asks, native, sessions) => ({
+  generated:1000, window_hours:24, show_all:false, native_notify:native,
+  harnesses:registry, sessions:sessions || [], ask:true, asks,
+  summary:{needs_input:0, working:0, rate_per_min:0, active_sessions:1,
+           open_tasks:0, progress_pct:0, total_tasks:0, total_done:0}
+});
+const reset = perm => {
+  __notifications = []; __notifyPermission = perm;
+  notifyState = new Map(); notifyPrimed = false; notifiedAsks = new Set();
+};
+const out = {};
+
+// The server already popped natively: the page must stay silent.
+reset("granted");
+render(payload([ask("a1")], "osascript"));
+out.nativeOwnsIt = __notifications.length;
+
+// No native backend (Linux/Windows today): the page notifies, and it notifies
+// on the FIRST payload it sees. An ask id is single-use and nothing ever
+// re-registers it, so there is no repeat for priming to protect against — and
+// the reader who opened the tab because an agent said it would ask lands here.
+reset("granted");
+render(payload([ask("a1")], ""));
+out.firstPaint = __notifications.length;
+out.title = __notifications[0] && __notifications[0].title;
+out.body = __notifications[0] && __notifications[0].body;
+out.tag = __notifications[0] && __notifications[0].tag;
+
+// Still pending on the next poll: notified once, not once per refresh.
+render(payload([ask("a1")], ""));
+out.noRepeat = __notifications.length;
+
+// A second question is its own alert with its own tag, so it cannot replace the
+// banner for a question still on the board.
+render(payload([ask("a1"), ask("a2")], ""));
+out.second = __notifications.length;
+out.secondTag = __notifications[1] && __notifications[1].tag;
+
+// Two arriving in one pass coalesce: `ask_max_pending` is 16 and this layer has
+// no cooldown, so one banner names the count instead of stacking sixteen.
+reset("granted");
+render(payload([ask("b1"), ask("b2")], ""));
+out.burst = __notifications.length;
+out.burstTitle = __notifications[0] && __notifications[0].title;
+
+// Permission not granted: record the ids, raise nothing. Then granting it must
+// not dump a banner for a question already on the board.
+reset("default");
+render(payload([ask("c1")], ""));
+out.ungranted = __notifications.length;
+__notifyPermission = "granted";
+render(payload([ask("c1")], ""));
+out.afterGrant = __notifications.length;
+
+// An unattributable harness names no harness. The registry is non-empty here,
+// so "An agent" is proved to come from a failed lookup.
+reset("granted");
+render(payload([ask("d1", {harness:"unknown", session_id:""})], ""));
+out.unknownTitle = __notifications[0] && __notifications[0].title;
+
+// The session pass still works, and keeps its own tag.
+reset("granted");
+render(payload([], "", [idle]));
+render(payload([ask("e1")], "", [blocked]));
+out.both = __notifications.length;
+out.bothTags = __notifications.map(n => n.tag).sort();
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+        self.assertEqual(0, out["nativeOwnsIt"], "would double-notify on macOS")
+        self.assertEqual(1, out["firstPaint"])
+        self.assertEqual("Claude is asking you", out["title"])
+        self.assertEqual("Ship it? · repo/proj", out["body"])
+        self.assertEqual("cargento-ask:a1", out["tag"])
+        self.assertEqual(1, out["noRepeat"], "notified again for a question already seen")
+        self.assertEqual(2, out["second"])
+        self.assertEqual("cargento-ask:a2", out["secondTag"])
+        self.assertEqual(1, out["burst"], "one banner per pass, however many arrived")
+        self.assertEqual("2 questions are waiting for your answer", out["burstTitle"])
+        self.assertEqual(0, out["ungranted"])
+        self.assertEqual(0, out["afterGrant"], "granting permission dumped the whole board")
+        self.assertEqual("An agent is asking you", out["unknownTitle"])
+        self.assertEqual(2, out["both"])
+        self.assertEqual(["cargento-ask:e1", "claude:12345678"], out["bothTags"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_notification_title_names_the_harness_that_is_waiting(self) -> None:
