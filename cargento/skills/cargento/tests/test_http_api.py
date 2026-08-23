@@ -1010,6 +1010,111 @@ class AskEndpointTest(RuntimeTestCase):
             )
         self.assertEqual(403, status)
 
+    def test_a_registered_question_pops_only_where_the_server_owns_the_popup(self) -> None:
+        # Exactly one layer notifies (design decision D-3), and the split is read
+        # off the same expression `/api/data` publishes as `native_notify`. The
+        # platform comes from config, never from the host, so both halves run on
+        # every runner (D-4).
+        config, state = self._runtime(platform_name="darwin")
+        with (
+            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+            mock.patch.object(notifications, "notify_mac") as notify,
+        ):
+            ask_id = self._register(port)
+        self.assertEqual(1, notify.call_count)
+        self.assertEqual("Claude is asking you", notify.call_args[0][1])
+        self.assertEqual("Ship the migration now? · repo/proj", notify.call_args[0][2])
+        self.assertTrue(ask_id)
+
+        config, state = self._runtime()
+        with (
+            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+            mock.patch.object(notifications, "notify_mac") as notify,
+        ):
+            self._register(port)
+        self.assertEqual(0, notify.call_count, "the page owns this one")
+
+        # The rollback switch: `_ask` answers 503 before the body is read, so the
+        # notifier cannot be reached however the call site later moves.
+        config, state = self._runtime(ask_enabled=False)
+        with (
+            self._serving(cli.build_application(config, state, clock=time.time)) as port,
+            mock.patch.object(notifications, "notify_mac") as notify,
+        ):
+            status, _ = self._post(
+                port, "/api/ask", json.dumps({"question": "q", "options": ["a", "b"]}).encode()
+            )
+        self.assertEqual(503, status)
+        self.assertEqual(0, notify.call_count)
+
+    def test_an_unattributable_question_never_names_a_harness(self) -> None:
+        # `unknown` is the shipped default for every client but Claude Code, so
+        # this is the common case rather than an edge. A raw fallback would title
+        # it "unknown is asking you", and a 120-character value would reach
+        # `safe_text(title, 60)`, which truncates from the FRONT and so deletes
+        # the words " is asking you".
+        for harness in ("unknown", "", "x" * 120):
+            with self.subTest(harness=harness):
+                # Its own runtime per case: the ask floor is shared across a
+                # process, so a second registration inside 15s raises nothing.
+                config, state = self._runtime(platform_name="darwin")
+                with (
+                    self._serving(cli.build_application(config, state, clock=time.time)) as port,
+                    mock.patch.object(notifications, "notify_mac") as notify,
+                ):
+                    self._register(port, harness=harness, session_id="")
+                self.assertEqual(1, notify.call_count)
+                title = notify.call_args[0][1]
+                self.assertEqual("An agent is asking you", title)
+                self.assertNotIn("unknown", title)
+                self.assertNotIn("Claude", title)
+
+    def test_the_popup_fires_after_the_reply_is_on_the_wire(self) -> None:
+        # osascript runs with a 5s timeout on the handler thread, and the stdio
+        # client's register POST times out at 3s. A lost reply is not a retry:
+        # `_register` walks to the next candidate port and registers the question
+        # on a second dashboard, while the first keeps a card that cannot be
+        # withdrawn because its id was in the lost reply.
+        config, state = self._runtime(platform_name="darwin")
+        calls: list[tuple[str, str]] = []
+
+        def boom(title: str, message: str) -> None:
+            calls.append((title, message))
+            raise RuntimeError("osascript exploded after the reply")
+
+        application = aggregate.Application(
+            config,
+            state,
+            aggregate.default_harnesses(lambda _title, _message: None),
+            native_notifier=notifications.native_notifier,
+            popup_notifier=boom,
+            diagnostic_sink=lambda _line: None,
+            clock=lambda: 1000.0,
+        )
+        with (
+            # The traceback is the point of the test, not a surprise: keep it out
+            # of the run's output.
+            mock.patch.object(http_api.CargentoHTTPServer, "handle_error", lambda *_a: None),
+            self._serving(application) as port,
+        ):
+            status, body = self._post(
+                port,
+                "/api/ask",
+                json.dumps(
+                    {
+                        "harness": "claude",
+                        "project": "repo/proj",
+                        "question": "Ship it?",
+                        "options": ["yes", "no"],
+                    }
+                ).encode(),
+            )
+        self.assertEqual(200, status)
+        payload = json.loads(body)
+        self.assertIs(True, payload["ok"])
+        self.assertTrue(payload["id"])
+        self.assertEqual(1, len(calls), "the notifier never ran")
+
 
 class AskShutdownTest(RuntimeTestCase):
     """A held poll has to be declined, not dropped.
