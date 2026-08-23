@@ -1010,6 +1010,28 @@ class AskEndpointTest(RuntimeTestCase):
             )
         self.assertEqual(403, status)
 
+    @staticmethod
+    def _settle_popups(notify: Any, expected: int, *, timeout: float = 5.0) -> None:
+        """Wait for the ask popup, which happens after the reply is on the wire.
+
+        `_ask` sends its reply and only then notifies, deliberately: osascript
+        runs on the handler thread with a 5s timeout against the stdio client's
+        3s register POST. So the client returns BEFORE the popup, nothing joins
+        the handler thread, and `_serving` shuts the server down on the way out.
+
+        That makes an immediate assertion a race in both directions, and the
+        second one is the dangerous half. A `== 1` can miss a call that was about
+        to happen, which is a flake. A `== 0` can PASS because the thread has not
+        got there yet, which would hide a real double fire and look like a green
+        test forever. So a zero expectation waits out a grace period rather than
+        returning at once.
+        """
+        deadline = time.monotonic() + timeout
+        while notify.call_count < expected and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if expected == 0:
+            time.sleep(0.5)
+
     def test_a_registered_question_pops_only_where_the_server_owns_the_popup(self) -> None:
         # Exactly one layer notifies (design decision D-3), and the split is read
         # off the same expression `/api/data` publishes as `native_notify`. The
@@ -1021,6 +1043,7 @@ class AskEndpointTest(RuntimeTestCase):
             mock.patch.object(notifications, "notify_mac") as notify,
         ):
             ask_id = self._register(port)
+            self._settle_popups(notify, 1)
         self.assertEqual(1, notify.call_count)
         self.assertEqual("Claude is asking you", notify.call_args[0][1])
         self.assertEqual("Ship the migration now? · repo/proj", notify.call_args[0][2])
@@ -1032,6 +1055,7 @@ class AskEndpointTest(RuntimeTestCase):
             mock.patch.object(notifications, "notify_mac") as notify,
         ):
             self._register(port)
+            self._settle_popups(notify, 0)
         self.assertEqual(0, notify.call_count, "the page owns this one")
 
         # The rollback switch: `_ask` answers 503 before the body is read, so the
@@ -1044,6 +1068,7 @@ class AskEndpointTest(RuntimeTestCase):
             status, _ = self._post(
                 port, "/api/ask", json.dumps({"question": "q", "options": ["a", "b"]}).encode()
             )
+            self._settle_popups(notify, 0)
         self.assertEqual(503, status)
         self.assertEqual(0, notify.call_count)
 
@@ -1063,6 +1088,7 @@ class AskEndpointTest(RuntimeTestCase):
                     mock.patch.object(notifications, "notify_mac") as notify,
                 ):
                     self._register(port, harness=harness, session_id="")
+                    self._settle_popups(notify, 1)
                 self.assertEqual(1, notify.call_count)
                 title = notify.call_args[0][1]
                 self.assertEqual("An agent is asking you", title)
