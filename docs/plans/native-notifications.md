@@ -39,9 +39,12 @@ Three constraints on code that does not exist yet:
 Per D-3, `--notify` must state which owner it disables.
 
 Related gap: idle nudges (`idle_prompt`) pop without marking the session blocked. macOS delivers
-them, but the page only notifies on a needs-input transition, so on Linux and Windows an idle nudge
-produces no popup at all. Closing it needs a one-shot event channel in `/api/data` rather than a
-state flag, which is worth doing alongside the native backends instead of bolting it onto the page.
+them, and the page now raises a one-shot notification of its own for an arriving `ask_operator`
+question, so "the page only notifies on transitions" has stopped being the reason. A one-shot alert
+is deliverable there whenever the payload carries a natural unique key, which the ask lane has and an
+idle nudge does not: what is missing is a per-nudge identity in `/api/data`, not a channel the page
+cannot use. Still worth doing alongside the native backends rather than bolting onto the page, and the
+Linux and Windows halves of this section are unchanged: an ask there still needs a tab open.
 
 ## 2. Deferred, with the trigger that should revive them
 

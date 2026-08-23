@@ -273,6 +273,21 @@ class Application:
         # makes the rollback switch a one-line assembly change.
         self.overlays = overlays
 
+    def harness_label(self, key: str) -> str:
+        """The registry's display label for a harness key, or "" for anything else.
+
+        "" and not the key, unlike the page's session-row fallback: a row's
+        harness comes from a collector and is a registry key by construction,
+        while an ask's is written by the agent that registered it and `unknown` is
+        the shipped default for every client but Claude Code. Echoing the key back
+        would title the common case "unknown is asking you".
+
+        Resolved from `self.harnesses`, the same source the payload's `harnesses`
+        array is built from, so a popup title and the board cannot disagree about
+        what a harness is called.
+        """
+        return next((spec.label for spec in self.harnesses if spec.key == key), "")
+
     def collect(self, *, show_all: bool) -> Collection:
         config, state = self.config, self.state
         window_hours = config.window_hours

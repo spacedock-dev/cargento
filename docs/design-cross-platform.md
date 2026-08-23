@@ -69,11 +69,27 @@ Two standing constraints:
 - The browser Notification API owns transcript-detected transitions. That path already requires an
   open dashboard tab, so nothing is lost by putting delivery there.
 - Native OS backends own hook POSTs to `/api/notify`, which must work with no tab open.
+- A question registered on `/api/ask` follows the same split, and is keyed on the ask id rather than
+  on a transition: it has no prior state, and it leaves the payload for good once answered, withdrawn
+  or expired. Two differences from the session path are deliberate. No dismissal is consulted, because
+  the card is published regardless, and suppressing the alert would leave the reader an alert and a board
+  that disagree. And the ask lane reads and writes its own cooldown key, never the gate lane's shared
+  `_global` floor, so neither alert can swallow the other. That asymmetry is load-bearing in both
+  directions: a gate re-emits for as long as it stands, while nothing ever re-registers a question and
+  the sweep deletes it unanswered at `ask_deadline_sec`; and `maybe_popup` records the transition
+  *above* its cooldown gates, so a gate suppressed by a shared floor is not delayed by 15s, it is gone
+  for the whole block.
 
 `/api/data` publishes `native_notify`, which is the name of the server's OS backend, or empty. The
 page raises its own notification only when that field is empty. Double-firing is impossible by
 construction rather than by deduplication logic, which matters because `maybe_popup` runs *during*
 the very collection the page is about to render from.
+
+The layer split is decided by `application.native_notifier(config.platform_name)`, the same
+expression `/api/data` publishes as `native_notify`, so the server's decision and the page's reading of
+it are one value by construction (see D-4). `notify_mac`'s own platform guard is defence in depth, not
+a second decision point: a stub notifier injected in a test makes the two disagree, which is why the
+ask path gates at the call site.
 
 Corollary for future work: a `--notify` switch must state which owner it disables.
 
