@@ -110,8 +110,8 @@ CLAUDE_EVENTS = {
 # `PermissionRequest` remains absent, and the reason has changed from "unmeasured"
 # to "measured, and deliberately declined". It fires and it decides: on 0.149.0,
 # interactively, its payload was captured, `behavior: allow` skipped the approval
-# prompt entirely, `behavior: deny` refused the call, and Codex held the hook open
-# for 70 seconds on both verdicts rather than timing out
+# prompt entirely, `behavior: deny` refused the call, and Codex held the hook
+# open at 25 seconds on allow and at 70 seconds on deny rather than timing out
 # (`docs/captures/codex/permission-hook-interactive-0.149.0-macos.jsonl`).
 #
 # What was measured before, and is still true, is narrower than it reads: `codex
