@@ -152,6 +152,23 @@ def shape_of(
         if isinstance(candidate, str) and candidate:
             tool = candidate[:60]
             break
+    # The one payload VALUE this recorder keeps, and only on `Notification`.
+    #
+    # It is a closed vocabulary the harness picks from, never text a person or a
+    # model wrote, so it is the same class of fact as `tool` above: a name, not an
+    # argument. And it is the field every classification in `notifications.py`
+    # branches on, so a capture that omitted it could prove a `Notification`
+    # arrived and nothing about whether the adapter reads it correctly -- which is
+    # the entire question DRC-4135 was filed to answer.
+    #
+    # `message` is deliberately NOT recorded beside it. That one is prose, it is
+    # what the notification actually says, and on a permission prompt it names the
+    # command being approved.
+    notification_type = ""
+    if event == "Notification":
+        candidate = payload.get("notification_type")
+        if isinstance(candidate, str):
+            notification_type = candidate[:60]
     cwd = payload.get("cwd")
     return {
         "v": FORMAT_VERSION,
@@ -168,6 +185,9 @@ def shape_of(
         # adapter has to be written against.
         "keys": sorted(k[:60] for k in payload if isinstance(k, str)),
         "tool": tool,
+        # Absent rather than empty off the Notification path, so a reader cannot
+        # mistake "this event carries no type" for "the type was blank".
+        **({"notification_type": notification_type} if event == "Notification" else {}),
         "hook_ms": round(elapsed_ms, 3),
         "os": os.name,
     }
