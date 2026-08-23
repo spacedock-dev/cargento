@@ -82,7 +82,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
-| `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings only, never values. |
+| `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings, plus one closed-vocabulary enum (`notification_type`); never a value a person or a model wrote. |
 | `.claude/skills/*/SKILL.md` | Repository development skills (`sync-docs`, `visibility-2x2`, `burndown`). Not shipped with the plugin, so the portability rules below do not apply to them. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 
