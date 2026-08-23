@@ -33,10 +33,12 @@ you.
 | Task age from file birthtime | yes | falls back to mtime | Python 3.12+ only | falls back to mtime |
 | Needs-input popup, browser (tab open) | not needed | yes | yes | yes (host browser) |
 | Needs-input popup, native (no tab) | yes (`osascript`) | not yet | not yet | not yet |
+| Ask-lane popup, browser (tab open) | not needed | yes | yes | yes (host browser) |
+| Ask-lane popup, native (no tab) | yes (`osascript`) | not yet | not yet | not yet |
 | Claude quota token read (the usage fetch) | Keychain via `security`; the first read can prompt | credential file | credential file | credential file (Linux-side home) |
 | Cursor quota token read (the usage fetch) | Keychain via `security`, service `cursor-access-token` | no (see below) | no (see below) | no (see below) |
 
-Exactly one layer delivers a given popup: the server where it has a native backend, the page otherwise. `/api/data` reports which as `native_notify`.
+Exactly one layer delivers a given popup: the server where it has a native backend, the page otherwise. `/api/data` reports which as `native_notify`. The split covers an arriving `ask_operator` question as well as a needs-input transition, which is why the ask rows above read the same way. The lane is harness-independent (see the note below), so the alert is too.
 
 Notification delivery is best-effort by design, on every platform. The exit criterion is graceful degradation plus a reported delivery status, not a guarantee: browser notifications need the user's permission and an open tab, `notify-send` needs a graphical user D-Bus session, and a Windows toast needs an interactive session (and, from WSL, enabled interop). A backend that cannot deliver must no-op quietly, never raise.
 

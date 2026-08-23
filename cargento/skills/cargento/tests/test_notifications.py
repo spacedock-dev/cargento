@@ -1463,3 +1463,214 @@ class HarnessNeutralTitleTest(unittest.TestCase):
         # `harness` field in that payload would be a value the server had to
         # trust from an unauthenticated caller.
         self.assertEqual("Claude", notifications.NOTIFY_HARNESS_LABEL)
+
+
+class AskPopupTest(unittest.TestCase):
+    """The alert for a question a session registered, which had none at all.
+
+    The gate lane and this one are deliberately separate functions rather than
+    one widened `maybe_popup`: four of that function's six gates are meaningless
+    for an ask (there is no prior state to transition from, no SessionEnd
+    generation, no repeated message) and two are harmful (its
+    `last_session_state` write is per-session-prefix and only `clear_session`
+    ever removes an entry).
+    """
+
+    def _rec(self) -> tuple[list[tuple[str, str]], Any]:
+        fired: list[tuple[str, str]] = []
+        return fired, lambda title, message: fired.append((title, message))
+
+    def test_a_question_pops_with_the_label_the_registry_resolved(self) -> None:
+        config, state = make_runtime()
+        fired, rec = self._rec()
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            notifications.AskSubject(label="Claude", question="Ship it?", project="repo/proj"),
+            now=1000.0,
+            popup_notifier=rec,
+        )
+        self.assertEqual([("Claude is asking you", "Ship it? · repo/proj")], fired)
+
+        # An empty label is the common case, not an edge: the shipped stdio
+        # server reports `unknown` for every client but Claude Code, and the
+        # registry resolves that to "".
+        config, state = make_runtime()
+        fired, rec = self._rec()
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            notifications.AskSubject(label="", question="Ship it?", project="repo/proj"),
+            now=1000.0,
+            popup_notifier=rec,
+        )
+        self.assertEqual([("An agent is asking you", "Ship it? · repo/proj")], fired)
+
+        config, state = make_runtime()
+        fired, rec = self._rec()
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            notifications.AskSubject(label="Claude", question="Ship it?", project=""),
+            now=1000.0,
+            popup_notifier=rec,
+        )
+        self.assertEqual([("Claude is asking you", "Ship it?")], fired)
+
+        self.assertEqual("Antigravity is asking you", notifications.asking_title("Antigravity"))
+        self.assertEqual("An agent is asking you", notifications.asking_title(""))
+
+    def test_a_burst_raises_one_popup_and_a_later_question_raises_another(self) -> None:
+        config, state = make_runtime()
+        fired, rec = self._rec()
+
+        def ask(now: float) -> None:
+            notifications.maybe_ask_popup(
+                config,
+                state,
+                notifications.AskSubject(label="Claude", question=f"q{now}", project="p"),
+                now=now,
+                popup_notifier=rec,
+            )
+
+        ask(1000.0)
+        ask(1001.0)
+        ask(1005.0)
+        self.assertEqual(1, len(fired), "a burst outran the floor")
+        ask(1000.0 + config.global_popup_cooldown_sec)
+        self.assertEqual(2, len(fired))
+
+        # The whole of the ask lane's floor bookkeeping. A per-ask key would be an
+        # unbounded namespace in a cache that evicts by insertion order, and a
+        # session prefix would leak into a map only `clear_session` cleans.
+        self.assertEqual({"_ask"}, set(state.last_popup))
+        self.assertEqual(1000.0 + config.global_popup_cooldown_sec, state.last_popup["_ask"])
+        self.assertEqual({}, dict(state.last_session_state))
+
+    def test_neither_lane_swallows_the_other(self) -> None:
+        # A gate popup and an ask popup are answered in different places and
+        # recover differently: Claude re-emits a standing gate notification for
+        # as long as the session stays blocked, while nothing ever re-registers a
+        # question and the sweep deletes it unanswered at `ask_deadline_sec`.
+        # `maybe_popup` also consumes the transition (it writes
+        # `last_session_state` above its cooldown gates), so a gate suppressed by
+        # a shared floor is not delayed — it is gone for the whole block. So the
+        # two lanes read and write separate floor keys.
+        config, state = make_runtime()
+        fired, rec = self._rec()
+
+        def gate(prefix: str) -> None:
+            notifications.maybe_popup(
+                config,
+                state,
+                notifications.PopupSubject(
+                    harness="claude", label="Claude", prefix=prefix, activity=0.0
+                ),
+                "needs_input",
+                "[proj] gate",
+                popup_notifier=rec,
+            )
+
+        def ask(now: float) -> None:
+            notifications.maybe_ask_popup(
+                config,
+                state,
+                notifications.AskSubject(label="Claude", question="q", project="p"),
+                now=now,
+                popup_notifier=rec,
+            )
+
+        with mock.patch.object(time, "time", side_effect=[1000.0, 2001.0]):
+            gate("aaaaaaaa")
+            ask(1001.0)  # 1s after a gate popup, inside the 15s gate floor
+            ask(2000.0)
+            gate("bbbbbbbb")  # 1s after an ask popup
+
+        self.assertEqual(
+            [
+                ("Claude is waiting on you", "[proj] gate"),
+                ("Claude is asking you", "q · p"),
+                ("Claude is asking you", "q · p"),
+                ("Claude is waiting on you", "[proj] gate"),
+            ],
+            fired,
+        )
+
+    def test_a_long_question_never_publishes_a_truncated_project(self) -> None:
+        # The defect `_ask_project` was written for, one layer up: `notify_mac`
+        # bounds the message at 180 characters and `safe_text` keeps the head, so
+        # composing question-then-project and letting that trim would publish a
+        # path that is a prefix of the real one and reads as a whole directory.
+        config, state = make_runtime()
+        project = "/Users/dev/repos/exampleorg/cargentoxxx/.claude/worktrees/drc-4183"
+        # 66 characters, and the number is load-bearing: 111 + len(" \u00b7 ") + 66 is
+        # exactly the 180-character bound, which is the boundary this pins.
+        self.assertEqual(66, len(project))
+        fits = "q" * 111
+        fired, rec = self._rec()
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            notifications.AskSubject(label="Claude", question=fits, project=project),
+            now=1000.0,
+            popup_notifier=rec,
+        )
+        self.assertEqual([("Claude is asking you", f"{fits} · {project}")], fired)
+        self.assertEqual(180, len(fired[0][1]))
+
+        config, state = make_runtime()
+        fired, rec = self._rec()
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            notifications.AskSubject(label="Claude", question=fits + "q", project=project),
+            now=1000.0,
+            popup_notifier=rec,
+        )
+        # One character over: the path is dropped whole rather than cut. A
+        # dropped path is honest; a head-truncated one names a directory that
+        # does not exist.
+        self.assertEqual([("Claude is asking you", fits + "q")], fired)
+
+        config, state = make_runtime()
+        fired, rec = self._rec()
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            notifications.AskSubject(label="Claude", question="short", project="/" + "d" * 511),
+            now=1000.0,
+            popup_notifier=rec,
+        )
+        self.assertEqual([("Claude is asking you", "short")], fired)
+
+    def test_the_ask_popup_runs_with_the_hook_lock_released(self) -> None:
+        # hook_lock is a plain Lock and osascript has a 5s timeout. Notifying
+        # inside the critical section would stall every hook POST and every
+        # collection for that long.
+        config, state = make_runtime()
+        held: list[bool] = []
+
+        def notifier(_title: str, _message: str) -> None:
+            acquired = state.hook_lock.acquire(blocking=False)
+            held.append(acquired)
+            if acquired:
+                state.hook_lock.release()
+
+        notifications.maybe_ask_popup(
+            config,
+            state,
+            notifications.AskSubject(label="Claude", question="q", project="p"),
+            now=1000.0,
+            popup_notifier=notifier,
+        )
+        self.assertEqual([True], held, "popup fired while still holding hook_lock")
+
+    def test_no_field_of_the_ask_subject_has_a_default(self) -> None:
+        # `label` is the field that can lie, and "" is a legal value meaning "not
+        # a registry key" — so a default would make forgetting it look like
+        # working code that titles every question with someone else's name.
+        for missing in ("label", "question", "project"):
+            fields: dict[str, Any] = {"label": "Claude", "question": "q", "project": "p"}
+            del fields[missing]
+            with self.subTest(missing=missing), self.assertRaises(TypeError):
+                notifications.AskSubject(**fields)

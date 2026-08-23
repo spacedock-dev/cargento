@@ -182,3 +182,7 @@ edge. It does not type into a terminal, write a harness store, or reach a sessio
 the tool. And it holds no state across runs: a question outstanding when the server stops is declined
 rather than resumed, because a question whose asker may no longer exist is not a question anyone can
 answer.
+
+It also does not decide how the question is *announced*. The notification split (which layer alerts,
+what it may say, and why the ask lane keeps its own cooldown key) belongs to D-3 in
+[`docs/design-cross-platform.md`](design-cross-platform.md#d-3-exactly-one-owner-per-notification-path).
