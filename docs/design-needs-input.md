@@ -354,10 +354,11 @@ contradicts nothing.
 
 How often that erasure fired is **not measured**, and an earlier draft of this paragraph said it
 happened on every default install, which the repository cannot support. It needs an `input_requested`
-overlay, which only `PermissionRequest` mints, and `captures/` holds no Claude `PermissionRequest`
-record at all: the only capture of that name is Codex's, and it is a negative result. Whether the
-hook fires for `AskUserQuestion` and `ExitPlanMode`, as opposed to only for tool-permission prompts,
-is an adapter claim of exactly the kind this repository requires a capture for. Until there is one,
+overlay, which only `PermissionRequest` mints. `captures/` now holds one Claude `PermissionRequest`
+record, in `claude/notification-2.1.241-macos.jsonl`, and it is a single tool-permission prompt for
+`NotebookEdit`. So the hook is observed firing for a tool gate. Whether it also fires for
+`AskUserQuestion` and `ExitPlanMode` is still unobserved, and is an adapter claim of exactly the kind
+this repository requires a capture for. Until there is one,
 the honest statement is that the erasure is reachable and its frequency is unknown. The fix is
 correct and costs nothing either way.
 

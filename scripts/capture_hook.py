@@ -22,9 +22,12 @@ bounds one turn.
 
 ## What it records, and what it refuses to
 
-Shape, never content. Each line carries the event name, the session prefix, a
+Shape, and one enum. Each line carries the event name, the session prefix, a
 salted digest of the working directory, the sorted top-level keys the payload
-carried, the tool name where there is one, and how long this hook itself took.
+carried, the tool name where there is one, how long this hook itself took, and
+-- on `Notification` only -- the `notification_type` value. That one field is a
+closed vocabulary the harness picks from rather than text anyone wrote, which
+puts it in the same class as the tool name: see `shape_of`.
 
 It never records a prompt, a tool argument, a tool result, a message, a file
 path, or a transcript path. Those are the fields the plan's allowlist exists to
