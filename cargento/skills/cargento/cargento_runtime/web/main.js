@@ -18,12 +18,13 @@ function render(d){
      longest-blocked first, and re-sorting it here would be a second definition of
      the queue order — the one gateQueue() exists to refuse. */
   const needs = gateQueue(d);
+  const waiting = waitingOnYou(d, needs);
   /* An answered queue leaves its cursor behind otherwise, and the same session
      blocking again later would inherit it — landing the cursor mid-queue on a
      board whose head is a gate that has waited longer. */
   if(!needs.length) gateCursorKey = null;
   if(!app){
-    document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
+    document.title = (waiting.length > 0 ? `(${waiting.length}!) ` : "") + "Cargento";
     return;
   }
   if(displayMode === "calm"){
@@ -32,6 +33,10 @@ function render(d){
     const outgoing = document.getElementById("cm-body");
     if(calmResetScroll){ calmScrollTop = 0; calmResetScroll = false; }
     else if(outgoing) calmScrollTop = outgoing.scrollTop;
+    // The asks band scrolls in this frame too, and it is never re-filtered, so
+    // it has no calmResetScroll case: its offset is only ever worth keeping.
+    const outgoingAsks = document.getElementById("askband");
+    if(outgoingAsks) askScrollTop = outgoingAsks.scrollTop;
     const focusKey = calmFocusKey();
     renderInProgress = true;
     app.className = "wrap calm";
@@ -40,7 +45,7 @@ function render(d){
     calmRestoreScroll();
     calmRestoreFocus(focusKey);
     restoreStopFocus();
-    document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
+    document.title = (waiting.length > 0 ? `(${waiting.length}!) ` : "") + "Cargento";
     return;
   }
   const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
@@ -62,8 +67,8 @@ function render(d){
   const idle = attentionSort(d, d.sessions.filter(x => x.state === "idle"));
 
   const tiles =
-    countTile("Needs you", {line: "sessions blocked on you",
-      empty: "Nothing is waiting on you."}, needs, true) +
+    countTile("Needs you", {line: needsLine(needs, waiting),
+      empty: "Nothing is waiting on you."}, waiting, true) +
     countTile("Working now", {line: "sessions generating",
       empty: "No agent is generating right now."}, working, false) +
     rateTile(d);
@@ -141,7 +146,7 @@ function render(d){
   calmRestoreFocus(actionFocused);
   restoreStopFocus();
   restoreGateCursor();
-  document.title = (needs.length > 0 ? `(${needs.length}!) ` : "") + "Cargento";
+  document.title = (waiting.length > 0 ? `(${waiting.length}!) ` : "") + "Cargento";
 }
 
 async function refresh(){

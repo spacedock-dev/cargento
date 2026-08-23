@@ -349,6 +349,16 @@ function rateTile(d){
    which left each with a big empty box under a single numeral. Spend it on the
    per-harness split of the very sessions the numeral counted — derived from the
    same list, so the breakdown can never disagree with the total. */
+/* The `Needs you` sub-line, which has to name what is actually being counted.
+   Two kinds of thing land in that tile now, and "sessions blocked on you" is
+   wrong the moment one of them is a question. */
+function needsLine(gates, waiting){
+  const asks = waiting.length - gates.length;
+  if(!asks) return "sessions blocked on you";
+  if(!gates.length) return asks === 1 ? "question waiting on you" : "questions waiting on you";
+  return "sessions and questions waiting on you";
+}
+
 function countTile(label, sub, sessions, alert){
   const byH = new Map();
   for(const x of sessions) byH.set(x.harness, (byH.get(x.harness) || 0) + 1);

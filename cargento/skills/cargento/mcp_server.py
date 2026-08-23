@@ -29,12 +29,15 @@ the invariant that makes this stdout auditable at all.
 ## The security property
 
 The dashboard records the options at registration and answers with an **index**.
-This process returns ``options[index]`` from the list it was called with, never
-from anything the dashboard echoes back, and range-checks the index against its
-own list. A forged or confused answer can therefore only pick the wrong one of
-the options the agent itself offered, and can never introduce text into an
-agent's context. `docs/design-ask-lane.md` records why an index rather than a
-string.
+This process returns ``options[index]`` from the list it registered, never from
+anything the dashboard echoes back, and range-checks the index against its own
+list. A forged or confused answer can therefore only pick the wrong one of the
+options the agent itself offered, and can never introduce text into an agent's
+context. `docs/design-ask-lane.md` records why an index rather than a string.
+
+The list it registered is also the list the operator saw. Bounding happens once,
+in ``_arguments``, so the string handed back is character for character the label
+on the card that was clicked: nobody can approve text that was never shown.
 
 ## Why three threads
 
@@ -118,6 +121,11 @@ MIN_OPTIONS: Final = 2
 BODY_CAP_BYTES: Final = 8_192
 
 REGISTER_TIMEOUT_SEC: Final = 3.0
+# A withdrawal runs before the caller's reply is written, and one of its two
+# triggers is the client having gone away, where the dispatch loop is already
+# joining workers with `WORKER_JOIN_SEC`. So it is bounded well under that: the
+# board being tidy is never worth delaying the answer somebody is parked on.
+WITHDRAW_TIMEOUT_SEC: Final = 1.0
 # Must exceed the dashboard's `ask_poll_timeout_sec` (10.0), which is how long
 # one long poll deliberately holds. A socket timeout under it would abort every
 # poll and read as a dead dashboard.
@@ -135,6 +143,11 @@ WORKER_JOIN_SEC: Final = 2.0
 
 PARSE_ERROR: Final = -32700
 INVALID_REQUEST: Final = -32600
+
+# Not one of the dashboard's states: the state this process gives an ask whose
+# poll came back 404, so the difference between "already off the board" and "we
+# stopped waiting" survives as far as the withdrawal decision.
+GONE: Final = "gone"
 
 # `secrets.token_urlsafe`'s alphabet. The id is interpolated into a URL path,
 # and not trusting what the dashboard echoes back is this lane's whole posture.
@@ -180,11 +193,44 @@ TOOL: Final[dict[str, Any]] = {
     },
 }
 
+# One sentence per cause, because the agent puts this text in its context and may
+# repeat it to the user. "No dashboard is running here" used to answer every
+# non-200, which is false whenever the dashboard answered: it says the operator
+# cannot be reached at all, when in fact the lane is switched off or full and the
+# next attempt may well land.
 DECLINE_UNREACHABLE: Final = (
     "No operator was reached: no Cargento dashboard is running here, so the question was "
     "never shown and nothing was chosen. Proceed on your own judgement and say which "
     "option you took and why."
 )
+DECLINE_DISABLED: Final = (
+    "No operator was reached: the Cargento dashboard is running with its ask lane switched "
+    "off, so the question was never shown and nothing was chosen. Another question will be "
+    "refused the same way until it is switched back on. Proceed on your own judgement and "
+    "say which option you took and why."
+)
+DECLINE_BUSY: Final = (
+    "No operator was reached: the Cargento dashboard is running, but too many questions are "
+    "already waiting on the operator, so this one was not shown and nothing was chosen. "
+    "Proceed on your own judgement and say which option you took and why."
+)
+DECLINE_REFUSED: Final = (
+    "No operator was reached: the Cargento dashboard is running but refused the question, so "
+    "it was never shown and nothing was chosen. Proceed on your own judgement and say which "
+    "option you took and why."
+)
+DECLINE_TOO_LARGE: Final = (
+    "No operator was reached: the question, the options and this session's own attribution "
+    "are together too large to send, so nothing was shown and nothing was chosen. Proceed on "
+    "your own judgement and say which option you took and why."
+)
+# The reasons the register route publishes. An unknown one falls back to the
+# generic refusal rather than to unreachable, so a newer dashboard inventing a
+# reason cannot make this process claim nothing is running.
+DECLINE_BY_REASON: Final[dict[str, str]] = {
+    "disabled": DECLINE_DISABLED,
+    "busy": DECLINE_BUSY,
+}
 DECLINE_UNANSWERED: Final = (
     "No option was chosen: the question was shown but nobody answered it. Proceed on your "
     "own judgement and say which option you took and why."
@@ -327,7 +373,15 @@ def _json_object(raw: bytes) -> dict[str, Any]:
 
 
 def _arguments(raw: Any) -> tuple[str, tuple[str, ...]] | str:
-    """The validated question and options, or a sentence saying what is wrong."""
+    """The validated question and options, or a sentence saying what is wrong.
+
+    The text is bounded to the advertised caps **here and nowhere else**. Doing it
+    at registration instead is what let the card show 120 characters while the
+    answer resolved against the untruncated tuple, so a reader could approve a
+    string they were never shown, and two options differing only past the cap
+    rendered as the same button. Consent has to be to the thing that happens, so
+    one bounded tuple is registered and answered from.
+    """
     if not isinstance(raw, dict):
         return "ask_operator needs an arguments object with `question` and `options`."
     question = raw.get("question")
@@ -336,13 +390,20 @@ def _arguments(raw: Any) -> tuple[str, tuple[str, ...]] | str:
     raw_options = raw.get("options")
     if not isinstance(raw_options, list):
         return f"ask_operator needs an `options` array of {MIN_OPTIONS} to {MAX_OPTIONS} strings."
-    options = tuple(item.strip() for item in raw_options if isinstance(item, str) and item.strip())
+    options = tuple(
+        # Stripped after the cut as well: the dashboard strips what it stores, so
+        # a cut landing on a space would otherwise leave the card one character
+        # short of the string returned here.
+        item.strip()[:OPTION_CAP_CHARS].strip()
+        for item in raw_options
+        if isinstance(item, str) and item.strip()
+    )
     if len(options) != len(raw_options) or not MIN_OPTIONS <= len(options) <= MAX_OPTIONS:
         # Length-checked rather than truncated. A model told it may offer eight
         # options and offering twelve would otherwise be answered from a set it
         # never saw chosen from.
         return f"ask_operator needs {MIN_OPTIONS} to {MAX_OPTIONS} non-empty option strings."
-    return question.strip(), options
+    return question.strip()[:QUESTION_CAP_CHARS].strip(), options
 
 
 def _call_key(request_id: Any) -> str:
@@ -585,11 +646,15 @@ class AskServer:
             return validated, True
         question, options = validated
         registration = self._register(question, options)
-        if registration is None:
-            return DECLINE_UNREACHABLE, False
+        if isinstance(registration, str):
+            return registration, False
         base, ask_id = registration
         outcome = self._poll(base, ask_id, abort)
         if outcome is None:
+            # Nothing resolved this: the call was cancelled, the wait ran out, or
+            # the dashboard stopped answering. The card is still on the board and
+            # still clickable with nobody listening, so take it back.
+            self._withdraw(base, ask_id)
             return DECLINE_UNANSWERED, False
         state, index = outcome
         # The whole security property of this feature. The answer names a
@@ -600,39 +665,80 @@ class AskServer:
             return DECLINE_UNANSWERED, False
         return options[index], False
 
-    def _register(self, question: str, options: tuple[str, ...]) -> tuple[str, str] | None:
-        """(base url, ask id), or None if no dashboard took the question."""
+    def _register(self, question: str, options: tuple[str, ...]) -> tuple[str, str] | str:
+        """(base url, ask id), or the sentence to hand the agent instead.
+
+        The candidate list is walked only past a **connection-level** failure. Any
+        HTTP response means a dashboard is listening on that port, and walking
+        past one that refused registered the question on a different dashboard,
+        where a different reader answered it: measured with `--no-ask` on the
+        preferred port, which is the switch cli.py calls the rollback switch. So a
+        refusal ends the walk and its reason becomes the answer.
+        """
         payload: dict[str, Any] = {
-            "question": question[:QUESTION_CAP_CHARS],
-            "options": [option[:OPTION_CAP_CHARS] for option in options],
+            "question": question,
+            "options": list(options),
             **attribution(),
         }
-        body = json.dumps(payload, separators=(",", ":")).encode()
+        # ensure_ascii=False so the gate here measures the axis the dashboard
+        # measures: it checks Content-Length against its own byte cap, and
+        # escaping to \uXXXX turns one character of a non-Latin script into six
+        # bytes, which refused a question inside every documented character cap.
+        body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
         if len(body) > BODY_CAP_BYTES:
-            log("question too large to register")
-            return None
+            log(f"payload of {len(body)} bytes is over the {BODY_CAP_BYTES} byte cap")
+            return DECLINE_TOO_LARGE
         for port in self._ports:
             base = f"http://127.0.0.1:{port}"
             answer = _request(f"{base}/api/ask", data=body, timeout=REGISTER_TIMEOUT_SEC)
             if answer is None:
+                # A timeout rather than a refusal may mean the POST landed and
+                # only the reply was lost, leaving a card that cannot be
+                # withdrawn because the id was in that reply. The dashboard's own
+                # deadline is what retires it; there is nothing to do here.
                 continue
             status, raw = answer
-            if status != 200:
-                # 503 is the dashboard saying asks are off or its pending budget
-                # is full. Either way this port is not going to take it.
-                log(f"register on {port} returned {status}")
-                continue
             data = _json_object(raw)
+            if status != 200:
+                reason = data.get("reason")
+                log(f"register on {port} returned {status} ({reason})")
+                # Looked up only when it is a string: a reason of any other shape
+                # is an unhashable key away from a traceback in a worker.
+                if isinstance(reason, str):
+                    return DECLINE_BY_REASON.get(reason, DECLINE_REFUSED)
+                return DECLINE_REFUSED
             ask_id = data.get("id")
             if data.get("ok") is True and isinstance(ask_id, str) and ASK_ID_RE.match(ask_id):
                 return base, ask_id
             log(f"register on {port} returned an unusable id")
-        return None
+            # A 200 means that dashboard took the question, so a card nothing can
+            # poll is on somebody's board. The id goes in a body rather than a
+            # path, which is why one this process refuses to interpolate into a
+            # URL can still be withdrawn.
+            if isinstance(ask_id, str):
+                self._withdraw(base, ask_id)
+            return DECLINE_INTERNAL
+        return DECLINE_UNREACHABLE
+
+    def _withdraw(self, base: str, ask_id: str) -> None:
+        """Take an abandoned question off the board. Best effort, and silent.
+
+        Whether this lands changes nothing the agent is told: the agent's answer
+        is about whether an option was chosen, and a card left on the board is the
+        operator's problem, not part of that. So every failure here is a log line.
+        """
+        body = json.dumps({"id": ask_id}, separators=(",", ":")).encode()
+        answer = _request(f"{base}/api/ask/withdraw", data=body, timeout=WITHDRAW_TIMEOUT_SEC)
+        if answer is None or answer[0] != 200:
+            log(f"withdrawing {ask_id} did not land: {answer[0] if answer else 'no response'}")
 
     def _poll(
         self, base: str, ask_id: str, abort: threading.Event
     ) -> tuple[str, int | None] | None:
-        """The ask's outcome, or None if it never resolved for us.
+        """The ask's outcome, or None if nothing resolved it before we stopped.
+
+        None is the caller's cue to withdraw, so `GONE` is a state rather than a
+        None: a question already off the board needs no taking back.
 
         A bounded long poll rather than one held request: each GET returns within
         the dashboard's own poll timeout, which is what keeps a cancellation, a
@@ -650,7 +756,9 @@ class AskServer:
                 return None  # the dashboard went away mid-wait
             status, raw = answer
             if status == 404:
-                return None  # the ask is gone
+                # An outcome rather than a failure to get one: the question has
+                # already left the dashboard, so it is not withdrawn afterwards.
+                return GONE, None
             if status == 200:
                 body = _json_object(raw)
                 state = body.get("state")
@@ -686,8 +794,33 @@ def main(argv: list[str]) -> int:
         stdout=sys.stdout.buffer,
         ports=candidate_ports(argv[1:]),
     )
-    return server.run()
+    try:
+        return server.run()
+    except Exception:  # noqa: BLE001 — the promise includes never exiting non-zero
+        log(f"server loop failed:\n{traceback.format_exc()}")
+        return 0
+
+
+def _leave(status: int) -> None:
+    """Exit without running interpreter finalization.
+
+    On every exit that is not stdin reaching EOF, the reader thread is a daemon
+    parked in a blocking `readline`, so it still holds the buffered reader's lock
+    when CPython finalizes. Finalization aborts there (`_enter_buffered_busy`) and
+    the process dies with SIGABRT and a fatal error dump instead of `status`. A
+    stdout that has gone away is the other half: the final flush raises
+    BrokenPipeError, prints "Exception ignored" and turns the exit code into 120.
+
+    Both are artefacts of tearing down a process that has already written every
+    frame it owes, since `_Writer` flushes each one as it goes. So the flush here
+    is best effort and finalization is skipped entirely.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(OSError, ValueError):
+            stream.flush()
+    # os._exit rather than sys.exit: skipping finalization is the whole point.
+    os._exit(status)
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    _leave(main(sys.argv))

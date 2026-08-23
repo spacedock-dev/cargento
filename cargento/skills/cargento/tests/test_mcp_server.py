@@ -13,10 +13,12 @@ import json
 import os
 import pathlib
 import queue
+import sys
 import tempfile
 import threading
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Self
 from unittest import mock
@@ -155,6 +157,14 @@ def _call(request_id: Any, question: str, options: list[Any]) -> dict[str, Any]:
     }
 
 
+def _body(request: urllib.request.Request) -> dict[str, Any]:
+    """One posted JSON body, as the dashboard would parse it."""
+    assert isinstance(request.data, bytes)
+    parsed = json.loads(request.data)
+    assert isinstance(parsed, dict)
+    return parsed
+
+
 def _text(frame: dict[str, Any]) -> str:
     content = frame["result"]["content"]
     return str(content[0]["text"])
@@ -171,11 +181,19 @@ class _FakeDashboard:
         self,
         *,
         register: tuple[int, dict[str, Any]] | None = (200, {"ok": True, "id": "ask-1"}),
+        register_by_port: dict[int, tuple[int, dict[str, Any]] | None] | None = None,
         poll: list[tuple[int, dict[str, Any] | None]] | None = None,
+        withdraw: tuple[int, dict[str, Any]] | None = (200, {"ok": True, "withdrawn": True}),
     ) -> None:
         self.register = register
+        # A port this maps to nothing refuses the connection, which is how a
+        # walk-past-a-refusal case is told apart from a walk-past-a-response one.
+        self.register_by_port = register_by_port
         self.poll = poll or []
+        self.withdraw = withdraw
         self.requests: list[str] = []
+        self.registrations: list[dict[str, Any]] = []
+        self.withdrawals: list[dict[str, Any]] = []
         self.polls = threading.Semaphore(0)
         self._lock = threading.Lock()
 
@@ -184,10 +202,24 @@ class _FakeDashboard:
         url = request.full_url
         with self._lock:
             self.requests.append(url)
-        if url.endswith("/api/ask"):
-            if self.register is None:
+        # Checked before the poll fallthrough: the withdraw path also lives under
+        # /api/ask/, so an order swap here would score it as a poll.
+        if url.endswith("/api/ask/withdraw"):
+            with self._lock:
+                self.withdrawals.append(_body(request))
+            if self.withdraw is None:
                 return None
-            status, body = self.register
+            status, body = self.withdraw
+            return status, json.dumps(body).encode()
+        if url.endswith("/api/ask"):
+            with self._lock:
+                self.registrations.append(_body(request))
+            answer = self.register
+            if self.register_by_port is not None:
+                answer = self.register_by_port.get(urllib.parse.urlsplit(url).port or 0)
+            if answer is None:
+                return None
+            status, body = answer
             return status, json.dumps(body).encode()
         self.polls.release()
         step: tuple[int, dict[str, Any] | None] | None
@@ -204,7 +236,19 @@ class _FakeDashboard:
 
     def poll_count(self) -> int:
         with self._lock:
-            return sum(1 for url in self.requests if "/api/ask/" in url)
+            return sum(
+                1
+                for url in self.requests
+                if "/api/ask/" in url and not url.endswith("/api/ask/withdraw")
+            )
+
+    def register_ports(self) -> list[int]:
+        with self._lock:
+            return [
+                urllib.parse.urlsplit(url).port or 0
+                for url in self.requests
+                if url.endswith("/api/ask")
+            ]
 
 
 class FrameContractTest(unittest.TestCase):
@@ -286,27 +330,30 @@ class FrameContractTest(unittest.TestCase):
         self.assertEqual([{"jsonrpc": "2.0", "id": "x", "result": {}}], frames)
 
 
-class CallFlowTest(unittest.TestCase):
-    """Every path out of a tools/call, including every failure path."""
+class _CallCase(unittest.TestCase):
+    """Drive one tools/call to its single frame."""
 
-    def _run(self, dashboard: _FakeDashboard, call: dict[str, Any]) -> dict[str, Any]:
-        with mock.patch.object(mcp_server, "_open", dashboard), _Harness() as harness:
+    def _run(
+        self,
+        dashboard: _FakeDashboard,
+        call: dict[str, Any],
+        ports: tuple[int, ...] = (4553,),
+    ) -> dict[str, Any]:
+        with mock.patch.object(mcp_server, "_open", dashboard), _Harness(ports) as harness:
             harness.push(call)
             frames = harness.wait_for_frames(1)
         self.assertEqual(1, len(frames), f"expected exactly one frame, got {frames}")
         return frames[0]
+
+
+class CallFlowTest(_CallCase):
+    """Every path out of a tools/call, including every failure path."""
 
     def test_no_dashboard_reachable_declines_as_a_normal_result(self) -> None:
         frame = self._run(_FakeDashboard(register=None), _call(1, "Ship it?", ["ship", "hold"]))
         self.assertNotIn("error", frame)
         self.assertIs(False, frame["result"]["isError"])
         self.assertIn("no Cargento dashboard is running", _text(frame))
-
-    def test_a_503_on_register_declines(self) -> None:
-        frame = self._run(
-            _FakeDashboard(register=(503, {})), _call(1, "Ship it?", ["ship", "hold"])
-        )
-        self.assertEqual(mcp_server.DECLINE_UNREACHABLE, _text(frame))
 
     def test_an_answer_returns_the_option_this_process_was_called_with(self) -> None:
         dashboard = _FakeDashboard(
@@ -346,9 +393,14 @@ class CallFlowTest(unittest.TestCase):
 
     def test_an_unusable_ask_id_is_not_interpolated_into_a_url(self) -> None:
         dashboard = _FakeDashboard(register=(200, {"ok": True, "id": "../../etc/passwd"}))
-        frame = self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]))
-        self.assertEqual(mcp_server.DECLINE_UNREACHABLE, _text(frame))
+        frame = self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]), ports=(4553, 4554))
+        self.assertEqual(mcp_server.DECLINE_INTERNAL, _text(frame))
         self.assertEqual(0, dashboard.poll_count())
+        # A 200 means the question is on that dashboard's board, so it is taken
+        # back by id in a body rather than left clickable, and no second port is
+        # asked to register the same question.
+        self.assertEqual([{"id": "../../etc/passwd"}], dashboard.withdrawals)
+        self.assertEqual([4553], dashboard.register_ports())
 
     def test_bad_arguments_are_an_error_result_not_a_protocol_error(self) -> None:
         cases: list[list[Any]] = [["only one"], [], ["a", 7], ["a", ""], ["x"] * 9]
@@ -400,6 +452,200 @@ class CallFlowTest(unittest.TestCase):
         self.assertEqual(mcp_server.QUESTION_CAP_CHARS, len(body["question"]))
         self.assertEqual(mcp_server.OPTION_CAP_CHARS, len(body["options"][0]))
         self.assertIn("harness", body)
+
+
+class RegisterRefusalTest(_CallCase):
+    """A dashboard that answered is the dashboard, whatever it answered.
+
+    Measured before the fix: with `--no-ask` on the preferred port the question
+    walked to the next candidate and was registered and answered on a different
+    dashboard, which is exactly what the rollback switch is supposed to prevent.
+    """
+
+    def _refused(self, first: tuple[int, dict[str, Any]]) -> tuple[dict[str, Any], _FakeDashboard]:
+        dashboard = _FakeDashboard(
+            register_by_port={4553: first, 4554: (200, {"ok": True, "id": "ask-2"})},
+            poll=[(200, {"state": "answered", "index": 0})],
+        )
+        frame = self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]), ports=(4553, 4554))
+        return frame, dashboard
+
+    def test_a_disabled_lane_is_not_walked_past(self) -> None:
+        frame, dashboard = self._refused((503, {"ok": False, "reason": "disabled"}))
+        self.assertEqual([4553], dashboard.register_ports())
+        self.assertEqual(0, dashboard.poll_count())
+        self.assertEqual(mcp_server.DECLINE_DISABLED, _text(frame))
+        self.assertIn("ask lane", _text(frame))
+
+    def test_a_full_budget_is_not_walked_past(self) -> None:
+        frame, dashboard = self._refused((503, {"ok": False, "reason": "busy"}))
+        self.assertEqual([4553], dashboard.register_ports())
+        self.assertEqual(mcp_server.DECLINE_BUSY, _text(frame))
+        self.assertIn("already waiting", _text(frame))
+
+    def test_no_refusal_claims_that_nothing_is_running(self) -> None:
+        # The agent puts this sentence in its context and may repeat it to the
+        # user, so the cause has to be true rather than convenient.
+        for first in (
+            (503, {}),
+            (503, {"ok": False, "reason": "something-newer"}),
+            (400, {}),
+            (413, {}),
+            (500, {}),
+        ):
+            with self.subTest(first=first):
+                frame, dashboard = self._refused(first)
+                self.assertEqual([4553], dashboard.register_ports())
+                self.assertNotIn("no Cargento dashboard is running", _text(frame))
+                self.assertIs(False, frame["result"]["isError"])
+
+    def test_a_refused_connection_still_walks_to_the_next_candidate(self) -> None:
+        dashboard = _FakeDashboard(
+            register_by_port={4554: (200, {"ok": True, "id": "ask-2"})},
+            poll=[(200, {"state": "answered", "index": 1})],
+        )
+        frame = self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]), ports=(4553, 4554))
+        self.assertEqual([4553, 4554], dashboard.register_ports())
+        self.assertEqual("hold", _text(frame))
+
+
+class WithdrawTest(_CallCase):
+    """An abandoned question comes off the board on the way out."""
+
+    def test_a_poll_that_gave_up_withdraws_the_question(self) -> None:
+        dashboard = _FakeDashboard(poll=[(500, None)])
+        frame = self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]))
+        self.assertEqual(mcp_server.DECLINE_UNANSWERED, _text(frame))
+        self.assertEqual([{"id": "ask-1"}], dashboard.withdrawals)
+
+    def test_a_failed_withdrawal_does_not_change_what_the_agent_is_told(self) -> None:
+        for withdraw in (None, (500, {}), (200, {"ok": True, "withdrawn": False})):
+            with self.subTest(withdraw=withdraw):
+                dashboard = _FakeDashboard(poll=[(500, None)], withdraw=withdraw)
+                frame = self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]))
+                self.assertEqual(mcp_server.DECLINE_UNANSWERED, _text(frame))
+                self.assertEqual(1, len(dashboard.withdrawals))
+
+    def test_a_resolved_question_is_left_alone(self) -> None:
+        # Answered, declined and expired are all resolutions the dashboard has
+        # already released. Withdrawing one would be a second write for nothing.
+        for state, index in (("answered", 0), ("declined", None), ("expired", None)):
+            with self.subTest(state=state):
+                dashboard = _FakeDashboard(poll=[(200, {"state": state, "index": index})])
+                self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]))
+                self.assertEqual([], dashboard.withdrawals)
+
+    def test_an_ask_the_dashboard_already_dropped_is_not_withdrawn(self) -> None:
+        dashboard = _FakeDashboard(poll=[(404, None)])
+        self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]))
+        self.assertEqual([], dashboard.withdrawals)
+
+    def test_a_cancelled_call_withdraws_the_question(self) -> None:
+        dashboard = _FakeDashboard(poll=[(204, None)])
+        with mock.patch.object(mcp_server, "_open", dashboard), _Harness() as harness:
+            harness.push(_call("c1", "Ship it?", ["ship", "hold"]))
+            self.assertTrue(dashboard.polls.acquire(timeout=10.0))
+            harness.push(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/cancelled",
+                    "params": {"requestId": "c1"},
+                }
+            )
+            frames = harness.wait_for_frames(1)
+        self.assertEqual(mcp_server.DECLINE_UNANSWERED, _text(frames[0]))
+        self.assertEqual([{"id": "ask-1"}], dashboard.withdrawals)
+
+
+class OperatorConsentTest(_CallCase):
+    """The agent gets the string the operator saw, not a longer one."""
+
+    def test_the_returned_option_is_the_one_that_was_registered(self) -> None:
+        long_option = "y" * 40 + "z" * 200
+        dashboard = _FakeDashboard(poll=[(200, {"state": "answered", "index": 1})])
+        frame = self._run(dashboard, _call(1, "Ship it?", ["ship", long_option]))
+        registered = dashboard.registrations[0]["options"]
+        # Consent has to be to the thing that happens: the card can only show the
+        # truncated label, so that is the string the answer resolves to.
+        self.assertEqual(mcp_server.OPTION_CAP_CHARS, len(registered[1]))
+        self.assertEqual(registered[1], _text(frame))
+
+    def test_two_options_differing_past_the_cap_answer_to_what_was_shown(self) -> None:
+        head = "a" * mcp_server.OPTION_CAP_CHARS
+        dashboard = _FakeDashboard(poll=[(200, {"state": "answered", "index": 0})])
+        frame = self._run(dashboard, _call(1, "Which?", [head + "-one", head + "-two"]))
+        self.assertEqual(head, _text(frame))
+
+
+class PayloadSizeTest(_CallCase):
+    """The local size gate must not refuse what the dashboard would accept."""
+
+    def test_a_non_latin_question_is_registered_rather_than_refused(self) -> None:
+        # Every documented cap is in characters, and this payload is inside all of
+        # them. Escaping it to \uXXXX made it 8 800 bytes against an 8 192-byte
+        # gate, so it was refused locally and reported as no dashboard running.
+        question = "測" * mcp_server.QUESTION_CAP_CHARS
+        options = [
+            "選" * mcp_server.OPTION_CAP_CHARS + str(n) for n in range(mcp_server.MAX_OPTIONS)
+        ]
+        dashboard = _FakeDashboard(poll=[(200, {"state": "answered", "index": 0})])
+        with mock.patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": "/tmp/x"}, clear=False):
+            frame = self._run(dashboard, _call(1, question, options))
+        self.assertEqual(1, len(dashboard.registrations))
+        body = dashboard.registrations[0]
+        self.assertEqual(mcp_server.QUESTION_CAP_CHARS, len(body["question"]))
+        self.assertEqual(body["options"][0], _text(frame))
+
+    def test_a_payload_over_the_byte_cap_says_so_instead_of_blaming_the_dashboard(self) -> None:
+        # Reachable through the one field this process does not bound: the
+        # attributed project directory is whatever the harness exported.
+        dashboard = _FakeDashboard()
+        with mock.patch.dict(
+            os.environ, {"CLAUDE_PROJECT_DIR": "/" + "p" * mcp_server.BODY_CAP_BYTES}, clear=False
+        ):
+            frame = self._run(dashboard, _call(1, "Ship it?", ["ship", "hold"]))
+        self.assertEqual([], dashboard.requests)
+        self.assertEqual(mcp_server.DECLINE_TOO_LARGE, _text(frame))
+        self.assertNotIn("no Cargento dashboard is running", _text(frame))
+
+
+class ExitPathTest(unittest.TestCase):
+    """An abnormal exit must not become a fatal-error dump or an exit 120."""
+
+    def test_leaving_skips_finalization_and_survives_a_dead_stdout(self) -> None:
+        exits: list[int] = []
+
+        class _Broken:
+            def flush(self) -> None:
+                raise BrokenPipeError(32, "Broken pipe")
+
+        with (
+            mock.patch.object(os, "_exit", exits.append),
+            mock.patch.object(sys, "stdout", _Broken()),
+        ):
+            mcp_server._leave(0)
+        self.assertEqual([0], exits)
+
+    def test_the_entry_point_leaves_rather_than_finalizing(self) -> None:
+        # The stdin reader is a daemon parked in readline on every abnormal exit,
+        # so ordinary finalization aborts on its buffered-reader lock. Read off the
+        # source because the wiring is what fails, and a child process is the one
+        # thing these tests may not spawn.
+        source = pathlib.Path(mcp_server.__file__).read_text(encoding="utf-8")
+        self.assertIn("_leave(main(sys.argv))", source)
+        self.assertNotIn("sys.exit(main", source)
+
+    def test_a_loop_that_raises_still_reports_a_clean_exit(self) -> None:
+        # A non-zero exit is outside the promise even here, and stdin and stdout
+        # are stood in for so the assertion does not depend on what the test
+        # runner left in sys.stdin.
+        streams = mock.Mock(buffer=io.BytesIO())
+        with (
+            mock.patch.object(mcp_server.AskServer, "run", side_effect=RuntimeError("boom")),
+            mock.patch.object(sys, "stdin", streams),
+            mock.patch.object(sys, "stdout", streams),
+        ):
+            self.assertEqual(0, mcp_server.main(["mcp_server.py"]))
 
 
 class CancellationTest(unittest.TestCase):

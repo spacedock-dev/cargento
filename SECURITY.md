@@ -30,14 +30,15 @@ The posture rests on two invariants:
    redirects.
    Session data never leaves the machine. The quota poll is the single outbound exception, and it
    carries a vendor token out and quota numbers back, nothing else.
-2. Read-only against harness stores. They are opened read-only and never written. Six endpoints
-   mutate, and five of them only in memory: `POST /api/notify` updates needs-input state, and
+2. Read-only against harness stores. They are opened read-only and never written. Seven endpoints
+   mutate, and six of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
    `POST /api/events/<harness>` also mutates in memory only, behind the capability described under
-   Known and accepted, and so do `POST /api/ask` and `POST /api/answer`, which register a question a
-   session asked and record the option the reader chose, both described under The ask lane. The long
+   Known and accepted, and so do `POST /api/ask`, `POST /api/answer` and `POST /api/ask/withdraw`,
+   which register a question a session asked, record the option the reader chose, and drop a question
+   whose asker has stopped waiting for it, all three described under The ask lane. The long
    poll that delivers an answer, `GET /api/ask/<id>`, drops that question from memory once it has,
-   which is the delivery completing rather than a change a caller asked for. The sixth,
+   which is the delivery completing rather than a change a caller asked for. The seventh,
    `POST /api/dismiss`, does write to disk, but what it writes is
    Cargento's own state under `~/.cargento` and never a harness store, so the read-only rule above stands
    unchanged. What that file holds and how to clear it is in Dismissals. One forwarder writes too:
@@ -271,7 +272,10 @@ that is never answered expires and declines.
 Failure is always a decline, never a hang. If the dashboard is not running, if no reader answers, if
 the deadline passes, or if the process is stopped while a question is outstanding, the tool returns a
 decline and the agent proceeds as it judges best. A stopped dashboard releases every outstanding
-question before it exits.
+question before it exits. A tool call that gives up for any of those reasons also withdraws its own
+question on the way out, so a card nobody is waiting on leaves the board instead of staying clickable
+until its deadline. A click on a question whose asker has gone is accepted and discarded either way,
+which is why the withdrawal matters to the reader rather than to the agent.
 
 The standing permission this needs, and what granting it means. At default settings every harness
 gates the first call to this tool in the user's own terminal, before the call reaches Cargento. The
@@ -331,6 +335,20 @@ only choose badly among choices the agent already offered. And a session is only
 it asked, so there is no question to answer unless an agent raised one. A per-reader
 authentication would be the real fix, and it is not available: the dashboard page is served as fixed
 bytes with no per-run secret in it, and a local process could read such a secret anyway.
+
+A question's attribution is unverified, and this is the second half of that exposure. `harness`,
+`session_id` and `project` are taken from the registration body and bounded, and nothing checks that
+the named session exists or that the caller is it, so any local process that can reach the port can
+put a card on the board that reads as coming from a specific session in a specific repository. Two
+things bound the damage. The card is its own band and touches no collector-measured session state, so
+a forged attribution cannot alter a row, a state, a count or a dismissal
+([`docs/design-ask-lane.md`](docs/design-ask-lane.md#a-4-an-outstanding-question-is-its-own-band-not-a-row-in-sessions)
+records why the band is separate); and answering the card still
+only selects among options its own registrant wrote, so the forger gains nothing from being answered.
+What a forgery does buy is plausibility, at the one place in the dashboard where a reader makes a
+decision, which is why it is named here rather than left implicit in the loopback paragraph above.
+Verifying it would need a per-session secret that the sessions do not have and that the loopback
+boundary could not keep.
 
 `--diagnose` output is sensitive. It prints the home directory, the interpreter path, the *values* of
 the store relocation variables, every candidate store path, and per-path read errors. Nothing is

@@ -32,6 +32,15 @@ to skip, never to satisfy, and an unconditional collection still runs at
 false negative to one reconciliation interval instead of forever, which is the
 whole reason the probe was allowed near the live path.
 
+## Why an outstanding ask forces collections
+
+`AskRegistry.pending` is both what renders an ask's card and what expires it, so
+until `_due` knew about asks a question raised with no browser tab open never
+appeared, never expired and never released its slot. `_due` therefore treats an
+unresolved ask as a reason to collect on its own, and `note_ask` pulls that
+collection forward to the registration instead of the next tick. The registry
+sweeps on registration too, so neither half depends on the other.
+
 ## What this phase does not do
 
 An `input_requested` is exempt from the coalescing delay, and now really is:
@@ -123,6 +132,13 @@ if TYPE_CHECKING:
 # well, because two children are two facts rather than one superseding the other.
 OverlayKey = tuple[str, str | None]
 SessionKey = tuple[str, str]
+
+# `_dirty` is keyed by harness, and this is the one key that is not a harness: a
+# registered ask is a fact about this runtime rather than about any store. The
+# generation maps are only ever compared against each other, key for key, so a
+# synthetic key rides them safely. The asterisk is what keeps it from ever
+# colliding with a harness id.
+ASK_GENERATION = "*ask"
 
 
 class Observation:
@@ -369,6 +385,37 @@ class Observation:
         with self._lock:
             return self._finished.get((harness, sid), 0.0)
 
+    def note_ask(self) -> None:
+        """A session registered a question. Bring the next collection forward.
+
+        The card is drawn by a collection and by nothing else, so without this
+        the register route's only wake path was the revision some later
+        collection happened to publish. Measured before this existed: 3.2 s
+        under `--no-events`, where `lifecycle.run_producer` is running, and 18.2
+        to 22.3 s on the default build, where what eventually noticed was the
+        page's own 20-second fallback poll. `docs/design-ask-lane.md` records the
+        earlier decision not to add this seam, and why that reasoning was wrong.
+
+        Called from a handler thread, and it must be called once the registry has
+        let go: this takes `_lock`, and `_due` reads the registry while holding
+        `_lock`, so the order is `_lock` then the registry lock and never the
+        other way. A caller still holding a registry lock here would be the one
+        thing that closes that cycle. `_due` and `AskRegistry` carry the same
+        note.
+        """
+        with self._lock:
+            # A generation rather than a flag, for the reason `_record` uses one:
+            # `_collect` retires only the generations it captured before its read,
+            # so an ask registered during a collection stays dirty instead of
+            # being marked done against a payload that predates it.
+            self._dirty[ASK_GENERATION] = self._dirty.get(ASK_GENERATION, 0) + 1
+            # The same reason `reconcile_required` clears it: a session that has
+            # just stopped to ask a person something has been working, and the
+            # pass that renders its card should be a real read of the stores
+            # rather than one the probe is allowed to skip.
+            self._last_reconcile_at = 0.0
+            self._wake.notify_all()
+
     def _bump(self, name: str) -> None:
         """Count something, under `_lock`. Diagnostics only, never control flow."""
         self.counters[name] = self.counters.get(name, 0) + 1
@@ -521,6 +568,23 @@ class Observation:
         dirty = any(self._dirty.get(key, 0) != self._collected.get(key, 0) for key in self._dirty)
         if dirty and (self._urgent or self._coalesce_until is None or now >= self._coalesce_until):
             return True, "event"
+        # An outstanding ask is its own reason to collect. `AskRegistry.pending`
+        # is what renders the card and what sweeps the table, and a dashboard
+        # with no browser tab open has neither a dirty generation nor a stream to
+        # ride on: the lane wedged shut on exactly the long unattended run it
+        # exists for. `count` is unresolved only, so an answered ask waiting for
+        # its poller does not hold this open.
+        #
+        # Rate-limited by the floor above and by nothing else. Gating it on
+        # `stream_producer_interval_sec`, as the tick below is, would delay the
+        # first render of a fresh ask by up to that interval, which is the
+        # latency this seam exists to remove.
+        #
+        # The registry lock is taken here, under `_lock`. That is the only
+        # direction it ever runs: nothing in `asks` calls into this class, and
+        # `note_ask` is called after `register` has returned.
+        if self.application.state.asks.count:
+            return True, "ask"
         if self.application.state.streams.count and (
             now - self._last_collect_at >= self.config.stream_producer_interval_sec
         ):

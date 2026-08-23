@@ -64,12 +64,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                42_149,
-                "d878ef70b0e132371a198148cb7aaa93199560fdd51be0a20f29a60e83943ce3",
+                42_975,
+                "741b3e185654153b0314176ccd48135c1b4499210cd982b4237fcde99c3419ae",
             ),
             "regular.js": (
-                39_387,
-                "8169ba41e076b73d6e2a26c35e4bfb43f32f42d4337d738e64df260e455aec6c",
+                39_871,
+                "d9c5209c4dbe2fcec92edefe495ef6e6b5fb725138ebf7579abc425726d861bf",
             ),
             "mode.js": (
                 2_087,
@@ -84,20 +84,20 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "b36c6fd4c6924857f7e86dbc2818de59d1e0984233480701bef0fabe14b6cc12",
             ),
             "ask.js": (
-                5_303,
-                "13c0ae9406aea585782fa6cbcd6c2789cb67fbc2b49cabefa8c874389f2ccd18",
+                7_064,
+                "b3427d36b59995b468c6cb8d31bef21b20167d41dd302b56c4781ff9d37b038a",
             ),
             "calm.js": (
-                51_515,
-                "53cd325da0b6ac297cdc2c17455b51cf40adfbc856de4309c4f4fc47592a6de9",
+                51_608,
+                "e12da1641dfa3328e0b5a9037163d380ba7f419b60d1709ef64ce18602cbe463",
             ),
             "notify.js": (
                 3_185,
                 "afd7a8ff735ea52b95e31a22f60f024d0bb752b7063860abc0e7bb1ae1c0fcae",
             ),
             "main.js": (
-                10_111,
-                "32325ea74bd3b1e8a59cc5605ceff769921324083c8c78319450668dec258da1",
+                10_446,
+                "22573db49d326f1cf98df907828d2e1ab0e40d95d1beb8c1d7db69bb060b99f8",
             ),
             "live.js": (
                 6_176,
@@ -112,16 +112,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(51_506, len(styles))
+        self.assertEqual(52_474, len(styles))
         self.assertEqual(
-            "ecdc6397d8695a44d409c2483e97f5c91b31716f37ecb8cd52dd183bc2967a01",
+            "9954221e5579b1fe63758160b3c70ce86aece4b643087332ad5aa92158e12dc9",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(270_035, len(assembled))
+        self.assertEqual(274_502, len(assembled))
         self.assertEqual(
-            "cd706587c72abc76bdfc372be78783861aa0e2e8e9e5952ee08f9a0bb43fcb59",
+            "fb7f72aa560af387e91b3b1f51c3dd902f2258d3dd726602f594b95613ffa6cc",
             hashlib.sha256(assembled).hexdigest(),
         )
 

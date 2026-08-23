@@ -709,6 +709,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
             "/api/ask": self._ask,
+            "/api/ask/withdraw": self._withdraw,
             "/api/answer": self._answer,
             "/api/notify": self._notify,
         }.get(path)
@@ -747,6 +748,33 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # would break them.
         self._send(json.dumps(response, separators=(",", ":")).encode(), "application/json")
 
+    def _ask_unavailable(self, reason: str, *, body_read: bool) -> None:
+        """Refuse an ask route at 503, saying which kind of no this is.
+
+        503 for both reasons, because both are honest "not right now" answers
+        rather than anything the caller got wrong. What the machine-readable
+        reason adds is whether waiting helps: a `disabled` build will never take
+        a question and a `busy` one will as soon as a slot frees. A bare 503 was
+        indistinguishable from a wrong port, and the stdio server read it as one:
+        it walked on to the next candidate and registered the question on a
+        second dashboard that had the lane switched on, defeating `--no-ask`.
+
+        `_reject` cannot carry a body, hence `_send` at 503. The drain `_reject`
+        would have done is conditional here: on the refusal that happens before
+        the body is read it is still required, because closing a socket over
+        unread inbound data makes the OS send RST and the reply already written
+        can be discarded. After the body has been read it would be actively
+        wrong, since a second read on a keep-alive connection would consume the
+        next request's bytes.
+        """
+        if not body_read:
+            self._drain_body()
+        self._send(
+            json.dumps({"ok": False, "reason": reason}, separators=(",", ":")).encode(),
+            "application/json",
+            503,
+        )
+
     @staticmethod
     def _ask_options(value: Any, *, cap_chars: int, max_options: int) -> tuple[str, ...] | None:
         """The offered options, bounded in count and length, or None if unusable.
@@ -757,10 +785,20 @@ class _RequestHandler(BaseHTTPRequestHandler):
         peer resolves it against its own copy of the list, so keeping a prefix
         stays aligned with that copy while dropping a member from the middle
         would silently shift every later index onto the wrong option.
+
+        A non-string member is refused rather than coerced. `records.safe_text`
+        does `str(value or "")`, so it does not fail on one: `[{"a": 1}]`
+        published the label `{'a': 1}`, and falsiness rather than type decided
+        the rest, which is why `[1, 2]` was accepted while `[0, 1]` was refused.
+        The answer is an index into this tuple, so a stringified option is a
+        choice the asking session never offered.
         """
         if not isinstance(value, list):
             return None
-        options = tuple(records.safe_text(item, cap_chars).strip() for item in value[:max_options])
+        offered = value[:max_options]
+        if not all(isinstance(item, str) for item in offered):
+            return None
+        options = tuple(records.safe_text(item, cap_chars).strip() for item in offered)
         # Two is the floor for a question worth putting on the board: one option
         # is not a choice, and nothing can be rendered from an empty list.
         return None if len(options) < 2 or not all(options) else options
@@ -784,7 +822,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         application = self.server.application
         config = application.config
         if not config.ask_enabled:
-            self._reject(503)
+            self._ask_unavailable("disabled", body_read=False)
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -799,7 +837,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        question = records.safe_text(payload.get("question"), config.ask_question_cap_chars).strip()
+        raw_question = payload.get("question")
+        # Type-checked before it is bounded, for the reason `_ask_options` gives:
+        # `safe_text` would turn a non-string into its Python repr and publish
+        # that as the question. Falling through to the empty string keeps one 400
+        # path for every unusable body.
+        question = (
+            records.safe_text(raw_question, config.ask_question_cap_chars).strip()
+            if isinstance(raw_question, str)
+            else ""
+        )
         options = self._ask_options(
             payload.get("options"),
             cap_chars=config.ask_option_cap_chars,
@@ -820,14 +867,33 @@ class _RequestHandler(BaseHTTPRequestHandler):
             options=options,
             created=application.clock(),
         )
-        if not application.state.asks.register(ask, limit=config.ask_max_pending):
-            self._reject(503)
+        if not application.state.asks.register(
+            ask,
+            limit=config.ask_max_pending,
+            deadline=config.ask_deadline_sec,
+            retention=config.ask_retention_sec,
+        ):
+            self._ask_unavailable("busy", body_read=True)
             return
         # The published bodies are dropped rather than waited out, exactly as a
-        # dismissal drops them. This is also the whole wake path: the next
-        # collection includes the ask and publishes a revision, which is what
-        # reaches an open tab. No new seam into the coordinator was needed.
+        # dismissal drops them.
         application.state.snapshot.clear()
+        # Dropping the body is not a wake path on its own: nothing collects until
+        # something asks it to, and a dashboard with no browser tab open asks for
+        # nothing. Measured before this call existed: 18.2 to 22.3 s to first
+        # render on the default build, where the page's own 20-second fallback
+        # poll was what eventually noticed.
+        #
+        # After `register` has returned, and never inside it: `note_ask` takes
+        # `Observation._lock`, and `_due` reads the registry while holding that
+        # lock, so this is the only order that stays acyclic. `AskRegistry` and
+        # `Observation.note_ask` carry the same note.
+        #
+        # None under `--no-events`, where there is no coordinator to wake and
+        # `lifecycle.run_producer` is collecting on its own timer instead.
+        coordinator = self.server.observation
+        if coordinator is not None:
+            coordinator.note_ask()
         self._send(
             json.dumps({"ok": True, "id": ask.id}, separators=(",", ":")).encode(),
             "application/json",
@@ -852,6 +918,51 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if len(project) > cap:
             return "\u2026" + project[-(cap - 1) :]
         return project
+
+    def _withdraw(self) -> None:
+        """Take a question off the board on its asking session's behalf.
+
+        The session that asked is the one that gives up: its tool call was
+        aborted, or its poll ran out. Without this route the card stayed
+        clickable for the rest of the deadline, and the reader's click was
+        accepted and thrown away, so a person answered a question nobody was
+        listening for and was told nothing about it.
+
+        A 200 for an unknown id, exactly as `/api/answer` gives one: a 404 would
+        make this an oracle for which asks exist. The caller reads `withdrawn`.
+
+        Bounded at the answer route's cap rather than the register route's: the
+        body carries an id and nothing else.
+        """
+        application = self.server.application
+        config = application.config
+        if not config.ask_enabled:
+            self._ask_unavailable("disabled", body_read=False)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.ask_answer_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        ask_id = payload.get("id")
+        withdrawn = isinstance(ask_id, str) and application.state.asks.withdraw(ask_id)
+        if withdrawn:
+            # The same reason an answer drops it: a card that has left the
+            # registry has to leave the board on the next collection, or it goes
+            # on offering a choice nobody can act on.
+            application.state.snapshot.clear()
+        self._send(
+            json.dumps({"ok": True, "withdrawn": withdrawn}, separators=(",", ":")).encode(),
+            "application/json",
+        )
 
     def _answer(self) -> None:
         """Record the option the reader chose.

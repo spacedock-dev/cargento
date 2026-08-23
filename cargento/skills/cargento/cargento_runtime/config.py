@@ -207,8 +207,17 @@ class RuntimeConfig:
     # five minutes is set against the thing on the other end: the asking session
     # is parked in a tool call for the whole wait, so a longer deadline buys a
     # reader nothing and costs an agent a stalled turn. There is no timer thread
-    # to enforce it; the sweep rides on collection, in `AskRegistry.pending`.
+    # to enforce it: the sweep rides on `AskRegistry.register` and on the
+    # collection the coordinator now runs while any ask is outstanding, which is
+    # what makes it independent of anybody watching the page.
     ask_deadline_sec: float
+    # How long a resolved ask stays retrievable after the sweep first sees its
+    # outcome, so its poller can still collect it. One minute is six poll holds
+    # at `ask_poll_timeout_sec`, which is generous against a peer that is either
+    # parked in `wait` and gets the answer instantly or is gone for good. Past
+    # this the row is dropped; the budget never counted it, because a resolved
+    # ask needs no slot.
+    ask_retention_sec: float
     # One long-poll hold. Bounded rather than held open for the whole wait, which
     # is what keeps the thread budget, the shutdown decline and a dead peer all
     # ordinary: see docs/design-ask-lane.md.
@@ -467,6 +476,7 @@ def build_runtime_config(
         event_rate_per_sec=20.0,
         event_burst_max=40,
         ask_deadline_sec=300.0,
+        ask_retention_sec=60.0,
         ask_poll_timeout_sec=10.0,
         ask_max_pending=16,
         ask_body_cap_bytes=8_192,

@@ -4,8 +4,8 @@ Owner for the question "why does the only path from the dashboard into a session
 The module map belongs to
 [design-runtime-architecture.md](design-runtime-architecture.md#r-1-one-responsibility-per-file-and-the-launcher-owns-none);
 the shipped security contract belongs to [SECURITY.md](../SECURITY.md). This document owns the four
-alternatives that were rejected on the way there, because each one is the shape a later change would
-reach for first.
+alternatives weighed on the way there, one of which was rejected and then reversed, because each one
+is the shape a later change would reach for first.
 
 Everything before this feature ran one direction. Collectors read harness stores, the page rendered
 what they read, and the two things a reader could do (dismiss a row, stop the server) changed only
@@ -105,23 +105,52 @@ The id is generated with `secrets.token_urlsafe` and is not guessable, but it is
 treated as an authenticator. The index rule is the protection, and a design that leaned on the id
 would be resting on a value that reaches the page.
 
-## A-3: no new wake seam in the coordinator
+## A-3: no new wake seam in the coordinator, and why that was wrong
 
-Rejected: `observation.py` grows a way for a registration to demand a collection, so a question
-appears on the page the instant it is asked.
+Rejected, then reversed. `observation.py` now carries a seam a registration uses to demand a
+collection, because both grounds this section gave for refusing it were false. The argument is kept
+rather than deleted: it read well, it was wrong twice, and the two mistakes in it are the ones a
+later change would make again.
 
-Registration calls `state.snapshot.clear()` instead, exactly as `_dismiss` already does. The next
-collection includes the question, and `Application.collect_json` is the sole caller of
+What was argued. Registration calls `state.snapshot.clear()`, exactly as `_dismiss` already does.
+The next collection includes the question, and `Application.collect_json` is the sole caller of
 `state.streams.publish`, so every connected client wakes on the new revision. `run_producer` already
-collects every `stream_producer_interval_sec` while a tab is open, which puts a question on an open
-page within about five seconds using machinery that was already there.
+collects every `stream_producer_interval_sec` while a tab is open, which was said to put a question
+on an open page within about five seconds using machinery that was already there. The seam was
+rejected on cost rather than on latency: a registration path reaching into the coordinator would add
+an `Observation._lock` to ask-registry edge that nothing else in the runtime needs, in the one module
+that starts a thread, and lock cycles are the class of bug this codebase pays most to avoid.
 
-The seam was rejected on cost rather than on latency. A registration path that reaches into the
-coordinator creates an `Observation._lock` to the ask registry's own lock ordering that nothing else
-in the runtime needs, in the one module that starts a thread, and lock cycles are the class of bug
-this codebase pays most to avoid. Five seconds on a surface a human is walking towards is not worth
-that. If a later measurement shows the delay actually costs something, the fix is a shorter producer
-interval, which is a config change and not a new edge in the lock graph.
+The lock edge does not exist. `Observation._collect` takes and releases `_lock` around the read
+rather than across it, and calls `self.application.collect_json`, and therefore `AskRegistry.pending`,
+between those blocks. So `Observation._lock` was never held while an ask lock was taken, and a seam
+that takes `_lock`, bumps the dirty generation and notifies adds no edge to a graph it was never part
+of. What has to keep holding is one direction rather than a separation, and it is recorded as a
+comment on both sides: `_lock` is the outer lock wherever the two are ever held at once, so the ask
+path never calls into `Observation` while holding a registry lock, which is why `note_ask` is called
+after `register` has returned.
+
+The five seconds belonged to a path that was not running. `run_producer` is the fallback loop
+`serve` starts only when the server carries no coordinator, which means `--no-events` and a good many
+test doubles. On the default build the coordinator runs instead, `Observation._due` collects on a
+dirty generation or on a periodic tick while a stream is connected, and a cleared snapshot is
+neither, so nothing woke on a registration at all. What eventually noticed was the page's own 20
+second fallback poll. Measured register to SSE revision: 3.2 s under `--no-events`, against 18.2,
+22.3, 22.3 and 22.2 s on the default build. The figure quoted above was four times off on the only
+path a user is on, and it was measured on the other one.
+
+Latency was the smaller half of it. `AskRegistry.pending` is the only caller of `expire`, and the
+collection is the only caller of `pending`, so on the default path a dashboard with no tab open never
+collected, never expired an overdue question and never released an answered one. The budget filled
+with resolved and abandoned asks, every later registration was refused, and `d.asks` reported
+nothing the whole time. That is a permanent wedge on exactly the path this document locates the
+feature's value on: long autonomous runs, with nobody watching. So `Observation._due` now returns
+true while an unresolved ask exists, and `register` sweeps overdue and retained asks before it checks
+the budget, which is what makes the lane heal with no reader, no tab and no collection.
+
+The knob is still the cheaper fix for latency alone, and `stream_producer_interval_sec` is still
+where it lives. What this section got wrong was not preferring a knob to a seam. It was pricing the
+seam against a lock cycle that could not form, and the knob against a clock that was not running.
 
 ## A-4: an outstanding question is its own band, not a row in `sessions`
 

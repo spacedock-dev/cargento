@@ -950,6 +950,8 @@ function calmRestoreFocus(key){
    scroll offset. Put it back, then bring the keyboard cursor into view if the
    last action moved it. */
 function calmRestoreScroll(){
+  const asks = document.getElementById("askband");
+  if(asks) asks.scrollTop = askScrollTop;
   const body = document.getElementById("cm-body");
   if(!body) return;
   body.scrollTop = calmScrollTop;

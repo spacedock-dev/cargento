@@ -57,6 +57,16 @@ class PendingAsk:
         self.question = question
         self.options: tuple[str, ...] = tuple(options)
         self.created = created
+        # Stamped by the registry the first time a sweep observes an outcome,
+        # and read only by that sweep, which is what bounds how long a resolved
+        # ask stays retrievable. Not recorded at resolution time: `resolve`,
+        # `decline` and `expire` are handed no clock, and `created` comes from
+        # the application's, so a `time.monotonic()` reading here would compare
+        # two unrelated origins. It lives on the ask rather than in a side table
+        # because a per-id table has to be cleaned on every path that drops an
+        # ask, and the one path someone forgot would leak for the life of the
+        # process.
+        self.settled_seen: float | None = None
         self._condition = threading.Condition()
         self._outcome: Outcome | None = None
 
@@ -117,8 +127,23 @@ class AskRegistry:
     """Every outstanding ask on one runtime, behind one short-held lock.
 
     The lock covers the table only. Resolving an ask takes that ask's own
-    condition, and is always done outside this lock so that one waiter can
-    never block a reader of the table.
+    condition, and is always done outside this lock so that a notify never fans
+    out under it. Reading an outcome does take an ask's condition under the
+    table lock, which is safe because the order only ever runs that way: nothing
+    holding an ask's condition calls back into the table.
+
+    The same one-way rule reaches outside this module and is the reason the wake
+    seam in `observation` is safe. `Observation._due` reads `count` while holding
+    `Observation._lock`, so that is the order: `Observation._lock`, then this
+    lock, then an ask's condition. Nothing here may ever call into `Observation`,
+    and `Observation.note_ask` must therefore be called after `register` has
+    returned, with no lock from this module held.
+
+    The table maintains itself. `register` sweeps before it decides, and the
+    budget counts only what could still need a slot, because the alternative was
+    measured: with the sweep riding on `pending` alone, whose only caller is a
+    collection, a dashboard with no browser tab open never swept and the lane
+    wedged shut for the life of the process.
     """
 
     def __init__(self) -> None:
@@ -127,21 +152,43 @@ class AskRegistry:
 
     @property
     def count(self) -> int:
-        with self._lock:
-            return len(self._asks)
+        """How many asks could still need a slot, which means unresolved only.
 
-    def register(self, ask: PendingAsk, *, limit: int) -> bool:
-        """Store the ask, or refuse past the budget.
-
-        A hard cap rather than a queue, mirroring `StreamRegistry.register`:
-        every outstanding ask costs a card on the page and a polling peer, so
-        the honest answer past the cap is a refusal the caller turns into a 503.
+        A resolved ask that its poller has not collected yet is stored but costs
+        nothing: it draws no card and nobody is waiting on a reader. Counting it
+        is what filled the budget with answers and refused every later
+        registration while the payload reported no cards at all.
         """
         with self._lock:
-            if len(self._asks) >= limit:
-                return False
-            self._asks[ask.id] = ask
-            return True
+            return self._unresolved()
+
+    def register(self, ask: PendingAsk, *, limit: int, deadline: float, retention: float) -> bool:
+        """Sweep, then store the ask or refuse past the budget.
+
+        A hard cap rather than a queue, mirroring `StreamRegistry.register`:
+        every *outstanding* ask costs a card on the page and a polling peer, so
+        the honest answer past the cap is a refusal the caller turns into a 503.
+
+        The sweep runs here and not only in `pending` because registration is the
+        one event guaranteed to happen when the lane is in use. A reader, a
+        browser tab and a collection are all optional, and on the run this
+        feature exists for none of them is present.
+
+        `ask.created` is the sweep's clock: it is minted at the call site from
+        the application's clock, so reading a second one here could only
+        disagree with the deadline this ask is about to be measured against.
+        """
+        expired = self._sweep(now=ask.created, deadline=deadline, retention=retention)
+        with self._lock:
+            accepted = self._unresolved() < limit
+            if accepted:
+                self._asks[ask.id] = ask
+        # Outside the lock because `expire` notifies a waiter, and after the
+        # decision because `_sweep` has already removed these rows: the budget
+        # above was computed against the swept table, not against this loop.
+        for stale in expired:
+            stale.expire()
+        return accepted
 
     def get(self, ask_id: str) -> PendingAsk | None:
         """The ask, resolved or not: its poller still has an outcome to collect."""
@@ -157,28 +204,66 @@ class AskRegistry:
         with self._lock:
             self._asks.pop(ask_id, None)
 
-    def pending(self, *, now: float, deadline: float) -> list[PendingAsk]:
-        """The asks still worth showing, oldest first, after an expiry sweep.
+    def withdraw(self, ask_id: str) -> bool:
+        """Decline and release in one step. False when the id is unknown.
 
-        Collection is what retires a stale ask: there is no timer thread, so the
-        sweep rides on the caller. Anything already resolved is left stored for
-        its poller to collect but omitted here, because a card offering a choice
-        that has already been made is a card nobody can honestly answer.
+        One step because the halves are not independently useful: taking a
+        question off the board is telling the asking session that nobody will
+        answer it, and a decline that left the row stored would keep publishing
+        a card whose peer has already been told to give up.
         """
-        stale: list[PendingAsk] = []
-        live: list[PendingAsk] = []
         with self._lock:
-            for ask in list(self._asks.values()):
-                if now - ask.created > deadline:
-                    stale.append(ask)
-                    del self._asks[ask.id]
-                else:
-                    live.append(ask)
-        for ask in stale:
-            ask.expire()
+            ask = self._asks.pop(ask_id, None)
+        if ask is None:
+            return False
+        ask.decline()
+        return True
+
+    def pending(self, *, now: float, deadline: float, retention: float) -> list[PendingAsk]:
+        """The asks still worth showing, oldest first, after a sweep.
+
+        Anything already resolved is left stored for its poller to collect but
+        omitted here, because a card offering a choice that has already been made
+        is a card nobody can honestly answer.
+        """
+        for stale in self._sweep(now=now, deadline=deadline, retention=retention):
+            stale.expire()
+        with self._lock:
+            live = [ask for ask in self._asks.values() if ask.outcome is None]
         # Ordered on created, with the id as the tiebreak, so two asks made
         # inside one clock tick still render in a stable order.
-        return sorted((ask for ask in live if not ask.resolved), key=lambda a: (a.created, a.id))
+        return sorted(live, key=lambda a: (a.created, a.id))
+
+    def _sweep(self, *, now: float, deadline: float, retention: float) -> list[PendingAsk]:
+        """Drop what no longer needs a slot. Returns the asks to expire.
+
+        Expiring is left to the caller, and done outside the lock, because it
+        notifies a waiter.
+
+        An ask that already carries an outcome is never expired, whatever its
+        age. The deadline is a promise to the reader about how long a question
+        stays answerable, not a licence to delete an answer: with the age test
+        applied first, an ask answered at t=299.7 against a 300-second deadline
+        was deleted by the sweep at t=300.05 and its agent was told nobody had
+        answered. So an outcome, once set, survives the retention window instead,
+        measured from the first sweep that saw it.
+        """
+        expired: list[PendingAsk] = []
+        with self._lock:
+            for ask in list(self._asks.values()):
+                if ask.outcome is not None:
+                    if ask.settled_seen is None:
+                        ask.settled_seen = now
+                    elif now - ask.settled_seen > retention:
+                        del self._asks[ask.id]
+                elif now - ask.created > deadline:
+                    del self._asks[ask.id]
+                    expired.append(ask)
+        return expired
+
+    def _unresolved(self) -> int:
+        """How many stored asks still need a slot. The caller holds `_lock`."""
+        return sum(1 for ask in self._asks.values() if ask.outcome is None)
 
     def decline_all(self) -> None:
         """Wake and drop every waiter. Shutdown calls this.

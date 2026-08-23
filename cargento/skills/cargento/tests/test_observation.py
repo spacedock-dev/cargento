@@ -16,6 +16,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, events, http_api, lifecycle, observation
+from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 
@@ -36,6 +37,10 @@ class FakeStreams:
 class FakeState:
     def __init__(self, streams: FakeStreams) -> None:
         self.streams = streams
+        # The real registry rather than a stand-in: `_due` reads its `count`,
+        # and the meaning of that count (unresolved, not stored) is half of the
+        # wedge this suite has to hold shut.
+        self.asks = runtime_asks.AskRegistry()
 
 
 class FakeApplication:
@@ -79,6 +84,26 @@ class ObservationTestCase(unittest.TestCase):
             clock=self.clock,
             diagnostic_sink=lambda _message: None,
         )
+
+    def open_ask(self, *, created: float | None = None) -> runtime_asks.PendingAsk:
+        """One unresolved ask in the coordinator's registry.
+
+        The sweep windows are absurd so that registering cannot expire anything:
+        these tests are about what the coordinator does with an ask that is
+        genuinely outstanding.
+        """
+        ask = runtime_asks.PendingAsk(
+            harness="claude",
+            session_id=SESSION,
+            project="cargento",
+            question="Ship it?",
+            options=("yes", "no"),
+            created=self.now if created is None else created,
+        )
+        self.assertTrue(
+            self.app.state.asks.register(ask, limit=8, deadline=10_000.0, retention=10_000.0)
+        )
+        return ask
 
     def envelope(self, **overrides: Any) -> dict[str, Any]:
         payload: dict[str, Any] = {"v": 1, "event": "turn_started", "session_id": SESSION}
@@ -781,6 +806,100 @@ class WorkerLifecycleTest(ObservationTestCase):
             coordinator.submit("claude", self.envelope())
             self.assertTrue(collected.wait(timeout=3), "the coordinator did not wake on the event")
         finally:
+            coordinator.stop(timeout=5)
+
+
+class AskWakeTest(ObservationTestCase):
+    """An outstanding question has to guarantee its own collection.
+
+    `AskRegistry.pending` is both what renders a card and what sweeps the table,
+    and its only caller is a collection. Before this, `_due` needed a dirty
+    generation or a connected stream, so on a dashboard with no browser tab open
+    an ask never rendered, never expired and was never released: the budget
+    filled with resolved and abandoned questions and every later registration was
+    refused. Measured on the branch this fixes, on the tabless path the feature
+    exists for: 503 at t+321s and t+341s while the payload reported zero cards.
+    """
+
+    def test_an_outstanding_ask_is_reason_enough_to_collect(self) -> None:
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now - 3600
+        self.open_ask()
+        self.assertEqual(0, self.app.state.streams.count, "no tab, which is the whole point")
+        self.assertEqual((True, "ask"), coordinator._due())
+
+    def test_nothing_is_due_once_the_last_ask_is_resolved(self) -> None:
+        # The other half. An answered ask still waiting for its poller must not
+        # hold the coordinator in a collection loop for the rest of the process.
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now - 3600
+        ask = self.open_ask()
+        self.assertTrue(self.app.state.asks.answer(ask.id, 0))
+        self.assertEqual((False, ""), coordinator._due())
+
+    def test_an_ask_does_not_lift_the_floor(self) -> None:
+        # The floor is the store-protection guarantee, so it may not become a
+        # derived side effect of anything, this included.
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now
+        self.open_ask()
+        self.assertEqual((False, ""), coordinator._due())
+        self.now += self.config.collect_memo_sec
+        self.assertEqual((True, "ask"), coordinator._due())
+
+    def test_an_event_still_outranks_an_ask_so_the_reason_stays_honest(self) -> None:
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now - 3600
+        self.open_ask()
+        coordinator.submit("claude", self.envelope())
+        self.now += self.config.event_coalesce_sec
+        self.assertEqual((True, "event"), coordinator._due())
+
+    def test_an_ask_driven_collection_is_never_skipped_by_the_probe(self) -> None:
+        # The probe answers "did a store move", and the sweep this pass exists to
+        # run does not care. A skipped sweep is the wedge again.
+        coordinator = self.build()
+        coordinator._worth_collecting(self.now)
+        self.now += 1
+        self.open_ask()
+        coordinator._collect("ask")
+        self.assertEqual(1, self.app.collected)
+        self.assertNotIn("skipped.probe", coordinator.counters)
+
+    def test_note_ask_marks_dirty_and_clears_the_reconcile_floor(self) -> None:
+        # No ask is registered here on purpose: this asserts the seam itself,
+        # which is what brings the collection forward from the next tick to now.
+        coordinator = self.build()
+        coordinator._last_collect_at = self.now - 3600
+        coordinator._last_reconcile_at = self.now
+        coordinator.note_ask()
+        self.assertEqual(0.0, coordinator._last_reconcile_at)
+        self.assertEqual((True, "event"), coordinator._due())
+
+    def test_note_ask_wakes_the_worker_rather_than_waiting_out_its_interval(self) -> None:
+        # The producer interval is five seconds and the page's own fallback poll
+        # is twenty, which is what a registered ask used to wait on: measured at
+        # 18.2 to 22.3 seconds from register to a published revision. A short
+        # deadline here means a regression times out rather than passing slowly.
+        coordinator = self.build()
+        collected = threading.Event()
+        real = self.app.collect_json
+
+        def signalling(*, show_all: bool) -> Any:
+            result = real(show_all=show_all)
+            collected.set()
+            return result
+
+        self.app.collect_json = signalling  # type: ignore[method-assign]
+        coordinator.clock = time.time
+        coordinator._last_reconcile_at = coordinator.clock()
+        ask = self.open_ask(created=time.time())
+        coordinator.start()
+        try:
+            coordinator.note_ask()
+            self.assertTrue(collected.wait(timeout=3), "the coordinator did not wake on the ask")
+        finally:
+            self.app.state.asks.withdraw(ask.id)
             coordinator.stop(timeout=5)
 
 
@@ -1591,9 +1710,22 @@ class AskPayloadTest(unittest.TestCase):
             clock=lambda: clock,
         )
 
-    def _ask(self, state: Any, *, created: float, question: str = "Ship it?") -> Any:
-        from cargento_runtime import asks as runtime_asks  # noqa: PLC0415
+    def _ask(
+        self,
+        state: Any,
+        *,
+        created: float,
+        question: str = "Ship it?",
+        limit: int = 8,
+        config: Any = None,
+    ) -> Any:
+        """Register one ask the way the route does, or fail the test.
 
+        With `config`, the real deadline and retention are used, so registration
+        sweeps exactly as it does in the daemon. Without it the windows are
+        absurd, which keeps a test about the payload from also being a test about
+        the sweep.
+        """
         ask = runtime_asks.PendingAsk(
             harness="claude",
             session_id=SESSION,
@@ -1602,8 +1734,66 @@ class AskPayloadTest(unittest.TestCase):
             options=("yes", "no"),
             created=created,
         )
-        self.assertTrue(state.asks.register(ask, limit=8))
+        deadline = 10_000.0 if config is None else config.ask_deadline_sec
+        retention = 10_000.0 if config is None else config.ask_retention_sec
+        self.assertTrue(
+            state.asks.register(ask, limit=limit, deadline=deadline, retention=retention)
+        )
         return ask
+
+    def test_a_budget_full_of_answered_asks_does_not_wedge_a_tabless_dashboard(self) -> None:
+        """The headline defect, end to end over the real registry and config.
+
+        No collection happens anywhere in this test: no `/api/data`, no
+        coordinator tick, no `pending`. That is a dashboard with no browser tab
+        open, which is the run the ask lane exists for, and it is where the lane
+        used to wedge shut for the rest of the process. Measured before the fix,
+        with the cap filled and 14 answered: 503 at t+10s, t+321s and t+341s
+        while the payload reported zero cards.
+
+        The two registrations below fail for different reasons, which is why both
+        are here. At t+10 nothing is overdue, so only the budget counting
+        unresolved asks can accept it. At t+301 the budget is not the problem and
+        the registration sweep is.
+        """
+        config, state = self._runtime()
+        limit = config.ask_max_pending
+        filled = [
+            self._ask(state, created=NOW, question=f"Q{index}?", limit=limit, config=config)
+            for index in range(limit)
+        ]
+        for ask in filled[:14]:
+            self.assertTrue(state.asks.answer(ask.id, 0))
+
+        early = self._register(state, config, created=NOW + 10.0, question="Early?")
+        self.assertTrue(early, "an answered ask holds no slot worth rationing")
+        late = self._register(state, config, created=NOW + 301.0, question="Late?")
+        self.assertTrue(late, "the registry has to heal itself with nobody reading it")
+
+        for ask in filled[14:]:
+            self.assertEqual(("expired", None), ask.outcome, "aged out with nobody watching")
+        for ask in filled[:14]:
+            self.assertIsNone(state.asks.get(ask.id), "dropped once retention ran out")
+            self.assertEqual(("answered", 0), ask.outcome, "the outcome outlives the row")
+        self.assertEqual(2, state.asks.count)
+
+    def _register(self, state: Any, config: Any, *, created: float, question: str) -> bool:
+        """Register the way the route does, and report the refusal rather than fail."""
+        ask = runtime_asks.PendingAsk(
+            harness="claude",
+            session_id=SESSION,
+            project="cargento",
+            question=question,
+            options=("yes", "no"),
+            created=created,
+        )
+        accepted: bool = state.asks.register(
+            ask,
+            limit=config.ask_max_pending,
+            deadline=config.ask_deadline_sec,
+            retention=config.ask_retention_sec,
+        )
+        return accepted
 
     def test_a_pending_ask_reaches_the_payload_with_its_age(self) -> None:
         config, state = self._runtime()

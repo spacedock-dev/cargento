@@ -149,7 +149,6 @@
   .askband-k{font-family:var(--mono);font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}
   .askband-n{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
   .askband-rule{flex:1;height:1px;background:color-mix(in oklab,var(--accent) 24%,transparent)}
-  .askband-note{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--alert)}
   .ask{display:flex;align-items:flex-start;gap:14px}
   .ask-main{flex:1;min-width:0}
   .ask-meta{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
@@ -160,6 +159,10 @@
   .ask-q{font-size:var(--fs-2xl);font-weight:600;line-height:1.3;letter-spacing:-.01em;overflow-wrap:anywhere}
   .ask-opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px}
   .ask-opts.none{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink3);font-style:italic}
+  /* In the card, under its buttons: the note used to be one band-level line
+     above every card, which is how a failure on one question got read as
+     belonging to another. */
+  .ask-note{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--alert);margin-top:9px}
   .ask-opt{font-size:var(--fs-md);font-weight:600;color:var(--ink);background:color-mix(in oklab,var(--accent) 14%,transparent);border:1px solid color-mix(in oklab,var(--accent) 44%,transparent);border-radius:8px;padding:7px 13px;cursor:pointer;max-width:100%;overflow-wrap:anywhere;text-align:left;transition:background .12s,border-color .12s}
   .ask-opt:hover{background:color-mix(in oklab,var(--accent) 26%,transparent);border-color:var(--accent)}
   .ask-opt:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 55%,transparent)}
@@ -167,7 +170,17 @@
      and the ledger body, matching .u-band rather than the card it is in regular
      mode. Calm's frame owns the rounding; a rounded card inset here reads as a
      second panel floating over the ledger. */
-  .cm-frame .askband{border-radius:0;border-left:0;border-right:0;border-top:0;padding:13px 24px;gap:12px}
+  /* Capped and scrolled, because .cm-frame is a fixed-height overflow:hidden
+     column and this band is one of its flex children. Uncapped it kept its
+     content height (min-height:auto floors a flex item at its content). Measured
+     in headless Chrome at 1440x900, six cards: the band ran 174px past the
+     frame, nothing scrolled, and the last answer button sat 160px below the
+     frame edge with no way to reach it. 38vh rather than a px cap: the frame is
+     calc(100vh - 132px),
+     so a viewport-relative cap is always inside it, and rather than a share
+     of the frame because the frame has a 480px floor a percentage would not
+     see. flex:0 0 auto states the non-shrinking that used to be accidental. */
+  .cm-frame .askband{border-radius:0;border-left:0;border-right:0;border-top:0;padding:13px 24px;gap:12px;flex:0 0 auto;max-height:38vh;overflow-y:auto}
   .cm-frame .ask-q{font-size:var(--fs-lg)}
 
   /* section head — the mid tier the scale was missing between .brand and body */

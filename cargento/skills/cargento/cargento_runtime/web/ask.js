@@ -13,23 +13,38 @@
    an index arrives. That is why this band has buttons and the gate band does
    not. */
 
-/* What went wrong, said where the reader clicked. Held out here because #app is
-   rebuilt on every poll, the same reason clearedNote is. */
-let askNote = "";
+/* What went wrong, said in the card the reader clicked, keyed by ask id. Held
+   out here because #app is rebuilt on every poll, the same reason clearedNote
+   is. Keyed rather than shared, because one band-level note got the card wrong
+   in both directions: a failure on one question printed above all of them, and
+   the next answer that landed anywhere cleared a note that was still true. */
+let askNotes = {};
+
+/* The band scrolls inside the calm frame, which clips, so its offset has to
+   survive the DOM swap the way calmScrollTop does. Higher stakes than the
+   ledger's: these rows are buttons, and an offset reset by the poll slides a
+   different question under a cursor already on its way down. */
+let askScrollTop = 0;
 
 /* The band only exists when the server says the feature does, matching how
    handledButton() keys off `d.dismiss`. Under `--no-ask` nothing can register a
    question, so a button that answered 503 would be worse than no button. */
 function askBand(d){
-  if(!d || !d.ask) return "";
-  const asks = Array.isArray(d.asks) ? d.asks : [];
+  const asks = (d && d.ask && Array.isArray(d.asks)) ? d.asks : [];
+  /* Pruned against the payload, and before the early return: an ask leaves the
+     board when the server stops publishing it, whoever answered it and in
+     whichever tab. Left to the answer path alone, a note outlived its card and
+     was read as belonging to whichever question arrived next. */
+  const live = asks.map(a => String(a && a.id));
+  for(const id of Object.keys(askNotes)){
+    if(live.indexOf(id) < 0) delete askNotes[id];
+  }
   if(!asks.length) return "";
-  const note = askNote ? `<span class="askband-note">${esc(askNote)}</span>` : "";
-  return `<div class="askband"><div class="askband-head">` +
+  return `<div class="askband" id="askband"><div class="askband-head">` +
     `<span class="askband-dot"></span>` +
     `<span class="askband-k">Asking you</span>` +
     `<span class="askband-n">${asks.length} waiting</span>` +
-    `<span class="askband-rule"></span>${note}</div>` +
+    `<span class="askband-rule"></span></div>` +
     asks.map(askCard).join("") + `</div>`;
 }
 
@@ -48,11 +63,16 @@ function askCard(a){
   const acts = buttons
     ? `<div class="ask-opts">${buttons}</div>`
     : `<div class="ask-opts none">this question arrived with no options to pick</div>`;
+  /* Under the buttons, not above the band: it is about this question, and it is
+     the reader who just clicked one of these who needs to see it. */
+  const said = askNotes[String(a.id)];
   return `<div class="ask"><div class="ask-main">` +
     `<div class="ask-meta">${badge(a.harness, true)}${esc(a.project)}` +
     (a.session_id ? ` · ${esc(a.session_id)}` : "") +
     `<span class="ask-age">waiting ${esc(fmtDur(a.age_sec))}</span></div>` +
-    `<div class="ask-q">${esc(a.question)}</div>${acts}</div></div>`;
+    `<div class="ask-q">${esc(a.question)}</div>${acts}` +
+    (said ? `<div class="ask-note">${esc(said)}</div>` : "") +
+    `</div></div>`;
 }
 
 /* Routed off the page's one action channel, the way usageAction() is: returning
@@ -82,7 +102,7 @@ function askAction(act, arg){
    is a 200 no-op server side — deliberately, so the route is not an oracle for
    which asks exist — which means `ok` alone does not mean anyone heard. */
 async function answerAsk(id, index){
-  askNote = "";
+  const key = String(id);
   try{
     const r = await fetch("/api/answer", {
       method: "POST",
@@ -94,9 +114,17 @@ async function answerAsk(id, index){
     if(!answer || answer.answered !== true) throw new Error("nothing was answered");
   }catch(e){
     console.error("dashboard could not answer a session's question", e);
-    askNote = "could not answer — the question is still open";
+    /* Only what the page observed. The old text said the question was "still
+       open", which nothing here can know: the POST may have landed and its
+       reply been lost, and the `answered: false` arm reaches this line because
+       the server had no such ask to answer — meaning it was answered or swept
+       already. Telling the reader it is open sends them to click it again. */
+    askNotes[key] = "no confirmation came back — it may already have been answered";
     if(lastData) render(lastData);
     return;
   }
+  /* Cleared here rather than on the way in, so a retry keeps the last failure
+     on screen while it is in flight. */
+  delete askNotes[key];
   await refresh();
 }

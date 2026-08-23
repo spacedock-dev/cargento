@@ -421,9 +421,13 @@ class Application:
         page draws no control, so `--no-ask` leaves a reader with nothing to
         click rather than a button whose click answers 503.
 
-        `pending` performs the expiry sweep, which makes a collection the thing
-        that retires a stale ask. Nothing else runs on a cadence, and a timer
-        thread for it would be a second clock to reason about.
+        `pending` sweeps as it reads, and it returns only unresolved asks, so an
+        answered card can never reappear on the board between the click and the
+        poller collecting it. The sweep is no longer the only one: `register`
+        sweeps too, because a collection is not guaranteed to happen and a
+        registration is. What the coordinator does guarantee is that an
+        outstanding ask forces collections while it lasts, which is what renders
+        the card here with no browser tab open.
         """
         config, state = self.config, self.state
         if not config.ask_enabled:
@@ -440,7 +444,11 @@ class Application:
                     "options": list(ask.options),
                     "age_sec": round(now - ask.created),
                 }
-                for ask in state.asks.pending(now=now, deadline=config.ask_deadline_sec)
+                for ask in state.asks.pending(
+                    now=now,
+                    deadline=config.ask_deadline_sec,
+                    retention=config.ask_retention_sec,
+                )
             ],
         }
 

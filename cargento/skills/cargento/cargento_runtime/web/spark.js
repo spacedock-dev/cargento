@@ -29,6 +29,19 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
 function gateQueue(d){
   return d.sessions.filter(x => x.active && x.state === "needs_input");
 }
+/* Everything waiting on the reader, which is a longer list than `gateQueue`. A
+   pending ask waits on you without being a session in `needs_input`, so the
+   `Needs you` tile and the title count read this instead. A browser run of the
+   ask lane found the tile saying "Needs you 0 · Nothing is waiting on you."
+   while a question sat in the band directly below it, which is the same false
+   reassurance cargento#116 was filed for. The band and the keyboard cursor
+   deliberately still read `gateQueue`: ordering asks into that pass is its own
+   decision and belongs to DRC-4178. An ask entry carries `harness`, which is the
+   only field `countTile` reads off a member of this list. */
+function waitingOnYou(d, gates){
+  const asks = (d && d.ask && Array.isArray(d.asks)) ? d.asks : [];
+  return gates.concat(asks);
+}
 /* The regular view's cursor through that queue, held as a session key rather
    than an index so a gate answered above it does not slide the cursor onto a
    different row. */

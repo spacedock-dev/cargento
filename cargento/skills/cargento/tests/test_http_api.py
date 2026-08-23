@@ -580,7 +580,7 @@ class DismissEndpointTest(RuntimeTestCase):
 
 
 class AskEndpointTest(RuntimeTestCase):
-    """The three ask routes over a real socket.
+    """The four ask routes over a real socket.
 
     `test_asks` covers the registry. This covers the ingress, which is the half
     that breaks silently: the untrusted question and options are bounded here
@@ -602,8 +602,10 @@ class AskEndpointTest(RuntimeTestCase):
         return make_runtime(state_home=home, state_dir=Path(home), **changes)
 
     @contextlib.contextmanager
-    def _serving(self, application: Any) -> Any:
-        httpd = make_server(application=application)
+    def _serving(self, application: Any, observation: Any = None) -> Any:
+        # None is what `--no-events` builds, and what every test here but the
+        # wake-seam one wants.
+        httpd = make_server(application=application, observation=observation)
         thread = serve_until_closed(httpd)
         try:
             yield httpd.server_port
@@ -690,7 +692,7 @@ class AskEndpointTest(RuntimeTestCase):
         self.assertIsNone(after_answer, "the published body survived the answer")
 
     def test_the_rollback_flag_reaches_configuration(self) -> None:
-        # The three routes below key off `ask_enabled`, so the flag that sets it
+        # The four routes below key off `ask_enabled`, so the flag that sets it
         # is the half of the rollback switch a 503 test cannot see.
         parser = cli.build_parser()
         default, _ = cli.build_runtime(parser.parse_args([]), started=1.0)
@@ -698,7 +700,7 @@ class AskEndpointTest(RuntimeTestCase):
         self.assertIs(True, default.ask_enabled)
         self.assertIs(False, opted_out.ask_enabled)
 
-    def test_the_rollback_switch_answers_503_on_all_three_routes(self) -> None:
+    def test_the_rollback_switch_answers_503_on_all_four_routes(self) -> None:
         # 503, not 404, for the reason `--no-dismiss` gives: under `--no-ask` the
         # routes exist and the registry is never filled, and a 404 would read as
         # a build too old to have the feature.
@@ -706,8 +708,173 @@ class AskEndpointTest(RuntimeTestCase):
         with self._serving(cli.build_application(config, state, clock=time.time)) as port:
             register, _ = self._post(port, "/api/ask", b'{"question":"q","options":["a","b"]}')
             answer, _ = self._post(port, "/api/answer", b'{"id":"x","index":0}')
+            withdraw, _ = self._post(port, "/api/ask/withdraw", b'{"id":"x"}')
             poll, _ = self._get(port, "/api/ask/anything")
-        self.assertEqual((503, 503, 503), (register, answer, poll))
+        self.assertEqual((503, 503, 503, 503), (register, answer, withdraw, poll))
+
+    def test_a_refusal_says_whether_the_lane_is_off_or_merely_busy(self) -> None:
+        """A bare 503 read as "no dashboard here", so the peer walked to another.
+
+        Measured: the stdio server treated any non-200 as a port that would not
+        take the question, tried the next candidate, and registered on a second
+        dashboard that had the lane switched on, which is exactly what `--no-ask`
+        exists to prevent. Both cases stay 503 because both are honest "not right
+        now" answers; the reason is what separates a permanent refusal from one
+        that clears on its own.
+        """
+        body = json.dumps({"question": "q", "options": ["a", "b"]}).encode()
+        off_config, off_state = self._runtime(ask_enabled=False)
+        with self._serving(cli.build_application(off_config, off_state, clock=time.time)) as port:
+            disabled_status, disabled_body = self._post(port, "/api/ask", body)
+            withdraw_status, withdraw_body = self._post(port, "/api/ask/withdraw", b'{"id":"x"}')
+        full_config, full_state = self._runtime(ask_max_pending=1)
+        with self._serving(cli.build_application(full_config, full_state, clock=time.time)) as port:
+            self._register(port)
+            busy_status, busy_body = self._post(port, "/api/ask", body)
+        self.assertEqual(503, disabled_status)
+        self.assertEqual({"ok": False, "reason": "disabled"}, json.loads(disabled_body))
+        self.assertEqual(503, withdraw_status)
+        self.assertEqual({"ok": False, "reason": "disabled"}, json.loads(withdraw_body))
+        self.assertEqual(503, busy_status)
+        self.assertEqual({"ok": False, "reason": "busy"}, json.loads(busy_body))
+
+    def test_a_withdrawal_clears_the_card_and_declines_the_peer(self) -> None:
+        """An abandoned question has to leave the board, not sit out its deadline.
+
+        Without this route a card whose asking session has already given up stays
+        clickable for the rest of the deadline, and the click is accepted and
+        thrown away: the reader is told nothing, and answered a question nobody
+        is listening to.
+        """
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            ask_id = self._register(port)
+            ask = state.asks.get(ask_id)
+            # Republished first, so the drop below is this route's doing rather
+            # than the registration's.
+            self._get(port, "/api/data")
+            status, body = self._post(
+                port, "/api/ask/withdraw", json.dumps({"id": ask_id}).encode()
+            )
+            after = state.snapshot.current((config.window_hours, False))
+            poll_status, _ = self._get(port, f"/api/ask/{ask_id}")
+        assert ask is not None
+        self.assertEqual(200, status)
+        self.assertEqual({"ok": True, "withdrawn": True}, json.loads(body))
+        self.assertEqual(("declined", None), ask.outcome)
+        self.assertEqual(0, state.asks.count)
+        self.assertIsNone(after, "the published body survived the withdrawal")
+        self.assertEqual(404, poll_status)
+
+    def test_withdrawing_what_nobody_registered_is_a_200_no_op(self) -> None:
+        # A 404 for an unknown id would make this an oracle for which asks
+        # exist, exactly as it would on `/api/answer`, so the caller reads
+        # `withdrawn` rather than the status line.
+        config, state = self._runtime()
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            # A live ask on the board throughout, so the count below can tell a
+            # no-op from a withdrawal that hit the wrong row.
+            self._register(port)
+            bodies: list[dict[str, Any]] = [{"id": "nosuchask"}, {"id": 7}, {}]
+            for payload in bodies:
+                with self.subTest(payload=payload):
+                    status, body = self._post(
+                        port, "/api/ask/withdraw", json.dumps(payload).encode()
+                    )
+                    self.assertEqual(200, status)
+                    self.assertEqual({"ok": True, "withdrawn": False}, json.loads(body))
+            malformed, malformed_body = self._post(port, "/api/ask/withdraw", b"not json")
+            oversized, _ = self._post(port, "/api/ask/withdraw", b"", declared="8192")
+        self.assertEqual(200, malformed)
+        self.assertEqual({"ok": True, "withdrawn": False}, json.loads(malformed_body))
+        self.assertEqual(413, oversized)
+        self.assertEqual(
+            1, state.asks.count, "an unusable withdrawal took a live ask off the board"
+        )
+
+    def test_a_non_string_question_or_option_is_refused_not_stringified(self) -> None:
+        """`safe_text` calls `str(value or "")`, so a non-string publishes a repr.
+
+        Measured on the shipped route: a question of `{"a": 1}` registered and
+        the card read `{'a': 1}`; options `[{"a": 1}, {"b": 2}]` rendered as
+        `{'a': 1}` and `{'b': 2}`; and `[1, 2]` was accepted while `[0, 1]` was
+        refused, because falsiness rather than type decided. The answer is an
+        index into these options, so a stringified one is a choice the asking
+        session never offered.
+        """
+        config, state = self._runtime()
+        bodies: dict[str, dict[str, Any]] = {
+            "an integer question": {"question": 42, "options": ["a", "b"]},
+            "an object question": {"question": {"a": 1}, "options": ["a", "b"]},
+            "a list question": {"question": ["a", "b"], "options": ["a", "b"]},
+            "a boolean question": {"question": True, "options": ["a", "b"]},
+            "object options": {"question": "q", "options": [{"a": 1}, {"b": 2}]},
+            "list options": {"question": "q", "options": [["x", "y"], ["z"]]},
+            "integer options": {"question": "q", "options": [1, 2]},
+            "integer options including zero": {"question": "q", "options": [0, 1]},
+            "boolean options": {"question": "q", "options": [True, False]},
+            "one non-string option": {"question": "q", "options": ["a", 2]},
+            "a null option": {"question": "q", "options": ["a", None]},
+        }
+        with self._serving(cli.build_application(config, state, clock=time.time)) as port:
+            for label, fields in bodies.items():
+                with self.subTest(label=label):
+                    body = {"harness": "claude", "session_id": "aaa1", "project": "p", **fields}
+                    status, _ = self._post(port, "/api/ask", json.dumps(body).encode())
+                    self.assertEqual(400, status)
+        self.assertEqual(0, state.asks.count)
+
+    def test_a_registration_wakes_the_coordinator_with_no_registry_lock_held(self) -> None:
+        """The card is drawn by a collection, and a registration has to force one.
+
+        The lock order is the other half of the contract: `Observation._due`
+        takes the registry lock while holding `_lock`, and `note_ask` takes
+        `_lock`, so calling it while still holding a registry lock is the one
+        edge that would close the cycle.
+        """
+        config, state = self._runtime(ask_max_pending=1)
+        application = cli.build_application(config, state, clock=time.time)
+        coordinator = observation_module.Observation(
+            application, diagnostic_sink=lambda _line: None
+        )
+        application.overlays = coordinator
+        free: list[bool] = []
+        original = coordinator.note_ask
+
+        def note_ask() -> None:
+            acquired = state.asks._lock.acquire(blocking=False)
+            free.append(acquired)
+            if acquired:
+                state.asks._lock.release()
+            original()
+
+        with (
+            mock.patch.object(coordinator, "note_ask", note_ask),
+            self._serving(application, observation=coordinator) as port,
+        ):
+            self._register(port)
+            refused, _ = self._post(
+                port, "/api/ask", json.dumps({"question": "q", "options": ["a", "b"]}).encode()
+            )
+        self.assertEqual(503, refused)
+        # Once, for the accepted registration only: a refused one woke a
+        # coordinator that has nothing new to draw.
+        self.assertEqual([True], free)
+        self.assertEqual(1, coordinator._dirty.get(observation_module.ASK_GENERATION))
+
+    def test_a_registration_works_on_a_server_with_no_coordinator(self) -> None:
+        # `--no-events` builds a server with no coordinator at all, so the wake
+        # seam has to be optional rather than assumed.
+        config, state = self._runtime()
+        httpd = make_server(application=cli.build_application(config, state, clock=time.time))
+        thread = serve_until_closed(httpd)
+        try:
+            self.assertIsNone(httpd.observation)
+            ask_id = self._register(httpd.server_port)
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+        self.assertIsNotNone(state.asks.get(ask_id))
 
     def test_an_oversized_declared_length_is_refused_before_any_read(self) -> None:
         config, state = self._runtime()
@@ -871,7 +1038,14 @@ class AskShutdownTest(RuntimeTestCase):
             options=("Ship it", "Wait for review"),
             created=time.time(),
         )
-        self.assertTrue(state.asks.register(ask, limit=config.ask_max_pending))
+        self.assertTrue(
+            state.asks.register(
+                ask,
+                limit=config.ask_max_pending,
+                deadline=config.ask_deadline_sec,
+                retention=config.ask_retention_sec,
+            )
+        )
         return ask.id
 
     @staticmethod
