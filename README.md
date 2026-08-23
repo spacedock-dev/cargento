@@ -83,6 +83,10 @@ codex plugin add cargento@cargento-marketplace
 
 Restart Codex after installation.
 
+Installing the plugin is most of the setup. What is left is configured by hand, because a plugin
+cannot write it for you: the ask-lane MCP server, Claude's lifecycle hooks, Antigravity's status
+line. See [HOW_TO_USE.md](HOW_TO_USE.md) for one procedure per task.
+
 ---
 
 ## 2. Skills

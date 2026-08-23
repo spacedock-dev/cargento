@@ -72,6 +72,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | File | Owns |
 |---|---|
 | `README.md` | The front door: what Cargento is, install per harness, skill inventory, links out. |
+| `HOW_TO_USE.md` | What a person configures by hand: the harness settings the plugin does not install, one verified procedure per task. |
 | `AGENTS.md` | **This file.** The repository contract for agents, the canonical pre-PR command list, and the parallel-worktree hazards measured while burning down the roadmap. |
 | `CLAUDE.md` | Claude-Code-only addenda; imports this file. |
 | `CONTRIBUTING.md` | The human contributor journey, and the dashboard implementation constraints. |

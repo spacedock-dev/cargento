@@ -41,6 +41,7 @@ diff-and-reconcile pass, not a rewrite.
 | File | Owns | Rule |
 |------|------|------|
 | `README.md` | The front door: what Cargento is, prerequisites, per-harness install, the skill inventory table, a short "how it works", links out. | Keep short. No command suites and no reference tables — link to the owner. **Validator-asserted:** the literals `/cargento:cargento` and `codex plugin add cargento@cargento-marketplace` must appear verbatim; rewording either fails the required `validate` check. |
+| `HOW_TO_USE.md` | What the reader configures by hand, one task per section: registering the stdio MCP server per harness, the hooks and status line the plugin cannot install, and resolving the installed plugin path every one of those snippets needs. | Task-oriented, and **every command and snippet must have been run before it is written down**: nothing in CI checks a command block, so an unrun one ships wrong. It may name repository paths and real config paths, which is exactly why it exists, since the shipped skill body is forbidden both. It owns no contract and no install steps. **Frozen path** once it is in `ROOT_DOCS`, and any heading `COMPATIBILITY.md` cites is frozen with it. |
 | `AGENTS.md` | **Canonical** repository contract and the source of truth for process: architecture tree, doc map, commit conventions, PR workflow, the pre-PR command list, the quality gate, versioning/releases, portability rules. | Every process command list is defined here once; other docs link. `CLAUDE.md` imports it, so edits propagate. Never rename or move it — Codex and Claude both load it by name. |
 | `CLAUDE.md` | Claude-Code-only addenda. | Line 1 must stay the bare `@AGENTS.md` import. Nothing that would also be true in Codex — that belongs in `AGENTS.md`. |
 | `CONTRIBUTING.md` | The human contributor journey: clone → dev setup → run locally → the quality gate → tests → what the validator enforces → `server.py` design constraints → commits → PRs → adding a harness → releases. | Task-oriented. Reference the pre-PR suite in `AGENTS.md` rather than re-listing it; duplicated command lists are how they drift. |
@@ -96,7 +97,7 @@ the rule survives the tool going missing.
 In scope, and the exact set check (e) greps:
 
 ```
-README.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY.md  docs/design-*.md  docs/plans/*.md
+README.md  HOW_TO_USE.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY.md  docs/design-*.md  docs/plans/*.md
 ```
 
 Out of scope, deliberately: `AGENTS.md` and `CLAUDE.md` (agent contracts loaded verbatim as
@@ -391,13 +392,16 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    #    matches nothing stays literal and makes grep exit 2 on a "No such file" error.
    #    The explicit if/else is here because a bare `grep && echo` exits 1 when the docs are
    #    CLEAN, which reads as failure to anyone (or anything) checking the status.
-   #    Inline code spans are stripped first. A backticked span is a quoted literal, not prose:
+   #    NOTE: the carve-out is for INLINE spans only, not fenced blocks. A dash inside a
+#    ``` fence turns this red, and HOW_TO_USE.md is made of config snippets, so it is
+#    the likeliest file here to trip that way. Snippets need ASCII quotes and hyphens.
+#    Inline code spans are stripped first. A backticked span is a quoted literal, not prose:
    #    the dashed model slot renders as a real em dash, and a doc that documents that string
    #    has to contain it. Matching inside code spans made the check permanently red, which
    #    ends with someone mangling a documented literal to quiet it.
    #    The per-file loop keeps the filename in the output; piping every doc through one sed
    #    would report a line number with nothing to open.
-   if for f in $(ls README.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
+   if for f in $(ls README.md HOW_TO_USE.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
         docs/design-*.md docs/plans/*.md 2>/dev/null); do
         sed 's/`[^`]*`//g' "$f" | grep -n '—\|–\|[“”‘’]' | sed "s|^|$f:|"
       done | grep .; then
