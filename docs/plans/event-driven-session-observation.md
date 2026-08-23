@@ -815,12 +815,16 @@ permission hook to be asked about. Enabling `exec_permission_approvals` and
 `request_permissions_tool`, both marked *under development* and both false by
 default, changed nothing.
 
-So `PermissionRequest` stays out of `CODEX_EVENTS`, for a better reason than the
-one previously recorded: not because the hook does not exist, but because the only
-mode this project can drive non-interactively cannot produce the event, leaving its
-payload unmeasured. That is the same rule that keeps Gemini's `Notification` out.
-Capturing it needs an interactive session, or an `exec` mode that stops pinning the
-policy.
+So `PermissionRequest` stays out of `CODEX_EVENTS` -- but as of 2026-08-23 that is a
+product decision rather than a missing measurement. Driven interactively on 0.149.0
+the event fires, its payload matches the nine keys predicted below, `behavior: allow`
+skips the approval prompt outright, `behavior: deny` refuses the call, and Codex
+holds the hook open (honoured at 25 s on allow, 70 s on deny) rather than timing out.
+See [`../captures/codex/permission-hook-interactive-0.149.0-macos.jsonl`](../captures/codex/permission-hook-interactive-0.149.0-macos.jsonl).
+The `exec` finding above stands and is narrower than it reads: `codex exec` pins the
+policy, so nothing asks under `exec`. That is a property of the mode, not of the
+event. Note also that `approval_policy = "untrusted"`, which the runs above passed,
+is a hard error on 0.149.0.
 
 The validator's permitted vocabulary for the Codex hooks file now includes
 `PermissionRequest`, because that list records what the harness *accepts* and this
@@ -834,10 +838,11 @@ required fields: `cwd`, `hook_event_name` (const `PermissionRequest`), `model`,
 `permission_mode`, `session_id`, `tool_input`, `tool_name`, `transcript_path` and
 `turn_id`, plus optional `agent_id` and `agent_type`. Nothing there is new: the
 adapter's allowlist already drops `tool_name` and `tool_input`, and `session_id` is
-the same id the collector keys on. So the mapping is writable today. What is missing
-is not the shape but the confirmation that the event ever arrives, which is the
-whole reason it stays unmapped. Static reads have been wrong in this project before,
-and the rule is that a mapping ships on a capture.
+the same id the collector keys on. So the mapping is writable today. The confirmation
+that the event arrives is no longer missing either: the interactive capture named
+above observed exactly those nine keys. The rule that a mapping ships on a capture is
+satisfied, and what keeps this unmapped now is the decision below rather than the
+evidence.
 
 **And a hazard that has to be settled before this event is ever registered, whatever
 the mapping.** Alone among Codex's hooks, a permission hook gets to *decide*. A
@@ -959,8 +964,10 @@ existing `agent_id` to `subagent_id` rename is the whole adapter change.
 
 **The permission-hook doubt this work raised has since been settled**, and the
 heading above is the corrected version. The short form: the event exists, the name
-registers, and `codex exec` pins `approval_policy` to `never` so it can never be
-asked. It stays unmapped for want of a payload rather than for want of an event.
+registers, and `codex exec` pins `approval_policy` to `never` so it can never be asked
+under `exec`. Superseded in part on 2026-08-23, when an interactive run captured the
+payload and showed the decision takes effect and is waited for. It stays unmapped by
+decision now, not for want of a payload.
 
 #### Antigravity status-line semantics: MEASURED, and the documented field list was wrong
 
