@@ -486,3 +486,29 @@ class HarnessInstallTest(unittest.TestCase):
     def test_claudes_settings_honour_its_own_override(self) -> None:
         with unittest.mock.patch.dict("os.environ", {"CLAUDE_CONFIG_DIR": "/tmp/chome"}):
             self.assertEqual(Path("/tmp/chome/settings.json"), capture_hook.settings_path("claude"))
+
+
+class MixedArrivalTypeTests(unittest.TestCase):
+    """`--report` must survive a directory holding both kinds of capture file.
+
+    `capture_hook.py` writes `at` as an epoch float. The purpose-built recorders
+    that record a vendor response or a verdict write a `_provenance` line whose
+    `at` is a date string. Sorting those together used to raise `TypeError: '<' not
+    supported between instances of 'int' and 'str'`, which took the documented
+    reporter out on every harness directory holding such a file.
+    """
+
+    def test_a_date_string_at_does_not_break_the_ordering(self) -> None:
+        entries: list[dict[str, Any]] = [
+            {"at": "2026-08-23", "event": "_provenance", "session": ""},
+            {"at": 200.0, "event": "Stop", "session": "aaaa1111"},
+            {"at": 100.0, "event": "UserPromptSubmit", "session": "aaaa1111"},
+        ]
+        turns = capture_hook.turns_for(entries, start="UserPromptSubmit", end="Stop")
+        self.assertEqual([["UserPromptSubmit", "Stop"]], turns)
+
+    def test_a_boolean_at_is_not_treated_as_a_timestamp(self) -> None:
+        # `True` is an int in Python, so a naive isinstance check would sort it as 1.
+        self.assertEqual(0.0, capture_hook._arrival({"at": True}))
+        self.assertEqual(0.0, capture_hook._arrival({"at": "2026-08-23"}))
+        self.assertEqual(1.5, capture_hook._arrival({"at": 1.5}))

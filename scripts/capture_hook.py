@@ -266,6 +266,24 @@ def load_captures(directory: Path) -> list[dict[str, Any]]:
     return lines
 
 
+def _arrival(entry: dict[str, Any]) -> float:
+    """One record's `at` as a sortable number, 0 for anything that is not one.
+
+    `--report` reads a whole directory, and this directory holds two kinds of file.
+    `capture_hook.py` writes `at` as an epoch float; the purpose-built recorders
+    that record a vendor response or a verdict write a `_provenance` line whose
+    `at` is a date string like "2026-08-23". Sorting those together raised
+    `TypeError: '<' not supported between instances of 'int' and 'str'` and took
+    the documented reporter out entirely on every harness directory that holds one
+    -- which is now most of them.
+
+    Coercing rather than dropping, because a provenance line carries no `event` and
+    contributes nothing to a turn either way, so where it sorts does not matter.
+    """
+    value = entry.get("at")
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+
 def turns_for(entries: list[dict[str, Any]], *, start: str, end: str) -> list[list[str]]:
     """Event names between a prompt and its stop, per session, in arrival order.
 
@@ -273,7 +291,7 @@ def turns_for(entries: list[dict[str, Any]], *, start: str, end: str) -> list[li
     file, and a global ordering would invent transitions neither one made.
     """
     per_session: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for entry in sorted(entries, key=lambda e: e.get("at") or 0):
+    for entry in sorted(entries, key=_arrival):
         per_session[str(entry.get("session") or "")].append(entry)
     turns: list[list[str]] = []
     for events in per_session.values():
