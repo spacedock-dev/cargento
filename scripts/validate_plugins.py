@@ -804,6 +804,44 @@ def validate_hook_vocabulary(validation: Validation) -> None:
                 )
 
 
+def validate_antigravity_hook_nesting(validation: Validation) -> None:
+    """Antigravity's hooks file wraps its events in a name, and a flat one is dead.
+
+    This exists because the flat shape is not a JSON error, is not a schema error
+    to `agy plugin validate`, and produces no user-visible failure at run time. It
+    is only visible as a warning in `~/.gemini/antigravity-cli/log/`, which nobody
+    reads, followed by `loaded 0 named hooks from 0 hooks.json file(s)`.
+
+    Cargento shipped the flat shape and its Antigravity hooks therefore never ran.
+    Nothing caught it for the whole life of that adapter: `agy plugin validate`
+    said `hooks: 5 processed` because it counts top-level keys, this repository's
+    own validator read those keys as event names, and the design note recorded
+    that difference as a discovered fact rather than a bug. The name-wrapped file
+    reports `hooks: 1 processed` instead, so the count going DOWN is the signal
+    that it is now right.
+    """
+    for relative, (harness, _vocabulary) in HOOK_FILE_VOCABULARY.items():
+        if harness != "antigravity":
+            continue
+        path = ROOT / relative
+        if not path.is_file():
+            continue
+        document = load_json(path, validation)
+        if not isinstance(document, dict):
+            continue
+        flat = sorted(key for key, value in document.items() if isinstance(value, list))
+        if flat:
+            validation.error(
+                path,
+                f"puts event name(s) {', '.join(flat)} at the top level; Antigravity "
+                "requires each top-level key to be a hook NAME with the events nested "
+                'inside it, as in {"cargento": {"PostToolUse": [...]}}. A flat file '
+                "parses, passes `agy plugin validate`, and is discarded at run time",
+            )
+        if not any(isinstance(value, dict) for value in document.values()):
+            validation.error(path, "registers no named hook, so nothing would load")
+
+
 def validate_duplicated_scripts(validation: Validation) -> None:
     """A script that ships twice is byte-identical in both places.
 
@@ -865,15 +903,29 @@ def validate_hooks_adapter(plugin_root: Path, validation: Validation) -> None:
 def _hook_events(document: dict[str, Any]) -> dict[str, Any]:
     """The event map, whichever of the two shipped schemas this file uses.
 
-    Claude and Codex wrap the events in a `hooks` object. Antigravity does not:
-    its guide states that each top-level key *is* a hook name. Requiring the
-    wrapper rejected a file Antigravity's own validator had just accepted, which
-    is how this difference was found.
+    Claude and Codex wrap the events in a `hooks` object. Antigravity wraps them
+    in a **name** instead: each top-level key is a hook name the author chooses,
+    like the guide's own `lint-checker`, and the event keys live one level inside
+    it.
+
+    An earlier version of this function read Antigravity's top-level keys as event
+    names, and the reason it survived is worth keeping: `agy plugin validate`
+    counted those keys without type-checking them and reported `hooks: 5
+    processed`, so a flattened file looked accepted. It was not. agy's runtime
+    rejects it outright, logging `cannot unmarshal array into Go struct field
+    .PreToolUse of type jsonhook.JSONHookSpec` and then `loaded 0 named hooks from
+    0 hooks.json file(s)`. Measured in
+    `docs/captures/antigravity/hooks-schema-1.1.19-macos.jsonl`; the wrapper is
+    mandatory and `validate_antigravity_hook_nesting` is what now enforces it.
     """
     wrapped = document.get("hooks")
     if isinstance(wrapped, dict):
         return wrapped
-    return {key: value for key, value in document.items() if isinstance(value, list)}
+    events: dict[str, Any] = {}
+    for value in document.values():
+        if isinstance(value, dict):
+            events.update({k: v for k, v in value.items() if isinstance(v, list)})
+    return events
 
 
 def _hook_commands(events: Any) -> list[str]:
@@ -1180,6 +1232,7 @@ def main() -> int:
             )
 
     validate_hook_vocabulary(validation)
+    validate_antigravity_hook_nesting(validation)
     validate_duplicated_scripts(validation)
     validate_marketplaces(manifests, gemini_manifests, antigravity_manifests, validation)
     validate_readme(skill_names, validation)

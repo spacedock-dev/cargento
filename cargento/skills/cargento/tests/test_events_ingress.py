@@ -1428,23 +1428,43 @@ class AntigravityHookTest(unittest.TestCase):
         self.assertEqual("http://127.0.0.1:4553/api/events/antigravity", posted[0][0])
         self.assertEqual({"X-Cargento-Capability": AGY_TOKEN}, posted[0][1])
 
-    def test_the_bundled_file_registers_only_the_hooks_the_adapter_forwards(self) -> None:
-        # Antigravity's schema has no `hooks` wrapper: each top-level key is an
-        # event name. Cargento's validator rejected the file until it learned that,
-        # which is how the difference was found.
+    def _bundled_events(self) -> dict[str, Any]:
+        """The event map inside the bundled Antigravity file's name wrapper.
+
+        The wrapper is the thing these two tests exist to hold. Each top-level key
+        is a hook NAME and the events sit one level inside it; this file used to
+        put the event names at the top level, agy rejected it on every session with
+        only a log line, and these tests asserted the broken shape was correct. See
+        `docs/captures/antigravity/hooks-schema-1.1.19-macos.jsonl`.
+        """
         bundled = json.loads(
             (Path(__file__).resolve().parents[3] / "hooks.json").read_text(encoding="utf-8")
         )
-        self.assertNotIn("hooks", bundled, "Antigravity events are top-level keys")
-        self.assertEqual(set(agy_hook.STORE_CHANGED_HOOKS), set(bundled))
+        self.assertNotIn("hooks", bundled, "Antigravity wraps in a name, not in `hooks`")
+        for key, value in bundled.items():
+            self.assertIsInstance(value, dict, f"top-level {key!r} must be a hook name")
+        events: dict[str, Any] = {}
+        for value in bundled.values():
+            events.update(value)
+        return events
+
+    def test_the_bundled_file_registers_only_the_hooks_the_adapter_forwards(self) -> None:
+        self.assertEqual(set(agy_hook.STORE_CHANGED_HOOKS), set(self._bundled_events()))
+
+    def test_the_bundled_file_never_registers_pretooluse(self) -> None:
+        """Registering it would deny every tool call in every Antigravity session.
+
+        Measured on agy 1.1.19: a `PreToolUse` hook printing exactly `{}` refuses
+        the call. `agy_hook.py` prints `{}` on every path including every failure
+        path, so this is a hard exclusion rather than a mapping preference.
+        """
+        self.assertNotIn("PreToolUse", self._bundled_events())
 
     def test_the_bundled_file_uses_both_handler_layouts_correctly(self) -> None:
         # Tool-scoped events group handlers under a matcher; loop-scoped events
-        # list them directly. Antigravity's own validator enforces this, and
-        # getting it wrong means the half in the wrong shape never runs.
-        bundled = json.loads(
-            (Path(__file__).resolve().parents[3] / "hooks.json").read_text(encoding="utf-8")
-        )
-        self.assertIn("matcher", bundled["PostToolUse"][0])
-        self.assertNotIn("matcher", bundled["PostInvocation"][0])
-        self.assertEqual("command", bundled["PostInvocation"][0]["type"])
+        # list them directly. Getting it wrong means the half in the wrong shape
+        # never runs.
+        events = self._bundled_events()
+        self.assertIn("matcher", events["PostToolUse"][0])
+        self.assertNotIn("matcher", events["PostInvocation"][0])
+        self.assertEqual("command", events["PostInvocation"][0]["type"])

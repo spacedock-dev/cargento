@@ -10,41 +10,41 @@ would be a silent bug if assumed away:
    nothing and post nothing, successfully.
 2. **A hook must print a JSON object on stdout.** Not a status line, not an empty
    string: a JSON object. `PostToolUse` and the flat events expect `{}`.
-3. **`PreToolUse` output can gate the tool.** Its result may carry a `decision` of
-   `allow`, `deny`, `ask` or `force_ask`. A reporting hook that emitted a
-   malformed or opinionated object there could block the user's tool calls. This
-   script therefore prints exactly `{}` and never anything else, on every path
-   including every failure path.
+3. **`PreToolUse` output gates the tool, and an EMPTY object is a DENY.** Measured
+   on 1.1.19: `{"decision": "allow"}` permits a call, and printing exactly `{}`
+   refuses it -- "denied by the pre-tool hook system policy". So the rule this
+   script follows is not "emit `{}` to stay harmless"; for `PreToolUse` there is
+   no harmless output. **Never register `PreToolUse` here.** This script prints
+   `{}` on every path including every failure path, so registering it would deny
+   every tool call in every Antigravity session. `PostToolUse` and the flat events
+   expect `{}` and are safe, which is why those are the only two shipped.
 
-## What is verified, and what is taken from the documentation
+## What is verified, and what these hooks got wrong for their whole life
 
-Verified by running `agy plugin validate` against a copy: Antigravity loads a
-plugin's hooks from a **root `hooks.json`**, and it accepts the mixed schema the
-guide describes, reporting `hooks: 5 processed`. `PreToolUse` and `PostToolUse`
-are grouped under a `matcher`; `PreInvocation`, `PostInvocation` and `Stop` are
-flat lists of handlers.
+**The file must be NAME-WRAPPED, and ours was not.** Antigravity's `hooks.json`
+takes a hook *name* as each top-level key, with the event keys one level inside
+it, exactly as its own guide shows with `lint-checker` and `safety-gate`. Cargento
+shipped the events at the top level instead, so agy rejected the file on every
+session -- `cannot unmarshal array into Go struct field .PreToolUse`, then `loaded
+0 named hooks from 0 hooks.json file(s)` -- and **these hooks never ran at all**
+until the shape was fixed. Measured in
+`docs/captures/antigravity/hooks-schema-1.1.19-macos.jsonl`.
 
-Taken from the guide embedded in the `agy` binary: the payload keys, that
-`conversationId` is present on every hook, and the stdout contract. None of it
-has been seen on the wire, and the reason is no longer that the measurement was
-not attempted.
+Two reasons nothing caught it, both worth knowing before trusting a similar check
+again. `agy plugin validate` reports `hooks: N processed` by counting top-level
+keys WITHOUT type-checking them, so the malformed five-event file reported `5
+processed` and looked accepted; the correct file reports `1 processed`, so the
+count going down is the signal it is right. And the failure is invisible outside
+`~/.gemini/antigravity-cli/log/`: nothing surfaces in the TUI.
 
-**On agy 1.1.18 these hooks do not fire at all.** Measured, not inferred:
-`docs/captures/antigravity/hooks-fire-1.1.18-macos.jsonl`. Three interactive
-`--prompt-interactive` sessions completing thirteen tool calls between them
-produced zero hook invocations, with four things controlled for one at a time --
-the plugin loads (`hooks: 5 processed`), the recorder is callable when invoked as
-a hook command would invoke it, the command path resolves (an absolute path
-behaved no differently from a relative one), and the plugin is explicitly
-enabled. The earlier `agy --print` result was therefore not a print-mode
-artefact.
+**What is now measured, on 1.1.19, rather than read from the guide:** the hooks
+fire; `PreInvocation`, `PreToolUse` and `PostInvocation` all arrive in one turn;
+`conversationId` is present on every payload and `ANTIGRAVITY_CONVERSATION_ID` is
+set in the hook process, so both id sources below are real; stdin carries the
+payload and closes. `PreToolUse` decisions take effect (see point 3 above).
 
-So cardinality and ordering stay **unmeasured**, and everything below is written
-against a contract that has never run. Two consequences worth carrying: the
-mapping being small costs nothing today, because nothing arrives to map; and
-whatever this file sends, the Antigravity row is in practice carried by the coarse
-store probe and the status line alone. Do not read a working Antigravity row as
-evidence that these hooks fired.
+Still unmeasured: cardinality and ordering across several invocations in one user
+turn, which is what the mapping below is deliberately small because of.
 
 ## Why so little is mapped
 
