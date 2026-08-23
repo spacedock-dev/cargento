@@ -354,10 +354,11 @@ contradicts nothing.
 
 How often that erasure fired is **not measured**, and an earlier draft of this paragraph said it
 happened on every default install, which the repository cannot support. It needs an `input_requested`
-overlay, which only `PermissionRequest` mints, and `captures/` holds no Claude `PermissionRequest`
-record at all: the only capture of that name is Codex's, and it is a negative result. Whether the
-hook fires for `AskUserQuestion` and `ExitPlanMode`, as opposed to only for tool-permission prompts,
-is an adapter claim of exactly the kind this repository requires a capture for. Until there is one,
+overlay, which only `PermissionRequest` mints. `captures/` now holds one Claude `PermissionRequest`
+record, in `claude/notification-2.1.241-macos.jsonl`, and it is a single tool-permission prompt for
+`NotebookEdit`. So the hook is observed firing for a tool gate. Whether it also fires for
+`AskUserQuestion` and `ExitPlanMode` is still unobserved, and is an adapter claim of exactly the kind
+this repository requires a capture for. Until there is one,
 the honest statement is that the erasure is reachable and its frequency is unknown. The fix is
 correct and costs nothing either way.
 
@@ -385,12 +386,26 @@ Sourcing the text from the event path instead would make it reliable and is not 
 the envelope drops the tool name and the tool input at the hook, deliberately, and `SECURITY.md`
 states that as a property. Reopening it is a security decision, not this one.
 
-`notification_type` is present on every Notification payload, and its value list was read from the
-emit sites in an installed 2.1.226 bundle rather than observed on the wire. No capture in
-`captures/` holds a `Notification` record, because a headless run auto-denies and never raises one,
-so getting one needs an interactive session. Two specific values are inferred rather than seen: which
-one a plain main-session permission prompt carries, and that a worker's network request has no
-`PermissionRequest` behind it.
+`notification_type` is present on every Notification payload. Its value list was read from the emit
+sites in an installed 2.1.226 bundle, and three of the values the classification branches on are now
+observed on the wire instead: `captures/claude/notification-2.1.241-macos.jsonl` holds
+`permission_prompt`, `elicitation_dialog` and `idle_prompt`, each classified the way this build
+already assumed. A plain main-session permission prompt carries **`permission_prompt`**, raised twice
+from different tools, which closes the first of the two inferences below.
+
+One inference is still open, and it is the one that matters to `worker_permission_prompt`: that a
+worker's **network** request has no `PermissionRequest` behind it. The capture run could not produce a
+`worker_permission_prompt` at all. A subagent driven to a tool outside the allow list surfaced a plain
+`permission_prompt` on the leader's own session prefix, alongside a `PermissionRequest` carrying the
+tool name, so the tool half demonstrably has both signals. That is consistent with the reasoning (the
+emit site is tool-scoped) without testing the network half, which needs a worker network request that
+is not allow-listed.
+
+Two method notes, because both of them silently produced a run that looked like it worked and measured
+nothing. A headless run auto-denies and never raises a prompt, so this needs an interactive session.
+And a session that loads a user's own settings may be unable to raise a prompt either: a bare `allow`
+list grants the common tools outright, and `--permission-mode default` overrides the *mode* and not
+the *list*. Drive a tool the list does not name.
 
 ## N-8: the queue clears itself out of measurements, and holds no state of its own
 
