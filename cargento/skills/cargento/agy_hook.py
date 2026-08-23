@@ -10,24 +10,44 @@ would be a silent bug if assumed away:
    nothing and post nothing, successfully.
 2. **A hook must print a JSON object on stdout.** Not a status line, not an empty
    string: a JSON object. `PostToolUse` and the flat events expect `{}`.
-3. **`PreToolUse` output can gate the tool.** Its result may carry a `decision` of
-   `allow`, `deny`, `ask` or `force_ask`. A reporting hook that emitted a
-   malformed or opinionated object there could block the user's tool calls. This
-   script therefore prints exactly `{}` and never anything else, on every path
-   including every failure path.
+3. **`PreToolUse` output gates the tool, and an EMPTY object is a DENY.** Measured
+   on 1.1.19: `{"decision": "allow"}` permits a call, and printing exactly `{}`
+   refuses it -- "denied by the pre-tool hook system policy". So the rule this
+   script follows is not "emit `{}` to stay harmless"; for `PreToolUse` there is
+   no harmless output. **Never register `PreToolUse` here.** This script prints
+   `{}` on every path including every failure path, so registering it would deny
+   every tool call in every Antigravity session. `PostToolUse` and the flat events
+   expect `{}` and are safe, which is why those are the only two shipped.
 
-## What is verified, and what is taken from the documentation
+## What is verified, and what these hooks got wrong for their whole life
 
-Verified by running `agy plugin validate` against a copy: Antigravity loads a
-plugin's hooks from a **root `hooks.json`**, and it accepts the mixed schema the
-guide describes, reporting `hooks: 5 processed`. `PreToolUse` and `PostToolUse`
-are grouped under a `matcher`; `PreInvocation`, `PostInvocation` and `Stop` are
-flat lists of handlers.
+**The file must be NAME-WRAPPED, and ours was not.** Antigravity's `hooks.json`
+takes a hook *name* as each top-level key, with the event keys one level inside
+it, exactly as its own guide shows with `lint-checker` and `safety-gate`. Cargento
+shipped the events at the top level instead, so agy rejected the file on every
+session -- `cannot unmarshal array into Go struct field .PreToolUse`, then `loaded
+0 named hooks from 0 hooks.json file(s)` -- and **these hooks never ran at all**
+until the shape was fixed. Measured in
+`docs/captures/antigravity/hooks-schema-1.1.19-macos.jsonl`.
 
-Taken from the guide embedded in the `agy` binary: the payload keys, that
-`conversationId` is present on every hook, and the stdout contract. The hooks
-could not be made to fire under `agy --print`, so cardinality and ordering are
-**unmeasured**, and that is why the mapping below is as small as it is.
+Two reasons nothing caught it, both worth knowing before trusting a similar check
+again. `agy plugin validate` reports `hooks: N processed` by counting top-level
+keys WITHOUT type-checking them, so the malformed five-event file reported `5
+processed` and looked accepted; the correct file reports `1 processed`, so the
+count going down is the signal it is right. And the failure is invisible outside
+`~/.gemini/antigravity-cli/log/`: nothing surfaces in the TUI.
+
+**What is now measured, on 1.1.19, rather than read from the guide:** the hooks
+fire; `PreInvocation`, `PreToolUse` and `PostInvocation` all arrive in one turn;
+`conversationId` is present on every payload and `ANTIGRAVITY_CONVERSATION_ID` is
+set in the hook process, so both id sources below are real; stdin carries the
+payload and closes. `PreToolUse` decisions take effect (see point 3 above). And the relative command
+path this plugin ships resolves because agy runs a hook with the installed plugin
+root as its working directory, which was measured on the real tree rather than a
+probe and had never been tested before.
+
+Still unmeasured: cardinality and ordering across several invocations in one user
+turn, which is what the mapping below is deliberately small because of.
 
 ## Why so little is mapped
 

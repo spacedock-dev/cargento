@@ -844,22 +844,29 @@ class BundledHooksSchemaTests(unittest.TestCase):
             validator.validate_hooks_adapter(plugin_root, validation)
             return validation.errors
 
-    def test_an_unwrapped_antigravity_file_is_understood(self) -> None:
-        # Antigravity's guide states that each top-level key is a hook name, with
-        # no `hooks` wrapper. Requiring the wrapper rejected a file Antigravity's
-        # own validator had just accepted, which is how this was found.
+    def test_a_name_wrapped_antigravity_file_is_understood(self) -> None:
+        # Antigravity's guide states that each top-level key is a hook NAME, with
+        # the events one level inside it. This test previously asserted the
+        # opposite -- that a file with event names at the top level was valid --
+        # and that is how the shipped file came to be malformed: `agy plugin
+        # validate` accepted it by counting keys without type-checking them, so
+        # "Antigravity's own validator had just accepted it" was true and
+        # meaningless. agy's runtime discards such a file. See
+        # AntigravityHookNestingTests.
         document = {
-            "PostToolUse": [
-                {
-                    "matcher": "",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
-                        }
-                    ],
-                }
-            ]
+            "cargento": {
+                "PostToolUse": [
+                    {
+                        "matcher": "",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
+                            }
+                        ],
+                    }
+                ]
+            }
         }
         self.assertEqual([], self._validate(document, ship_script=True))
         self.assertTrue(
@@ -872,12 +879,14 @@ class BundledHooksSchemaTests(unittest.TestCase):
         # that understood only the grouped form would check nothing in the flat
         # half, so a missing script there would ship unnoticed.
         document = {
-            "PostInvocation": [
-                {
-                    "type": "command",
-                    "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
-                }
-            ]
+            "cargento": {
+                "PostInvocation": [
+                    {
+                        "type": "command",
+                        "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
+                    }
+                ]
+            }
         }
         self.assertEqual([], self._validate(document, ship_script=True))
         self.assertTrue(
@@ -993,4 +1002,55 @@ class DuplicatedScriptTests(unittest.TestCase):
                 len(validator.DUPLICATED_SCRIPTS),
                 len(validation.errors),
                 "each drifted copy must be reported",
+            )
+
+
+class AntigravityHookNestingTests(unittest.TestCase):
+    """Antigravity's hooks file wraps its events in a name, and a flat one is dead.
+
+    The guard exists because this shipped. Cargento's root `hooks.json` put event
+    names at the top level for the whole life of the Antigravity adapter, and three
+    separate things that should have caught it did not: `agy plugin validate`
+    reported `hooks: 5 processed` because it counts top-level keys without
+    type-checking them, this validator read those keys as event names, and the
+    design note wrote the difference down as a discovered fact. agy's runtime
+    rejected the file on every session, visibly only in a log nobody reads.
+    """
+
+    def _errors(self, document: dict[str, Any], tmp: Path) -> list[str]:
+        path = tmp / "cargento/hooks.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document), encoding="utf-8")
+        validation = validator.Validation()
+        with mock.patch.object(validator, "ROOT", tmp):
+            validator.validate_antigravity_hook_nesting(validation)
+        return [str(message) for message in validation.errors]
+
+    def test_event_names_at_the_top_level_are_rejected(self) -> None:
+        handler = {"type": "command", "command": 'python3 "./skills/cargento/agy_hook.py" x'}
+        with tempfile.TemporaryDirectory(prefix="cargento-agy-nesting-") as directory:
+            errors = self._errors({"PostInvocation": [handler]}, Path(directory))
+        self.assertTrue(
+            any("at the top level" in e and "PostInvocation" in e for e in errors), errors
+        )
+
+    def test_a_name_wrapped_file_is_accepted(self) -> None:
+        handler = {"type": "command", "command": 'python3 "./skills/cargento/agy_hook.py" x'}
+        with tempfile.TemporaryDirectory(prefix="cargento-agy-nesting-") as directory:
+            errors = self._errors({"cargento": {"PostInvocation": [handler]}}, Path(directory))
+        self.assertEqual(errors, [])
+
+    def test_a_file_with_no_named_hook_is_rejected(self) -> None:
+        # An empty object parses and would silently load nothing.
+        with tempfile.TemporaryDirectory(prefix="cargento-agy-nesting-") as directory:
+            errors = self._errors({}, Path(directory))
+        self.assertTrue(any("registers no named hook" in e for e in errors), errors)
+
+    def test_the_shipped_file_is_name_wrapped(self) -> None:
+        """The regression this class exists for, asserted against the real file."""
+        document = json.loads((validator.ROOT / "cargento/hooks.json").read_text())
+        self.assertTrue(document, "the shipped Antigravity hooks file is empty")
+        for key, value in document.items():
+            self.assertIsInstance(
+                value, dict, f"top-level {key!r} must be a hook NAME mapping to its events"
             )
