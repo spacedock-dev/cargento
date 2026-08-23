@@ -41,7 +41,10 @@ count going down is the signal it is right. And the failure is invisible outside
 fire; `PreInvocation`, `PreToolUse` and `PostInvocation` all arrive in one turn;
 `conversationId` is present on every payload and `ANTIGRAVITY_CONVERSATION_ID` is
 set in the hook process, so both id sources below are real; stdin carries the
-payload and closes. `PreToolUse` decisions take effect (see point 3 above).
+payload and closes. `PreToolUse` decisions take effect (see point 3 above). And the relative command
+path this plugin ships resolves because agy runs a hook with the installed plugin
+root as its working directory, which was measured on the real tree rather than a
+probe and had never been tested before.
 
 Still unmeasured: cardinality and ordering across several invocations in one user
 turn, which is what the mapping below is deliberately small because of.
