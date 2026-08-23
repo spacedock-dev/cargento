@@ -267,9 +267,10 @@ new content into that agent's context.
 What is bounded. The question text and the option list are bounded when they arrive, and rendered as
 text and never as markup. The number of questions outstanding at once is capped, and the honest
 answer past the cap is a refusal the server turns into a decline rather than an error. A question
-that is never answered expires and declines. The question is also delivered as an OS-level or browser
-notification, carrying that same bounded text through the same truncation and AppleScript escaping the
-needs-input popup uses; the notification is a pointer rather than a decision surface, and an option can
+that is never answered expires and declines. The question is also delivered as a notification: on macOS by the server,
+through the same truncation and AppleScript escaping the needs-input popup uses, and elsewhere by the page, which
+passes the text to the browser's own notification API and applies neither (it is not building a
+shell command, and the text is already bounded at the ingress); the notification is a pointer rather than a decision surface, and an option can
 only ever be chosen back in the page.
 
 Failure is always a decline, never a hang. If the dashboard is not running, if no reader answers, if

@@ -115,8 +115,15 @@ function notifyAsks(d, fresh){
      the two languages to one sentence. */
   const title = one ? (askLabel(d, a.harness) || "An agent") + " is asking you"
     : fresh.length + " questions are waiting for your answer";
+  /* The plural body lists the projects rather than the questions, because
+     ask_max_pending is 16 and sixteen questions do not fit a banner. Deduplicated,
+     since a fan-out in one repository is the likeliest way to get several at once
+     and repeating one path that many times says less than naming it once. Falls
+     back to the first question when no ask carries a project at all: an empty
+     banner body is worse than a partial one, and `project` is optional. */
+  const projects = [...new Set(fresh.map(x => x.project).filter(Boolean))];
   const body = one ? a.question + (a.project ? " \u00b7 " + a.project : "")
-    : fresh.map(x => x.project).filter(Boolean).join(" \u00b7 ");
+    : (projects.length ? projects.join(" \u00b7 ") : a.question);
   /* Per-ask tag in the single case, because two pending questions are two
      independent alerts and a shared tag would have the second banner REPLACE the
      first, which nothing ever raises again. The plural shares one tag, so a later

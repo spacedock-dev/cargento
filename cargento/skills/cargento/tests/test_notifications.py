@@ -1602,7 +1602,9 @@ class AskPopupTest(unittest.TestCase):
         # composing question-then-project and letting that trim would publish a
         # path that is a prefix of the real one and reads as a whole directory.
         config, state = make_runtime()
-        project = "/Users/jaredmscott/repos/recce/cargento/.claude/worktrees/drc-4183"
+        project = "/Users/dev/repos/exampleorg/cargentoxxx/.claude/worktrees/drc-4183"
+        # 66 characters, and the number is load-bearing: 111 + len(" \u00b7 ") + 66 is
+        # exactly the 180-character bound, which is the boundary this pins.
         self.assertEqual(66, len(project))
         fits = "q" * 111
         fired, rec = self._rec()

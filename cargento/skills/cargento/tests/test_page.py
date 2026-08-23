@@ -92,8 +92,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "e12da1641dfa3328e0b5a9037163d380ba7f419b60d1709ef64ce18602cbe463",
             ),
             "notify.js": (
-                7_243,
-                "8bc005479d732f5e9eb7009718cb8d6feb2040c7b7c9b4791222f1bf1c733fe6",
+                7_797,
+                "d340a6d8870d2cb210c6e961afbfb6015e4ca915dce41e0193f7aed95c193154",
             ),
             "main.js": (
                 10_446,
@@ -119,9 +119,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(278_560, len(assembled))
+        self.assertEqual(279_114, len(assembled))
         self.assertEqual(
-            "9e9a177de562c8bfbc23aa183f439abd11029dd94ab2e1ba9f0bde6138e6c87a",
+            "751eacec7aea0b3b599f1abcad69df0ff31687ec812ffd6bf4275a1a7423cb7c",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -131,9 +131,17 @@ class FrontendAssetContractTest(unittest.TestCase):
         # drifting apart the moment more than one harness could raise it. No node
         # needed — the JS is read as text.
         source = frontend_page.asset_path("notify.js").read_text(encoding="utf-8")
-        self.assertIn(" is asking you", source)
-        self.assertIn(notifications.ASK_HARNESS_FALLBACK, source)
-        self.assertEqual("An agent is asking you", notifications.asking_title(""))
+        # Matched in CODE rather than anywhere in the file. An `assertIn` over the
+        # whole source is satisfied by a comment mentioning the sentence, so the
+        # literal this test exists to pin could be changed while it stayed green.
+        code = "\n".join(
+            line for line in source.splitlines() if not line.lstrip().startswith(("/*", "*", "//"))
+        )
+        fallback = notifications.ASK_HARNESS_FALLBACK
+        self.assertIn(f'|| "{fallback}") + " is asking you"', code)
+        self.assertEqual(f"{fallback} is asking you", notifications.asking_title(""))
+        # And the Python side composes it the same way round.
+        self.assertEqual("Claude is asking you", notifications.asking_title("Claude"))
 
     def test_load_page_names_a_missing_asset(self) -> None:
         with (
