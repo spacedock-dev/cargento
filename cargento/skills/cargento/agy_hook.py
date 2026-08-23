@@ -25,9 +25,26 @@ are grouped under a `matcher`; `PreInvocation`, `PostInvocation` and `Stop` are
 flat lists of handlers.
 
 Taken from the guide embedded in the `agy` binary: the payload keys, that
-`conversationId` is present on every hook, and the stdout contract. The hooks
-could not be made to fire under `agy --print`, so cardinality and ordering are
-**unmeasured**, and that is why the mapping below is as small as it is.
+`conversationId` is present on every hook, and the stdout contract. None of it
+has been seen on the wire, and the reason is no longer that the measurement was
+not attempted.
+
+**On agy 1.1.18 these hooks do not fire at all.** Measured, not inferred:
+`docs/captures/antigravity/hooks-fire-1.1.18-macos.jsonl`. Three interactive
+`--prompt-interactive` sessions completing thirteen tool calls between them
+produced zero hook invocations, with four things controlled for one at a time --
+the plugin loads (`hooks: 5 processed`), the recorder is callable when invoked as
+a hook command would invoke it, the command path resolves (an absolute path
+behaved no differently from a relative one), and the plugin is explicitly
+enabled. The earlier `agy --print` result was therefore not a print-mode
+artefact.
+
+So cardinality and ordering stay **unmeasured**, and everything below is written
+against a contract that has never run. Two consequences worth carrying: the
+mapping being small costs nothing today, because nothing arrives to map; and
+whatever this file sends, the Antigravity row is in practice carried by the coarse
+store probe and the status line alone. Do not read a working Antigravity row as
+evidence that these hooks fired.
 
 ## Why so little is mapped
 
