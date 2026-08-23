@@ -17,6 +17,15 @@ it was dead. Three independent mechanisms can put a Claude row into Needs input:
 | Event overlay | the plugin-bundled `PermissionRequest` hook | `ExitPlanMode` observed directly (N-4). `AskUserQuestion` seen once in the wild, on the DRC-4097 incident row, which carried `acquisition: event`. Any other tool gate, and a subagent's, is **inferred** from the hook being tool-scoped and has not been seen |
 | Notification | the user-installed `Notification` hook, posted to the loopback API | MCP elicitation dialogs, worker permission and network requests |
 
+Codex has since become the second harness that can report a gate, and it has exactly one path: the
+event overlay, from its own bundled `PermissionRequest` hook. It is not a fourth row in that table
+because the table sorts Claude's three against each other, and a second harness with one source has
+nothing to be sorted against. What the two share is the overlay mechanism, so everything N-5 through
+N-9 says about an overlay applies to a Codex row unchanged. What they do not share is the other two
+paths: Codex has no transcript detection and no Notification hook, which is why a Codex row can say a
+gate is open and cannot say which. See N-7 for why that limit is a security decision rather than an
+omission, and B2 in the tracker for the other eight harnesses.
+
 The first two rows overlap, which is easy to miss and was missed here. `AskUserQuestion` and
 `ExitPlanMode` are gated tools, so `PermissionRequest` fires for them like any other tool call, and
 the event overlay carries them independently of whether the transcript ever shows them. An earlier
@@ -107,6 +116,11 @@ and reading both the transcript and `/api/data` while the question was still on 
 |---|---|---|
 | Transcript (`pending_input_tool`) | 3 of 6 | `ExitPlanMode` 2/4, `AskUserQuestion` 1/2 |
 | Event overlay (`PermissionRequest`) | 4 of 5 | all `ExitPlanMode`; one miss read `working` with `acquisition: event` |
+
+Both rows are Claude's, and there is no Codex equivalent. Its one path had not shipped when these
+were taken, and a hit rate for it would need the same interactive method applied to a Codex session,
+which nobody has run. So the ranking below is a Claude ranking; a Codex row's reliability is
+unmeasured rather than assumed to match.
 
 **These are observations, not a capture, and they are not auditable.** Claude Code 2.1.226 on macOS,
 2026-08-12, driven interactively under `tmux` against a scratch workspace, reading the transcript and
@@ -287,7 +301,7 @@ happened sixty times after the ring has turned over four times.
    of consecutive records for the same session, each a fresh working overlay over the same standing
    wait.
 
-### It is one direction, and it is Claude-only
+### It is one direction, and it only ever watched the collector
 
 Two scope limits, both easy to read past.
 
@@ -297,9 +311,20 @@ hook that never fired leaves the event path empty and the collector's own notifi
 so both halves say Working, they agree, and nothing is recorded. That case is real and is the fourth
 reading in N-5.
 
-Only the Claude collector ever produces a `needs_input` row, so no other harness can raise a dispute.
-That is correct rather than a gap, since no other harness has a needs-input signal at all, but a
-reader should not take a zero on a Codex machine as a measurement.
+Only the Claude *collector* ever produces a `needs_input` row, so no other harness can raise a
+dispute, and a zero on a Codex machine is not a measurement. That sentence used to carry a second
+clause saying this was correct rather than a gap because no other harness had a needs-input signal at
+all. That is no longer true, and the correction matters more than the wording: Codex reports a gate,
+but it reports it as an **overlay**, and this ledger only records a collector wait that an overlay
+overruled. So the ledger is structurally blind to a Codex gate, in both directions at once.
+
+Worse, the direction a Codex row can fail in is the one deliberately not recorded here. "It records,
+it does not decide" below explains why the reverse case, an overlay wait wrongly standing over a
+session that is generating, is left out: on Claude it is the ordinary event-ahead-of-scan path at
+every permission prompt, and counting it would bury the case this ledger exists to find. For a
+harness whose *only* path is the overlay, that ordinary case and the fault are the same shape, so
+nothing separates them. A Codex gate that should have been retired and was not has no detector, and
+adding one means the separate detector that paragraph already says this would need.
 
 ### Only one direction counts
 
