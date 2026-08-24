@@ -307,8 +307,12 @@ prompt immediately after `-p` and let the flags follow it.
   containment work here and not just cosmetics:
   `copilot -C ~/cargento-demo/widget-shop -p "<prompt>" --allow-tool='write' --allow-tool='shell(ls)' --allow-tool='shell(cat)' --add-dir ~/cargento-demo`
   Copilot's help says `--allow-all-tools` is "required for non-interactive mode", and we have not
-  tested whether the granular allowlist is enough. If Copilot refuses or stalls, **tell me and drop
-  Copilot from the rig** — do not escalate. Three harnesses honestly counted beat four with the
+  tested whether the granular allowlist is enough. Watch for a third outcome as well as a refusal or
+  a stall: with no allow flags at all, headless Copilot is not refused. It starts, reaches the gated
+  tool and auto-denies every gated call in about a millisecond, so the run looks healthy while
+  nothing it asks for happens (`docs/captures/copilot/permission-events-1.0.78-macos.jsonl`). If
+  Copilot refuses, stalls, or comes back with denied tool results, **tell me and drop Copilot from
+  the rig** — do not escalate. Three harnesses honestly counted beat four with the
   filesystem opened up.
 
 **Every prompt must force frequent tool calls.** A session is Working only if its store changed in
