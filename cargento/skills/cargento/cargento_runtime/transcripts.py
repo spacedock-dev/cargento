@@ -6,7 +6,7 @@ import json
 import os
 import re
 import unicodedata
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from . import io as runtime_io
 from . import records
@@ -344,6 +344,53 @@ def _copilot_agent_key(d: dict[str, Any], data: dict[str, Any]) -> str:
     return ""
 
 
+# The two `permissionRequest.kind` spellings recorded in
+# `docs/captures/copilot/permission-events-1.0.78-macos.jsonl`. Nothing else is
+# published: the value reaches a session card, and an allow-list of a closed
+# vendor vocabulary is the only version of that which cannot put an unmeasured
+# string on screen. A kind added upstream falls back to an unqualified wait,
+# which still reports the gate.
+_COPILOT_PERMISSION_KINDS: Final = frozenset({"shell", "url"})
+
+
+def _copilot_request_key(data: dict[str, Any]) -> str:
+    """One permission request's identity, or "" when the record does not carry one.
+
+    ``data.requestId`` and nothing else: it is 1:1 across requested/completed in
+    6 of 6 pairs in the capture, which is what lets an answer close the gate it
+    actually answered rather than whichever one is open.
+
+    Coerced to text for the same reason ``_copilot_agent_key`` is — the result is
+    a dict key and the record is untrusted, so an unhashable value would raise out
+    of the analyzer and take every other reading of the session with it. "" is
+    returned for a request with no usable id, and the caller drops it: a gate that
+    cannot be keyed cannot ever be closed, so recording one would leave a session
+    red for the rest of its life.
+    """
+    value = data.get("requestId")
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        return str(value)
+    return ""
+
+
+def _copilot_permission_kind(data: dict[str, Any]) -> str | None:
+    """What kind of thing is being asked about, or None when it is not a known one.
+
+    ``permissionRequest.kind`` is read and branched on before anything else under
+    it, because the key set is kind-dependent rather than a union: ``kind="url"``
+    carries ``{intention, kind, toolCallId, url}`` and none of the shell keys. An
+    adapter written from a flattened key list reads fields that do not exist.
+
+    Nothing else under ``permissionRequest`` is read at all. ``fullCommandText``,
+    ``commands``, ``commandSegments``, ``possiblePaths``, ``possibleUrls`` and
+    ``intention`` are the command line and a model's prose, which is the class
+    ``docs/captures/README.md`` excludes and which has no business on a card.
+    """
+    request = records.as_dict(data.get("permissionRequest"))
+    kind = request.get("kind")
+    return kind if kind in _COPILOT_PERMISSION_KINDS else None
+
+
 def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
     """Copilot events.jsonl tail: typed events with data payloads. Field
     names inside data are de-facto (not a stable API) — extracted
@@ -368,6 +415,22 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
         # already sanitises the session's own model through one function, so the
         # child goes through the same door rather than a copy of it.
         "pending_agents": {},
+        # Permission requests with no answer behind them, `requestId ->
+        # {"at": float, "kind": str | None}` in the order they were asked. A
+        # non-empty map at the end of the tail is a prompt standing in front of a
+        # person: the capture has `permission.requested` on disk in the first
+        # frame the dialog is visible, and `permission.completed` arriving only
+        # when they answer, 23-48 s later.
+        #
+        # `at` is the request's own timestamp and 0 when it would not parse; the
+        # collector dates the wait from it. `kind` is the closed vocabulary above
+        # and nothing else from the request is carried, so no command line and no
+        # model's prose can reach a card through this map.
+        #
+        # Bounded by the tail read, like every other accumulator here. Truncation
+        # can only lose a request, never invent one, because the file is append
+        # ordered and an answer never precedes its own question.
+        "pending_permissions": {},
     }
     for line in runtime_io.read_tail(config, path):
         if not line or line[0] != "{":
@@ -393,6 +456,23 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
             name = data.get("toolName") or data.get("name") or data.get("tool")
             if name:
                 info["last_tool"] = str(name)
+        elif t == "permission.requested":
+            request_key = _copilot_request_key(data)
+            if request_key:
+                info["pending_permissions"][request_key] = {
+                    "at": ep,
+                    "kind": _copilot_permission_kind(data),
+                }
+        elif t == "permission.completed":
+            # Every `result.kind` closes it, and that is the measured part rather
+            # than a simplification. The capture records four spellings —
+            # `approved`, `cancelled`, `denied-interactively-by-user`, and
+            # `denied-no-approval-rule-and-could-not-request-from-user` — and the
+            # last is a headless auto-denial that opens and closes its pair in
+            # 1 ms. Branching on the answer would either hold a denied session red
+            # forever or flicker a card for every run nobody is watching; the
+            # question is over either way, so the join is on `requestId` alone.
+            info["pending_permissions"].pop(_copilot_request_key(data), None)
         elif t == "subagent.started":
             label = (
                 data.get("name")

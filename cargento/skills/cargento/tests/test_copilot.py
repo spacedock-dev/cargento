@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import copilot as copilot_collector
 
@@ -930,3 +931,296 @@ class CopilotModelTest(RuntimeTestCase):
         pill = rows[self.SID_A]["subagents"][0]
         self.assertEqual("n" * 70, pill["name"])
         self.assertEqual("m o" + "d" * (cap - 3), pill["model"])
+
+
+class CopilotPermissionGateTest(RuntimeTestCase):
+    """The standing permission prompt, read off the pair Copilot already writes.
+
+    Measured, not designed: ``docs/captures/copilot/permission-events-1.0.78-macos.jsonl``
+    records across six interactive 1.0.78 sessions that ``permission.requested``
+    is on disk in the first poller frame the dialog is visible, that
+    ``permission.completed`` does not arrive until the human answers, and that
+    ``data.requestId`` joins the two 1:1 in 6 of 6 pairs. Gates stood 36 s, 44 s
+    and 48 s on a shell prompt and 23 s on a url one, so an outstanding request is
+    a person being held up rather than a record in flight.
+
+    The fixtures carry the *whole* measured key set, command text included, so the
+    test that asserts none of it reaches the row is asserting against a payload
+    that really contains it. The key set is kind-dependent rather than a union:
+    ``kind="url"`` carries none of the shell keys, which is why an adapter that
+    reads them before branching on ``kind`` gets its own arm.
+    """
+
+    SID = "cb3dfc76-1111-2222-3333-444444444444"
+    # The strings an adapter must never surface. `intention` is a model's prose,
+    # `fullCommandText` and `commands[]` are the command line, and
+    # `docs/captures/README.md` excludes exactly that class.
+    COMMAND_TEXT = "rmdir /srv/notes-private"
+    INTENTION = "clear the notes directory the user mentioned"
+    URL = "https://example.invalid/notes-private"
+
+    def shell_request(self, request_id: str, iso: str) -> dict[str, Any]:
+        """One `permission.requested` in the live shape, `kind="shell"`."""
+        return {
+            "type": "permission.requested",
+            "id": "evt-" + request_id,
+            "parentId": "turn-1",
+            "timestamp": iso,
+            "data": {
+                "requestId": request_id,
+                "permissionRequest": {
+                    "canOfferSessionApproval": True,
+                    "commandSegments": [
+                        {"fullCommandText": self.COMMAND_TEXT, "identifier": "rmdir"}
+                    ],
+                    "commands": [{"identifier": "rmdir", "readOnly": False}],
+                    "fullCommandText": self.COMMAND_TEXT,
+                    "hasWriteFileRedirection": False,
+                    "intention": self.INTENTION,
+                    "kind": "shell",
+                    "possiblePaths": ["/srv/notes-private"],
+                    "possibleUrls": [],
+                    "toolCallId": "tc-" + request_id,
+                },
+                "promptRequest": {
+                    "canOfferSessionApproval": True,
+                    "commandIdentifiers": ["rmdir"],
+                    "fullCommandText": self.COMMAND_TEXT,
+                    "intention": self.INTENTION,
+                    "kind": "commands",
+                    "toolCallId": "tc-" + request_id,
+                },
+            },
+        }
+
+    def url_request(self, request_id: str, iso: str) -> dict[str, Any]:
+        """One `permission.requested`, `kind="url"` — four keys and no shell one."""
+        return {
+            "type": "permission.requested",
+            "id": "evt-" + request_id,
+            "parentId": "turn-1",
+            "timestamp": iso,
+            "data": {
+                "requestId": request_id,
+                "permissionRequest": {
+                    "intention": self.INTENTION,
+                    "kind": "url",
+                    "toolCallId": "tc-" + request_id,
+                    "url": self.URL,
+                },
+                "promptRequest": {
+                    "intention": self.INTENTION,
+                    "kind": "url",
+                    "toolCallId": "tc-" + request_id,
+                    "url": self.URL,
+                },
+            },
+        }
+
+    def completed(self, request_id: str, iso: str, kind: str, **result: Any) -> dict[str, Any]:
+        """The answer half of the pair, keyed on the same `requestId`."""
+        return {
+            "type": "permission.completed",
+            "id": "evt-done-" + request_id,
+            "parentId": "turn-1",
+            "timestamp": iso,
+            "data": {
+                "requestId": request_id,
+                "toolCallId": "tc-" + request_id,
+                "result": {"kind": kind, **result},
+            },
+        }
+
+    def opening(self, now: float) -> list[dict[str, Any]]:
+        """A session that is unambiguously fresh, and the tool call under the gate.
+
+        Fresh on purpose: without it a row could reach Needs input by aging out of
+        Working, and the precedence this feature needs would not be under test.
+        """
+        iso = datetime.fromtimestamp(now - 60, UTC).isoformat()
+        return [
+            {
+                "type": "session.start",
+                "timestamp": iso,
+                "data": {"sessionId": self.SID, "context": {"cwd": "/w/myproj"}},
+            },
+            {"type": "user.message", "timestamp": iso, "data": {"text": "tidy the notes"}},
+            {
+                "type": "tool.execution_start",
+                "timestamp": datetime.fromtimestamp(now - 41, UTC).isoformat(),
+                "data": {"toolName": "shell"},
+            },
+        ]
+
+    def row(self, now: float, *events: dict[str, Any]) -> dict[str, Any]:
+        """The collected row for a store holding exactly these events."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            path = root / "session-state" / self.SID / "events.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_text("".join(json.dumps(e) + "\n" for e in events))
+            os.utime(path, (now - 40, now - 40))
+            return collect_rows(root, now)[self.SID]
+
+    def test_a_standing_request_holds_the_row_at_needs_input(self) -> None:
+        # The positive arm of the capture: requested on disk, no completed behind
+        # it, and the file quiescent for the 36-48 s the dialog stood. The row must
+        # outrank Working -- the request lands 0.045 s after `tool.execution_start`,
+        # so every gate opens inside the working window and a Working row would be
+        # the whole defect.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        row = self.row(now, *self.opening(now), self.shell_request("req-1", iso))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(iso), row["blocked_since"])
+        self.assertIn("shell", row["state_detail"])
+        self.assertIn("waiting", row["state_detail"])
+
+    def test_the_completed_half_of_the_pair_clears_the_gate(self) -> None:
+        # `permission.completed` is the only thing that arrives when the human
+        # answers, so the row has to come back off the gate on the strength of it
+        # alone. Mutation direction: an adapter that only ever inserts leaves every
+        # answered session red for the rest of its life.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 4, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.completed("req-1", answered, "approved"),
+        )
+
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_every_measured_result_kind_closes_the_gate(self) -> None:
+        # Four spellings in the capture's `result.kind` enum, and the join is on
+        # `requestId` rather than on the answer, so none of them may be treated as
+        # a special case. A reading that closed only on `approved` would hold a
+        # denied session red forever.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 4, UTC).isoformat()
+        for kind, extra in (
+            ("approved", {}),
+            ("cancelled", {"reason": "user pressed escape"}),
+            ("denied-interactively-by-user", {"feedback": "no, not that directory"}),
+            ("denied-no-approval-rule-and-could-not-request-from-user", {}),
+        ):
+            with self.subTest(kind=kind):
+                row = self.row(
+                    now,
+                    *self.opening(now),
+                    self.shell_request("req-1", asked),
+                    self.completed("req-1", answered, kind, **extra),
+                )
+                self.assertNotEqual("needs_input", row["state"])
+
+    def test_a_non_interactive_denial_never_raises_a_wait(self) -> None:
+        # The headless control arm, and it gets its own test because it is the one
+        # that would flicker a card on the board for a run nobody is watching.
+        # `copilot -p` with no allow flags is not refused: it proceeds and
+        # auto-denies every gated call, writing the pair 1 ms apart with
+        # `denied-no-approval-rule-and-could-not-request-from-user`. That is a
+        # machine-readable "no human was available", never a person being held up.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 40 + 0.001, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.completed(
+                "req-1", answered, "denied-no-approval-rule-and-could-not-request-from-user"
+            ),
+        )
+
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_a_url_request_is_read_without_the_shell_keys(self) -> None:
+        # `kind="url"` carries `{intention, kind, toolCallId, url}` and none of
+        # `fullCommandText`, `commands`, `commandSegments`, `possiblePaths` or
+        # `possibleUrls`. An adapter written from a flattened key list reads fields
+        # that are simply not there, so this is the arm that catches a union.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 23, UTC).isoformat()
+        row = self.row(now, *self.opening(now), self.url_request("req-2", asked))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(asked), row["blocked_since"])
+        self.assertIn("url", row["state_detail"])
+
+    def test_no_command_text_or_prose_reaches_the_published_row(self) -> None:
+        # Constraint 3, and it is a capture-contract rule rather than a preference:
+        # `fullCommandText`, `commands[]`, `intention`, `result.reason` and
+        # `result.feedback` are command lines and prose a person or a model wrote.
+        # Asserted over the whole serialized row, so a field added later cannot
+        # smuggle one in past a per-key check.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.url_request("req-2", asked),
+        )
+
+        published = json.dumps(row)
+        for secret in (self.COMMAND_TEXT, self.INTENTION, self.URL, "notes-private", "rmdir"):
+            self.assertNotIn(secret, published, f"{secret!r} must not reach the row")
+
+    def test_the_longest_standing_request_dates_the_wait(self) -> None:
+        # Two gates can stand at once, and the gate queue ranks on `blocked_since`.
+        # The older one is the one that has cost somebody something, so it dates
+        # the row; taking the newest would restart the clock every time a second
+        # prompt opened.
+        now = time.time()
+        older = datetime.fromtimestamp(now - 48, UTC).isoformat()
+        newer = datetime.fromtimestamp(now - 12, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", older),
+            self.url_request("req-2", newer),
+        )
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(older), row["blocked_since"])
+
+    def test_an_answer_to_another_request_leaves_this_one_standing(self) -> None:
+        # The join is `data.requestId` and nothing else. Closing on the event type
+        # alone would clear a standing gate the moment any other prompt in the same
+        # session was answered.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 4, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.completed("req-2", answered, "approved"),
+        )
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(asked), row["blocked_since"])
+
+    def test_a_gated_session_keeps_the_children_it_started(self) -> None:
+        # A gate says the parent is held up; it says nothing about the subagents
+        # already running. They were published only from the Working branch, so
+        # without this a fan-out reaching a prompt drops every pill at the moment
+        # the row becomes the one worth looking at.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        started = {
+            "type": "subagent.started",
+            "timestamp": datetime.fromtimestamp(now - 50, UTC).isoformat(),
+            "agentId": "sidekick-researcher-1785829732526",
+            "data": {"agentName": "researcher", "model": "gpt-5.4-mini"},
+        }
+        row = self.row(now, *self.opening(now), started, self.shell_request("req-1", asked))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual([{"name": "researcher", "model": "gpt-5.4-mini"}], row["subagents"])

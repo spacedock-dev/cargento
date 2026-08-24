@@ -1016,9 +1016,9 @@ class RowOrderTest(unittest.TestCase):
         self.assertEqual(["aaa", "bbb"], self._sorted(rows))
 
     def test_a_gate_with_no_blocked_since_is_ranked_by_its_last_activity(self) -> None:
-        # Only Claude's collector and the event overlays set `blocked_since`, so
-        # a harness that reports a wait without one must still take a place in
-        # the queue rather than sorting to the front on a zero.
+        # Only the Claude and Copilot collectors and the event overlays set
+        # `blocked_since`, so a harness that reports a wait without one must still
+        # take a place in the queue rather than sorting to the front on a zero.
         rows = [
             self._row("has", "needs_input", blocked_since=100),
             self._row("none", "needs_input", last_activity=50),

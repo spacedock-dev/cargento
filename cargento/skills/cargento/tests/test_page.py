@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import http.client
 import http.server
+import inspect
 import io
 import json
 import os
@@ -38,6 +40,39 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 
 if TYPE_CHECKING:
     import email.message
+    from collections.abc import Callable
+
+
+def _writes_a_wait(collect_fn: Callable[..., Any]) -> bool:
+    """Whether a collector's own module writes the `needs_input` state itself.
+
+    The derived half of the gate-capability check. Reading the source is the
+    point: any set of harnesses written down by hand has to be written by whoever
+    set the flag, from the same belief, so it can only ever agree with them. This
+    cannot — it asks the module what state it actually publishes.
+
+    Over the parsed tree rather than the text, and docstring constants are
+    excluded, so a module that merely *discusses* needs-input in a comment or a
+    docstring is not read as detecting one. That direction matters more than the
+    other: a false positive here would demand `reports_needs_input=True` on a
+    harness that cannot detect a gate, which is the promise-the-board-cannot-keep
+    error this whole disclosure exists to prevent.
+    """
+    module = inspect.getmodule(collect_fn)
+    assert module is not None
+    tree = ast.parse(inspect.getsource(module))
+    docstrings = {
+        node.body[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    return any(
+        isinstance(node, ast.Constant) and node.value == "needs_input" and node not in docstrings
+        for node in ast.walk(tree)
+    )
 
 
 class FrontendAssetContractTest(unittest.TestCase):
@@ -604,7 +639,7 @@ class CargentoServerTest(PageJsHarness):
             {spec.key for spec in REGISTRY if spec.reports_rate},
         )
 
-    def test_only_the_two_harnesses_with_a_gate_path_declare_one(self) -> None:
+    def test_only_the_three_harnesses_with_a_gate_path_declare_one(self) -> None:
         # The same shape as `reports_rate` above and for the same reason, on the
         # field where getting it wrong is worse. A harness with no gate detection
         # publishes no needs-input row, which is the identical payload a harness
@@ -618,7 +653,7 @@ class CargentoServerTest(PageJsHarness):
         # without teaching its collector to emit `needs_input` would publish a
         # promise the board cannot keep, which is strictly worse than the gap.
         self.assertEqual(
-            {"claude", "codex"},
+            {"claude", "codex", "copilot"},
             {spec.key for spec in REGISTRY if spec.reports_needs_input},
         )
 
@@ -631,17 +666,26 @@ class CargentoServerTest(PageJsHarness):
         # sibling test asserting a literal set.
         #
         # So derive the truth instead of restating it. A gate reaches the board by
-        # exactly two routes: a collector that sets the state itself, which is
-        # Claude alone, or an adapter that maps `input_requested`, which is
-        # whatever `EVENTS_BY_HARNESS` says today. Anyone adding the second kind
-        # gets a failure here rather than a lying chip.
+        # exactly two routes: a collector that sets the state itself, or an adapter
+        # that maps `input_requested`, which is whatever `EVENTS_BY_HARNESS` says
+        # today. Anyone adding either kind gets a failure here rather than a lying
+        # chip.
+        #
+        # The collector half used to be the literal `{"claude"}`, because Claude's
+        # was the only collector that produced a wait. Copilot's now does too, from
+        # the `permission.requested`/`permission.completed` pair, and a literal
+        # widened by hand is exactly the hand-written set this test exists to
+        # replace -- it would have to be edited by the same person who set the flag,
+        # from the same belief, so it could never contradict them. Reading the
+        # collector modules for the state they actually write can.
+        by_collector = {spec.key for spec in REGISTRY if _writes_a_wait(spec.collect)}
         by_adapter = {
             harness
             for harness, table in event_hook.EVENTS_BY_HARNESS.items()
             if "input_requested" in table.values()
         }
         self.assertEqual(
-            {"claude"} | by_adapter,
+            by_collector | by_adapter,
             {spec.key for spec in REGISTRY if spec.reports_needs_input},
         )
 

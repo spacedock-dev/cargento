@@ -25,7 +25,18 @@ Codex row unchanged. N-6 is the exception and says so in its own section: its di
 watches a *collector* wait, so it cannot see a Codex gate in either direction. What they do not share is the other two
 paths: Codex has no transcript detection and no Notification hook, which is why a Codex row can say a
 gate is open and cannot say which. See N-7 for why that limit is a security decision rather than an
-omission, and B2 in the tracker for the other eight harnesses.
+omission.
+
+Copilot is the third, and it is neither of those mechanisms. Its own store records the prompt:
+`permission.requested` is written when the dialog opens and `permission.completed` only when the
+human answers, joined on `data.requestId`, so its **collector** raises the wait from an unanswered
+pair in the tail. It needs no hook and nothing installed. The consequence for the rest of this
+document is that a Copilot row behaves like the transcript row of N-1's table rather than like a
+Codex row: the overlay sections do not apply to it at all, because no event adapter maps Copilot and
+`events.parse` refuses its envelopes outright, and the wait ends when the collector next reads the
+file rather than when an overlay is superseded. The measurement is
+`docs/captures/copilot/permission-events-1.0.78-macos.jsonl`, and B2 in the tracker carries the other
+seven harnesses.
 
 The first two rows overlap, which is easy to miss and was missed here. `AskUserQuestion` and
 `ExitPlanMode` are gated tools, so `PermissionRequest` fires for them like any other tool call, and
@@ -332,12 +343,20 @@ hook that never fired leaves the event path empty and the collector's own notifi
 so both halves say Working, they agree, and nothing is recorded. That case is real and is the fourth
 reading in N-5.
 
-Only the Claude *collector* ever produces a `needs_input` row, so no other harness can raise a
-dispute, and a zero on a Codex machine is not a measurement. That sentence used to carry a second
-clause saying this was correct rather than a gap because no other harness had a needs-input signal at
-all. That is no longer true, and the correction matters more than the wording: Codex reports a gate,
-but it reports it as an **overlay**, and this ledger only records a collector wait that an overlay
-overruled. So the ledger is structurally blind to a Codex gate, in both directions at once.
+A dispute needs a collector wait and an overlay that overrules it, and no harness but Claude has
+both. That sentence used to read "only the Claude collector ever produces a `needs_input` row", and
+it was true when it was written; it is not now, and it failed in the two opposite directions at once.
+
+Codex reports a gate as an **overlay** and has no collector detection, so there is no collector wait
+for an overlay to contradict. Copilot is the mirror image: its collector raises the wait off the
+permission pair in its own store, and no overlay can ever reach the row, because Copilot has no entry
+in the event vocabulary and `events.parse` refuses its envelopes. So the ledger is structurally blind
+to a gate on either of them, and a zero on a Codex or Copilot machine is not a measurement.
+
+A Copilot row is not left unwatched by that, only unwatched *here*. This ledger exists because an
+overlay can pin a live wait behind a stale Working row and nothing else would notice. A collector
+that re-derives the state from the file on every refresh has no such failure mode: the same
+`permission.completed` that answers the gate is the record that clears it.
 
 Worse, the direction a Codex row can fail in is the one deliberately not recorded here. "It records,
 it does not decide" below explains why the reverse case, an overlay wait wrongly standing over a

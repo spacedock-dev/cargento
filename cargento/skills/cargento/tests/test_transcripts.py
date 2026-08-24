@@ -775,6 +775,22 @@ class MalformedRecordTest(unittest.TestCase):
                     # raise rather than merely read wrong.
                     {"type": "subagent.started", "agentId": hostile, "data": {"agentName": "n"}},
                     {"type": "subagent.completed", "agentId": hostile},
+                    # The permission pair. `requestId` is a dict key, so an
+                    # unhashable one raises rather than merely reading wrong, and
+                    # `permissionRequest` is branched on before anything under it
+                    # is read — a list or a bare string there must not raise
+                    # either.
+                    {"type": "permission.requested", "data": hostile},
+                    {
+                        "type": "permission.requested",
+                        "data": {"requestId": hostile, "permissionRequest": {"kind": "shell"}},
+                    },
+                    {
+                        "type": "permission.requested",
+                        "data": {"requestId": "r1", "permissionRequest": hostile},
+                    },
+                    {"type": "permission.completed", "data": hostile},
+                    {"type": "permission.completed", "data": {"requestId": hostile}},
                 ],
             ),
             (

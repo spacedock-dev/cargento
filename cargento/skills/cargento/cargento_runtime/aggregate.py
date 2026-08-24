@@ -37,10 +37,10 @@ def row_order(session: Session) -> tuple[int, float, str]:
     the timestamp rather than on the elapsed wait so that the order cannot churn
     as every row in it waits longer.
 
-    `last_activity` stands in where a wait carries no `blocked_since`: only
-    Claude's collector and the event overlays set that field, and a harness
-    without it must still take a place in the queue rather than sorting to the
-    front on a zero.
+    `last_activity` stands in where a wait carries no `blocked_since`: only the
+    Claude and Copilot collectors and the event overlays set that field, and a
+    harness without it must still take a place in the queue rather than sorting to
+    the front on a zero.
     """
     wait = 0.0
     if session["state"] == "needs_input":
@@ -284,7 +284,20 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
         # it is a reading of their stores rather than a gap in their collectors:
         # OpenCode, Cursor and Droid record no token accounting, and Copilot's
         # store carries AI-Unit quota receipts and no per-message token counts.
-        HarnessSpec("copilot", "Copilot", copilot.discover, copilot.collect, usage=copilot.usage),
+        HarnessSpec(
+            "copilot",
+            "Copilot",
+            copilot.discover,
+            copilot.collect,
+            # The third route, and neither of the other two: its own collector
+            # reads the gate off the store. Copilot writes `permission.requested`
+            # to `events.jsonl` when the dialog opens and `permission.completed`
+            # only when the human answers, joined on `data.requestId`, so an
+            # unanswered pair in the tail IS the standing prompt. No hook, no
+            # adapter, nothing for the user to install.
+            reports_needs_input=True,
+            usage=copilot.usage,
+        ),
         HarnessSpec("opencode", "OpenCode", opencode.discover, opencode.collect),
         # Cursor's allowance is money against a monthly billing cycle, fetched
         # from the RPC its own CLI calls, so this is a second `usage_is_fetch`

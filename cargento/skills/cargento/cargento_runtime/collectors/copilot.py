@@ -355,6 +355,44 @@ def usage(
     ]
 
 
+class _Gate(NamedTuple):
+    """A permission prompt standing in front of a person, and when it opened.
+
+    ``at`` is the request's own timestamp, or 0 when the record carried none the
+    parser could read; the caller falls back to the file's mtime rather than
+    publishing a wait that began at the epoch. ``kind`` is the closed
+    ``permissionRequest.kind`` vocabulary, or None for a spelling this build has
+    not measured.
+    """
+
+    at: float
+    kind: str | None
+
+
+def _standing_gate(info: dict[str, Any] | None) -> _Gate | None:
+    """The oldest unanswered permission request in the tail, if there is one.
+
+    None means the tail holds no request without an answer behind it, which is
+    both "nothing was ever asked" and "everything asked has been answered". The
+    two are the same fact about the person: nobody is waiting on them.
+
+    The oldest, not the newest, because the gate queue ranks on ``blocked_since``
+    and the longest-standing prompt is the one that has actually cost somebody
+    something. Taking the newest would restart the clock every time a second
+    prompt opened behind the first.
+
+    A request whose stamp would not parse sorts after every dated one rather than
+    to the front on its zero. It still wins when it is the only thing standing —
+    the map is in file order, so the first entry is the first asked — which keeps
+    an unparseable stamp a missing *reading* rather than a missing gate.
+    """
+    pending = (info or {}).get("pending_permissions") or {}
+    if not pending:
+        return None
+    oldest = min(pending.values(), key=lambda entry: (not entry["at"], entry["at"]))
+    return _Gate(float(oldest["at"] or 0), oldest["kind"])
+
+
 def collect(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -394,6 +432,8 @@ def collect(
         info = transcripts.analyze_copilot_events(config, fp) if active else None
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         session_state, state_detail = "idle", "awaiting your message"
+        blocked_since = None
+        gate = _standing_gate(info)
         # `{"name": str, "model": str | None}` each, built in
         # `transcripts.analyze_copilot_events` where the name and the model come
         # off one JSON object. Only a working session has any: `info` is None
@@ -406,13 +446,17 @@ def collect(
         # and the page owns that rule for every harness at once; deciding it here
         # would put one rule in ten places.
         subagents: list[dict[str, Any]] = []
-        if sessions.is_fresh(
+        busy = sessions.is_fresh(
             config,
             now,
             sessions.newest_plausible(config, now, last_event_sources),
             config.working_threshold_sec,
-        ):
-            session_state = "working"
+        )
+        # Published from the gate branch as well as the busy one, because a gate
+        # says the parent is held up and says nothing about the children already
+        # running. Bound to those two rather than to `info` so an idle row's pills
+        # keep retiring the way they always have.
+        if gate is not None or busy:
             subagents = [
                 {
                     "name": pending.get("name") or "subagent",
@@ -420,6 +464,23 @@ def collect(
                 }
                 for pending in (info or {}).get("pending_agents", {}).values()
             ]
+        if gate is not None:
+            # Ahead of the busy test, and that order is the measurement rather
+            # than a preference: `permission.requested` lands 0.045 s after the
+            # `tool.execution_start` it gates, so every gate opens well inside the
+            # working window and a Working row here would be the whole defect.
+            # Claude's collector resolves the same conflict the same way, for the
+            # same reason (docs/design-needs-input.md N-2).
+            session_state = "needs_input"
+            blocked_since = gate.at or mtime
+            waited = sessions.fmt_duration(sessions.age(config, now, blocked_since))
+            state_detail = (
+                f"permission request ({gate.kind}), waiting {waited}"
+                if gate.kind
+                else f"permission request, waiting {waited}"
+            )
+        elif busy:
+            session_state = "working"
             state_detail = sessions.working_detail(info, subagents)
 
         cwd = (info or {}).get("cwd") or transcripts.copilot_meta(config, state, fp).get("cwd")
@@ -445,6 +506,15 @@ def collect(
                 "model": ledger.models.get((sid, None)) if ledger else None,
                 "state": session_state,
                 "state_detail": state_detail,
+                "blocked_since": blocked_since,
+                # `own_activity` stays at the declared 0, and that is a decision
+                # rather than an omission. It exists so the overlay reducer can
+                # retire a wait no hook ever closes; a wait this collector raised
+                # needs no such rescue, because the record that answers the gate
+                # is the record that clears it on the next refresh. Nor could it
+                # help here: Copilot has no entry in `events.IDENTITY_NORMALIZERS`,
+                # so no overlay ever reaches one of these rows and the reducer
+                # never runs. Publishing it would be a field nothing reads.
                 "active": active,
                 "last_activity": mtime,
                 "turn": turns.turn_progress(
