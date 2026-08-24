@@ -26,19 +26,30 @@ blanks the user's status bar, and always exits 0.
 
 ## What the payload actually contains
 
-Measured from two real `agy` sessions, 37 pushes in total, rather than read off a
-documentation page. The top-level fields are `agent_state`, `context_window`,
+Measured from real `agy` sessions rather than read off a documentation page,
+across two probes recorded under `docs/captures/antigravity/`: 37 pushes from two
+`agy --print` sessions, then thirteen interactive sessions driven through `tmux`
+on agy 1.1.19. The top-level fields are `agent_state`, `context_window`,
 `conversation_id`, `cwd`, `email`, `exceeds_200k_tokens`, `model`, `plan_tier`,
 `product`, `quota`, `sandbox`, `session_id`, `terminal_width`,
 `transcript_path`, `vcs`, `version` and `workspace`, and not all of them are
 present every time.
 
-Three fields the design expected are **not there at all**:
-`tool_confirmation_pending`, `pending_input_count` and `task_count`. The first is
-the consequential one, because it was the intended source of a permission wait.
-There is no confirmation signal in this payload under any spelling, so this
-adapter cannot report Needs input for Antigravity and does not pretend to.
-`agent_state` values observed were `authenticating`, `idle` and `working`.
+Three more are `omitempty`, so they arrive only when they have something to say,
+which is why the print-mode probe saw none of them and reported that as absence.
+The interactive probe reached all three. `tool_confirmation_pending` carries
+`true` for as long as a tool confirmation stands, beside an `agent_state` of
+`tool_use`, and every push carrying it also carried a 36-character id naming a
+real `conversations/<id>.db`. `task_count` counts background tasks.
+`pending_input_count` counts queued user messages and was visible for 0.6 s in
+the one arm that reached it, because the queue drains as fast as it fills.
+
+`agent_state` values observed across both probes: `authenticating`,
+`initializing`, `idle`, `tool_use`, `working` and `error`.
+
+An `ask_question` is **not** reported by any of the three. One stood 144 s with
+`agent_state` at `working` and then `idle`, adding no key, in a session whose
+sibling arms saw the confirmation flag on the same recorder.
 
 `conversation_id` and `session_id` carried the same 36-character value whenever
 they carried one at all, and that value was the stem of a real
@@ -84,13 +95,21 @@ MAX_PAYLOAD_BYTES = 1 << 20
 HARNESS = "antigravity"
 
 # `agent_state` to the normalized vocabulary. Only the two that assert what the
-# agent is doing are mapped. `authenticating` is startup, not activity: it says
-# the CLI is talking to an auth service, and treating it as either Working or
-# Idle would be inventing a claim about the session.
+# agent is doing are mapped. `authenticating` and `initializing` are startup, not
+# activity, and `error` is a settings failure rather than a session state;
+# treating any of them as Working or Idle would invent a claim about the session.
 #
-# There is deliberately no mapping to `input_requested`. The payload carries no
-# confirmation-pending field, so a permission wait is not observable here, and
-# the collector remains the only source of that for this harness.
+# `tool_use` is unmapped even though its push is the one that carries
+# `tool_confirmation_pending: true` and a keyable id. The obstacle is not the
+# signal, it is the shape: the status line is a repeating render, so a session
+# pushes `working` and `idle` many times a turn and both map to overlays that end
+# a wait. An `input_requested` posted from here would be cleared by the next
+# render rather than left stuck, which is the inverse of the usual hazard.
+# Sending it needs a precedence rule in the overlay reducer, not a row in this
+# table. Until that exists nothing reports Needs input for this harness:
+# `collectors/antigravity.py` has no `needs_input` path at all and its state is
+# two-valued, so this is an open gap and not a division of labour.
+# Measured in `docs/captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`.
 AGENT_STATES = {
     "working": "turn_started",
     "idle": "turn_stopped",

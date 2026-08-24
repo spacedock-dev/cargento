@@ -156,6 +156,25 @@ DRC-4095's fix makes a later working overlay retire an earlier wait **on purpose
 pin that. So this is a miss in need of a mechanism, not a known bug of a known family. Attributing
 it to one before tracing the overlay sequence is the same error this section is about.
 
+### A heartbeat source cannot use this lane, and that is what rules Antigravity out
+
+That deliberate retirement is the reason a fourth path was measured and then not built. Antigravity's
+status line does carry a confirmation-pending flag: driven to a real permission prompt it pushes the
+flag beside a `tool_use` state, with an id that names the session, recorded in
+[`captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl).
+The obstacle is the shape of the source rather than the signal. The status line is a repeating render
+of live state, not an event stream, so the ordinary `working` and `idle` pushes that surround a gate
+would arrive after the wait and retire it by exactly the rule above. Gates that stood 65 s, 94 s and
+145 s each pushed the flag twice as the dialog opened and then went silent until something redrew the
+pane, so the retirement would land while the human was still being asked.
+
+The general form is worth stating, because it applies to any source of the same shape and not only to
+this one. A path whose pushes assert what the session is doing **now** cannot post an overlay whose
+whole value is surviving until it is answered, unless the reducer learns that a wait outranks a later
+working push from the same source. That is a precedence rule, not a mapping, and it does not exist
+yet. Until it does, `statusline_hook.py` maps `working` and `idle` and nothing else, which is why
+`tool_use` is absent from its table on purpose rather than by oversight.
+
 ### The methodology this cost us
 
 A single live read is one coin toss, not a measurement. The first `ExitPlanMode` observation showed

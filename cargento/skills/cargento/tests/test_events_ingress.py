@@ -1041,7 +1041,7 @@ class CodexAdapterTest(unittest.TestCase):
 
 
 class AntigravityAdapterTest(unittest.TestCase):
-    """Antigravity, from 37 real status-line pushes across two sessions."""
+    """Antigravity, from 37 print-mode status-line pushes and thirteen interactive arms."""
 
     def payload(self, **overrides: Any) -> dict[str, Any]:
         # The captured field set. Values are stand-ins; the names are real.
@@ -1080,12 +1080,17 @@ class AntigravityAdapterTest(unittest.TestCase):
         # a claim about the session.
         self.assertIsNone(self.envelope_for("authenticating"))
 
-    def test_there_is_no_needs_input_mapping_because_there_is_no_signal(self) -> None:
-        # tool_confirmation_pending does not exist in the payload. 37 pushes across
-        # two sessions carried no confirmation field under any spelling, so a
-        # permission wait is not observable here and must not be manufactured.
+    def test_a_pending_confirmation_still_maps_to_nothing(self) -> None:
+        # The signal exists. `tool_confirmation_pending: true` arrives beside an
+        # `agent_state` of `tool_use` for as long as the dialog stands, measured in
+        # docs/captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl.
+        # It stays unmapped because the status line is a repeating render: the same
+        # session pushes `working` and `idle` many times a turn and both end a wait,
+        # so an input_requested posted here would be cleared by the next render.
+        # That needs a precedence rule in the reducer, not a row in AGENT_STATES.
         self.assertNotIn("input_requested", set(statusline_hook.AGENT_STATES.values()))
-        self.assertNotIn("tool_confirmation_pending", self.payload())
+        gated = self.payload(agent_state="tool_use", tool_confirmation_pending=True)
+        self.assertIsNone(statusline_hook.envelope(gated))
 
     def test_the_id_matches_what_the_collector_keys_on(self) -> None:
         built = self.envelope_for("working")
