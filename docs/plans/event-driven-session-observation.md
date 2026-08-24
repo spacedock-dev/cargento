@@ -416,7 +416,7 @@ any count next to a harness list here is part of the list.
 | Codex | Plugin-bundled command hooks | Native app-server first; ACP adapter second | Second target, after Claude proves the ingress |
 | Pi | User extension lifecycle events (documentation read; no event name or payload observed) | Community ACP adapter | Deferred; probe baseline |
 | Gemini CLI | Extension-bundled command hooks and OTel; consumer-account access transitioned, while enterprise and API-key use remain | Native ACP mode | Shipped-extension candidate after the first adapters |
-| Antigravity | Plugin-bundled model/tool/loop hints, plus opt-in `statusLine` snapshots for agent state and quota (no confirmation or task-count field observed) | No listed ACP implementation | Phase 2 target alongside Claude |
+| Antigravity | Plugin-bundled model/tool/loop hints, plus opt-in `statusLine` snapshots for agent state and quota (no confirmation or task-count field in the 37 print-mode pushes; both arrive interactively) | No listed ACP implementation | Phase 2 target alongside Claude |
 | Copilot CLI | Plugin-bundled, repo (`.github/hooks/*.json`) or user command hooks | ACP server via `--acp`, transport unverified | Deferred; probe baseline |
 | OpenCode | Shared server SSE where safely discoverable and authenticated; user plugin otherwise | Native ACP mode | Prefer an existing-server topology once proven |
 | Cursor CLI | Plugin-installed hooks, with ordinary local-CLI coverage requiring fixtures | Listed in the ACP agent directory; the installed cursor-agent 2026.07.23 help advertises no ACP entry point, so the mode is unverified. Opt-in `--output-format stream-json` in print mode | Deferred; probe baseline |
@@ -716,7 +716,8 @@ applies here and makes Antigravity a Phase 2 target on the same footing as Claud
 
 Neither path replaces the other. Antigravity's hooks include no session start or end and no
 notification event. The status line supplies live state and quota snapshots while the TUI runs, with
-no confirmation or background-task field observed in any captured push, and does not document a
+no confirmation or background-task field observed in the 37 print-mode pushes (both arrive
+interactively), and does not document a
 guaranteed start, end or final callback;
 collectors and reconciliation remain authoritative for definitive session lifecycle. The hooks are
 what can be installed without separate user configuration.
@@ -1021,8 +1022,11 @@ push.
    **Settled since, positively**, in
    [`../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl):
    all three fields arrive. `tool_confirmation_pending` carries `true` for as long as a tool
-   confirmation stands, beside a fourth `agent_state`, `tool_use`, and every push carrying it also
-   carried a keyable id. What that file also settles is why a mapping is not the answer. The push is
+   confirmation stands, beside a fourth `agent_state`, `tool_use`. Whether a flagged push is keyable
+   was recorded in one of the five gate arms only, the one whose recorder wrote id verdicts: all
+   seven of its flagged pushes carried a 36-character id in both `conversation_id` and `session_id`,
+   each naming a real `conversations/<id>.db`, while the other 14 flagged pushes have no id verdict
+   either way. What that file also settles is why a mapping is not the answer. The push is
    live state on a repeating render, not a transition edge: a gate that stood 65 s produced two
    pushes, both at the moment it opened, then nothing, while forcing a redraw produced a fresh pair
    each time. So an `input_requested` posted from the status line would be **clobbered by the next
@@ -2025,9 +2029,13 @@ produce.
   a single end-to-end deadline.
 - Route Antigravity's existing status-line receipt into dirty invalidation, and read `agent_state`
   from its minimal lifecycle envelope. No confirmation, task-count or pending-input field appeared
-  in the 37 captured pushes; all three are `omitempty` in the binary and the capture was print-mode
-  and shape-only, so their presence in an interactive session is unmeasured. Until that capture
-  exists, Needs input is not available from this path and the collector remains its only source.
+  in the 37 print-mode pushes, because all three are `omitempty` and that mode can raise none of the
+  states they report. The interactive capture
+  [`../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl)
+  reached all three. Needs input still is not available from this path, for a different reason: the
+  status line is a repeating render whose ordinary `working` and `idle` pushes would retire the wait,
+  which needs a precedence rule in the reducer that does not exist yet. It is not available from the
+  collector either: `collectors/antigravity.py` has no `needs_input` path at all.
   Keep status-line quota separately; collectors own definitive session lifecycle.
 - Add deadline-driven Working-to-Idle transitions with dwell. Needs-input retirement requires
   positive evidence, not a generic dead-man timeout.
@@ -2134,7 +2142,7 @@ The implementation plan should include tests for:
 | Materialized snapshot with SSE delivery | Medium to high | Fits the runtime, but needs a real coordinator, demand producer, restart cursor, server-wide resource limits and shutdown lifecycle |
 | Event-triggered selective collection | Value depends on the session mix | Below the 25% gate on a Claude-dominated machine and well clear of it once other harnesses supply about a third of active sessions, measured with `bench_collect.py --simulate`. The coordinator runs one full aggregate per floor until real multi-harness mixes are known |
 | Near-real-time Claude and Codex | Medium to high | Both plugin formats can bundle hooks; Cargento still needs authenticated routing, fixtures and its own lifecycle wiring |
-| Near-real-time Antigravity | Medium to high | Hooks are bundleable and the status line adds agent state, but no confirmation field appeared in any captured push, hooks are not clean turn boundaries, and the status line is opt-in |
+| Near-real-time Antigravity | Medium to high | Hooks are bundleable and the status line adds agent state; the confirmation field does arrive interactively, but it is a repeating render rather than a transition edge, hooks are not clean turn boundaries, and the status line is opt-in |
 | Near-real-time Gemini | Medium | The shipped extension can bundle hooks, but supported auth populations and event semantics need fixtures |
 | Near-real-time coverage across all ten harnesses | Low to medium | Several adapters and passive topologies remain unproven; Cargento lacks artifacts for six even where upstream lifecycle support exists |
 | Zero polling for every arbitrary external session | Not presently feasible | No universal observer protocol; events can be missed and time-derived state still needs deadlines |

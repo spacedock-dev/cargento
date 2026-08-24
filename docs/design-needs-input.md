@@ -160,7 +160,8 @@ it to one before tracing the overlay sequence is the same error this section is 
 
 That deliberate retirement is the reason a fourth path was measured and then not built. Antigravity's
 status line does carry a confirmation-pending flag: driven to a real permission prompt it pushes the
-flag beside a `tool_use` state, with an id that names the session, recorded in
+flag beside a `tool_use` state, with an id that names the session in the one arm whose recorder
+checked, recorded in
 [`captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl).
 The obstacle is the shape of the source rather than the signal. The status line is a repeating render
 of live state, not an event stream, so the ordinary `working` and `idle` pushes that surround a gate

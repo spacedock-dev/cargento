@@ -39,8 +39,13 @@ Three more are `omitempty`, so they arrive only when they have something to say,
 which is why the print-mode probe saw none of them and reported that as absence.
 The interactive probe reached all three. `tool_confirmation_pending` carries
 `true` for as long as a tool confirmation stands, beside an `agent_state` of
-`tool_use`, and every push carrying it also carried a 36-character id naming a
-real `conversations/<id>.db`. `task_count` counts background tasks.
+`tool_use`. Whether a flagged push is *keyable* was measured in one of the five
+gate arms only — the one whose recorder wrote id verdicts — and there all seven
+flagged pushes carried a 36-character id in both `conversation_id` and
+`session_id`, each naming a real `conversations/<id>.db`. The other four arms
+recorded the fields as present and nothing more, which settles nothing on its
+own: that same arm carried both fields present and empty on 15 of its unflagged
+pushes. `task_count` counts background tasks.
 `pending_input_count` counts queued user messages and was visible for 0.6 s in
 the one arm that reached it, because the queue drains as fast as it fills.
 
