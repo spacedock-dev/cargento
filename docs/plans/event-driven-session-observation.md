@@ -420,7 +420,7 @@ any count next to a harness list here is part of the list.
 | Copilot CLI | Plugin-bundled, repo (`.github/hooks/*.json`) or user command hooks | ACP server via `--acp`, transport unverified | Deferred; probe baseline |
 | OpenCode | Shared server SSE where safely discoverable and authenticated; user plugin otherwise | Native ACP mode | Prefer an existing-server topology once proven |
 | Cursor CLI | Plugin-installed hooks, with ordinary local-CLI coverage requiring fixtures | Listed in the ACP agent directory; the installed cursor-agent 2026.07.23 help advertises no ACP entry point, so the mode is unverified. Opt-in `--output-format stream-json` in print mode | Deferred; probe baseline |
-| Goose | Plugin command hooks, auto-discovered from `~/.agents/plugins/<name>/hooks/hooks.json`, on the eleven names in [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl). They bound a turn and nothing else: no hook fires while a tool confirmation stands, and the store records nothing either | Goose ACP server/API | Turn boundaries are reachable; a needs-input signal is a measured blank |
+| Goose | Plugin command hooks, auto-discovered from `~/.agents/plugins/<name>/hooks/hooks.json`. Goose registered all eleven event names offered to it and seven of them were observed firing, both lists in [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl). They bound a turn and nothing else: no hook fires while a tool confirmation stands, and the store records nothing either | Goose ACP server/API | Turn boundaries are reachable; a needs-input signal is a measured blank |
 | Factory Droid | User or plugin command hooks (documented, summarised by category) | ACP listed in the agent directory, mode unverified | Deferred; probe baseline |
 
 Claude, Codex, Antigravity, Gemini and Goose rows are backed by captures under `docs/captures/`. The
@@ -1222,8 +1222,9 @@ server modes. The paragraph that stood here concluded from those topologies that
 attach passively to an already-running ordinary CLI session; that is no longer true, and the way it
 stopped being true is worth keeping. Goose auto-discovers a plugin's `hooks/hooks.json` under
 `~/.agents/plugins/`, and [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl)
-records eleven event names arriving from an ordinary interactive session on 1.47.0, carrying the
-whole ten-character `sessions.id` the collector already keys on. What that route does not reach is
+records goose 1.47.0 registering all eleven event names a probe plugin offered it, seven of them
+observed firing from an ordinary interactive session and carrying the whole ten-character
+`sessions.id` the collector already keys on. What that route does not reach is
 the tool-confirmation gate: no hook fires for 83.2 s while the dialog stands, and the store is
 silent for the same window, so the turn boundaries are reachable and the needs-input signal is a
 measured blank rather than an unread one.
