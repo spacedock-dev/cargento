@@ -1,7 +1,7 @@
 # Design: what counts as a harness row
 
 Owner for the question "is this one harness or two?". The registry's mechanics (the `HarnessSpec`
-contract, the failure boundary, why Claude's notifier is bound at assembly) belong to
+contract, the failure boundary, why no collector raises a popup) belong to
 [design-runtime-architecture.md](design-runtime-architecture.md) R-5; this document owns the
 judgement calls about which products get their own row, and records the one case where that judgement
 had to be revisited.

@@ -232,9 +232,7 @@ def build_application(
     return aggregate.Application(
         config,
         state,
-        # The same callable the Claude collector notifies through, so the
-        # transcript path and the hook path cannot diverge.
-        aggregate.default_harnesses(popup_notifier, usage_fetch_enabled=config.usage_fetch_enabled),
+        aggregate.default_harnesses(usage_fetch_enabled=config.usage_fetch_enabled),
         native_notifier=notifications.native_notifier,
         popup_notifier=popup_notifier,
         diagnostic_sink=diagnostic_sink,

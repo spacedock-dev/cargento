@@ -214,15 +214,16 @@ cat "$S"
 # renders its chips. Read it from `aggregate.default_harnesses` rather than by
 # matching source text, because the rows are multi-line. The third column is
 # each callback's defining module. Every row must resolve under
-# `cargento_runtime.collectors`; Claude's is the one wrapper the registry builds
-# itself, to bind the popup notifier its collector needs.
+# `cargento_runtime.collectors`, with no exception: Claude's used to be a
+# wrapper the registry built to bind a popup notifier, and the popup decision
+# now belongs to `Application` instead.
 python3 - "$A" <<'PY'
 import pathlib, sys
 
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).parents[1]))
 from cargento_runtime import aggregate
 
-for spec in aggregate.default_harnesses(lambda _title, _message: None):
+for spec in aggregate.default_harnesses():
     print(f"{spec.key:10} {spec.label:10} {spec.collect.__module__}")
 PY
 # Lifecycle operations, and the one respawn contract --daemon uses on Windows

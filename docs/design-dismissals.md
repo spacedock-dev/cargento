@@ -54,13 +54,19 @@ was idle for an hour or generating at the time.
 A gate the reader has decided to answer somewhere else is exactly the row they want off the board, so
 refusing to clear it would be answering the wrong question.
 
-The trap is the second half. Subtracting in `collect` is not enough, because the Claude collector
-raises the native popup *from inside the collection*, before the subtraction runs, so a cleared
-session would keep raising desktop notifications for as long as it stayed blocked, which reads as a
-feature that does not work. The gate therefore lives in `notifications`, where the popup policy
-already lives, and it consults the same set the subtraction does: `collect` refreshes the store
-before the harness loop rather than after it, precisely so the two cannot disagree inside one
-collection.
+The trap is the second half. Subtracting in `collect` is not enough, because the popup is raised
+*from inside the collection*, before the subtraction runs, so a cleared session would keep raising
+desktop notifications for as long as it stayed blocked, which reads as a feature that does not work.
+The gate therefore lives in `notifications`, where the popup policy already lives, and it consults
+the same set the subtraction does: `collect` refreshes the store before the harness loop rather than
+after it, precisely so the two cannot disagree inside one collection.
+
+The ordering survived the popup moving out of Claude's collector and up into `Application`
+(DRC-4192): the decision still runs before the subtraction, so `maybe_popup` remains the thing that
+refuses a cleared row rather than the subtraction hiding it. Deciding after the subtraction would
+look tidier and would be wrong: a row removed there is a row the popup gate never sees, and a gate
+that never sees a session cannot record what that session was doing, which is what its next
+transition is measured against.
 
 The hook ingress (`POST /api/notify`) is gated too, and it has no `last_activity` to compare. It uses
 the transcript's mtime, which is the conservative half of the collector's figure: it can only be

@@ -15,10 +15,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import claude_data, notifications, records
+from cargento_runtime import aggregate, claude_data, dismissals, notifications, records
+from cargento_runtime import events as runtime_events
+from cargento_runtime import sessions as runtime_sessions
 
 from .support import (
     HOOK_PATH,
+    REGISTRY,
     RuntimeTestCase,
     collect,
     collect_claude,
@@ -36,6 +39,31 @@ from .support import (
 
 if TYPE_CHECKING:
     import email.message
+
+
+def _claude_application(
+    config: Any,
+    state: Any,
+    *,
+    now: float,
+    popups: list[Any],
+) -> aggregate.Application:
+    """An application over the registry's own Claude row, recording its popups.
+
+    Collections go through this rather than the collector alone, because since
+    DRC-4192 the collector raises no popup: the decision is taken once per
+    collection, over rows whose overlays have already been applied.
+    """
+    spec = next(s for s in REGISTRY if s.key == "claude")
+    return aggregate.Application(
+        config,
+        state,
+        (spec,),
+        native_notifier=lambda _platform: "osascript",
+        popup_notifier=lambda title, message: popups.append((title, message)),
+        diagnostic_sink=lambda _line: None,
+        clock=lambda: now,
+    )
 
 
 class CargentoServerTest(RuntimeTestCase):
@@ -1075,9 +1103,11 @@ class HookOrderingTest(unittest.TestCase):
                 store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
                 store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
                 mock.patch.object(notifications, "current_hook", session_ends_mid_collection),
-                mock.patch.object(notifications, "notify_mac", lambda *a: popups.append(a)),
             ):
-                sessions = collect_claude(now, 24, True)
+                collection = _claude_application(*runtime(), now=now, popups=popups).collect(
+                    show_all=True
+                )
+                sessions = collection["sessions"]
 
         self.assertEqual("idle", sessions[0]["state"], "exited session shown as blocked")
         self.assertEqual([], popups, "popped for a session that had already ended")
@@ -1085,7 +1115,7 @@ class HookOrderingTest(unittest.TestCase):
     def _collect_with_session_end_injected(
         self, *, at: str, records: list[dict[str, Any]], standing_hook: bool
     ) -> tuple[str, int]:
-        """Run collect_claude with a SessionEnd landing at ``at``."""
+        """Run one collection with a SessionEnd landing at ``at``."""
         now = 1_700_000_000.0
         prefix = "abcdef12"
         if standing_hook:
@@ -1106,9 +1136,10 @@ class HookOrderingTest(unittest.TestCase):
             transcript.write_text("\n".join(json.dumps(r) for r in records) + "\n")
             os.utime(transcript, (now - 300, now - 300))  # quiet, so state is decided above
 
-            notif_patches: dict[str, Any] = {
-                "notify_mac": lambda *a, **_k: popups.append(a),
-            }
+            # Patched to a no-op rather than used as the recorder: the popups
+            # below are counted off the application's injected notifier, and this
+            # only keeps any other path away from osascript.
+            notif_patches: dict[str, Any] = {"notify_mac": lambda *_a, **_k: None}
             data_patches: dict[str, Any] = {}
             if at == "analyze":
                 real_analyze = claude_data.analyze_transcript
@@ -1138,7 +1169,10 @@ class HookOrderingTest(unittest.TestCase):
                     **(data_patches or {"analyze_transcript": claude_data.analyze_transcript}),
                 ),
             ):
-                sessions = collect_claude(now, 24, True)
+                collection = _claude_application(*runtime(), now=now, popups=popups).collect(
+                    show_all=True
+                )
+                sessions = collection["sessions"]
         return sessions[0]["state"], len(popups)
 
     ASK_USER_QUESTION: ClassVar[list[dict[str, Any]]] = [
@@ -1674,3 +1708,209 @@ class AskPopupTest(unittest.TestCase):
             del fields[missing]
             with self.subTest(missing=missing), self.assertRaises(TypeError):
                 notifications.AskSubject(**fields)
+
+
+def _popup_spec(key: str, label: str, rows: list[dict[str, Any]]) -> aggregate.HarnessSpec:
+    """A stub harness publishing exactly the rows it was handed."""
+
+    def discover(config: Any, state: Any) -> bool:
+        del config, state
+        return True
+
+    def collect(
+        config: Any,
+        state: Any,
+        now: float,
+        window_hours: float,
+        show_all: bool,
+    ) -> list[Any]:
+        del now, window_hours, show_all
+        out = []
+        for row in rows:
+            session = runtime_sessions.base_session(key, row["sid"], "proj")
+            session.update({k: v for k, v in row.items() if k != "ends_mid_collection"})
+            if row.get("ends_mid_collection"):
+                # A SessionEnd committing while this collection is in flight,
+                # which is the window `expect_generation` exists to close.
+                notifications.clear_session(state, config, str(row["sid"]))
+            out.append(session)
+        return out
+
+    return aggregate.HarnessSpec(key=key, label=label, discover=discover, collect=collect)
+
+
+class _StubOverlays:
+    """An `OverlaySource` answering from a fixed table."""
+
+    def __init__(self, table: dict[tuple[str, str], list[Any]]) -> None:
+        self.table = table
+        self.noted: set[tuple[str, str]] = set()
+
+    def overlays_for(self, harness: str, sid: str) -> list[Any]:
+        return list(self.table.get((harness, sid), ()))
+
+    def finished_at(self, harness: str, sid: str) -> float:
+        del harness, sid
+        return 0.0
+
+    def note_rows(self, keys: set[tuple[str, str]]) -> None:
+        self.noted = set(keys)
+
+    def drop_counters(self) -> dict[str, int]:
+        return {}
+
+
+class ApplicationPopupTest(unittest.TestCase):
+    """Who notifies for a gate, once the row is final rather than mid-collection.
+
+    Every test here builds its own application over stub harnesses, so the
+    subject is the layer that decides rather than any real store.
+    """
+
+    def setUp(self) -> None:
+        self._home = tempfile.TemporaryDirectory()
+        self.addCleanup(self._home.cleanup)
+        self.popups: list[tuple[str, str]] = []
+
+    def runtime(self, **changes: Any) -> tuple[Any, Any]:
+        # `darwin`, because that is the platform the defect is on: the server
+        # has a native backend there, so the browser layer stands down.
+        return make_runtime(
+            state_home=self._home.name,
+            state_dir=Path(self._home.name),
+            platform_name="darwin",
+            **changes,
+        )
+
+    def application(
+        self,
+        harnesses: tuple[aggregate.HarnessSpec, ...],
+        *,
+        config: Any,
+        state: Any,
+        clock: float = 5_000.0,
+        overlays: Any = None,
+    ) -> aggregate.Application:
+        return aggregate.Application(
+            config,
+            state,
+            harnesses,
+            native_notifier=notifications.native_notifier,
+            popup_notifier=lambda title, message: self.popups.append((title, message)),
+            diagnostic_sink=lambda _line: None,
+            clock=lambda: clock,
+            overlays=overlays,
+        )
+
+    def _gate_row(self, sid: str, **changes: Any) -> dict[str, Any]:
+        row = {
+            "sid": sid,
+            "state": "needs_input",
+            "state_detail": "permission requested",
+            "active": True,
+            "last_activity": 4_000.0,
+        }
+        row.update(changes)
+        return row
+
+    def test_a_non_claude_gate_pops_on_the_platform_where_the_browser_stands_down(self) -> None:
+        # The defect itself. On macOS `native_notify` is non-empty, so notify.js
+        # hands the alert to the server -- and the server fired for Claude alone,
+        # because `maybe_popup` had one caller and it was Claude's collector. A
+        # Codex row at a real gate therefore alerted nobody.
+        spec = _popup_spec("codex", "Codex", [self._gate_row("codex-1")])
+        config, state = self.runtime()
+        collection = self.application((spec,), config=config, state=state).collect(show_all=False)
+
+        self.assertEqual("osascript", collection["native_notify"])
+        self.assertEqual([("Codex is waiting on you", "[proj] permission requested")], self.popups)
+
+    def test_a_wait_only_the_event_lane_knows_about_pops(self) -> None:
+        # The second half, silent for Claude too: the popup read the collector's
+        # state, and `_apply_overlays` runs after every collector has returned.
+        spec = _popup_spec(
+            "claude",
+            "Claude",
+            [
+                {
+                    "sid": "abcd1234",
+                    "state": "working",
+                    "state_detail": "running Bash",
+                    "active": True,
+                    "last_activity": 4_000.0,
+                }
+            ],
+        )
+        overlays = _StubOverlays(
+            {
+                ("claude", "abcd1234"): [
+                    runtime_events.Overlay(
+                        harness="claude",
+                        sid="abcd1234",
+                        arrival_seq=1,
+                        kind=runtime_events.OVERLAY_NEEDS_INPUT,
+                        at=4_500.0,
+                        detail="Bash wants to run",
+                    )
+                ]
+            }
+        )
+        config, state = self.runtime()
+        collection = self.application(
+            (spec,), config=config, state=state, overlays=overlays
+        ).collect(show_all=False)
+
+        self.assertEqual(["needs_input"], [s["state"] for s in collection["sessions"]])
+        self.assertEqual([("Claude is waiting on you", "[proj] Bash wants to run")], self.popups)
+
+    def test_a_standing_gate_pops_once_and_not_on_every_collection(self) -> None:
+        spec = _popup_spec("codex", "Codex", [self._gate_row("codex-1")])
+        config, state = self.runtime()
+        application = self.application((spec,), config=config, state=state)
+        application.collect(show_all=False)
+        application.collect(show_all=False)
+        application.collect(show_all=False)
+        self.assertEqual(1, len(self.popups))
+
+    def test_a_dismissed_gate_pops_for_nobody(self) -> None:
+        spec = _popup_spec("codex", "Codex", [self._gate_row("codex-1")])
+        config, state = self.runtime()
+        dismissals.dismiss(config, state, "codex", "codex-1", now=4_500.0)
+        self.application((spec,), config=config, state=state).collect(show_all=False)
+        self.assertEqual([], self.popups)
+
+    def test_a_session_that_ended_mid_collection_pops_for_nobody(self) -> None:
+        # `expect_generation` is sampled before the harness loop and re-checked
+        # under `hook_lock`, so a SessionEnd committing while the collection is
+        # in flight cannot have the state it just cleared re-created by a popup.
+        spec = _popup_spec(
+            "claude", "Claude", [self._gate_row("abcd1234", ends_mid_collection=True)]
+        )
+        config, state = self.runtime()
+        self.application((spec,), config=config, state=state).collect(show_all=False)
+        self.assertEqual([], self.popups)
+
+    def test_an_inactive_row_pops_for_nobody(self) -> None:
+        spec = _popup_spec(
+            "codex", "Codex", [self._gate_row("codex-1", active=False, last_activity=1.0)]
+        )
+        config, state = self.runtime()
+        self.application((spec,), config=config, state=state).collect(show_all=True)
+        self.assertEqual([], self.popups)
+
+    def test_every_registry_row_is_titled_by_its_own_label(self) -> None:
+        # `PopupSubject` keeps `harness` and `label` apart so a popup cannot name
+        # the wrong harness. Whatever supplies them now has to get both right for
+        # all ten rows, so this asserts against the registry, not a literal.
+        # One runtime per harness, because the machine-wide floor would otherwise
+        # swallow every popup after the first.
+        for spec in REGISTRY:
+            with self.subTest(harness=spec.key):
+                self.popups.clear()
+                stub = _popup_spec(spec.key, spec.label, [self._gate_row(f"{spec.key}-1")])
+                config, state = self.runtime()
+                self.application((stub,), config=config, state=state).collect(show_all=False)
+                self.assertEqual(
+                    [(f"{spec.label} is waiting on you", "[proj] permission requested")],
+                    self.popups,
+                )

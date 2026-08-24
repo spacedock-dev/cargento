@@ -15,8 +15,6 @@ from cargento_runtime import state as runtime_state
 from cargento_runtime import turns as runtime_turns
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from cargento_runtime.config import RuntimeConfig
     from cargento_runtime.sessions import Session
     from cargento_runtime.state import RuntimeState
@@ -296,8 +294,6 @@ def collect(
     now: float,
     window_hours: float,
     show_all: bool,
-    *,
-    popup_notifier: Callable[[str, str], None],
 ) -> list[Session]:
     tasks_by_session = load_tasks(config)
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
@@ -493,27 +489,6 @@ def collect(
             # a session the user has quit is moot, not blocking.
             session_state, blocked_since = "idle", None
             state_detail = "awaiting your message"
-        if active:
-            notifications.maybe_popup(
-                config,
-                state,
-                # This collector's own identity, passed explicitly. The registry
-                # owns the display label, and a collector that could omit it would
-                # be a collector able to raise a popup naming the wrong harness.
-                # `activity` is the same whole-subtree field the payload publishes
-                # and the same one the subtraction in `collect` compares, so the
-                # popup gate and the row cannot lapse at different moments.
-                notifications.PopupSubject(
-                    harness="claude",
-                    label=notifications.NOTIFY_HARNESS_LABEL,
-                    prefix=prefix,
-                    activity=last_activity,
-                ),
-                session_state,
-                f"[{project}] {state_detail}" if session_state == "needs_input" else None,
-                expect_generation=seen_generation,
-                popup_notifier=popup_notifier,
-            )
 
         total = len(tasks)
         done = sum(1 for t in tasks if t["status"] == "completed")

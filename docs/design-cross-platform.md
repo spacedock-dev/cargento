@@ -66,9 +66,13 @@ Two standing constraints:
 
 ## D-3: Exactly one owner per notification path
 
-- The browser Notification API owns transcript-detected transitions. That path already requires an
-  open dashboard tab, so nothing is lost by putting delivery there.
-- Native OS backends own hook POSTs to `/api/notify`, which must work with no tab open.
+- The split is by platform, not by path. Wherever the server has a native backend it delivers every
+  needs-input alert, for every harness and whichever of the three sources found the gate; wherever it
+  has none the page delivers them, and only while a tab is open.
+- That is the rule the page implements, and until DRC-4192 it was not the rule the server did: the
+  server fired for Claude's collector alone, so on macOS a gate on any other harness reached neither
+  layer. The popup decision now lives in `Application`, over the finished row (see R-5 in
+  [design-runtime-architecture.md](design-runtime-architecture.md)).
 - A question registered on `/api/ask` follows the same split, and is keyed on the ask id rather than
   on a transition: it has no prior state, and it leaves the payload for good once answered, withdrawn
   or expired. Two differences from the session path are deliberate. No dismissal is consulted, because

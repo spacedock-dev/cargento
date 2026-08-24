@@ -273,7 +273,7 @@ class CargentoServerTest(RuntimeTestCase):
         # report the window it was asked for, not the configured default.
         # Mutation-checked: dropping build_app()'s window override, so every
         # request silently used the configured window, passed the suite.
-        with mock.patch.object(aggregate, "default_harnesses", lambda _notifier, **_kw: ()):
+        with mock.patch.object(aggregate, "default_harnesses", lambda **_kw: ()):
             requested = json.loads(collect_json(6, False))
             default = json.loads(collect_json(24, False))
 
@@ -289,7 +289,7 @@ class CargentoServerTest(RuntimeTestCase):
 
         harnesses = (aggregate.HarnessSpec("test", "Test", lambda _config, _state: True, fail),)
         with (
-            mock.patch.object(aggregate, "default_harnesses", lambda _notifier, **_kw: harnesses),
+            mock.patch.object(aggregate, "default_harnesses", lambda **_kw: harnesses),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             result = collect(24, False)
@@ -1113,7 +1113,7 @@ class AskEndpointTest(RuntimeTestCase):
         application = aggregate.Application(
             config,
             state,
-            aggregate.default_harnesses(lambda _title, _message: None),
+            aggregate.default_harnesses(),
             native_notifier=notifications.native_notifier,
             popup_notifier=boom,
             diagnostic_sink=lambda _line: None,

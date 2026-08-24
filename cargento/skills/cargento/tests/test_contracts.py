@@ -505,10 +505,7 @@ class ApplicationIsolationTest(unittest.TestCase):
         # --no-usage. Antigravity is included by name: its quota is pushed in
         # rather than fetched, but the flag still drops it, because turning
         # usage off means the whole section.
-        rows = {
-            spec.key: spec
-            for spec in aggregate.default_harnesses(lambda _t, _m: None, usage_fetch_enabled=False)
-        }
+        rows = {spec.key: spec for spec in aggregate.default_harnesses(usage_fetch_enabled=False)}
         default_rows = {spec.key: spec for spec in REGISTRY}
         gated = {key for key, spec in default_rows.items() if spec.usage_is_fetch} | {"antigravity"}
         self.assertEqual({"claude", "cursor", "antigravity"}, gated)
@@ -707,9 +704,10 @@ class HarnessRegistryTest(RuntimeTestCase):
         )
 
     def test_no_registry_callback_resolves_into_the_launcher(self) -> None:
-        # Every callback must resolve to a collector module. Claude's is the one
-        # exception: the registry wraps it to bind the popup notifier, so it
-        # resolves to aggregate.
+        # Every callback resolves to a collector module, with no exception.
+        # Claude's used to be one: the registry wrapped it to bind a popup
+        # notifier, and that wrapper resolved to aggregate. DRC-4192 moved the
+        # popup decision to `Application`, so the wrapper is gone.
         for spec in REGISTRY:
             with self.subTest(harness=spec.key):
                 for role, fn in (("discover", spec.discover), ("collect", spec.collect)):
@@ -719,31 +717,26 @@ class HarnessRegistryTest(RuntimeTestCase):
                         module,
                         f"{spec.key}.{role} is defined in the launcher",
                     )
-                    allowed = module.startswith("cargento_runtime.collectors.") or (
-                        spec.key == "claude"
-                        and role == "collect"
-                        and module == "cargento_runtime.aggregate"
+                    self.assertTrue(
+                        module.startswith("cargento_runtime.collectors."),
+                        f"{spec.key}.{role} resolves to {module!r}",
                     )
-                    self.assertTrue(allowed, f"{spec.key}.{role} resolves to {module!r}")
-        # Every unwrapped callback is the module attribute itself, not a copy.
+        # Every callback is the module attribute itself, not a copy.
         self.assertIs(
             codex_collector.collect,
             next(s.collect for s in REGISTRY if s.key == "codex"),
         )
+        self.assertIs(
+            claude_collector.collect,
+            next(s.collect for s in REGISTRY if s.key == "claude"),
+        )
 
-    def test_the_claude_wrapper_delegates_to_the_claude_collector(self) -> None:
-        # The one wrapped row: prove the wrapper is a binding and not a
-        # reimplementation, by checking what its closure actually calls.
-        spec = next(s for s in REGISTRY if s.key == "claude")
-        closed_over = [cell.cell_contents for cell in (spec.collect.__closure__ or ())]
-        self.assertIn(claude_collector, closed_over)
-
-    def test_the_claude_row_notifies_through_the_registrys_own_notifier(self) -> None:
-        # Claude is the only collector that notifies during collection, so its
-        # notifier is bound when the registry is built. Mutation-checked: handing
-        # the collector a silent notifier instead passed the whole suite, because
-        # every other popup test patches notify_mac underneath the binding and so
-        # cannot tell which callable the registry actually passed down.
+    def test_the_registry_row_notifies_through_the_applications_own_notifier(self) -> None:
+        # The popup comes out of the callable the application was built with, not
+        # a module global. Mutation-checked in its earlier form: handing the
+        # collector a silent notifier passed the whole suite, because every other
+        # popup test patches notify_mac underneath the binding and so cannot tell
+        # which callable was actually used.
         now = 1_700_000_000.0
         prefix = "abcdef12"
         fired: list[tuple[str, str]] = []
@@ -761,21 +754,24 @@ class HarnessRegistryTest(RuntimeTestCase):
                 config, state = runtime()
                 with state.hook_lock:
                     state.hook_notifications[prefix] = {"ts": now, "message": "permission"}
-                spec = next(
-                    s
-                    for s in aggregate.default_harnesses(
-                        lambda title, message: fired.append((title, message))
-                    )
-                    if s.key == "claude"
+                spec = next(s for s in aggregate.default_harnesses() if s.key == "claude")
+                application = aggregate.Application(
+                    config,
+                    state,
+                    (spec,),
+                    native_notifier=lambda _platform: "osascript",
+                    popup_notifier=lambda title, message: fired.append((title, message)),
+                    diagnostic_sink=lambda _line: None,
+                    clock=lambda: now,
                 )
-                found = spec.collect(config, state, now, 24, True)
+                collection = application.collect(show_all=True)
 
-        self.assertEqual(["needs_input"], [s["state"] for s in found])
-        self.assertEqual(1, len(fired), "the registry's notifier was not the one used")
+        self.assertEqual(["needs_input"], [s["state"] for s in collection["sessions"]])
+        self.assertEqual(1, len(fired), "the application's notifier was not the one used")
         self.assertIn("permission", fired[0][1])
-        # The title too, not only the body. The label is now an argument this
-        # collector passes, so a wrong one would raise a truthful-looking popup
-        # naming the wrong harness, and the body assertion above cannot see that.
+        # The title too, not only the body. The label is resolved from the
+        # registry, so a wrong lookup would raise a truthful-looking popup naming
+        # the wrong harness, and the body assertion above cannot see that.
         self.assertEqual("Claude is waiting on you", fired[0][0])
 
     def test_a_harness_label_resolves_only_through_the_registry(self) -> None:
@@ -788,7 +784,7 @@ class HarnessRegistryTest(RuntimeTestCase):
         # common case here "unknown is asking you".
         application = aggregate.Application(
             *make_runtime(),
-            aggregate.default_harnesses(lambda _title, _message: None),
+            aggregate.default_harnesses(),
             native_notifier=lambda _platform: "",
             popup_notifier=lambda _title, _message: None,
             diagnostic_sink=lambda _line: None,
@@ -800,9 +796,8 @@ class HarnessRegistryTest(RuntimeTestCase):
                 self.assertEqual("", application.harness_label(key))
 
     def test_the_registry_keys_and_labels_match_the_runtime_default(self) -> None:
-        # default_harnesses binds Claude's notifier; nothing downstream may
-        # otherwise rewrite the registry the runtime declares.
-        runtime_registry = aggregate.default_harnesses(lambda _title, _message: None)
+        # Nothing downstream may rewrite the registry the runtime declares.
+        runtime_registry = aggregate.default_harnesses()
         self.assertEqual(
             [(spec.key, spec.label) for spec in runtime_registry],
             [(spec.key, spec.label) for spec in REGISTRY],
@@ -822,12 +817,19 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # place that can subtract a cleared row before `summary` is counted, so
         # this edge is what keeps every published total honest; `dismissals` is a
         # leaf beside `records`, so it stays inward.
+        # `notifications` arrived with DRC-4192, and it is the same ownership
+        # decision `dismissals` is: the popup gate has to read a row's FINAL
+        # state, which only exists after `_apply_overlays`, and only aggregate
+        # holds that. The alternative was one caller per collector, which is the
+        # arrangement that left nine harnesses notifying nobody. `notifications`
+        # imports no module that imports aggregate, so this stays inward.
         "cargento_runtime.aggregate": {
             "cargento_runtime.collectors",
             "cargento_runtime.config",
             "cargento_runtime.dismissals",
             "cargento_runtime.events",
             "cargento_runtime.io",
+            "cargento_runtime.notifications",
             "cargento_runtime.quota",
             "cargento_runtime.sessions",
             "cargento_runtime.snapshot",

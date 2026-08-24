@@ -22,7 +22,7 @@ import time
 import unittest
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, diagnostics, http_api, notifications
@@ -31,9 +31,6 @@ from cargento_runtime.config import CARGENTO_HOME_ENV, RuntimeConfig, build_runt
 from cargento_runtime.state import RuntimeState, build_runtime_state
 
 from .fixtures import STORE_CONSTANTS
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
 sys.path.insert(0, str(SERVER_PATH.parent))
@@ -214,23 +211,15 @@ def collect_claude(
     now: float,
     window_hours: float,
     show_all: bool,
-    *,
-    popup_notifier: Callable[[str, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Run the Claude collector over the shared runtime.
 
-    The default notifier is the same binding the CLI hands the application.
-    Tests that assert on popups patch ``notifications.notify_mac`` underneath it.
+    It raises no popup: since DRC-4192 the popup decision belongs to
+    `Application`, which is the only layer that sees a row's final state. Tests
+    about popups build an application (see `ApplicationPopupTest`).
     """
     config, state = runtime()
-    return claude_collector.collect(
-        config,
-        state,
-        now,
-        window_hours,
-        show_all,
-        popup_notifier=popup_notifier or cli.bound_popup_notifier(config, print),
-    )
+    return claude_collector.collect(config, state, now, window_hours, show_all)
 
 
 def make_server(
@@ -386,4 +375,4 @@ class HarnessContractTestCase(unittest.TestCase):
 
 # The registry as the runtime declares it, for tests that only read keys/labels.
 # Named distinctly from fixtures.HARNESSES, which is (key, builder) pairs.
-REGISTRY = aggregate.default_harnesses(lambda _title, _message: None)
+REGISTRY = aggregate.default_harnesses()

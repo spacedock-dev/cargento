@@ -67,7 +67,7 @@ Everything else lives in one file per responsibility:
 | `dismissals.py` | The sessions the reader marked handled: the store's path, its bounded read and write, and the rule that decides when a mark lapses. The only module that writes user-authored state, and a leaf beside `records` for that reason: `aggregate` subtracts through it before `summary` is counted, `notifications` gates a popup on it, and `http_api` mutates it, and none of those three could depend on it if it depended on any of them. See [design-dismissals.md](design-dismissals.md). |
 | `notifications.py` | Hook state, popup policy for both lanes (needs-input and ask), the native notifier, hook payload handling. |
 | `collectors/*.py` | One harness each: a discovery predicate and a collector. Two of them, Cursor and Antigravity, reach a value through a bounded read inside a stored blob rather than off a column, and both bound the read in SQLite (`substr`) so the whole blob is never materialized. |
-| `aggregate.py` | `HarnessSpec`, the registry and its label lookup, the per-harness failure boundary, `Application`. |
+| `aggregate.py` | `HarnessSpec`, the registry and its label lookup, the per-harness failure boundary, and `Application`, including the one place a needs-input popup is decided: after the overlays have been reduced onto a row and before a dismissed row is subtracted (R-5). |
 | `diagnostics.py` | Store-path reporting for `--diagnose`. |
 | `http_api.py` | The loopback server, its request handler, and network helpers. |
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. |
@@ -162,18 +162,41 @@ ledger.
 `C:\plugin\state`, a different string in `--status` output and in the dirname contract lifecycle
 relies on.
 
-## R-5: The registry is data, and Claude's notifier is bound at assembly
+## R-5: The registry is data, and no collector notifies
 
-`aggregate.default_harnesses(popup_notifier)` returns ten `HarnessSpec` rows in display order, which
-is also collection order and the order the page renders its harness chips. Each row names a collector
-module's `discover` and `collect`.
+`aggregate.default_harnesses()` returns ten `HarnessSpec` rows in display order, which is also
+collection order and the order the page renders its harness chips. Each row names a collector
+module's `discover` and `collect`, and nothing else.
 
-`Collector` is one contract for all ten: `(config, state, now, window_hours, show_all)`. Claude is
-the only collector that notifies *during* collection, because a transcript-detected transition into
-needs-input has no HTTP request behind it. Rather than widen the contract for all ten or park a
-callable on `RuntimeState`, `default_harnesses` takes the notifier and binds Claude's row. `cli`
-passes the same callable to `Application.popup_notifier`, so the transcript path and the hook path
-cannot diverge.
+`Collector` is one contract for all ten: `(config, state, now, window_hours, show_all)`. A collector
+reads a store and returns rows. It does not decide whether the human should be interrupted, because
+it cannot: by the time a row is final, two more things have happened to it. The live event overlays
+have been reduced onto it, and the reader's dismissals have not yet been subtracted. `Application`
+is where both of those are known, so `Application.collect` walks the rows once, after
+`_apply_overlays` and before the subtraction, and asks `notifications.maybe_popup` about each. `cli`
+passes the same notifier to `Application.popup_notifier` that the hook route uses, so the transcript
+path and the hook path cannot diverge.
+
+This overturns an earlier decision, and the reason is worth keeping. Claude's collector used to
+raise the popup itself, and `default_harnesses` took a notifier to bind that one row. The argument
+was that a transcript-detected transition has no HTTP request behind it, and that widening the
+contract for all ten to serve one was the worse trade. It was, until DRC-4184 gave a second harness
+a gate: `maybe_popup` had exactly one production caller, so on macOS, where `native_notifier` names
+a backend and the browser layer therefore stands down, a Codex session at a real permission prompt
+alerted nobody at all. The premise the one-layer split rests on, that the server already fired for
+whatever the page declined to, was true of Claude and of nothing else. Binding a second collector,
+and then a third, would have restated the same defect once per harness. Moving the decision up also
+closed a second silence that was true even for Claude: the popup read the collector's state, and
+`_apply_overlays` runs afterwards, so a wait that only an event knew about raised nothing.
+
+Two properties of `maybe_popup` survived the move and must keep surviving it. Its
+`expect_generation` is re-checked under `hook_lock`, so `Application` samples every session's
+generation before the harness loop and hands that snapshot in: reading the live map at decision time
+would compare a value with itself and let a `SessionEnd` that committed mid-collection be undone by
+a popup for a session that has exited. And the transition is recorded into `last_session_state`
+*above* the cooldown gates, which means a popup a floor suppresses is consumed rather than deferred
+(see D-3 in [design-cross-platform.md](design-cross-platform.md)). Nine more harnesses now contend
+for that machine-wide floor than did before.
 
 Adding a harness is therefore: a module under `collectors/`, and a row. `CONTRIBUTING.md` owns the
 walkthrough, and [design-harness-registry.md](design-harness-registry.md) owns the judgement of what

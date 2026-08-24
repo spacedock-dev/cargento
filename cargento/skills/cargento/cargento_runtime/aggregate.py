@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
-from . import dismissals, quota, sessions
+from . import dismissals, notifications, quota, sessions
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
@@ -67,6 +67,36 @@ def _keep_wait_detail(session: Session, patch: Mapping[str, Any]) -> Mapping[str
     if patch.get("state_detail") is not None or not session.get("state_detail"):
         return patch
     return {key: value for key, value in patch.items() if key != "state_detail"}
+
+
+def _subtract_dismissed(
+    out_sessions: list[Session],
+    cleared_marks: tuple[dismissals.Dismissal, ...],
+) -> tuple[list[Session], int]:
+    """The rows no standing dismissal covers, and how many it removed.
+
+    Called after the overlays and before the display ids, and both halves
+    matter. After, because `_apply_overlays` ends in `note_rows`, which expires
+    any overlay whose key was not reported — subtract first and a dismissed
+    session that comes back has lost its pending permission overlay. Before
+    `assign_display_ids`, so the id widths describe the rows actually on screen.
+
+    A count and not a filtered flag, because the popup pass has already run over
+    the unsubtracted list: a dismissal silences an alert through
+    `maybe_popup`'s own gate, never by hiding the row from it (D-3 in
+    docs/design-dismissals.md).
+    """
+    kept = [
+        session
+        for session in out_sessions
+        if not dismissals.holds(
+            cleared_marks,
+            str(session["harness"]),
+            str(session["sid"]),
+            float(session.get("last_activity") or 0.0),
+        )
+    ]
+    return kept, len(out_sessions) - len(kept)
 
 
 class OverlaySource(Protocol):
@@ -164,19 +194,14 @@ class HarnessSpec:
     usage_is_fetch: bool = False
 
 
-def default_harnesses(
-    popup_notifier: Callable[[str, str], None],
-    *,
-    usage_fetch_enabled: bool = True,
-) -> tuple[HarnessSpec, ...]:
+def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec, ...]:
     """Every supported harness, in display order.
 
-    Claude is the one collector that notifies during collection, because a
-    transcript-detected transition into needs-input has no HTTP request behind
-    it. Binding its notifier here keeps ``Collector`` a single five-argument
-    contract for all ten harnesses instead of widening every collector with a
-    dependency only one of them has. Pass the same bound callable given to
-    ``Application.popup_notifier`` so both paths notify identically.
+    No collector notifies. Claude's did until DRC-4192, and this function took
+    the popup notifier to bind that one row; the popup decision now belongs to
+    `Application`, which is the only place that sees a row's final state, so
+    ``Collector`` is one five-argument contract and every row is the collector
+    module's own attribute.
 
     ``usage_fetch_enabled`` is ``--no-usage`` arriving at assembly: with the
     fetch off, no row that depends on the fetch keeps a usage provider, so
@@ -198,23 +223,12 @@ def default_harnesses(
         pi,
     )
 
-    def collect_claude(
-        config: RuntimeConfig,
-        state: RuntimeState,
-        now: float,
-        window_hours: float,
-        show_all: bool,
-    ) -> list[Session]:
-        return claude.collect(
-            config, state, now, window_hours, show_all, popup_notifier=popup_notifier
-        )
-
     return (
         HarnessSpec(
             "claude",
             "Claude",
             claude.discover,
-            collect_claude,
+            claude.collect,
             reports_rate=True,
             # The only row that can. Its three paths are the whole of Cargento's
             # gate detection; every other harness is tracked per harness under B2.
@@ -326,12 +340,12 @@ class Application:
         config, state = self.config, self.state
         window_hours = config.window_hours
         now = self.clock()
-        # Read before the harness loop, not after it. A collector can raise a
-        # native popup mid-loop (Claude's does), and the popup gate has to be
-        # answering off the same set as the subtraction below — a popup for a row
-        # this collection is about to remove is the visible half of the feature
-        # failing.
         cleared_marks = dismissals.refresh(config, state)
+        # Sampled before the harness loop for the reason Claude's collector used
+        # to sample it before its transcript scan: a SessionEnd that commits
+        # while this collection is in flight must invalidate the popup, and a
+        # generation read at decision time would only be compared against itself.
+        generations = notifications.hook_generations(state)
         out_sessions: list[Session] = []
         harnesses: list[dict[str, Any]] = []
         usage: list[dict[str, Any]] = []
@@ -393,24 +407,14 @@ class Application:
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
         self._apply_overlays(out_sessions, now=now)
-        # After the overlays and before the display ids, and both halves matter.
-        # After, because `_apply_overlays` ends in `note_rows`, which expires any
-        # overlay whose key was not reported — subtract first and a dismissed
-        # session that comes back has lost its pending permission overlay. Before
-        # `assign_display_ids`, so the id widths describe the rows actually on
-        # screen.
-        kept = [
-            session
-            for session in out_sessions
-            if not dismissals.holds(
-                cleared_marks,
-                str(session["harness"]),
-                str(session["sid"]),
-                float(session.get("last_activity") or 0.0),
-            )
-        ]
-        cleared = len(out_sessions) - len(kept)
-        out_sessions = kept
+        # After the overlays and before the subtraction. After, because a wait
+        # only an event knows about is a wait, and reading the collector's state
+        # is what left the overlay lane silent on every harness. Before, because
+        # `maybe_popup` consults the dismissal store itself and must be the thing
+        # that decides: a row removed here is a row this pass never sees, and a
+        # popup gate that never sees a session cannot record what it was doing.
+        self._notify_waits(out_sessions, generations)
+        out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
         sessions.assign_display_ids(config, out_sessions)
         out_sessions.sort(key=row_order)
         active_sessions = [x for x in out_sessions if x["active"]]
@@ -504,6 +508,55 @@ class Application:
                 )
             ],
         }
+
+    def _notify_waits(self, out_sessions: list[Session], generations: dict[str, int]) -> None:
+        """Raise the native popup for every row that has just started waiting.
+
+        Here rather than in a collector, and that is the amendment DRC-4192
+        made to R-5 in docs/design-runtime-architecture.md. The one-layer rule —
+        the server notifies where `native_notifier` names a backend, the browser
+        where it does not — rested on the server firing for whatever the browser
+        stood down for. It fired for Claude alone, because `maybe_popup` had one
+        caller and it was Claude's collector, so on macOS a Codex row at a real
+        gate alerted nobody at all. This is also the only place that sees a row's
+        FINAL state: `_apply_overlays` runs after every collector has returned,
+        so a wait reported by a hook POST and nothing else was silent even on
+        Claude.
+
+        The label comes from `self.harnesses`, the same source the payload's
+        `harnesses` array is built from, so a popup and the board cannot disagree
+        about what a harness is called. `harness_label` answers "" for anything
+        the registry does not carry, and a row's harness is a registry key by
+        construction; the key is echoed rather than a blank subject shipped, as
+        the page's own session-row fallback does.
+
+        Inactive rows are skipped, which is what `show_all` collections rest on:
+        `--all` widens what is drawn, never what alerts.
+        """
+        for session in out_sessions:
+            if not session.get("active"):
+                continue
+            harness, sid = str(session["harness"]), str(session["sid"])
+            state = str(session.get("state") or "")
+            notifications.maybe_popup(
+                self.config,
+                self.state,
+                notifications.PopupSubject(
+                    harness=harness,
+                    label=self.harness_label(harness) or harness,
+                    prefix=sid,
+                    # The whole-subtree reading, the same field the dismissal
+                    # subtraction below compares, so the popup gate and the row
+                    # cannot lapse at different moments.
+                    activity=float(session.get("last_activity") or 0.0),
+                ),
+                state,
+                f"[{session.get('project')}] {session.get('state_detail')}"
+                if state == "needs_input"
+                else None,
+                expect_generation=generations.get(sid, 0),
+                popup_notifier=self.popup_notifier,
+            )
 
     def _mark_unreachable_by_events(self, out_sessions: list[Session]) -> None:
         """Disclose the rows no event can ever reach, before any overlay lands.

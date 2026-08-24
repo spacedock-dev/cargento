@@ -165,6 +165,26 @@ def hook_generation(state: RuntimeState, prefix: str) -> int:
         return state.hook_generation.get(prefix, 0)
 
 
+def hook_generations(state: RuntimeState) -> dict[str, int]:
+    """Every session's SessionEnd generation, copied under the lock.
+
+    The popup decision is taken once per collection, over rows every collector
+    has already returned, so it cannot sample a generation before the read that
+    produced the row it is judging. This is that sample: taken before the
+    harness loop, it names the generation each session was collected under, and
+    `maybe_popup` re-checks it against the live map under the same lock.
+
+    Copied rather than read live, and the copy is the whole point: reading the
+    map at decision time would compare a value against itself and let a
+    SessionEnd that committed mid-collection re-create the state it just
+    cleared. A session with no entry reads 0 through `dict.get` at both ends, so
+    a harness that has no SessionEnd signal at all is judged by the same rule
+    Claude is rather than skipping the check.
+    """
+    with state.hook_lock:
+        return dict(state.hook_generation)
+
+
 def current_hook(
     state: RuntimeState,
     prefix: str,
@@ -311,6 +331,20 @@ def maybe_popup(
     popup_notifier: Callable[[str, str], None],
 ) -> None:
     """Popup when a session transitions into a needs-input state.
+
+    Called once per collected row, for every harness, from `Application`. It was
+    called from Claude's collector alone until DRC-4192, and that is the whole of
+    why a Codex gate on macOS alerted nobody: the browser layer stands down
+    wherever `native_notifier` names a backend, on the premise that the server
+    already fired, and nothing called this for the other nine.
+
+    ``subject.prefix`` is the key both popup maps are stored under, and it is the
+    session id rather than `(harness, sid)` deliberately: `handle_payload` writes
+    the same key off Claude's hook ingress, and the two lanes must share it or one
+    standing gate pops twice — once when the hook lands and again when the next
+    collection sees the transition it caused. Two harnesses publishing a
+    byte-identical session id would fold together here; the dismissal store is
+    keyed properly and is unaffected, and one suppressed popup is the whole cost.
 
     ``expect_generation`` is re-checked under the same lock that guards the
     last-session-state map. Checking it in the caller leaves a window in which a

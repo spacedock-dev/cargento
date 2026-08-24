@@ -1241,7 +1241,7 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
             application = aggregate.Application(
                 config,
                 state,
-                aggregate.default_harnesses(lambda _t, _m: None),
+                aggregate.default_harnesses(),
                 native_notifier=lambda _p: "",
                 popup_notifier=lambda _t, _m: None,
                 diagnostic_sink=lambda _line: None,
