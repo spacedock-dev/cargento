@@ -425,11 +425,13 @@ any count next to a harness list here is part of the list.
 
 Claude, Codex, Antigravity, Gemini and OpenCode rows are backed by captures under `docs/captures/`.
 The OpenCode capture covers the plugin path only; its ACP and shared-server cells are still
-documentation reads. The remaining rows are vendor-documentation reads with no capture behind them:
-treat every cell for Pi, Copilot CLI, Cursor CLI, Goose and Factory Droid as unmeasured, including
-the ACP column, whose per-harness qualifiers come from the ACP agent directory listing rather than
-from any observed connection. Copilot CLI and Cursor CLI gained captures on branches that landed
-alongside this one, and whoever reconciles those rows should read those files first.
+documentation reads. Goose and Factory Droid have no capture behind them at all, so every cell in
+those two rows is a vendor-documentation read and unmeasured. Pi, Copilot CLI and Cursor CLI now
+have captures under `docs/captures/`, but none of them measures the passive-feed cell as this table
+states it, and none has been reconciled into these rows: read those files before trusting a Pi,
+Copilot or Cursor cell here. The ACP column is unmeasured on all five rows either way: its
+per-harness qualifiers come from the ACP agent directory listing rather than from any observed
+connection.
 
 ### Claude Code
 
@@ -1218,9 +1220,12 @@ not documented and has not been tested here.
 The same capture closes the store-only alternative. Measured while an approval dialog stood on
 screen for 130 s, 76 s and 36 s: the store's `permission` table holds project-scoped saved approvals
 and stayed empty, even after an "Allow always", which OpenCode's own dialog says holds only until
-restart. The durable `event` table carries session and message types alone. And `session.status`
-reads `busy` before, during and after a gate, so it cannot discriminate a wait. Nothing but a single
-`session.updated` reaches a reader between the ask and the reply.
+restart. The durable `event` table carries session and message types alone. And no `session.status`
+event is delivered between the ask and the reply in any gated arm. The grant and always arms' status
+sequences match the ungated control's exactly and the reject arm's differs only by a `retry`, so the
+status lane never announces the wait. Nothing but a single `session.updated` reaches a reader
+between the ask and the reply, and the store's own counts advance at most once inside the gate
+window and then hold.
 
 ### Pi, Cursor, and Goose
 
@@ -2068,10 +2073,10 @@ not erase enterprise and API-key CLI use.
 Further passive adapters (OpenCode, Copilot, Factory Droid, Pi, Cursor and Goose) are deferred
 indefinitely. Each needs its own justification against the proven probe baseline and a harness-specific
 distribution/lifecycle assessment. OpenCode is the strongest of the six on evidence: its plugin path
-is measured, and its `permission.replied` is the only explicit resolve event on any harness here. It
-is still not zero-action, because a plugin file has to reach the user's machine, and the
-already-running TUI server that would make it zero-action cannot yet be discovered or authenticated
-reliably.
+is measured, and its `permission.replied` carries the joinable session id inline, so a reader needs
+nothing but the event to close the request it opened. It is still not zero-action, because a plugin
+file has to reach the user's machine, and the already-running TUI server that would make it
+zero-action cannot yet be discovered or authenticated reliably.
 
 Each adapter must be independently optional and independently testable. One broken integration must
 never take down the aggregate, as the existing collector failure boundary already ensures.
