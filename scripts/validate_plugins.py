@@ -751,7 +751,12 @@ HOOK_FILE_VOCABULARY = {
     ),
     f"{GEMINI_EXTENSION_ROOT}/hooks/hooks.json": (
         "gemini",
-        # The whole documented 0.53.1 vocabulary, measured firing in that order.
+        # The whole documented 0.53.1 vocabulary. This is an allowlist of names
+        # the harness recognises, so it is deliberately wider than what was seen:
+        # ten of these fired in `docs/captures/gemini/hooks-0.53.1-macos.jsonl`,
+        # and `Notification` did not, across 56 invocations. Non-interactive
+        # Gemini withholds every tool that needs approval, so nothing could ask.
+        # Registering it is still legal; what is not evidenced is its payload.
         frozenset(
             {
                 "SessionStart",

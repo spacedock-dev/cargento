@@ -1011,8 +1011,10 @@ carried a present-but-blank id: all four `authenticating` pushes and ten of the 
 because the field exists before a conversation does. An event with no id cannot be keyed to a row,
 so this adapter reliably reports Working and usually cannot report the return to Idle. That is the
 concrete reason the Working overlay carries a measured deadline: it expires, and the collector's own
-reading of the store decides again. Whether a post-turn `idle` push carries an id is unobserved,
-because print mode ended while still `working`.
+reading of the store decides again. A post-turn `idle` push can still carry an id. One of the two
+arms ended on an `idle` render after its working run, carrying a 36-character id that named a real
+`conversations/<id>.db`; the other ended while still `working`. One arm out of two is thin enough
+that the deadline stays.
 
 **Cardinality is high.** Thirteen and 24 pushes for two short turns, mostly repeating the same
 `agent_state`. So the adapter dedupes on the last state in a small memo file rather than spending the
@@ -1088,9 +1090,11 @@ signal. The payload is the same snake_case shape Claude and Codex send, down to 
 `transcript_path`, `cwd`, `hook_event_name` and `timestamp`. That resemblance is deliberate: Gemini
 ships a `gemini hooks migrate` subcommand for porting Claude Code hooks across.
 
-**Identity: the whole id, matched against the store.** Five sessions, five exact matches between the
-hook's `session_id` and the `sessionId` on line 1 of the transcript the same session wrote, all 36
-characters. So `IDENTITY_NORMALIZERS["gemini"]` is the whole-uuid normalizer, not Claude's truncating
+**Identity: the whole id, matched against the store.** Five verdict records, five exact matches
+between the hook's `session_id` and the `sessionId` on line 1 of the transcript the same session
+wrote, all 36 characters. Records and not sessions: the identity file carries no session marker, so
+it cannot say whether five sessions or five writes produced them, and the four above is the count
+the hooks capture supports. So `IDENTITY_NORMALIZERS["gemini"]` is the whole-uuid normalizer, not Claude's truncating
 one. The trap worth recording: the store *filename* carries only the first eight characters, so a
 mapping keyed on the name would key on a prefix the collector never reads.
 

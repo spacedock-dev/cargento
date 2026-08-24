@@ -52,8 +52,11 @@ pushes, 14 carried no id: all four `authenticating` pushes and ten of the eleven
 event with no id cannot be keyed to a row, this adapter reliably reports Working
 and usually cannot report the return to Idle. That is not a gap to paper over: it
 is exactly why the Working overlay carries a measured deadline, after which the
-collector's own reading of the store decides again. Whether a *post-turn* idle
-push carries an id is unobserved, because print mode ended while still `working`.
+collector's own reading of the store decides again. A *post-turn* idle push can
+still carry an id. One of the two arms ended on an `idle` render after its working
+run, carrying a 36-character id that named a real `conversations/<id>.db`; the
+other ended while still `working`. One arm out of two is thin enough that the
+deadline stays.
 
 ## Why it dedupes
 

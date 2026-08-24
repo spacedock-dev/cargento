@@ -276,12 +276,15 @@ def _whole_uuid_sid(session_id: str) -> str | None:
       `conversation_id` holding the same value, and that value matched the stem
       of a real `conversations/<id>.db`, which is what `collectors/antigravity.py`
       keys on.
-    - Gemini CLI's hook payload carries `session_id`, and across five real 0.53.1
-      sessions that value equalled the `sessionId` on line 1 of the
+    - Gemini CLI's hook payload carries `session_id`, and in five recorded
+      verdicts on 0.53.1 that value equalled the `sessionId` on line 1 of the
       `chats/session-*.jsonl` the same session wrote, which is what
-      `collectors/gemini.py` keys on. Note the store *filename* carries only the
-      first eight characters; the id inside the file is whole, and the collector
-      reads the file rather than the name.
+      `collectors/gemini.py` keys on. Five verdicts rather than five sessions:
+      `docs/captures/gemini/identity-0.53.1-macos.jsonl` records no session
+      marker, so how many sessions wrote them is not something it can say. Note
+      the store *filename* carries only the first eight characters; the id
+      inside the file is whole, and the collector reads the file rather than the
+      name.
 
     So no truncation, unlike Claude. The shape is still validated: a value that is
     not UUID-shaped is not one of these ids, and must not reach a lookup. The
