@@ -1011,8 +1011,10 @@ carried a present-but-blank id: all four `authenticating` pushes and ten of the 
 because the field exists before a conversation does. An event with no id cannot be keyed to a row,
 so this adapter reliably reports Working and usually cannot report the return to Idle. That is the
 concrete reason the Working overlay carries a measured deadline: it expires, and the collector's own
-reading of the store decides again. Whether a post-turn `idle` push carries an id is unobserved,
-because print mode ended while still `working`.
+reading of the store decides again. A post-turn `idle` push can still carry an id. One of the two
+arms ended on an `idle` render after its working run, carrying a 36-character id that named a real
+`conversations/<id>.db`; the other ended while still `working`. One arm out of two is thin enough
+that the deadline stays.
 
 **Cardinality is high.** Thirteen and 24 pushes for two short turns, mostly repeating the same
 `agent_state`. So the adapter dedupes on the last state in a small memo file rather than spending the

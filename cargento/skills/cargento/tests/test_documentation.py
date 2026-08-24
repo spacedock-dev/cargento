@@ -188,17 +188,32 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
 
     def test_a_post_turn_idle_push_carries_an_id_in_the_antigravity_capture(self) -> None:
         # `statusline_hook.py` called this unobserved. One of its two arms ended
-        # on exactly such a push: `idle`, after `working`, carrying an id.
+        # on exactly such a push: `idle`, after `working`, carrying an id. The
+        # prose states the id's width and that it named a real db, so the filter
+        # reads those two verdict fields rather than the dict's truthiness -- a
+        # re-recorded capture carrying `{"len": 12, "matches_a_db_stem": false}`
+        # would otherwise leave this green while the sentence went false.
         arms: dict[str, list[dict[str, Any]]] = {}
         for record in self.records(self.CAPTURES / "antigravity" / "statusline-macos.jsonl"):
             arms.setdefault(record["capture"], []).append(record)
-        ended_idle_with_id = [
-            arm
-            for arm, pushes in arms.items()
-            if pushes[-1]["agent_state"] == "idle"
-            and pushes[-1]["id_verdicts"]["conversation_id"]
-            and any(push["agent_state"] == "working" for push in pushes[:-1])
-        ]
+        ended_idle_with_id = []
+        for arm, pushes in arms.items():
+            verdict = pushes[-1]["id_verdicts"]["conversation_id"] or {}
+            if (
+                pushes[-1]["agent_state"] == "idle"
+                and verdict.get("len") == 36
+                and verdict.get("matches_a_db_stem")
+                and any(push["agent_state"] == "working" for push in pushes[:-1])
+            ):
+                ended_idle_with_id.append(arm)
         self.assertEqual(2, len(arms))
         claim = f"{self.NUMBERS[len(ended_idle_with_id)].capitalize()} of the two arms"
-        self.assertIn(claim, self.unwrapped("cargento/skills/cargento/statusline_hook.py"))
+        # Both the shipped adapter and the durable design record state this. A
+        # correction that lands in one leaves the repository contradicting
+        # itself, which is the drift DRC-4193 exists to close.
+        for relative in (
+            "cargento/skills/cargento/statusline_hook.py",
+            "docs/plans/event-driven-session-observation.md",
+        ):
+            with self.subTest(source=relative):
+                self.assertIn(claim, self.unwrapped(relative))
