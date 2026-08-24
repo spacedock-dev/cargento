@@ -65,12 +65,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                42_975,
-                "741b3e185654153b0314176ccd48135c1b4499210cd982b4237fcde99c3419ae",
+                45_873,
+                "b10f42b746700d0efe536214d83482883532f29bb29d0d0ef682c67be78c2a25",
             ),
             "regular.js": (
-                44_109,
-                "a42db478eb018220e9db457f3843054571fad841ced869dcea24b3fce633b131",
+                48_849,
+                "d14873045c95724403f7eea6cc398c2e12e82ccb0b58e16b33ecba23c65b927f",
             ),
             "mode.js": (
                 4_619,
@@ -85,28 +85,28 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "f1fe1ebd088d69c14f72364e88249f625cdba4d82f95239992dc76daceabcd0e",
             ),
             "ask.js": (
-                7_064,
-                "b3427d36b59995b468c6cb8d31bef21b20167d41dd302b56c4781ff9d37b038a",
+                7_755,
+                "7ff71070fabf53c55754a3263825eb3c330ed1457bc8661d983d694df97ea218",
             ),
             "calm.js": (
-                53_631,
-                "7c7e34838f51d45a7d6c8641dea8f58c00cac7e598549ea73a82fceeb1bdc62f",
+                56_506,
+                "c3280fbef18133273e92726d3d31f395993814ac5d817a70594f98b99307ab4a",
             ),
             "session.js": (
                 6_988,
                 "d1fcdde8cee18cdc9757f025437c87602313ae56b9cc98b3c5a5e96aaa8fd224",
             ),
             "notify.js": (
-                7_797,
-                "d340a6d8870d2cb210c6e961afbfb6015e4ca915dce41e0193f7aed95c193154",
+                7_802,
+                "da59647fec9a96f917f4908332604fd4fd3fba34d43be2750e25c2b4341b7250",
             ),
             "observer.js": (
                 2_874,
                 "aeef4f2ad3d702d434bfdafbc5123dec0f216a858b197b6ae00bc61fcf1873d9",
             ),
             "main.js": (
-                12_171,
-                "9f7ba1c986be14e640c6340d18cf2b5978b36bae6edcee5d7e636c1ffbe37004",
+                11_788,
+                "69d4659b50c6b6d9bcf4449b36ab3e8a26112d8778ff94abef80486f51777407",
             ),
             "live.js": (
                 6_176,
@@ -121,16 +121,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(59_631, len(styles))
+        self.assertEqual(59_936, len(styles))
         self.assertEqual(
-            "984944fbdfa7644d204e36c74e5c5a2286ceab40e5e7f08dd2782e0c88c1a966",
+            "bfa562c732a7f534fe12f81af48db17985cecacaa8a8a621e58f0b3610bd7667",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(307_512, len(assembled))
+        self.assertEqual(318_643, len(assembled))
         self.assertEqual(
-            "74087e7da40c015a22787dbdfe3dc263b6beec3c04e51f60bf3162e4c996b587",
+            "441d3869c7896c51b37fd2cbb1ce1e5b3152ea2cd5e7d2ee70a00db43f510e5f",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -3822,7 +3822,7 @@ render(gateBoard([gate("aaa", 100), gate("bbb", 500)]));
 key({key: "j"});
 out.moved = cursorOn();
 render(gateBoard([]));            // every gate answered
-out.cleared = gateCursorKey;
+out.cleared = waitCursorKey;
 // `bbb` blocks again, behind a gate that has waited longer.
 render(gateBoard([gate("ccc", 50), gate("bbb", 900)]));
 out.head = cursorOn();

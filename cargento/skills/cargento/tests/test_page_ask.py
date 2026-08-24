@@ -80,7 +80,7 @@ const noteCount = () => (__els.app.innerHTML
 // The band scrolls inside the calm frame, so its offset has to survive the
 // DOM swap the way the ledger's does.
 let __askScroll = 0;
-__els["askband"] = {
+__els["waitband"] = {
   get scrollTop(){ return __askScroll; }, set scrollTop(v){ __askScroll = v; }
 };
 """
@@ -104,7 +104,7 @@ out.session = h.includes("aaa1");
 out.age = /class="ask-age">[^<]*42s/.test(h);
 out.opts = [...h.matchAll(/class="ask-opt"[^>]*>([^<]*)</g)].map(m => m[1]);
 out.args = askControls().map(c => c.getAttribute("data-arg"));
-out.n = (h.match(/class="askband-n">([^<]*)</) || [])[1];
+out.n = (h.match(/class="band-n">([^<]*)</) || [])[1];
 console.log(JSON.stringify(out));
 """
         out = self.run_page(checks)
@@ -116,7 +116,10 @@ console.log(JSON.stringify(out));
         # The answer is an index, never the option text: the id and the position
         # are the whole payload the click carries.
         self.assertEqual(["askA1:0", "askA1:1"], out["args"])
-        self.assertEqual("1 waiting", out["n"])
+        # Two, because the band is the whole queue: this payload carries a
+        # blocked session as well as the question, and a head that counted only
+        # one kind would disagree with the tile and the tab title above it.
+        self.assertEqual("2 waiting", out["n"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_a_click_posts_the_id_and_the_index_then_refetches(self) -> None:
@@ -282,7 +285,7 @@ console.log(JSON.stringify(out));
         checks = """
 const out = {};
 render(Object.assign(payload([busy]), {asks: [ask()]}));   // no `ask` key
-out.band = __els.app.innerHTML.includes("askband");
+out.band = __els.app.innerHTML.includes("waitband");
 out.control = askControls().length;
 out.question = __els.app.innerHTML.includes("Ship the migration now?");
 console.log(JSON.stringify(out));
@@ -297,42 +300,47 @@ console.log(JSON.stringify(out));
         checks = """
 const out = {};
 render(withAsks([busy], []));
-out.band = __els.app.innerHTML.includes("askband");
+out.band = __els.app.innerHTML.includes("waitband");
 console.log(JSON.stringify(out));
 """
         out = self.run_page(checks)
         self.assertFalse(out["band"], "an empty asks list still drew a band")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_an_ask_is_not_a_session_row_and_does_not_move_the_gate_queue(self) -> None:
+    def test_an_ask_is_not_a_session_row_even_though_it_shares_the_queue(self) -> None:
         # docs/design-dismissals.md D-4: a synthetic row in `d.sessions` would be
         # the page asserting a session state no collector measured, and it would
-        # collide with dupMark on the asker's own project label.
+        # collide with dupMark on the asker's own project label. Folding the two
+        # into one order did not reverse that — `gateQueue` is still a filter over
+        # sessions and the question is still absent from it — so this is the test
+        # that says the merge happens in the reader rather than in the payload.
         checks = """
 const out = {};
 render(withAsks([blocked, busy]));
 const h = __els.app.innerHTML;
 out.sessions = lastData.sessions.length;
-out.queue = gateQueue(lastData).length;
+out.gates = gateQueue(lastData).length;
 out.needRows = (h.match(/class="need(?: cursor)?">/g) || []).length;
-out.gateN = (h.match(/class="band-n">([^<]*)</) || [])[1];
+out.n = (h.match(/class="band-n">([^<]*)</) || [])[1];
 out.title = document.title;
-out.bandBeforeGate = h.indexOf("askband") < h.indexOf('class="band"');
+out.bands = (h.match(/class="band"/g) || []).length;
+// The gate has been blocked since 99700 against a payload generated at 100000;
+// the question is 42s old. So the gate has waited longer and leads, which is the
+// merge deciding rather than either list being appended to the other.
+out.gateFirst = h.indexOf('class="need-title"') < h.indexOf('class="ask-q"');
 console.log(JSON.stringify(out));
 """
         out = self.run_page(checks)
         self.assertEqual(2, out["sessions"], "the page wrote a row into the payload")
-        self.assertEqual(1, out["queue"], "the ask leaked into the gate queue")
+        self.assertEqual(1, out["gates"], "the ask leaked into the gate half of the queue")
         self.assertEqual(1, out["needRows"])
-        self.assertEqual("1 waiting", out["gateN"], "the ask was counted as a gate")
-        # Two, and the band's "1 waiting" above is the reason both numbers are
-        # right. The band counts the gate queue, which an ask deliberately stays
-        # out of. The title counts everything waiting on the reader, which an ask
-        # is. This assertion originally read "(1!)" and was using the title as a
-        # proxy for "the ask is not a session" — it was pinning a tile and title
-        # that stayed silent while a question waited.
+        # One band and one count, over both kinds — the tile and the tab title
+        # read the same list, so a head that disagreed with them would be the
+        # false reassurance cargento#116 was filed for, one surface further on.
+        self.assertEqual("2 waiting", out["n"])
+        self.assertEqual(1, out["bands"], "the questions kept a band of their own")
         self.assertEqual("(2!) Cargento", out["title"])
-        self.assertTrue(out["bandBeforeGate"], "the asks band is not above the gate queue")
+        self.assertTrue(out["gateFirst"], "the merge did not put the longer wait first")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_calm_mode_can_answer_too(self) -> None:
@@ -344,7 +352,7 @@ const out = {};
 render(withAsks([blocked, busy]));
 out.mode = displayMode;
 out.question = __els.app.innerHTML.includes("Ship the migration now?");
-out.inFrame = __els.app.innerHTML.indexOf("askband") > __els.app.innerHTML.indexOf("cm-frame");
+out.inFrame = __els.app.innerHTML.indexOf("waitband") > __els.app.innerHTML.indexOf("cm-frame");
 wire();
 clickAnswer(0);
 await __settle(); await __settle(); await __settle();
@@ -364,7 +372,7 @@ const out = {};
 render(withAsks([busy], [ask(), ask({id: "askB2", question: "Drop the index?",
   options: ["Drop", "Keep", "Ask me later"], project: "repo/other", age_sec: 5})]));
 out.args = askControls().map(c => c.getAttribute("data-arg"));
-out.n = (__els.app.innerHTML.match(/class="askband-n">([^<]*)</) || [])[1];
+out.n = (__els.app.innerHTML.match(/class="band-n">([^<]*)</) || [])[1];
 wire();
 clickAnswer(4);
 await __settle(); await __settle(); await __settle();
@@ -455,10 +463,10 @@ const out = {};
 render(withAsks([], [ask()]));
 const h = __els.app.innerHTML;
 out.emptyBoard = h.includes("No session activity in the last");
-out.band = h.includes("askband");
+out.band = h.includes("waitband");
 out.question = h.includes("Ship the migration now?");
 out.controls = askControls().length;
-out.bandFirst = h.indexOf("askband") < h.indexOf("No session activity");
+out.bandFirst = h.indexOf("waitband") < h.indexOf("No session activity");
 console.log(JSON.stringify(out));
 """
         out = self.run_page(checks)
@@ -483,7 +491,7 @@ console.log(JSON.stringify(out));
         self.assertIn("height:calc(100vh", frame)
         self.assertIn("min-height:0", self._css_rule(".cm-body"), "the ledger cannot yield room")
 
-        band = self._css_rule(".cm-frame .askband")
+        band = self._css_rule(".cm-frame .band")
         cap = re.search(r"max-height:([^;}]+)", band)
         self.assertIsNotNone(cap, "the calm band is unbounded inside a clipping frame")
         assert cap is not None
@@ -510,7 +518,7 @@ console.log(JSON.stringify(out));
         checks = """
 const out = {};
 render(withAsks([blocked, busy], [ask(), ask({id: "askB2"})]));
-out.hasId = __els.app.innerHTML.includes('id="askband"');
+out.hasId = __els.app.innerHTML.includes('id="waitband"');
 __askScroll = 96;
 render(withAsks([blocked, busy], [ask(), ask({id: "askB2"})]));
 out.kept = __askScroll;
@@ -608,6 +616,231 @@ console.log(JSON.stringify(out));
         self.assertTrue(out["stillOnA"], "the surviving note moved to the card that succeeded")
         self.assertTrue(out["bothStillListed"], "the fixture stopped listing both asks")
         self.assertEqual(0, out["afterLandA"], "an answer that landed left its own failure note up")
+
+
+class WaitingQueueTest(PageJsHarness):
+    """One order over the two kinds of thing that wait on a reader, and its keys.
+
+    DRC-4172 shipped the asks as their own band above the gate queue, with the
+    queue's ordering, its cursor and its keys stopping at the band's edge. These
+    are about the pass that folds the two together: a single definition of the
+    order, a cursor that holds a key rather than a position, and the same
+    keystrokes reaching both kinds in both display modes.
+    """
+
+    # `since` is stated rather than an age, because that is what the merge ranks
+    # on and the two payload fields spell it differently: a gate carries an
+    # absolute `blocked_since`, an ask carries `age_sec` off the same clock that
+    # stamped `generated`. Both lists are handed over in the order their own
+    # server-side sort publishes them, which is what the merge is entitled to
+    # assume — `row_order` in aggregate.py and `AskRegistry.pending` are tested
+    # for those two sorts.
+    FIXTURE = (
+        test_page_calm.CalmModeTest.FIXTURE
+        + """
+const GEN = 100000;
+const gateAt = (sid, since) => mk({sid, session: sid, title: "gate-" + sid,
+  state: "needs_input", active: true, last_activity: since, blocked_since: since,
+  state_detail: "permission needed"});
+const askAt = (id, since, options) => ({id, harness: "codex", session_id: "s-" + id,
+  project: "repo/asker", question: "q-" + id, age_sec: GEN - since,
+  options: options === undefined ? ["Yes", "No"] : options});
+const queueBoard = (gates, asks) => Object.assign(payload(gates),
+  {ask: true, asks: asks || []});
+// Read back off the DOM in document order, so a merge that only happens in the
+// model and never reaches the band fails here.
+const bandOrder = () => [...__els.app.innerHTML.matchAll(
+  /class="need-title">gate-([a-z0-9]+)<|class="ask-q">q-([a-z0-9]+)</g)]
+  .map(m => m[1] ? "gate-" + m[1] : "ask-" + m[2]);
+const cursorOn = () => {
+  const h = __els.app.innerHTML;
+  const gate = h.match(/class="need cursor">[\\s\\S]*?class="need-title">gate-([a-z0-9]+)</);
+  if(gate) return "gate-" + gate[1];
+  const asked = h.match(/class="ask cursor">[\\s\\S]*?class="ask-q">q-([a-z0-9]+)</);
+  return asked ? "ask-" + asked[1] : null;
+};
+const key = k => __fire("keydown", {key: k, target: {tagName: "BODY"},
+                                    preventDefault(){}});
+// Two gates and two asks, interleaved: neither kind is contiguous in the merged
+// order, so a page that concatenates the lists in either direction fails.
+const G1 = gateAt("g1", 99100), G3 = gateAt("g3", 99500);
+const A2 = askAt("a2", 99300), A4 = askAt("a4", 99700);
+const mixed = () => queueBoard([G1, G3], [A2, A4]);
+"""
+    )
+
+    def run_queue(self, checks: str, *, saved: str = "regular") -> Any:
+        return self._run_page_js(
+            self.FIXTURE + checks,
+            prelude=test_page_calm.CalmModeTest.prelude(saved, clipboard="ok"),
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_one_merged_order_covers_both_kinds_and_the_band_renders_it(self) -> None:
+        # The order is a merge of two lists that each arrive sorted, never a
+        # re-sort of either: the comparator only ever decides between one gate
+        # and one ask. So the queue is longest-waiting first across both kinds,
+        # and the band draws exactly that.
+        checks = """
+const out = {};
+render(mixed());
+out.keys = waitingQueue(lastData).map(e => e.key);
+out.kinds = waitingQueue(lastData).map(e => e.kind);
+out.positions = waitingQueue(lastData).map(e => e.pos);
+out.drawn = bandOrder();
+out.bands = (__els.app.innerHTML.match(/class="band"/g) || []).length;
+out.n = (__els.app.innerHTML.match(/class="band-n">([^<]*)</) || [])[1];
+console.log(JSON.stringify(out));
+"""
+        out = self.run_queue(checks)
+        self.assertEqual(
+            ["claude:g1", "ask:a2", "claude:g3", "ask:a4"],
+            out["keys"],
+            "the two kinds were concatenated rather than merged",
+        )
+        self.assertEqual(["gate", "ask", "gate", "ask"], out["kinds"])
+        self.assertEqual([1, 2, 3, 4], out["positions"])
+        self.assertEqual(
+            ["gate-g1", "ask-a2", "gate-g3", "ask-a4"],
+            out["drawn"],
+            "the band did not render the merged order",
+        )
+        self.assertEqual(1, out["bands"], "the asks kept a band of their own")
+        self.assertEqual("4 waiting", out["n"], "the band head did not count both kinds")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_cursor_holds_an_ask_by_its_id_and_does_not_slide(self) -> None:
+        # The reason gateFocusKey() held a session key rather than an index,
+        # carried over to the other kind of row: answering something above the
+        # cursor must not move the cursor onto a different question. The ask id
+        # is what makes that possible — it is generated once at registration, it
+        # addresses the answer route, and it leaves the payload at the moment the
+        # card leaves the board.
+        checks = """
+const out = {};
+render(mixed());
+out.head = cursorOn();
+key("j"); key("j"); key("j");
+out.onTailAsk = cursorOn();
+out.cursorKey = waitCursorKey;
+// The head gate is answered elsewhere and the first ask is answered in someone
+// else's tab: both leave the payload. An index-based cursor lands on a
+// different question here.
+render(queueBoard([G3], [A4]));
+out.afterOthersLeft = cursorOn();
+out.keyKept = waitCursorKey;
+// And when the cursor's own ask is answered, the pass advances to the head
+// rather than stranding.
+render(queueBoard([G3], []));
+out.afterMineLeft = cursorOn();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_queue(checks)
+        self.assertEqual("gate-g1", out["head"])
+        self.assertEqual("ask-a4", out["onTailAsk"], "j did not step through the asks")
+        self.assertEqual("ask:a4", out["cursorKey"], "the cursor is not keyed on the ask id")
+        self.assertEqual(
+            "ask-a4", out["afterOthersLeft"], "the cursor slid onto a different waiting thing"
+        )
+        self.assertEqual("ask:a4", out["keyKept"])
+        self.assertEqual("gate-g3", out["afterMineLeft"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_g_reaches_the_head_of_the_queue_when_the_head_is_an_ask(self) -> None:
+        # `g` names the queue, so it has to reach whatever is at the head of it.
+        # With an ask waiting longer than every gate, a `g` that walked the gates
+        # alone skipped the very thing that had waited longest.
+        checks = """
+const out = {};
+const askHead = () => queueBoard([G3], [askAt("a0", 99000)]);
+render(askHead());
+key("g");
+out.regularCursor = waitCursorKey;
+out.regularDrawn = cursorOn();
+out.regularOrder = waitingQueue(lastData).map(e => e.key);
+setDisplayMode("calm");
+// Cleared first: the regular pass above left its own cursor on the same ask, and
+// reading a stale value here would pass whatever calm's `g` did.
+waitCursorKey = null;
+calmCursorKey = null;
+render(askHead());
+key("g");
+out.calmCursor = calmCursorKey;
+out.calmDrawn = cursorOn();
+// Both modes read the one order, so both land on the same waiting thing.
+out.calmOrder = waitingQueue(lastData).map(e => e.key);
+console.log(JSON.stringify(out));
+"""
+        out = self.run_queue(checks)
+        self.assertEqual("ask:a0", out["regularCursor"], "`g` skipped the ask at the head")
+        self.assertEqual("ask-a0", out["regularDrawn"], "the band drew no cursor on the ask")
+        self.assertEqual("ask:a0", out["calmCursor"], "calm's `g` skipped the ask at the head")
+        self.assertEqual("ask-a0", out["calmDrawn"], "calm drew no cursor on the ask")
+        self.assertEqual(out["regularOrder"], out["calmOrder"], "the two modes ordered differently")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_calm_steps_the_asks_with_the_same_keys_regular_does(self) -> None:
+        # Calm shipped the band reachable but not walkable: `j` and `k` moved
+        # through the ledger's session rows and could not reach a question at
+        # all, so the one thing on a calm board that is answered ON the board was
+        # the one thing the keyboard could not select.
+        checks = """
+const out = {};
+render(mixed());
+out.calmMode = displayMode;
+out.startsOnAsk = cursorOn();
+key("j");
+out.afterJ = cursorOn();
+// Calm's pass has its own cursor variable because it is longer than the queue —
+// its ledger rows come after the questions — but it holds a key the same way,
+// and an ask's key is one of the keys it can hold.
+out.cursorKey = calmCursorKey;
+key("k");
+out.afterK = cursorOn();
+out.asksDrawn = bandOrder();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_queue(checks, saved="calm")
+        self.assertEqual("calm", out["calmMode"])
+        # The band sits above the ledger in calm, so the questions lead the pass
+        # there. What has to hold is that the keys reach them at all and that the
+        # order among them is the queue's.
+        self.assertEqual("ask-a2", out["startsOnAsk"], "calm's cursor could not reach a question")
+        self.assertEqual("ask-a4", out["afterJ"], "j did not step between the questions")
+        self.assertEqual("ask:a4", out["cursorKey"])
+        self.assertEqual("ask-a2", out["afterK"])
+        self.assertEqual(["ask-a2", "ask-a4"], out["asksDrawn"], "calm reordered the questions")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_enter_hands_the_keyboard_to_the_cards_own_buttons(self) -> None:
+        # Enter on a gate copies the session id, because a gate is answered in
+        # the session's own terminal. Enter on an ask must NOT pick an option:
+        # the answer is irreversible and reaches an agent, so the keystroke moves
+        # focus onto the card's first button and lets the reader choose.
+        checks = """
+const out = {};
+render(mixed());
+key("Enter");
+await __settle();
+out.copiedGate = __wrote.slice();
+out.gateHint = (__els.app.innerHTML.match(/class="band-keys">([^<]*)</) || [])[1];
+key("j");
+out.focusedBefore = __focused;
+key("Enter");
+out.focusedAfter = __focused;
+out.askHint = (__els.app.innerHTML.match(/class="band-keys">([^<]*)</) || [])[1];
+out.answered = __fetchCalls.filter(c => String(c[0]) === "/api/answer").length;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_queue(checks)
+        self.assertEqual(["g1"], out["copiedGate"], "Enter on a gate stopped copying its id")
+        self.assertIn("⏎ copy id", out["gateHint"])
+        self.assertIsNone(out["focusedBefore"])
+        self.assertEqual(
+            "answer:a2:0", out["focusedAfter"], "Enter on a question focused no answer button"
+        )
+        self.assertIn("⏎ answer", out["askHint"], "the hint still named the gate action")
+        self.assertEqual(0, out["answered"], "Enter answered a question the reader did not pick")
 
 
 if __name__ == "__main__":

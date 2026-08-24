@@ -104,7 +104,7 @@ setDisplayMode("session");
 sessionViewKey = "claude:1234abcd";
 render(d);
 const html = __els.app.innerHTML;
-out.band = html.includes('id="askband"');
+out.band = html.includes('id="waitband"');
 out.question = html.includes("Ship it?");
 out.liveDot = html.includes('id="live-dot"');
 out.liveStatus = html.includes('id="live-status"');
@@ -162,17 +162,17 @@ d.summary.needs_input = 1;
 setDisplayMode("session");
 sessionViewKey = "claude:1234abcd";
 render(d);
-const before = gateCursorKey;
+const before = waitCursorKey;
 __fire("keydown", {key: "j", target: {}, preventDefault(){}, stopPropagation(){}});
 __fire("keydown", {key: "k", target: {}, preventDefault(){}, stopPropagation(){}});
 __fire("keydown", {key: "Enter", target: {}, preventDefault(){}, stopPropagation(){}});
-out.cursorUnmoved = gateCursorKey === before;
+out.cursorUnmoved = waitCursorKey === before;
 out.stillSession = displayMode;
 // `g` is one of the two that still applies, and it leaves on the way to the
 // queue rather than landing a cursor nothing draws.
 __fire("keydown", {key: "g", target: {}, preventDefault(){}, stopPropagation(){}});
 out.afterG = displayMode;
-out.gCursor = gateCursorKey;
+out.gCursor = waitCursorKey;
 console.log(JSON.stringify(out));
 """
         out = self.run_session(checks)

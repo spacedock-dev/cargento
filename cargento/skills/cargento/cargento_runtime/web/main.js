@@ -14,26 +14,20 @@ function render(d){
   lastData = d;
   syncNotifications(d);
   const app = document.getElementById("app");
-  /* Not attentionSort'd, deliberately: the server already publishes this section
-     longest-blocked first, and re-sorting it here would be a second definition of
-     the queue order — the one gateQueue() exists to refuse. */
-  const needs = gateQueue(d);
-  const waiting = waitingOnYou(d, needs);
+  pruneAskNotes(d);
+  /* Not attentionSort'd, deliberately: the server already publishes both halves
+     of this in the order they should be worked, and re-sorting either here would
+     be a second definition of the queue order — the one gateQueue() exists to
+     refuse. waitingQueue() merges them without touching either. */
+  const queue = waitingQueue(d);
   /* An answered queue leaves its cursor behind otherwise, and the same session
-     blocking again later would inherit it — landing the cursor mid-queue on a
-     board whose head is a gate that has waited longer. */
-  if(!needs.length) gateCursorKey = null;
+     or question blocking again later would inherit it — landing the cursor
+     mid-queue on a board whose head has waited longer. */
+  if(!queue.length) waitCursorKey = null;
   if(!app){
-    document.title = (waiting.length > 0 ? `(${waiting.length}!) ` : "") + "Cargento";
+    document.title = (queue.length > 0 ? `(${queue.length}!) ` : "") + "Cargento";
     return;
   }
-  /* Assembled above every branch below, unlike every other section: an ask can
-     come from a session this board is not showing — one outside the display
-     window, or a harness that has since gone quiet — and the empty-board branch
-     would then hide the one card whose session is waiting on a click. Session
-     mode reads it too, which is why it is hoisted above the mode branches
-     rather than sitting inside the regular one. */
-  const asksHtml = askBand(d);
   if(displayMode === "calm"){
     // Carry the outgoing ledger's scroll offset across the DOM swap — unless
     // the last action re-filtered the list, where the old offset is meaningless.
@@ -42,8 +36,8 @@ function render(d){
     else if(outgoing) calmScrollTop = outgoing.scrollTop;
     // The asks band scrolls in this frame too, and it is never re-filtered, so
     // it has no calmResetScroll case: its offset is only ever worth keeping.
-    const outgoingAsks = document.getElementById("askband");
-    if(outgoingAsks) askScrollTop = outgoingAsks.scrollTop;
+    const outgoingAsks = document.getElementById("waitband");
+    if(outgoingAsks) waitScrollTop = outgoingAsks.scrollTop;
     const focusKey = calmFocusKey();
     renderInProgress = true;
     app.className = "wrap calm";
@@ -52,7 +46,7 @@ function render(d){
     calmRestoreScroll();
     calmRestoreFocus(focusKey);
     restoreStopFocus();
-    document.title = (waiting.length > 0 ? `(${waiting.length}!) ` : "") + "Cargento";
+    document.title = (queue.length > 0 ? `(${queue.length}!) ` : "") + "Cargento";
     return;
   }
   if(displayMode === "session"){
@@ -64,23 +58,26 @@ function render(d){
        a live tree: nothing on a dispatch spine ticks, so there is no other
        way to tell. `refresh()`'s catch arm writes #live-status by id, and only
        one mode renders per frame, so the ids stay unique. */
-    const outgoingAsks = document.getElementById("askband");
-    if(outgoingAsks) askScrollTop = outgoingAsks.scrollTop;
+    const outgoingAsks = document.getElementById("waitband");
+    if(outgoingAsks) waitScrollTop = outgoingAsks.scrollTop;
     renderInProgress = true;
     app.className = "wrap session";
     app.innerHTML = modeBar() +
       `<span class="cm-live"><span class="live" id="live-dot"></span>` +
       `<span id="live-status">${LIVE_SUPPORTED ? "live" : "auto-refresh 5s"} · ` +
       `${new Date(d.generated*1000).toLocaleTimeString()}</span></span>` +
-      usageBanner(d, true) + asksHtml + sessionView(d);
+      /* `null` focus, deliberately: this view returns early from the keyboard
+         handler, so a cursor drawn here is a highlight nothing answers and a key
+         hint here names keys this view does not bind. */
+      usageBanner(d, true) + waitAskBand(d, null) + sessionView(d);
     renderInProgress = false;
-    const asksEl = document.getElementById("askband");
-    if(asksEl) asksEl.scrollTop = askScrollTop;
+    const asksEl = document.getElementById("waitband");
+    if(asksEl) asksEl.scrollTop = waitScrollTop;
     restoreStopFocus();
-    /* `waiting`, not `needs`: the other three title sites count everything
-       waiting on a human, gates and asks alike, and a count that disagrees
-       with the band now rendered above is worse than no count. */
-    document.title = (waiting.length > 0 ? `(${waiting.length}!) ` : "") + "Cargento";
+    /* The whole queue, not the part of it this view draws: all four title sites
+       count everything waiting on a human, gates and questions alike, and a
+       count that disagrees with the band rendered above is worse than none. */
+    document.title = (queue.length > 0 ? `(${queue.length}!) ` : "") + "Cargento";
     return;
   }
   const sparkFocused = !!(document.activeElement && document.activeElement.id === "spark-main");
@@ -102,8 +99,8 @@ function render(d){
   const idle = attentionSort(d, d.sessions.filter(x => x.state === "idle"));
 
   const tiles =
-    countTile("Needs you", {...gateEmpty(d), line: needsLine(needs, waiting)},
-      waiting, true) +
+    countTile("Needs you", {...gateEmpty(d), line: needsLine(queue)},
+      queue, true) +
     countTile("Working now", {line: "sessions generating",
       empty: "No agent is generating right now."}, working, false) +
     rateTile(d);
@@ -116,18 +113,11 @@ function render(d){
       `<span>${s.total_done}/${s.total_tasks} tracked tasks done</span>`
     : `<span>no active session uses tracked tasks</span>`;
 
-  /* The keys are advertised here because the regular view has no legend footer
-     to put them in, and `j k step` only when there is more than one row to step
-     between — a hint for a movement that cannot move is noise. */
-  const hint = (needs.length > 1 ? "j k step · " : "") + "⏎ copy id";
-  const gateFocus = gateFocusKey(needs);
-  const bandHtml = needs.length
-    ? `<div class="band"><div class="band-head"><span class="band-dot"></span>` +
-      `<span class="band-k">Needs your input</span>` +
-      `<span class="band-n">${needs.length} waiting</span>` +
-      `<span class="band-rule"></span><span class="band-keys">${hint}</span></div>` +
-      needs.map((n, i) => needRow(d, n, i + 1, gateFocus)).join("") + `</div>`
-    : "";
+  /* The whole queue in one band, gates and questions interleaved. This view's
+     three sections partition the board — the two below exclude `needs_input`, so
+     nothing here is drawn twice — which is what lets the band render the merged
+     order that calm can only draw half of. */
+  const bandHtml = waitBand(d, queue, queue);
 
   let workingHtml = "";
   if(working.length){
@@ -154,12 +144,15 @@ function render(d){
 
   let body;
   if(!d.sessions.length){
-    body = asksHtml +
+    /* The same band, not the ask-only one: with no session rows there are no
+       gates for the queue to hold, so this branch reaches it through the
+       merged assembly rather than through a second call that would drift. */
+    body = bandHtml +
       `<div class="empty">No session activity in the last ${esc(d.window_hours)}h.` +
       (d.show_all ? "" : ` <a href="?all=1">Show all sessions</a>`) + `</div>`;
   } else {
     body = `<div class="hero">${tiles}</div><div class="subnote">${subnote}</div>` +
-      usageSectionRegular(d) + asksHtml + bandHtml + workingHtml + idleHtml;
+      usageSectionRegular(d) + bandHtml + workingHtml + idleHtml;
   }
 
   renderInProgress = true;
@@ -175,8 +168,8 @@ function render(d){
   restoreSparkState(sparkFocused, savedPointer);
   calmRestoreFocus(actionFocused);
   restoreStopFocus();
-  restoreGateCursor();
-  document.title = (waiting.length > 0 ? `(${waiting.length}!) ` : "") + "Cargento";
+  restoreWaitCursor();
+  document.title = (queue.length > 0 ? `(${queue.length}!) ` : "") + "Cargento";
 }
 
 async function refresh(){

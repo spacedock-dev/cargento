@@ -1,17 +1,20 @@
 /* ── a session asking the reader a question ─────────────────────────────────
-   Its own band, above the gate queue, and NOT a row in `d.sessions`. A
-   synthetic session would be free: gateQueue() is a pure filter and the band
-   below already renders whatever it returns. It is refused for the reason
-   docs/design-dismissals.md D-4 refuses it — the page asserting a session state
-   no collector measured — and for one more that is specific to this payload:
-   the asker's own project label is already on a real row, so a pseudo-row
-   collides with dupMark and both rows start claiming the duplicate.
+   A card in the queue band, at the position waitingQueue() gives it, and NOT a
+   row in `d.sessions`. A synthetic session would be free: gateQueue() is a pure
+   filter and the band renders whatever it is handed. It is refused for the
+   reason docs/design-dismissals.md D-4 refuses it — the page asserting a session
+   state no collector measured — and for one more that is specific to this
+   payload: the asker's own project label is already on a real row, so a
+   pseudo-row collides with dupMark and both rows start claiming the duplicate.
+   docs/design-ask-lane.md A-5 records why the merged order was built on a second
+   array instead, now that the ordering is here rather than deferred.
 
-   The other difference from a gate is what a click means. A gate is answered in
-   the session's own terminal and Cargento only points at it; this question is
-   answered HERE, because the asking session is holding its tool call open until
-   an index arrives. That is why this band has buttons and the gate band does
-   not. */
+   The difference from a gate is what a click means, and it is why the card
+   inside the shared band looks nothing like the row beside it. A gate is
+   answered in the session's own terminal and Cargento only points at it; this
+   question is answered HERE, because the asking session is holding its tool call
+   open until an index arrives. So the card carries buttons and a gate row
+   carries an id to copy, and `⏎` means a different thing on each. */
 
 /* What went wrong, said in the card the reader clicked, keyed by ask id. Held
    out here because #app is rebuilt on every poll, the same reason clearedNote
@@ -24,31 +27,30 @@ let askNotes = {};
    survive the DOM swap the way calmScrollTop does. Higher stakes than the
    ledger's: these rows are buttons, and an offset reset by the poll slides a
    different question under a cursor already on its way down. */
-let askScrollTop = 0;
+let waitScrollTop = 0;
 
-/* The band only exists when the server says the feature does, matching how
-   handledButton() keys off `d.dismiss`. Under `--no-ask` nothing can register a
-   question, so a button that answered 503 would be worse than no button. */
-function askBand(d){
-  const asks = (d && d.ask && Array.isArray(d.asks)) ? d.asks : [];
-  /* Pruned against the payload, and before the early return: an ask leaves the
-     board when the server stops publishing it, whoever answered it and in
-     whichever tab. Left to the answer path alone, a note outlived its card and
-     was read as belonging to whichever question arrived next. */
-  const live = asks.map(a => String(a && a.id));
+/* Notes are pruned against the payload rather than only on the answer path: an
+   ask leaves the board when the server stops publishing it, whoever answered it
+   and in whichever tab. Left to the answer path alone, a note outlived its card
+   and was read as belonging to whichever question arrived next.
+
+   Called from render() rather than from the band, because the band is no longer
+   the only thing that knows which questions the payload carries — and the prune
+   has to happen on a payload with none left, which is exactly the call the band
+   used to return early from. */
+function pruneAskNotes(d){
+  const live = ((d && d.ask && Array.isArray(d.asks)) ? d.asks : [])
+    .map(a => String(a && a.id));
   for(const id of Object.keys(askNotes)){
     if(live.indexOf(id) < 0) delete askNotes[id];
   }
-  if(!asks.length) return "";
-  return `<div class="askband" id="askband"><div class="askband-head">` +
-    `<span class="askband-dot"></span>` +
-    `<span class="askband-k">Asking you</span>` +
-    `<span class="askband-n">${asks.length} waiting</span>` +
-    `<span class="askband-rule"></span></div>` +
-    asks.map(askCard).join("") + `</div>`;
 }
 
-function askCard(a){
+/* One card per question, drawn wherever the queue puts it. The capability check
+   that used to live here is now waitingQueue()'s: it reads `d.ask` the way
+   handledButton() keys off `d.dismiss`, so under `--no-ask` no entry exists to
+   draw and no button can answer 503. */
+function askCard(a, pos, focused){
   /* Every string below is written by an agent and reaches the document through
      esc(), the one escape this page has. The question is the whole reason the
      card exists, so a card that cannot be rendered as text must not render at
@@ -66,7 +68,12 @@ function askCard(a){
   /* Under the buttons, not above the band: it is about this question, and it is
      the reader who just clicked one of these who needs to see it. */
   const said = askNotes[String(a.id)];
-  return `<div class="ask"><div class="ask-main">` +
+  /* The ordinal is the queue's, in the same column the gate rows put theirs, and
+     it is omitted rather than renumbered where the band is showing only part of
+     the queue — calm draws the gates in its ledger instead, so a "2" over a
+     one-card band would be a place in a list that is not on screen. */
+  const n = pos ? `<span class="need-n">${pos}</span>` : "";
+  return `<div class="ask${focused ? " cursor" : ""}">${n}<div class="ask-main">` +
     `<div class="ask-meta">${badge(a.harness, true)}${esc(a.project)}` +
     (a.session_id ? ` · ${esc(a.session_id)}` : "") +
     `<span class="ask-age">waiting ${esc(fmtDur(a.age_sec))}</span></div>` +

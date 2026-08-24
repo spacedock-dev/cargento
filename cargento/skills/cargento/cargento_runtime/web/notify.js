@@ -75,7 +75,7 @@ function syncNotifications(d){
          tag: key});  /* tag replaces a stale popup instead of stacking */
     }catch(e){ /* permission revoked mid-session, or a headless browser */ }
   }
-  /* Guarded the way askBand() guards it: syncNotifications runs before render()'s
+  /* Guarded the way waitingQueue() guards it: syncNotifications runs before render()'s
      own `if(!app)` return, and several page tests feed payloads with no `ask`
      key, where an unguarded loop would throw inside render. */
   const asks = (d && d.ask && Array.isArray(d.asks)) ? d.asks : [];

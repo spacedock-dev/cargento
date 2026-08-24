@@ -18,35 +18,90 @@ let clearedNote = "";
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-/* The gates, in the order a person should work them, defined once. Three readers
-   — the band, the `Needs you` tile and title count, and the keyboard cursor that
-   steps through them — and a cursor walking a different order than the band
-   renders would put the highlight on the wrong row.
+/* The gates, in the order the server published them. No reader walks this on its
+   own any more — every one of them goes through waitingQueue() below, which
+   merges these with the pending questions — so this is one half of the queue
+   rather than the queue.
 
-   Filter only: the payload already arrives longest-blocked first, from
-   aggregate.py's sort. Sorting again here would be a second definition of the
-   queue order, free to drift from the first. */
+   Filter only, still, and now load-bearing for the merge as well: the payload
+   already arrives longest-blocked first, from aggregate.py's sort. Sorting again
+   here would be a second definition of the queue order, free to drift from the
+   first, and the merge is entitled to assume this list is already ranked. */
 function gateQueue(d){
   return d.sessions.filter(x => x.active && x.state === "needs_input");
 }
-/* Everything waiting on the reader, which is a longer list than `gateQueue`. A
-   pending ask waits on you without being a session in `needs_input`, so the
-   `Needs you` tile and the title count read this instead. A browser run of the
-   ask lane found the tile saying "Needs you 0 · Nothing is waiting on you."
-   while a question sat in the band directly below it, which is the same false
-   reassurance cargento#116 was filed for. The band and the keyboard cursor
-   deliberately still read `gateQueue`: ordering asks into that pass is its own
-   decision and belongs to DRC-4178. An ask entry carries `harness`, which is the
-   only field `countTile` reads off a member of this list. */
-function waitingOnYou(d, gates){
-  const asks = (d && d.ask && Array.isArray(d.asks)) ? d.asks : [];
-  return gates.concat(asks);
+/* The cursor's handle on a question, and the counterpart of sessKey(). The ask
+   id, namespaced: it is what /api/answer addresses, it is generated once at
+   registration from secrets.token_urlsafe and never reused, and it leaves the
+   payload at the same moment the card leaves the board — so a cursor holding it
+   strands on nothing and cannot be inherited by a later question. The asking
+   session's key would not do: one session may hold more than one question open,
+   and two cards sharing a cursor key is the index-shaped fault waitFocusKey()
+   exists to avoid. The prefix keeps it out of sessKey()'s `harness:sid`
+   namespace, whose harness keys are a closed vocabulary that has no `ask`. */
+const askKey = a => "ask:" + (a && a.id);
+
+/* EVERYTHING waiting on the reader, in the one order they should work it,
+   defined here and nowhere else. Four readers walk it: the band, the `Needs you`
+   tile, the three `document.title` sites, and the keyboard cursor — in both
+   display modes. A gate and a question are two shapes of the same demand, and a
+   reader working a list of them does not care which is which.
+
+   A MERGE, not a sort, and that distinction is the whole reason gateQueue() can
+   stay the pure filter it says it is. Each input already arrives ordered by
+   whoever owns that order — `d.sessions` longest-blocked first from
+   aggregate.py's row_order, `d.asks` oldest first from AskRegistry.pending — so
+   the comparison below only ever decides between one gate and one ask, and
+   neither list's internal order is re-derived. A comparator over the
+   concatenation would be the second definition of both.
+
+   `since` is an absolute epoch on the payload's own clock either way: a gate's
+   `blocked_since`, and `generated - age_sec` for an ask, which aggregate.py
+   rounds to the second from the same `now` that stamps `generated`. That
+   rounding is why an exact tie breaks toward the gate rather than arbitrarily:
+   an ask's derived figure carries up to half a second the gate's does not, so a
+   tie is not evidence the two are equally old, and a fixed side keeps the head
+   of the queue from swapping between polls.
+
+   Entries carry `harness` and `pos` at the top level: `countTile` reads the
+   first off every member of this list, and the band draws the second as the
+   row's place in the queue. */
+function waitingQueue(d){
+  const generated = (d && d.generated) || 0;
+  const gates = gateQueue(d).map(x => ({
+    kind: "gate", key: sessKey(x), harness: x.harness, gate: x, ask: null,
+    since: x.blocked_since || x.last_activity || 0
+  }));
+  const asks = ((d && d.ask && Array.isArray(d.asks)) ? d.asks : []).map(a => ({
+    kind: "ask", key: askKey(a), harness: a.harness, gate: null, ask: a,
+    since: generated - (Number(a.age_sec) || 0)
+  }));
+  const out = [];
+  let g = 0, a = 0;
+  while(g < gates.length && a < asks.length){
+    out.push(gates[g].since <= asks[a].since ? gates[g++] : asks[a++]);
+  }
+  while(g < gates.length) out.push(gates[g++]);
+  while(a < asks.length) out.push(asks[a++]);
+  for(let i = 0; i < out.length; i++) out[i].pos = i + 1;
+  return out;
 }
-/* The regular view's cursor through that queue, held as a session key rather
-   than an index so a gate answered above it does not slide the cursor onto a
-   different row. */
-let gateCursorKey = null;
-let gateRevealCursor = false;   /* scroll the cursor into view after this render */
+
+/* The cursor through that queue, held as an entry key rather than an index so
+   that answering something above it does not slide it onto a different waiting
+   thing. */
+let waitCursorKey = null;
+let waitRevealCursor = false;   /* scroll the cursor into view after this render */
+
+/* How every cursor on this page resolves, stated once for the two passes that
+   have one: the band's queue and calm's ledger. A key held against what is drawn
+   NOW, resolved rather than written back, so a cursor whose row has left falls to
+   the head instead of stranding — and two implementations of that rule is how one
+   of them comes to write back. */
+function focusKeyIn(order, held){
+  if(held && order.some(e => e.key === held)) return held;
+  return order.length ? order[0].key : null;
+}
 
 /* The attention ordering — what needs you above what is merely running — stated
    once for both views. Calm applies it as the order of one whole ledger; the

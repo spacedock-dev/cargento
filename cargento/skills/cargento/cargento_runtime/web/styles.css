@@ -148,20 +148,29 @@
   .blocked-k{font-family:var(--mono);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);text-align:right}
   .blocked-v{font-family:var(--mono);font-size:var(--fs-num);font-weight:700;color:var(--alert);line-height:1.1;text-align:right}
 
-  /* asks band — a session's own question, and the buttons that answer it.
-     Deliberately NOT sharing .band's class names: two tests read the first
-     `class="band-n"` and `class="band-keys"` in the document to check the gate
-     queue's count and its key hint, and a band above it reusing those would
-     answer for the wrong section. --accent rather than the gate band's --alert
-     for the same separation by eye: this one is a question with an answer on
-     screen, not a session stalled somewhere else. */
-  .askband{border:1px solid color-mix(in oklab,var(--accent) 42%,var(--line));background:color-mix(in oklab,var(--accent) 7%,var(--panel));border-radius:20px;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
-  .askband-head{display:flex;align-items:center;gap:9px}
-  .askband-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);animation:pulse 1.1s infinite}
-  .askband-k{font-family:var(--mono);font-size:var(--fs-sm);font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}
-  .askband-n{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
-  .askband-rule{flex:1;height:1px;background:color-mix(in oklab,var(--accent) 24%,transparent)}
-  .ask{display:flex;align-items:flex-start;gap:14px}
+  /* A session's own question, now a card inside the one queue band rather than a
+     band of its own. It kept its own `.askband-*` head classes while it was a
+     second band above the gate queue, for a reason that no longer exists: two
+     tests read the FIRST `band-n` and `band-keys` in the document, so a band
+     sitting above the queue's had to answer under different names or answer for
+     the wrong section. There is one band now, so those names went with it.
+
+     --accent inside an --alert band, and that separation is the point: this row
+     is a question with its answer on screen, the ones beside it are sessions
+     stalled somewhere else, and the whole reason the card looks unlike its
+     neighbours is that `⏎` does a different thing on it. The rail carries the
+     accent now that the border cannot — a bordered card inside the band read as
+     a panel floating in a panel. */
+  .ask{display:flex;align-items:flex-start;gap:14px;
+       border-radius:12px;padding:6px 10px;margin:0 -10px;
+       border-left:2px solid color-mix(in oklab,var(--accent) 52%,transparent);
+       box-shadow:inset 0 0 0 1px transparent}
+  /* Matched to .need.cursor in geometry and only in geometry: one pass steps
+     between the two kinds, so the highlight has to sit in the same place on both
+     or the cursor appears to jump sideways as it moves down. The tone follows
+     the row, not the band. */
+  .ask.cursor{background:color-mix(in oklab,var(--accent) 10%,transparent);
+              box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--accent) 40%,transparent)}
   .ask-main{flex:1;min-width:0}
   .ask-meta{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
   .ask-age{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
@@ -192,7 +201,7 @@
      so a viewport-relative cap is always inside it, and rather than a share
      of the frame because the frame has a 480px floor a percentage would not
      see. flex:0 0 auto states the non-shrinking that used to be accidental. */
-  .cm-frame .askband{border-radius:0;border-left:0;border-right:0;border-top:0;padding:13px 24px;gap:12px;flex:0 0 auto;max-height:38vh;overflow-y:auto}
+  .cm-frame .band{border-radius:0;border-left:0;border-right:0;border-top:0;padding:13px 24px;gap:12px;flex:0 0 auto;max-height:38vh;overflow-y:auto}
   .cm-frame .ask-q{font-size:var(--fs-lg)}
 
   /* section head — the mid tier the scale was missing between .brand and body */

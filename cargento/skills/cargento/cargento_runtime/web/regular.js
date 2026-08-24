@@ -377,16 +377,17 @@ function rateTile(d){
 /* The `Needs you` sub-line, which has to name what is actually being counted.
    Two kinds of thing land in that tile now, and "sessions blocked on you" is
    wrong the moment one of them is a question. */
-function needsLine(gates, waiting){
-  const asks = waiting.length - gates.length;
+function needsLine(queue){
+  const gates = queue.filter(e => e.kind === "gate").length;
+  const asks = queue.length - gates;
   if(!asks) return "sessions blocked on you";
-  if(!gates.length) return asks === 1 ? "question waiting on you" : "questions waiting on you";
+  if(!gates) return asks === 1 ? "question waiting on you" : "questions waiting on you";
   return "sessions and questions waiting on you";
 }
 
 /* What a ZERO in that tile is allowed to say. "Nothing is waiting on you." over a
    board where one harness in ten can detect a gate is the same false reassurance
-   cargento#116 was filed for, and waitingOnYou() only fixed the half of it the
+   cargento#116 was filed for, and counting the questions only fixed the half of it the
    ask lane caused. So the sentence names the rows that could not have told,
    which makes it a quantity rather than a hedge.
 
@@ -626,41 +627,121 @@ function workingCard(d, sess){
     turnBlock(sess.turn, sess.loop) + subs + sdBlock(sess) + taskBlock(sess) + `</div>`;
 }
 
-/* Resolved, not written back: a cursor whose gate has left the queue falls to
-   the head, which is what advances the pass when you answer the row you are
-   standing on. See docs/design-needs-input.md for why the page tracks no
-   handled state of its own. */
-function gateFocusKey(queue){
-  if(gateCursorKey && queue.some(x => sessKey(x) === gateCursorKey)) return gateCursorKey;
-  return queue.length ? sessKey(queue[0]) : null;
+/* The band's own cursor, which is the regular view's whole pass. Calm resolves
+   its cursor against a longer order — its ledger rows as well as the questions —
+   so it passes the answer in rather than calling this. See docs/design-needs-input.md
+   for why the page tracks no handled state of its own. */
+function waitFocusKey(queue){
+  return focusKeyIn(queue, waitCursorKey);
 }
 
-function gateMove(step){
+/* The entry a key names, or null. `⏎` needs the whole entry rather than the key:
+   what the keystroke does depends on which kind it landed on. */
+function waitEntry(queue, key){
+  return key ? (queue.find(e => e.key === key) || null) : null;
+}
+
+/* `shown` rather than the whole queue, because calm hands over only the part of
+   it the band draws there: a question is not a ledger row, so calm's ledger
+   already holds the gates and the band would draw them twice. Everything else
+   about the band is the same in both views, which is the point — the head, the
+   numbering, the hint and the cursor are one implementation. */
+function waitBand(d, shown, queue, focusKey){
+  if(!shown.length) return "";
+  /* Resolved against what THIS band draws rather than against the whole queue.
+     In calm the cursor is usually on a ledger row, and a band that drew a
+     highlight for it, or advertised `⏎ copy id` for a row whose Enter opens a
+     panel, would be describing a key belonging to another surface. */
+  const focus = waitEntry(shown, focusKey === undefined ? waitFocusKey(queue) : focusKey);
+  /* The label follows what is in the band rather than being fixed, so the
+     ask-only rendering calm and the session view get keeps the wording DRC-4172
+     shipped instead of announcing a queue whose gates are somewhere else. */
+  const gates = shown.some(e => e.kind === "gate");
+  /* Numbered only when the band holds the whole queue. Calm draws the gates in
+     its ledger, so a "2" over its one-card band would be a place in a list that
+     is not on screen. */
+  const whole = shown.length === queue.length;
+  /* Advertised here because the regular view has no legend footer to put them
+     in, and only where the cursor is actually in this band — keys drawn over a
+     surface that does not answer them are worse than none. `j k step` only with
+     more than one row to step between, and `⏎` names what it will do on the row
+     under the cursor: copying an id and handing the keyboard to a card's buttons
+     are not the same act, and one label for both was wrong half the time. */
+  const hint = focus
+    ? (shown.length > 1 ? "j k step · " : "") +
+      (focus.kind === "ask" ? "⏎ answer" : "⏎ copy id")
+    : "";
+  const rows = shown.map(e => e.kind === "gate"
+    ? needRow(d, e.gate, whole ? e.pos : 0, !!focus && focus.key === e.key)
+    : askCard(e.ask, whole ? e.pos : 0, !!focus && focus.key === e.key)).join("");
+  return `<div class="band" id="waitband"><div class="band-head">` +
+    `<span class="band-dot"></span>` +
+    `<span class="band-k">${gates ? "Needs your input" : "Asking you"}</span>` +
+    `<span class="band-n">${shown.length} waiting</span>` +
+    `<span class="band-rule"></span>` +
+    (hint ? `<span class="band-keys">${hint}</span>` : "") + `</div>` +
+    rows + `</div>`;
+}
+
+/* The band as calm and the session view draw it: the questions only. Neither
+   view draws a board-level gate list — calm's ledger already carries every
+   blocked row, and the session view is about one session — but a question is
+   answered on this page and nowhere else, so it has to be reachable from
+   whichever view the reader left the tab in. An ask can also come from a session
+   the board is not showing at all, which is why this is not derived from
+   anything on screen. */
+function waitAskBand(d, focusKey){
+  const queue = waitingQueue(d);
+  return waitBand(d, queue.filter(e => e.kind === "ask"), queue, focusKey);
+}
+
+function waitMove(step){
   if(!lastData) return;
-  const queue = gateQueue(lastData);
+  const queue = waitingQueue(lastData);
   if(!queue.length) return;
-  const keys = queue.map(sessKey);
-  const i = keys.indexOf(gateFocusKey(queue));
-  gateCursorKey = keys[Math.max(0, Math.min(keys.length - 1, (i < 0 ? 0 : i + step)))];
-  gateRevealCursor = true;
+  const keys = queue.map(e => e.key);
+  const i = keys.indexOf(waitFocusKey(queue));
+  waitCursorKey = keys[Math.max(0, Math.min(keys.length - 1, (i < 0 ? 0 : i + step)))];
+  waitRevealCursor = true;
   render(lastData);
+}
+
+/* What `⏎` does, decided by the kind under the cursor rather than by the view.
+   A gate is answered in the session's own terminal, so the act the queue can
+   offer is the id that finds it. A question is answered here — and the answer
+   reaches an agent and cannot be taken back — so the keystroke moves focus onto
+   the card's first button and lets the reader pick. Choosing for them would make
+   `⏎` the one key on this page that commits something irreversible, on whichever
+   row the cursor happened to be resting. */
+function waitEnter(queue, focusKey){
+  const focus = waitEntry(queue, focusKey === undefined ? waitFocusKey(queue) : focusKey);
+  if(!focus) return;
+  if(focus.kind === "gate"){ calmAction("copy", focus.key); return; }
+  const options = Array.isArray(focus.ask.options) ? focus.ask.options : [];
+  if(!options.length) return;
+  /* Through calmRestoreFocus's (data-calm, data-arg) lookup rather than a
+     selector: the arg carries an ask id, and a selector string would need
+     escaping the DOM does not offer. It is the same hand-off the poll uses to
+     keep focus on a control it just rebuilt. */
+  calmRestoreFocus({act: "answer", arg: focus.ask.id + ":0"});
 }
 
 /* Flagged rather than unconditional: scrolling the band into view on every poll
    would drag the page around under a reader who is looking somewhere else. */
-function restoreGateCursor(){
-  if(!gateRevealCursor) return;
-  gateRevealCursor = false;
+function restoreWaitCursor(){
+  if(!waitRevealCursor) return;
+  waitRevealCursor = false;
   const app = document.getElementById("app");
-  const row = (app && app.querySelector) ? app.querySelector(".need.cursor") : null;
+  const row = (app && app.querySelector)
+    ? (app.querySelector(".need.cursor") || app.querySelector(".ask.cursor")) : null;
   if(row && row.scrollIntoView) row.scrollIntoView({block: "nearest"});
 }
 
-/* `focusKey` is what gateFocusKey() resolved, not the raw cursor: Enter acts on
+/* `focused` is what waitFocusKey() resolved, not the raw cursor: Enter acts on
    the head of the queue before anything has been pressed, so the head has to
    show that it is the target. A selection the keyboard honours and the page does
    not draw is a hidden one. */
-function needRow(d, sess, pos, focusKey){
+function needRow(d, sess, pos, focused){
   const blocked = fmtDur(d.generated - (sess.blocked_since || sess.last_activity));
   const key = sessKey(sess);
   /* An empty div here is the same blank a row with nothing to add would leave,
@@ -673,8 +754,8 @@ function needRow(d, sess, pos, focusKey){
       ` it has written says what it is asking for. Open it to read the prompt.">` +
       `what it wants is not readable here</div>`;
   const copied = calmCopyNote && calmCopyNote.key === key;
-  return `<div class="need${focusKey === key ? " cursor" : ""}">` +
-    `<span class="need-n">${pos}</span><div class="need-main">` +
+  return `<div class="need${focused ? " cursor" : ""}">` +
+    (pos ? `<span class="need-n">${pos}</span>` : "") + `<div class="need-main">` +
     /* The gate row carries the marker for the same reason a blocked session
        counts as live at all: answering this gate is the keystroke that lets one
        of the two sessions write over the other. */

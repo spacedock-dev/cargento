@@ -765,7 +765,7 @@ out.calmDrewCursor = __els.app.innerHTML.includes('class="cm-row focus');
 setDisplayMode("regular");
 render(payload(gates.concat([busy, quiet])));
 g();
-out.regularCursor = gateCursorKey;
+out.regularCursor = waitCursorKey;
 out.regularDrewCursor = /class="need cursor">[\\s\\S]*?gate-oldest</.test(__els.app.innerHTML);
 
 // And with nothing waiting, it does nothing rather than filtering the board
@@ -773,7 +773,7 @@ out.regularDrewCursor = /class="need cursor">[\\s\\S]*?gate-oldest</.test(__els.
 // needs no reset of its own.
 render(payload([busy, quiet]));
 g();
-out.noGatesCursor = gateCursorKey;
+out.noGatesCursor = waitCursorKey;
 setDisplayMode("calm");
 calmAction("clear", null);
 render(payload([busy, quiet]));

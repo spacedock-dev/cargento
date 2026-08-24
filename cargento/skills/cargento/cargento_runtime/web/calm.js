@@ -340,11 +340,11 @@ function calmEntries(shown, d){
   return shown.slice().sort(byRank).map(r => ({row: r}));
 }
 
-/* The cursor falls back to the first row rather than being written back into
-   calmCursorKey, so a re-sort moves the highlight without stranding state. */
+/* One rule for both passes, in focusKeyIn(): the cursor falls back to the first
+   entry rather than being written back into calmCursorKey, so a re-sort moves the
+   highlight without stranding state. */
 function calmEffectiveFocus(order){
-  if(calmCursorKey && order.some(r => r.key === calmCursorKey)) return calmCursorKey;
-  return order.length ? order[0].key : null;
+  return focusKeyIn(order, calmCursorKey);
 }
 
 function calmOrder(d){
@@ -352,9 +352,26 @@ function calmOrder(d){
     .filter(e => e.row).map(e => e.row);
 }
 
+/* What `j` and `k` walk in calm, and what draws the cursor: the questions in the
+   band, then the ledger rows beneath them. Both kinds expose `key`, which is what
+   lets one cursor variable cover a pass that spans two containers — an ask's key
+   is `ask:<id>` and a row's is `harness:sid`, and askKey() owns why those cannot
+   collide.
+
+   The questions lead because the band is drawn above the ledger. That is the one
+   place calm falls short of the merged order the band renders in the regular
+   view, and it is a property of the second-array route rather than an oversight:
+   a question is not a ledger row, so the two kinds cannot share a container
+   without the synthetic row docs/design-ask-lane.md A-4 refuses. A-5 records the
+   trade. What does hold is that the cursor order and the drawn order agree, which
+   is the invariant a highlight on the wrong row comes from breaking. */
+function calmNavOrder(d){
+  return waitingQueue(d).filter(e => e.kind === "ask").concat(calmOrder(d));
+}
+
 function calmMove(step){
   if(!lastData) return;
-  const order = calmOrder(lastData);
+  const order = calmNavOrder(lastData);
   if(!order.length) return;
   const i = order.findIndex(r => r.key === calmEffectiveFocus(order));
   calmCursorKey = order[Math.max(0, Math.min(order.length - 1, (i < 0 ? 0 : i + step)))].key;
@@ -525,32 +542,40 @@ document.addEventListener("click", e => {
   calmAction(act, el.getAttribute("data-arg"));
 });
 
-/* One key into the queue from anywhere on the board, in either mode. Calm has no
-   gate band, so there it does the equivalent with the controls it already has:
-   narrow to the blocked rows and park the cursor on the head. Both land the
-   reader on the same session, because both walk gateQueue(). */
-function gateJump(){
+/* One key into the queue from anywhere on the board, in either mode, and it
+   reaches whatever is at the head of it — a gate or a question, whichever has
+   waited longer. It used to walk gateQueue() alone, which skipped the very thing
+   that had waited longest whenever that was a question.
+
+   Calm draws no gate band, so there `g` does the equivalent with the controls it
+   already has: narrow to the blocked rows and park the cursor on the head. Both
+   modes land on the same waiting thing, because both read waitingQueue(). */
+function waitJump(){
   if(!lastData) return;
-  const queue = gateQueue(lastData);
+  const queue = waitingQueue(lastData);
   if(!queue.length) return;
+  const head = queue[0];
   if(displayMode === "calm"){
     /* The ordering too, not just the filter. Narrowing to the blocked rows under
        `recent` renders the queue exactly backwards with the cursor on the last
        row, and under `fastest` files them beneath "not working now". `g` names a
-       queue, so it has to leave the reader in the queue's order. */
+       queue, so it has to leave the reader in the queue's order. The narrowing
+       still applies when the head is a question: the gates behind it are the rest
+       of the same queue, and leaving them scattered would make `g` reach one
+       waiting thing and hide the others. */
     calmSort = "attention";
     calmStateOnly = "needs";
     calmOpenKey = null;
-    calmCursorKey = sessKey(queue[0]);
+    calmCursorKey = head.key;
     calmRevealFocus = true;
     calmResetScroll = true;
   } else {
-    gateCursorKey = sessKey(queue[0]);
-    gateRevealCursor = true;
-    /* The queue is a board-level list and the session view draws no gate band,
-       so `g` leaves session mode on the way to it. The cursor is set first
-       because `setDisplayMode` renders, and that render is the one that reaches
-       `restoreGateCursor` and consumes the reveal flag. */
+    waitCursorKey = head.key;
+    waitRevealCursor = true;
+    /* The queue is a board-level list and the session view draws only the
+       questions, so `g` leaves session mode on the way to it. The cursor is set
+       first because `setDisplayMode` renders, and that render is the one that
+       reaches `restoreWaitCursor` and consumes the reveal flag. */
     if(displayMode === "session"){ setDisplayMode("regular"); return; }
   }
   render(lastData);
@@ -585,7 +610,7 @@ document.addEventListener("keydown", e => {
   /* `c` works in both modes — it is the way back out of calm. */
   if(k === "c"){ stop(); setDisplayMode(displayMode === "calm" ? "regular" : "calm"); return; }
   /* And so does `g` — the queue is reachable from whichever mode you are in. */
-  if(k === "g"){ stop(); gateJump(); return; }
+  if(k === "g"){ stop(); waitJump(); return; }
   if(!lastData) return;
   /* A focused button already answers Enter and Space itself. */
   if((k === "Enter" || k === " ") && e.target && e.target.closest &&
@@ -606,31 +631,37 @@ document.addEventListener("keydown", e => {
      blocked, since the guard below returns early on an empty queue. Scroll keys
      that work or not depending on the payload are worse than no bindings. */
   if(displayMode !== "calm"){
-    const queue = gateQueue(lastData);
+    const queue = waitingQueue(lastData);
     if(!queue.length) return;
-    if(k === "j"){ stop(); gateMove(1); }
-    else if(k === "k"){ stop(); gateMove(-1); }
-    else if(k === "Enter"){
-      stop();
-      const key = gateFocusKey(queue);
-      if(key) calmAction("copy", key);
-    }
+    if(k === "j"){ stop(); waitMove(1); }
+    else if(k === "k"){ stop(); waitMove(-1); }
+    else if(k === "Enter"){ stop(); waitEnter(queue); }
     return;
   }
   if(k === "j" || k === "ArrowDown"){ stop(); calmMove(1); }
   else if(k === "k" || k === "ArrowUp"){ stop(); calmMove(-1); }
   else if(k === "Enter" || k === " "){
     stop();
-    const sid = calmEffectiveFocus(calmOrder(lastData));
-    if(sid) calmAction("open", sid);
+    /* One pass, two kinds of destination. A question is answered on this page,
+       so Enter hands the keyboard to its buttons exactly as it does in the
+       regular view; a ledger row expands. Reading calmOrder here instead would
+       resolve an ask key against a list that has no ask in it and open whichever
+       session happened to be at the top. */
+    const order = calmNavOrder(lastData);
+    const key = calmEffectiveFocus(order);
+    const focus = order.find(e => e.key === key);
+    if(focus && focus.kind === "ask") waitEnter(waitingQueue(lastData), key);
+    else if(key) calmAction("open", key);
   }
   else if(k === "f"){ stop(); calmAction("flag", null); }
   else if(k === "x" && lastData.dismiss){
     /* The one-keystroke path the ledger's row deliberately does not carry as an
        eleventh column. It acts on the cursor row, which is drawn, so the reader
-       can see what they are about to remove. */
+       can see what they are about to remove. A question carries no `dismiss`, so
+       standing on one makes this a no-op rather than clearing something else:
+       the mark is a session's, and a question is answered rather than handled. */
     stop();
-    const order = calmOrder(lastData);
+    const order = calmNavOrder(lastData);
     const focus = order.find(r => r.key === calmEffectiveFocus(order));
     if(focus && focus.dismiss) calmAction("handled", focus.dismiss);
   }
@@ -837,7 +868,10 @@ function calmLedger(d){
   const all = d.sessions.map(x => calmRow(d, x));
   const shown = calmFilter(all);
   const entries = calmEntries(shown, d);
-  const focusSid = calmEffectiveFocus(entries.filter(e => e.row).map(e => e.row));
+  /* Resolved against the whole pass, not just the ledger's rows: with the cursor
+     on a question in the band, a fall-back computed from the rows alone drew a
+     second highlight on the ledger's first row and the reader had two cursors. */
+  const focusSid = calmEffectiveFocus(calmNavOrder(d));
   const count = st => all.filter(r => r.st === st).length;
   const chip = (st, label, dot) =>
     `<button type="button" class="cm-chip${calmStateOnly === st ? " on" : ""}"` +
@@ -932,11 +966,13 @@ function calmLedger(d){
     `<span class="cm-sp"></span><span class="cm-note">${esc(note)}</span></div>` +
     usageBanner(d) +
     usageBandCalm(d) +
-    /* Above the ledger, not inside it: an ask is not a session row, and the one
-       thing calm must not do is leave a reader unable to release a session that
-       is holding its call open. Full parity with the ledger's ordering and its
-       keyboard is a follow-up; being answerable is not. */
-    askBand(d) +
+    /* Above the ledger, not inside it: an ask is not a session row, and putting
+       one in the ledger is the synthetic-row route docs/design-ask-lane.md A-4
+       refuses. The band is the same one the regular view draws — one head, one
+       numbering, one cursor — holding the questions, because the gates are
+       already down there as ledger rows and drawing them twice is worse than
+       drawing the queue across two containers. A-5 records what that costs. */
+    waitAskBand(d, focusSid) +
     `<div class="cm-body" id="cm-body">` +
     `<div class="cm-head"><span></span><span></span><span>session</span><span>where</span>` +
     `<span>doing</span><span>flag</span><span class="r">rate</span>` +
@@ -954,7 +990,7 @@ function calmLedger(d){
       ` style="color:${CALM_TONE[f.tone].ink}">◆</span>${esc(f.label)}</span>`).join("") +
     `</span><span class="cm-sp"></span>` +
     `<span class="cm-keys"><span>j k move</span><span>⏎ expand</span><span>f flagged</span>` +
-    `<span>g gates</span>` +
+    `<span>g queue</span>` +
     (d.dismiss ? `<span>x handled</span>` : "") +
     (usagePresent(d) ? `<span>u usage</span>` : "") +
     `<span>c mode</span><span>esc clear</span></span></div></div>`;
@@ -990,15 +1026,20 @@ function calmRestoreFocus(key){
    scroll offset. Put it back, then bring the keyboard cursor into view if the
    last action moved it. */
 function calmRestoreScroll(){
-  const asks = document.getElementById("askband");
-  if(asks) asks.scrollTop = askScrollTop;
+  const asks = document.getElementById("waitband");
+  if(asks) asks.scrollTop = waitScrollTop;
   const body = document.getElementById("cm-body");
   if(!body) return;
   body.scrollTop = calmScrollTop;
   if(calmRevealFocus){
     calmRevealFocus = false;
+    /* The band first: the cursor can be on a question, and the band is its own
+       scrolling container, so a reveal that only ever asked the ledger left a
+       cursor the reader could not see on the surface whose rows are buttons. */
+    const card = (asks && asks.querySelector) ? asks.querySelector(".ask.cursor") : null;
     const row = body.querySelector ? body.querySelector(".cm-row.focus") : null;
-    if(row && row.scrollIntoView) row.scrollIntoView({block: "nearest"});
+    const target = card || row;
+    if(target && target.scrollIntoView) target.scrollIntoView({block: "nearest"});
   }
   calmScrollTop = body.scrollTop;
 }
