@@ -69,8 +69,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "741b3e185654153b0314176ccd48135c1b4499210cd982b4237fcde99c3419ae",
             ),
             "regular.js": (
-                43_651,
-                "266b5e52a9b17485fe714bf4d009a74c9c33476e4aeb777d12bfbc466960e8f9",
+                44_109,
+                "a42db478eb018220e9db457f3843054571fad841ced869dcea24b3fce633b131",
             ),
             "mode.js": (
                 4_619,
@@ -121,16 +121,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(58_485, len(styles))
+        self.assertEqual(59_631, len(styles))
         self.assertEqual(
-            "4af59e4713bea71754595f8911ee6563cc71a0d22a59e52d913f01f60967e668",
+            "984944fbdfa7644d204e36c74e5c5a2286ceab40e5e7f08dd2782e0c88c1a966",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(305_908, len(assembled))
+        self.assertEqual(307_512, len(assembled))
         self.assertEqual(
-            "83f979a89a9b347ef618d8b88e1b07d0fd6a2b9d61b7f24a71172783995d6fc0",
+            "74087e7da40c015a22787dbdfe3dc263b6beec3c04e51f60bf3162e4c996b587",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -359,6 +359,50 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertFalse(state.exists())
 
 
+class RateSplitHeightTest(unittest.TestCase):
+    """The rate tile's per-harness split is capped, and the cap is derived.
+
+    `.hero` stretches its three tiles to one height, so an uncapped split made
+    the two count tiles beside it grow with the harness count. The cap is written
+    as arithmetic over two custom properties rather than a pixel total, and one
+    of those has to keep agreeing with the badge that actually sets a row's
+    height.
+    """
+
+    @staticmethod
+    def _rule(selector: str) -> str:
+        css = frontend_page.asset_path("styles.css").read_text(encoding="utf-8")
+        # Matched on the exact selector plus its brace, so `.rate-rows` cannot
+        # accidentally return the `.rate-rows:focus-visible` block.
+        needle = selector + "{"
+        start = css.index(needle) + len(needle)
+        body: str = css[start : css.index("}", start)]
+        return body
+
+    def test_the_row_height_variable_matches_the_badge_that_sets_it(self) -> None:
+        # The comment on `.rate-rows` says `--rrow-h` mirrors `.btile`. This is
+        # what makes that true rather than aspirational: resize the badge and
+        # this fails, instead of the cap silently keeping the old figure and
+        # clipping a row or leaving a gap.
+        rrow_h = re.search(r"--rrow-h:(\d+)px", self._rule(".rate-rows"))
+        btile_h = re.search(r"height:(\d+)px", self._rule(".btile"))
+        assert rrow_h is not None and btile_h is not None
+        self.assertEqual(btile_h.group(1), rrow_h.group(1))
+
+    def test_the_split_is_capped_at_three_rows_and_scrolls(self) -> None:
+        rule = self._rule(".rate-rows")
+        # Three rows and the two gaps between them, not four and not three gaps.
+        self.assertIn("max-height:calc(var(--rrow-h) * 3 + var(--rrow-gap) * 2)", rule)
+        self.assertIn("overflow-y:auto", rule)
+        # The value column is right-aligned, so a scrollbar that appears with the
+        # fourth row must not shift the numbers under it.
+        self.assertIn("scrollbar-gutter:stable", rule)
+        # The gap the cap does its arithmetic over has to be the gap in force.
+        gap = re.search(r"--rrow-gap:(\d+)px", rule)
+        assert gap is not None
+        self.assertIn("gap:var(--rrow-gap)", rule)
+
+
 class InstalledContractCharacterizationTest(unittest.TestCase):
     """The installed executable contract that extraction must preserve."""
 
@@ -485,6 +529,45 @@ class CargentoServerTest(PageJsHarness):
             '<span class="rrow-badge">${badge(r.key, true)}</span>',
             APP_JS,
         )
+
+    def test_the_rate_split_renders_one_capped_scroll_region(self) -> None:
+        # Executed rather than grepped, because the thing under test is that the
+        # rows land inside the capped container: a split that rendered them as
+        # siblings of it would still match a string assertion on the opening tag.
+        # Nine discovered harnesses, which is what the strip already carries.
+        rendered = self._run_page_js(
+            "const hs = ['claude','codex','pi','gemini','antigravity','copilot',"
+            " 'opencode','cursor','goose'].map(k => ({key: k, label: k,"
+            " discovered: true, error: null, reports_rate: true}));"
+            "const ss = hs.map((h, i) => ({harness: h.key, sid: 's' + i,"
+            " session: 's' + i, active: true, rate_per_min: 100 - i, state: 'working',"
+            " state_detail: '', project: 'p/q', title: 't', last_activity: 990,"
+            " total: 0, done: 0, open: 0, progress_pct: 0, eta_h: null, turn: null,"
+            " subagents: [], tasks: [], spacedock: null}));"
+            "const d = {generated: 1000, window_hours: 24, show_all: false,"
+            " rate_window_sec: 600, harnesses: hs, sessions: ss,"
+            " summary: {needs_input: 0, working: 9, rate_per_min: 500,"
+            "  active_sessions: 9, open_tasks: 0, progress_pct: 0, total_tasks: 0,"
+            "  total_done: 0}};"
+            "const html = rateTile(d);"
+            "const open = html.indexOf('class=\"rate-rows\"');"
+            "const close = html.indexOf('</div>', html.lastIndexOf('rrow-v'));"
+            "console.log(JSON.stringify({"
+            ' containers: (html.match(/class="rate-rows"/g) || []).length,'
+            " focusable: html.includes('tabindex=\"0\"'),"
+            " labelled: html.includes('aria-label=\"output rate by harness\"'),"
+            ' rows: (html.match(/class="rrow"/g) || []).length,'
+            " rowsInside: open > -1 && open < html.indexOf('class=\"rrow\"')}));"
+        )
+        # One container, not one per row.
+        self.assertEqual(1, rendered["containers"])
+        # More rows than the cap shows, which is the case the cap exists for.
+        self.assertGreater(rendered["rows"], 3)
+        self.assertTrue(rendered["rowsInside"], "the rows are not inside the container")
+        # A capped scroll region no keyboard can reach hides its overflow rows
+        # outright, and this one has no keys of its own the way calm's body does.
+        self.assertTrue(rendered["focusable"])
+        self.assertTrue(rendered["labelled"])
 
     def test_pi_badge_uses_the_explicit_pi_label(self) -> None:
         # A generic fallback monogram hides a missing harness presentation entry.

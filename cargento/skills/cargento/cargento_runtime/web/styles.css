@@ -81,7 +81,19 @@
   .tile-bname{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tile-bnum{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
   .tile-none{margin-top:18px;font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3);line-height:1.55}
-  .rate-rows{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  /* The split scrolls rather than growing the tile. `.hero` stretches its three
+     tiles to one height, so every harness row added here lengthened the two
+     count tiles beside it: on a six-harness machine that is two tall empty boxes
+     next to a single numeral, and the strip already goes to ten. Capped at three
+     rows and the two gaps between them, written as the arithmetic so the figure
+     is checkable rather than round. `--rrow-h` mirrors `.btile`'s height, which
+     is what actually sets a row's height; test_page.py asserts the two agree, so
+     resizing the badge cannot silently leave the cap behind.
+     `scrollbar-gutter: stable` because the value column is right-aligned. A
+     scrollbar appearing with the fourth row would otherwise shift every number
+     left by its width, on the platforms that reserve space for one. */
+  .rate-rows{--rrow-h:30px;--rrow-gap:8px;display:flex;flex-direction:column;gap:var(--rrow-gap);margin-top:10px;max-height:calc(var(--rrow-h) * 3 + var(--rrow-gap) * 2);overflow-y:auto;scrollbar-gutter:stable;scrollbar-width:thin}
+  .rate-rows:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklab,var(--accent) 45%,transparent);border-radius:6px}
   .rrow{display:flex;align-items:center;gap:11px}
   .rrow-badge{width:30px;display:flex;align-items:center;justify-content:center;flex:none}
   .rrow-bar{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}

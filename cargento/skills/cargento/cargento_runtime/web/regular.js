@@ -332,7 +332,13 @@ function rateTile(d){
   const shown = split.filter(r => r.known).sort((a,b) => b.v - a.v).slice(0, RATE_RANKED_MAX)
     .concat(split.filter(r => !r.known));
   const max = Math.max(1, ...shown.filter(r => r.known).map(r => r.v));
-  const rows = shown.length ? `<div class="rate-rows">` + shown.map(r => {
+  /* Focusable, and labelled, because the list is capped at three rows and
+     scrolls past that: a scroll region no keyboard can reach hides the rows
+     below the fold from a keyboard reader outright. `.cm-body` gets away with no
+     tabindex because calm binds `j`/`k` over it; this has no keys of its own.
+     The cost is one tab stop, and only where a split is drawn at all. */
+  const rows = shown.length ? `<div class="rate-rows" tabindex="0" role="group"` +
+    ` aria-label="output rate by harness">` + shown.map(r => {
     const v = isFinite(r.v) ? r.v : 0;
     const pct = r.known ? Math.max(v ? 4 : 0, Math.round(v * 100 / max)) : 0;
     /* Two ways to be unmeasured, and the dash must not blame the wrong one: a
