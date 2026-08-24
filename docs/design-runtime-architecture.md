@@ -84,12 +84,12 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 
 | Script part | Owns |
 |---|---|
-| `web/spark.js` | Shared page state, rate buffers, the sparkline with its hover machinery, and the three rules both views read: the gate queue, the attention ordering (its key, its comparators, and the sort the card view applies), and the shared-project-label collision, with the one wording every surface that marks it prints. |
-| `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows, and the gate band's cursor. |
+| `web/spark.js` | Shared page state, rate buffers, the sparkline with its hover machinery, and the four rules both views read: the waiting queue (the gate filter, the ask key, and the merge that puts one order over both), how any cursor resolves against what is drawn, the attention ordering (its key, its comparators, and the sort the card view applies), and the shared-project-label collision, with the one wording every surface that marks it prints. |
+| `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows, and the waiting band both views draw, with its cursor and what `⏎` does on each kind of row. |
 | `web/mode.js` | Display-mode state and its switch, the session view's target and its `#session=<key>` hash router — localStorage holds which mode, the hash holds which session, so the view survives a reload and answers browser back/forward — and the calm ledger's mutable state (sort, filters, open row, cursor, scroll). |
 | `web/usage.js` | The usage band, the configure popover, and the quota disclosure banner. |
 | `web/controls.js` | The stop control, the stopped panel, and the mode bar. |
-| `web/ask.js` | The asks band: one card per outstanding `ask_operator` question, and the answer POST behind its option buttons. A band of its own rather than a synthetic row in `d.sessions`, for the reason [design-ask-lane.md](design-ask-lane.md) records. |
+| `web/ask.js` | The question card: one per outstanding `ask_operator` question, and the answer POST behind its option buttons. A card in the queue band rather than a synthetic row in `d.sessions`, for the reason [design-ask-lane.md](design-ask-lane.md) records. |
 | `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. The click and keydown listeners are the page's, not calm's: all three modes route their controls through them. |
 | `web/session.js` | The session view: one session's Spacedock dispatch tree, its goal line, the picker, and the four empty states. Rendered from the same `/api/data` payload as the other two modes — no endpoint and no collector of its own. |
 | `web/observer.js` | The observer panel: the fetch behind a row's `observe` control, and the goal / stage / block card it renders from the sidecar that comes back. |

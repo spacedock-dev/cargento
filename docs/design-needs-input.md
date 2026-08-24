@@ -471,16 +471,21 @@ section.
 
 So the pass is driven entirely by the payload. You answer in the session's own terminal; the
 collector stops calling that session blocked; the row leaves the queue on the next refresh. The
-cursor is held as a session key rather than an index precisely so this works. `gateFocusKey()`
+cursor is held as an entry key rather than an index precisely so this works. `focusKeyIn()`
 resolves a key that has left the queue to the current head instead of writing the fallback back, so
 answering the row you are standing on advances the pass, and answering a row above the one you are
 standing on does not slide the cursor onto a different session. A cursor held as an index would do
-the second thing silently.
+the second thing silently. DRC-4178 extended the same rule to the questions rather than adding a
+second one: a pending ask is keyed on its registration id, so the key a question holds behaves the
+way a session's does and the one cursor walks both.
 
 The same reasoning is why the queue's order is published by the server rather than derived in the
 page. `row_order()` in `aggregate.py` ranks blocked rows by `blocked_since`; both views render that
 order rather than each re-deriving it, so the band and the ledger cannot name a different gate at the
-head. Calm's `attention` ordering ranks on the raw timestamp for the same reason, not on the elapsed
+head. `waitingQueue()` merges the pending questions into that order without re-sorting either list,
+which is what let the page hold one order over both kinds without the page inventing a ranking of its
+own. [design-ask-lane.md A-5](design-ask-lane.md#a-5-the-merged-order-is-a-reader-over-two-arrays-not-one-array-with-a-synthetic-row)
+owns that merge and what it costs calm. Calm's `attention` ordering ranks on the raw timestamp for the same reason, not on the elapsed
 `waitSec` it displays: that value floors at zero, so two implausibly future stamps would tie in the
 ledger while the server still separated them.
 
@@ -505,11 +510,13 @@ waiting on rather than a bystander guessing at a terminal it cannot see. A click
 about someone else's state; it is the state. The wrong-mark failure mode cannot occur either, because
 there is no gate left open behind the click: the option the reader chose is what the tool returns.
 
-The two therefore stay two surfaces, and the distinction is the load-bearing part. Asks render in
-their own band from `d.asks`, and the needs-input band keeps no handled state of its own. A future
-change that wants to mark a native gate has to overturn the paragraph above on its own merits, and
-cannot borrow this carve-out to do it: an answer the runtime delivered and a click about a terminal
-nobody read are not the same evidence.
+The two therefore stay two kinds, and the distinction is the load-bearing part. They share a queue
+and a cursor now, but not their rules: a question comes from `d.asks` and never from `sessions`, it
+carries buttons where a gate carries an id to copy, `x` marks a gate handled and does nothing to a
+question, and the band still keeps no handled state of its own. A future change that wants to mark a
+native gate has to overturn the paragraph above on its own merits, and cannot borrow this carve-out to
+do it: an answer the runtime delivered and a click about a terminal nobody read are not the same
+evidence.
 
 ## N-9: Idle was two situations, and only an event can separate them
 

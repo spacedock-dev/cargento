@@ -15,7 +15,7 @@ This page owns none of the following, and links to it instead:
 | For | Read |
 |---|---|
 | Installing the plugin, per harness | [README.md](README.md#1-how-to-set-up) |
-| Reading the board: session states, display modes, the gate queue, starting and stopping | [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) |
+| Reading the board: session states, display modes, the queue of things waiting on you, starting and stopping | [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) |
 | What works on which harness and which platform, and what was measured | [COMPATIBILITY.md](COMPATIBILITY.md) |
 | What is read, what is sent, and what granting a permission means | [SECURITY.md](SECURITY.md) |
 | Working on Cargento itself | [CONTRIBUTING.md](CONTRIBUTING.md) |

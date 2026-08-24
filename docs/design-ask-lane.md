@@ -173,7 +173,62 @@ array it already has.
 What this gives up is real. The gate queue's ordering, its cursor and its keys do not extend to the
 band, and calm mode gets a plainer rendering than regular mode does. That is a follow-up rather than a
 reversal, and it is cheaper to add ordering to a band than to remove a special case from three
-readers.
+readers. A-5 is that follow-up, and it settles whether the estimate held.
+
+## A-5: the merged order is a reader over two arrays, not one array with a synthetic row
+
+The follow-up A-4 deferred had two routes, and they are the same two A-4 and
+[design-dismissals.md D-4](design-dismissals.md#d-4-the-payload-loses-the-row-entirely-and-carries-only-a-count)
+already weighed, arriving one layer later. The question this time is not where a question is stored.
+It is where the single order over waiting sessions and waiting questions is defined.
+
+Rejected, again: a synthetic row in `d.sessions`. Everything the queue has would come free, including
+the parts a second array has to be taught one at a time: the band, the tile, the tab title, the
+keyboard cursor, the desktop popup, and calm's ledger row, which is the surface a second array can
+least easily reach.
+
+The argument against it did not weaken between the two decisions, and one part of it got stronger.
+`DECLARED_SESSION_FIELDS`, `row_order`, the summary counts, the dismissal store and the overlay
+reducer all read `sessions` and would each need to know which rows are not sessions, which is D-4's
+whole objection. The collision marker is still concrete: a pseudo-row carrying the asking session's
+project label collides with the real row on that label, and the reader is told two sessions share a
+checkout when one of them is a card about the other. What got stronger is the dismissal edge. A
+gate is clearable and clearing it silences its popup (D-3), so a synthetic row inherits a `handled`
+button that would write a mark against a session id for a question the store cannot express, and the
+mark would lapse on that session's next write rather than when the question is answered. The two
+concepts have different lifetimes, and the row shape has one.
+
+Taken: `waitingQueue()` in `web/spark.js`, one function, four readers. It is a **merge rather than a
+sort**, and that distinction is what keeps `gateQueue()` the pure filter it says it is. Both inputs
+arrive ranked by whoever owns that ranking, `row_order` in `aggregate.py` for the sessions and
+`AskRegistry.pending` for the questions, so the comparison only ever decides between one gate and one
+question and neither list's internal order is re-derived. A comparator over the concatenation would
+have been a second definition of both, which is the fault the old `gateQueue()` comment refused in
+one direction and this refuses in two.
+
+What it ranks on is an absolute epoch on the payload's own clock: `blocked_since` for a gate, and
+`generated - age_sec` for a question, which `_ask_cards` rounds to the second from the same `now`
+that stamps `generated`. An exact tie breaks toward the gate rather than arbitrarily, because the
+question's figure carries up to half a second of rounding the gate's does not, so a tie is not
+evidence that the two are equally old and a fixed side keeps the head of the queue from swapping
+between polls.
+
+The cursor holds a key rather than an index for the reason it always did, and a question needed a key
+that behaves the way `sessKey` does. It is `ask:<id>`, the registration id: generated once from
+`secrets.token_urlsafe`, never reused, the same value `/api/answer` addresses, and gone from the
+payload at the moment the card leaves the board. The asking session's key was the obvious alternative
+and is wrong, because one session may hold more than one question open and the two cards would share
+a cursor.
+
+What this route still cannot give, stated rather than smoothed over. In the regular view the band
+draws the whole merged order in one container, because that view's other two sections exclude blocked
+rows and nothing is drawn twice. Calm cannot: its ledger already carries every blocked row, so the
+band there holds the questions and the gates stay in the ledger below. The cursor spans both, keyed
+the same way and moved by the same keys, but the questions lead calm's pass because the band is drawn
+above the ledger. So calm has one order for `g`, for the band, for the tile and for the title, and a
+navigation order that follows the screen. Closing that last gap needs the two kinds in one container,
+which is the synthetic row this section refuses, so it is the price of the refusal rather than an
+oversight.
 
 ## What this deliberately does not do
 
