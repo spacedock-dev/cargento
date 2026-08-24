@@ -20,8 +20,9 @@ it was dead. Three independent mechanisms can put a Claude row into Needs input:
 Codex has since become the second harness that can report a gate, and it has exactly one path: the
 event overlay, from its own bundled `PermissionRequest` hook. It is not a fourth row in that table
 because the table sorts Claude's three against each other, and a second harness with one source has
-nothing to be sorted against. What the two share is the overlay mechanism, so everything N-5 through
-N-9 says about an overlay applies to a Codex row unchanged. What they do not share is the other two
+nothing to be sorted against. What the two share is the overlay mechanism, so N-5's ledger and N-9's stop handling apply to a
+Codex row unchanged. N-6 is the exception and says so in its own section: its dispute ring only
+watches a *collector* wait, so it cannot see a Codex gate in either direction. What they do not share is the other two
 paths: Codex has no transcript detection and no Notification hook, which is why a Codex row can say a
 gate is open and cannot say which. See N-7 for why that limit is a security decision rather than an
 omission, and B2 in the tracker for the other eight harnesses.

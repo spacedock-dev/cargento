@@ -394,6 +394,58 @@ class GrantedPermissionTest(support.RuntimeTestCase):
         self.assertEqual(now - 950, row["blocked_since"])
 
 
+class GrantedCodexPermissionTest(support.RuntimeTestCase):
+    """The same wiring on the second harness that can report a gate.
+
+    Codex's `PermissionRequest` hook is the only source it has, so nothing ever
+    arrives to say the user answered -- exactly Claude's situation in
+    `GrantedPermissionTest`, and exactly why that class pins the wiring rather
+    than the rule. Without the collector reporting `own_activity` the row stayed
+    red from the approval until the turn's `Stop`, which is DRC-4097 again on a
+    harness that had no such row when DRC-4097 was fixed.
+
+    The signal is measured rather than borrowed. With a real approval prompt
+    standing open on 0.149.0 the session's rollout held at one timestamp across
+    25 seconds and advanced only once the gate was answered, so the newest record
+    in the session's own rollout separates the two states.
+    """
+
+    SID = "019fd197-19e4-77b2-913d-d16c3190bb52"
+
+    def _collect(self, *, rollout_at: float, requested_at: float, now: float) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            seeded = fixtures.build_codex(Path(tmp), rollout_at, self.SID, "seeded")
+            with support.store_patch(**seeded):
+                app = support.build_app()
+                app.clock = lambda: now
+                app.overlays = _StubOverlays(
+                    events.Overlay(
+                        harness="codex",
+                        sid=self.SID,
+                        arrival_seq=1,
+                        kind=events.OVERLAY_NEEDS_INPUT,
+                        at=requested_at,
+                    )
+                )
+                rows = app.collect(show_all=True)["sessions"]
+        return next(r for r in rows if r["harness"] == "codex")
+
+    def test_an_approved_gate_stops_counting_once_the_session_moves_on(self) -> None:
+        # The user approved 16 minutes ago and the turn has been generating since.
+        now = 1_700_000_000.0
+        row = self._collect(rollout_at=now - 30, requested_at=now - 960, now=now)
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_a_gate_still_open_is_still_your_call(self) -> None:
+        # The true positive the fix must not clear: the rollout stopped at the
+        # request and has not moved since, which is what the arm measured.
+        now = 1_700_000_000.0
+        row = self._collect(rollout_at=now - 960, requested_at=now - 950, now=now)
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(now - 950, row["blocked_since"])
+
+
 class _StubOverlays:
     """The overlay source shape `Application` consumes, with one overlay in it."""
 

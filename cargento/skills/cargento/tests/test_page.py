@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import mock
 
+import event_hook
 from cargento_runtime import cli, diagnostics, http_api, lifecycle, notifications
 from cargento_runtime import io as runtime_io
 
@@ -68,8 +69,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "741b3e185654153b0314176ccd48135c1b4499210cd982b4237fcde99c3419ae",
             ),
             "regular.js": (
-                42_607,
-                "00712a100934a7b1aa936f2d360f26b93a1f65aac98503530304bbd935c76181",
+                43_545,
+                "4560c73ebc2c1836f2ea3c59c36d4bc6c3d8f57b3676e0abea441135aa2abe59",
             ),
             "mode.js": (
                 2_087,
@@ -119,9 +120,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(281_830, len(assembled))
+        self.assertEqual(282_768, len(assembled))
         self.assertEqual(
-            "9fea593cc644dd62558c001ada3b02bd432590ab64a6614d7e43f346cc9cc6a0",
+            "9d45f9de77a02dab063c25ab605873070cf12d451c1e28af0b8c06e105a29ce7",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -512,7 +513,7 @@ class CargentoServerTest(PageJsHarness):
             {spec.key for spec in REGISTRY if spec.reports_rate},
         )
 
-    def test_only_claude_declares_that_it_can_report_a_gate(self) -> None:
+    def test_only_the_two_harnesses_with_a_gate_path_declare_one(self) -> None:
         # The same shape as `reports_rate` above and for the same reason, on the
         # field where getting it wrong is worse. A harness with no gate detection
         # publishes no needs-input row, which is the identical payload a harness
@@ -526,7 +527,30 @@ class CargentoServerTest(PageJsHarness):
         # without teaching its collector to emit `needs_input` would publish a
         # promise the board cannot keep, which is strictly worse than the gap.
         self.assertEqual(
-            {"claude"},
+            {"claude", "codex"},
+            {spec.key for spec in REGISTRY if spec.reports_needs_input},
+        )
+
+    def test_the_gate_flag_matches_the_harnesses_that_actually_have_a_path(self) -> None:
+        # The check that would have caught the defect this test was written for.
+        # `reports_needs_input` is a hand-set bool, and the first review of the
+        # change that added it found Codex shipping gate detection through the
+        # event overlay while its own strip chip said "no gate detection" -- the
+        # exact inversion the disclosure exists to prevent, pinned green by a
+        # sibling test asserting a literal set.
+        #
+        # So derive the truth instead of restating it. A gate reaches the board by
+        # exactly two routes: a collector that sets the state itself, which is
+        # Claude alone, or an adapter that maps `input_requested`, which is
+        # whatever `EVENTS_BY_HARNESS` says today. Anyone adding the second kind
+        # gets a failure here rather than a lying chip.
+        by_adapter = {
+            harness
+            for harness, table in event_hook.EVENTS_BY_HARNESS.items()
+            if "input_requested" in table.values()
+        }
+        self.assertEqual(
+            {"claude"} | by_adapter,
             {spec.key for spec in REGISTRY if spec.reports_needs_input},
         )
 
@@ -2380,6 +2404,45 @@ console.log(JSON.stringify(out));
         self.assertIn("Nothing is waiting on you.", out["claudeOnly"])
         # And a payload that never sent the flag claims nothing either way.
         self.assertIn("Nothing is waiting on you.", out["noField"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_the_zero_tile_counts_a_harness_it_could_not_read_at_all(self) -> None:
+        # The first version of this named the blind rows and silently dropped the
+        # ones whose collector raised -- which are the rows that could have told
+        # you, so the tooltip read as a complete enumeration while omitting the
+        # load-bearing gap. `rateFloor` settled this shape already: an unread
+        # harness makes the figure a floor and says so.
+        checks = """
+const row = (key, label, over) => Object.assign(
+  {key, label, discovered:true, error:null, reports_needs_input:false}, over || {});
+const out = {};
+// Every row can report, but one of them could not be read this refresh.
+out.unreadOnly = gateEmpty({harnesses:[
+  row("claude", "Claude", {reports_needs_input:true, error:"PermissionError: nope"}),
+  row("codex", "Codex", {reports_needs_input:true})]});
+// Both kinds at once.
+out.both = gateEmpty({harnesses:[
+  row("claude", "Claude", {reports_needs_input:true, error:"OSError: nope"}),
+  row("copilot", "Copilot")]});
+// Neither: the old sentence is true as written.
+out.clean = gateEmpty({harnesses:[
+  row("claude", "Claude", {reports_needs_input:true}),
+  row("codex", "Codex", {reports_needs_input:true})]});
+console.log(JSON.stringify(out));
+"""
+        out = self._run_page_js(checks)
+
+        # A row nobody could read is not an all-clear, even when every harness
+        # present is gate-capable.
+        self.assertNotEqual("Nothing is waiting on you.", out["unreadOnly"]["empty"])
+        self.assertIn("Claude", out["unreadOnly"]["emptyTip"])
+        # And when both kinds are present the tooltip names both, so the reader
+        # is not told a partial list is the whole of it.
+        self.assertIn("Copilot", out["both"]["emptyTip"])
+        self.assertIn("Claude", out["both"]["emptyTip"])
+        # Nothing to disclose, so nothing is claimed.
+        self.assertEqual("Nothing is waiting on you.", out["clean"]["empty"])
+        self.assertNotIn("emptyTip", out["clean"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_every_working_card_draws_the_same_anatomy(self) -> None:

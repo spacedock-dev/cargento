@@ -125,11 +125,30 @@ CLAUDE_EVENTS = {
 # among Codex's hooks this one gets to decide, and Codex validates what comes
 # back: `hookSpecificOutput` requires `hookEventName`, `decision.behavior` is
 # exactly `allow` or `deny`, and three reserved fields fail closed. But `main()`
-# writes nothing to stdout on any of its five exit paths, and emitting nothing is
-# the documented way to decline -- so declining is not a choice this script makes
-# correctly, it is the only thing it can do. A test pins that for every path a
-# real install takes, because the property is what makes this entry safe rather
-# than a comment claiming it is.
+# writes nothing to stdout on any of its five exit paths, and empty output is
+# read as an abstain -- so declining is not a choice this script makes correctly,
+# it is the only thing it can do.
+#
+# That last step was a documentation read until it was measured, which mattered
+# because every earlier arm returned NON-empty output and Codex fails closed on a
+# malformed one: if zero bytes had parsed as invalid rather than as no-opinion,
+# registering this event would have denied every escalated tool call for every
+# install. Measured on 0.149.0, interactively: the hook fired, printed nothing,
+# exited 0, the prompt reached the person, and the approved command ran
+# (`docs/captures/codex/permission-abstain-0.149.0-macos.jsonl`). Tests pin the
+# empty stdout on the four early exits and on the far side of a real forward,
+# and they are mutation-checked -- the first version of that test patched
+# `sys.stdin` with a `StringIO`, which has no `.buffer`, so all four arms
+# measured the no-stdin path and a mutant printing a `deny` sailed through.
+#
+# Two channels the argument does NOT cover, recorded rather than argued away.
+# A failure before `main()` runs -- no interpreter, an unreadable file, an
+# interrupt -- exits non-zero, and whether Codex reads a non-zero exit from this
+# event as a block is unmeasured. And no `timeout` is set on the bundled entry,
+# deliberately: the interactive capture could not exclude a fail-closed timeout,
+# so naming a short one risks converting a slow disk into a refused tool call,
+# which is worse than the stall it would bound. Both are in the capture's
+# `_unrun` records.
 #
 # Note the asymmetry with Antigravity, which is exactly inverted and is why
 # `agy_hook.py` cannot borrow this reasoning: there an empty object is a DENY, so

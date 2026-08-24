@@ -217,6 +217,23 @@ def collect(
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": last_activity,
+                # What retires a gate this session already answered. Codex reports
+                # a gate through the event overlay, and the reducer only lets a
+                # wait lapse when the session's OWN activity outruns it -- so
+                # without this the row stayed red from the approval to the turn's
+                # `Stop`, which is DRC-4097 on a second harness.
+                #
+                # The rollout's own newest record, not its mtime and not
+                # `last_activity`: the latter folds in subagent files, and a child
+                # writing says nothing about whether the human answered. Measured
+                # on 0.149.0 rather than assumed, because the whole value of the
+                # signal is that it stays put while a person is being asked: with
+                # a real approval prompt standing open the rollout held at 13
+                # lines and one timestamp across 25 seconds, then advanced to 27
+                # once the gate was answered. A tail with no timestamp reports 0,
+                # which leaves the wait standing -- the safe direction, and the
+                # one an unreported value already takes in the reducer.
+                "own_activity": (info or {}).get("last_event_ts") or 0,
                 "rate_per_min": sessions.rate_from(info, now, config) + data["rate"],
                 "turn": turns.turn_progress(scan, session_state, now, config),
                 # `provider` stays None: no Codex record carries one, and

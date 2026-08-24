@@ -134,15 +134,24 @@ class HarnessSpec:
     that never measured below a session it can prove is slow.
 
     ``reports_needs_input`` is the same shape on the field where getting it
-    wrong costs more. Nine of the ten cannot observe a gate at all, and their
-    silence is byte-identical to the silence of the one that can when nothing is
+    wrong costs more. Eight of the ten cannot observe a gate at all, and their
+    silence is byte-identical to the silence of the two that can when nothing is
     waiting: no row, no count, no band. So a quiet board cannot say whether
     nothing is waiting or nothing could have told you, and B2's own note is that
     a reader assumes the former because everything else here is harness-agnostic.
     A `reports_rate` false row renders a dash; this one has nothing to draw a
     dash on, which is why the disclosure has to be per harness rather than per
-    row. Setting it true is a promise the collector has to keep: a row that
-    declares detection and has none is worse than the gap it papers over.
+    row.
+
+    It answers "can a gate on this harness reach the board", by ANY path -- not
+    "can this collector detect one". The distinction is the whole of what the
+    first review of this field caught: Codex reports a gate through the event
+    overlay and has no collector detection at all, so a flag meaning the second
+    thing labelled Codex blind on the same screen where a Codex gate was red.
+    That is the inversion this field exists to prevent, shipped by the field
+    itself. `tests/test_page.py` now derives the expected set from Claude's
+    collector plus whatever `EVENTS_BY_HARNESS` maps `input_requested` for,
+    because a hand-set bool beside a hand-written literal pinned the bug green.
     """
 
     key: str
@@ -214,7 +223,17 @@ def default_harnesses(
             usage_is_fetch=True,
         ),
         HarnessSpec(
-            "codex", "Codex", codex.discover, codex.collect, reports_rate=True, usage=codex.usage
+            "codex",
+            "Codex",
+            codex.discover,
+            codex.collect,
+            reports_rate=True,
+            # Through the event overlay, not the collector: its bundled
+            # `PermissionRequest` hook maps to `input_requested`. Measured on
+            # 0.149.0 -- the hook fires with the prompt open, and a hook that
+            # prints nothing lets that prompt reach the human.
+            reports_needs_input=True,
+            usage=codex.usage,
         ),
         HarnessSpec("pi", "Pi", pi.discover, pi.collect, reports_rate=True),
         # Gemini CLI was retired on 2026-06-18 and Antigravity replaced it.

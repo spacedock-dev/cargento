@@ -668,30 +668,90 @@ class CodexAdapterTest(unittest.TestCase):
 
         Codex blocks the tool call on this hook and applies whatever comes back, and
         it validates the shape: a malformed output is refused by name and fails
-        closed. So the one thing this script must never do is print. Every exit in
-        `main()` returns 0 with an empty stdout, and this pins that for the paths a
-        real install actually takes -- no dashboard, unparseable stdin, an unmapped
-        name -- rather than trusting the docstring above it.
+        closed. So the one thing this script must never do is print.
+
+        Measured on 0.149.0, not inferred: a hook registered on this event that
+        printed nothing and exited 0 let the approval prompt reach the human, who
+        approved, and the command ran
+        (`docs/captures/codex/permission-abstain-0.149.0-macos.jsonl`). Empty output
+        is the abstain. This test is what keeps it empty.
+
+        `SimpleNamespace(buffer=...)` is the idiom the rest of this file uses,
+        because `main()` reads `sys.stdin.buffer`. An `io.StringIO` has no
+        `.buffer`, so the AttributeError guard swallows it and every arm silently
+        measures the no-stdin path instead of the one it is named after -- which is
+        what the first version of this test did on all four arms, where a mutant
+        printing a `deny` still passed. Hence the `reached` assertion.
         """
         gate = json.dumps(
             {"hook_event_name": "PermissionRequest", "session_id": CODEX_SESSION, "cwd": "/w"}
-        )
+        ).encode()
+        reached: list[str] = []
+        real_read_event = event_hook.read_event
         with tempfile.TemporaryDirectory() as empty_home:
             for label, stdin in (
                 ("a real gate, no dashboard", gate),
-                ("unparseable stdin", "not json"),
-                ("empty stdin", ""),
-                ("an unmapped name", json.dumps({"hook_event_name": "Nope"})),
+                ("unparseable stdin", b"not json"),
+                ("empty stdin", b""),
+                ("an unmapped name", json.dumps({"hook_event_name": "Nope"}).encode()),
             ):
                 with self.subTest(label):
                     out = io.StringIO()
+                    seen = label
+
+                    def spy(*a: Any, _seen: str = seen, **k: Any) -> Any:
+                        reached.append(_seen)
+                        return real_read_event(*a, **k)
+
                     with (
                         unittest.mock.patch.dict(os.environ, {"CARGENTO_HOME": empty_home}),
-                        unittest.mock.patch.object(sys, "stdin", io.StringIO(stdin)),
+                        unittest.mock.patch.object(
+                            sys, "stdin", SimpleNamespace(buffer=io.BytesIO(stdin))
+                        ),
                         unittest.mock.patch.object(sys, "stdout", out),
+                        unittest.mock.patch.object(event_hook, "read_event", spy),
                     ):
                         self.assertEqual(0, event_hook.main(["event_hook.py", "codex"]))
                     self.assertEqual("", out.getvalue())
+                    # The arm reached the code it names. Without this the test is
+                    # four copies of the cheapest early return.
+                    self.assertIn(label, reached, "this arm never parsed its stdin")
+
+    def test_the_gate_hook_stays_silent_even_when_it_forwards(self) -> None:
+        """The forwarding path, which the arms above stop short of.
+
+        With no dashboard the adapter returns before it opens a socket, so those
+        four arms never run `capability` or `_shared`. This one gives it a real
+        state file and a real capability so the whole path runs, and pins the same
+        property on the far side of the post: a gate that is actually forwarded
+        still says nothing to Codex.
+        """
+        sent: list[Any] = []
+
+        def _forward(*a: Any, **k: Any) -> bool:
+            sent.append((a, k))
+            return True
+
+        fake = SimpleNamespace(forward=_forward)
+        payload = json.dumps(
+            {"hook_event_name": "PermissionRequest", "session_id": CODEX_SESSION, "cwd": "/w"}
+        ).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "cargento-4553.json"
+            state.write_text(json.dumps({"capabilities": {"codex": "t"}}), encoding="utf-8")
+            out = io.StringIO()
+            with (
+                unittest.mock.patch.dict(os.environ, {"CARGENTO_HOME": tmp}),
+                unittest.mock.patch.object(
+                    sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload))
+                ),
+                unittest.mock.patch.object(sys, "stdout", out),
+                unittest.mock.patch.object(event_hook, "_shared", lambda: fake),
+            ):
+                self.assertEqual(0, event_hook.main(["event_hook.py", "codex"]))
+
+        self.assertEqual(1, len(sent), "the gate was not forwarded, so this pins nothing")
+        self.assertEqual("", out.getvalue())
 
     def test_the_subagent_pair_maps_because_it_was_measured(self) -> None:
         # Measured for DRC-4093 from a `codex exec` turn that really did spawn one.

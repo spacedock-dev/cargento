@@ -392,13 +392,28 @@ function needsLine(gates, waiting){
    about everything, and a line that implied otherwise would trade one wrong
    impression for another. */
 function gateEmpty(d){
-  const blind = ((d && d.harnesses) || []).filter(gateBlind);
-  if(!blind.length) return {line: "", empty: "Nothing is waiting on you."};
-  const names = blind.map(h => own(HARNESS, h.key, {}).name || h.key).join(", ");
+  const rows = (d && d.harnesses) || [];
+  const blind = rows.filter(gateBlind);
+  /* Two ways a row could not have told you, and the second one is the trap. A
+     harness that CAN report a gate but whose collector raised is the row most
+     worth naming, and `gateBlind` deliberately excludes it because on the strip
+     `error` outranks the capability. Naming only the blind ones produced a
+     tooltip that reads as a complete enumeration with the load-bearing gap left
+     out -- worse than the unqualified sentence it replaced. `rateFloor` settled
+     this shape already: an unread harness turns the figure into a floor and says
+     which harness. */
+  const unread = rows.filter(h => h && h.discovered && h.error);
+  if(!blind.length && !unread.length) return {empty: "Nothing is waiting on you."};
+  const name = h => own(HARNESS, h.key, {}).name || h.key;
+  const clauses = [];
+  if(blind.length) clauses.push("no gate detection on " + blind.map(name).join(", "));
+  if(unread.length){
+    clauses.push((unread.length === 1 ? "and this harness could not be read at all: "
+      : "and these could not be read at all: ") + unread.map(name).join(", "));
+  }
   return {
-    line: "",
     empty: "Nothing waiting that Cargento can see.",
-    emptyTip: "No gate detection on " + names + ", so a quiet row there is not " +
+    emptyTip: "There is " + clauses.join(", ") + ". So a quiet row there is not " +
       "evidence that nothing is waiting. A session on any harness can still " +
       "raise a question through the ask lane, and those do appear here."
   };
