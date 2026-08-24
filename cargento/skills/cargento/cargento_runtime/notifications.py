@@ -350,6 +350,9 @@ def maybe_popup(
     last-session-state map. Checking it in the caller leaves a window in which a
     SessionEnd commits first, and this would then re-create the state it just
     cleared and fire a popup for a session that has already exited.
+
+    A transition the machine-wide floor holds is deferred rather than consumed;
+    the comment on that branch has the reason.
     """
     prefix, harness_label = subject.prefix, subject.label
     if dismissals.suppresses(config, state, subject.harness, prefix, subject.activity):
@@ -366,14 +369,30 @@ def maybe_popup(
         ):
             return
         prev = state.last_session_state.get(prefix)
+        entering = session_state == "needs_input" and prev != "needs_input"
+        # The machine-wide floor delays a popup; it must not destroy one. Since
+        # DRC-4192 every harness reaches this floor, so an unrecorded return here
+        # is what stops one harness's gate consuming another's: the transition is
+        # recorded ABOVE the gates, and a transition recorded while floored fails
+        # the edge test on every later collection, silencing that gate for as
+        # long as it stands. `maybe_ask_popup` keys its own floor apart for this
+        # same loss, which it calls actively harmful.
+        #
+        # `popup_cooldown_sec` is deliberately NOT deferred: it is the
+        # per-session re-emission floor, and retrying past it would re-pop the
+        # same standing gate every minute.
+        if (
+            entering
+            and now - state.last_popup.get(prefix, 0) >= config.popup_cooldown_sec
+            and now - state.last_popup.get("_global", 0) < config.global_popup_cooldown_sec
+        ):
+            return
         runtime_state.bounded_put(
             state.last_session_state, prefix, session_state, limit=config.max_cache_entries
         )
-        if session_state != "needs_input" or prev == "needs_input":
+        if not entering:
             return
         if now - state.last_popup.get(prefix, 0) < config.popup_cooldown_sec:
-            return
-        if now - state.last_popup.get("_global", 0) < config.global_popup_cooldown_sec:
             return
         runtime_state.bounded_put(state.last_popup, prefix, now, limit=config.max_cache_entries)
         runtime_state.bounded_put(state.last_popup, "_global", now, limit=config.max_cache_entries)
@@ -438,15 +457,14 @@ def maybe_ask_popup(
 
     **The floor keys are deliberately asymmetric with the gate lane's.** This
     reads and writes `ASK_POPUP_KEY` only, and never the gate lane's `"_global"`.
-    Writing that key would let a question permanently destroy a gate popup rather
-    than delay it: `maybe_popup` records the transition into `last_session_state`
-    ABOVE its cooldown gates, so a transition suppressed by a shared floor is
-    consumed, and every later collection then fails its edge test for as long as
-    the session stays blocked. The transcript path is the only popup source for a
-    gate when no hook is installed, so that loss is total. The reverse direction
-    matters just as much and for the opposite reason: a gate re-emits for as long
-    as it stands, while nothing ever re-registers a question and the sweep deletes
-    it unanswered at `ask_deadline_sec`.
+    Writing that key would put a question in front of every gate on the machine
+    for `global_popup_cooldown_sec`, and the two lanes answer different questions
+    on different timetables: a gate re-emits for as long as it stands, while
+    nothing ever re-registers a question and the sweep deletes it unanswered at
+    `ask_deadline_sec`. (A shared floor used to be worse than a delay — a floored
+    gate transition was consumed and never retried — which is the defect
+    DRC-4192's popup pass had to fix once every harness reached that floor. The
+    asymmetry predates the fix and outlives it.)
 
     No dismissal is consulted. The card is published regardless — `_ask_cards`
     reads no dismissal store — so suppressing the alert would leave the reader an

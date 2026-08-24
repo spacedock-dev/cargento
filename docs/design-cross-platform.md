@@ -78,11 +78,12 @@ Two standing constraints:
   or expired. Two differences from the session path are deliberate. No dismissal is consulted, because
   the card is published regardless, and suppressing the alert would leave the reader an alert and a board
   that disagree. And the ask lane reads and writes its own cooldown key, never the gate lane's shared
-  `_global` floor, so neither alert can swallow the other. That asymmetry is load-bearing in both
-  directions: a gate re-emits for as long as it stands, while nothing ever re-registers a question and
-  the sweep deletes it unanswered at `ask_deadline_sec`; and `maybe_popup` records the transition
-  *above* its cooldown gates, so a gate suppressed by a shared floor is not delayed by 15s, it is gone
-  for the whole block.
+  `_global` floor, so neither alert can swallow the other. The two lanes answer different questions on
+  different timetables: a gate re-emits for as long as it stands, while nothing ever re-registers a
+  question and the sweep deletes it unanswered at `ask_deadline_sec`. A shared floor was once worse
+  than a delay: `maybe_popup` recorded the transition *above* its cooldown gates, so a floored gate
+  was gone for the whole block rather than late by 15s. DRC-4192 had to fix that when every harness
+  started reaching the floor. The keys stay apart regardless.
 
 `/api/data` publishes `native_notify`, which is the name of the server's OS backend, or empty. The
 page raises its own notification only when that field is empty. Double-firing is impossible by

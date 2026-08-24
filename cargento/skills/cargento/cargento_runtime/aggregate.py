@@ -69,6 +69,20 @@ def _keep_wait_detail(session: Session, patch: Mapping[str, Any]) -> Mapping[str
     return {key: value for key, value in patch.items() if key != "state_detail"}
 
 
+def _wait_popup_body(session: Session) -> str:
+    """The popup body for a gated row: its project, and what it is waiting on.
+
+    `notify.js` composes the same two fields with the same fallback, and the two
+    must agree because either layer may be the one that delivers a given gate.
+    The fallback is not decoration: no overlay constructor sets `detail`, so
+    every needs-input patch from the event lane carries None, and that lane is
+    the whole of how a Codex gate is detected. Composing here also means
+    `maybe_popup`'s own default can never fire — an f-string is truthy — so the
+    empty case has to be answered before the call.
+    """
+    return f"[{session.get('project')}] {session.get('state_detail') or 'needs your input'}"
+
+
 def _subtract_dismissed(
     out_sessions: list[Session],
     cleared_marks: tuple[dismissals.Dismissal, ...],
@@ -81,10 +95,9 @@ def _subtract_dismissed(
     session that comes back has lost its pending permission overlay. Before
     `assign_display_ids`, so the id widths describe the rows actually on screen.
 
-    A count and not a filtered flag, because the popup pass has already run over
-    the unsubtracted list: a dismissal silences an alert through
-    `maybe_popup`'s own gate, never by hiding the row from it (D-3 in
-    docs/design-dismissals.md).
+    A count and not a filtered flag, because a dismissal silences an alert
+    through `maybe_popup`'s own gate rather than by hiding the row from it (D-3
+    in docs/design-dismissals.md).
     """
     kept = [
         session
@@ -407,12 +420,16 @@ class Application:
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
         self._apply_overlays(out_sessions, now=now)
-        # After the overlays and before the subtraction. After, because a wait
-        # only an event knows about is a wait, and reading the collector's state
-        # is what left the overlay lane silent on every harness. Before, because
-        # `maybe_popup` consults the dismissal store itself and must be the thing
-        # that decides: a row removed here is a row this pass never sees, and a
-        # popup gate that never sees a session cannot record what it was doing.
+        # After the overlays, which is load-bearing: a wait only an event knows
+        # about is a wait, and reading the collector's state is what left the
+        # overlay lane silent on every harness.
+        #
+        # Before the subtraction only by convention. `maybe_popup` consults the
+        # dismissal store itself and returns before its own bookkeeping, so a
+        # dismissed row records nothing under either ordering and nothing
+        # observable changes if these two lines swap — measured, not assumed.
+        # The order is kept because it is the one that stays correct if the gate
+        # ever stops consulting the store.
         self._notify_waits(out_sessions, generations)
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
         sessions.assign_display_ids(config, out_sessions)
@@ -551,9 +568,7 @@ class Application:
                     activity=float(session.get("last_activity") or 0.0),
                 ),
                 state,
-                f"[{session.get('project')}] {session.get('state_detail')}"
-                if state == "needs_input"
-                else None,
+                _wait_popup_body(session) if state == "needs_input" else None,
                 expect_generation=generations.get(sid, 0),
                 popup_notifier=self.popup_notifier,
             )

@@ -189,14 +189,22 @@ and then a third, would have restated the same defect once per harness. Moving t
 closed a second silence that was true even for Claude: the popup read the collector's state, and
 `_apply_overlays` runs afterwards, so a wait that only an event knew about raised nothing.
 
-Two properties of `maybe_popup` survived the move and must keep surviving it. Its
+One property of `maybe_popup` survived the move unchanged and must keep surviving it: its
 `expect_generation` is re-checked under `hook_lock`, so `Application` samples every session's
 generation before the harness loop and hands that snapshot in: reading the live map at decision time
 would compare a value with itself and let a `SessionEnd` that committed mid-collection be undone by
-a popup for a session that has exited. And the transition is recorded into `last_session_state`
-*above* the cooldown gates, which means a popup a floor suppresses is consumed rather than deferred
-(see D-3 in [design-cross-platform.md](design-cross-platform.md)). Nine more harnesses now contend
-for that machine-wide floor than did before.
+a popup for a session that has exited.
+
+A second property had to change with the move. The transition is recorded into `last_session_state`
+*above* the cooldown gates, so a popup the machine-wide floor suppressed used to be consumed rather
+than deferred: every later collection then failed the edge test, and that gate was silent for as
+long as it stood. That was survivable while Claude's collector was the only caller and only Claude
+rows wrote the floor. It is not survivable with ten harnesses contending for it: the first gate of
+a collection would permanently eat any other opened within 15s, and registry order decides which
+harness systematically loses. So a transition held by the floor alone is now left unrecorded and
+retried on the next collection. `popup_cooldown_sec`, the per-session re-emission floor, still
+consumes: retrying past it would re-pop the same standing gate every minute. The ask lane keeps its
+own floor key either way (D-3 in [design-cross-platform.md](design-cross-platform.md)).
 
 Adding a harness is therefore: a module under `collectors/`, and a row. `CONTRIBUTING.md` owns the
 walkthrough, and [design-harness-registry.md](design-harness-registry.md) owns the judgement of what

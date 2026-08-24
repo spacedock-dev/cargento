@@ -61,12 +61,13 @@ The gate therefore lives in `notifications`, where the popup policy already live
 the same set the subtraction does: `collect` refreshes the store before the harness loop rather than
 after it, precisely so the two cannot disagree inside one collection.
 
-The ordering survived the popup moving out of Claude's collector and up into `Application`
-(DRC-4192): the decision still runs before the subtraction, so `maybe_popup` remains the thing that
-refuses a cleared row rather than the subtraction hiding it. Deciding after the subtraction would
-look tidier and would be wrong: a row removed there is a row the popup gate never sees, and a gate
-that never sees a session cannot record what that session was doing, which is what its next
-transition is measured against.
+The popup moved out of Claude's collector and up into `Application` in DRC-4192, and the decision
+still runs before the subtraction. That order is a convention rather than a constraint, and it is
+worth naming as one: `maybe_popup` returns on the dismissal before its own bookkeeping, so a cleared
+row records nothing whichever line runs first, and swapping the two changes no observable behaviour
+(measured on the suite, not reasoned about). What the order buys is that the gate stays the thing
+that refuses a cleared row, so the design holds if `maybe_popup` ever stops consulting the store
+itself.
 
 The hook ingress (`POST /api/notify`) is gated too, and it has no `last_activity` to compare. It uses
 the transcript's mtime, which is the conservative half of the collector's figure: it can only be

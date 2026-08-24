@@ -1841,27 +1841,33 @@ class ApplicationPopupTest(unittest.TestCase):
                 }
             ],
         )
-        overlays = _StubOverlays(
-            {
-                ("claude", "abcd1234"): [
-                    runtime_events.Overlay(
-                        harness="claude",
-                        sid="abcd1234",
-                        arrival_seq=1,
-                        kind=runtime_events.OVERLAY_NEEDS_INPUT,
-                        at=4_500.0,
-                        detail="Bash wants to run",
-                    )
-                ]
-            }
-        )
         config, state = self.runtime()
+        # Built by the production reducer rather than by hand. `overlay_for`
+        # sets no `detail` for any kind, so a hand-written one carrying a
+        # question is a shape this lane cannot produce, and asserting against it
+        # hid the body every event-lane gate actually gets.
+        overlay = runtime_events.overlay_for(
+            runtime_events.Event(
+                harness="claude",
+                event="input_requested",
+                sid="abcd1234",
+                session_id="abcd1234",
+                timestamp=4_500.0,
+                arrival_seq=1,
+            ),
+            config=config,
+        )
+        self.assertIsNone(overlay.detail if overlay else "")
+        overlays = _StubOverlays({("claude", "abcd1234"): [overlay]})
         collection = self.application(
             (spec,), config=config, state=state, overlays=overlays
         ).collect(show_all=False)
 
         self.assertEqual(["needs_input"], [s["state"] for s in collection["sessions"]])
-        self.assertEqual([("Claude is waiting on you", "[proj] Bash wants to run")], self.popups)
+        # notify.js's own fallback, `(s.state_detail || "needs your input")`. The
+        # server composes the body, so `maybe_popup`'s "Session … needs your
+        # input" default cannot fire on a truthy f-string.
+        self.assertEqual([("Claude is waiting on you", "[proj] needs your input")], self.popups)
 
     def test_a_standing_gate_pops_once_and_not_on_every_collection(self) -> None:
         spec = _popup_spec("codex", "Codex", [self._gate_row("codex-1")])
@@ -1871,6 +1877,35 @@ class ApplicationPopupTest(unittest.TestCase):
         application.collect(show_all=False)
         application.collect(show_all=False)
         self.assertEqual(1, len(self.popups))
+
+    def test_a_gate_the_machine_wide_floor_delayed_pops_once_the_floor_lifts(self) -> None:
+        # Ten harnesses now share the floor only Claude used to write, so a gate
+        # on one row can arrive while another row's popup still holds it. The
+        # floor must DELAY that popup, never consume it: `maybe_popup` records
+        # the transition into `last_session_state`, and a transition recorded
+        # while floored fails the edge test on every later collection, so the
+        # second gate is silent for as long as it stands. `maybe_ask_popup`
+        # calls that same loss "actively harmful" and keys its floor apart to
+        # avoid it.
+        codex = _popup_spec("codex", "Codex", [self._gate_row("codex-1")])
+        claude = _popup_spec("claude", "Claude", [self._gate_row("abcd1234")])
+        config, state = self.runtime()
+        application = self.application((codex, claude), config=config, state=state)
+        application.collect(show_all=False)
+        self.assertEqual([("Codex is waiting on you", "[proj] permission requested")], self.popups)
+
+        # `maybe_popup` reads the wall clock, so the floor is retired by moving
+        # the mark rather than the application's injected clock.
+        state.last_popup["_global"] -= config.global_popup_cooldown_sec + 1
+        application.collect(show_all=False)
+
+        self.assertEqual(
+            [
+                ("Codex is waiting on you", "[proj] permission requested"),
+                ("Claude is waiting on you", "[proj] permission requested"),
+            ],
+            self.popups,
+        )
 
     def test_a_dismissed_gate_pops_for_nobody(self) -> None:
         spec = _popup_spec("codex", "Codex", [self._gate_row("codex-1")])
