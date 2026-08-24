@@ -1225,9 +1225,9 @@ stopped being true is worth keeping. Goose auto-discovers a plugin's `hooks/hook
 records goose 1.47.0 registering all eleven event names a probe plugin offered it, seven of them
 observed firing from an ordinary interactive session and carrying the whole ten-character
 `sessions.id` the collector already keys on. What that route does not reach is
-the tool-confirmation gate: no hook fires for 83.2 s while the dialog stands, and the store is
-silent for the same window, so the turn boundaries are reachable and the needs-input signal is a
-measured blank rather than an unread one.
+the tool-confirmation gate: no hook fires in the 83.2 s between the prompt and the answer, the
+window that contains the standing dialog, and the store is silent across it too, so the turn
+boundaries are reachable and the needs-input signal is a measured blank rather than an unread one.
 
 For all three, the current store collectors remain the safe compatibility baseline. Event support
 can be added only for the states proven by contract tests and real CLI fixtures.
