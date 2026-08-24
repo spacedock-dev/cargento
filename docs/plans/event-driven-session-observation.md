@@ -418,15 +418,19 @@ any count next to a harness list here is part of the list.
 | Gemini CLI | Extension-bundled command hooks and OTel; consumer-account access transitioned, while enterprise and API-key use remain | Native ACP mode | Shipped-extension candidate after the first adapters |
 | Antigravity | Plugin-bundled model/tool/loop hints, plus opt-in `statusLine` snapshots for agent state and quota (no confirmation or task-count field in the 37 print-mode pushes; both arrive interactively) | No listed ACP implementation | Phase 2 target alongside Claude |
 | Copilot CLI | Plugin-bundled, repo (`.github/hooks/*.json`) or user command hooks | ACP server via `--acp`, transport unverified | Deferred; probe baseline |
-| OpenCode | Shared server SSE where safely discoverable and authenticated; user plugin otherwise | Native ACP mode | Prefer an existing-server topology once proven |
+| OpenCode | A project or user plugin file, measured on 1.18.20: `permission.asked` and `permission.replied` both carry a joinable `sessionID`, and no store table records a standing request. Shared server SSE where safely discoverable and authenticated | Native ACP mode | Plugin is the proven path; an existing-server topology is still untested |
 | Cursor CLI | Plugin-installed hooks, with ordinary local-CLI coverage requiring fixtures | Listed in the ACP agent directory; the installed cursor-agent 2026.07.23 help advertises no ACP entry point, so the mode is unverified. Opt-in `--output-format stream-json` in print mode | Deferred; probe baseline |
 | Goose | Plugin command hooks, auto-discovered from `~/.agents/plugins/<name>/hooks/hooks.json`. Goose registered all eleven event names offered to it and seven of them were observed firing, both lists in [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl). They bound a turn and nothing else: no hook fires while a tool confirmation stands, and the store records nothing either | Goose ACP server/API | Turn boundaries are reachable; a needs-input signal is a measured blank |
 | Factory Droid | User or plugin command hooks (documented, summarised by category) | ACP listed in the agent directory, mode unverified | Deferred; probe baseline |
 
-Claude, Codex, Antigravity, Gemini and Goose rows are backed by captures under `docs/captures/`. The
-other rows are vendor-documentation reads with no capture behind them: treat every cell for Pi,
-Copilot CLI, OpenCode, Cursor CLI and Factory Droid as unmeasured, including the ACP column,
-whose per-harness qualifiers come from the ACP agent directory listing rather than from any observed
+Claude, Codex, Antigravity, Gemini, OpenCode and Goose rows are backed by captures under
+`docs/captures/`. The OpenCode capture covers the plugin path only; its ACP and shared-server cells
+are still documentation reads. Factory Droid has no capture behind it at all, so every cell in that
+row is a vendor-documentation read and unmeasured. Pi, Copilot CLI and Cursor CLI now have captures
+under `docs/captures/`, but none of them measures the passive-feed cell as this table states it, and
+none has been reconciled into these rows: read those files before trusting a Pi, Copilot or Cursor
+cell here. The ACP column is unmeasured on every row either way: its per-harness qualifiers come from
+the ACP agent directory listing rather than from any observed
 connection.
 
 ### Claude Code
@@ -1191,23 +1195,37 @@ both places.
 
 ### OpenCode
 
-OpenCode has two native options:
+OpenCode has two native options, and one of them is now measured.
 
+- Its [plugin API](https://dev.opencode.ai/docs/plugins/) is **measured** on opencode 1.18.20, in
+  `docs/captures/opencode/plugin-permission-1.18.20-macos.jsonl`. A plugin is one plain file under
+  `.opencode/plugin/`, loaded with no install step, so the npm route the earlier read assumed is not
+  required. `permission.asked` carries `sessionID`, `id`, `permission`, `patterns`, `metadata`,
+  `always` and `tool`; `permission.replied` carries `sessionID`, `requestID` and a `reply` of
+  `once`, `always` or `reject`. The `sessionID` on both is exactly the `session.id` the OpenCode
+  collector already keys on, so the pair maps onto `input_requested` and `input_resolved` with no
+  dwell, no expiry and no inference. `session.idle` fires once per turn end and carries `sessionID`
+  alone.
 - Its [server](https://dev.opencode.ai/docs/server/) is documented to expose `/global/event` and
   `/event` SSE streams, session listing, and session status. Documented only, since no OpenCode
   server has been started here.
-- Its [plugin API](https://dev.opencode.ai/docs/plugins/) is documented to expose `permission.asked`,
-  `permission.replied`, session creation/update/status/idle/error, message, todo, and tool events.
-  Documented only: no plugin has been installed here and no event observed.
 
-Prefer the shared server where the exact TUI server can be discovered and authenticated. That path
-is zero-install only under those conditions: the TUI may select a random host and port, and an
-operator may configure authentication. It carries `permission.asked` semantics natively for one SSE
-client thread when reachable. A user plugin is the fallback for sessions with no safely discoverable
-server. The server documentation states that `opencode serve` starts a new server when a TUI is
-already running, and that the TUI picks its port and hostname at random. Whether that new server can
-see the first instance's sessions or events is not documented and has not been tested here, so the
-fallback-to-plugin conclusion is provisional.
+The plugin is the proven path. The shared server would be zero-install where the exact TUI server
+can be discovered and authenticated, but the TUI may select a random host and port and an operator
+may configure authentication, so that path stays conditional. The server documentation states that
+`opencode serve` starts a new server when a TUI is already running, and that the TUI picks its port
+and hostname at random. Whether that new server can see the first instance's sessions or events is
+not documented and has not been tested here.
+
+The same capture closes the store-only alternative. Measured while an approval dialog stood on
+screen for 130 s, 76 s and 36 s: the store's `permission` table holds project-scoped saved approvals
+and stayed empty, even after an "Allow always", which OpenCode's own dialog says holds only until
+restart. The durable `event` table carries session and message types alone. And no `session.status`
+event is delivered between the ask and the reply in any gated arm. The grant and always arms' status
+sequences match the ungated control's exactly and the reject arm's differs only by a `retry`, so the
+status lane never announces the wait. Nothing but a single `session.updated` reaches a reader
+between the ask and the reply, and the store's own counts advance at most once inside the gate
+window and then hold.
 
 ### Pi, Cursor, and Goose
 
@@ -2061,9 +2079,11 @@ not erase enterprise and API-key CLI use.
 
 Further passive adapters (OpenCode, Copilot, Factory Droid, Pi, Cursor and Goose) are deferred
 indefinitely. Each needs its own justification against the proven probe baseline and a harness-specific
-distribution/lifecycle assessment. OpenCode is worth revisiting first only where Cargento can safely
-discover and authenticate the exact already-running TUI server; otherwise it is not a zero-action
-topology.
+distribution/lifecycle assessment. OpenCode is the strongest of the six on evidence: its plugin path
+is measured, and its `permission.replied` carries the joinable session id inline, so a reader needs
+nothing but the event to close the request it opened. It is still not zero-action, because a plugin
+file has to reach the user's machine, and the already-running TUI server that would make it
+zero-action cannot yet be discovered or authenticated reliably.
 
 Each adapter must be independently optional and independently testable. One broken integration must
 never take down the aggregate, as the existing collector failure boundary already ensures.
