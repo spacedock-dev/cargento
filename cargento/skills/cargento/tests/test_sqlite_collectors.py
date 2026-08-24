@@ -1189,6 +1189,153 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual("needs_input", rows["standing1"]["state"])
         self.assertAlmostEqual(new_ms / 1000, float(rows["standing1"]["blocked_since"]), places=2)
 
+    def test_cursor_re_reads_a_gate_whose_first_read_never_returned(self) -> None:
+        # The gate read is memoized on the store's mtime, and a standing gate is
+        # the last write the store gets -- the capture's false-positive control
+        # found abandoned stores still at a gate 29.4 hours after their last
+        # write. So an mtime a gate has frozen never moves again while the human
+        # is waiting, and a value cached against it is cached for the whole life
+        # of the wait. A query that raised returned no value at all: caching the
+        # `None` the exception handler leaves behind hides that gate until the
+        # human answers, which is when the wait is over.
+        #
+        # One `database is locked` on the first call only. That is the real
+        # window: the refresh right after the gate-opening write, when Cursor's
+        # writer is active and `open_sqlite_read_only`'s busy timeout can expire.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        started = now - 60
+        real_pending = cursor_collector._pending_since
+        reads: list[str] = []
+
+        def locked_once(con: Any) -> float | None:
+            reads.append("read")
+            if len(reads) == 1:
+                raise sqlite3.OperationalError("database is locked")
+            return real_pending(con)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "aaaa1111",
+                [self._cursor_pending(waiting=True, started_ms=int(started * 1000))],
+            )
+            with mock.patch.object(cursor_collector, "_pending_since", locked_once):
+                first = self._collect_cursor(root, now=now)
+                # The store is not touched between the two, so its mtime is the
+                # one the failed read would have been cached against.
+                second = self._collect_cursor(root, now=now)
+
+        self.assertNotEqual("needs_input", first[0]["state"])
+        self.assertEqual(2, len(reads), "the failed read was memoized as no gate")
+        self.assertEqual("needs_input", second[0]["state"])
+        self.assertAlmostEqual(started, float(second[0]["blocked_since"]), places=2)
+
+    def test_cursor_takes_the_last_carrier_inside_one_blob(self) -> None:
+        # Newest-by-rowid picks the blob; inside it the same rule has to hold,
+        # because a blob is bytes appended in order too. Both directions, since a
+        # reader that preferred whichever state it liked would pass one half:
+        # answered-then-standing must read as a wait, standing-then-answered must
+        # not, and the stamp published must be the one beside the carrier that
+        # won rather than the first in the window.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        old_ms, new_ms = int((now - 40000) * 1000), int((now - 40) * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "standing1",
+                [
+                    self._cursor_pending(waiting=False, started_ms=old_ms)
+                    + self._cursor_pending(waiting=True, started_ms=new_ms)
+                ],
+            )
+            self._cursor_gate_store(
+                root,
+                "answered1",
+                [
+                    self._cursor_pending(waiting=True, started_ms=old_ms)
+                    + self._cursor_pending(waiting=False, started_ms=new_ms)
+                ],
+            )
+            rows = {row["sid"]: row for row in self._collect_cursor(root, now=now)}
+
+        self.assertEqual("needs_input", rows["standing1"]["state"])
+        self.assertAlmostEqual(new_ms / 1000, float(rows["standing1"]["blocked_since"]), places=2)
+        self.assertEqual("working", rows["answered1"]["state"])
+
+    def test_cursor_does_not_take_a_neighbours_stamp_for_the_gates(self) -> None:
+        # The window opens 4096 bytes before the key, so anything inside it that
+        # spells `pendingToolCallStartedAtMs` is a candidate -- and searching
+        # forwards from the start of the window takes the object furthest from
+        # the carrier. A gate 40 seconds old renders as eleven hours that way,
+        # and sorts eleven hours wrong in the attention queue. The stamp nearest
+        # the carrier's own key is the one that rides with it.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        started = now - 40
+        neighbour = json.dumps(
+            {"pendingToolCallStartedAtMs": int((now - 40000) * 1000)}, separators=(",", ":")
+        ).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "aaaa1111",
+                [
+                    b"\x0a"
+                    + len(neighbour).to_bytes(4, "big")
+                    + neighbour
+                    + self._cursor_pending(waiting=True, started_ms=int(started * 1000))
+                ],
+            )
+            rows = self._collect_cursor(root, now=now)
+
+        self.assertEqual("needs_input", rows[0]["state"])
+        self.assertAlmostEqual(started, float(rows[0]["blocked_since"]), places=2)
+        self.assertEqual("permission request, waiting 40s", rows[0]["state_detail"])
+
+    def test_cursor_drops_a_gate_stamp_the_store_cannot_have_written(self) -> None:
+        # A real gate's stamp rides the write that froze the store, so the two
+        # are the same moment give or take the hook that ran first. A reading
+        # from long before the store's last write is therefore not this
+        # conversation's current state -- it is a stamp donated by another object
+        # in the window, or bytes that merely spell the field, the way a message
+        # quoting a store record does -- and publishing it is a red row and a
+        # desktop popup carrying a wait nobody believes. Nothing retires such a
+        # row on its own: the blob that produced it stays the newest carrier for
+        # as long as the store exists.
+        #
+        # The control arm is the second half: the same fixture with the stamp
+        # beside the store's own write does raise the wait, so the negative is a
+        # property of the gap and not of the shape.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "quoted1",
+                [self._cursor_pending(waiting=True, started_ms=int((now - 378 * 86400) * 1000))],
+            )
+            self._cursor_gate_store(
+                root,
+                "real1",
+                [self._cursor_pending(waiting=True, started_ms=int((now - 40) * 1000))],
+            )
+            rows = {row["sid"]: row for row in self._collect_cursor(root, now=now)}
+
+        self.assertEqual(2, len(rows), "the row itself must survive; only the wait is dropped")
+        self.assertNotEqual("needs_input", rows["quoted1"]["state"])
+        self.assertIsNone(rows["quoted1"]["blocked_since"])
+        self.assertEqual("needs_input", rows["real1"]["state"])
+
     def test_cursor_does_not_publish_a_gate_a_dead_session_left_behind(self) -> None:
         # The liveness gate, and the measurement behind it: of ten readable
         # stores no arm of the probe had driven, 2 read as waiting 29.4 hours

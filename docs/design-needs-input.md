@@ -639,6 +639,29 @@ it over the alternatives:
   measured 29.4-hour case would otherwise have walked through.
 - It costs nothing: it is a comparison against a number the collector has already computed.
 
+Liveness alone still trusts whatever the bytes said. A second rule bounds the reading itself: the
+stamp has to be plausibly this store's own newest write. The write that raises the gate is what puts
+`pendingToolCallStartedAtMs` on disk, so on a real gate the stamp and the file's mtime are the same
+moment, give or take the hook that ran first (20 seconds in the probe's slowest arm). A stamp from
+long before that write is not the conversation's current state, and there are two ways to get one: a
+neighbouring object inside the 8 KB window the reader pulls, and bytes that merely spell the field,
+which a message quoting a store record is enough to produce. Either publishes a red row and a popup
+carrying a wait nobody believes, and nothing retires it, because the blob that produced it stays the
+newest carrier for as long as the store exists. So a stamp outside the activity window of the
+store's own mtime drops the whole reading rather than the wait's start time. The window is the
+activity window and not something tighter: nothing measured how far a genuine gate's stamp may trail
+a later write to the same store, and a missed gate is a row that reads Working where an invented one
+is a desktop notification.
+
+Two smaller rules follow the same grain. Inside the chosen blob the last carrier wins, for the reason
+the blob itself is chosen by highest `rowid`: a blob is bytes appended in order, and first-match
+disagrees in both directions, reading an answered-then-reopened gate as no wait and a gate-then-answer
+as a wait that never ends. And a gate read that raised is never memoised. The memo is keyed on the
+store's mtime, and a standing gate freezes that mtime by construction, so caching the `None` an
+exception leaves behind hides that gate for the whole life of the wait. The one failure that is a
+reading rather than an accident, a schema with no `blobs` table, is told apart by asking
+`sqlite_master` rather than by matching SQLite's error text, which is text SQLite is free to change.
+
 ### Rejected
 
 - **`working_threshold_sec` as the liveness test.** It is 90 seconds, and a gate the probe
@@ -670,6 +693,13 @@ as a pill, so its rows are never published and its pending contract is never rea
 `other-prompt-kinds` arm records `subagent_store_tested` as false, so this is an untested shape as
 well as an unhandled one, and widening the read to children without a measurement would be inventing
 the parent's state from a file nobody has looked at at a gate.
+
+How many times one blob can carry the key is unmeasured. The capture counted contract entries and
+never occurrences, so the last-carrier rule above is reasoning from the store's append-only shape
+rather than from a count. The reader sees 4096 bytes either side of the first occurrence; a second
+carrier further out than that is not reachable without materialising the whole blob, which is the
+read the window exists to avoid. One read-only query over real stores would settle it, and it has
+not been run.
 
 Only a shell gate was driven. MCP prompts, plan decisions, question tools and sudo requests are all
 recorded unmeasured in the same arm; whether they write the same key is not known here.

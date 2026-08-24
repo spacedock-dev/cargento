@@ -328,11 +328,62 @@ def _pending_since(con: sqlite3_types.Connection) -> float | None:
     if not isinstance(row[0], (bytes, bytearray, memoryview)):
         return None
     frame = bytes(row[0])
-    found = _PENDING_MAP_RE.search(frame)
+    # Last carrier in the window rather than first, for the reason the blob is
+    # chosen by highest rowid: a blob is bytes appended in order, so where two
+    # objects in one carry the key the later one is the later state. First-match
+    # disagrees with that in both directions -- an answered call followed by a
+    # new gate reads as no wait, and a gate followed by its answer reads as a
+    # wait that never ends. A second carrier further from the key than the
+    # window is not reachable without materialising the whole blob, and whether
+    # a real blob ever holds two is unmeasured: the capture counted contract
+    # entries, never occurrences of the key.
+    found = None
+    for match in _PENDING_MAP_RE.finditer(frame):
+        found = match
     if found is None or found.group(1) == b"}":
         return None
-    stamp = _PENDING_STARTED_RE.search(frame)
-    return int(stamp.group(1)) / 1000 if stamp else 0.0
+    stamp = _nearest_stamp(frame, found.start())
+    return 0.0 if stamp is None else stamp
+
+
+def _nearest_stamp(frame: bytes, key_pos: int) -> float | None:
+    """The gate stamp beside the carrier at ``key_pos``, or None if there is none.
+
+    Nearest rather than first, and that is the whole point of the function. The
+    stamp sits in the same object as the contracts map but *before* it in the
+    orders measured, so it has to be looked for behind the key — and the window
+    opens 4096 bytes behind, which is room for other objects that spell the same
+    field. Searching that window forwards takes the candidate furthest from the
+    carrier: a 40-second-old gate rendered as eleven hours that way, and the
+    attention queue ranks on this stamp, so it sorted eleven hours wrong too.
+    Nearest is direction-agnostic, so it also survives a serializer that puts
+    the stamp after the map.
+    """
+    best: re.Match[bytes] | None = None
+    for match in _PENDING_STARTED_RE.finditer(frame):
+        if best is None or abs(match.start() - key_pos) < abs(best.start() - key_pos):
+            best = match
+    return None if best is None else int(best.group(1)) / 1000
+
+
+def _blobs_table_missing(con: sqlite3_types.Connection) -> bool:
+    """Whether this store has no `blobs` table, asked after a failed gate read.
+
+    Separates the one gate failure that is a reading from every failure that is
+    not. Read from `sqlite_master` rather than by matching the exception's
+    message, because that text is SQLite's to change and a reader that got it
+    wrong would silently memoize a transient error again.
+
+    False when the question itself cannot be answered, since that is the same
+    "no value returned" the caller is already deciding not to trust.
+    """
+    try:
+        row = con.execute(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'blobs'"
+        ).fetchone()
+    except runtime_io.sqlite_module.Error:
+        return False
+    return bool(row) and not row[0]
 
 
 def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, str, str, str]:
@@ -578,15 +629,33 @@ def _meta(
         # the same reason: a store on a schema with no `blobs` table has no gate
         # to report, and routing that through the store-error boundary would
         # withdraw a title and a workspace that were fine.
+        gate_settled = True
         try:
             pending = _pending_since(con)
         except runtime_io.sqlite_module.Error:
             pending = None
+            # Which failure it was decides whether `None` may be memoized, and
+            # the two are not close. A schema with no `blobs` table has no gate
+            # and cannot grow one while the mtime holds, so that answer is a
+            # reading. Anything else — a busy writer expiring
+            # `open_sqlite_read_only`'s busy timeout, most of all — returned no
+            # value at all, and the mtime it would be cached against is one a
+            # standing gate freezes by construction: the gate-opening write is
+            # the last write the store gets, which is why the capture's
+            # false-positive control found abandoned stores still at a gate
+            # 29.4 hours on. Cached, that `None` hides the gate for the whole
+            # life of the wait and heals only when the human answers.
+            gate_settled = _blobs_table_missing(con)
     finally:
         con.close()
     if failed:
         # Transient: do not cache values the query never returned.
         return None, "", None, "", "", None
+    if not gate_settled:
+        # The readings that did return are still published; only the memo is
+        # withheld, so the next refresh re-reads the store rather than serving
+        # a gate reading that was never taken.
+        return title, cwd, model, parent_id, type_name, pending
     with state.cache_lock:
         cached = _cached(state, db, mtime, locked=True)
         if cached is not None:
@@ -729,6 +798,27 @@ def collect(
         # 90-second liveness would drop real prompts — and `config.py` already
         # rules that a needs-input overlay has no deadline for that reason.
         gate = chat.pending_since if active else None
+        # AND THE STAMP HAS TO BE THIS STORE'S OWN. The gate-opening write is
+        # what puts the stamp on disk, so on a real gate the two are the same
+        # moment give or take the hook that ran before it — 20 seconds in the
+        # measured worst case, where the probe's hook slept that long. A stamp
+        # from long before the store's last write is therefore not this
+        # conversation's current state: it is one donated by a neighbouring
+        # object in the window, or bytes that merely spell the field, which a
+        # message quoting a store record is enough to produce. Published, that
+        # is a permanent red row and a desktop popup carrying a wait nobody
+        # believes, and nothing retires it — the blob stays the newest carrier
+        # for as long as the store exists.
+        #
+        # The store's own mtime is the reference rather than `now`, because it
+        # is what the stamp is a claim about; `is_fresh` is the same test the
+        # row's liveness runs on, and it rejects a stamp implausibly *ahead* of
+        # that write for free. The window is the activity window rather than a
+        # tight bound of its own: nothing measured how far a gate's stamp can
+        # legitimately trail a later write to the same store, and a missed gate
+        # is a row that reads Working where an invented one is a popup.
+        if gate and not sessions.is_fresh(config, chat.mtime, gate, window_hours * 3600):
+            gate = None
         if gate is not None:
             # Ahead of the working test, like Copilot's (design-needs-input N-2):
             # the store moves when the gate opens, so every standing gate is
