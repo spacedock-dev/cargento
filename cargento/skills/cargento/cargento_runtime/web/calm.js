@@ -560,11 +560,20 @@ function waitJump(){
        `recent` renders the queue exactly backwards with the cursor on the last
        row, and under `fastest` files them beneath "not working now". `g` names a
        queue, so it has to leave the reader in the queue's order. The narrowing
-       still applies when the head is a question: the gates behind it are the rest
-       of the same queue, and leaving them scattered would make `g` reach one
-       waiting thing and hide the others. */
-    calmSort = "attention";
-    calmStateOnly = "needs";
+       still applies when the head is a question and gates wait behind it: those
+       gates are the rest of the same queue, and leaving them scattered would
+       make `g` reach one waiting thing and hide the others.
+
+       Only when there is a gate to narrow TO, though. `needs` filters the ledger
+       to the blocked rows, and a queue holding questions alone has none — which
+       is the ordinary shape, since most harnesses cannot report `needs_input` at
+       all. Narrowing there emptied the ledger to "Nothing matches this filter"
+       and cost the reader the rest of the board to reach a card already drawn in
+       the band above. */
+    if(queue.some(e => e.kind === "gate")){
+      calmSort = "attention";
+      calmStateOnly = "needs";
+    }
     calmOpenKey = null;
     calmCursorKey = head.key;
     calmRevealFocus = true;

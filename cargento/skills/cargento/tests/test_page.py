@@ -65,12 +65,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         # part that moved is also the more useful failure of the two.
         expected_parts = {
             "spark.js": (
-                45_873,
-                "b10f42b746700d0efe536214d83482883532f29bb29d0d0ef682c67be78c2a25",
+                46_460,
+                "e44eb8e73af3f6fe9c98f5dd65d763f6508b7bf029c98dcc308bf6688541a71e",
             ),
             "regular.js": (
-                48_849,
-                "d14873045c95724403f7eea6cc398c2e12e82ccb0b58e16b33ecba23c65b927f",
+                49_297,
+                "81df3a571d3fbb17ad11c1584977f45cab3722bde6f7a027a02c911d0f962f43",
             ),
             "mode.js": (
                 4_619,
@@ -89,8 +89,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "7ff71070fabf53c55754a3263825eb3c330ed1457bc8661d983d694df97ea218",
             ),
             "calm.js": (
-                56_506,
-                "c3280fbef18133273e92726d3d31f395993814ac5d817a70594f98b99307ab4a",
+                57_010,
+                "2b531a9362240ec782ade0e7f9c91b4d7256cc6bb71f35608286fde034c3ae89",
             ),
             "session.js": (
                 6_988,
@@ -105,8 +105,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "aeef4f2ad3d702d434bfdafbc5123dec0f216a858b197b6ae00bc61fcf1873d9",
             ),
             "main.js": (
-                11_788,
-                "69d4659b50c6b6d9bcf4449b36ab3e8a26112d8778ff94abef80486f51777407",
+                11_805,
+                "7d0cc625be52c14b1c52aec418d516c608a1d5ee7b843157c028be332fee6b7c",
             ),
             "live.js": (
                 6_176,
@@ -128,9 +128,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(318_643, len(assembled))
+        self.assertEqual(320_199, len(assembled))
         self.assertEqual(
-            "441d3869c7896c51b37fd2cbb1ce1e5b3152ea2cd5e7d2ee70a00db43f510e5f",
+            "9b1f9ea435cba66402e02835b57a50c8b77e498aa0e43c6018b12cf24bf0b4ff",
             hashlib.sha256(assembled).hexdigest(),
         )
 

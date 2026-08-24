@@ -646,7 +646,7 @@ function waitEntry(queue, key){
    already holds the gates and the band would draw them twice. Everything else
    about the band is the same in both views, which is the point — the head, the
    numbering, the hint and the cursor are one implementation. */
-function waitBand(d, shown, queue, focusKey){
+function waitBand(d, shown, queue, focusKey, numbered){
   if(!shown.length) return "";
   /* Resolved against what THIS band draws rather than against the whole queue.
      In calm the cursor is usually on a ledger row, and a band that drew a
@@ -657,10 +657,16 @@ function waitBand(d, shown, queue, focusKey){
      ask-only rendering calm and the session view get keeps the wording DRC-4172
      shipped instead of announcing a queue whose gates are somewhere else. */
   const gates = shown.some(e => e.kind === "gate");
-  /* Numbered only when the band holds the whole queue. Calm draws the gates in
-     its ledger, so a "2" over its one-card band would be a place in a list that
-     is not on screen. */
-  const whole = shown.length === queue.length;
+  /* Numbered by the caller that draws the whole queue, and by no other. Calm and
+     the session view draw the questions alone with the gates in the ledger or
+     off-screen entirely, so an ordinal there is a place in a list the reader
+     cannot see.
+
+     A flag rather than `shown.length === queue.length`, which says the same
+     thing only by coincidence: it is true exactly when the queue happens to hold
+     no gate, so a calm band of two questions drew 1 and 2, lost both the moment
+     any gate appeared anywhere on the board, and got them back when it cleared.
+     The numbers blinked in and out of a band that had not otherwise changed. */
   /* Advertised here because the regular view has no legend footer to put them
      in, and only where the cursor is actually in this band — keys drawn over a
      surface that does not answer them are worse than none. `j k step` only with
@@ -672,8 +678,8 @@ function waitBand(d, shown, queue, focusKey){
       (focus.kind === "ask" ? "⏎ answer" : "⏎ copy id")
     : "";
   const rows = shown.map(e => e.kind === "gate"
-    ? needRow(d, e.gate, whole ? e.pos : 0, !!focus && focus.key === e.key)
-    : askCard(e.ask, whole ? e.pos : 0, !!focus && focus.key === e.key)).join("");
+    ? needRow(d, e.gate, numbered ? e.pos : 0, !!focus && focus.key === e.key)
+    : askCard(e.ask, numbered ? e.pos : 0, !!focus && focus.key === e.key)).join("");
   return `<div class="band" id="waitband"><div class="band-head">` +
     `<span class="band-dot"></span>` +
     `<span class="band-k">${gates ? "Needs your input" : "Asking you"}</span>` +
@@ -692,7 +698,7 @@ function waitBand(d, shown, queue, focusKey){
    anything on screen. */
 function waitAskBand(d, focusKey){
   const queue = waitingQueue(d);
-  return waitBand(d, queue.filter(e => e.kind === "ask"), queue, focusKey);
+  return waitBand(d, queue.filter(e => e.kind === "ask"), queue, focusKey, false);
 }
 
 function waitMove(step){

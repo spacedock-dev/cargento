@@ -117,7 +117,7 @@ function render(d){
      three sections partition the board — the two below exclude `needs_input`, so
      nothing here is drawn twice — which is what lets the band render the merged
      order that calm can only draw half of. */
-  const bandHtml = waitBand(d, queue, queue);
+  const bandHtml = waitBand(d, queue, queue, undefined, true);
 
   let workingHtml = "";
   if(working.length){

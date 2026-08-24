@@ -60,8 +60,17 @@ const askKey = a => "ask:" + (a && a.id);
    rounds to the second from the same `now` that stamps `generated`. That
    rounding is why an exact tie breaks toward the gate rather than arbitrarily:
    an ask's derived figure carries up to half a second the gate's does not, so a
-   tie is not evidence the two are equally old, and a fixed side keeps the head
-   of the queue from swapping between polls.
+   tie is not evidence the two are equally old.
+
+   Exact ties only, and the rounding costs something the fixed side cannot pay
+   for. `generated` is a float and `age_sec` is not, so an ask's `since` moves
+   under it by up to a second as the rounding lands either side of the poll:
+   measured over three polls of one gate and one ask whose waits began 0.3s
+   apart, the two rows and their ordinals traded places every time. Quantizing
+   the gate's side here does not settle it — it moves the churn window to
+   wherever the two roundings fall out of phase. The fix is an absolute
+   `asked_at` epoch on the payload, ranked on directly, which is a server change:
+   docs/design-ask-lane.md A-5 carries it.
 
    Entries carry `harness` and `pos` at the top level: `countTile` reads the
    first off every member of this list, and the band draws the second as the

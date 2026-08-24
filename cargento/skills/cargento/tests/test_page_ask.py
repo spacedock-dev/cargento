@@ -779,6 +779,89 @@ console.log(JSON.stringify(out));
         self.assertEqual(out["regularOrder"], out["calmOrder"], "the two modes ordered differently")
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_g_narrows_calms_ledger_only_when_the_queue_holds_a_gate(self) -> None:
+        # `needs` filters the ledger to the blocked rows, and a queue of
+        # questions alone has none — the ordinary shape, since most harnesses
+        # report no `needs_input` at all and a question is Cargento's own. `g`
+        # applied it regardless, so on a board whose only waiting thing was a
+        # question the ledger collapsed to "Nothing matches this filter" and the
+        # reader lost the rest of the board to reach a card already on screen.
+        checks = """
+const out = {};
+// Question-only: two ordinary rows in the ledger, no gate anywhere.
+render(queueBoard([busy, quiet], [askAt("a0", 99000)]));
+out.before = rows();
+key("g");
+out.askOnlyRows = rows();
+out.askOnlyFilter = calmStateOnly;
+out.askOnlyCursor = calmCursorKey;
+out.askOnlyEmpty = __els.app.innerHTML.includes("Nothing matches this filter");
+// The control arm: one gate in the queue and the narrowing is back, ordering
+// included. Without this the fix could be "never narrow" and still pass.
+calmAction("clear", null);
+calmAction("sort", "recent");
+render(queueBoard([gateAt("g1", 99100), busy, quiet], [askAt("a0", 99000)]));
+key("g");
+out.mixedFilter = calmStateOnly;
+out.mixedSort = calmSort;
+out.mixedRows = rows();
+out.mixedCursor = calmCursorKey;
+console.log(JSON.stringify(out));
+"""
+        out = self.run_queue(checks, saved="calm")
+        self.assertEqual(2, out["before"])
+        self.assertEqual(2, out["askOnlyRows"], "`g` filtered the board down to nothing")
+        self.assertIsNone(out["askOnlyFilter"], "a queue with no gate in it still narrowed")
+        self.assertFalse(out["askOnlyEmpty"])
+        self.assertEqual("ask:a0", out["askOnlyCursor"], "`g` did not reach the question")
+        self.assertEqual("needs", out["mixedFilter"], "a real gate queue stopped narrowing")
+        self.assertEqual("attention", out["mixedSort"])
+        self.assertEqual(1, out["mixedRows"], "the narrowed ledger is not the gate alone")
+        self.assertEqual("ask:a0", out["mixedCursor"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_only_the_band_that_draws_the_whole_queue_numbers_its_rows(self) -> None:
+        # An ordinal is a place in the queue, so it belongs to the band that
+        # draws the queue. Calm and the session view draw the questions with the
+        # gates elsewhere. Deriving that from "shown is as long as the queue"
+        # made it true exactly when no gate happened to exist, so calm's numbers
+        # appeared and disappeared as gates came and went on the board.
+        checks = """
+const out = {};
+const ords = () => [...__els.app.innerHTML.matchAll(/class="need-n">([^<]*)</g)]
+  .map(m => m[1]);
+const asksOnly = () => queueBoard([busy, quiet], [askAt("a2", 99300), askAt("a4", 99700)]);
+render(asksOnly());
+out.calmNoGate = ords();
+render(mixed());
+out.calmWithGate = ords();
+render(asksOnly());
+out.calmGateGone = ords();
+setDisplayMode("session");
+location.hash = "#session=codex:bbb2";
+render(asksOnly());
+out.sessionNoGate = ords();
+render(mixed());
+out.sessionWithGate = ords();
+setDisplayMode("regular");
+render(mixed());
+out.regular = ords();
+render(asksOnly());
+out.regularAsksOnly = ords();
+console.log(JSON.stringify(out));
+"""
+        out = self.run_queue(checks, saved="calm")
+        self.assertEqual([], out["calmNoGate"], "calm numbered a band the queue runs past")
+        self.assertEqual([], out["calmWithGate"])
+        self.assertEqual([], out["calmGateGone"], "calm's ordinals came back when the gate left")
+        self.assertEqual([], out["sessionNoGate"], "the session view numbered its band")
+        self.assertEqual([], out["sessionWithGate"])
+        self.assertEqual(
+            ["1", "2", "3", "4"], out["regular"], "the regular band stopped numbering the queue"
+        )
+        self.assertEqual(["1", "2"], out["regularAsksOnly"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_calm_steps_the_asks_with_the_same_keys_regular_does(self) -> None:
         # Calm shipped the band reachable but not walkable: `j` and `k` moved
         # through the ledger's session rows and could not reach a question at

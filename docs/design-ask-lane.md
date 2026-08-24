@@ -210,8 +210,22 @@ What it ranks on is an absolute epoch on the payload's own clock: `blocked_since
 `generated - age_sec` for a question, which `_ask_cards` rounds to the second from the same `now`
 that stamps `generated`. An exact tie breaks toward the gate rather than arbitrarily, because the
 question's figure carries up to half a second of rounding the gate's does not, so a tie is not
-evidence that the two are equally old and a fixed side keeps the head of the queue from swapping
-between polls.
+evidence that the two are equally old.
+
+That settles exact ties and nothing wider, which is worth stating because the rounding it leans on is
+also the one thing in this order that moves on its own. `generated` is a float and `age_sec` is a
+whole number, so a question's reconstructed `since` shifts by up to a second between polls as the
+rounding lands either side of the sample. Three consecutive polls over one gate and one question
+whose waits began 0.3s apart put them in the order gate-question-gate: two adjacent rows, and their
+ordinals, trading places every five seconds under a reader. The cursor holds a key rather than a
+position, so nothing is mis-actioned, but the queue does churn where SKILL.md says it does not.
+
+Quantizing the gate's side to match is not the fix: it moves the churn window to wherever the two
+roundings fall out of phase rather than closing it, and a tolerance band moves it to the edge of the
+band. Closing it needs the server to publish an absolute `asked_at` alongside `age_sec` in
+`_ask_cards`, so both kinds rank on a figure that does not move: **a follow-up, filed rather than
+smuggled into this one**, because it changes the payload contract and everything downstream of
+`age_sec` that reads a duration.
 
 The cursor holds a key rather than an index for the reason it always did, and a question needed a key
 that behaves the way `sessKey` does. It is `ask:<id>`, the registration id: generated once from
