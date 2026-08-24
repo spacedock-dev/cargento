@@ -168,7 +168,7 @@ CODEX_EVENTS = {
     "SubagentStop": "subagent_stopped",
 }
 
-# Gemini CLI. Measured from five real 0.53.1 sessions driven against a local
+# Gemini CLI. Measured from four real 0.53.1 sessions driven against a local
 # stand-in for the API, so no credential was involved: see
 # `docs/captures/gemini/hooks-0.53.1-macos.jsonl`. Gemini's vocabulary is its own
 # -- `BeforeAgent` and `AfterAgent` rather than `UserPromptSubmit` and `Stop` --
