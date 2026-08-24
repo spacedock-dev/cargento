@@ -12,10 +12,10 @@ import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from unittest import mock
 
-from cargento_runtime import diagnostics
+from cargento_runtime import aggregate, diagnostics
 from cargento_runtime import io as runtime_io
 from cargento_runtime.collectors import antigravity as agy_collector
 from cargento_runtime.collectors import cursor as cursor_collector
@@ -239,6 +239,47 @@ class SqliteCollectorTest(RuntimeTestCase):
             payload["providerOptions"] = {"cursor": {"modelName": model}}
         return json.dumps(payload, separators=(",", ":")).encode()
 
+    # One tool-call contract, keyed by its own `toolCallId`, with the five keys
+    # the capture's `pending-record-shape` arm enumerated. The values are
+    # deliberately loud rather than plausible: three of these keys can carry a
+    # tool name, and a test that used realistic ones could not tell "the reader
+    # never touched them" from "the reader published something innocuous".
+    CURSOR_CONTRACT_ID = "call_" + "f" * 80
+    CURSOR_CONTRACT: ClassVar[dict[str, Any]] = {
+        "allowedToolNames": ["NEVER-RENDER-ALLOWED"],
+        "isDynamic": False,
+        "outerToolName": "NEVER-RENDER-OUTER",
+        "toolCallId": CURSOR_CONTRACT_ID,
+        "toolIdentifier": "NEVER-RENDER-IDENTIFIER",
+    }
+
+    @classmethod
+    def _cursor_pending(cls, *, waiting: bool, started_ms: int | None = None) -> bytes:
+        """One carrier blob, in the shape the store holds it while a gate stands.
+
+        Not a JSON object. The capture measured the carrier as a length-prefixed
+        binary frame with the payload inside it, which is the whole reason the
+        reader matches on bytes: a brace-first parse of this blob finds nothing.
+        The frame header here stands in for that prefix rather than reproducing
+        Cursor's protobuf exactly — what the test needs is that byte 0 is not
+        `{`.
+
+        ``waiting`` picks between the two states the same three keys wear. An
+        answered call keeps `pendingToolCallStartedAtMs` and empties the
+        contracts map, which is measured (`a1-approve`:
+        `pending_started_ms_present_after_answer` true beside
+        `pending_contract_entries_after_answer` 0) and is why the stamp cannot
+        be the discriminator.
+        """
+        payload: dict[str, Any] = {"modelProviderMessageId": "msg-1"}
+        if started_ms is not None:
+            payload["pendingToolCallStartedAtMs"] = started_ms
+        payload["pendingToolExecutionContracts"] = (
+            {cls.CURSOR_CONTRACT_ID: cls.CURSOR_CONTRACT} if waiting else {}
+        )
+        body = json.dumps(payload, separators=(",", ":")).encode()
+        return b"\x0a" + len(body).to_bytes(4, "big") + body
+
     @staticmethod
     def _cursor_chat(messages: list[bytes], trailer: bytes = b"") -> tuple[str, dict[str, bytes]]:
         """(root blob id, the blobs table) for a chat holding ``messages``.
@@ -254,14 +295,29 @@ class SqliteCollectorTest(RuntimeTestCase):
         root_id = hashlib.sha256(root).hexdigest()
         return root_id, {root_id: root, **dict(pairs)}
 
-    def _collect_cursor(self, tmp: Path) -> list[dict[str, Any]]:
+    def _collect_cursor(
+        self,
+        tmp: Path,
+        *,
+        now: float | None = None,
+        window_hours: float = 24,
+        show_all: bool = True,
+    ) -> list[dict[str, Any]]:
+        """The Cursor rows one chats root publishes.
+
+        ``now`` is a parameter rather than always the wall clock because the
+        liveness gate is a comparison against it: the abandoned-store case is
+        built by reading a store that was written seconds ago from a clock 29.4
+        hours later, which is the measured arrangement without a sleep or an
+        ``os.utime`` race in it.
+        """
         with (
             store_patch(CURSOR_CHATS=str(tmp / "chats")),
             mock.patch.dict(STORE_OVERRIDES, {"cursor.chats": [str(tmp / "chats")]}),
         ):
             config, state = runtime()
             sessions: list[dict[str, Any]] = cursor_collector.collect(
-                config, state, time.time(), 24, True
+                config, state, time.time() if now is None else now, window_hours, show_all
             )
             return sessions
 
@@ -315,14 +371,14 @@ class SqliteCollectorTest(RuntimeTestCase):
 
             with mock.patch.object(runtime_io, "open_sqlite_read_only", counting_open):
                 self.assertEqual(
-                    ("Some title", str(workspace), "vega", "", ""),
+                    ("Some title", str(workspace), "vega", "", "", None),
                     cursor_collector._meta(config, state, db, mtime),
                 )
                 self.assertEqual([], opens, "a memo hit reopened the store")
 
                 # A changed mtime invalidates the memo, so the store is read.
                 self.assertEqual(
-                    ("Some title", str(workspace), "vega", "", ""),
+                    ("Some title", str(workspace), "vega", "", "", None),
                     cursor_collector._meta(config, state, db, mtime + 1),
                 )
                 self.assertEqual([db], opens)
@@ -936,6 +992,233 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual("working", sessions[0]["state"])
         self.assertEqual("My Refactor Chat", sessions[0]["title"])
 
+    def _cursor_gate_store(self, root: Path, sid: str, carriers: list[bytes]) -> None:
+        """A chat store with ``carriers`` appended after its message blobs.
+
+        The carriers are not children of `latestRootBlobId`, and that is the
+        arrangement rather than a shortcut: the capture's `store-ordering` arm
+        found one readable store whose root id was not in the table at all, so a
+        reader that reached the pending record by widening the existing
+        meta-root-children walk would miss it there. They go in last so their
+        rowids are the highest, which is the only order handle the schema has.
+        """
+        root_id, blobs = self._cursor_chat([self._cursor_message("vega")])
+        for carrier in carriers:
+            blobs[hashlib.sha256(carrier).hexdigest()] = carrier
+        self._cursor_store(root, sid, [{"name": "Gated", "latestRootBlobId": root_id}], blobs)
+
+    def test_cursor_memoizes_the_gate_on_the_same_mtime_as_the_rest(self) -> None:
+        # The gate read is a scan where the model read is two indexed lookups, so
+        # it is the one that most needs an idle session to cost nothing: without
+        # the memo every Cursor store is scanned on every five-second refresh.
+        # Counting store opens rather than comparing values, because `_meta`'s
+        # double-checked lock returns the cached tuple even with the outer memo
+        # gone.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        started = now - 45
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "aaaa1111",
+                [self._cursor_pending(waiting=True, started_ms=int(started * 1000))],
+            )
+            self.assertEqual("needs_input", self._collect_cursor(root, now=now)[0]["state"])
+
+            config, state = runtime()
+            db = next(key for key in state.cursor_metadata_cache if key.endswith("store.db"))
+            mtime = state.cursor_metadata_cache[db][0]
+            opens: list[str] = []
+            real_open = runtime_io.open_sqlite_read_only
+
+            def counting_open(path: str, st: Any) -> Any:
+                opens.append(path)
+                return real_open(path, st)
+
+            with mock.patch.object(runtime_io, "open_sqlite_read_only", counting_open):
+                memoized = cursor_collector._meta(config, state, db, mtime)
+                self.assertEqual([], opens, "a memo hit reopened the store")
+                self.assertAlmostEqual(started, float(memoized[5] or 0), places=2)
+                # A new blob moves the store, which is exactly when the answer
+                # can have arrived, so a changed mtime must re-read.
+                cursor_collector._meta(config, state, db, mtime + 1)
+                self.assertEqual([db], opens)
+
+    def test_cursor_finds_the_gate_when_the_store_keeps_its_blobs_as_text(self) -> None:
+        # The column is declared BLOB and every store measured stores bytes, but
+        # SQLite types values and not columns, so a build that wrote the frame as
+        # text would keep it as text. That matters for more than the decode: the
+        # scan is `instr(data, :key)` with a bytes needle, and if a text value
+        # and a blob needle did not compare the reader would find nothing at all
+        # on such a store, silently. Measured here rather than assumed.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        started = now - 60
+        carrier = self._cursor_pending(waiting=True, started_ms=int(started * 1000))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat([self._cursor_message("vega")])
+            self._cursor_store(root, "aaaa1111", [{"latestRootBlobId": root_id}], blobs)
+            db = root / "chats" / "hash1" / "aaaa1111" / "store.db"
+            con = sqlite3.connect(str(db))
+            try:
+                con.execute(
+                    "INSERT INTO blobs VALUES (?, ?)",
+                    (hashlib.sha256(carrier).hexdigest(), carrier.decode("latin-1")),
+                )
+                con.commit()
+            finally:
+                con.close()
+            rows = self._collect_cursor(root, now=now)
+
+        self.assertEqual("needs_input", rows[0]["state"])
+        self.assertAlmostEqual(started, float(rows[0]["blocked_since"]), places=2)
+
+    def test_cursor_reports_a_standing_gate_as_needs_input(self) -> None:
+        # DRC-4202. `pendingToolExecutionContracts` non-empty on the newest blob
+        # by rowid is a person being asked something, and the stamp beside it is
+        # when they started waiting -- measured across four interactive
+        # allowlist-mode sessions in
+        # docs/captures/cursor/pending-tool-call-2026.08.11-macos.jsonl.
+        #
+        # 110.2 seconds is the a1-approve arm's own reading, and it is past
+        # `working_threshold_sec`; the store's mtime is not, because the fixture
+        # was written a moment ago. So this also pins the precedence: the row is
+        # inside the working window and must still read Needs input, for the
+        # reason Copilot's does (docs/design-needs-input.md N-2).
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        started = now - 110.2
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "aaaa1111",
+                [self._cursor_pending(waiting=True, started_ms=int(started * 1000))],
+            )
+            rows = self._collect_cursor(root, now=now)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("needs_input", rows[0]["state"])
+        self.assertAlmostEqual(started, float(rows[0]["blocked_since"]), places=2)
+        self.assertEqual("permission request, waiting 1m", rows[0]["state_detail"])
+
+    def test_cursor_never_publishes_what_the_contract_names(self) -> None:
+        # The contract entry carries `outerToolName`, `toolIdentifier` and
+        # `allowedToolNames`, any of which can be a tool or a command. None of
+        # them may reach a rendered field: the row's detail is the popup body
+        # (`aggregate._wait_popup_body`), so a value read here is a value on a
+        # desktop notification. Asserted over the whole serialized row rather
+        # than over `state_detail`, because the title and the project are on the
+        # same card.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "aaaa1111",
+                [self._cursor_pending(waiting=True, started_ms=int((now - 30) * 1000))],
+            )
+            rows = self._collect_cursor(root, now=now)
+
+        self.assertEqual("needs_input", rows[0]["state"])
+        self.assertNotIn("NEVER-RENDER", json.dumps(rows[0]))
+        self.assertNotIn(self.CURSOR_CONTRACT_ID, json.dumps(rows[0]))
+        # The banner text itself, composed the way the application composes it,
+        # since that is the surface DRC-4192 pointed at every harness.
+        self.assertNotIn("NEVER-RENDER", aggregate._wait_popup_body(rows[0]))
+
+    def test_cursor_reads_an_answered_gate_as_nobody_waiting(self) -> None:
+        # The stamp survives the answer and the map is emptied, so a reader that
+        # took `pendingToolCallStartedAtMs` for the discriminator -- which is the
+        # field the originating issue named -- would report every session that
+        # ever stood at a gate as waiting forever.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "aaaa1111",
+                [self._cursor_pending(waiting=False, started_ms=int((now - 30) * 1000))],
+            )
+            rows = self._collect_cursor(root, now=now)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("working", rows[0]["state"])
+        self.assertIsNone(rows[0]["blocked_since"])
+
+    def test_cursor_takes_the_newest_carrier_by_rowid_and_not_any_of_them(self) -> None:
+        # The store is append-only and content-addressed: the blob that stood at
+        # the gate is still there after the answer, so "any blob carries a
+        # non-empty map" is a wait that never ends. Both directions are asserted,
+        # because a reader that simply preferred an empty map wherever it found
+        # one would pass the first half and fail the second.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        now = time.time()
+        old_ms, new_ms = int((now - 300) * 1000), int((now - 40) * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "answered1",
+                [
+                    self._cursor_pending(waiting=True, started_ms=old_ms),
+                    self._cursor_pending(waiting=False, started_ms=old_ms),
+                ],
+            )
+            self._cursor_gate_store(
+                root,
+                "standing1",
+                [
+                    self._cursor_pending(waiting=False, started_ms=old_ms),
+                    self._cursor_pending(waiting=True, started_ms=new_ms),
+                ],
+            )
+            rows = {row["sid"]: row for row in self._collect_cursor(root, now=now)}
+
+        self.assertEqual("working", rows["answered1"]["state"])
+        self.assertEqual("needs_input", rows["standing1"]["state"])
+        self.assertAlmostEqual(new_ms / 1000, float(rows["standing1"]["blocked_since"]), places=2)
+
+    def test_cursor_does_not_publish_a_gate_a_dead_session_left_behind(self) -> None:
+        # The liveness gate, and the measurement behind it: of ten readable
+        # stores no arm of the probe had driven, 2 read as waiting 29.4 hours
+        # after their process exited. A session abandoned at a gate stays pending
+        # in the store forever, so without this the board carries permanent red
+        # rows -- and since DRC-4192 a desktop notification with each.
+        #
+        # The control arm is the point of the second half. The same store, read
+        # at its own clock, does raise the wait, so this fixture could have
+        # produced the positive and the negative is a property of the age.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        abandoned = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._cursor_gate_store(
+                root,
+                "aaaa1111",
+                [self._cursor_pending(waiting=True, started_ms=int(abandoned * 1000))],
+            )
+            live = self._collect_cursor(root, now=abandoned + 30)
+            # `show_all`, because the default window would drop the row before
+            # the gate was ever consulted and prove nothing about the gate.
+            stale = self._collect_cursor(root, now=abandoned + 29.4 * 3600, show_all=True)
+
+        self.assertEqual("needs_input", live[0]["state"])
+        self.assertEqual(1, len(stale), "the row itself must survive; only the wait is dropped")
+        self.assertNotEqual("needs_input", stale[0]["state"])
+        self.assertIsNone(stale[0]["blocked_since"])
+
     @staticmethod
     def _goose_db(path: Path, sid: str, description: str, stamp: str) -> None:
         con = sqlite3.connect(path)
@@ -1088,7 +1371,8 @@ class SqliteDiagnosticTest(unittest.TestCase):
             with state.cache_lock:
                 state.store_errors.clear()
             self.assertEqual(
-                (None, "", None, "", ""), cursor_collector._meta(config, state, str(cursor), 1.0)
+                (None, "", None, "", "", None),
+                cursor_collector._meta(config, state, str(cursor), 1.0),
             )
             self.assertIn(str(cursor), state.store_errors)
             # A title the query never returned must not be cached as "no title".

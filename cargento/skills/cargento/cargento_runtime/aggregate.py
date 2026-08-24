@@ -38,9 +38,9 @@ def row_order(session: Session) -> tuple[int, float, str]:
     as every row in it waits longer.
 
     `last_activity` stands in where a wait carries no `blocked_since`: only the
-    Claude and Copilot collectors and the event overlays set that field, and a
-    harness without it must still take a place in the queue rather than sorting to
-    the front on a zero.
+    Claude, Copilot and Cursor collectors and the event overlays set that field,
+    and a harness without it must still take a place in the queue rather than
+    sorting to the front on a zero.
     """
     wait = 0.0
     if session["state"] == "needs_input":
@@ -177,7 +177,7 @@ class HarnessSpec:
     that never measured below a session it can prove is slow.
 
     ``reports_needs_input`` is the same shape on the field where getting it
-    wrong costs more. Seven of the ten cannot observe a gate at all, and their
+    wrong costs more. Six of the ten cannot observe a gate at all, and their
     silence is byte-identical to the silence of one that can when nothing is
     waiting: no row, no count, no band. So a quiet board cannot say whether
     nothing is waiting or nothing could have told you, and B2's own note is that
@@ -248,8 +248,8 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             reports_rate=True,
             # Three paths, more than any other row: the bundled hook, an
             # actionable Notification POST, and a pending input tool in the
-            # transcript. Codex and Copilot have one apiece; the remaining seven
-            # are tracked per harness under B2.
+            # transcript. Codex, Copilot and Cursor have one apiece; the
+            # remaining six are tracked per harness under B2.
             reports_needs_input=True,
             usage=claude.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,
@@ -312,6 +312,15 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             "Cursor",
             cursor.discover,
             cursor.collect,
+            # Copilot's route, on a different store: the collector reads it, no
+            # hook and nothing to install. A standing tool-call gate leaves a
+            # non-empty `pendingToolExecutionContracts` on the newest blob of the
+            # chat's SQLite store, and the answer appends one with the map
+            # emptied. The hook surface is a decided negative and stays one:
+            # `beforeShellExecution` runs BEFORE the permission decision and
+            # feeds into it, so a wait posted from there would paint every Cursor
+            # row on its first command.
+            reports_needs_input=True,
             usage=cursor.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,
         ),

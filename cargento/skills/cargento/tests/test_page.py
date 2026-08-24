@@ -639,7 +639,7 @@ class CargentoServerTest(PageJsHarness):
             {spec.key for spec in REGISTRY if spec.reports_rate},
         )
 
-    def test_only_the_three_harnesses_with_a_gate_path_declare_one(self) -> None:
+    def test_only_the_four_harnesses_with_a_gate_path_declare_one(self) -> None:
         # The same shape as `reports_rate` above and for the same reason, on the
         # field where getting it wrong is worse. A harness with no gate detection
         # publishes no needs-input row, which is the identical payload a harness
@@ -653,7 +653,7 @@ class CargentoServerTest(PageJsHarness):
         # without teaching its collector to emit `needs_input` would publish a
         # promise the board cannot keep, which is strictly worse than the gap.
         self.assertEqual(
-            {"claude", "codex", "copilot"},
+            {"claude", "codex", "copilot", "cursor"},
             {spec.key for spec in REGISTRY if spec.reports_needs_input},
         )
 
@@ -678,6 +678,11 @@ class CargentoServerTest(PageJsHarness):
         # replace -- it would have to be edited by the same person who set the flag,
         # from the same belief, so it could never contradict them. Reading the
         # collector modules for the state they actually write can.
+        #
+        # It has since paid for itself once. Cursor's gate read landed in its
+        # collector and this test failed on the flag before anyone thought to set
+        # it, which is the direction that matters: the derivation demanded the
+        # declaration rather than being widened to agree with one.
         by_collector = {spec.key for spec in REGISTRY if _writes_a_wait(spec.collect)}
         by_adapter = {
             harness
