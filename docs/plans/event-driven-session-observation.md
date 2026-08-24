@@ -420,12 +420,12 @@ any count next to a harness list here is part of the list.
 | Copilot CLI | Plugin-bundled, repo (`.github/hooks/*.json`) or user command hooks | ACP server via `--acp`, transport unverified | Deferred; probe baseline |
 | OpenCode | Shared server SSE where safely discoverable and authenticated; user plugin otherwise | Native ACP mode | Prefer an existing-server topology once proven |
 | Cursor CLI | Plugin-installed hooks, with ordinary local-CLI coverage requiring fixtures | Listed in the ACP agent directory; the installed cursor-agent 2026.07.23 help advertises no ACP entry point, so the mode is unverified. Opt-in `--output-format stream-json` in print mode | Deferred; probe baseline |
-| Goose | No universal passive feed documented | Goose ACP server/API | Deferred; probe baseline |
+| Goose | Plugin command hooks, auto-discovered from `~/.agents/plugins/<name>/hooks/hooks.json`, on the eleven names in [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl). They bound a turn and nothing else: no hook fires while a tool confirmation stands, and the store records nothing either | Goose ACP server/API | Turn boundaries are reachable; a needs-input signal is a measured blank |
 | Factory Droid | User or plugin command hooks (documented, summarised by category) | ACP listed in the agent directory, mode unverified | Deferred; probe baseline |
 
-Claude, Codex, Antigravity and Gemini rows are backed by captures under `docs/captures/`. The other
-six rows are vendor-documentation reads with no capture behind them: treat every cell for Pi,
-Copilot CLI, OpenCode, Cursor CLI, Goose and Factory Droid as unmeasured, including the ACP column,
+Claude, Codex, Antigravity, Gemini and Goose rows are backed by captures under `docs/captures/`. The
+other rows are vendor-documentation reads with no capture behind them: treat every cell for Pi,
+Copilot CLI, OpenCode, Cursor CLI and Factory Droid as unmeasured, including the ACP column,
 whose per-harness qualifiers come from the ACP agent directory listing rather than from any observed
 connection.
 
@@ -1218,9 +1218,15 @@ transition. Its [structured output](https://cursor.com/docs/cli/reference/output
 documented as opt-in `--output-format stream-json` in explicit or inferred print mode, with `text`
 the default.
 Goose's [official documentation](https://block.github.io/goose/) describes CLI, API and managed ACP
-server modes, but no documented way exists for a separate Cargento process to attach passively to
-every already-running ordinary Goose CLI session. That last conclusion is an inference from the
-documented topologies, not a claim that Goose lacks managed transports.
+server modes. The paragraph that stood here concluded from those topologies that nothing could
+attach passively to an already-running ordinary CLI session; that is no longer true, and the way it
+stopped being true is worth keeping. Goose auto-discovers a plugin's `hooks/hooks.json` under
+`~/.agents/plugins/`, and [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl)
+records eleven event names arriving from an ordinary interactive session on 1.47.0, carrying the
+whole ten-character `sessions.id` the collector already keys on. What that route does not reach is
+the tool-confirmation gate: no hook fires for 83.2 s while the dialog stands, and the store is
+silent for the same window, so the turn boundaries are reachable and the needs-input signal is a
+measured blank rather than an unread one.
 
 For all three, the current store collectors remain the safe compatibility baseline. Event support
 can be added only for the states proven by contract tests and real CLI fixtures.
