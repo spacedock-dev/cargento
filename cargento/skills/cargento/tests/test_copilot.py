@@ -1224,3 +1224,75 @@ class CopilotPermissionGateTest(RuntimeTestCase):
 
         self.assertEqual("needs_input", row["state"])
         self.assertEqual([{"name": "researcher", "model": "gpt-5.4-mini"}], row["subagents"])
+
+    def test_a_prompt_typed_past_a_request_retires_it(self) -> None:
+        # The liveness bound. `permission.completed` is the only record that
+        # answers a request, and it is never written when the terminal closes on
+        # the dialog or the process is killed at it — so the request stands for
+        # the whole activity window, ahead of the busy test, and a session that
+        # was resumed and is unambiguously working reads Needs input against its
+        # own live activity. A prompt the person typed is proof the dialog is
+        # gone: it owns the input while it is up.
+        now = time.time()
+        orphan = datetime.fromtimestamp(now - 3600, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now - 3600),
+            self.shell_request("req-1", orphan),
+            {
+                "type": "user.message",
+                "timestamp": datetime.fromtimestamp(now - 30, UTC).isoformat(),
+                "data": {"text": "carry on"},
+            },
+            {
+                "type": "tool.execution_start",
+                "timestamp": datetime.fromtimestamp(now - 5, UTC).isoformat(),
+                "data": {"toolName": "view"},
+            },
+        )
+
+        self.assertEqual("working", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_a_request_with_nothing_yet_behind_it_is_not_a_wait(self) -> None:
+        # The headless race, and since DRC-4192 it raises a real desktop popup
+        # rather than a cosmetic blink. `copilot -p` without `--allow-all-tools`
+        # is not refused: it auto-denies every gated call, writing the pair 1 ms
+        # apart. A collection tick landing inside that millisecond — or on a
+        # `permission.completed` line still being appended, which the parser
+        # drops as unreadable JSON, and which is the tail this fixture builds —
+        # sees a request with no answer behind it. The settled end state is
+        # pinned by `test_a_non_interactive_denial_never_raises_a_wait`, which
+        # cannot see this window at all.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 0.2, UTC).isoformat()
+        torn = json.dumps(
+            self.completed(
+                "req-1",
+                datetime.fromtimestamp(now - 0.199, UTC).isoformat(),
+                "denied-no-approval-rule-and-could-not-request-from-user",
+            )
+        )[:40]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            path = root / "session-state" / self.SID / "events.jsonl"
+            path.parent.mkdir(parents=True)
+            events = [*self.opening(now), self.shell_request("req-1", asked)]
+            path.write_text("".join(json.dumps(e) + "\n" for e in events) + torn)
+            os.utime(path, (now - 0.2, now - 0.2))
+            row = collect_rows(root, now)[self.SID]
+
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_the_floor_does_not_hold_back_a_gate_a_person_is_at(self) -> None:
+        # The other half of the floor: two seconds is three orders of magnitude
+        # above the 1 ms pair it exists to beat and an order below the shortest
+        # 23 s gate the capture recorded, so a prompt in front of a person is
+        # never withheld by it.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 3, UTC).isoformat()
+        row = self.row(now, *self.opening(now), self.shell_request("req-1", asked))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(asked), row["blocked_since"])

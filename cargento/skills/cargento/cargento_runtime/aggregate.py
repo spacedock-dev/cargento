@@ -177,8 +177,8 @@ class HarnessSpec:
     that never measured below a session it can prove is slow.
 
     ``reports_needs_input`` is the same shape on the field where getting it
-    wrong costs more. Eight of the ten cannot observe a gate at all, and their
-    silence is byte-identical to the silence of the two that can when nothing is
+    wrong costs more. Seven of the ten cannot observe a gate at all, and their
+    silence is byte-identical to the silence of one that can when nothing is
     waiting: no row, no count, no band. So a quiet board cannot say whether
     nothing is waiting or nothing could have told you, and B2's own note is that
     a reader assumes the former because everything else here is harness-agnostic.
@@ -192,9 +192,12 @@ class HarnessSpec:
     overlay and has no collector detection at all, so a flag meaning the second
     thing labelled Codex blind on the same screen where a Codex gate was red.
     That is the inversion this field exists to prevent, shipped by the field
-    itself. `tests/test_page.py` now derives the expected set from Claude's
-    collector plus whatever `EVENTS_BY_HARNESS` maps `input_requested` for,
-    because a hand-set bool beside a hand-written literal pinned the bug green.
+    itself. `tests/test_page.py` derives the expected set instead of listing it:
+    every collector module is parsed for the state it actually writes, unioned
+    with whatever `EVENTS_BY_HARNESS` maps `input_requested` for, because a
+    hand-set bool beside a hand-written literal pinned the bug green. The same
+    test holds the count in the sentence above to the registry, since nothing
+    else does and it has been wrong twice.
     """
 
     key: str
@@ -243,8 +246,10 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             claude.discover,
             claude.collect,
             reports_rate=True,
-            # The only row that can. Its three paths are the whole of Cargento's
-            # gate detection; every other harness is tracked per harness under B2.
+            # Three paths, more than any other row: the bundled hook, an
+            # actionable Notification POST, and a pending input tool in the
+            # transcript. Codex and Copilot have one apiece; the remaining seven
+            # are tracked per harness under B2.
             reports_needs_input=True,
             usage=claude.usage if usage_fetch_enabled else None,
             usage_is_fetch=True,

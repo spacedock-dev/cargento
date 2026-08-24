@@ -369,7 +369,27 @@ class _Gate(NamedTuple):
     kind: str | None
 
 
-def _standing_gate(info: dict[str, Any] | None) -> _Gate | None:
+# How long a request must have stood before it is read as a person being held
+# up. It exists for one measured race: `copilot -p` without `--allow-all-tools`
+# is not refused, it auto-denies every gated call, and the capture times that
+# pair 1 ms apart. A collection tick landing inside that millisecond — or on a
+# `permission.completed` line still being appended, which the parser drops as
+# unreadable JSON — sees a request with nothing behind it and raises a real
+# desktop popup for a run nobody is watching.
+#
+# Two seconds is three orders of magnitude above the 1 ms it has to beat and an
+# order below the 23 s shortest gate the capture recorded, so a prompt in front
+# of a person is not withheld by it: the collection that would have reported it
+# at 0.2 s reports it on the next tick anyway.
+_MIN_GATE_STAND_SEC = 2.0
+
+
+def _standing_gate(
+    config: RuntimeConfig,
+    info: dict[str, Any] | None,
+    now: float,
+    mtime: float,
+) -> _Gate | None:
     """The oldest unanswered permission request in the tail, if there is one.
 
     None means the tail holds no request without an answer behind it, which is
@@ -385,12 +405,21 @@ def _standing_gate(info: dict[str, Any] | None) -> _Gate | None:
     to the front on its zero. It still wins when it is the only thing standing —
     the map is in file order, so the first entry is the first asked — which keeps
     an unparseable stamp a missing *reading* rather than a missing gate.
+
+    The floor is measured against the stamp the row would publish, so the wait it
+    tests is the wait the reader would have been shown. A stamp too far in the
+    future to age measures nothing and is left alone: the floor drops a request
+    too *young* to be a prompt, not one whose clock cannot be trusted.
     """
     pending = (info or {}).get("pending_permissions") or {}
     if not pending:
         return None
     oldest = min(pending.values(), key=lambda entry: (not entry["at"], entry["at"]))
-    return _Gate(float(oldest["at"] or 0), oldest["kind"])
+    gate = _Gate(float(oldest["at"] or 0), oldest["kind"])
+    stood = sessions.age(config, now, gate.at or mtime)
+    if stood is not None and stood < _MIN_GATE_STAND_SEC:
+        return None
+    return gate
 
 
 def collect(
@@ -433,7 +462,7 @@ def collect(
         last_event_sources = (info["last_event_ts"] if info else 0, mtime)
         session_state, state_detail = "idle", "awaiting your message"
         blocked_since = None
-        gate = _standing_gate(info)
+        gate = _standing_gate(config, info, now, mtime)
         # `{"name": str, "model": str | None}` each, built in
         # `transcripts.analyze_copilot_events` where the name and the model come
         # off one JSON object. Only a working session has any: `info` is None

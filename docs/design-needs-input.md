@@ -358,6 +358,19 @@ overlay can pin a live wait behind a stale Working row and nothing else would no
 that re-derives the state from the file on every refresh has no such failure mode: the same
 `permission.completed` that answers the gate is the record that clears it.
 
+It has a different one, and it is the mirror of the Claude case N-2 answers. The answering record is
+written by the CLI when the human replies, so a CLI that dies at its own dialog never writes it, and
+the request stands, ahead of the busy test, for as long as the row stays inside the activity window.
+A resumed session then reads Needs input while it is visibly working. What retires it is the session
+writing a `user.message` past the request: the dialog owns the input while it is up, so a typed
+prompt is proof it is gone. That is deliberately narrower than the evidence would allow. The capture
+has the file quiescent for the whole 36, 44 and 48 seconds a gate stood, so *any* record written
+after a standing request would do. But no arm ran a subagent, and a child writing into the parent's
+file while the parent's dialog stands would silence a real gate under exactly the fan-out where one
+is most likely. A killed session that never comes back is not covered by any of this and cannot be:
+the store records the question and never records the process going away, and there is no lock file
+beside it to ask. It ages out with the window, and `SKILL.md` says so on the Copilot row.
+
 Worse, the direction a Codex row can fail in is the one deliberately not recorded here. "It records,
 it does not decide" below explains why the reverse case, an overlay wait wrongly standing over a
 session that is generating, is left out: on Claude it is the ordinary event-ahead-of-scan path at

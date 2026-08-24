@@ -430,6 +430,9 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
         # Bounded by the tail read, like every other accumulator here. Truncation
         # can only lose a request, never invent one, because the file is append
         # ordered and an answer never precedes its own question.
+        #
+        # Two things empty it: the answer, and a later `user.message`. The second
+        # is the liveness bound — see the branch that does it.
         "pending_permissions": {},
     }
     for line in runtime_io.read_tail(config, path):
@@ -448,6 +451,24 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
             ctx = records.as_dict(data.get("context"))
             info["cwd"] = ctx.get("cwd") or data.get("cwd") or info["cwd"]
         elif t == "user.message":
+            # A prompt the person typed retires every request standing in front
+            # of it, and this is the only thing that retires one but the answer.
+            # A request whose answer never reached disk — the terminal closed on
+            # the dialog, the process killed — otherwise stands for the whole
+            # activity window, and it outranks the busy test, so a session that
+            # was resumed and is demonstrably working reads Needs input against
+            # its own live activity.
+            #
+            # Keyed on `user.message` and not on "any record written after the
+            # request", which is the wider rule the same evidence would allow:
+            # the capture has the file quiescent for the whole 36, 44 and 48 s a
+            # gate stood, so nothing at all follows a standing request there. But
+            # those arms ran no subagent, and a child writing into the parent's
+            # file while the parent's dialog stands would silence a real gate
+            # under exactly the fan-out where a gate is most likely. A typed
+            # prompt needs no such assumption: the dialog owns the input while it
+            # is up, so a new user message means it is gone.
+            info["pending_permissions"].clear()
             txt = records.extract_text(data).strip()
             if txt:
                 info["last_prompt"] = txt

@@ -15,11 +15,12 @@ function badge(key, active, name, tipSuffix){
 }
 
 /* Whether this strip row can observe a gate, or `null` for a payload that never
-   said. Nine of the ten cannot, and unlike `reports_rate` there is no dash to
-   draw: a harness with no detection publishes no needs-input row, which is the
-   same nothing the one WITH detection publishes when nobody is waiting. So the
-   strip is the only place the fact fits, and it has to be the strip's own field
-   rather than an inference — `=== false` and not `!h.reports_needs_input`,
+   said. Most harnesses cannot — the count is the payload's to state and was
+   wrong here through two features that changed it — and unlike `reports_rate`
+   there is no dash to draw: a harness with no detection publishes no needs-input
+   row, which is the same nothing one WITH detection publishes when nobody is
+   waiting. So the strip is the only place the fact fits, and it has to be the
+   strip's own field rather than an inference — `=== false` and not `!h.reports_needs_input`,
    because "Cargento cannot see gates here" is a claim about the harness's design
    and an absent field has not earned it. Same discipline harnessRateKnown()
    applies to its fallback, and the same reason spark.js gives for the model
