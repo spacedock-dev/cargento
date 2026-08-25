@@ -576,9 +576,10 @@ def _claude_entries(
 ) -> tuple[list[dict[str, Any]], str | None]:
     token, expiry, problem = _read_token(config, runner)
     if problem:
-        # No token is not "expired": a denied Keychain prompt or a missing
-        # file means Claude stays absent from the band, because "sign in
-        # again" would be the wrong advice.
+        # No token is neither `lapsed` nor `refused`. A denied Keychain prompt
+        # or a missing file means Claude stays absent from the band entirely,
+        # because both of those entries say something about a credential that
+        # was read, and here none was.
         return [], problem
     if expiry is not None and expiry <= now:
         # A stamp, not a verdict. Nothing was asked and nothing refused: Claude

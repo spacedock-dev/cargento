@@ -235,9 +235,10 @@ class TokenReadTest(unittest.TestCase):
         self.assertEqual(1, len(requests))
 
     def test_an_unavailable_keychain_item_is_a_category_never_a_value(self) -> None:
-        # A denied prompt or a missing item must not become "expired": the
-        # sign-in-again pointer would be the wrong advice. And whatever the
-        # subprocess did print must never travel into the note.
+        # A denied prompt or a missing item must produce no entry at all, in
+        # any state: `lapsed` and `refused` both describe a credential that was
+        # read, and here none was. Whatever the subprocess did print must never
+        # travel into the note either.
         runner = _keychain_runner("secret-looking stdout", returncode=1)
         entries, note = quota._claude_entries(
             _config(platform_name="darwin"), NOW, _forbidden_opener(), runner
