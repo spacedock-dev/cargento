@@ -1492,6 +1492,16 @@ console.log(JSON.stringify(out));
         # is a normal idle state — anyone whose harness was closed overnight
         # lands here before starting it.
         self.assertNotIn("u-excl", html)
+        # The claim has two carriers, and dropping either one alone puts a
+        # normal idle state back at a fault's visual weight. Losing the badge
+        # is caught above; losing the dim ink was caught only by the byte-pin
+        # oracle, which a developer recomputes as routine after any asset edit
+        # and which therefore cannot tell an intended change from this one.
+        self.assertIn("u-quiet", html)
+        # The stylesheet is the other half, and the two files can only agree by
+        # name: without this rule the class is inert and the row renders at the
+        # same weight as the refusal beside it.
+        self.assertIn(".u-noread.u-quiet{color:", STYLES)
         # And still no figures: a lapsed stamp shows nothing rather than the
         # last numbers it saw.
         self.assertNotIn("cm-track", html)
@@ -1524,6 +1534,22 @@ console.log(JSON.stringify(out));
         self.assertIn("refused", html)
         self.assertIn("sign in again", html)
         self.assertIn("u-excl", html)
+
+    def test_the_signin_remedy_is_keyed_on_harnesses_that_exist(self) -> None:
+        # The set is keyed on `u.harness`, which arrives from the registry, but
+        # the key is a bare literal in usage.js and the test above feeds the
+        # same literal by hand — so both sides agree with each other whatever
+        # the registry says. Renaming the Cursor key would be forced through
+        # HARNESS by the parity test and leave this set pointing at a harness
+        # that no longer exists, silently dropping the one measured remedy in
+        # the band while every test stayed green. Asserted against the page's
+        # own table, which that parity test already pins to the registry.
+        rendered = self._run_page_js(
+            "console.log(JSON.stringify({remedy: [...U_SIGNIN_ON_REFUSAL],"
+            " keys: Object.keys(HARNESS)}));"
+        )
+        self.assertTrue(rendered["remedy"], "the measured remedy must not be empty")
+        self.assertLessEqual(set(rendered["remedy"]), set(rendered["keys"]))
 
     def test_an_unknown_harness_refusal_falls_back_to_the_silent_remedy(self) -> None:
         # The sign-in advice is opt-in per harness, keyed on a measurement. A
