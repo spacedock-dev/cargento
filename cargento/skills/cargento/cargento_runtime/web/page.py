@@ -27,6 +27,7 @@ APP_PARTS: tuple[str, ...] = (
 NEXT_PARTS: tuple[str, ...] = (
     "next-boot.js",
     "next-chrome.js",
+    "next-sessions.js",
     "next-projects.js",
     "next-render.js",
 )

@@ -4,6 +4,7 @@
 const NEXT_POLL_MS = 5000;
 
 function nextOverviewBody(tab){
+  if(tab === "sessions") return nextSessionsView();
   if(tab === "projects") return nextProjectsView();
   return "";
 }

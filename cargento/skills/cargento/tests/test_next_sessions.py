@@ -1,0 +1,213 @@
+from __future__ import annotations
+
+import re
+import shutil
+import unittest
+
+from .next_harness import NextPageJsHarness
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsBehaviorTest(NextPageJsHarness):
+    FIXTURE = """
+location.search = "?next=true";
+__els.app = {innerHTML: ""};
+__fetchImpl = async () => ({ok: true, json: async () => ({
+  generated: 10000,
+  window_hours: 24,
+  summary: {working: 2, needs_input: 2},
+  harnesses: [
+    {key: "claude", label: "Claude Code"},
+    {key: "codex", label: "Codex"},
+    {key: "cursor", label: "Cursor"}
+  ],
+  sessions: [
+    {
+      sid: "gate-z", harness: "claude", project: "repo/main", state: "needs_input",
+      title: "First gate", state_detail: "open question · AskUserQuestion",
+      blocked_since: 9400, last_activity: 9400, subagents: []
+    },
+    {
+      sid: "gate-a", harness: "codex", project: "solo/app", state: "needs_input",
+      title: "Second gate", state_detail: null,
+      blocked_since: null, last_activity: 9000, subagents: []
+    },
+    {
+      sid: "work-a", harness: "cursor", project: "work/app", state: "working",
+      title: "Normal work", state_detail: "running Bash", rate_per_min: 12,
+      last_activity: 9990, turn: {long: false}, subagents: []
+    },
+    {
+      sid: "work-z", harness: "claude", project: "repo/main", state: "working",
+      title: "Long work", state_detail: "running 1 subagent", rate_per_min: 42,
+      last_activity: 9980, turn: {long: true}, subagents: [{}]
+    },
+    {
+      sid: "idle-old", harness: "claude", project: "idle/old", state: "idle",
+      title: "Old idle", state_detail: null, last_activity: 7000,
+      finished_at: 7000, subagents: []
+    },
+    {
+      sid: "idle-new", harness: "codex", project: "idle/new", state: "idle",
+      title: "New idle", state_detail: null, last_activity: 9460,
+      finished_at: 9460, subagents: []
+    },
+    {
+      sid: "idle-mid", harness: "cursor", project: "idle/mid", state: "idle",
+      title: "Middle idle", state_detail: null, last_activity: 8800,
+      finished_at: 8800, subagents: []
+    }
+  ]
+})});
+"""
+
+    def render(self, checks: str = "console.log(JSON.stringify(__els.app.innerHTML));") -> object:
+        return self._run_page_js(
+            "await __settle();\nnextSelectSessions();\n" + checks, self.FIXTURE
+        )
+
+    @staticmethod
+    def session_row(html: str, sid: str) -> str:
+        match = re.search(rf'<tr[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</tr>', html)
+        if match is None:
+            raise AssertionError(f"no row for {sid!r} in {html}")
+        return match.group(0)
+
+    def test_each_block_keeps_its_independent_ordering_contract(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+
+        self.assertLess(
+            html.index('data-next-session="gate-z"'), html.index('data-next-session="gate-a"')
+        )
+        self.assertLess(
+            html.index('data-next-session="work-z"'), html.index('data-next-session="work-a"')
+        )
+        self.assertLess(
+            html.index('data-next-session="idle-new"'), html.index('data-next-session="idle-mid"')
+        )
+        self.assertLess(
+            html.index('data-next-session="idle-mid"'), html.index('data-next-session="idle-old"')
+        )
+
+    def test_the_gate_block_is_not_reordered(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        gates = re.search(r'data-next-session-block="needs_input"[\s\S]*?</tbody>', html)
+
+        self.assertIsNotNone(gates)
+        gate_html = gates.group(0) if gates else ""
+        self.assertLess(gate_html.index("First gate"), gate_html.index("Second gate"))
+
+    def test_rows_render_measured_metrics_registry_labels_and_activity(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        gate = self.session_row(html, "gate-z")
+        work = self.session_row(html, "work-z")
+        idle = self.session_row(html, "idle-new")
+
+        self.assertIn("next-session-row--blocked", gate)
+        self.assertIn("10m wait", gate)
+        self.assertIn("repo/main · Claude Code", gate)
+        self.assertIn("open question · AskUserQuestion", gate)
+        self.assertIn("next-session-row--working", work)
+        self.assertIn("42 /m", work)
+        self.assertIn("running 1 subagent", work)
+        self.assertNotIn("next-session-row--blocked", idle)
+        self.assertNotIn("next-session-row--working", idle)
+        self.assertIn("9m idle", idle)
+
+    def test_an_absent_state_detail_and_gate_stamp_render_no_placeholder(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        row = self.session_row(html, "gate-a")
+
+        self.assertNotIn("undefined", row)
+        self.assertNotIn("null", row)
+        self.assertNotIn(" wait", row)
+
+    def test_idle_age_and_done_use_the_payload_clock(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        newest = self.session_row(html, "idle-new")
+        middle = self.session_row(html, "idle-mid")
+
+        self.assertIn("9m idle", newest)
+        self.assertNotIn(">done<", newest)
+        self.assertIn("20m idle", middle)
+        self.assertIn(">done<", middle)
+
+    def test_every_row_on_a_shared_project_label_gets_the_collision_caveat(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        gate = self.session_row(html, "gate-z")
+        work = self.session_row(html, "work-z")
+
+        for row in (gate, work):
+            self.assertIn("2 sessions share this label", row)
+            self.assertIn("Same label is not proof of the same directory", row)
+            self.assertIn("sibling worktrees read alike", row)
+
+    def test_all_ten_harnesses_use_the_payload_registry_label(self) -> None:
+        html = self._run_page_js(
+            "await __settle();\nnextSelectSessions();\n"
+            "console.log(JSON.stringify(__els.app.innerHTML));",
+            """
+location.search = "?next=true";
+__els.app = {innerHTML: ""};
+const registry = [
+  ["claude", "Claude"], ["codex", "Codex"], ["pi", "Pi"],
+  ["gemini", "Gemini"], ["antigravity", "Antigravity"],
+  ["copilot", "Copilot"], ["opencode", "OpenCode"], ["cursor", "Cursor"],
+  ["goose", "Goose"], ["droid", "Droid"]
+];
+__fetchImpl = async () => ({ok: true, json: async () => ({
+  generated: 10000, window_hours: 24,
+  summary: {working: 10, needs_input: 0},
+  harnesses: registry.map(([key, label]) => ({key, label})),
+  sessions: registry.map(([harness], index) => ({
+    sid: `sid-${index}`, harness, project: `project/${index}`, state: "working",
+    active: true, title: `session ${index}`, last_activity: 9990,
+    rate_per_min: index, subagents: []
+  }))
+})});
+""",
+        )
+        assert isinstance(html, str)
+
+        for label in (
+            "Claude",
+            "Codex",
+            "Pi",
+            "Gemini",
+            "Antigravity",
+            "Copilot",
+            "OpenCode",
+            "Cursor",
+            "Goose",
+            "Droid",
+        ):
+            self.assertIn(f" · {label}</span>", html)
+
+    def test_clicking_a_session_row_routes_to_its_project_for_now(self) -> None:
+        out = self.render(
+            """
+const html = __els.app.innerHTML;
+__fire("click", {
+  target: {closest(selector){
+    return selector === "[data-next-route]" ? {dataset: {nextRoute: "project:repo%2Fmain"}} : null;
+  }},
+  preventDefault(){}
+});
+console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertIn('data-next-route="project:repo%2Fmain"', out["html"])
+        self.assertEqual({"view": "project", "project": "repo/main", "session": None}, out["route"])
+        self.assertEqual("#n=project:repo%2Fmain", out["hash"])
+
+
+if __name__ == "__main__":
+    unittest.main()
