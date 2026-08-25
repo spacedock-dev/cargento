@@ -80,8 +80,11 @@ line names the payload's `window_hours` rather than implying a machine-wide inve
 consecutive fetch failures put a stalled marker beside the last good payload; a single failed poll
 does not flash the page on a transient miss.
 
-The overview carries empty `projects` and `sessions` bodies so either can be filled without taking
-ownership of the other's tab chrome. Project and session routes likewise stop at empty regions.
+The overview chrome owns `projects` and `sessions` body slots without owning either view. The
+projects slot now groups the current payload by its display label and renders the measured task
+progress and current state. Estimate and delegation stay visibly withheld: neither value exists at
+project scope, and folding per-session values would turn a guess into a measurement. The sessions
+slot and both detail routes still stop at empty regions.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
 
@@ -92,8 +95,8 @@ windowed or withheld after reload. Whether Cargento should persist session histo
 decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is not a prerequisite for the
 opt-in UI.
 
-This layer adds the route, breadcrumb, live counts, menu and empty tab shell. Session rows, project
-rows and both detail views belong to their later layers.
+Project rows are now live from the existing payload. Session rows and both detail views belong to
+their later layers.
 
 ## Way back
 

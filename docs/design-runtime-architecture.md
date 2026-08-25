@@ -99,8 +99,9 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 | `web/next/index.html` | The two-slot shell for the opt-in page. It is assembled independently of `web/index.html`. |
 | `web/next/styles.css` | The next page's dark-first token copy and its own rules. It never extends the byte-pinned default stylesheet. |
 | `web/next/next-boot.js` | Query reads, HTML escaping and the next page's fragment route. It is first in `NEXT_PARTS`; its grammar is owned by [design-next-ui.md](design-next-ui.md). |
-| `web/next/next-chrome.js` | Breadcrumbs, header counts, the overview tab shell, route controls and the one delegated keyboard listener. View bodies remain empty until their own layers land. |
-| `web/next/next-render.js` | The next page's payload fetch, failure state and 5 s poll. It starts the loop, so view parts sit before it in `NEXT_PARTS`. |
+| `web/next/next-chrome.js` | Breadcrumbs, header counts, the overview tab shell, route controls and the one delegated keyboard listener. The selected tab asks the view dispatcher for its body. |
+| `web/next/next-projects.js` | The projects overview table: first-seen project-label groups, measured task progress and current state, explicit estimate and delegation withholding, and the all-state shared-label caveat. |
+| `web/next/next-render.js` | The next page's view dispatcher, payload fetch, failure state and 5 s poll. It starts the loop, so view parts sit before it in `NEXT_PARTS`. |
 
 `NEXT_PARTS` is a second concatenated scope, not an extension of `APP_PARTS`. The HTTP server selects
 its assembled bytes only when the first `next` query value is exactly `true`. The reason for that

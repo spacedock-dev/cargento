@@ -39,6 +39,27 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-population{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
 .next-population span{color:var(--ink3)}
 [data-next-body],[data-next-view-body]{min-height:360px}
+.next-projects-table-wrap{margin-top:28px;overflow-x:auto}
+.next-projects-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.next-projects-table th{padding:10px 14px;border-bottom:1px solid var(--line2);color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400;text-align:left}
+.next-projects-table td{padding:18px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+.next-project-row{cursor:pointer}
+.next-project-row:hover{background:var(--panel)}
+.next-project-row--blocked td:first-child{box-shadow:inset 3px 0 var(--warn)}
+.next-project-project{min-width:290px}
+.next-project-name{display:block;font-family:var(--mono);font-size:var(--fs-sm)}
+.next-project-workflow{display:inline-block;margin-top:8px;padding:2px 6px;border:1px solid var(--line2);border-radius:999px;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-project-instruction,.next-project-collision{margin-top:8px;color:var(--ink3);font-size:var(--fs-xs)}
+.next-project-instruction{max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next-project-collision{max-width:340px;color:var(--warnink)}
+.next-project-progress{min-width:150px}
+.next-project-progress-bar{display:block;width:120px;height:4px;margin:5px 0 9px;accent-color:var(--accent)}
+.next-project-progress span,.next-project-estimate span,.next-project-delegation span{display:block;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-xs)}
+.next-project-estimate small{display:block;margin-top:4px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+[data-next-withheld]{opacity:.72}
+.next-project-current{min-width:105px;font-family:var(--mono);font-size:var(--fs-xs)}
+.next-project-now--blocked{color:var(--warnink)}
+.next-project-now--running{color:var(--accent-ink)}
 @media(max-width:760px){
   #app{padding:24px 18px 48px}
   .next-header,.next-header-right,.next-tabs-row{align-items:flex-start;flex-direction:column}

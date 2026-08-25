@@ -3,6 +3,11 @@
 // filesystem pass when it runs beside a tab without that flag.
 const NEXT_POLL_MS = 5000;
 
+function nextOverviewBody(tab){
+  if(tab === "projects") return nextProjectsView();
+  return "";
+}
+
 function nextDataUrl(){
   return nextQuery.get("all") === "1" ? "/api/data?all=1" : "/api/data";
 }

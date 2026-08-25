@@ -54,7 +54,8 @@ function nextOverviewShell(counts){
     "</div>" +
     `<div class="next-population">${counts.projects} projects · ${counts.sessions} sessions ` +
     `<span>${nextWindowLabel()}</span></div></div>` +
-    `<section data-next-body="projects"${projectsSelected ? "" : " hidden"}></section>` +
+    `<section data-next-body="projects"${projectsSelected ? "" : " hidden"}>` +
+    `${projectsSelected ? nextOverviewBody("projects") : ""}</section>` +
     `<section data-next-body="sessions"${projectsSelected ? " hidden" : ""}></section>` +
     "</section>";
 }
