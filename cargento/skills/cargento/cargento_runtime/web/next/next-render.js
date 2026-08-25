@@ -9,6 +9,11 @@ function nextOverviewBody(tab){
   return "";
 }
 
+function nextDetailBody(route){
+  if(route.view === "project") return nextProjectView(route.project);
+  return "";
+}
+
 function nextDataUrl(){
   return nextQuery.get("all") === "1" ? "/api/data?all=1" : "/api/data";
 }

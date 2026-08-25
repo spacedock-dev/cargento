@@ -63,7 +63,8 @@ function nextOverviewShell(counts){
 
 function nextViewBody(counts){
   if(nextRoute.view === "overview") return nextOverviewShell(counts);
-  return `<section data-next-view-body="${esc(nextRoute.view)}"></section>`;
+  return `<section data-next-view-body="${esc(nextRoute.view)}">` +
+    `${nextDetailBody(nextRoute)}</section>`;
 }
 
 function renderNext(){

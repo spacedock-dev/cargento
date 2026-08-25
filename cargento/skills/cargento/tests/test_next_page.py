@@ -33,6 +33,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         (next_web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
         (next_web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
         (next_web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
+        (next_web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
         (next_web / "next-sessions.js").write_text("const sessions = 3;\n", encoding="utf-8")
         (next_web / "next-render.js").write_text("const second = 2;\n", encoding="utf-8")
 
@@ -50,6 +51,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             b"<style>.next{color:red}\n</style>"
             b"<script>const first = 1;\nconst middle = 2;\n"
             b"const sessions = 3;\nconst projects = 3;\n"
+            b"const project = 4;\n"
             b"const second = 2;\n</script>",
             actual,
         )
@@ -87,6 +89,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "next-chrome.js",
                 "next-sessions.js",
                 "next-projects.js",
+                "next-project.js",
                 "next-render.js",
             ),
             frontend_page.NEXT_PARTS,

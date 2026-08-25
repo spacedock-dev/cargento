@@ -1,21 +1,3 @@
-const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same directory: the label is the" +
-  " last two segments of each session's path, so sibling worktrees read alike.";
-
-function nextFiniteNumber(value){
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function nextProjectGroups(){
-  const groups = new Map();
-  for(const session of nextRows()){
-    const label = String(session.project == null ? "" : session.project);
-    if(!groups.has(label)) groups.set(label, []);
-    groups.get(label).push(session);
-  }
-  return [...groups].map(([label, sessions]) => ({label, sessions}));
-}
-
 function nextProjectInstruction(sessions){
   let chosen = null;
   for(const session of sessions){
@@ -94,9 +76,8 @@ function nextProjectRow(group){
     `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}">` +
     `<td class="next-project-project">${nextProjectCell(group)}</td>` +
     `<td class="next-project-progress">${nextProjectProgress(group.sessions)}</td>` +
-    '<td class="next-project-estimate" data-next-withheld>' +
-    '<span>no estimate</span><small>no confidence</small></td>' +
-    '<td class="next-project-delegation" data-next-withheld><span>not measured</span></td>' +
+    `<td class="next-project-estimate" data-next-withheld>${nextWithheld("no estimate", "no confidence")}</td>` +
+    `<td class="next-project-delegation" data-next-withheld>${nextWithheld("not measured")}</td>` +
     `<td class="next-project-current">${nextProjectNow(group.sessions)}</td></tr>`;
 }
 

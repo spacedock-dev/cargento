@@ -1,21 +1,4 @@
 const NEXT_SESSION_FINISHED_UNREAD_SEC = 1200;
-const NEXT_SESSION_DUPLICATE_LABEL_LIMIT =
-  "Same label is not proof of the same directory: the label is the" +
-  " last two segments of each session's path, so sibling worktrees read alike.";
-
-function nextSessionNumber(value){
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function nextSessionHarnessLabels(){
-  const labels = new Map();
-  const harnesses = nextData && Array.isArray(nextData.harnesses) ? nextData.harnesses : [];
-  for(const harness of harnesses){
-    const key = String(harness && harness.key || "");
-    if(key) labels.set(key, String(harness.label || key));
-  }
-  return labels;
-}
 
 function nextSessionCollisionCounts(){
   const counts = new Map();
@@ -49,10 +32,10 @@ function nextSessionBlocks(){
   /* aggregate.py:31-32 deliberately uses sid for a stable idle payload. The
      mock asks for nearest-idle first, so only this tail overrides that order;
      the gate queue stays byte-for-byte in the server's priority order. */
-  const generated = nextSessionNumber(nextData && nextData.generated) || 0;
+  const generated = nextNumber(nextData && nextData.generated) || 0;
   const idle = rows.filter(session => session.state === "idle").sort((left, right) => {
-    const leftAt = nextSessionNumber(left.last_activity) || 0;
-    const rightAt = nextSessionNumber(right.last_activity) || 0;
+    const leftAt = nextNumber(left.last_activity) || 0;
+    const rightAt = nextNumber(right.last_activity) || 0;
     const byAge = (generated - leftAt) - (generated - rightAt);
     if(byAge) return byAge;
     const leftSid = String(left.sid || "");
@@ -62,30 +45,23 @@ function nextSessionBlocks(){
   return {gates, working, idle};
 }
 
-function nextSessionMinutesSince(stamp){
-  const generated = nextSessionNumber(nextData && nextData.generated);
-  const at = nextSessionNumber(stamp);
-  if(generated == null || at == null || at <= 0) return null;
-  return Math.floor(Math.max(0, generated - at) / 60);
-}
-
 function nextSessionMetric(session){
   if(session.state === "needs_input"){
-    const wait = nextSessionMinutesSince(session.blocked_since);
+    const wait = nextMinutesSince(session.blocked_since);
     return wait == null ? "" : `${wait}m wait`;
   }
   if(session.state === "working"){
-    const rate = nextSessionNumber(session.rate_per_min);
+    const rate = nextNumber(session.rate_per_min);
     return rate == null ? "" : `${Math.round(rate).toLocaleString()} /m`;
   }
-  const idle = nextSessionMinutesSince(session.last_activity);
+  const idle = nextMinutesSince(session.last_activity);
   return idle == null ? "" : `${idle}m idle`;
 }
 
 function nextSessionActivity(session){
   if(session.state === "idle"){
-    const generated = nextSessionNumber(nextData && nextData.generated);
-    const finished = nextSessionNumber(session.finished_at);
+    const generated = nextNumber(nextData && nextData.generated);
+    const finished = nextNumber(session.finished_at);
     if(generated != null && finished != null && finished > 0 &&
        Math.max(0, generated - finished) >= NEXT_SESSION_FINISHED_UNREAD_SEC){
       return '<span class="next-session-done">done</span>';
@@ -98,7 +74,7 @@ function nextSessionCollision(session, counts){
   const project = String(session.project == null ? "" : session.project);
   const count = counts.get(project) || 0;
   if(count < 2) return "";
-  return `<span class="next-session-collision" title="${esc(NEXT_SESSION_DUPLICATE_LABEL_LIMIT)}">` +
+  return `<span class="next-session-collision" title="${esc(NEXT_DUPLICATE_LABEL_LIMIT)}">` +
     `${count} sessions share this label</span>`;
 }
 
@@ -128,7 +104,7 @@ function nextSessionBlock(state, label, rows, labels, collisions){
 
 function nextSessionsView(){
   const blocks = nextSessionBlocks();
-  const labels = nextSessionHarnessLabels();
+  const labels = nextHarnessLabels();
   const collisions = nextSessionCollisionCounts();
   return '<div class="next-sessions-table-wrap"><table class="next-sessions-table">' +
     '<thead><tr><th scope="col">SESSION</th><th scope="col">ACTIVITY</th>' +

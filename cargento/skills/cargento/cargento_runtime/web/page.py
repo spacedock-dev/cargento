@@ -29,6 +29,7 @@ NEXT_PARTS: tuple[str, ...] = (
     "next-chrome.js",
     "next-sessions.js",
     "next-projects.js",
+    "next-project.js",
     "next-render.js",
 )
 

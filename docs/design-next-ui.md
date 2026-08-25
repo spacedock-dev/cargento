@@ -86,9 +86,40 @@ progress and current state. Estimate and delegation stay visibly withheld: neith
 project scope, and folding per-session values would turn a guess into a measurement. The
 sessions slot now renders the current payload in three independent blocks: the gate queue keeps
 the server's order, working rows use the established attention ladder, and the idle tail puts the
-nearest activity first. Both detail routes still stop at empty regions.
+nearest activity first. The session detail route still stops at an empty region.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
+
+## NUI-6: a project keeps its workflows separate
+
+A project is a display-label fold over sessions, while a Spacedock plan is a workflow strip on one
+of those sessions. The project page does not flatten those two levels. It creates one PLAN block per
+distinct workflow name, in the order the names first appear in the payload. Folding two names into
+one sequence would invent an order neither workflow declared. Keeping only the first strip would
+silently hide work.
+
+The detail header repeats the shared-label caveat from the overview. Navigation does not turn a
+display label into proof that its sessions came from the same directory.
+
+Repeated strips with the same workflow name do merge. The first strip establishes stage order, and
+stages found only on later strips append in their first-seen order. An entity slug appears once. A
+live copy replaces a non-live copy; equal-liveness copies keep the first occurrence. Rows then sort
+by the merged stage order. This makes concurrent first-officer observations stable without
+duplicating an entity or treating two different workflows as one plan.
+
+Ownership stays narrower than grouping. A live entity's source session proves its harness, so that
+row may show the harness and derive `blocked on you` from the source session. A non-live roster row
+does not prove which session owns it and leaves the owner blank. `stalled Nm` starts after 600
+seconds against the payload's `generated` clock. That floor is one complete token-rate evidence
+window. The 90-second collector threshold answers a different question: whether recent store
+activity is enough to call a session working.
+
+The payload does not distinguish an initial entity from a completed one, and it carries no pull
+request state. PLAN therefore has no completion glyph, completion count, merge state or review
+state. Its three empty messages keep the payload's distinctions: no Spacedock declaration, a first
+officer whose workflow has no fresh entities, and an ensign whose plan lives with its first officer.
+The main column and rail are separate section-block regions so later layers can add work state and
+controls without rebuilding PLAN.
 
 ## What this does not decide
 
@@ -97,8 +128,8 @@ windowed or withheld after reload. Whether Cargento should persist session histo
 decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is not a prerequisite for the
 opt-in UI.
 
-Project and session rows are now live from the existing payload. Both detail views belong to their
-later layers.
+Project and session rows are live from the existing payload. The project detail renders the honest
+Spacedock plan; the session detail belongs to a later layer.
 
 ## Way back
 
