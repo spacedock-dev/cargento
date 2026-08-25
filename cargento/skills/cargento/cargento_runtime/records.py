@@ -206,6 +206,26 @@ def model_signal(record: dict[str, Any], harness: str, limit: int) -> str | None
     return safe_text(value, limit).strip() or None
 
 
+def usage_signal(record: dict[str, Any], harness: str) -> int | None:
+    """The measured output tokens one transcript record reports, or nothing.
+
+    Claude assistant records are the only scanner input with a reviewed usage
+    shape. The harness gate is part of the contract: ``scan_turns`` feeds records
+    from five harnesses through this function, and a coincidentally Claude-shaped
+    record from another one must not turn an unmeasured session into a zero-token
+    session.
+
+    Zero is a real reading when the record explicitly reports it. Missing,
+    negative, boolean, and non-integer values are unmeasured and return None.
+    """
+    if harness != "claude" or record.get("type") != "assistant":
+        return None
+    value = as_dict(message_dict(record).get("usage")).get("output_tokens")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 def tool_outcome(
     record: dict[str, Any], harness: str, limit: int
 ) -> tuple[dict[str, str], list[tuple[str, bool]]]:

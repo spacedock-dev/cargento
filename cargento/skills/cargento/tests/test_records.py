@@ -175,6 +175,38 @@ class ParseTsTest(unittest.TestCase):
                 self.assertEqual(records.iso_epoch(value), records.parse_ts(value), value)
 
 
+class UsageSignalTest(unittest.TestCase):
+    @staticmethod
+    def _record(value: object) -> dict[str, object]:
+        return {
+            "type": "assistant",
+            "message": {"usage": {"output_tokens": value}},
+        }
+
+    def test_claude_output_tokens_are_the_only_measured_signal(self) -> None:
+        self.assertEqual(37, records.usage_signal(self._record(37), "claude"))
+        self.assertEqual(0, records.usage_signal(self._record(0), "claude"))
+
+    def test_a_claude_shaped_record_is_refused_for_every_other_scanned_harness(self) -> None:
+        record = self._record(37)
+        for harness in ("codex", "copilot", "gemini", "droid"):
+            with self.subTest(harness=harness):
+                self.assertIsNone(records.usage_signal(record, harness))
+
+    def test_malformed_or_unmeasured_values_are_nothing_not_zero(self) -> None:
+        malformed: tuple[object, ...] = (None, True, -1, 1.5, "37", {}, [])
+        for value in malformed:
+            with self.subTest(value=value):
+                self.assertIsNone(records.usage_signal(self._record(value), "claude"))
+        self.assertIsNone(
+            records.usage_signal(
+                {"type": "user", "message": {"usage": {"output_tokens": 37}}},
+                "claude",
+            )
+        )
+        self.assertIsNone(records.usage_signal({"type": "assistant"}, "claude"))
+
+
 class ParseUtcSqlTest(unittest.TestCase):
     """`parse_utc_sql` reads Copilot's and Goose's SQLite text columns."""
 

@@ -572,6 +572,8 @@ def collect(
                     for path, mtime in child_files
                     if runtime_sessions.is_fresh(config, now, mtime, config.rate_window_sec)
                 ),
+                "session_output_tokens": (scan.get("session_output_tokens") if scan else None),
+                "turn_output_tokens": scan.get("turn_output_tokens") if scan else None,
                 "total": total,
                 "done": done,
                 "open": open_count,

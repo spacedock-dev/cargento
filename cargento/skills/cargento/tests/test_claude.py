@@ -106,6 +106,46 @@ class ClaudeDataBoundTest(unittest.TestCase):
 
 
 class ClaudeCollectorTest(RuntimeTestCase):
+    def test_the_parent_row_publishes_its_scanned_output_token_totals(self) -> None:
+        now = time.time()
+        session_id = "12345678-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "sample"
+            project.mkdir(parents=True)
+            transcript = project / f"{session_id}.jsonl"
+            transcript.write_text(
+                "\n".join(
+                    json.dumps(record)
+                    for record in (
+                        {
+                            "type": "user",
+                            "sessionId": session_id,
+                            "timestamp": datetime.fromtimestamp(now - 3, UTC).isoformat(),
+                            "message": {"role": "user", "content": "count this turn"},
+                        },
+                        {
+                            "type": "assistant",
+                            "sessionId": session_id,
+                            "timestamp": datetime.fromtimestamp(now - 2, UTC).isoformat(),
+                            "message": {
+                                "role": "assistant",
+                                "content": [],
+                                "usage": {"output_tokens": 15},
+                            },
+                        },
+                    )
+                )
+                + "\n"
+            )
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            ):
+                session = collect_claude(now, 24, False)[0]
+
+        self.assertEqual(15, session["session_output_tokens"])
+        self.assertEqual(15, session["turn_output_tokens"])
+
     def test_load_tasks_supports_current_and_legacy_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

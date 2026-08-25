@@ -122,6 +122,8 @@ def collect(
                 "last_activity": last_activity,
                 "rate_per_min": sessions.rate_from(info, now, config),
                 "started_at": turns.started_at(scan),
+                "session_output_tokens": (scan.get("session_output_tokens") if scan else None),
+                "turn_output_tokens": scan.get("turn_output_tokens") if scan else None,
                 "turn": turns.turn_progress(
                     scan,
                     session_state,

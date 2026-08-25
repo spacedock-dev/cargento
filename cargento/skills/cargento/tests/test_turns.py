@@ -28,6 +28,25 @@ class TurnStartTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    @staticmethod
+    def _prompt(second: int) -> dict[str, Any]:
+        return {
+            "type": "user",
+            "timestamp": f"2026-01-01T00:00:{second:02d}Z",
+            "message": {"content": "go"},
+        }
+
+    @staticmethod
+    def _usage(second: int, output_tokens: int) -> dict[str, Any]:
+        return {
+            "type": "assistant",
+            "timestamp": f"2026-01-01T00:00:{second:02d}Z",
+            "message": {
+                "content": "done",
+                "usage": {"output_tokens": output_tokens},
+            },
+        }
+
     def test_a_zero_based_scan_records_the_first_timestamp(self) -> None:
         first = "2026-01-01T00:00:00Z"
         with tempfile.TemporaryDirectory() as tmp:
@@ -109,6 +128,94 @@ class TurnStartTest(unittest.TestCase):
         self.assertIsNotNone(runtime_turns.started_at(before))
         self.assertFalse(rebuilt["scanned_from_zero"])
         self.assertIsNone(runtime_turns.started_at(rebuilt))
+
+    def test_a_full_scan_counts_the_session_and_resets_the_current_turn(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "tokens.jsonl"
+            self._write(
+                path,
+                [
+                    self._prompt(0),
+                    self._usage(1, 10),
+                    self._usage(2, 5),
+                    self._prompt(3),
+                    self._usage(4, 4),
+                ],
+            )
+            config, state = make_runtime()
+            scan = runtime_turns.scan_turns(config, state, str(path), "claude")
+
+        assert scan is not None
+        self.assertTrue(
+            {"session_output_tokens", "turn_output_tokens"}.issubset(runtime_turns._RESULT_FIELDS)
+        )
+        self.assertEqual(19, scan["session_output_tokens"])
+        self.assertEqual(4, scan["turn_output_tokens"])
+
+    def test_an_unmeasured_harness_publishes_none_never_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "wrong-harness.jsonl"
+            self._write(path, [self._prompt(0), self._usage(1, 10)])
+            config, state = make_runtime()
+            scan = runtime_turns.scan_turns(config, state, str(path), "codex")
+
+        assert scan is not None
+        self.assertIsNone(scan["session_output_tokens"])
+        self.assertIsNone(scan["turn_output_tokens"])
+
+    def test_an_oversized_tail_without_its_turn_boundary_withholds_both_totals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "mid-turn.jsonl"
+            records_to_write = [self._prompt(0)]
+            records_to_write.extend(self._record(second, payload="x" * 120) for second in range(8))
+            records_to_write.append(self._usage(8, 7))
+            self._write(path, records_to_write)
+            config, state = make_runtime(turn_scan_max_bytes=260)
+            self.assertGreater(path.stat().st_size, config.turn_scan_max_bytes)
+            scan = runtime_turns.scan_turns(config, state, str(path), "claude")
+
+        assert scan is not None
+        self.assertFalse(scan["scanned_from_zero"])
+        self.assertIsNone(scan["session_output_tokens"])
+        self.assertIsNone(scan["turn_output_tokens"])
+
+    def test_a_boundary_inside_an_oversized_delta_makes_only_the_turn_total_safe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jump.jsonl"
+            self._write(path, [self._prompt(0), self._usage(1, 10)])
+            config, state = make_runtime(turn_scan_max_bytes=420)
+            first = runtime_turns.scan_turns(config, state, str(path), "claude")
+            with path.open("a", encoding="utf-8") as output:
+                for second in range(2, 8):
+                    output.write(json.dumps(self._record(second, payload="x" * 120)) + "\n")
+                output.write(json.dumps(self._prompt(8)) + "\n")
+                output.write(json.dumps(self._usage(9, 7)) + "\n")
+            after = runtime_turns.scan_turns(config, state, str(path), "claude")
+
+        assert first is not None
+        assert after is not None
+        self.assertEqual(10, first["session_output_tokens"])
+        self.assertFalse(after["scanned_from_zero"])
+        self.assertIsNone(after["session_output_tokens"])
+        self.assertEqual(7, after["turn_output_tokens"])
+
+    def test_the_session_total_never_shrinks_between_polls(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "evicted-tokens.jsonl"
+            self._write(path, [self._prompt(0), self._usage(1, 10)])
+            config, state = make_runtime(turn_scan_max_bytes=420)
+            before = runtime_turns.scan_turns(config, state, str(path), "claude")
+            for second in range(2, 8):
+                with path.open("a", encoding="utf-8") as output:
+                    output.write(json.dumps(self._record(second, payload="x" * 120)) + "\n")
+                before = runtime_turns.scan_turns(config, state, str(path), "claude")
+            state.turn_scan.pop(str(path))
+            rebuilt = runtime_turns.scan_turns(config, state, str(path), "claude")
+
+        assert before is not None
+        assert rebuilt is not None
+        self.assertEqual(10, before["session_output_tokens"])
+        self.assertIsNone(rebuilt["session_output_tokens"])
 
 
 if __name__ == "__main__":

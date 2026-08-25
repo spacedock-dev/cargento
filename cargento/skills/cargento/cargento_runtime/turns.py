@@ -46,6 +46,16 @@ def _apply_tool_outcome(st: dict[str, Any], record: Any, harness: str) -> None:
             st["err_tool"] = st["tool_names"].get(tool_id)
 
 
+def _apply_usage(st: dict[str, Any], value: int | None) -> None:
+    """Add one measured usage reading where the scan covers its whole range."""
+    if value is None:
+        return
+    if st["scanned_from_zero"]:
+        st["session_output_tokens"] = (st["session_output_tokens"] or 0) + value
+    if st["turn_usage_complete"]:
+        st["turn_output_tokens"] = (st["turn_output_tokens"] or 0) + value
+
+
 def _apply_turn_record(
     config: RuntimeConfig,
     st: dict[str, Any],
@@ -53,6 +63,7 @@ def _apply_turn_record(
     harness: str,
 ) -> None:
     """Apply one chronological transcript record to incremental turn state."""
+    usage = records.usage_signal(record, harness)
     model = records.model_signal(record, harness, sessions.MODEL_CAP_CHARS)
     if model:
         # Overwrite on every hit, so the last declaration in file order wins.
@@ -66,6 +77,9 @@ def _apply_turn_record(
         st["model"] = model
     ep = records.parse_ts(record.get("timestamp") or "")
     if not ep:
+        # Usage is ordered by the file rather than by wall-clock arithmetic, so
+        # a malformed timestamp does not make an otherwise measured count vanish.
+        _apply_usage(st, usage)
         return
     if st["first_ts"] is None:
         st["first_ts"] = ep
@@ -97,7 +111,15 @@ def _apply_turn_record(
             start = records.norm_epoch(override) or ep
             st["turn_start"] = start
             st["last_start"] = start
+            # A prompt/start is the completeness boundary for the turn total.
+            # Quiet-gap re-anchoring above is deliberately not: it changes the
+            # duration clock but does not begin a new human turn.
+            st["turn_output_tokens"] = None
+            st["turn_usage_complete"] = True
         _clear_error_run(st)
+    # After the boundary reset, so a reading on the same record belongs to the
+    # turn that record opens rather than to the one it closes.
+    _apply_usage(st, usage)
     # Last, so the ordering against the boundary resets above is stated rather
     # than incidental: an outcome belongs to the turn its own record sits in.
     _apply_tool_outcome(st, record, harness)
@@ -185,6 +207,8 @@ _RESULT_FIELDS = (
     "last_start",
     "prev_ts",
     "model",
+    "session_output_tokens",
+    "turn_output_tokens",
     "err_run",
     "err_peak",
     "err_tool",
@@ -247,6 +271,13 @@ def scan_turns(
                 # of 273 KB and up to 3 MB — while this scanner's budget is
                 # 8 MB and reaches every one of them.
                 "model": None,
+                # Both counters start unmeasured. An explicit zero usage record
+                # turns one into 0; merely supporting the harness does not.
+                "session_output_tokens": None,
+                "turn_output_tokens": None,
+                # Private scan state: a bounded tail cannot count a turn until
+                # its opening prompt/start appears in the bytes read forward.
+                "turn_usage_complete": False,
                 # The failure run inside the current turn: the live count, the
                 # peak it reached, the tool that failed at the peak, and the
                 # id → name map the last tool batch declared. All four are turn
@@ -267,6 +298,11 @@ def scan_turns(
             # Locate the active turn boundary in the skipped prefix by reading
             # backward in chunks, then process the bounded tail forward.
             st["scanned_from_zero"] = False
+            # The skipped bytes may contain usage. Withhold rather than publish
+            # a partial session total or a smaller current-turn count.
+            st["session_output_tokens"] = None
+            st["turn_output_tokens"] = None
+            st["turn_usage_complete"] = False
             tail_start = size - config.turn_scan_max_bytes
             st.update(_latest_turn_context(config, path, tail_start, harness))
             st["pos"] = tail_start

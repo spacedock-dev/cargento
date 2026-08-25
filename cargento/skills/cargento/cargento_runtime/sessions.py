@@ -296,6 +296,12 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # cannot ever carry it says so through `acquisition` instead.
         "finished_at": None,
         "rate_per_min": 0,
+        # Output-token readings from the transcript scanner. The session count
+        # is present only after a byte-zero scan; the turn count only after that
+        # turn's opening boundary was observed. None is incomplete or unmeasured,
+        # including every harness without a reviewed usage record shape.
+        "session_output_tokens": None,
+        "turn_output_tokens": None,
         "total": 0,
         "done": 0,
         "open": 0,

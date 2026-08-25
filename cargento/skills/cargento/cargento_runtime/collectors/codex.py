@@ -240,6 +240,8 @@ def collect(
                 "own_activity": (info or {}).get("last_event_ts") or 0,
                 "started_at": turns.started_at(scan),
                 "rate_per_min": sessions.rate_from(info, now, config) + data["rate"],
+                "session_output_tokens": (scan.get("session_output_tokens") if scan else None),
+                "turn_output_tokens": scan.get("turn_output_tokens") if scan else None,
                 "turn": turns.turn_progress(scan, session_state, now, config),
                 # `provider` stays None: no Codex record carries one, and
                 # reading "openai" off the harness name would be inference.
