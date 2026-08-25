@@ -156,10 +156,10 @@ time, and a failed poll means an empty tile, never a retry storm.
 Token handling is read-only, one way, and never expands:
 
 - The token is never refreshed. Refreshing from outside the harness can race the harness for its
-  own session. An expired or rejected token switches that vendor's usage display off, marked with
-  a pointer telling the user to sign in again in the harness itself. This rule is what bounds the
-  Cursor credential noted above: a value that could mint sessions is only ever presented as a
-  bearer token, so the extra capability is never exercised.
+  own session. A token the harness would refresh by itself, or one a vendor refuses, switches that
+  vendor's usage display off and says which of the two happened; the remedy always belongs to the
+  harness. This rule is what bounds the Cursor credential noted above: a value that could mint
+  sessions is only ever presented as a bearer token, so the extra capability is never exercised.
 - The token is never written to disk, never logged, and never served. `/api/data` and every other
   loopback endpoint must not carry it, in any form.
 - Reading the token adds no write access anywhere. Harness stores stay read-only.

@@ -505,8 +505,16 @@ def _scoped_limits(now: float, payload: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(kept[:MAX_SCOPED_LIMITS], key=operator.itemgetter("label"))
 
 
-def _expired_entry(now: float, harness: str) -> dict[str, Any]:
-    return {"harness": harness, "state": "expired", "asOf": int(now)}
+def _unreadable_entry(now: float, harness: str, state: str) -> dict[str, Any]:
+    """An entry that carries no figures, and the reason it carries none.
+
+    Two reasons reach this, and they are not the same fact. `lapsed` is a stamp
+    read out of local storage with no request made; `refused` is a request the
+    vendor answered 401/403. One shared `expired` published them as one, so the
+    page could only advise one remedy for both, and it advised the wrong one for
+    the commoner case — see the reader-facing wording in web/usage.js.
+    """
+    return {"harness": harness, "state": state, "asOf": int(now)}
 
 
 def _fetch_windows(
@@ -530,10 +538,11 @@ def _fetch_windows(
             body = response.read(config.usage_response_cap_bytes)
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
-            # A rejected token gets the same display as an expired one: off,
-            # with the pointer at signing in again in the harness. Never a
-            # refresh — that could race the harness for its own session.
-            return [_expired_entry(now, "claude")], None
+            # Refused, and that is the whole of what a 401 here supports: the
+            # endpoint does not say whether the token went stale or the account
+            # is not served, so the entry claims neither. Never a refresh —
+            # that could race the harness for its own session.
+            return [_unreadable_entry(now, "claude", "refused")], None
         return [], f"HTTP {exc.code}"
     except (urllib.error.URLError, OSError, ValueError) as exc:
         return [], type(exc).__name__
@@ -572,7 +581,13 @@ def _claude_entries(
         # again" would be the wrong advice.
         return [], problem
     if expiry is not None and expiry <= now:
-        return [_expired_entry(now, "claude")], None
+        # A stamp, not a verdict. Nothing was asked and nothing refused: Claude
+        # Code rewrites the stored credential only while it runs, so a session
+        # already open holds a live token in memory and keeps working. A lapsed
+        # stamp beside healthy sessions is therefore the expected pairing for
+        # anyone who has not started the harness yet today, which is why this
+        # entry must not reach the page as a refusal.
+        return [_unreadable_entry(now, "claude", "lapsed")], None
     return _fetch_windows(config, token or "", now, opener)
 
 
@@ -664,8 +679,11 @@ def _cursor_entries(
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
             # Cursor answers a stale token with 401 and `actionRequired:
-            # "login"`, so the remedy is the harness's, exactly as for Claude.
-            return [_expired_entry(now, "cursor")], None
+            # "login"`, so here the sign-in remedy is measured rather than
+            # assumed. web/usage.js keys its wording on that, and Cursor is the
+            # only harness it may say it for. There is no local expiry check on
+            # this path, so `refused` is the only unreadable state Cursor has.
+            return [_unreadable_entry(now, "cursor", "refused")], None
         return [], f"HTTP {exc.code}"
     except (urllib.error.URLError, OSError, ValueError) as exc:
         return [], type(exc).__name__

@@ -15,7 +15,7 @@ opt-out proves wrong.
 A usage entry is the same shape whoever produced it:
 
 ```
-{harness, state: "ok" | "expired", asOf,
+{harness, state: "ok" | "lapsed" | "refused", asOf,
  fiveH: {pct, reset, resetAt},              // a gauge: used out of a limit
  week: {pct, reset, resetAt},
  month: {pct, reset, resetAt},              // the same, for a billing cycle
@@ -507,12 +507,33 @@ value is only ever presented as a bearer token, so the extra capability is never
 narrower, user-created API key was considered and set aside because it needs setup and it is
 unverified whether one authenticates this RPC at all.
 
-Failures are deliberately not one bucket. An expired or rejected token (past `expiresAt`, or an
-HTTP 401/403) publishes an `expired` entry, and the page renders the pointer at signing in again
-in the harness. An unavailable token (denied Keychain prompt, missing file, malformed JSON) keeps
-Claude out of the band entirely, because "sign in again" is wrong advice when the harness session
-may be fine. Every failure surfaces in diagnostics as a fixed category word plus an exception
-type name; no value read from a credential source or a response is ever interpolated.
+Failures are deliberately not one bucket, and there are three of them.
+
+A stored `expiresAt` in the past publishes `lapsed`, read from disk with no request made at all. It
+was published as `expired` alongside the refusal below until a reader on 0.14.0 was told her token
+had expired and to sign in again while every one of her Claude Code sessions was working normally.
+Nothing was wrong with her account. Cargento never refreshes a token, so it reads whatever storage
+holds, and Claude Code rewrites that file only while it runs, so a session already open keeps
+working on a token it holds in memory. A lapsed stamp beside healthy sessions is therefore the expected
+pairing for anyone whose harness was closed overnight, not a contradiction, and the page says so:
+start the harness and it refreshes its own credential. No exclamation on that row either, since the
+badge was the fault half of the same wrong claim.
+
+An HTTP 401 or 403 publishes `refused`, and the wording stops there for Claude. A 401 does not
+separate a token gone stale from an account the endpoint does not serve, and "sign in again" fixes
+only the first, and sending someone round that loop for the second is the circle this state exists
+to avoid. Cursor is the exception and it is an evidenced one: its RPC answers a stale token with 401 and
+`actionRequired: "login"`, so its tile keeps the sign-in pointer. The distinction is a property of
+what each vendor's answer says rather than of the state, so both publish the same word and
+`U_SIGNIN_ON_REFUSAL` in web/usage.js names the harnesses whose refusal is measured to mean a
+sign-in. A vendor added later is absent from that set and inherits the wording that prescribes
+nothing, which is the safe direction. Cursor has no local expiry check at all, so `refused` is the
+only unreadable state it can reach.
+
+An unavailable token (denied Keychain prompt, missing file, malformed JSON) keeps Claude out of the
+band entirely, because a sign-in is wrong advice when the harness session may be fine. Every failure
+surfaces in diagnostics as a fixed category word plus an exception type name; no value read from a
+credential source or a response is ever interpolated.
 
 ## Q-7: A harness can hand its quota over, so nothing needs fetching
 
@@ -675,12 +696,11 @@ band that ships today, where each tile is a claim about one harness and a missin
 nothing; it is not tolerable in a comparison, which is a claim about a set, and where dropping the
 unreadable rows leaves a picture that looks complete.
 
-One of those states is already in the payload, which is why this is a discipline the band has rather
-than a new one. Q-5 splits a rejected token, published as `state: "expired"` and rendered as a
-pointer at signing in again, from an unreadable one, which keeps the harness out of the band
-entirely, because "sign in again" is wrong advice when the harness session may be fine. That is the
-same distinction between two kinds of nothing, made once per tile. A comparison owes it across the
-whole roster at once.
+Those states are already in the payload, which is why this is a discipline the band has rather than
+a new one. Q-5 separates a lapsed stamp, a refused request and an unreadable credential, the last
+of which keeps the harness out of the band entirely, because a sign-in is wrong advice when the
+harness session may be fine. That is the same distinction between kinds of nothing, made once per tile. A
+comparison owes it across the whole roster at once.
 
 ### A passthrough harness has no capacity of its own, and that is a prerequisite
 
@@ -874,11 +894,14 @@ the per-row rule above.
 
 ## Rejected alternatives worth keeping rejected
 
-### Refreshing an expired token
+### Refreshing a lapsed token
 
 Claude Code rotates its own OAuth session. A second refresher racing it can invalidate the
 harness's session from under it, which turns a dashboard nicety into a login outage. The contract
-forbids it; the display-off-with-pointer behaviour is the whole answer.
+forbids it, and switching the display off is the whole answer. What that costs is the `lapsed`
+state in Q-5: reading storage without refreshing it means reading a stamp the harness has not got
+round to rewriting, so the band has to be able to say "not refreshed yet" without calling it a
+fault.
 
 ### Fetching synchronously inside the request handler
 

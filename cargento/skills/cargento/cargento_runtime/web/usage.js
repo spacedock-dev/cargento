@@ -6,7 +6,7 @@
    parameter — see refresh()), and from a harness pushing its own quota in
    (Antigravity). One entry per harness:
      {harness,                       // key into HARNESS, like a session's
-      state,                        // "ok" | "expired"
+      state,                        // "ok" | "lapsed" | "refused"
       asOf,                         // epoch seconds of the snapshot or fetch
       fiveH: {pct, reset},          // integer percent, short reset text
       week:  {pct, reset},
@@ -338,8 +338,8 @@ function usageSample(d){
                isFinite(at) && at > 0 ? at : null);
     }
   }
-  /* Drop the buffers this payload no longer carries — a token that expired, a
-     harness that went away — so the map cannot grow without bound. */
+  /* Drop the buffers this payload no longer carries — a harness that stopped
+     reporting figures, one that went away — so the map cannot grow unbounded. */
   for(const key of burnHistory.keys()) if(!seen.has(key)) burnHistory.delete(key);
 }
 
@@ -634,6 +634,14 @@ const U_LAB_ADVANCE_PX = 7.11;
 const U_LAB_MIN_PX = 30;
 const U_LAB_MAX_CHARS = 10;
 
+/* The harnesses whose refusal is measured to mean "sign in again", and nothing
+   wider. Cursor answers a stale token with 401 and `actionRequired: "login"`,
+   recorded beside the branch that reads it in quota.py. Elsewhere a 401 cannot
+   separate a token gone stale from an account the endpoint does not serve, so a
+   harness stays out of this set until its own answer says otherwise — including
+   one added later, which lands on the wording that prescribes nothing. */
+const U_SIGNIN_ON_REFUSAL = new Set(["cursor"]);
+
 function usageEntry(u){
   const h = own(HARNESS, u.harness, null) ||
     {code: String(u.harness || "?").slice(0, 2).toUpperCase(), name: u.harness};
@@ -643,13 +651,20 @@ function usageEntry(u){
     : `<span class="cm-icot">${esc(h.code)}</span>`;
   const head = `<div class="u-hrow"><span class="cm-hcell">${ico}</span>` +
     `<span class="u-hname" title="${esc(h.name || u.harness)}">${esc(h.name || u.harness)}</span></div>`;
-  /* An expired token shows no numbers at all: stale figures presented next to
-     live ones read as live. The remedy belongs to the harness, so the note
-     points there — Cargento never refreshes a token. */
-  if(u.state === "expired"){
+  /* Neither unreadable state shows numbers: stale figures presented next to
+     live ones read as live. What they do not share is the remedy, and the
+     lapsed one is not a fault at all — hence no exclamation on it. Q-5 in
+     docs/design-usage-quota.md carries the reasoning and the reading that
+     forced it. */
+  if(u.state === "lapsed" || u.state === "refused"){
+    const who = esc(h.name || u.harness);
+    const note = u.state === "lapsed"
+      ? `<span>stored token lapsed — start ${who} to refresh it</span>`
+      : `<span class="u-excl" role="img" aria-label="attention">!</span>` +
+        `<span>${who} refused the usage request` +
+        `${U_SIGNIN_ON_REFUSAL.has(u.harness) ? " — sign in again" : ""}</span>`;
     return `<div class="u-entry">${head}` +
-      `<div class="u-expired"><span class="u-excl" role="img" aria-label="attention">!</span>` +
-      `<span>token expired — sign in again in ${esc(h.name || u.harness)}</span></div></div>`;
+      `<div class="u-noread${u.state === "lapsed" ? " u-quiet" : ""}">${note}</div></div>`;
   }
   /* One gauge row. `label` arrives ready for the markup, because the window
      labels are literals here and a model's is vendor text that has to go through

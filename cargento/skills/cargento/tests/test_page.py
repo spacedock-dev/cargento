@@ -112,8 +112,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "526b9cae4ee29f756e2e00fca6c88213a1a7423cb5daa111dfbde59c0d121561",
             ),
             "usage.js": (
-                51_910,
-                "8fe192960d45c33ae10c19ac2b31171f4df3264e826c899f59131b0d354e5548",
+                52_855,
+                "b973f6cf6c9d39f7e9ad834c7e4219346bbd1c6ae620460e027c9901ede8d322",
             ),
             "controls.js": (
                 7_271,
@@ -156,16 +156,16 @@ class FrontendAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(59_936, len(styles))
+        self.assertEqual(60_265, len(styles))
         self.assertEqual(
-            "bfa562c732a7f534fe12f81af48db17985cecacaa8a8a621e58f0b3610bd7667",
+            "de2bd633602e635b0b37ca1845c097ab875f0fb35d61fedb1356635c5c5a7160",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(320_296, len(assembled))
+        self.assertEqual(321_570, len(assembled))
         self.assertEqual(
-            "5cbe7ccf0095d5341d4bbacac0405a1dfbc7c088c0e7c0a11e883a84d1132643",
+            "e895211478eeeb6e17ff8230aa7a837f499d334f7e82795dc0393c726e7107b1",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -1467,6 +1467,75 @@ console.log(JSON.stringify(out));
         # would be a wrong label on a real number.
         self.assertNotIn('<span class="u-wlab">wk</span>', html)
         self.assertNotIn('<span class="u-wlab">5h</span>', html)
+
+    # The two states that publish no numbers. They were one state and one
+    # sentence once, and a real reader on 0.14.0 was told to sign in again while
+    # every one of her Claude Code sessions was working: the stored stamp had
+    # lapsed and nothing had refused anything. Each test below executes the
+    # shipped renderer, because the defect was the words, and the words are only
+    # in the markup.
+    def test_a_lapsed_stamp_names_the_harness_to_start_and_raises_no_fault(self) -> None:
+        rendered = self._run_page_js(
+            "const e = {harness:'claude', state:'lapsed', asOf: 1700000000};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        # Not "sign in again": the harness rewrites the stored credential when
+        # it runs, so the remedy is to start it, and it is named. Asserted on
+        # the sentence rather than on the harness name, which the tile's header
+        # prints anyway and which would pass on an entry that rendered nothing.
+        self.assertIn("start Claude", html)
+        self.assertIn("lapsed", html)
+        self.assertNotIn("sign in again", html)
+        self.assertNotIn("expired", html)
+        # Not a fault. The exclamation badge is what read as an error, and this
+        # is a normal idle state — anyone whose harness was closed overnight
+        # lands here before starting it.
+        self.assertNotIn("u-excl", html)
+        # And still no figures: a lapsed stamp shows nothing rather than the
+        # last numbers it saw.
+        self.assertNotIn("cm-track", html)
+        self.assertNotIn("u-pct", html)
+
+    def test_a_refusal_prescribes_nothing_it_cannot_evidence(self) -> None:
+        # A 401 from the usage endpoint cannot separate a token that went stale
+        # from a plan the endpoint does not serve, so the Claude tile says the
+        # smaller true thing and sends nobody round a loop that may not help.
+        rendered = self._run_page_js(
+            "const e = {harness:'claude', state:'refused', asOf: 1700000000};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        self.assertIn("refused", html)
+        self.assertNotIn("sign in again", html)
+        self.assertIn("u-excl", html)
+        self.assertNotIn("cm-track", html)
+
+    def test_cursors_refusal_keeps_the_remedy_its_own_answer_evidences(self) -> None:
+        # Cursor answers a stale token with 401 and `actionRequired: "login"`,
+        # recorded beside the branch in quota.py. That measurement is the whole
+        # reason this tile may advise a sign-in where Claude's may not, and
+        # blanket wording across both harnesses would throw it away.
+        rendered = self._run_page_js(
+            "const e = {harness:'cursor', state:'refused', asOf: 1700000000};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        self.assertIn("refused", html)
+        self.assertIn("sign in again", html)
+        self.assertIn("u-excl", html)
+
+    def test_an_unknown_harness_refusal_falls_back_to_the_silent_remedy(self) -> None:
+        # The sign-in advice is opt-in per harness, keyed on a measurement. A
+        # vendor added later with no measurement behind it must land on the
+        # wording that prescribes nothing, not inherit Cursor's.
+        rendered = self._run_page_js(
+            "const e = {harness:'someday', state:'refused', asOf: 1700000000};"
+            "console.log(JSON.stringify({html: usageEntry(e)}));"
+        )
+        html = rendered["html"]
+        self.assertIn("refused the usage request", html)
+        self.assertNotIn("sign in again", html)
 
     def test_hiding_the_monthly_slot_leaves_the_money_visible(self) -> None:
         # `used` is not gated by the stats config, so turning the bar off still

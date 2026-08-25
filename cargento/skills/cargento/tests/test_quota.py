@@ -261,7 +261,13 @@ class TokenReadTest(unittest.TestCase):
             entries, note = quota._claude_entries(config, NOW, _forbidden_opener(), _no_runner)
             self.assertEqual(([], "no oauth token"), (entries, note))
 
-    def test_an_expired_token_makes_no_request_and_never_refreshes(self) -> None:
+    def test_a_lapsed_stamp_makes_no_request_and_never_refreshes(self) -> None:
+        # A stored stamp in the past is read from disk with no request made at
+        # all — `_forbidden_opener` raises if one is. That is why this is not a
+        # refusal: nothing refused anything. Claude Code rewrites the stored
+        # credential only when it runs, so an open session keeps working on a
+        # token it holds in memory, and a lapsed stamp beside healthy sessions
+        # is the expected pairing rather than a fault.
         with tempfile.TemporaryDirectory() as tmp:
             config = _config(home=tmp)
             path = Path(quota.credentials_path(config))
@@ -269,7 +275,23 @@ class TokenReadTest(unittest.TestCase):
             path.write_text(_credentials(expires_at_ms=(NOW - 60) * 1000))
             entries, note = quota._claude_entries(config, NOW, _forbidden_opener(), _no_runner)
         self.assertIsNone(note)
-        self.assertEqual([{"harness": "claude", "state": "expired", "asOf": int(NOW)}], entries)
+        self.assertEqual([{"harness": "claude", "state": "lapsed", "asOf": int(NOW)}], entries)
+
+    def test_a_lapsed_stamp_and_a_refusal_do_not_share_one_state(self) -> None:
+        # The two Claude paths meant the same word once, and the page could only
+        # render one message for both: the local check prescribed "sign in
+        # again" for a token the harness refreshes by itself. Pinning the
+        # inequality is what stops them being folded back together.
+        with tempfile.TemporaryDirectory() as tmp:
+            config = _config(home=tmp)
+            path = Path(quota.credentials_path(config))
+            path.parent.mkdir(parents=True)
+            path.write_text(_credentials(expires_at_ms=(NOW - 60) * 1000))
+            (local,), _ = quota._claude_entries(config, NOW, _forbidden_opener(), _no_runner)
+        (refused,), _ = quota._fetch_windows(
+            _config(), TOKEN, NOW, _opener(error=_http_error(401, "no"))
+        )
+        self.assertNotEqual(local["state"], refused["state"])
 
 
 class FetchRequestTest(unittest.TestCase):
@@ -323,13 +345,19 @@ class FetchRequestTest(unittest.TestCase):
             entries[0]["fiveH"],
         )
 
-    def test_a_rejected_token_reads_as_expired_without_retry(self) -> None:
+    def test_a_rejected_token_reads_as_refused_without_retry(self) -> None:
+        # Both codes, and neither becomes a diagnostic category: the entry is
+        # published so the tile can say why it has no numbers. `refused` is all
+        # a 401 supports here — it cannot separate a token the harness would
+        # refresh from an account this endpoint does not serve.
         for code in (401, 403):
             with self.subTest(code=code):
                 error = _http_error(code, "no")
                 entries, note = self._fetch(_opener(error=error))
                 self.assertIsNone(note)
-                self.assertEqual("expired", entries[0]["state"])
+                self.assertEqual(
+                    {"harness": "claude", "state": "refused", "asOf": int(NOW)}, entries[0]
+                )
 
     def test_failures_shape_into_categories_without_the_token(self) -> None:
         cases: list[tuple[BaseException | None, bytes | None, str]] = [
@@ -1113,12 +1141,17 @@ class CursorFetchTest(unittest.TestCase):
                 self.assertEqual([], entries)
                 self.assertEqual("response carried no plan usage", note)
 
-    def test_a_rejected_token_is_expired_never_a_refresh(self) -> None:
+    def test_a_rejected_token_is_refused_never_a_refresh(self) -> None:
+        # Cursor reaches this state and no other: it has no local expiry check,
+        # so the refusal is the only way its token can be reported as unusable.
+        # The measured remedy (401 with `actionRequired: "login"`) is a property
+        # of Cursor's answer, not of the state word, so the word is the same one
+        # Claude's refusal carries and the page decides what to advise.
         for code in (401, 403):
             with self.subTest(code=code):
                 (entry,), note = self._entries(opener=_opener(error=_http_error(code, "nope")))
                 self.assertIsNone(note)
-                self.assertEqual({"harness": "cursor", "state": "expired", "asOf": int(NOW)}, entry)
+                self.assertEqual({"harness": "cursor", "state": "refused", "asOf": int(NOW)}, entry)
 
     def test_transport_and_server_failures_stay_categories(self) -> None:
         cases = (

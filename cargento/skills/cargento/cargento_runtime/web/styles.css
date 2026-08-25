@@ -591,7 +591,12 @@
   .u-extras{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:var(--fs-2xs);color:var(--ink3);flex-wrap:wrap;margin-top:3px}
   .u-extras b{color:var(--ink2);font-weight:700}
   .u-asof{color:var(--ink3)}
-  .u-expired{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
+  /* The row that stands in for the gauges when an entry has no figures. The
+     `u-quiet` variant is the one state here that is not a fault — a stored
+     stamp the harness refreshes by running — so it drops to the dim ink the
+     other unemphatic notes use and carries no badge. */
+  .u-noread{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
+  .u-noread.u-quiet{color:var(--ink3)}
   .u-excl{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;flex:none;border-radius:50%;background:color-mix(in oklab,var(--alert) 18%,transparent);color:var(--alert);font-weight:700}
   .u-note{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink3)}
   .u-cfg{position:absolute;top:34px;right:16px;z-index:30;width:210px;background:var(--panel);border:1px solid var(--line2);border-radius:10px;box-shadow:0 14px 34px -14px rgba(0,0,0,.35);padding:8px;display:flex;flex-direction:column;gap:2px}
