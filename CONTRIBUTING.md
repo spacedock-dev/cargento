@@ -24,6 +24,12 @@ cd cargento
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
 ```
 
+Repository development skills use Git symlinks so Claude Code and Codex load one canonical body.
+On Windows, enable Developer Mode and run `git config --global core.symlinks true` before cloning.
+If an existing checkout shows `.agents/skills/*` as plain files, configure symlink support and clone
+again; changing the setting does not repair files already checked out. See the
+[Git for Windows symlink guidance](https://gitforwindows.org/symbolic-links.html).
+
 Run the dashboard locally without installing any plugin:
 
 ```bash
@@ -37,9 +43,10 @@ Run the canonical pre-PR suite in [AGENTS.md](AGENTS.md#pre-pr-checks) and make 
 It is kept in one place deliberately. A second copy here would drift, and a contributor following a
 short copy passes locally and then fails the required gate.
 
-Finish with a docs pass. `/sync-docs` (the skill at `.claude/skills/sync-docs/SKILL.md`) reconciles
-the documentation against whatever your change did to the code and commits the result onto your
-branch, so the doc updates ride in the same PR.
+Finish with a docs pass. Invoke the `sync-docs` skill to reconcile the documentation against
+whatever your change did to the code and commit the result onto your branch, so the doc updates
+ride in the same PR. `.claude/skills/` is the canonical repository-skill tree; Codex discovers the
+same directories through the relative symlinks under `.agents/skills/`.
 
 ### The quality gate
 
@@ -134,6 +141,9 @@ so re-run the job before investigating, and check the traceback is a timeout and
   because the `version-guard` check will fail it. See [Releases](#releases).
 - Skill bodies must stay host-neutral: no `${CLAUDE_PLUGIN_ROOT}`, no host-specific tool names.
   Describe capabilities, not tool APIs.
+- Repository development skills live canonically under `.claude/skills/`. Every one needs an
+  `agents/openai.yaml` file and a matching relative symlink under `.agents/skills/`; the validator
+  rejects a copied, missing, orphaned or misdirected Codex alias.
 - The skill description is at most 300 characters, and `agents/openai.yaml` keeps its 25 to 64
   character short description.
 - Every relative Markdown link, in the skill and in the repository's prose docs, must resolve within
@@ -165,7 +175,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   live agent's writes, so use `mode=ro` SQLite connections with short timeouts.
 - Defensive parsing. A broken or unexpected harness store is skipped, never fatal. One bad record
   must not take a collector offline.
-- Loopback by default. The server binds `127.0.0.1` unless the operator passes `--host 0.0.0.0`, which is theirs to pass and not yours to default. Do not widen the default in code, and never admit a Host the bind itself did not ask for — see `SECURITY.md`.
+- Loopback by default. The server binds `127.0.0.1` unless the operator passes `--host 0.0.0.0`, which is theirs to pass and not yours to default. Do not widen the default in code, and never admit a Host the bind itself did not ask for. See `SECURITY.md`.
 - Never interpolate a literal path into a glob pattern. Go through `glob_under()`, which escapes
   glob metacharacters in the root and sorts the result. A home directory containing `[` otherwise
   breaks discovery completely and silently, and unsorted glob output makes "newest file wins" ties
@@ -247,7 +257,7 @@ Format: `<type>(<scope>): <description>`, where type is one of `feat`, `fix`, `d
 ## Pull requests
 
 1. Fork (or branch, for maintainers) and make your change.
-2. Run the pre-PR suite in [AGENTS.md](AGENTS.md#pre-pr-checks), then `/sync-docs`.
+2. Run the pre-PR suite in [AGENTS.md](AGENTS.md#pre-pr-checks), then invoke the `sync-docs` skill.
 3. Open a PR against `main`. `main` is protected: PRs are required, the `validate`, `version-guard` and `quality-gate` checks must pass, history is linear (squash/rebase), all conversations must be resolved, and merged branches are deleted automatically.
 4. If your PR closes an issue, use an explicit `Closes #NNN` line, one line per issue. A comma-separated list does not autoclose.
 

@@ -1,19 +1,33 @@
 ---
 name: burndown
-description: Work the Cargento Visibility 2x2 Roadmap one issue at a time. Picks the next issue by dependency and release row, hands the analysis to linear-deep-dive, ships it through the repository's own gate, then reconciles the issue, its milestone and the project overview after the merge. Use for "burn down the roadmap", "what should I build next", or "close out DRC-XXXX".
+description: Use when working the Cargento Visibility 2x2 Roadmap, choosing what to build next, or closing out a DRC issue.
 ---
 
 # burndown
 
 One roadmap issue, start to finish, with the records left true afterwards.
 
-The project is **Cargento: Visibility 2x2 Roadmap** in Linear (team `DRC`). This skill owns picking and reconciling. Everything between those two is delegated.
+The project is **Cargento: Visibility 2x2 Roadmap** in Linear (team `DRC`). This skill owns
+picking and reconciling. Invoke the required supporting skills inside the current workflow;
+delegating work to another agent is a separate choice and requires its own authorization.
 
-```
-/burndown              pick the next issue and work it
-/burndown DRC-4027     work this one
-/burndown --pick       print the pick and the reasoning, then stop
-```
+Invoke the `burndown` skill with no argument to pick and work the next issue, with a `DRC-####`
+identifier to work that issue, or with `--pick` to print the pick and its reasoning and then stop.
+
+## Prerequisites
+
+Picking requires an authenticated Linear capability with read access to the `DRC` team, its
+projects, issues, relations, labels and milestones. A full run also requires:
+
+- Linear write access to update issues, relations, milestones and the project overview after merge.
+- The `recce-dev:linear-deep-dive`, `superpowers:test-driven-development` and `sync-docs` skills.
+- A Git checkout that can create one branch per issue, run the canonical pre-PR suite, make
+  DCO-signed commits and push to `origin`.
+- GitHub access that can inspect mirrored issues, open a pull request and confirm its merge.
+
+If a required capability is unavailable, stop before the affected read or mutation and report the
+missing prerequisite. Do not substitute the stale board export for Linear or reconcile records
+before a merge can be confirmed.
 
 ## 1. Pick
 
@@ -38,7 +52,9 @@ Read state from Linear only. `docs/visibility-2x2/items.json` holds the panel's 
 
 ## 2. Understand
 
-Hand the issue to `recce-dev:linear-deep-dive` and **stop it at step 6, Propose Approach**. This skill owns step 7 onward, so let it analyse and do not let it start its own skill chain.
+**REQUIRED SUB-SKILL:** Invoke `recce-dev:linear-deep-dive` for the issue and stop it at step 6,
+Propose Approach. This skill owns step 7 onward, so use the analysis and do not continue that
+skill's own workflow.
 
 Use what it returns: classification, key files, acceptance criteria, risks. Do not repeat its exploration, and do not restate its rules here; issue lifecycle, branch handling and the read-skeptically discipline are all its.
 
@@ -46,11 +62,12 @@ If it finds the issue needs a decision nobody filed, stop. File the decision iss
 
 ## 3. Build
 
-Test-driven, via `superpowers:test-driven-development`. Write the failing test first and watch it fail. If a test passes the moment you write it, you are testing what already works.
+**REQUIRED SUB-SKILL:** Invoke `superpowers:test-driven-development`. Write the failing test first
+and watch it fail. If a test passes the moment you write it, you are testing what already works.
 
 Then run the canonical pre-PR suite from **AGENTS.md, "Pre-PR Checks"**. Run it from there rather than from a copy. A short local copy of that list is how someone passes locally and then fails the required check.
 
-Then `/sync-docs`, which is a step of that gate and not optional.
+Then invoke the `sync-docs` skill, which is a step of that gate and not optional.
 
 PR body: open with the Linear link, `Implements [DRC-####](url) — <issue title>`, and include a `## Verification` section naming what you ran and what it said. Add `Closes #NNNN` only if a mirrored GitHub issue actually exists, one line per issue, never comma separated.
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Cargento Docs"
+  short_description: "Reconcile repository docs with the code"
+  default_prompt: "Use $sync-docs to reconcile Cargento's documentation before a pull request."

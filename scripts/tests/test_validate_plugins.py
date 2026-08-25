@@ -1005,6 +1005,163 @@ class DuplicatedScriptTests(unittest.TestCase):
             )
 
 
+class RepositoryDevelopmentSkillTests(unittest.TestCase):
+    """Claude owns repository skills; Codex reaches the same directories."""
+
+    def _guard(self) -> Any:
+        guard = getattr(validator, "validate_repository_skills", None)
+        self.assertIsNotNone(guard, "the repository skill alias guard is missing")
+        return guard
+
+    def _write_skill(self, root: Path, name: str) -> Path:
+        skill = root / ".claude/skills" / name
+        (skill / "agents").mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: Use when testing {name}.\n---\n\n# {name}\n",
+            encoding="utf-8",
+        )
+        (skill / "agents/openai.yaml").write_text(
+            "interface:\n"
+            f'  display_name: "{name}"\n'
+            '  short_description: "Repository development workflow skill"\n'
+            f'  default_prompt: "Use ${name} for this repository workflow."\n',
+            encoding="utf-8",
+        )
+        return skill
+
+    def _link_skill(self, root: Path, name: str, target: Path | None = None) -> Path:
+        aliases = root / ".agents/skills"
+        aliases.mkdir(parents=True, exist_ok=True)
+        alias = aliases / name
+        alias.symlink_to(target or Path("../../.claude/skills") / name, target_is_directory=True)
+        return alias
+
+    def _errors(self, root: Path) -> list[str]:
+        validation = validator.Validation()
+        guard = self._guard()
+        if guard is None:
+            return []
+        with mock.patch.object(validator, "ROOT", root):
+            guard(validation)
+        return [str(message) for message in validation.errors]
+
+    def test_the_repository_skills_are_valid_codex_aliases_today(self) -> None:
+        errors = self._errors(validator.ROOT)
+        self.assertEqual([], errors)
+
+    def test_an_empty_canonical_skill_tree_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            (root / ".claude/skills").mkdir(parents=True)
+
+            errors = self._errors(root)
+
+        self.assertTrue(any("no canonical repository skills" in error for error in errors), errors)
+
+    def test_a_missing_codex_alias_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            self._write_skill(root, "fixture")
+
+            errors = self._errors(root)
+
+        self.assertTrue(any("missing Codex alias" in error for error in errors), errors)
+
+    def test_repository_skill_description_length_is_bounded(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            skill = self._write_skill(root, "fixture")
+            (skill / "SKILL.md").write_text(
+                f"---\nname: fixture\ndescription: {'x' * 301}\n---\n",
+                encoding="utf-8",
+            )
+            self._link_skill(root, "fixture")
+
+            errors = self._errors(root)
+
+        self.assertTrue(any("maximum is 300" in error for error in errors), errors)
+
+    def test_repository_skill_description_rejects_angle_brackets(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            skill = self._write_skill(root, "fixture")
+            (skill / "SKILL.md").write_text(
+                "---\nname: fixture\ndescription: Use when handling <placeholder>.\n---\n",
+                encoding="utf-8",
+            )
+            self._link_skill(root, "fixture")
+
+            errors = self._errors(root)
+
+        self.assertTrue(any("angle-bracket" in error for error in errors), errors)
+
+    def test_a_copy_is_rejected_in_place_of_a_symlink(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            canonical = self._write_skill(root, "fixture")
+            alias = root / ".agents/skills/fixture"
+            alias.parent.mkdir(parents=True)
+            shutil.copytree(canonical, alias)
+
+            errors = self._errors(root)
+
+        self.assertTrue(any("must be a symlink" in error for error in errors), errors)
+
+    def test_a_codex_alias_must_point_to_its_matching_claude_skill(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            self._write_skill(root, "fixture")
+            self._write_skill(root, "other")
+            self._link_skill(root, "fixture", Path("../../.claude/skills/other"))
+            self._link_skill(root, "other")
+
+            errors = self._errors(root)
+
+        self.assertTrue(
+            any("must target" in error and "fixture" in error for error in errors), errors
+        )
+
+    def test_repository_skills_require_openai_metadata(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            skill = self._write_skill(root, "fixture")
+            (skill / "agents/openai.yaml").unlink()
+            self._link_skill(root, "fixture")
+
+            errors = self._errors(root)
+
+        self.assertTrue(
+            any("openai.yaml" in error and "required" in error for error in errors), errors
+        )
+
+    def test_repository_skills_validate_openai_metadata_content(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            skill = self._write_skill(root, "fixture")
+            (skill / "agents/openai.yaml").write_text(
+                "interface:\n"
+                '  display_name: "Fixture"\n'
+                '  short_description: "Too short"\n'
+                '  default_prompt: "Run this repository workflow."\n',
+                encoding="utf-8",
+            )
+            self._link_skill(root, "fixture")
+
+            errors = self._errors(root)
+
+        self.assertTrue(any("25 to 64 characters" in error for error in errors), errors)
+        self.assertTrue(any("must mention $fixture" in error for error in errors), errors)
+
+    def test_an_alias_without_a_canonical_skill_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+            root = Path(directory)
+            self._link_skill(root, "orphan")
+
+            errors = self._errors(root)
+
+        self.assertTrue(any("has no canonical Claude skill" in error for error in errors), errors)
+
+
 class AntigravityHookNestingTests(unittest.TestCase):
     """Antigravity's hooks file wraps its events in a name, and a flat one is dead.
 

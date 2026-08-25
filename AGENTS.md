@@ -10,6 +10,10 @@ This repository distributes Cargento — an agnostic agent cartography and visua
   Gemini CLI both load extension hooks from `<root>/hooks/hooks.json` and neither lets that path
   be moved, so a shared root hands each harness the other's event vocabulary
 
+Repository development skills are canonical under `.claude/skills/`. Claude Code discovers them
+there; Codex discovers the same directories through relative symlinks under `.agents/skills/`.
+Each canonical skill owns its `SKILL.md`, supporting files and `agents/openai.yaml` metadata.
+
 The user-facing workflow lives in `cargento/skills/cargento/`. Every user-facing workflow must be usable as a skill so Codex can discover it; Claude-only agents and lifecycle hooks may remain in their native directories if ever added.
 
 ## Architecture
@@ -84,7 +88,8 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings, plus closed harness vocabularies such as `notification_type` and `reply`, each earned one at a time on the reasoning the captures README gives; never a value a person or a model wrote. |
-| `.claude/skills/*/SKILL.md` | Repository development skills (`sync-docs`, `visibility-2x2`, `burndown`). Not shipped with the plugin, so the portability rules below do not apply to them. |
+| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `visibility-2x2`, `burndown`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
+| `.agents/skills/*` | Codex discovery aliases for repository development skills. Each entry is a relative symlink to the matching canonical directory under `.claude/skills/`; `scripts/validate_plugins.py` rejects missing, copied, orphaned or misdirected aliases. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 
 `scripts/validate_plugins.py` gates the docs as well as the plugin: across the files above it
@@ -93,9 +98,9 @@ the dashboard URL (the server is IPv4-only). Deleting or renaming any of them fa
 owns `CARGENTO_RUNTIME_FILES`, the inventory of every file the shipped dashboard needs at runtime;
 `--runtime-files <plugin root>` checks an installed copy without the repository around it.
 
-Run `/sync-docs` before opening a PR (see Pre-PR Checks) so doc updates ride in the PR that changes
-the code. Claude Code discovers it as a skill; on other harnesses, read
-`.claude/skills/sync-docs/SKILL.md` and follow it directly.
+Invoke the `sync-docs` skill before opening a PR (see Pre-PR Checks) so doc updates ride in the PR
+that changes the code. Claude Code discovers it under `.claude/skills/`; Codex discovers the same
+canonical directory through `.agents/skills/`.
 
 ## Commit Conventions
 
@@ -143,20 +148,19 @@ claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
 ```
 
-Then reconcile the docs before you push. Run `/sync-docs` in your agent — it is a skill, not a
+Then reconcile the docs before you push. Invoke the `sync-docs` skill in your agent — it is not a
 shell command — and let it commit any doc updates onto this same branch. Then:
 
 ```bash
 git push -u origin HEAD && gh pr create
 ```
 
-`/sync-docs` is a docs-only pass that diffs the docs against the code and fixes the drift the change
+The `sync-docs` skill is a docs-only pass that diffs the docs against the code and fixes the drift the change
 introduced. It also holds the human-facing prose docs it touched to the voice standard written out
 in its own "Voice and tone" section — those docs are written for people, and an agent topping them
 up in model-default voice is how that erodes — and greps them for the tone tells, since nothing in
 CI checks that. The optional third-party `humanizer` skill automates that pass but is not required
-and is not vendored here. `/sync-docs` lives at `.claude/skills/sync-docs/SKILL.md`; harnesses
-without skill discovery should read that file and follow it.
+and is not vendored here. Its canonical body lives at `.claude/skills/sync-docs/SKILL.md`.
 
 ## Parallel Work
 
@@ -191,7 +195,7 @@ may still be right, but prove that by running the oracles rather than reasoning 
 
 - `SKILL.md`'s **Project** bullet. Three branches appending to that one sentence collided. Keep
   `SKILL.md` edits inside the paragraph your feature belongs to.
-- `COMPATIBILITY.md`'s `docs-synced-through` marker. Every parallel `/sync-docs` pass wants to
+- `COMPATIBILITY.md`'s `docs-synced-through` marker. Every parallel `sync-docs` pass wants to
   advance it, all of them would collide, and none can honestly vouch for a sibling's work it never
   read. Leave it alone per branch and stamp it once from `main` after the merges, naming what the
   range actually covers.
@@ -238,7 +242,7 @@ Do not write one to restate the line below it, to summarize a function its name 
 
 Length follows the decision, not the code. A one-line change can deserve two lines of why; it rarely deserves six. If the explanation runs longer than the code it explains, the reason is durable enough for `docs/design-*.md`, and the comment shrinks to a reference.
 
-Nothing in CI checks this. It is a review standard, like the voice standard `/sync-docs` holds the prose docs to.
+Nothing in CI checks this. It is a review standard, like the voice standard the `sync-docs` skill holds the prose docs to.
 
 ## Versioning and Releases
 

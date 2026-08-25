@@ -1,6 +1,6 @@
 ---
 name: visibility-2x2
-description: Open the Visibility 2x2 board, a local surface ranking 57 candidate Cargento signals. Use when deciding what Cargento should build next, or for "open the visibility board" or "show me the 2x2".
+description: Use when deciding what Cargento should build next, opening the Visibility 2x2 board, or reviewing its candidate-signal scores.
 ---
 
 # Visibility 2x2
@@ -17,7 +17,9 @@ Stdlib-only, no dependencies. From the repository root:
 python3 docs/visibility-2x2/serve.py --port 8899
 ```
 
-It runs in the foreground and prints the URL. Then open it:
+It runs in the foreground and prints the URL. Keep that process running while you open the printed
+URL with the available browser capability. From another local shell, this command opens it in the
+default browser:
 
 ```bash
 python3 -m webbrowser -t http://127.0.0.1:8899/

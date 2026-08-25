@@ -1,0 +1,4 @@
+interface:
+  display_name: "Visibility 2x2"
+  short_description: "Open the Cargento prioritization board"
+  default_prompt: "Use $visibility-2x2 to open and explain the Cargento prioritization board."

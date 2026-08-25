@@ -368,6 +368,18 @@ def approx_token_count(text: str) -> int:
     return max(1, (len(text.encode("utf-8")) + 3) // 4)
 
 
+def validate_skill_description(value: object, path: Path, validation: Validation) -> str:
+    """Validate the shared catalog description contract."""
+    if not isinstance(value, str) or not value:
+        validation.error(path, "description is required")
+        return ""
+    if len(value) > 300:
+        validation.error(path, f"description is {len(value)} characters; maximum is 300")
+    if "<" in value or ">" in value:
+        validation.error(path, "description must not contain angle-bracket placeholders")
+    return value
+
+
 def markdown_prose(text: str) -> str:
     """Blank out YAML frontmatter and fenced code, preserving line positions.
 
@@ -1031,13 +1043,7 @@ def validate_skills(plugin_root: Path, validation: Validation) -> tuple[set[str]
         if name in names:
             validation.error(path, f"duplicate skill name {name!r}")
         names.add(name)
-        if not isinstance(description, str) or not description:
-            validation.error(path, "description is required")
-            description = ""
-        if len(description) > 300:
-            validation.error(path, f"description is {len(description)} characters; maximum is 300")
-        if "<" in description or ">" in description:
-            validation.error(path, "description must not contain angle-bracket placeholders")
+        description = validate_skill_description(description, path, validation)
         catalog_lines.append(
             render_catalog_estimate_line(plugin_root.name, name, description, path)
         )
@@ -1181,6 +1187,81 @@ def validate_repo_docs(validation: Validation) -> None:
                 validation.error(path, f"contains {literal!r}; {guidance}")
 
 
+def validate_repository_skills(validation: Validation) -> None:
+    """Repository skills stay canonical for Claude and aliased for Codex.
+
+    Both harnesses discover a convention-named directory. Requiring relative
+    symlinks keeps one editable skill body and makes each alias survive a clone
+    or a linked worktree at a different absolute path.
+    """
+    claude_root = ROOT / ".claude/skills"
+    codex_root = ROOT / ".agents/skills"
+    canonical = (
+        {
+            path.name: path
+            for path in claude_root.iterdir()
+            if path.is_dir() and (path / "SKILL.md").is_file()
+        }
+        if claude_root.is_dir()
+        else {}
+    )
+    if not canonical:
+        validation.error(claude_root, "no canonical repository skills discovered")
+
+    for name, skill_root in sorted(canonical.items()):
+        skill_path = skill_root / "SKILL.md"
+        metadata = parse_frontmatter(skill_path, validation)
+        if metadata is not None:
+            raw_name = metadata.get("name")
+            description = metadata.get("description")
+            if not isinstance(raw_name, str) or not NAME_RE.fullmatch(raw_name):
+                validation.error(skill_path, "name must use lowercase kebab-case")
+            elif raw_name != name:
+                validation.error(skill_path, "frontmatter name must match its directory")
+            validate_skill_description(description, skill_path, validation)
+
+        openai_path = skill_root / "agents/openai.yaml"
+        if not openai_path.is_file():
+            validation.error(
+                openai_path,
+                "Codex presentation metadata is required for repository development skills",
+            )
+        else:
+            fields = parse_openai_metadata(openai_path, validation)
+            if fields is not None:
+                for field in ("display_name", "short_description", "default_prompt"):
+                    if not isinstance(fields.get(field), str) or not fields[field].strip():
+                        validation.error(
+                            openai_path, f"interface.{field} must be a quoted non-empty string"
+                        )
+                short_description = fields.get("short_description")
+                if isinstance(short_description, str) and not 25 <= len(short_description) <= 64:
+                    validation.error(
+                        openai_path, "interface.short_description must be 25 to 64 characters"
+                    )
+                default_prompt = fields.get("default_prompt")
+                if isinstance(default_prompt, str) and f"${name}" not in default_prompt:
+                    validation.error(openai_path, f"interface.default_prompt must mention ${name}")
+
+        alias = codex_root / name
+        expected_target = Path("../../.claude/skills") / name
+        if not alias.is_symlink() and not alias.exists():
+            validation.error(alias, "missing Codex alias for canonical Claude skill")
+        elif not alias.is_symlink():
+            validation.error(
+                alias,
+                "Codex repository skill alias must be a symlink; on Windows, enable Developer "
+                "Mode and Git core.symlinks before cloning",
+            )
+        elif alias.readlink() != expected_target:
+            validation.error(alias, f"Codex alias must target {expected_target.as_posix()}")
+
+    aliases = {path.name: path for path in codex_root.iterdir()} if codex_root.is_dir() else {}
+    for name, alias in sorted(aliases.items()):
+        if name not in canonical:
+            validation.error(alias, "Codex alias has no canonical Claude skill")
+
+
 def validate_readme(skill_names: dict[str, set[str]], validation: Validation) -> None:
     path = ROOT / "README.md"
     body = path.read_text(encoding="utf-8")
@@ -1245,6 +1326,7 @@ def main() -> int:
     validate_duplicated_scripts(validation)
     validate_marketplaces(manifests, gemini_manifests, antigravity_manifests, validation)
     validate_readme(skill_names, validation)
+    validate_repository_skills(validation)
     validate_repo_docs(validation)
 
     catalog_text = "\n".join(catalog_lines) + "\n"

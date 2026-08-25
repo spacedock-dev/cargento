@@ -1,8 +1,6 @@
 ---
 name: sync-docs
-description: Reconcile Cargento's docs with the code and hold the prose to the repo's voice
-  standard. Run as the docs step of the pre-PR gate, after the validation suite and before
-  `gh pr create`, and before a release or whenever the docs feel stale.
+description: Use when reconciling Cargento's docs before a pull request or release, or whenever the repository documentation may be stale.
 ---
 
 # sync-docs
@@ -30,7 +28,7 @@ diff-and-reconcile pass, not a rewrite.
 
 ## When to run
 
-- **Before opening a PR** (the primary trigger). Per `AGENTS.md`, `/sync-docs` is a step in the
+- **Before opening a PR** (the primary trigger). Per `AGENTS.md`, invoking the `sync-docs` skill is a step in the
   branch → commit → validation suite → **sync-docs** → push → `gh pr create` workflow, so the doc
   updates for a change ride in the same PR and the docs never drift between merges. Scope the pass
   to what your branch touched (step 1).
@@ -53,7 +51,7 @@ diff-and-reconcile pass, not a rewrite.
 | `docs/plans/*.md` | **Transient** plans for *unshipped* work only. | Once the work ships, fold the durable *what* into the owning doc and the durable *why* into `docs/design-*.md`, then **delete the plan file.** |
 | `.github/PULL_REQUEST_TEMPLATE.md` | The PR author's checklist. | Must mirror the real gate in `AGENTS.md` — if the gate gains a step, this gains a checkbox. Never rename; GitHub loads it by path. The HTML comments are deliberate hints. |
 | `CODE_OF_CONDUCT.md` | Contributor Covenant 2.1, verbatim. | **Never edit the text.** Only the enforcement contact is ours. |
-| `.claude/skills/*/SKILL.md` | Repository development skills, including this one. Not shipped with the plugin. | Editable prose, but keep the path — Claude Code discovers these by directory name, and `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and the PR template point at it. The banned portability literals are legal here because this tree is not shipped; the validator link-checks these files but does not marker-scan them. |
+| `.claude/skills/*/SKILL.md` and `.agents/skills/*` | Repository development skills, including this one. Not shipped with the plugin. | `.claude/skills/` is canonical. Each `.agents/skills/` entry is a relative symlink to its matching canonical directory so Codex and Claude Code read one body. Each canonical skill directory contains its own `agents/openai.yaml`. The banned portability literals are legal here because this tree is not shipped; the validator link-checks the canonical files but does not marker-scan them. |
 
 ### Constraints on `cargento/skills/cargento/SKILL.md`
 
@@ -266,7 +264,7 @@ PY
 grep -nE '^\s+(- name:|run:|  +[a-z].*)$' .github/workflows/quality-gate.yml | grep -E 'ruff|mypy|coverage|unittest|lint_embedded|validate_plugins'
 grep -nE 'run: ' .github/workflows/validate.yml
 # What the validator enforces on documentation
-grep -nE 'PORTABILITY_MARKERS|SHARED_FRONTMATTER_FIELDS|ROOT_DOCS|BANNED_DOC_LITERALS|maximum is 300' \
+grep -nE 'PORTABILITY_MARKERS|SHARED_FRONTMATTER_FIELDS|ROOT_DOCS|BANNED_DOC_LITERALS|validate_repository_skills|maximum is 300' \
   scripts/validate_plugins.py
 ```
 
@@ -357,9 +355,11 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    one doc at a time. It is a third-party skill that this repository does not vendor, so treat it as
    an accelerant and never as a prerequisite. Voice and tone is the contract; a contributor with no
    humanizer installed applies it by hand and is equally done.
-9. **Stamp the sync.** Update the marker at the bottom of `COMPATIBILITY.md`:
-   `<!-- docs-synced-through: <short-sha> (<YYYY-MM-DD>) -->`. Stamp the `origin/main` tip this
-   branch is based on, **not** your branch `HEAD`:
+9. **Stamp the sync only from a standalone main-based reconciliation.** A feature branch leaves the
+   marker at the bottom of `COMPATIBILITY.md` alone, because parallel branches cannot vouch for one
+   another and all editing it manufactures a conflict. After the relevant branches merge, a
+   standalone reconciliation updates `<!-- docs-synced-through: <short-sha> (<YYYY-MM-DD>) -->` on
+   its docs branch. Stamp the `origin/main` tip that branch is based on, **not** its branch `HEAD`:
    ```bash
    git rev-parse --short "$(git merge-base origin/main HEAD)"
    ```
