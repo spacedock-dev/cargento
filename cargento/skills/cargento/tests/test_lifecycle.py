@@ -416,7 +416,11 @@ print(json.dumps({{
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
-                    timeout=30,
+                    # A loaded macOS runner took just over 30 seconds to reach the
+                    # existing daemon readiness boundary twice; the same copied
+                    # launch took under a second alone. Match this class's installed-
+                    # process budget without weakening any readiness assertion.
+                    timeout=self.OWNED_INSTANCE_READY_TIMEOUT_SEC,
                     check=False,
                 )
                 self.assertEqual(0, launch.returncode, launch.stderr)
