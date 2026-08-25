@@ -58,7 +58,8 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
         │   ├── transcripts.py      # shared metadata, prompt titles, non-Claude analyzers
         │   ├── turns.py            # generic incremental turn scanning and turn display
-        │   └── web/                # HTML, CSS, JS, and byte-preserving page loader
+        │   └── web/                # HTML, CSS, JS, and byte-preserving page loaders
+        │       └── next/           # independently assembled ?next=true frontend
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
 ```

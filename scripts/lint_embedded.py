@@ -5,18 +5,17 @@ The Cargento dashboard ships its HTML, CSS, and JavaScript as direct source
 files. Python linters cannot see inside those assets, so this script checks
 them:
 
-- JavaScript: the shipped script — the parts named in page.py's
-  ``APP_PARTS``, concatenated in that order, exactly as the page serves
-  them — syntax-checked with ``node --check`` (hard requirement; pass
-  ``--allow-missing-node`` to degrade to a warning for local machines
-  without node).
-- CSS: structural checks — balanced braces, no empty rules, no stray ``<``
-  outside selectors, every declaration line ends in ``}`` or ``;``.
+- JavaScript: each shipped script — the parts named in page.py's
+  ``APP_PARTS`` and ``NEXT_PARTS``, concatenated in those orders, exactly as
+  each page serves them — syntax-checked with ``node --check`` (hard
+  requirement; pass ``--allow-missing-node`` to degrade to a warning for local
+  machines without node).
+- CSS: structural checks for balanced braces and empty rules.
 - HTML shell: every ``id=`` referenced from the JS via
   ``getElementById`` exists either in the static HTML or is created by the
   JS itself (catches renamed-element regressions the unit tests may miss).
-- Part inventory: a ``.js`` file on disk that ``APP_PARTS`` does not name is
-  a finding (the page never serves it, so linting it as if shipped could
+- Part inventory: a ``.js`` file on disk that its bundle's part tuple does not
+  name is a finding (the page never serves it, so linting it as if shipped could
   mask a real regression), and a part named but missing on disk raises the
   same ``FileNotFoundError`` the server would.
 
@@ -44,10 +43,10 @@ WEB_DIR = (
 )
 
 
-def load_app_parts(web_dir: Path = WEB_DIR) -> tuple[str, ...]:
-    """The ordered script-part list, read from page.py itself.
+def load_part_inventory(web_dir: Path, inventory_name: str) -> tuple[str, ...]:
+    """One ordered script-part list, read from the root page.py itself.
 
-    page.py owns ``APP_PARTS``; importing it by path keeps this script
+    page.py owns both inventories; importing it by path keeps this script
     standalone (no package on sys.path) while guaranteeing the linter and
     the server agree on what ships. A missing page.py raises
     ``FileNotFoundError``; an empty or malformed part list raises
@@ -60,15 +59,25 @@ def load_app_parts(web_dir: Path = WEB_DIR) -> tuple[str, ...]:
         raise ImportError(msg)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    parts = getattr(module, "APP_PARTS", None)
+    parts = getattr(module, inventory_name, None)
     if (
         not isinstance(parts, tuple)
         or not parts
         or not all(isinstance(name, str) for name in parts)
     ):
-        msg = f"{loader_path} must define APP_PARTS as a non-empty tuple of file names"
+        msg = f"{loader_path} must define {inventory_name} as a non-empty tuple of file names"
         raise ValueError(msg)
     return parts
+
+
+def load_app_parts(web_dir: Path = WEB_DIR) -> tuple[str, ...]:
+    """Return the existing page's ordered script inventory."""
+    return load_part_inventory(web_dir, "APP_PARTS")
+
+
+def load_next_parts(web_dir: Path = WEB_DIR) -> tuple[str, ...]:
+    """Return the next page's ordered script inventory."""
+    return load_part_inventory(web_dir, "NEXT_PARTS")
 
 
 def load_frontend(
@@ -76,10 +85,10 @@ def load_frontend(
 ) -> tuple[str, str, str]:
     """The HTML shell, the stylesheet, and the shipped script.
 
-    The script is the same artifact page.py serves: the parts named in
-    ``APP_PARTS``, concatenated in ``APP_PARTS`` order. A part named in the
-    list but missing on disk raises ``FileNotFoundError`` here, exactly as
-    it would at serve time.
+    The script is the same artifact one page serves: the supplied parts,
+    concatenated in inventory order. With no explicit inventory this loads
+    ``APP_PARTS``. A part named but missing on disk raises ``FileNotFoundError``
+    here, exactly as it would at serve time.
     """
     if parts is None:
         parts = load_app_parts(web_dir)
@@ -90,8 +99,13 @@ def load_frontend(
     )
 
 
-def check_stray_scripts(web_dir: Path = WEB_DIR, parts: tuple[str, ...] | None = None) -> list[str]:
-    """Every ``.js`` on disk must be named in ``APP_PARTS``.
+def check_stray_scripts(
+    web_dir: Path = WEB_DIR,
+    parts: tuple[str, ...] | None = None,
+    *,
+    inventory_name: str = "APP_PARTS",
+) -> list[str]:
+    """Every ``.js`` on disk must be named in its bundle inventory.
 
     A stray script is served by nothing, and linting it as if shipped would
     let its ``id="…"`` strings mask a missing-DOM-id regression in the code
@@ -101,7 +115,7 @@ def check_stray_scripts(web_dir: Path = WEB_DIR, parts: tuple[str, ...] | None =
         parts = load_app_parts(web_dir)
     named = set(parts)
     return [
-        f"{path.name} is not named in page.py's APP_PARTS — the page never "
+        f"{path.name} is not named in page.py's {inventory_name} — the page never "
         "serves it; register it or remove it"
         for path in sorted(web_dir.glob("*.js"))
         if path.name not in named
@@ -165,6 +179,23 @@ def check_dom_ids(page: str, js: str) -> list[str]:
     ]
 
 
+def check_frontend(
+    web_dir: Path,
+    parts: tuple[str, ...],
+    *,
+    inventory_name: str,
+    allow_missing_node: bool,
+) -> list[str]:
+    """Run every source check against one independently assembled bundle."""
+    page, css, js = load_frontend(web_dir, parts)
+    return (
+        check_js(js, allow_missing_node=allow_missing_node)
+        + check_css(css)
+        + check_dom_ids(page, js)
+        + check_stray_scripts(web_dir, parts, inventory_name=inventory_name)
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -174,14 +205,18 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    parts = load_app_parts()
-    page, css, js = load_frontend(parts=parts)
-
-    problems = (
-        check_js(js, allow_missing_node=args.allow_missing_node)
-        + check_css(css)
-        + check_dom_ids(page, js)
-        + check_stray_scripts(parts=parts)
+    app_parts = load_app_parts(WEB_DIR)
+    next_parts = load_next_parts(WEB_DIR)
+    problems = check_frontend(
+        WEB_DIR,
+        app_parts,
+        inventory_name="APP_PARTS",
+        allow_missing_node=args.allow_missing_node,
+    ) + check_frontend(
+        WEB_DIR / "next",
+        next_parts,
+        inventory_name="NEXT_PARTS",
+        allow_missing_node=args.allow_missing_node,
     )
     if problems:
         for problem in problems:

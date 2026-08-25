@@ -266,6 +266,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             for name in ("index.html", "styles.css", "page.py", *frontend_page.APP_PARTS):
                 with self.subTest(shipped_file=name):
                     self.assertTrue((copied_web / name).is_file())
+            for name in ("index.html", "styles.css", *frontend_page.NEXT_PARTS):
+                with self.subTest(shipped_next_file=name):
+                    self.assertTrue((copied_web / "next" / name).is_file())
             cwd = root / "unrelated"
             cwd.mkdir()
             cargento_home = root / "state"
@@ -300,10 +303,19 @@ modules.extend(
 for module in modules:
     origins[module.__name__] = str(Path(module.__file__).resolve())
 assets = {{
-    name: str(page.asset_path(name).resolve())
+    "old/" + name: str(page.asset_path(name).resolve())
     for name in ("index.html", "styles.css", *page.APP_PARTS)
 }}
-print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.load_page())}}))
+assets.update({{
+    "next/" + name: str(page.next_asset_path(name).resolve())
+    for name in ("index.html", "styles.css", *page.NEXT_PARTS)
+}})
+print(json.dumps({{
+    "origins": origins,
+    "assets": assets,
+    "page_size": len(page.load_page()),
+    "next_page_size": len(page.load_next_page()),
+}}))
 """
             origin_probe = subprocess.run(
                 [sys.executable, "-c", probe],
@@ -324,6 +336,10 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
             # oracle. A second pin here reds this module on any frontend edit, which
             # reads as a lifecycle break and sends the reader to the wrong file.
             self.assertEqual(len(frontend_page.load_page()), discovered["page_size"])
+            self.assertEqual(
+                len(frontend_page.load_next_page()),
+                discovered["next_page_size"],
+            )
             state_path = cargento_home / f"cargento-{port}.json"
             proc = subprocess.Popen(
                 [sys.executable, str(launcher), "--port", str(port)],
@@ -340,6 +356,10 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
                 self.assertEqual(200, code)
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
                 self.assertEqual(frontend_page.load_page(), body)
+                code, headers, body = self._response(port, "GET", "/?next=true")
+                self.assertEqual(200, code)
+                self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
+                self.assertEqual(frontend_page.load_next_page(), body)
             finally:
                 stop: subprocess.CompletedProcess[bytes] | None = None
                 # A live owned process has exclusive possession of its port,
@@ -370,6 +390,54 @@ print(json.dumps({{"origins": origins, "assets": assets, "page_size": len(page.l
                     self.assertEqual(0, stop.returncode, stop.stderr.decode("utf-8", "replace"))
                     self.assertTrue(lifecycle.await_release(cfg(), port, timeout=5))
                     self.assertEqual([], list(cargento_home.iterdir()))
+
+    def test_copied_plugin_starts_when_one_next_asset_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            copied_plugin = root / "copied-plugin" / "cargento"
+            shutil.copytree(SERVER_PATH.parents[2], copied_plugin)
+            launcher = copied_plugin / "skills" / "cargento" / "server.py"
+            missing = launcher.parent / "cargento_runtime" / "web" / "next" / "next-render.js"
+            missing.unlink()
+            port = self._candidate_port()
+            env = self._clean_env(root / "state")
+            stop: subprocess.CompletedProcess[str] | None = None
+            try:
+                launch = subprocess.run(
+                    [
+                        sys.executable,
+                        str(launcher),
+                        "--daemon",
+                        "--port",
+                        str(port),
+                    ],
+                    cwd=root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=30,
+                    check=False,
+                )
+                self.assertEqual(0, launch.returncode, launch.stderr)
+                self.assertIn("cannot load next frontend assets", launch.stderr)
+                code, _, body = self._response(port, "GET", "/")
+                self.assertEqual(200, code)
+                self.assertEqual(frontend_page.load_page(), body)
+                code, _, _ = self._response(port, "GET", "/?next=true")
+                self.assertEqual(503, code)
+            finally:
+                stop = subprocess.run(
+                    [sys.executable, str(launcher), "--port", str(port), "--stop"],
+                    cwd=root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=15,
+                    check=False,
+                )
+            self.assertEqual(0, stop.returncode, stop.stderr)
 
     def test_windows_detached_argv_preserves_an_absolute_launcher_path(self) -> None:
         # The respawn target is config.launcher_path, so a Windows path survives

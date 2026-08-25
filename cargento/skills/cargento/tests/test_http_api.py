@@ -2259,11 +2259,15 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                 _application: Any,
                 page_bytes: bytes,
                 _observation: Any = None,
+                *,
+                next_page_bytes: bytes | None = None,
             ) -> None:
-                # The coordinator rides along as the fourth argument. Accepted and
-                # ignored here: this test characterizes the bind address and the
-                # page bytes, and a double that refused the argument would fail
-                # for a reason that has nothing to do with either.
+                # The coordinator and optional page ride along with the address
+                # and required page. Accepted and ignored here: this test
+                # characterizes the bind address and the required page bytes,
+                # and a double that refused either would fail for an unrelated
+                # reason.
+                del next_page_bytes
                 captured_addresses.append(address)
                 captured_pages.append(page_bytes)
 

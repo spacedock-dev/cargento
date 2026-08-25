@@ -104,8 +104,8 @@ launcher, and the dashboard itself lives in the importable `cargento_runtime` pa
 server reads local harness session stores read-only, meaning transcripts, task files, and SQLite
 databases, and assembles the HTML, CSS and JavaScript under `cargento_runtime/web/` into a
 self-refreshing dashboard at `http://127.0.0.1:4553/`. No data leaves your machine; the server binds
-to 127.0.0.1 unless you ask for another address with `--host`, which has no authentication behind it
-— see [SECURITY.md](SECURITY.md) before you do.
+to 127.0.0.1 unless you ask for another address with `--host`, which has no authentication behind it.
+See [SECURITY.md](SECURITY.md) before you do.
 
 The dashboard renders the same data two ways, switched by the `display` control at the top right or
 by pressing `c`. Regular mode is a stack of cards, one per working session. Calm mode is a single

@@ -1,0 +1,84 @@
+# Design: the next UI bundle
+
+This document owns why the opt-in UI is a separate frontend artifact, how two pages on one origin
+stay out of each other's state, and how to remove the split. The runtime module map remains in
+[design-runtime-architecture.md](design-runtime-architecture.md).
+
+## NUI-1: two precomputed pages make the flag a routing property
+
+Before this work, `web/page.py` assembled `index.html`, `styles.css` and `APP_PARTS` into one byte
+string. `cli.py` loaded it before bind and `CargentoHTTPServer` served that object for every `/`
+request. A condition inside that script could hide new UI, but it could not preserve the old page's
+bytes. Every frontend branch would move the old page's size and digest oracles.
+
+The next UI instead has its own shell, stylesheet and `NEXT_PARTS` under `web/next/`.
+`load_next_page()` assembles a second byte string, and the `/` handler selects it only when the first
+`next` query value is exactly `true`. With the flag absent, the handler still returns the same
+`load_page()` object assembled from untouched inputs.
+
+The query flag was chosen over `GET /next` because it composes with `?all=1` and leaves one base URL
+to paste. A separate path would preserve the same byte guarantee and remains viable. The rejected
+option is a client-side flag inside `APP_PARTS`: it would change the frozen bundle, execute both
+interfaces in one global scope, and recreate the byte-pin conflict on every frontend PR.
+
+## NUI-2: copied tokens keep the stylesheets independent
+
+`web/next/styles.css` carries a copy of the default stylesheet's token block, with the dark values at
+the root because this UI is dark unconditionally. It does not import, extend or extract tokens from
+`web/styles.css`.
+
+That duplication is deliberate. Extracting a shared token file would change the default page and
+make both bundles depend on later edits to one source. Importing the old stylesheet would also load
+all of the old component rules into the preview. A copied block costs two spellings, but it lets each
+bundle change without moving the other bundle's bytes.
+
+The same cost applies to small JavaScript rules both pages need, including escaping, relative time
+and status marks. When wording is visible in both interfaces, a cross-bundle equality test is the
+check against drift. Sharing a script part would couple the two assembly orders and is not the fix.
+
+## NUI-3: one origin needs a state firewall
+
+Separate bytes do not separate browser state. Both pages use the same origin, so they share
+`location.hash` and `localStorage`.
+
+The default bundle treats any fragment containing `session=` as its session route. The next bundle's
+fragment grammar therefore never contains that substring. Every storage key written by the next
+bundle begins `cargento.next.`. In particular, a later next-page stream may use
+`cargento.next.leader` and `cargento.next.revision`; it must not read or write the default page's
+`cargento.leader` or `cargento.revision` lease.
+
+`tests/test_next_isolation.py` freezes both directions. State left by the next page cannot change a
+default-page render or display mode, and the next page cannot disturb a foreign default-page lease.
+That file is the milestone firewall, not a fixture later work may relax.
+
+## NUI-4: the preview fails closed without taking down the dashboard
+
+The default bundle is required. If it cannot be assembled, `cli.main` reports the asset error and
+returns before binding. The next bundle is optional and loads under its own exception boundary. A
+failure there produces a warning, leaves the default bytes attached to the server, and makes only a
+flagged request return 503.
+
+Both pages are assembled once before serving and stored on the server instance. No request reads
+source files, and two servers in one interpreter cannot answer with each other's pages. The explicit
+runtime inventory and copied-plugin tests cover the nested assets because a recursive copy alone
+would carry them without proving they were expected.
+
+## What this does not decide
+
+The second bundle does not create durable event, turn or UI history. History-backed regions remain
+windowed or withheld after reload. Whether Cargento should persist session history is the follow-up
+decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is not a prerequisite for the
+opt-in UI.
+
+This foundation also adds no visible product surface beyond the literal `Cargento | overview`
+breadcrumb. Fetching the payload, routing among views and rendering the mock belong to later layers.
+
+## Way back
+
+If maintaining two implementations costs more than the compatibility window is worth, promote
+`load_next_page()` to `/` and delete `APP_PARTS` in one PR. Recompute the old byte oracles once at
+that cutover. The namespaced state means no migration is needed to remove the preview.
+
+The other reversible choice is the URL shape. The second blob can move to `GET /next` without
+merging the bundles. Neither rollback requires a backend data migration, and neither is part of the
+flagged milestone.

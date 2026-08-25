@@ -91,6 +91,11 @@ class FrontendAssetContractTest(unittest.TestCase):
         for name in ("index.html", "styles.css", *frontend_page.APP_PARTS):
             with self.subTest(asset=name):
                 self.assertTrue(frontend_page.asset_path(name).resolve().is_relative_to(SKILL_DIR))
+        for name in ("index.html", "styles.css", *frontend_page.NEXT_PARTS):
+            with self.subTest(next_asset=name):
+                self.assertTrue(
+                    frontend_page.next_asset_path(name).resolve().is_relative_to(SKILL_DIR)
+                )
 
     def test_load_page_preserves_all_three_byte_oracles(self) -> None:
         # Per-part first, deliberately. Every part feeds the assembled page, so a
@@ -243,6 +248,8 @@ class FrontendAssetContractTest(unittest.TestCase):
             shutil.copytree(SKILL_DIR, skill)
             for name in ("index.html", "styles.css", *frontend_page.APP_PARTS):
                 (skill / "cargento_runtime" / "web" / name).unlink()
+            for name in ("index.html", "styles.css", *frontend_page.NEXT_PARTS):
+                (skill / "cargento_runtime" / "web" / "next" / name).unlink()
             env = dict(os.environ)
             env.pop("PYTHONPATH", None)
             env["PYTHONNOUSERSITE"] = "1"

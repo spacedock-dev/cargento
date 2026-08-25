@@ -657,6 +657,9 @@ class LauncherContractTest(unittest.TestCase):
             "for asset in ('index.html', 'styles.css', *page.APP_PARTS):\n"
             "    found = page.asset_path(asset).resolve()\n"
             "    assert found.is_relative_to(root), (asset, str(found))\n"
+            "for asset in ('index.html', 'styles.css', *page.NEXT_PARTS):\n"
+            "    found = page.next_asset_path(asset).resolve()\n"
+            "    assert found.is_relative_to(root), (asset, str(found))\n"
             "print('OK', len(names))\n"
         )
         env = {

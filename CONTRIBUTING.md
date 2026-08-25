@@ -156,9 +156,9 @@ so re-run the job before investigating, and check the traceback is a timeout and
   fence instead).
 - Every file the dashboard needs at runtime must be present, and must be a file rather than a
   directory. The list is `CARGENTO_RUNTIME_FILES` in `scripts/validate_plugins.py`: the launcher, the
-  hook forwarder, all three package initializers, every runtime module and collector, and the three
-  frontend assets. Adding a runtime module means adding it there, and a test compares the list
-  against what the checkout actually ships so it cannot fall behind quietly.
+  hook forwarder, all three package initializers, every runtime module and collector, and every
+  frontend source asset. Adding a runtime module or asset means adding it there, and a test compares
+  the list against what the checkout actually ships so it cannot fall behind quietly.
   `python3 scripts/validate_plugins.py --runtime-files <plugin root>` checks an installed copy, which
   is what the `Plugin Compatibility` canary runs against the path Codex installed.
 
@@ -192,7 +192,8 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
-- The frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in Phase 1c:
+- The existing frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in
+  Phase 1c:
   the leader tab holds an `EventSource` on `/api/stream` and refetches when the server announces a
   new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
   falls back to the old five-second poll. The rebuild itself is unchanged, so anything the reader
@@ -201,6 +202,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
+- The opt-in next frontend is a separate assembled scope under `web/next/`. It does not extend
+  `APP_PARTS`, share the default stylesheet, reuse the default bundle's hash grammar, or touch its
+  storage keys. [docs/design-next-ui.md](docs/design-next-ui.md) owns that boundary and its way back.
 - Size text through the `--fs-*` scale in `styles.css` and nothing else. A test rejects any raw px
   `font-size` and any declared step the file never uses, because the stylesheet previously carried
   twenty ad-hoc values between 8px and 15px, which is drift rather than hierarchy. Adding a rung is
@@ -214,15 +218,17 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   step, so on and off were indistinguishable in either theme.
 - Test the page by running it, not by matching strings against its source. `PageJsHarness` in
   `page_harness.py` executes the real dashboard script (the `web/*.js` parts, concatenated in
-  `APP_PARTS` order) under node against a stub DOM, so a test can fire a
-  click or a keystroke and assert on what the page did. A source-text assertion passes
-  forever after the behavior behind it breaks.
-- Load the frontend before creating the daemon log, binding the socket, forking, or spawning a
-  Windows child. Then acquire the log file and listening socket before forking (or, on Windows,
+  `APP_PARTS` order) under node against a stub DOM. `NextPageJsHarness` runs the independently
+  assembled `NEXT_PARTS` against the same stubs. A test can fire a click or a keystroke and assert
+  on what the page did. A source-text assertion passes forever after the behavior behind it breaks.
+- Load the required default frontend before creating the daemon log, binding the socket, forking, or
+  spawning a Windows child. Then acquire the log file and listening socket before forking (or, on Windows,
   before waiting on the re-spawned child). After the fork there is nowhere for a failure to go.
   Reporting one means pointing the user at the very log that could not be opened. Note that
   `os.makedirs(exist_ok=True)` is not this check: it succeeds for a directory that already exists
   whatever its mode, which is the likeliest bad state of all.
+  Load an optional frontend in a separate nonfatal boundary. A broken preview must not stop the
+  default page from binding.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.

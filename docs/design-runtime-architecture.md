@@ -72,9 +72,9 @@ Everything else lives in one file per responsibility:
 | `http_api.py` | The loopback server, its request handler, and network helpers. |
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. |
 | `cli.py` | Argument parsing, runtime assembly, and the three serve branches. |
-| `web/page.py` | Package-relative frontend loading, the ordered `APP_PARTS` script list, and byte-preserving assembly. |
+| `web/page.py` | Package-relative frontend loading, the ordered `APP_PARTS` and `NEXT_PARTS` script lists, and byte-preserving assembly of the default and opt-in pages. |
 
-The dashboard script is the same kind of split, applied to the frontend once it crossed the same
+The existing dashboard script is the same kind of split, applied to the frontend once it crossed the same
 threshold the Python did: over a thousand lines holding more than one responsibility. The parts are
 plain concatenated script, not modules: `page.py` joins them in `APP_PARTS` order into the page's
 single script slot, so they share one scope and order carries meaning. Shared state and the
@@ -82,20 +82,29 @@ component tables come before the listeners and the render loop that read them. T
 the file's own section seams, taken as contiguous byte-exact slices, which made the refactor
 self-proving: the assembled page hash in `test_page.py` did not change.
 
-| Script part | Owns |
+| Frontend file | Owns |
 |---|---|
 | `web/spark.js` | Shared page state, rate buffers, the sparkline with its hover machinery, and the four rules both views read: the waiting queue (the gate filter, the ask key, and the merge that puts one order over both), how any cursor resolves against what is drawn, the attention ordering (its key, its comparators, and the sort the card view applies), and the shared-project-label collision, with the one wording every surface that marks it prints. |
 | `web/regular.js` | Regular-mode components: badges, the harness strip, tiles, Spacedock strips, cards, rows, and the waiting band both views draw, with its cursor and what `⏎` does on each kind of row. |
-| `web/mode.js` | Display-mode state and its switch, the session view's target and its `#session=<key>` hash router — localStorage holds which mode, the hash holds which session, so the view survives a reload and answers browser back/forward — and the calm ledger's mutable state (sort, filters, open row, cursor, scroll). |
+| `web/mode.js` | Display-mode state and its switch, the session view's target and its `#session=<key>` hash router. LocalStorage holds which mode and the hash holds which session, so the view survives a reload and answers browser back/forward. It also owns the calm ledger's mutable state (sort, filters, open row, cursor, scroll). |
 | `web/usage.js` | The usage band, the configure popover, and the quota disclosure banner. |
 | `web/controls.js` | The stop control, the stopped panel, and the mode bar. |
 | `web/ask.js` | The question card: one per outstanding `ask_operator` question, and the answer POST behind its option buttons. A card in the queue band rather than a synthetic row in `d.sessions`, for the reason [design-ask-lane.md](design-ask-lane.md) records. |
 | `web/calm.js` | The calm ledger: tone tables, actions, document listeners, and renderers. The click and keydown listeners are the page's, not calm's: all three modes route their controls through them. |
-| `web/session.js` | The session view: one session's Spacedock dispatch tree, its goal line, the picker, and the four empty states. Rendered from the same `/api/data` payload as the other two modes — no endpoint and no collector of its own. |
+| `web/session.js` | The session view: one session's Spacedock dispatch tree, its goal line, the picker, and the four empty states. It renders from the same `/api/data` payload as the other two modes and has no endpoint or collector of its own. |
 | `web/observer.js` | The observer panel: the fetch behind a row's `observe` control, and the goal / stage / block card it renders from the sidecar that comes back. |
 | `web/notify.js` | Desktop notifications. |
 | `web/main.js` | `render()` and `refresh()`. |
 | `web/live.js` | Leader election across tabs, the SSE stream, and the fallback poll. |
+| `web/next/index.html` | The two-slot shell for the opt-in page. It is assembled independently of `web/index.html`. |
+| `web/next/styles.css` | The next page's dark-first token copy and its own rules. It never extends the byte-pinned default stylesheet. |
+| `web/next/next-boot.js` | Shared next-page state, the route object, query reads and HTML escaping. It is first in `NEXT_PARTS`. |
+| `web/next/next-render.js` | The next page's render entry and DOM mount. Later view parts sit between the boot and render ends of the bundle. |
+
+`NEXT_PARTS` is a second concatenated scope, not an extension of `APP_PARTS`. The HTTP server selects
+its assembled bytes only when the first `next` query value is exactly `true`. The reason for that
+seam, its shared-origin firewall, and the rollback path live in
+[design-next-ui.md](design-next-ui.md).
 
 ## R-2: Dependencies run inward, and the test enforces it
 
@@ -129,8 +138,8 @@ appears in `sys.modules`.
 
 Frontend assets load relative to `web/page.py`, so an installed copy needs no repository and no
 working directory. A contract test walks the package with `pkgutil` from an unrelated directory, with
-`PYTHONPATH` removed and `PYTHONNOUSERSITE=1`, and proves every module's `__file__` and all three
-asset paths resolve inside the skill directory. It inspects every module it finds rather than a
+`PYTHONPATH` removed and `PYTHONNOUSERSITE=1`, and proves every module's `__file__` and every declared
+asset path resolve inside the skill directory. It inspects every module it finds rather than a
 maintained list.
 
 ## R-4: Configuration is frozen, state is mutable, services are injected
@@ -146,8 +155,10 @@ Three objects, with deliberately different lifetimes:
   popup notifier, the diagnostic sink, and the clock. It owns the registry and the per-harness
   failure boundary, so one broken store cannot take the dashboard down.
 
-`CargentoHTTPServer` stores exactly one `Application` and one assembled page, and its handler reads
-both off the server instance. `cli.main` is the only place that assembles all of it.
+`CargentoHTTPServer` stores exactly one `Application`, the mandatory assembled default page, and an
+optional assembled next page. Its handler reads all three off the server instance. `cli.main` is the
+only place that assembles them. A default-page load failure is fatal before bind. A next-page load
+failure is reported but leaves the default page serving, with only `?next=true` returning 503.
 
 The payoff is testability of the awkward cases. Platform decisions take their environment as an
 argument (see D-4 in [design-cross-platform.md](design-cross-platform.md)), so one runner exercises

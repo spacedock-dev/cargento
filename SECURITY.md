@@ -49,7 +49,7 @@ The posture rests on two invariants:
    `GET /api/observe` is a trigger rather than a poll: it derives one session's goal, stage and open
    block and records the answer as a sidecar under `~/.cargento/observer/`, again Cargento's own
    state and never a harness store. Its two components are the harness key and the session id, and
-   both must match `[A-Za-z0-9._-]{1,128}` before either reaches a path — `records.safe_text`
+   both must match `[A-Za-z0-9._-]{1,128}` before either reaches a path. `records.safe_text`
    bounds a string and strips control characters, and passes a separator straight through, so the
    grammar is what keeps the write inside that directory rather than the join. What the route reads
    is covered by Project reads below: the transcript, and the same two kinds of frontmatter a stage
@@ -317,17 +317,18 @@ boundary.
 `--host` hands that same access to a network. `--host 0.0.0.0` is the operator
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
-can reach the port. Reading `/api/data` is the whole board — every session's titles, prompts and
+can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
 project paths. Writing is the seven POST routes, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
 somebody other than you. There is nothing to authenticate with, for the reason the ask-lane
 paragraph below gives: the page is served as fixed bytes with no per-run secret in it.
 
 What the non-default bind does *not* spend is the rebinding defense. The Host and Origin gate widens
-to addresses and never to names — under `0.0.0.0`, any address a client could arrive on — so a page on `http://evil.example:4553` whose DNS points at the machine is refused
-in both modes, and the `Sec-Fetch-Site` cross-site check runs unchanged. The gate tells a name from
-an address; it cannot tell one remote client from another. So the honest scope is: use `--host` on a
-network you would hand the transcripts to, and reach a dashboard over `ssh -L` otherwise.
+to addresses and never to names. Under `0.0.0.0`, that means any address a client could arrive on.
+A page on `http://evil.example:4553` whose DNS points at the machine is refused in both modes, and
+the `Sec-Fetch-Site` cross-site check runs unchanged. The gate tells a name from an address; it
+cannot tell one remote client from another. So the honest scope is: use `--host` on a network you
+would hand the transcripts to, and reach a dashboard over `ssh -L` otherwise.
 
 Loopback is not a per-user boundary. Any other account on the same machine can `GET /api/data` and
 read every session's titles and prompts, or forge a `POST /api/notify`. The Host, `Sec-Fetch` and

@@ -292,17 +292,17 @@ assuming it did.
 
 `--host` moves the bind address, and it is the one flag here that changes who can read the board
 rather than where you read it from. It takes two values: `127.0.0.1`, the default, and `0.0.0.0`,
-every interface. Nothing narrower — `--host 10.0.0.2` is a usage error, not a bind, because
+every interface. Nothing narrower is accepted. `--host 10.0.0.2` is a usage error, not a bind, because
 `--status`, `--stop`, the hook forwarders and the MCP server all reach the dashboard over loopback
 and a single-interface bind does not answer there. Binding one interface is a reasonable thing to
 want; it is refused rather than half-supported. IPv4 only, too: the server has never spoken IPv6, so
 `--host ::1` is a usage error rather than a bind failure.
 
-Nothing authenticates the reader that arrives. Whatever can reach the port reads the whole board —
-every session's titles, prompts and project paths — and can POST to it, which includes stopping the
-dashboard and answering a question a session is waiting on. The Host and Origin checks still refuse a
-hostname, so a web page cannot rebind its way in, but they cannot tell one remote address from
-another. [SECURITY.md](SECURITY.md#known-and-accepted) states the scope.
+Nothing authenticates the reader that arrives. Whatever can reach the port reads the whole board:
+every session's titles, prompts and project paths. It can also POST to the board, including stopping
+the dashboard and answering a question a session is waiting on. The Host and Origin checks still
+refuse a hostname, so a web page cannot rebind its way in, but they cannot tell one remote address
+from another. [SECURITY.md](SECURITY.md#known-and-accepted) states the scope.
 
 So the first thing to try is not this flag:
 
@@ -313,8 +313,8 @@ python3 -m webbrowser -t http://127.0.0.1:4553/
 ```
 
 That gets a remote board over a channel that already authenticates you, with the dashboard still
-bound to loopback. Reach for `--host` when there is no ssh to be had — a container publishing a port,
-or a VM whose host browser cannot see its loopback:
+bound to loopback. Reach for `--host` when there is no ssh to be had, such as a container publishing
+a port or a VM whose host browser cannot see its loopback:
 
 ```bash
 python3 "<skill-dir>/server.py" --port 4553 --host 0.0.0.0 --daemon

@@ -29,6 +29,8 @@ class PageJsHarness(RuntimeTestCase):
     text of the page: string assertions rot silently, executed ones do not.
     """
 
+    APP_JS = APP_JS
+
     # Functional DOM/window stubs for executing the page script under node:
     # listeners are captured so tests can fire synthetic events, and
     # getElementById serves whatever elements a test registers in __els.
@@ -41,7 +43,12 @@ const __fire = (type, ev) => (__listeners[type] || []).forEach(f => f(ev));
 let __nowSec = 1000;
 const __setNow = s => { __nowSec = s; };
 Date.now = () => __nowSec * 1000;
-const location = {search: "", hash: ""};
+let __assignedLocations = [];
+const location = {
+  search: "",
+  hash: "",
+  assign(value){ __assignedLocations.push(String(value)); }
+};
 const document = {
   addEventListener(type, fn){ (__listeners[type] = __listeners[type] || []).push(fn); },
   getElementById(id){ return __els[id] || null; },
@@ -98,7 +105,7 @@ const __settle = () => new Promise(r => setImmediate(r));
             js.write_text(
                 self.PAGE_JS_STUBS
                 + prelude
-                + APP_JS
+                + self.APP_JS
                 + "\n;(async () => {\n"
                 + checks
                 + "\n})();\n",

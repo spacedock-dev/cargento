@@ -21,6 +21,14 @@ APP_PARTS: tuple[str, ...] = (
     "live.js",  # leader election, the SSE stream, and the fallback poll
 )
 
+# The opt-in next UI is a separate assembled artifact. Keeping its parts out of
+# APP_PARTS makes the old page's byte identity a property of the loader rather
+# than a convention every later frontend change has to remember.
+NEXT_PARTS: tuple[str, ...] = (
+    "next-boot.js",
+    "next-render.js",
+)
+
 
 def asset_path(name: str) -> Path:
     return WEB_DIR / name
@@ -40,6 +48,34 @@ def load_page() -> bytes:
         raise RuntimeError(msg)
     if template.count("{{CARGENTO_APP}}") != 1:
         msg = "index.html must contain one CARGENTO_APP slot"
+        raise RuntimeError(msg)
+    return (
+        template.replace("{{CARGENTO_STYLES}}", styles)
+        .replace("{{CARGENTO_APP}}", script)
+        .encode("utf-8")
+    )
+
+
+def next_asset_path(name: str) -> Path:
+    # Resolve from WEB_DIR on every call. Tests and installed-copy probes patch
+    # that root; a module-level NEXT_DIR would keep reading the original tree.
+    return WEB_DIR / "next" / name
+
+
+def load_next_script() -> str:
+    """Every next-UI script part, in order, as one executable text."""
+    return "".join(next_asset_path(name).read_text(encoding="utf-8") for name in NEXT_PARTS)
+
+
+def load_next_page() -> bytes:
+    template = next_asset_path("index.html").read_text(encoding="utf-8")
+    styles = next_asset_path("styles.css").read_text(encoding="utf-8")
+    script = load_next_script()
+    if template.count("{{CARGENTO_STYLES}}") != 1:
+        msg = "next/index.html must contain one CARGENTO_STYLES slot"
+        raise RuntimeError(msg)
+    if template.count("{{CARGENTO_APP}}") != 1:
+        msg = "next/index.html must contain one CARGENTO_APP slot"
         raise RuntimeError(msg)
     return (
         template.replace("{{CARGENTO_STYLES}}", styles)
