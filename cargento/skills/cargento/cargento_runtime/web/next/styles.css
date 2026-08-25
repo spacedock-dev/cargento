@@ -16,4 +16,30 @@
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
 body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 #app{max-width:1240px;margin:0 auto;padding:34px 30px 64px}
+.next-header,.next-header-right,.next-tabs-row,.next-tabs{display:flex;align-items:center}
+.next-header{justify-content:space-between;gap:24px;padding-bottom:28px;border-bottom:1px solid var(--line)}
+.next-header-right{gap:14px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
 .next-breadcrumb{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink2)}
+.next-crumb,.next-tabs button,.next-menu button{border:0;background:none;color:inherit;font:inherit;cursor:pointer}
+.next-crumb{padding:0;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-running{color:var(--accent-ink)}
+.next-gate{padding:5px 9px;border:1px solid var(--warn);border-radius:999px;color:var(--warnink)}
+.next-menu{position:relative}
+.next-menu summary{list-style:none;cursor:pointer;font-size:var(--fs-lg)}
+.next-menu summary::-webkit-details-marker{display:none}
+.next-menu-items{position:absolute;z-index:1;right:0;top:26px;min-width:210px;padding:8px;border:1px solid var(--line2);background:var(--panel)}
+.next-menu button{display:flex;justify-content:space-between;width:100%;padding:8px;text-align:left}
+.next-menu kbd{font-family:var(--mono);color:var(--ink3)}
+.next-stalled{margin-top:18px;padding:10px 12px;border-left:3px solid var(--alert);background:var(--panel);color:var(--alert)}
+.next-overview{padding-top:34px}
+.next-tabs-row{justify-content:space-between;gap:20px}
+.next-tabs{gap:20px;font-family:var(--mono);font-size:var(--fs-sm)}
+.next-tabs button{padding:0 0 7px;color:var(--ink3)}
+.next-tabs button[aria-selected="true"]{border-bottom:2px solid var(--accent);color:var(--ink)}
+.next-population{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
+.next-population span{color:var(--ink3)}
+[data-next-body],[data-next-view-body]{min-height:360px}
+@media(max-width:760px){
+  #app{padding:24px 18px 48px}
+  .next-header,.next-header-right,.next-tabs-row{align-items:flex-start;flex-direction:column}
+}

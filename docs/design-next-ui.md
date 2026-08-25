@@ -41,9 +41,12 @@ check against drift. Sharing a script part would couple the two assembly orders 
 Separate bytes do not separate browser state. Both pages use the same origin, so they share
 `location.hash` and `localStorage`.
 
-The default bundle treats any fragment containing `session=` as its session route. The next bundle's
-fragment grammar therefore never contains that substring. Every storage key written by the next
-bundle begins `cargento.next.`. In particular, a later next-page stream may use
+The default bundle treats any fragment containing `session=` as its session route. The next bundle
+therefore uses one `#n=` token: `overview`, `project:<encoded-project>` or
+`session:<encoded-project>:<encoded-session>`. No form contains that substring. Hash changes are
+the browser-history input as well as the output of breadcrumb and Escape navigation, so shared
+project and session links survive a reload without another state store. Every storage key written
+by the next bundle begins `cargento.next.`. In particular, a later next-page stream may use
 `cargento.next.leader` and `cargento.next.revision`; it must not read or write the default page's
 `cargento.leader` or `cargento.revision` lease.
 
@@ -63,6 +66,25 @@ source files, and two servers in one interpreter cannot answer with each other's
 runtime inventory and copied-plugin tests cover the nested assets because a recursive copy alone
 would carry them without proving they were expected.
 
+## NUI-5: the chrome counts the payload it actually has
+
+The next page has its own `/api/data` loop because its script shares no scope with the default
+bundle. It polls at the default bundle's named 5 s fallback cadence and forwards `all=1` only when
+the page query carries it. The distinction matters on the server: collection is memoized by the
+`show_all` value, so an all-sessions tab beside a regular tab causes a second filesystem pass.
+
+The chrome does not repair or reinterpret the payload. Running means `summary.working`, not
+`summary.active_sessions`, because the latter also includes sessions waiting for input. The gate
+pill comes from `summary.needs_input`, subagents are counted from the rows, and the project/session
+line names the payload's `window_hours` rather than implying a machine-wide inventory. Two
+consecutive fetch failures put a stalled marker beside the last good payload; a single failed poll
+does not flash the page on a transient miss.
+
+The overview carries empty `projects` and `sessions` bodies so either can be filled without taking
+ownership of the other's tab chrome. Project and session routes likewise stop at empty regions.
+`dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
+default bundle choose its saved display mode.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain
@@ -70,8 +92,8 @@ windowed or withheld after reload. Whether Cargento should persist session histo
 decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is not a prerequisite for the
 opt-in UI.
 
-This foundation also adds no visible product surface beyond the literal `Cargento | overview`
-breadcrumb. Fetching the payload, routing among views and rendering the mock belong to later layers.
+This layer adds the route, breadcrumb, live counts, menu and empty tab shell. Session rows, project
+rows and both detail views belong to their later layers.
 
 ## Way back
 

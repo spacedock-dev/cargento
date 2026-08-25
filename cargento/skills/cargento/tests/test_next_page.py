@@ -31,6 +31,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         (next_web / "index.html").write_text(template, encoding="utf-8")
         (next_web / "styles.css").write_text(".next{color:red}\n", encoding="utf-8")
         (next_web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
+        (next_web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
         (next_web / "next-render.js").write_text("const second = 2;\n", encoding="utf-8")
 
     def test_load_next_page_resolves_the_patched_web_dir_at_call_time(self) -> None:
@@ -45,7 +46,7 @@ class NextPageAssetContractTest(unittest.TestCase):
 
         self.assertEqual(
             b"<style>.next{color:red}\n</style>"
-            b"<script>const first = 1;\nconst second = 2;\n</script>",
+            b"<script>const first = 1;\nconst middle = 2;\nconst second = 2;\n</script>",
             actual,
         )
 
@@ -76,6 +77,10 @@ class NextPageAssetContractTest(unittest.TestCase):
         next_web = frontend_page.WEB_DIR / "next"
         if not next_web.is_dir():
             self.fail("web/next does not exist")
+        self.assertEqual(
+            ("next-boot.js", "next-chrome.js", "next-render.js"),
+            frontend_page.NEXT_PARTS,
+        )
         actual = {path.name for path in next_web.glob("*.js")}
         self.assertEqual(set(frontend_page.NEXT_PARTS), actual)
         for name in frontend_page.NEXT_PARTS:
@@ -125,7 +130,11 @@ class NextPageBehaviorTest(NextPageJsHarness):
             '__els.app = {innerHTML: ""};\n',
         )
 
-        self.assertEqual('<div class="next-breadcrumb">Cargento | overview</div>', out)
+        self.assertIn(
+            '<nav class="next-breadcrumb" aria-label="Breadcrumb">'
+            "<span>Cargento | overview</span></nav>",
+            out,
+        )
 
 
 if __name__ == "__main__":
