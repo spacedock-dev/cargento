@@ -111,10 +111,20 @@ class CodexCollectorTest(RuntimeTestCase):
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(100, sessions[0]["rate_per_min"])
-        # One element per subagent, `model` always present. Neither rollout here
-        # declares a turn_context, so both models read None — "not measured",
-        # which is a different fact from a model and stays distinguishable.
-        self.assertEqual([{"name": "worker", "model": None}], sessions[0]["subagents"])
+        # Every measurement key is present. Neither rollout here declares a
+        # turn_context, so the model is unread, while the child's first dated
+        # record still supplies its start independently.
+        self.assertEqual(
+            [
+                {
+                    "name": "worker",
+                    "model": None,
+                    "started_at": runtime_records.parse_ts(timestamp(-30)),
+                }
+            ],
+            sessions[0]["subagents"],
+        )
+        self.assertEqual(runtime_records.parse_ts(timestamp(-10)), sessions[0]["started_at"])
         self.assertIsNone(sessions[0]["model"])
 
     def test_codex_meta_tolerates_malformed_payload_types(self) -> None:
@@ -546,8 +556,10 @@ class CodexSessionModelTest(RuntimeTestCase):
         # `model` is a key on every element, never an absence and never a
         # suffix on the label: a subagent genuinely named "Ohm · gpt-5" must
         # stay distinguishable from a reading.
+        expected_start = runtime_records.parse_ts(_stamp(now - 30))
         for agent in session["subagents"]:
-            self.assertEqual({"name", "model"}, set(agent))
+            self.assertEqual({"name", "model", "started_at"}, set(agent))
+            self.assertEqual(expected_start, agent["started_at"])
 
 
 class CodexModelPrefixScanTest(RuntimeTestCase):

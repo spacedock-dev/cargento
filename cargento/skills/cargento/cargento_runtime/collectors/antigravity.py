@@ -663,7 +663,7 @@ def collect(
         # neighbour's reading is missing. The page decides where a child's model
         # is worth showing, and it needs both readings to decide.
         subagents: list[dict[str, Any]] = [
-            {"name": label, "model": models.get(agent_sid)}
+            {"name": label, "model": models.get(agent_sid), "started_at": None}
             for agent_sid, label, agent_mtime in agents
             if sessions.is_fresh(config, now, agent_mtime, config.working_threshold_sec)
         ]

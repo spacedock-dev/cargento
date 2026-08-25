@@ -131,7 +131,10 @@ class SqliteCollectorTest(RuntimeTestCase):
         # DRC-4117 grew each element into an object. `model` is present and
         # None: OpenCode records no model, and that is a different fact from
         # "this child runs whatever its parent runs".
-        self.assertEqual([{"name": "researcher", "model": None}], rows[0]["subagents"])
+        self.assertEqual(
+            [{"name": "researcher", "model": None, "started_at": None}],
+            rows[0]["subagents"],
+        )
         self.assertEqual("working", rows[0]["state"])
 
     def test_a_broken_session_query_is_recorded_as_a_store_error(self) -> None:
@@ -746,7 +749,10 @@ class SqliteCollectorTest(RuntimeTestCase):
             rows = self._collect_cursor(root)
 
         self.assertEqual(["parent-1"], [r["sid"] for r in rows], "a child must not be a peer row")
-        self.assertEqual([{"name": "cursor-guide", "model": "vega"}], rows[0]["subagents"])
+        self.assertEqual(
+            [{"name": "cursor-guide", "model": "vega", "started_at": None}],
+            rows[0]["subagents"],
+        )
         self.assertEqual("running 1 subagent", rows[0]["state_detail"])
 
     def test_cursor_shows_a_subagent_model_that_differs_from_its_parent(self) -> None:
@@ -775,7 +781,14 @@ class SqliteCollectorTest(RuntimeTestCase):
 
         self.assertEqual("vega", rows[0]["model"])
         self.assertEqual(
-            [{"name": "cursor-guide", "model": "last-week-model"}], rows[0]["subagents"]
+            [
+                {
+                    "name": "cursor-guide",
+                    "model": "last-week-model",
+                    "started_at": None,
+                }
+            ],
+            rows[0]["subagents"],
         )
 
     def test_cursor_publishes_a_subagent_whose_parent_is_not_present(self) -> None:
@@ -1454,7 +1467,10 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual("w/gooseproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("Fix flaky tests", s["title"])
         self.assertEqual("add retries", s["last_prompt"])
-        self.assertEqual([{"name": "helper", "model": None}], s["subagents"])
+        self.assertEqual(
+            [{"name": "helper", "model": None, "started_at": None}],
+            s["subagents"],
+        )
         self.assertEqual(100, s["rate_per_min"])  # 1000 tokens / 10 min window
 
 

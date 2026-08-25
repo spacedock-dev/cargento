@@ -281,6 +281,11 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # the collector does not report it, and the overlay reducer then leaves a
         # wait standing rather than guessing.
         "own_activity": 0,
+        # The first timestamp in the session transcript, but only when this
+        # process scanned from byte zero. None means the source is unmeasured;
+        # a bounded tail or rebuilt oversized cache entry may not substitute
+        # its own first record because that would move the start forward.
+        "started_at": None,
         # When this session's turn was last observed to stop, which is the only
         # thing that separates the two situations Idle covers: a turn that ended
         # and nobody read, and a session still waiting on a reply that never came
@@ -306,10 +311,14 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # have seen it. Claude only, since Claude is the only harness that
         # records whether a tool call failed (see records.tool_outcome).
         "loop": None,
-        # One element per subagent: `{"name": str, "model": str | None}`. `model`
-        # is always present, and None means the same thing it means on the parent
-        # — not read. It is a key rather than a parallel list of only the children
-        # whose model differs, because absence from such a map would mean either
+        # One element per subagent: `{"name": str, "model": str | None,
+        # "started_at": float | None}`. Both measurement keys are always present.
+        # None means not read, never "same as the parent" for model or "started
+        # with the parent" for time. A child start comes from its own transcript;
+        # mtime is last activity and cannot stand in for it.
+        #
+        # Model is a key rather than a parallel list of only the children whose
+        # model differs, because absence from such a map would mean either
         # "matches the parent" or "not measured", which collapses in the wire
         # format the exact two facts this field is here to keep apart. It is also
         # a key rather than a suffix on `name`, because a subagent genuinely named

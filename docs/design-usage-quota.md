@@ -822,9 +822,11 @@ Equality is string equality. No case folding, no suffix stripping, no prefix mat
 strings name the same model when they are the same string, and deciding otherwise is inference,
 which renders identically to a reading.
 
-The wire shape that carries this is `subagents: [{"name": str, "model": str | None}]`, with `model`
-always present. Two cheaper shapes for it, a parallel map of only the differing children and a
-suffix on the label, were dropped and are recorded under rejected alternatives below.
+The subagent element contract is owned by
+[design-runtime-architecture.md](design-runtime-architecture.md). Its `model` key is always present,
+alongside the independently measured `started_at` key. Two cheaper shapes for the model, a parallel
+map of only the differing children and a suffix on the label, were dropped and are recorded under
+rejected alternatives below.
 
 ### `provider` stays Pi's alone, and `model` no longer is
 

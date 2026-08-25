@@ -703,7 +703,17 @@ class ClaudeCollectorTest(RuntimeTestCase):
         parent = sessions[0]
         self.assertEqual(parent_id[:8], parent["session"])
         self.assertEqual("working", parent["state"])
-        self.assertEqual([{"name": "spark-reviewer", "model": None}], parent["subagents"])
+        self.assertEqual(
+            [
+                {
+                    "name": "spark-reviewer",
+                    "model": None,
+                    "started_at": records.parse_ts(iso),
+                }
+            ],
+            parent["subagents"],
+        )
+        self.assertEqual(records.parse_ts(stale_iso), parent["started_at"])
         self.assertGreater(parent["rate_per_min"], 0)
 
     def test_a_quiet_child_transcript_stops_counting_as_a_running_subagent(self) -> None:
@@ -797,6 +807,21 @@ class ClaudeCollectorTest(RuntimeTestCase):
 
         # Both agents survive with the fallback label instead of TypeError.
         self.assertEqual(["subagent", "subagent"], [a["label"] for a in agents])
+        self.assertEqual([None, None], [a["started_at"] for a in agents])
+
+    def test_a_subagent_start_comes_from_its_first_record(self) -> None:
+        stamp = "2026-01-01T00:00:00Z"
+        with tempfile.TemporaryDirectory() as tmp:
+            sess = Path(tmp) / "abc.jsonl"
+            sess.write_text("{}\n")
+            sub = Path(tmp) / "abc" / "subagents"
+            sub.mkdir(parents=True)
+            child = sub / "agent-1.jsonl"
+            child.write_text(json.dumps({"type": "user", "timestamp": stamp, "message": {}}) + "\n")
+
+            agents = claude_collector.load_subagents(runtime()[0], str(sess), time.time())
+
+        self.assertEqual(records.parse_ts(stamp), agents[0]["started_at"])
 
     def test_a_quiet_subagent_transcript_is_not_a_running_subagent(self) -> None:
         # "Running" is inferred from mtime, and a subagent pill is the reason a
@@ -890,7 +915,18 @@ class ClaudeCollectorTest(RuntimeTestCase):
                 session = collect_claude(now, 24, False)[0]
 
         self.assertEqual("working", session["state"])
-        self.assertEqual([{"name": "detect:backend", "model": None}], session["subagents"])
+        self.assertEqual(
+            [
+                {
+                    "name": "detect:backend",
+                    "model": None,
+                    "started_at": records.parse_ts(
+                        datetime.fromtimestamp(now - 5, UTC).isoformat()
+                    ),
+                }
+            ],
+            session["subagents"],
+        )
         # The agent's output is the session's output — a parent that reads
         # Working at 0 tok/min is the same blind spot in the rate panel.
         self.assertGreater(session["rate_per_min"], 0)
@@ -1198,7 +1234,14 @@ class ClaudeModelTest(RuntimeTestCase):
         parent = sessions[0]
         self.assertEqual("claude-opus-5", parent["model"])
         self.assertEqual(
-            [{"name": "spark-reviewer", "model": "claude-fable-5"}], parent["subagents"]
+            [
+                {
+                    "name": "spark-reviewer",
+                    "model": "claude-fable-5",
+                    "started_at": records.parse_ts(iso),
+                }
+            ],
+            parent["subagents"],
         )
 
     def test_a_legacy_workflow_agent_publishes_the_model_from_its_own_file(self) -> None:
@@ -1243,7 +1286,14 @@ class ClaudeModelTest(RuntimeTestCase):
 
         self.assertIsNone(session["model"], "the parent named no model of its own")
         self.assertEqual(
-            [{"name": "detect:backend", "model": "claude-fable-5"}], session["subagents"]
+            [
+                {
+                    "name": "detect:backend",
+                    "model": "claude-fable-5",
+                    "started_at": records.parse_ts(iso),
+                }
+            ],
+            session["subagents"],
         )
 
     def test_an_unmeasured_subagent_publishes_a_null_model_beside_its_name(self) -> None:
@@ -1277,7 +1327,16 @@ class ClaudeModelTest(RuntimeTestCase):
             ):
                 session = collect_claude(now, 24, False)[0]
 
-        self.assertEqual([{"name": "detect:backend", "model": None}], session["subagents"])
+        self.assertEqual(
+            [
+                {
+                    "name": "detect:backend",
+                    "model": None,
+                    "started_at": records.parse_ts(iso),
+                }
+            ],
+            session["subagents"],
+        )
 
     def test_load_subagents_without_analyses_publishes_no_model(self) -> None:
         # The callers outside a collection hand no `models` map over. They must

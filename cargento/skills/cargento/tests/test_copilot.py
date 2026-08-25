@@ -175,7 +175,11 @@ class CopilotCollectorTest(RuntimeTestCase):
         self.assertEqual("working", s["state"])
         self.assertEqual("w/myproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("fix the login bug", s["last_prompt"])
-        self.assertEqual([{"name": "researcher", "model": None}], s["subagents"])
+        self.assertEqual(
+            [{"name": "researcher", "model": None, "started_at": None}],
+            s["subagents"],
+        )
+        self.assertEqual(records.parse_ts(iso), s["started_at"])
 
     def test_the_legacy_history_store_is_discovered_and_collected(self) -> None:
         # Copilot moved its sessions between two directories, and the older one
@@ -901,7 +905,16 @@ class CopilotModelTest(RuntimeTestCase):
         row = rows[self.SID_A]
         self.assertEqual("working", row["state"], "an idle session publishes no subagents")
         self.assertEqual(self.PARENT, row["model"])
-        self.assertEqual([{"name": "github-context-memory", "model": self.CHILD}], row["subagents"])
+        self.assertEqual(
+            [
+                {
+                    "name": "github-context-memory",
+                    "model": self.CHILD,
+                    "started_at": None,
+                }
+            ],
+            row["subagents"],
+        )
 
     def test_a_childs_model_is_bounded_and_guarded_like_the_sessions_own(self) -> None:
         # Both readings go through one function, so a hostile value cannot be
@@ -1223,7 +1236,16 @@ class CopilotPermissionGateTest(RuntimeTestCase):
         row = self.row(now, *self.opening(now), started, self.shell_request("req-1", asked))
 
         self.assertEqual("needs_input", row["state"])
-        self.assertEqual([{"name": "researcher", "model": "gpt-5.4-mini"}], row["subagents"])
+        self.assertEqual(
+            [
+                {
+                    "name": "researcher",
+                    "model": "gpt-5.4-mini",
+                    "started_at": None,
+                }
+            ],
+            row["subagents"],
+        )
 
     def test_a_prompt_typed_past_a_request_retires_it(self) -> None:
         # The liveness bound. `permission.completed` is the only record that

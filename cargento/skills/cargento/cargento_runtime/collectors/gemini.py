@@ -95,7 +95,7 @@ def collect(
         # `model` is always present on a subagent element, per the contract in
         # `sessions.base_session`. None here says nobody has looked for where
         # Gemini records the model, not that Gemini runs on none.
-        subagents = [{"name": label, "model": None} for label, _ in agents]
+        subagents = [{"name": label, "model": None, "started_at": None} for label, _ in agents]
         session_state, state_detail = "idle", "awaiting your message"
         if sessions.is_fresh(
             config,
@@ -111,6 +111,7 @@ def collect(
             config, os.path.basename(os.path.dirname(os.path.dirname(fp)))
         )
         s = sessions.base_session("gemini", sid, project)
+        scan = turns.scan_turns(config, state, fp, "gemini") if info else None
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -120,8 +121,9 @@ def collect(
                 "active": active,
                 "last_activity": last_activity,
                 "rate_per_min": sessions.rate_from(info, now, config),
+                "started_at": turns.started_at(scan),
                 "turn": turns.turn_progress(
-                    turns.scan_turns(config, state, fp, "gemini") if info else None,
+                    scan,
                     session_state,
                     now,
                     config,

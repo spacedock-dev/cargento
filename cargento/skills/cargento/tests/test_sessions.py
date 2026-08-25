@@ -316,6 +316,7 @@ class CargentoServerTest(RuntimeTestCase):
             "active",
             "last_activity",
             "own_activity",
+            "started_at",
             "finished_at",
             "rate_per_min",
             "total",
@@ -355,6 +356,9 @@ class CargentoServerTest(RuntimeTestCase):
         ]
         self.assertEqual([], writers, "a collector is guessing at completion")
 
+    def test_an_unmeasured_session_start_is_declared_as_none(self) -> None:
+        self.assertIsNone(runtime_sessions.base_session("pi", "abc", "proj")["started_at"])
+
     def test_consumption_ships_unfilled_for_a_harness_that_keeps_no_ledger(self) -> None:
         # Copilot's collector fills this; every other harness leaves the declared
         # None, which reads as "no accounting", never as "spent nothing".
@@ -384,10 +388,13 @@ class CargentoServerTest(RuntimeTestCase):
             "sessions.py imported quota — quota.py imports sessions, so that is a cycle",
         )
 
-    def test_a_subagent_element_always_carries_a_model_key(self) -> None:
-        # The published element is `{"name": str, "model": str | None}` and `model`
-        # is always present. A parallel list of only the children whose model
-        # differs would be smaller and is refused: absence from such a list means
+    def test_a_subagent_element_always_carries_measurement_keys(self) -> None:
+        # The published element declares model and started_at even when neither
+        # was measured. A parallel map of only measured values would be smaller,
+        # but absence from it would mean either "same as the parent" / "started
+        # with the parent" or "nobody measured it", which collapses the facts.
+        # A parallel list of only the children whose model differs is refused for
+        # the same reason: absence from such a list means
         # either "same as the parent" or "nobody read one", which collapses in the
         # wire format the two facts this field exists to keep apart. There is also
         # no sound join key to build one on — several collectors fall back to a

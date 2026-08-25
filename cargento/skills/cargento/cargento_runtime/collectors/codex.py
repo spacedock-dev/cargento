@@ -129,7 +129,7 @@ def collect(
     # Resumes and subagent threads each write their own rollout file, so group
     # by the session_meta session_id rather than by file.
     found: dict[str, tuple[float, str]] = {}  # session_id -> (mtime, path)
-    # parent session_id -> {"agents": [(label, mtime, model)], "rate": int}
+    # parent session_id -> {"agents": [(label, mtime, model, started_at)], "rate": int}
     agent_data: dict[str, dict[str, Any]] = {}
     for fp in runtime_io.glob_stores(
         config,
@@ -167,6 +167,7 @@ def collect(
                         (meta.get("agent_label") or "subagent")[:70],
                         mtime,
                         (scan or {}).get("model"),
+                        turns.started_at(scan),
                     )
                 )
             continue
@@ -189,7 +190,10 @@ def collect(
         # collector has not read it this pass, and that is the honest reading.
         scan = turns.scan_turns(config, state, fp, "codex") if info else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
-        subagents = [{"name": label, "model": model} for label, _, model in agents]
+        subagents = [
+            {"name": label, "model": model, "started_at": started_at}
+            for label, _, model, started_at in agents
+        ]
         session_state, state_detail = "idle", "awaiting your message"
         if sessions.is_fresh(
             config,
@@ -234,6 +238,7 @@ def collect(
                 # which leaves the wait standing -- the safe direction, and the
                 # one an unreported value already takes in the reducer.
                 "own_activity": (info or {}).get("last_event_ts") or 0,
+                "started_at": turns.started_at(scan),
                 "rate_per_min": sessions.rate_from(info, now, config) + data["rate"],
                 "turn": turns.turn_progress(scan, session_state, now, config),
                 # `provider` stays None: no Codex record carries one, and

@@ -403,9 +403,10 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
         "last_event_ts": 0,
         "cwd": None,
         # Started-but-not-finished subagents, one `{"name": str, "model": str |
-        # None}` each, which is the element shape the payload publishes. `model`
-        # is the child's own reading and None means the event did not report one
-        # — never a guess.
+        # None}` each. This is an internal pre-publication shape: the collector
+        # adds the always-present `started_at` key, which stays None because
+        # Copilot exposes no child transcript here. `model` is the child's own
+        # reading and None means the event did not report one — never a guess.
         #
         # The model is carried raw and bounded by the collector, which caps it to
         # the width `sessions` declares for every model on the payload. That

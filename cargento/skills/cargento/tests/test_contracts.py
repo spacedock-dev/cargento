@@ -1763,7 +1763,10 @@ class SubagentElementContractTest(unittest.TestCase):
         # Nobody has looked for where Gemini records a model, so None here says
         # "not read" — never that the child runs on no model, and never a value
         # borrowed from the parent card.
-        self.assertEqual([{"name": "subagent 9f3c1a55", "model": None}], rows[0]["subagents"])
+        self.assertEqual(
+            [{"name": "subagent 9f3c1a55", "model": None, "started_at": None}],
+            rows[0]["subagents"],
+        )
 
 
 class HostilePathContractTest(unittest.TestCase):

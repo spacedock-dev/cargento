@@ -223,6 +223,7 @@ def load_subagents(
                 "label": (label or "subagent")[:70],
                 "mtime": mtime,
                 "model": (models or {}).get(fp),
+                "started_at": claude_data.transcript_started_at(config, fp),
             }
         )
     agents.sort(key=lambda a: -a["mtime"])
@@ -363,7 +364,12 @@ def collect(
         models = {path: child_model(analysis) for path, analysis in analyses.items()}
         subagents = load_subagents(config, transcript, now, found=agent_files, models=models)
         subagents += [
-            {"label": c["label"], "mtime": c["mtime"], "model": models.get(c["path"])}
+            {
+                "label": c["label"],
+                "mtime": c["mtime"],
+                "model": models.get(c["path"]),
+                "started_at": claude_data.transcript_started_at(config, c["path"]),
+            }
             for c in children
             if runtime_sessions.is_fresh(
                 config, now, c["mtime"], config.working_threshold_sec
@@ -554,6 +560,7 @@ def collect(
                 # — the safe direction, and the same one an unreported value
                 # already takes in the reducer.
                 "own_activity": (info or {}).get("last_assistant_ts") or 0,
+                "started_at": runtime_turns.started_at(scan),
                 # Subagent output lives in the children's own transcripts; fold
                 # it in so the session's rate reflects all its work. Read from
                 # `analyses` rather than re-analyzing: both layouts are in there
@@ -572,7 +579,14 @@ def collect(
                 "eta_h": runtime_sessions.fmt_duration(eta_sec) if eta_sec else None,
                 "turn": runtime_turns.turn_progress(scan, session_state, now, config),
                 "loop": runtime_turns.loop_signal(scan, config),
-                "subagents": [{"name": a["label"], "model": a["model"]} for a in subagents],
+                "subagents": [
+                    {
+                        "name": a["label"],
+                        "model": a["model"],
+                        "started_at": a["started_at"],
+                    }
+                    for a in subagents
+                ],
                 "tasks": tasks,
                 "spacedock": session_spacedock(
                     config, state, transcript, subagents, now, window_hours * 3600

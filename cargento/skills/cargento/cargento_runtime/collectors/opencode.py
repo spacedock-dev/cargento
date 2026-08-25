@@ -106,7 +106,9 @@ def collect(
                 # contract in `sessions.base_session`. None here says nobody has
                 # looked for where OpenCode records the model, not that OpenCode
                 # runs on none.
-                subagents = [{"name": label, "model": None} for label, _ in agents]
+                subagents = [
+                    {"name": label, "model": None, "started_at": None} for label, _ in agents
+                ]
                 session_state, state_detail = "idle", "awaiting your message"
                 if sessions.is_fresh(config, now, last_activity, config.working_threshold_sec):
                     session_state = "working"

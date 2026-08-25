@@ -67,6 +67,8 @@ def _apply_turn_record(
     ep = records.parse_ts(record.get("timestamp") or "")
     if not ep:
         return
+    if st["first_ts"] is None:
+        st["first_ts"] = ep
     # A quiet stretch longer than the gap-reset window inside a turn means the
     # agent was not generating (permission wait, AskUserQuestion, sleep).
     # Bank the active segment and restart the clock at the post-gap event so
@@ -177,6 +179,8 @@ def _latest_turn_context(
 # of these together.
 _RESULT_FIELDS = (
     "pos",
+    "scanned_from_zero",
+    "first_ts",
     "turn_start",
     "last_start",
     "prev_ts",
@@ -231,6 +235,8 @@ def scan_turns(
                 state.turn_scan.pop(next(iter(state.turn_scan)))
             st = {
                 "pos": 0,
+                "scanned_from_zero": True,
+                "first_ts": None,
                 "turn_start": None,
                 "last_start": None,
                 "durations": [],
@@ -260,6 +266,7 @@ def scan_turns(
         if size - st["pos"] > config.turn_scan_max_bytes:
             # Locate the active turn boundary in the skipped prefix by reading
             # backward in chunks, then process the bounded tail forward.
+            st["scanned_from_zero"] = False
             tail_start = size - config.turn_scan_max_bytes
             st.update(_latest_turn_context(config, path, tail_start, harness))
             st["pos"] = tail_start
@@ -291,6 +298,14 @@ def scan_turns(
                 _apply_turn_record(config, st, record, harness)
         st["durations"] = st["durations"][-50:]
         return _snapshot(st)
+
+
+def started_at(scan: dict[str, Any] | None) -> float | None:
+    """The transcript's first timestamp, only when the scan covered its head."""
+    if not scan or scan.get("scanned_from_zero") is not True:
+        return None
+    value = scan.get("first_ts")
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 def turns_from_events(events: list[tuple[float, bool]]) -> dict[str, Any]:

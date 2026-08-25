@@ -55,6 +55,7 @@ def collect(
             config, meta.get("cwd") or ""
         ) or sessions.project_label(config, os.path.basename(os.path.dirname(fp)))
         s = sessions.base_session("droid", sid, project)
+        scan = turns.scan_turns(config, state, fp, "droid") if info else None
         s.update(
             {
                 "title": (meta.get("title") or "").strip()[:80] or (info or {}).get("title"),
@@ -63,8 +64,9 @@ def collect(
                 "state_detail": state_detail,
                 "active": active,
                 "last_activity": mtime,
+                "started_at": turns.started_at(scan),
                 "turn": turns.turn_progress(
-                    turns.scan_turns(config, state, fp, "droid") if info else None,
+                    scan,
                     session_state,
                     now,
                     config,

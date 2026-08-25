@@ -463,12 +463,11 @@ def collect(
         session_state, state_detail = "idle", "awaiting your message"
         blocked_since = None
         gate = _standing_gate(config, info, now, mtime)
-        # `{"name": str, "model": str | None}` each, built in
-        # `transcripts.analyze_copilot_events` where the name and the model come
-        # off one JSON object. Only a working session has any: `info` is None
-        # unless the session is active, so a Copilot subagent's model is visible
-        # only while it is running — which is also why it cannot be exercised
-        # against an idle fixture.
+        # Name and model are built in `transcripts.analyze_copilot_events`, where
+        # both come off one JSON object. The start remains None because no child
+        # transcript is scanned here. `info` is None unless the session is active,
+        # so a Copilot subagent is visible only while its parent is working or at a
+        # live gate. An idle fixture cannot exercise the element shape.
         #
         # The published model is raw, not a decision. Whether a child's model is
         # worth the space is a comparison against the parent's, both measured,
@@ -490,6 +489,7 @@ def collect(
                 {
                     "name": pending.get("name") or "subagent",
                     "model": _row_model(pending.get("model")),
+                    "started_at": None,
                 }
                 for pending in (info or {}).get("pending_agents", {}).values()
             ]
@@ -516,6 +516,7 @@ def collect(
         s = sessions.base_session(
             "copilot", sid, sessions.project_from_cwd(config, cwd or "") or "copilot"
         )
+        scan = turns.scan_turns(config, state, fp, "copilot") if info else None
         s.update(
             {
                 "title": (info or {}).get("title"),
@@ -546,8 +547,9 @@ def collect(
                 # never runs. Publishing it would be a field nothing reads.
                 "active": active,
                 "last_activity": mtime,
+                "started_at": turns.started_at(scan),
                 "turn": turns.turn_progress(
-                    turns.scan_turns(config, state, fp, "copilot") if info else None,
+                    scan,
                     session_state,
                     now,
                     config,

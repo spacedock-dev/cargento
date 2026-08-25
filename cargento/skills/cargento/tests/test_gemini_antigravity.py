@@ -124,6 +124,7 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
         self.assertEqual(1, len(sessions))
         self.assertEqual("gemini", sessions[0]["harness"])
         self.assertEqual(sid[:8], sessions[0]["session"])
+        self.assertEqual(records.parse_ts("2026-08-04T00:00:00.000Z"), sessions[0]["started_at"])
 
     def test_record_fingerprint_is_stable_and_bounded(self) -> None:
         self.assertEqual(
@@ -600,7 +601,10 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
         self.assertEqual(1, len(sessions))
         self.assertEqual(parent_sid, sessions[0]["sid"])
-        self.assertEqual([{"name": "Research Auditor", "model": None}], sessions[0]["subagents"])
+        self.assertEqual(
+            [{"name": "Research Auditor", "model": None, "started_at": None}],
+            sessions[0]["subagents"],
+        )
 
     def test_antigravity_folded_subagent_rate_reaches_parent(self) -> None:
         now = time.time()
@@ -678,7 +682,10 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual([root_sid], [session["sid"] for session in sessions])
-        self.assertEqual([{"name": "Nested Auditor", "model": None}], sessions[0]["subagents"])
+        self.assertEqual(
+            [{"name": "Nested Auditor", "model": None, "started_at": None}],
+            sessions[0]["subagents"],
+        )
         self.assertEqual("working", sessions[0]["state"])
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
         self.assertEqual(grandchild_mtime, sessions[0]["last_activity"])
@@ -744,7 +751,10 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 config, state = runtime()
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
-        self.assertEqual([{"name": "Fresh Auditor", "model": None}], sessions[0]["subagents"])
+        self.assertEqual(
+            [{"name": "Fresh Auditor", "model": None, "started_at": None}],
+            sessions[0]["subagents"],
+        )
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
 
     def test_antigravity_skips_unrelated_stale_metadata_stores(self) -> None:
@@ -852,7 +862,10 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 config, state = runtime()
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
-        self.assertEqual([{"name": "subagent 22222222", "model": None}], sessions[0]["subagents"])
+        self.assertEqual(
+            [{"name": "subagent 22222222", "model": None, "started_at": None}],
+            sessions[0]["subagents"],
+        )
 
     def test_antigravity_publishes_the_model_its_session_is_running_on(self) -> None:
         # No table in a conversation store has a model column, which is why a
@@ -1109,7 +1122,13 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
         self.assertEqual("Gemini 3.6 Flash (High)", sessions[0]["model"])
         self.assertEqual(
-            [{"name": "Research Auditor", "model": "Gemini 3.1 Pro (Low)"}],
+            [
+                {
+                    "name": "Research Auditor",
+                    "model": "Gemini 3.1 Pro (Low)",
+                    "started_at": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
 
@@ -1140,7 +1159,10 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual("Gemini 3.6 Flash (High)", sessions[0]["model"])
-        self.assertEqual([{"name": "Research Auditor", "model": None}], sessions[0]["subagents"])
+        self.assertEqual(
+            [{"name": "Research Auditor", "model": None, "started_at": None}],
+            sessions[0]["subagents"],
+        )
 
     def test_a_nested_subagent_carries_the_model_its_own_store_reports(self) -> None:
         # `descendants()` flattens the subtree, so a grandchild is listed on the

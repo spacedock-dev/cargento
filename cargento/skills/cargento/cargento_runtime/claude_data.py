@@ -28,6 +28,12 @@ if TYPE_CHECKING:
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 
 
+def transcript_started_at(config: RuntimeConfig, path: str) -> float | None:
+    """Timestamp on the transcript's first bounded JSON record, if usable."""
+    record = runtime_io.read_first_json(config, path)
+    return records.parse_ts(record.get("timestamp") or "")
+
+
 def input_summary(block: Mapping[str, Any], *, limit: int) -> str:
     """What an input tool is actually asking, in one bounded line, or "".
 

@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
+from cargento_runtime import records as runtime_records
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import droid as droid_collector
@@ -104,6 +105,7 @@ class DroidCollectorTest(RuntimeTestCase):
         self.assertEqual("w/droidproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("Ship feature", s["title"])
         self.assertEqual("ship it", s["last_prompt"])
+        self.assertEqual(runtime_records.parse_ts(iso), s["started_at"])
 
 
 class DroidReviewFixTest(unittest.TestCase):
@@ -180,7 +182,10 @@ class DroidVerificationFixTest(unittest.TestCase):
         self.assertEqual("working", sessions[0]["state"])
         # The child declares no `turn_context`, so its model is genuinely unread
         # and the key is present holding None rather than absent.
-        self.assertEqual([{"name": "reviewer", "model": None}], sessions[0]["subagents"])
+        self.assertEqual(
+            [{"name": "reviewer", "model": None, "started_at": None}],
+            sessions[0]["subagents"],
+        )
         self.assertLessEqual(sessions[0]["last_activity"], self.NOW, "skewed mtime displayed")
 
 
