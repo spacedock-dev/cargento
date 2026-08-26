@@ -105,6 +105,7 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 | `web/next/next-project.js` | The project detail header, same-workflow plan merge, ordered entity rows, three Spacedock empty states, and the main-column and rail section layout. |
 | `web/next/next-activity.js` | The project GOING ON cards and DONE list: current-payload session ordering, session routes, Claude completed-task provenance and both explicit empty states. |
 | `web/next/next-session.js` | The bounded session detail: exact route and ask attribution, last-instruction header, optional measured metadata, Claude tasks, live subagents, token footer, and the existing answer POST. |
+| `web/next/next-workstream.js` | The bounded in-tab observation ledger, per-payload session samples, project workstream rail, honest retained-window label and namespaced collapse preference. |
 | `web/next/next-render.js` | The next page's overview, project and session dispatchers, payload fetch, failure state and 5 s poll. It starts the loop, so view parts sit before it in `NEXT_PARTS`. |
 
 `NEXT_PARTS` is a second concatenated scope, not an extension of `APP_PARTS`. The HTTP server selects

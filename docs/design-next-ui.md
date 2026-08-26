@@ -170,6 +170,32 @@ byte firewall. A new session endpoint would duplicate the current payload and ex
 surface without supplying new evidence. The separate `next-session.js` part needs neither. It also
 adds no retained history; that decision remains DRC-4234.
 
+## NUI-9: the workstream starts when this tab starts observing
+
+The server still publishes one current snapshot. `next-workstream.js` therefore builds a bounded
+ledger only from advancing payloads seen by this tab. The first successful payload establishes the
+session and ask baseline without turning existing state into invented history. Later payloads add
+state transitions, newly measured turn stops and newly observed asks in timestamp order. Replayed
+payloads add nothing.
+
+Every advancing payload also contributes one sample per session with its project, state and
+measured token rate. These samples are the evidence the later delegation panel needs; transitions
+alone cannot recover the intervals between them. State events keep both sides of the transition for
+the same reason. The 100,000-logical-entry cap was chosen against the observed 22-session case at
+the five-second poll cadence: six hours produces 95,040 samples before transition entries. Whole
+payload groups are dropped oldest-first. Only a single payload larger than the entire cap is
+tail-bounded, a defensive path far outside the measured population.
+
+The section names the retained span rather than copying the mock's fixed six-hour label. Before a
+span exists it says `since this tab opened`; elapsed labels come from payload `generated` times, not
+the viewer clock. The rail is empty until a post-baseline event arrives and says so explicitly.
+Reloading discards the ledger. Only the collapsed preference survives, under the next bundle's
+storage namespace and behind a storage failure boundary.
+
+Rendering consumes the ledger through a project-window function rather than reading its mutable
+arrays. A future server history source can replace that function without changing the rail, but no
+such source or retention policy is implied here. DRC-4234 owns that later decision.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain
