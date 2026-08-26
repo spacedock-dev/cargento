@@ -71,6 +71,50 @@ console.log(JSON.stringify({
         self.assertLess(out["html"].index("agent resumed"), out["html"].index("needs input"))
         self.assertLess(out["html"].index("needs input"), out["html"].index("became idle"))
 
+    def test_prompt_resumption_is_attended_on_both_project_summaries(self) -> None:
+        out = self.run_fixture(
+            """
+for(const generated of [1600, 2200]){
+  __workstreamPayload = {
+    ...__workstreamPayload, generated,
+    sessions: [{...__workstreamPayload.sessions[0], state: "working"}]
+  };
+  await refreshNext();
+}
+const window = nextWorkstreamProjectWindow("alpha/repo");
+nextWorkstreamCollapsed = true;
+renderNext();
+console.log(JSON.stringify({event: window.events[0], html: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertFalse(out["event"]["filled"])
+        self.assertIn("0 of 1 unattended", out["html"])
+        self.assertIn("1 human turn", out["html"])
+
+    def test_state_transition_classifier_preserves_gate_and_agent_events(self) -> None:
+        out = self._run_page_js(
+            """
+console.log(JSON.stringify([
+  nextWorkstreamTransition("idle", "working"),
+  nextWorkstreamTransition("needs_input", "working"),
+  nextWorkstreamTransition("working", "needs_input"),
+  nextWorkstreamTransition("working", "idle")
+]));
+"""
+        )
+
+        self.assertEqual(
+            [
+                {"filled": False, "humanTurn": True},
+                {"filled": False, "humanTurn": True},
+                {"filled": False, "humanTurn": False},
+                {"filled": True, "humanTurn": False},
+            ],
+            out,
+        )
+
     def test_turn_stop_and_new_ask_use_measured_times_and_honest_labels(self) -> None:
         out = self.run_fixture(
             """

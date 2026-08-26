@@ -189,8 +189,16 @@ payloads add nothing.
 Every advancing payload also contributes one sample per session with its project, state and
 measured token rate. These samples are the evidence the later delegation panel needs; transitions
 alone cannot recover the intervals between them. State events keep both sides of the transition for
-the same reason. The 100,000-logical-entry cap was chosen against the observed 22-session case at
-the five-second poll cadence: six hours produces 95,040 samples before transition entries. Whole
+the same reason.
+
+One classifier owns state-transition meaning for both the workstream and delegation. A transition
+out of `needs_input`, or from `idle` to `working`, is a human turn. Its workstream node is hollow and
+it does not enter the unattended count. A transition into `needs_input` is also hollow because it
+opens a gate, but it is agent-side and does not increment human turns. Other transitions, including
+`working` to `idle`, use filled nodes and count as unattended.
+
+The 100,000-logical-entry cap was chosen against the observed 22-session case at the five-second
+poll cadence: six hours produces 95,040 samples before transition entries. Whole
 payload groups are dropped oldest-first. Only a single payload larger than the entire cap is
 tail-bounded, a defensive path far outside the measured population.
 

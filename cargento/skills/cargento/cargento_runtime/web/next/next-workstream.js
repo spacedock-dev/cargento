@@ -58,6 +58,16 @@ function nextWorkstreamStateLabel(state){
   return "became idle";
 }
 
+function nextWorkstreamTransition(fromState, toState){
+  const leftGate = fromState === "needs_input" && toState !== "needs_input";
+  const promptBoundary = fromState === "idle" && toState === "working";
+  const humanTurn = leftGate || promptBoundary;
+  return {
+    filled: toState !== "needs_input" && !humanTurn,
+    humanTurn,
+  };
+}
+
 function nextWorkstreamRateKnown(harness, rate, sources){
   if(rate == null) return false;
   const source = sources.get(harness);
@@ -149,9 +159,10 @@ function nextObserveWorkstream(payload){
     if(!previous) continue;
     const right = nextWorkstreamHarnessInitialism(session.harness, labels);
     if(previous.state !== session.state){
+      const transition = nextWorkstreamTransition(previous.state, session.state);
       events.push({
         at: generated,
-        filled: session.state !== "needs_input",
+        filled: transition.filled,
         fromState: previous.state,
         harness: session.harness,
         kind: "state",

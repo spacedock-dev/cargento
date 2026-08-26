@@ -26,9 +26,7 @@ function nextDelegationHumanTurns(events, startedAt, endedAt){
   return (events || []).filter(event => {
     const at = nextNumber(event && event.at);
     if(at == null || at < startedAt || at > endedAt || event.kind !== "state") return false;
-    const leftGate = event.fromState === "needs_input" && event.toState !== "needs_input";
-    const promptBoundary = event.fromState === "idle" && event.toState === "working";
-    return leftGate || promptBoundary;
+    return nextWorkstreamTransition(event.fromState, event.toState).humanTurn;
   }).length;
 }
 
