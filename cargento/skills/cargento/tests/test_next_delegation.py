@@ -104,6 +104,29 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("%", block)
         self.assertNotIn("<progress", block)
 
+    def test_idle_time_advances_the_observed_evidence_floor(self) -> None:
+        html = self.run_fixture(
+            """
+nextWorkstreamGroups[0].samples[0].state = "idle";
+for(const [generated, state] of [
+  [1500, "working"],
+  [1600, "working"]
+]){
+  __delegationPayload = {
+    ...__delegationPayload, generated,
+    sessions: [{...__delegationPayload.sessions[0], state}]
+  };
+  await refreshNext();
+}
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        self.assertIn("100%", block)
+        self.assertNotIn("no figure yet", block)
+
     def test_no_delegated_segment_withholds_rate_instead_of_printing_zero(self) -> None:
         html = self.run_fixture(
             """
