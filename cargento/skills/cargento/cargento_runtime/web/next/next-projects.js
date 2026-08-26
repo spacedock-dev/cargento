@@ -64,8 +64,14 @@ function nextProjectNow(sessions){
     return '<span class="next-project-now next-project-now--blocked">● blocked</span>';
   }
   const running = sessions.filter(session => session.state === "working" && session.active).length;
-  return running
-    ? `<span class="next-project-now next-project-now--running">● ${running} running</span>`
+  if(running){
+    return `<span class="next-project-now next-project-now--running">● ${running} running</span>`;
+  }
+  const statesKnown = sessions.length && sessions.every(session =>
+    ["needs_input", "working", "idle"].includes(session.state),
+  );
+  return statesKnown
+    ? '<span class="next-project-now next-project-now--idle">idle</span>'
     : "";
 }
 

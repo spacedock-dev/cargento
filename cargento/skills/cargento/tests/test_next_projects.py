@@ -102,7 +102,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("next-project-progress-bar", row)
         self.assertNotIn(" of ", row)
 
-    def test_blocked_wins_over_running_and_sets_the_amber_edge(self) -> None:
+    def test_blocked_wins_over_running_and_idle_is_explicit(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         alpha = self.project_row(html, "alpha/repo")
@@ -116,6 +116,8 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("blocked", beta)
         self.assertNotIn("running", gamma)
         self.assertNotIn("blocked", gamma)
+        self.assertIn('class="next-project-now next-project-now--idle"', gamma)
+        self.assertIn(">idle<", gamma)
 
     def test_two_idle_sessions_still_get_the_collision_caveat(self) -> None:
         html = self._run_page_js(
@@ -138,6 +140,20 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn("2 sessions share this label", html)
         self.assertIn("Same label is not proof of the same directory", html)
         self.assertIn("sibling worktrees read alike", html)
+
+    def test_idle_requires_known_states_but_not_active_work(self) -> None:
+        out = self.render(
+            """
+console.log(JSON.stringify({
+  inactive: nextProjectNow([{state: "working", active: false}]),
+  unknown: nextProjectNow([{active: false}])
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertIn(">idle<", out["inactive"])
+        self.assertEqual("", out["unknown"])
 
     def test_clicking_a_project_row_uses_the_project_route(self) -> None:
         out = self.render(
