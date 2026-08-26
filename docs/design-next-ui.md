@@ -130,6 +130,13 @@ long-turn and session-ID ladder as the sessions overview. Their cards share the 
 harness labels and measured wait or token-rate phrases with that overview, then route with both the
 project label and session ID.
 
+The rate phrase preserves the payload's distinction between absence and zero. A session from a
+rate-blind harness carries `rate_per_min: null`; a reporting harness that measured no output in the
+window carries `0`. The summary remains the sum of present measurements, while the harness strip
+qualifies that total as a floor whenever an active session's source is blind, or any discovered
+collector failed. This keeps the scalar useful without turning an unmeasured session into a
+confident `0 /m`.
+
 Membership is `state`, and `active` is only a freshness gate on top of it. The two were conflated
 once, and the block filtered on `active` alone. Every session still inside the display window
 qualified, so a repository running one live Codex session rendered eleven cards, ten of them idle
