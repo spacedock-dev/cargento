@@ -193,6 +193,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(out, str)
 
+        self.assertIn("0 of 1 unattended", out)
         self.assertIn("last 2m", out)
         self.assertNotIn("6h", out)
 
@@ -221,7 +222,11 @@ const localStorage = {
         assert isinstance(out, dict)
 
         self.assertIn("data-next-workstream-collapsed", out["afterClick"])
+        self.assertIn("0 of 0 unattended", out["afterClick"])
+        self.assertNotIn("since this tab opened", out["afterClick"])
         self.assertNotIn("data-next-workstream-collapsed", out["afterKeyboard"])
+        self.assertIn("0 of 0 unattended", out["afterKeyboard"])
+        self.assertIn("since this tab opened", out["afterKeyboard"])
         self.assertEqual(
             [
                 ["cargento.next.workstream.collapsed", "1"],
@@ -247,6 +252,8 @@ const localStorage = {
         assert isinstance(out, str)
 
         self.assertIn("WORKSTREAM", out)
+        self.assertIn("0 of 0 unattended", out)
+        self.assertIn("since this tab opened", out)
         self.assertIn("No workstream events since this tab opened.", out)
         self.assertNotIn("data-next-workstream-collapsed", out)
 

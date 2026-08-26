@@ -260,9 +260,10 @@ function nextProjectWorkstream(context){
   const events = window.events;
   const unattended = events.filter(event => event.filled).length;
   const glyph = nextWorkstreamCollapsed ? "▸" : "▾";
+  const graphNote = `${unattended} of ${events.length} unattended`;
   const detail = nextWorkstreamCollapsed
-    ? `${unattended} of ${events.length} unattended`
-    : nextWorkstreamWindowLabel(window);
+    ? graphNote
+    : `${graphNote} · ${nextWorkstreamWindowLabel(window)}`;
   const collapsed = nextWorkstreamCollapsed ? " data-next-workstream-collapsed" : "";
   const header = '<header class="next-workstream-header">' +
     `<button type="button" data-next-workstream-toggle aria-expanded="${!nextWorkstreamCollapsed}">` +
