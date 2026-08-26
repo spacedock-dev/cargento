@@ -44,6 +44,8 @@ const steer = {
   closest(selector){ return selector === "[data-next-steer-form]" ? this : null; }
 };
 __fire("submit", {target: steer, preventDefault(){}});
+steer.elements.steer.value = "Then <script>alert(2)</script>";
+__fire("submit", {target: steer, preventDefault(){}});
 const toggle = {
   dataset: {nextControlsProject: "alpha/repo", nextGuardrailToggle: "0"},
   closest(selector){ return selector === "[data-next-guardrail-toggle]" ? this : null; }
@@ -59,10 +61,17 @@ console.log(JSON.stringify({
         assert isinstance(out, dict)
 
         self.assertEqual([], out["calls"])
-        self.assertIn("Refocus &lt;img src=x onerror=1&gt;", out["html"])
+        first = "Refocus &lt;img src=x onerror=1&gt;"
+        second = "Then &lt;script&gt;alert(2)&lt;/script&gt;"
+        self.assertIn(first, out["html"])
+        self.assertIn(second, out["html"])
+        self.assertLess(out["html"].index(first), out["html"].index(second))
         self.assertNotIn("Refocus <img", out["html"])
-        self.assertIn("Not delivered.", out["html"])
-        self.assertIn("Cargento has no write path into a session.", out["html"])
+        self.assertNotIn("Then <script>", out["html"])
+        self.assertIn('class="next-steer-receipts"', out["html"])
+        self.assertEqual(2, out["html"].count("data-next-steer-receipt"))
+        self.assertEqual(2, out["html"].count("Not delivered."))
+        self.assertEqual(2, out["html"].count("Cargento has no write path into a session."))
         self.assertIn('aria-checked="false"', out["html"])
         self.assertEqual([self.STORAGE_KEY], out["writes"])
         self.assertIn(self.STORAGE_KEY, out["stored"])
@@ -70,6 +79,34 @@ console.log(JSON.stringify({
             [{"text": "Keep tests green", "enabled": False}],
             json.loads(out["stored"][self.STORAGE_KEY]),
         )
+
+    def test_steer_receipts_render_the_retained_tail_in_submission_order(self) -> None:
+        out = self.run_fixture(
+            """
+const form = {
+  dataset: {nextControlsProject: "alpha/repo"},
+  elements: {steer: {value: ""}},
+  closest(selector){ return selector === "[data-next-steer-form]" ? this : null; }
+};
+for(let index = 0; index <= NEXT_STEER_RECORD_LIMIT; index += 1){
+  form.elements.steer.value = `draft-${String(index).padStart(2, "0")}`;
+  __fire("submit", {target: form, preventDefault(){}});
+}
+console.log(JSON.stringify({
+  html: __els.app.innerHTML,
+  retained: nextControlsProjectState("alpha/repo").steers.map(record => record.text)
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual([f"draft-{index:02d}" for index in range(1, 21)], out["retained"])
+        self.assertEqual(20, out["html"].count("data-next-steer-receipt"))
+        self.assertNotIn(">draft-00<", out["html"])
+        self.assertIn(">draft-01<", out["html"])
+        self.assertIn(">draft-20<", out["html"])
+        self.assertLess(out["html"].index(">draft-01<"), out["html"].index(">draft-20<"))
+        self.assertEqual(20, out["html"].count("Not delivered."))
 
     def test_the_headers_and_rows_claim_no_enforcement(self) -> None:
         stored = json.dumps([{"text": "Keep tests green", "enabled": True}])

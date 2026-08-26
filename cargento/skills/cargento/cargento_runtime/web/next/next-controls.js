@@ -50,19 +50,19 @@ function nextControlsStoreRules(project, state){
 }
 
 function nextProjectSteer(project, state){
-  const latest = state.steers.length > 0 ? state.steers[state.steers.length - 1] : null;
-  const receipt = latest
-    ? '<div class="next-steer-receipt" data-next-steer-receipt>' +
-      `<strong>${esc(latest.text)}</strong>` +
-      '<p>Draft recorded in this tab. Not delivered. ' +
-      'Cargento has no write path into a session.</p></div>'
-    : "";
+  const receipts = state.steers.map(record =>
+    '<div class="next-steer-receipt" data-next-steer-receipt>' +
+    `<strong>${esc(record.text)}</strong>` +
+    '<p>Draft recorded in this tab. Not delivered. ' +
+    'Cargento has no write path into a session.</p></div>'
+  ).join("");
+  const history = receipts ? `<div class="next-steer-receipts">${receipts}</div>` : "";
   return '<section class="next-control next-steer" data-next-steer>' +
     '<header><span>STEER · LOCAL ONLY</span></header>' +
     `<form data-next-steer-form data-next-controls-project="${esc(project)}">` +
     '<label><span class="next-visually-hidden">Steer draft</span>' +
     '<input name="steer" maxlength="500" placeholder="Tell this project what to do next"></label>' +
-    '<button type="submit">send ⏎</button></form>' + receipt + '</section>';
+    '<button type="submit">send ⏎</button></form>' + history + '</section>';
 }
 
 function nextProjectGuardrailRows(project, state){
