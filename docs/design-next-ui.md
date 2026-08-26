@@ -255,6 +255,24 @@ The number begins again when the tab reloads. It is neither durable nor continuo
 on the default page; [DRC-4234](https://linear.app/recce/issue/DRC-4234) still owns the decision about
 persistent history.
 
+## NUI-12: motion means observed activity, not mere attention
+
+The same live treatment appears in three places: fresh subagents in session detail, active work in
+GOING ON and active working rows in the sessions overview. Each container carries `next-live`, and
+its filled accent dot pulses. The class follows evidence already in the payload. A listed subagent
+has passed the collector's freshness test; session rows and GOING ON cards also require `active`.
+No browser timer infers that work is alive.
+
+A gate stays amber and static even when its session still has `active: true`. It is important, but
+it is waiting rather than moving, and animation must not turn attention priority into a claim of
+progress. A working row whose `active` flag has lapsed likewise keeps its place in the working
+group without the live dot.
+
+The pulse changes only opacity. Under `prefers-reduced-motion: reduce`, animation is disabled while
+the filled accent dot and `next-live` class remain, so liveness does not depend on motion. All of
+these selectors and the keyframes live in `web/next/styles.css`; the independently assembled
+default page cannot inherit them.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain

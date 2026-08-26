@@ -183,6 +183,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertLess(html.index("worker-a"), html.index("worker-b"))
         measured = self.subagent_row(html, 0)
         unmeasured = self.subagent_row(html, 1)
+        self.assertIn("next-live", measured)
+        self.assertIn("next-live", unmeasured)
         self.assertIn('aria-label="running">●</span>', measured)
         self.assertIn("worker-a", measured)
         self.assertIn("5m", measured)

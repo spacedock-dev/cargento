@@ -60,9 +60,12 @@ function nextSessionRow(session, labels, collisions){
   const stateClass = session.state === "needs_input"
     ? " next-session-row--blocked"
     : (session.state === "working" ? " next-session-row--working" : "");
-  return `<tr class="next-session-row${stateClass}" data-next-session="${esc(session.sid)}" ` +
+  const live = session.active === true && session.state === "working";
+  const liveClass = live ? " next-live" : "";
+  const liveDot = live ? nextStatusDot("working", "next-session-live-glyph") : "";
+  return `<tr class="next-session-row${stateClass}${liveClass}" data-next-session="${esc(session.sid)}" ` +
     `data-next-route="${esc(route)}"><td class="next-session-identity">` +
-    `<strong>${esc(title)}</strong><span>${esc(project)} · ${esc(harnessLabel)}</span>` +
+    `<strong>${liveDot}${esc(title)}</strong><span>${esc(project)} · ${esc(harnessLabel)}</span>` +
     `${nextSessionCollision(session, collisions)}</td>` +
     `<td class="next-session-activity">${nextSessionActivity(session)}</td>` +
     `<td class="next-session-metric">${esc(nextSessionMetric(session))}</td></tr>`;

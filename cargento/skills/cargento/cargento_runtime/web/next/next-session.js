@@ -116,7 +116,7 @@ function nextSessionSubagents(session){
     const measured = elapsed == null
       ? ""
       : `<span class="next-session-subagent-elapsed">${elapsed}m</span>`;
-    return `<div class="next-session-subagent" data-next-session-subagent="${index}">` +
+    return `<div class="next-session-subagent next-live" data-next-session-subagent="${index}">` +
       `${nextStatusDot("running", "next-session-subagent-glyph")}` +
       `<strong class="next-session-subagent-name">${esc(subagent && subagent.name || "subagent")}</strong>` +
       `${measured}</div>`;

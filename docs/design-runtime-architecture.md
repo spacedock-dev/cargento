@@ -97,14 +97,14 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 | `web/main.js` | `render()` and `refresh()`. |
 | `web/live.js` | Leader election across tabs, the SSE stream, and the fallback poll. |
 | `web/next/index.html` | The two-slot shell for the opt-in page. It is assembled independently of `web/index.html`. |
-| `web/next/styles.css` | The next page's dark-first token copy and its own rules. It never extends the byte-pinned default stylesheet. |
+| `web/next/styles.css` | The next page's dark-first token copy, live-dot pulse and reduced-motion override. It never extends the byte-pinned default stylesheet. |
 | `web/next/next-boot.js` | Query reads, HTML escaping, shared payload-number and time helpers, harness labels, session attention ordering and metrics, status dots, first-seen project groups and the next page's fragment route. It is first in `NEXT_PARTS`; its grammar is owned by [design-next-ui.md](design-next-ui.md). |
 | `web/next/next-chrome.js` | Breadcrumbs, header counts, the overview tab shell, route controls and the one delegated keyboard listener. The selected tab asks the view dispatcher for its body. |
-| `web/next/next-sessions.js` | The sessions overview table: the untouched gate queue, the shared working attention ladder, the nearest-idle tail, measured activity and rate phrases, the all-state shared-label caveat, and each row's project-plus-full-session route. |
+| `web/next/next-sessions.js` | The sessions overview table: the untouched gate queue, the shared working attention ladder, active-row live dots, the nearest-idle tail, measured activity and rate phrases, the all-state shared-label caveat, and each row's project-plus-full-session route. |
 | `web/next/next-projects.js` | The projects overview table: first-seen project-label groups, measured task progress and current state, explicit estimate and delegation withholding, and the all-state shared-label caveat. |
 | `web/next/next-project.js` | The project detail header, same-workflow plan merge, ordered entity rows, three Spacedock empty states, and the main-column and rail section layout. |
-| `web/next/next-activity.js` | The project GOING ON cards and DONE list: current-payload session ordering, session routes, Claude completed-task provenance and both explicit empty states. |
-| `web/next/next-session.js` | The bounded session detail: exact route and ask attribution, last-instruction header, optional measured metadata, Claude tasks, live subagents, token footer, and the existing answer POST. |
+| `web/next/next-activity.js` | The project GOING ON cards and DONE list: current-payload session ordering, observed-live treatment, session routes, Claude completed-task provenance and both explicit empty states. |
+| `web/next/next-session.js` | The bounded session detail: exact route and ask attribution, last-instruction header, optional measured metadata, pulsing fresh subagents, token footer, and the existing answer POST. |
 | `web/next/next-workstream.js` | The bounded in-tab observation ledger, per-payload session samples, project workstream rail, honest retained-window label and namespaced collapse preference. |
 | `web/next/next-delegation.js` | The project rail's windowed delegation percentage, delegated token-rate aggregate, human-turn count, evidence floor and two-window trend gate. |
 | `web/next/next-controls.js` | The project rail's local-only steer receipt and namespaced guardrail preferences, including their storage and escaping boundaries. |

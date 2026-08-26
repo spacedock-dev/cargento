@@ -15,13 +15,14 @@ function nextProjectActivityCard(session, harnesses, project){
   const title = String(session.title || session.last_prompt || project);
   const route = nextRouteToken({view: "session", project, session: sid});
   const blocked = session.state === "needs_input" ? " next-activity-card--blocked" : "";
+  const live = session.active === true && session.state !== "needs_input" ? " next-live" : "";
   const stateLabel = session.state === "needs_input"
     ? "needs input"
     : (session.state === "working" ? "working" : "active");
   const metric = ["needs_input", "working"].includes(session.state)
     ? nextSessionMetric(session)
     : "";
-  return `<button type="button" class="next-activity-card${blocked}" ` +
+  return `<button type="button" class="next-activity-card${blocked}${live}" ` +
     `data-next-going-on="${esc(sid)}" data-next-route="${esc(route)}">` +
     nextStatusDot(stateLabel, "next-activity-dot") +
     `<span class="next-activity-identity"><strong>${esc(title)}</strong>` +

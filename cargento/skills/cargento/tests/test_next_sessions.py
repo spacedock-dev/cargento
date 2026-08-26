@@ -24,36 +24,43 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
   sessions: [
     {
       sid: "gate-z", harness: "claude", project: "repo/main", state: "needs_input",
+      active: true,
       title: "First gate", state_detail: "open question · AskUserQuestion",
       blocked_since: 9400, last_activity: 9400, subagents: []
     },
     {
       sid: "gate-a", harness: "codex", project: "solo/app", state: "needs_input",
+      active: true,
       title: "Second gate", state_detail: null,
       blocked_since: null, last_activity: 9000, subagents: []
     },
     {
       sid: "work-a", harness: "cursor", project: "work/app", state: "working",
+      active: true,
       title: "Normal work", state_detail: "running Bash", rate_per_min: 12,
       last_activity: 9990, turn: {long: false}, subagents: []
     },
     {
       sid: "work-z", harness: "claude", project: "repo/main", state: "working",
+      active: true,
       title: "Long work", state_detail: "running 1 subagent", rate_per_min: 42,
       last_activity: 9980, turn: {long: true}, subagents: [{}]
     },
     {
       sid: "idle-old", harness: "claude", project: "idle/old", state: "idle",
+      active: false,
       title: "Old idle", state_detail: null, last_activity: 7000,
       finished_at: 7000, subagents: []
     },
     {
       sid: "idle-new", harness: "codex", project: "idle/new", state: "idle",
+      active: false,
       title: "New idle", state_detail: null, last_activity: 9460,
       finished_at: 9460, subagents: []
     },
     {
       sid: "idle-mid", harness: "cursor", project: "idle/mid", state: "idle",
+      active: false,
       title: "Middle idle", state_detail: null, last_activity: 8800,
       finished_at: 8800, subagents: []
     }
@@ -107,15 +114,35 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         idle = self.session_row(html, "idle-new")
 
         self.assertIn("next-session-row--blocked", gate)
+        self.assertNotIn("next-live", gate)
         self.assertIn("10m wait", gate)
         self.assertIn("repo/main · Claude Code", gate)
         self.assertIn("open question · AskUserQuestion", gate)
         self.assertIn("next-session-row--working", work)
+        self.assertIn("next-live", work)
+        self.assertIn('aria-label="working">●</span>', work)
         self.assertIn("42 /m", work)
         self.assertIn("running 1 subagent", work)
         self.assertNotIn("next-session-row--blocked", idle)
         self.assertNotIn("next-session-row--working", idle)
+        self.assertNotIn("next-live", idle)
         self.assertIn("9m idle", idle)
+
+    def test_a_working_row_without_the_active_flag_stays_static(self) -> None:
+        html = self.render(
+            """
+const session = nextData.sessions.find(row => row.sid === "work-z");
+session.active = false;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        work = self.session_row(html, "work-z")
+
+        self.assertIn("next-session-row--working", work)
+        self.assertNotIn("next-live", work)
+        self.assertNotIn('aria-label="working">●</span>', work)
 
     def test_an_absent_state_detail_and_gate_stamp_render_no_placeholder(self) -> None:
         html = self.render()

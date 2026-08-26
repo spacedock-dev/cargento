@@ -111,10 +111,13 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         unstamped_gate = self.activity_card(html, "gate-a")
         work = self.activity_card(html, "work-z")
 
+        self.assertNotIn("next-live", gate)
+        self.assertNotIn("next-live", unstamped_gate)
         self.assertIn('aria-label="needs input"', gate)
         self.assertIn("10m wait", gate)
         self.assertIn("Claude Code · open question · AskUserQuestion", gate)
         self.assertNotIn(" wait", unstamped_gate)
+        self.assertIn("next-live", work)
         self.assertIn('aria-label="working"', work)
         self.assertIn("1,235 /m", work)
         self.assertIn("Claude Code · running 1 subagent", work)

@@ -128,6 +128,21 @@ class NextPageAssetContractTest(unittest.TestCase):
         used = set(re.findall(r"var\((--[\w-]+)", page))
         self.assertEqual(set(), used - declared, "next page uses CSS variables nothing declares")
 
+    def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
+        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        live_rule = re.search(r"\.next-live \.next-status-dot\{([^}]*)\}", styles)
+        reduced = re.search(
+            r"@media\(prefers-reduced-motion:reduce\)\{"
+            r"\.next-live \.next-status-dot\{([^}]*)\}\}",
+            styles,
+        )
+
+        self.assertIsNotNone(live_rule)
+        self.assertIsNotNone(reduced)
+        self.assertIn("color:var(--accent-ink)", live_rule.group(1) if live_rule else "")
+        self.assertIn("animation:next-live-pulse", live_rule.group(1) if live_rule else "")
+        self.assertIn("animation:none", reduced.group(1) if reduced else "")
+
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextPageBehaviorTest(NextPageJsHarness):
