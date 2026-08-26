@@ -189,13 +189,15 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         ):
             self.assertIn(f" · {label}</span>", html)
 
-    def test_clicking_a_session_row_routes_to_its_project_for_now(self) -> None:
+    def test_a_row_click_reaches_the_session_route(self) -> None:
         out = self.render(
             """
 const html = __els.app.innerHTML;
+const match = html.match(/data-next-session="gate-z"[^>]*data-next-route="([^"]+)"/);
+const token = match ? match[1] : "";
 __fire("click", {
   target: {closest(selector){
-    return selector === "[data-next-route]" ? {dataset: {nextRoute: "project:repo%2Fmain"}} : null;
+    return selector === "[data-next-route]" ? {dataset: {nextRoute: token}} : null;
   }},
   preventDefault(){}
 });
@@ -204,9 +206,12 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
         )
         assert isinstance(out, dict)
 
-        self.assertIn('data-next-route="project:repo%2Fmain"', out["html"])
-        self.assertEqual({"view": "project", "project": "repo/main", "session": None}, out["route"])
-        self.assertEqual("#n=project:repo%2Fmain", out["hash"])
+        self.assertIn('data-next-route="session:repo%2Fmain:gate-z"', out["html"])
+        self.assertEqual(
+            {"view": "session", "project": "repo/main", "session": "gate-z"},
+            out["route"],
+        )
+        self.assertEqual("#n=session:repo%2Fmain:gate-z", out["hash"])
 
 
 if __name__ == "__main__":
