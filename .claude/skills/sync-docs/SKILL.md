@@ -259,6 +259,15 @@ for name in ("index.html", "styles.css", *page_mod.APP_PARTS):
     print(name, len(payload), hashlib.sha256(payload).hexdigest())
 page = page_mod.load_page()
 print("assembled page", len(page), hashlib.sha256(page).hexdigest())
+for name in ("index.html", "styles.css", *page_mod.NEXT_PARTS):
+    payload = (web / "next" / name).read_bytes()
+    print(f"next/{name}", len(payload), hashlib.sha256(payload).hexdigest())
+next_page = page_mod.load_next_page()
+print(
+    "assembled next page",
+    len(next_page),
+    hashlib.sha256(next_page).hexdigest(),
+)
 PY
 # The real CI command surface
 grep -nE '^\s+(- name:|run:|  +[a-z].*)$' .github/workflows/quality-gate.yml | grep -E 'ruff|mypy|coverage|unittest|lint_embedded|validate_plugins'

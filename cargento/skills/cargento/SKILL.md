@@ -37,7 +37,7 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 ## Display modes
 
-A `display` switch at the top right chooses between three renderings of the same `/api/data` payload. The choice is remembered per browser (`localStorage`, key `cargento.displayMode`) and `c` toggles between the two board views from the keyboard. Nothing is filtered out of one mode and present in another; they never disagree about a session.
+A `display` switch at the top right chooses between three renderings of the same `/api/data` payload. The choice is remembered per browser (`localStorage`, key `cargento.displayMode`) and `c` toggles between the two board views from the keyboard. Nothing is filtered out of one mode and present in another; they never disagree about a session. The separate opt-in URL `http://127.0.0.1:4553/?next=true` opens the next UI's project overview, ordered sessions, activity streams, delegation state, and local-only controls; without the flag, this page and its three modes are unchanged.
 
 A `stop` button sits beside the switch in both modes: the first activation arms it and keeps focus
 there, and the second stops the server. `Enter` or `Space` on the focused button works like a click.
@@ -295,6 +295,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board and the page offers no control to clear one. The rollback switch for the one file Cargento writes on your behalf. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
+| `http://127.0.0.1:4553/?next=true` | Open the opt-in next UI: project overview, ordered sessions, activity streams, delegation state, and local-only controls. The regular URL still serves the existing dashboard. |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
 | `/api/overlays` | Diagnostic: the live event overlays behind each session's state, with their arrival order and timings, plus a record of every time an event overruled a session the dashboard had read as waiting. Use this when a row's state disagrees with what the agent is actually doing and you need to know whether an event said so or never arrived. Empty is a real answer. Absent under `--no-events`. |
