@@ -133,11 +133,15 @@ function nextCompactTokens(value){
 function nextSessionFooter(session){
   const sessionTotal = nextNumber(session.session_output_tokens);
   const turnTotal = nextNumber(session.turn_output_tokens);
-  const source = sessionTotal != null ? "session" : (turnTotal != null ? "turn" : "");
-  const value = sessionTotal != null ? sessionTotal : turnTotal;
+  let source = session.state === "working" ? "turn" : "session";
+  let value = source === "turn" ? turnTotal : sessionTotal;
+  if(value == null){
+    source = source === "turn" ? "session" : "turn";
+    value = source === "turn" ? turnTotal : sessionTotal;
+  }
   if(value == null) return "";
   return `<footer class="next-session-footer" data-next-session-tokens="${source}">` +
-    `${nextCompactTokens(value)} output tokens</footer>`;
+    `${nextCompactTokens(value)} output tokens this ${source}</footer>`;
 }
 
 function nextSessionView(project, sid){

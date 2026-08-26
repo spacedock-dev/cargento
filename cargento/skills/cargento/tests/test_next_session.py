@@ -193,32 +193,72 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("0m", unmeasured)
         self.assertNotIn("opus", unmeasured)
 
-    def test_token_footer_prefers_session_total_then_turn_total_and_keeps_real_zero(self) -> None:
+    def test_token_footer_uses_state_scoped_totals_fallbacks_and_real_zero(self) -> None:
         out = self.render(
             """
 const session = nextData.sessions[0];
 const variants = {};
+session.state = "working";
 renderNext();
-variants.session = __els.app.innerHTML;
+variants.working = __els.app.innerHTML;
+session.state = "needs_input";
+renderNext();
+variants.waiting = __els.app.innerHTML;
+session.state = "idle";
+renderNext();
+variants.idle = __els.app.innerHTML;
+session.state = "working";
+session.turn_output_tokens = null;
+renderNext();
+variants.workingFallback = __els.app.innerHTML;
+session.state = "needs_input";
 session.session_output_tokens = null;
+session.turn_output_tokens = 2400;
 renderNext();
-variants.turn = __els.app.innerHTML;
+variants.waitingFallback = __els.app.innerHTML;
 session.turn_output_tokens = null;
 renderNext();
 variants.absent = __els.app.innerHTML;
+session.state = "working";
+session.session_output_tokens = 12500;
 session.turn_output_tokens = 0;
 renderNext();
-variants.zero = __els.app.innerHTML;
+variants.turnZero = __els.app.innerHTML;
+session.state = "idle";
+session.session_output_tokens = 0;
+session.turn_output_tokens = 2400;
+renderNext();
+variants.sessionZero = __els.app.innerHTML;
 console.log(JSON.stringify(variants));
 """
         )
         assert isinstance(out, dict)
 
-        self.assertIn('data-next-session-tokens="session">12.5k output tokens', out["session"])
-        self.assertNotIn("2.4k output tokens", out["session"])
-        self.assertIn('data-next-session-tokens="turn">2.4k output tokens', out["turn"])
+        self.assertIn(
+            'data-next-session-tokens="turn">2.4k output tokens this turn', out["working"]
+        )
+        self.assertNotIn("12.5k output tokens", out["working"])
+        for state in ("waiting", "idle"):
+            with self.subTest(state=state):
+                self.assertIn(
+                    'data-next-session-tokens="session">12.5k output tokens this session',
+                    out[state],
+                )
+                self.assertNotIn("2.4k output tokens", out[state])
+        self.assertIn(
+            'data-next-session-tokens="session">12.5k output tokens this session',
+            out["workingFallback"],
+        )
+        self.assertIn(
+            'data-next-session-tokens="turn">2.4k output tokens this turn',
+            out["waitingFallback"],
+        )
         self.assertNotIn("data-next-session-tokens", out["absent"])
-        self.assertIn('data-next-session-tokens="turn">0 output tokens', out["zero"])
+        self.assertIn('data-next-session-tokens="turn">0 output tokens this turn', out["turnZero"])
+        self.assertIn(
+            'data-next-session-tokens="session">0 output tokens this session',
+            out["sessionZero"],
+        )
 
     def test_answer_posts_a_numeric_index_and_refreshes_after_confirmation(self) -> None:
         out = self.render(
