@@ -125,10 +125,18 @@ reserved work-state blocks without rebuilding PLAN.
 
 GOING ON answers from the project's session rows. Sessions waiting for input keep payload order
 because the server has already established their precedence. Re-sorting that queue in the browser
-would erase evidence the collector supplied. The remaining active rows use the same stable
+would erase evidence the collector supplied. Behind them come the working rows, on the same stable
 long-turn and session-ID ladder as the sessions overview. Their cards share the payload clock,
 harness labels and measured wait or token-rate phrases with that overview, then route with both the
 project label and session ID.
+
+Membership is `state`, and `active` is only a freshness gate on top of it. The two were conflated
+once, and the block filtered on `active` alone. Every session still inside the display window
+qualified, so a repository running one live Codex session rendered eleven cards, ten of them idle
+and captioned "awaiting your message", under a header that read `1 running`. The header and the
+sessions overview were both right, because both read `state`. A payload has one answer to what is
+going on, and a block that derives its own from a different field will eventually contradict the
+rest of the page.
 
 DONE is deliberately narrower. It walks each project session and its Claude task list in payload
 order, selecting only tasks whose published status is `completed`. It does not sort by task times or
@@ -257,8 +265,8 @@ persistent history.
 
 ## NUI-12: motion means observed activity, not mere attention
 
-The same live treatment appears in three places: fresh subagents in session detail, active work in
-GOING ON and active working rows in the sessions overview. Each container carries `next-live`, and
+The same live treatment appears in three places: fresh subagents in session detail, working
+sessions in GOING ON and active working rows in the sessions overview. Each container carries `next-live`, and
 its filled accent dot pulses. The class follows evidence already in the payload. A listed subagent
 has passed the collector's freshness test; session rows and GOING ON cards also require `active`.
 No browser timer infers that work is alive.
