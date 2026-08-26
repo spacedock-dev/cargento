@@ -58,6 +58,15 @@ function nextWorkstreamStateLabel(state){
   return "became idle";
 }
 
+function nextWorkstreamRateKnown(harness, rate, sources){
+  if(rate == null) return false;
+  const source = sources.get(harness);
+  const fallback = rate > 0;
+  if(!source) return fallback;
+  if(source.error) return false;
+  return typeof source.reports_rate === "boolean" ? source.reports_rate : fallback;
+}
+
 function nextWorkstreamAppendGroup(group){
   const samples = Array.isArray(group.samples) ? group.samples : [];
   const events = Array.isArray(group.events) ? group.events : [];
@@ -94,9 +103,13 @@ function nextObserveWorkstream(payload){
   const sessions = payload && Array.isArray(payload.sessions) ? payload.sessions : [];
   const asks = payload && Array.isArray(payload.asks) ? payload.asks : [];
   const labels = new Map();
+  const rateSources = new Map();
   for(const harness of payload && Array.isArray(payload.harnesses) ? payload.harnesses : []){
     const key = String(harness && harness.key || "");
-    if(key) labels.set(key, String(harness.label || key));
+    if(key){
+      labels.set(key, String(harness.label || key));
+      rateSources.set(key, harness);
+    }
   }
   const current = new Map();
   const samples = [];
@@ -104,13 +117,15 @@ function nextObserveWorkstream(payload){
     const session = nextWorkstreamSession(source);
     const key = nextWorkstreamSessionKey(session);
     if(!session.sid) continue;
+    const rate = nextNumber(source.rate_per_min);
     current.set(key, session);
     samples.push({
       at: generated,
       harness: session.harness,
       kind: "sample",
       project: session.project,
-      rate: nextNumber(source.rate_per_min),
+      rate,
+      rateKnown: nextWorkstreamRateKnown(session.harness, rate, rateSources),
       sid: session.sid,
       state: session.state,
     });

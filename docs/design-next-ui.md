@@ -222,6 +222,39 @@ an autonomous-observer decision.
 MCP operation, persisted runtime state or model call, so the audited mutating-route inventory and
 the direction invariant do not change.
 
+## NUI-11: delegation is wall time inside this tab's evidence
+
+The project rail's delegation figure integrates adjacent sample batches from the in-tab workstream
+ledger. A batch owns the wall-clock interval until the next advancing payload, clipped to the
+displayed window. That makes an irregular refresh cost the time it actually spans instead of one
+vote in a poll-count average. The project is delegated for an interval when none of its sampled
+sessions is `needs_input`.
+
+That definition chooses a bias. If a gate stays open over lunch, the whole gap counts as human time,
+so the percentage is biased **down**, not silently corrected upward. The project could not proceed
+without an answer during the observed gap; subtracting part of it would invent availability. A gate
+that opens or closes between two polls still has up to one poll interval of uncertainty in either
+direction. Transitions that both happen between polls are not recoverable from snapshots.
+
+Ten minutes is the minimum evidence window because each published `rate_per_min` is itself a
+trailing ten-minute mean. Below that floor the block says `no figure yet` and prints no percentage,
+bar, token rate or human-turn count. The headline grows with the retained span up to six hours, the
+window the ledger cap was sized to preserve at the measured 22-session population. A trend needs
+two independent full windows: it compares the latest six hours with the six before them only when
+twelve retained hours exist. At the measured population the cap may prevent that condition, in
+which case no trend is more honest than a flat arrow.
+
+For each delegated interval, the session rates in that payload are summed and those per-payload
+aggregates are time-weighted over delegated wall time. A session whose harness cannot measure rate
+makes the result a `≥` floor; if nothing in the delegated intervals has a measured rate, or no
+delegated interval exists, the token figure is absent rather than zero. Human turns are the
+observable union of transitions out of `needs_input` and `idle` to `working` prompt boundaries.
+Gate openings, ask registrations and turn stops are agent-side events and do not increment it.
+
+The number begins again when the tab reloads. It is neither durable nor continuous with any figure
+on the default page; [DRC-4234](https://linear.app/recce/issue/DRC-4234) still owns the decision about
+persistent history.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain
