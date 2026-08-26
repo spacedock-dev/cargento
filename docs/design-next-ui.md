@@ -184,6 +184,12 @@ transcript's creation time. A needs-input row derives its blocked age against th
 `generated` clock. An idle row may use the same clock for an explicitly named session-start age.
 Missing timestamps remove those clauses. They never become zero.
 
+The header also carries a static rail for the three published states: warning for needs input,
+accent for working, and muted for idle. Matching visually hidden text keeps the state from becoming
+a color-only cue. Unknown state values produce neither rail nor label. The needs-input article edge
+remains a separate alert treatment around the detail view; the header rail provides orientation and
+does not replace it.
+
 The detail health callout is bounded to two measurements already present on the row:
 `turn.long` and the failed-tool-loop peak in `loop`. A long turn keeps the `LONG TURN` label;
 when both measurements exist, the loop sentence replaces the generic long-turn explanation rather
