@@ -30,6 +30,7 @@ NEXT_PARTS: tuple[str, ...] = (
     "next-sessions.js",
     "next-projects.js",
     "next-project.js",
+    "next-activity.js",
     "next-render.js",
 )
 

@@ -9,20 +9,6 @@ function nextSessionCollisionCounts(){
   return counts;
 }
 
-function nextSessionWorkingOrder(rows){
-  const bySid = (left, right) => {
-    const leftSid = String(left.sid || "");
-    const rightSid = String(right.sid || "");
-    return leftSid < rightSid ? -1 : (leftSid > rightSid ? 1 : 0);
-  };
-  return [...rows].sort((left, right) => {
-    const leftRank = left.turn && left.turn.long ? 1 : 2;
-    const rightRank = right.turn && right.turn.long ? 1 : 2;
-    if(leftRank !== rightRank) return leftRank - rightRank;
-    return bySid(left, right);
-  });
-}
-
 function nextSessionBlocks(){
   const rows = nextRows();
   const gates = rows.filter(session => session.state === "needs_input");
@@ -43,19 +29,6 @@ function nextSessionBlocks(){
     return leftSid < rightSid ? -1 : (leftSid > rightSid ? 1 : 0);
   });
   return {gates, working, idle};
-}
-
-function nextSessionMetric(session){
-  if(session.state === "needs_input"){
-    const wait = nextMinutesSince(session.blocked_since);
-    return wait == null ? "" : `${wait}m wait`;
-  }
-  if(session.state === "working"){
-    const rate = nextNumber(session.rate_per_min);
-    return rate == null ? "" : `${Math.round(rate).toLocaleString()} /m`;
-  }
-  const idle = nextMinutesSince(session.last_activity);
-  return idle == null ? "" : `${idle}m idle`;
 }
 
 function nextSessionActivity(session){

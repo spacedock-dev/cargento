@@ -88,8 +88,7 @@ function nextProjectEntityRow(entity, harnesses){
   const unhealthy = state.unhealthy ? " next-project-plan-row--unhealthy" : "";
   return `<div class="next-project-plan-row${pending}${unhealthy}" ` +
     `data-next-plan-entity="${esc(entity.slug)}" data-next-live="${entity.live}">` +
-    `<span class="next-project-plan-glyph" aria-label="${entity.live ? "live" : "pending"}">` +
-    `${entity.live ? "●" : "○"}</span>` +
+    nextStatusDot(entity.live ? "live" : "pending", "next-project-plan-glyph", entity.live) +
     `<span class="next-project-plan-step"><strong>${esc(entity.slug)}</strong>${cycle}` +
     `<small>${esc(entity.stage)}</small></span>` +
     `<span class="next-project-plan-owner">${esc(owner)}</span>` +
@@ -165,8 +164,8 @@ function nextProjectView(project){
     '<div class="next-project-detail-layout">' +
     '<main class="next-project-detail-main" data-next-project-main>' +
     `<div data-next-project-section="plan">${nextProjectPlanBlock(context)}</div>` +
-    '<div data-next-project-section="going-on"></div>' +
-    '<div data-next-project-section="done"></div>' +
+    `<div data-next-project-section="going-on">${nextProjectGoingOn(context)}</div>` +
+    `<div data-next-project-section="done">${nextProjectDone(context)}</div>` +
     '<div data-next-project-section="workstream"></div></main>' +
     '<aside class="next-project-detail-rail" data-next-project-rail></aside>' +
     '</div></article>';
