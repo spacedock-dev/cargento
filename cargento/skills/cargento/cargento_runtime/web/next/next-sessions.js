@@ -84,7 +84,7 @@ function nextSessionsView(){
   const collisions = nextSessionCollisionCounts();
   return '<div class="next-sessions-table-wrap"><table class="next-sessions-table">' +
     '<thead><tr><th scope="col">SESSION</th><th scope="col">ACTIVITY</th>' +
-    '<th scope="col">RATE</th></tr></thead>' +
+    '<th scope="col">METRIC</th></tr></thead>' +
     nextSessionBlock("needs_input", "needs you", blocks.gates, labels, collisions) +
     nextSessionBlock("working", "working", blocks.working, labels, collisions) +
     nextSessionBlock("idle", "idle", blocks.idle, labels, collisions) +

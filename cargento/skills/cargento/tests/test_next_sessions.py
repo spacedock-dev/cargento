@@ -128,6 +128,16 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("next-live", idle)
         self.assertIn("9m idle", idle)
 
+    def test_metric_column_has_a_neutral_header_and_state_specific_units(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+
+        self.assertEqual(1, html.count('<th scope="col">METRIC</th>'))
+        self.assertNotIn('<th scope="col">RATE</th>', html)
+        self.assertIn("10m wait", html)
+        self.assertIn("42 /m", html)
+        self.assertIn("9m idle", html)
+
     def test_an_unknown_rate_is_blank_while_a_measured_zero_is_shown(self) -> None:
         html = self.render(
             """
