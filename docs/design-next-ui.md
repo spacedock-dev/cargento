@@ -23,9 +23,10 @@ interfaces in one global scope, and recreate the byte-pin conflict on every fron
 
 ## NUI-2: copied tokens keep the stylesheets independent
 
-`web/next/styles.css` carries a copy of the default stylesheet's token block, with the dark values at
-the root because this UI is dark unconditionally. It does not import, extend or extract tokens from
-`web/styles.css`.
+`web/next/styles.css` carries a copy of the default stylesheet's token block. Its root values are the
+light palette, and a `prefers-color-scheme: dark` override carries the dark palette so the preview
+tracks the operating system preference without JavaScript. It does not import, extend or extract
+tokens from `web/styles.css`.
 
 That duplication is deliberate. Extracting a shared token file would change the default page and
 make both bundles depend on later edits to one source. Importing the old stylesheet would also load
