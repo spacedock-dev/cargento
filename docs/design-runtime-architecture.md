@@ -108,7 +108,8 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 | `web/next/next-workstream.js` | The bounded in-tab observation ledger, per-payload session samples, project workstream rail, honest retained-window label and namespaced collapse preference. |
 | `web/next/next-delegation.js` | The project rail's windowed delegation percentage, delegated token-rate aggregate, human-turn count, evidence floor and two-window trend gate. |
 | `web/next/next-controls.js` | The project rail's local-only steer receipt and namespaced guardrail preferences, including their storage and escaping boundaries. |
-| `web/next/next-render.js` | The next page's overview, project and session dispatchers, payload fetch, failure state and 5 s poll. It starts the loop, so view parts sit before it in `NEXT_PARTS`. |
+| `web/next/next-render.js` | The next page's overview, project and session dispatchers, payload fetch and failure state. Transport startup is kept out so every renderer exists before the final part runs. |
+| `web/next/next-live.js` | Namespaced cross-tab leader election, SSE revision delivery and the fallback poll. It is last in `NEXT_PARTS` and starts the next page's refresh loop. |
 
 `NEXT_PARTS` is a second concatenated scope, not an extension of `APP_PARTS`. The HTTP server selects
 its assembled bytes only when the first `next` query value is exactly `true`. The reason for that

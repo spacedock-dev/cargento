@@ -41,6 +41,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         (next_web / "next-controls.js").write_text("const controls = 9;\n", encoding="utf-8")
         (next_web / "next-sessions.js").write_text("const sessions = 3;\n", encoding="utf-8")
         (next_web / "next-render.js").write_text("const second = 2;\n", encoding="utf-8")
+        (next_web / "next-live.js").write_text("const live = 10;\n", encoding="utf-8")
 
     def test_load_next_page_resolves_the_patched_web_dir_at_call_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -59,7 +60,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             b"const project = 4;\nconst activity = 5;\n"
             b"const session = 6;\nconst workstream = 7;\nconst delegation = 8;\n"
             b"const controls = 9;\n"
-            b"const second = 2;\n</script>",
+            b"const second = 2;\nconst live = 10;\n</script>",
             actual,
         )
 
@@ -103,6 +104,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "next-delegation.js",
                 "next-controls.js",
                 "next-render.js",
+                "next-live.js",
             ),
             frontend_page.NEXT_PARTS,
         )

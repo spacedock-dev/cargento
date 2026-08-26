@@ -202,6 +202,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/next/next-delegation.js",
     "skills/cargento/cargento_runtime/web/next/next-controls.js",
     "skills/cargento/cargento_runtime/web/next/next-render.js",
+    "skills/cargento/cargento_runtime/web/next/next-live.js",
     "skills/cargento/cargento_runtime/web/page.py",
 )
 

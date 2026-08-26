@@ -36,6 +36,7 @@ NEXT_PARTS: tuple[str, ...] = (
     "next-delegation.js",
     "next-controls.js",
     "next-render.js",
+    "next-live.js",  # namespaced leader election starts the refresh loop last
 )
 
 

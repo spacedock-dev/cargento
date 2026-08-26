@@ -273,6 +273,28 @@ the filled accent dot and `next-live` class remain, so liveness does not depend 
 these selectors and the keyframes live in `web/next/styles.css`; the independently assembled
 default page cannot inherit them.
 
+## NUI-13: transport is duplicated so ownership is not shared
+
+The next page re-derives the default page's leader election and SSE subscription in
+`next-live.js`. It does not share their lease. Both bundles use one origin, and `localStorage`
+belongs to that origin rather than to a path or query string. Reusing `cargento.leader` would let a
+preview tab win the lease and demote an open default page to its 20-second fallback poll. The next
+bundle therefore uses only `cargento.next.leader` and `cargento.next.revision`.
+
+That separation has a visible cost in the connection budget. Keeping `/` and `/?next=true` open at
+the same time holds two `EventSource` connections: one leader for each bundle. The server allows
+eight stream clients, while browsers commonly allow roughly six connections to one origin. One
+extra connection during the opt-in compatibility window is preferable to making the default page
+four times slower because a preview tab exists. Sharing can be reconsidered when one bundle is
+removed; it is unsafe while both ship.
+
+Within the next bundle, tabs still elect one leader and fan revisions out through storage. A
+permanently closed stream yields and retries on the next two-second election tick. A 20-second poll
+runs beside SSE as the safety net; a browser without `EventSource` keeps the existing five-second
+poll as its whole transport. Both paths call the same `refreshNext()`, so failed fallback requests
+continue to drive the stalled banner added with the original poll. No stream endpoint, server
+budget or revision rule changes.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain
