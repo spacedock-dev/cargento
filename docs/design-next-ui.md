@@ -79,7 +79,9 @@ The chrome does not repair or reinterpret the payload. Running means `summary.wo
 pill comes from `summary.needs_input`, subagents are counted from the rows, and the project/session
 line names the payload's `window_hours` rather than implying a machine-wide inventory. Two
 consecutive fetch failures put a stalled marker beside the last good payload; a single failed poll
-does not flash the page on a transient miss.
+does not flash the page on a transient miss. When that gate count is nonzero, its pill is a native
+button that opens the existing sessions overview. It navigates to the attention-ordered queue; it
+does not answer, dismiss or otherwise control a gate.
 
 The overview chrome owns `projects` and `sessions` body slots without owning either view. The
 projects slot now groups the current payload by its display label and renders the measured task
