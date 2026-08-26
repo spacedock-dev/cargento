@@ -2218,6 +2218,14 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
                         {"ok"},
                     ),
                     ("GET", "/missing", None, 404, "text/html;charset=utf-8", None),
+                    (
+                        "GET",
+                        "/fonts/space-grotesk-v22-latin.woff2",
+                        None,
+                        404,
+                        "text/html;charset=utf-8",
+                        None,
+                    ),
                 )
                 for method, path, body, status, ctype, keys in cases:
                     with self.subTest(path=path):

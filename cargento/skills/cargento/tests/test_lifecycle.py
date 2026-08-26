@@ -266,7 +266,12 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             for name in ("index.html", "styles.css", "page.py", *frontend_page.APP_PARTS):
                 with self.subTest(shipped_file=name):
                     self.assertTrue((copied_web / name).is_file())
-            for name in ("index.html", "styles.css", *frontend_page.NEXT_PARTS):
+            for name in (
+                "index.html",
+                "styles.css",
+                *frontend_page.NEXT_PARTS,
+                *(name for name, _slot in frontend_page.NEXT_FONT_ASSETS),
+            ):
                 with self.subTest(shipped_next_file=name):
                     self.assertTrue((copied_web / "next" / name).is_file())
             cwd = root / "unrelated"
@@ -308,7 +313,10 @@ assets = {{
 }}
 assets.update({{
     "next/" + name: str(page.next_asset_path(name).resolve())
-    for name in ("index.html", "styles.css", *page.NEXT_PARTS)
+    for name in (
+        "index.html", "styles.css", *page.NEXT_PARTS,
+        *(name for name, _slot in page.NEXT_FONT_ASSETS),
+    )
 }})
 print(json.dumps({{
     "origins": origins,
@@ -391,13 +399,19 @@ print(json.dumps({{
                     self.assertTrue(lifecycle.await_release(cfg(), port, timeout=5))
                     self.assertEqual([], list(cargento_home.iterdir()))
 
-    def test_copied_plugin_starts_when_one_next_asset_is_missing(self) -> None:
+    def test_copied_plugin_starts_when_one_next_font_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             copied_plugin = root / "copied-plugin" / "cargento"
             shutil.copytree(SERVER_PATH.parents[2], copied_plugin)
             launcher = copied_plugin / "skills" / "cargento" / "server.py"
-            missing = launcher.parent / "cargento_runtime" / "web" / "next" / "next-render.js"
+            missing = (
+                launcher.parent
+                / "cargento_runtime"
+                / "web"
+                / "next"
+                / frontend_page.NEXT_FONT_ASSETS[0][0]
+            )
             missing.unlink()
             port = self._candidate_port()
             env = self._clean_env(root / "state")

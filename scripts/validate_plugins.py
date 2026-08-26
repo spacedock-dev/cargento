@@ -203,6 +203,18 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/next/next-controls.js",
     "skills/cargento/cargento_runtime/web/next/next-render.js",
     "skills/cargento/cargento_runtime/web/next/next-live.js",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-grotesk-v22-vietnamese.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-grotesk-v22-latin-ext.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-grotesk-v22-latin.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-mono-v17-regular-vietnamese.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-mono-v17-regular-latin-ext.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-mono-v17-regular-latin.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-mono-v17-bold-vietnamese.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-mono-v17-bold-latin-ext.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/space-mono-v17-bold-latin.woff2.b64",
+    "skills/cargento/cargento_runtime/web/next/fonts/SpaceGrotesk-OFL.txt",
+    "skills/cargento/cargento_runtime/web/next/fonts/SpaceMono-OFL.txt",
+    "skills/cargento/cargento_runtime/web/next/fonts/SOURCES.txt",
     "skills/cargento/cargento_runtime/web/page.py",
 )
 

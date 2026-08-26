@@ -1,0 +1,54 @@
+Sources for Cargento's embedded next-UI fonts
+
+The design requests Space Grotesk weights 400, 500, 600, and 700 and
+Space Mono weights 400 and 700. The files below are the Latin, Latin Extended,
+and Vietnamese WOFF2 subsets returned by the Google Fonts CSS v2 endpoint:
+https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap
+
+Space Grotesk v22
+Copyright 2020 The Space Grotesk Project Authors
+Upstream: https://github.com/floriankarsten/space-grotesk
+License: SpaceGrotesk-OFL.txt
+
+space-grotesk-v22-vietnamese.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb54C_k3HqUtEw.woff2
+  Decoded bytes: 6772
+  SHA-256: d699664b145bfeeccc66a4cce7fa55e14eb63efd7ec6b0b2ec52e25dd98f3917
+space-grotesk-v22-latin-ext.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb94C_k3HqUtEw.woff2
+  Decoded bytes: 18924
+  SHA-256: 054c266fbb441ee059365dba0885d206f67ca05b375de869b88e02ebfccc9b9d
+space-grotesk-v22-latin.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4C_k3HqU.woff2
+  Decoded bytes: 22320
+  SHA-256: a0d054c4af557de20afd6ca59f47ab353bcaec49c63ff04b6c9d39d0f8910557
+
+Space Mono v17
+Copyright 2016 The Space Mono Project Authors
+Upstream: https://github.com/googlefonts/spacemono
+License: SpaceMono-OFL.txt
+
+space-mono-v17-regular-vietnamese.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacemono/v17/i7dPIFZifjKcF5UAWdDRYE58RXi4EwSsbg.woff2
+  Decoded bytes: 4116
+  SHA-256: 1ab5cb4b90a56d6031db3618250a1f1bb52a275df5a0ec9ae8e62686550f1af4
+space-mono-v17-regular-latin-ext.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacemono/v17/i7dPIFZifjKcF5UAWdDRYE98RXi4EwSsbg.woff2
+  Decoded bytes: 9752
+  SHA-256: b4f90459adf4851575a46d9a492c17ee34c97fe40d56979521de67d1ee77d75a
+space-mono-v17-regular-latin.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacemono/v17/i7dPIFZifjKcF5UAWdDRYEF8RXi4EwQ.woff2
+  Decoded bytes: 9464
+  SHA-256: e0c8e616bda27642f4c3cebaecff6525d901e73afc8a227cbbb0f2af4810f300
+space-mono-v17-bold-vietnamese.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacemono/v17/i7dMIFZifjKcF5UAWdDRaPpZUFqaHi6WZ3S_Yg.woff2
+  Decoded bytes: 4168
+  SHA-256: e9c42e9aad5bf74da01a810f8777a1ce45d924c4f28faf3a19b046b8f813321c
+space-mono-v17-bold-latin-ext.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacemono/v17/i7dMIFZifjKcF5UAWdDRaPpZUFuaHi6WZ3S_Yg.woff2
+  Decoded bytes: 9732
+  SHA-256: 512458b32bf452ac0e4b33fd6277bf4f07821acefb59db2d1498aa107679a1a6
+space-mono-v17-bold-latin.woff2.b64
+  Source: https://fonts.gstatic.com/s/spacemono/v17/i7dMIFZifjKcF5UAWdDRaPpZUFWaHi6WZ3Q.woff2
+  Decoded bytes: 9552
+  SHA-256: af7cf6d2b897ec453acdcdacde4e9bcc8410718af5914de865b453e09f10eebc

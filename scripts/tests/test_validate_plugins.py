@@ -106,7 +106,7 @@ class ValidatorTests(unittest.TestCase):
         for path in (skill / "cargento_runtime").rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts:
                 continue
-            if path.suffix in {".py", ".html", ".css", ".js"}:
+            if path.suffix in {".py", ".html", ".css", ".js", ".b64", ".txt"}:
                 shipped.add(path.relative_to(validator.ROOT / "cargento").as_posix())
 
         self.assertEqual(sorted(shipped), sorted(validator.CARGENTO_RUNTIME_FILES))

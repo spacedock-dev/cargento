@@ -91,7 +91,12 @@ class FrontendAssetContractTest(unittest.TestCase):
         for name in ("index.html", "styles.css", *frontend_page.APP_PARTS):
             with self.subTest(asset=name):
                 self.assertTrue(frontend_page.asset_path(name).resolve().is_relative_to(SKILL_DIR))
-        for name in ("index.html", "styles.css", *frontend_page.NEXT_PARTS):
+        for name in (
+            "index.html",
+            "styles.css",
+            *frontend_page.NEXT_PARTS,
+            *(name for name, _slot in frontend_page.NEXT_FONT_ASSETS),
+        ):
             with self.subTest(next_asset=name):
                 self.assertTrue(
                     frontend_page.next_asset_path(name).resolve().is_relative_to(SKILL_DIR)
@@ -248,7 +253,12 @@ class FrontendAssetContractTest(unittest.TestCase):
             shutil.copytree(SKILL_DIR, skill)
             for name in ("index.html", "styles.css", *frontend_page.APP_PARTS):
                 (skill / "cargento_runtime" / "web" / name).unlink()
-            for name in ("index.html", "styles.css", *frontend_page.NEXT_PARTS):
+            for name in (
+                "index.html",
+                "styles.css",
+                *frontend_page.NEXT_PARTS,
+                *(name for name, _slot in frontend_page.NEXT_FONT_ASSETS),
+            ):
                 (skill / "cargento_runtime" / "web" / "next" / name).unlink()
             env = dict(os.environ)
             env.pop("PYTHONPATH", None)

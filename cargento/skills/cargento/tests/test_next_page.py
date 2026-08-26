@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import re
 import shutil
@@ -26,11 +27,24 @@ class NextPageAssetContractTest(unittest.TestCase):
         return cast("Callable[[], bytes]", loader)
 
     @staticmethod
+    def _fake_font_styles() -> str:
+        return "".join(
+            f'@font-face{{src:url("{slot}")}}\n' for _name, slot in frontend_page.NEXT_FONT_ASSETS
+        )
+
+    @staticmethod
     def _write_bundle(web: Path, template: str) -> None:
         next_web = web / "next"
         next_web.mkdir()
         (next_web / "index.html").write_text(template, encoding="utf-8")
-        (next_web / "styles.css").write_text(".next{color:red}\n", encoding="utf-8")
+        (next_web / "styles.css").write_text(
+            NextPageAssetContractTest._fake_font_styles() + ".next{color:red}\n",
+            encoding="utf-8",
+        )
+        for name, _slot in frontend_page.NEXT_FONT_ASSETS:
+            asset = next_web / name
+            asset.parent.mkdir(parents=True, exist_ok=True)
+            asset.write_text("d09GMg==\n", encoding="ascii")
         (next_web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
         (next_web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
         (next_web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
@@ -54,9 +68,15 @@ class NextPageAssetContractTest(unittest.TestCase):
             with mock.patch.object(frontend_page, "WEB_DIR", web):
                 actual = self._loader()()
 
+        embedded_styles = self._fake_font_styles()
+        for _name, slot in frontend_page.NEXT_FONT_ASSETS:
+            embedded_styles = embedded_styles.replace(
+                slot,
+                "data:font/woff2;base64,d09GMg==",
+            )
         self.assertEqual(
-            b"<style>.next{color:red}\n</style>"
-            b"<script>const first = 1;\nconst middle = 2;\n"
+            (f"<style>{embedded_styles}.next{{color:red}}\n</style>").encode()
+            + b"<script>const first = 1;\nconst middle = 2;\n"
             b"const sessions = 3;\nconst projects = 3;\n"
             b"const project = 4;\nconst activity = 5;\n"
             b"const session = 6;\nconst workstream = 7;\nconst delegation = 8;\n"
@@ -88,6 +108,66 @@ class NextPageAssetContractTest(unittest.TestCase):
                 ):
                     self._loader()()
 
+    def test_the_next_stylesheet_requires_exactly_one_slot_per_font(self) -> None:
+        name, slot = frontend_page.NEXT_FONT_ASSETS[0]
+        cases = (
+            ("", f"next/styles.css must contain one {slot} slot"),
+            (slot * 2, f"next/styles.css must contain one {slot} slot"),
+        )
+        for replacement, message in cases:
+            with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as tmp:
+                web = Path(tmp)
+                self._write_bundle(
+                    web,
+                    "<style>{{CARGENTO_STYLES}}</style><script>{{CARGENTO_APP}}</script>",
+                )
+                stylesheet = web / "next" / "styles.css"
+                stylesheet.write_text(
+                    stylesheet.read_text(encoding="utf-8").replace(slot, replacement),
+                    encoding="utf-8",
+                )
+                with (
+                    mock.patch.object(frontend_page, "WEB_DIR", web),
+                    self.assertRaisesRegex(RuntimeError, f"^{re.escape(message)}$"),
+                ):
+                    frontend_page.load_next_styles()
+
+        self.assertTrue(name.endswith(".woff2.b64"))
+
+    def test_the_next_stylesheet_rejects_invalid_font_payloads(self) -> None:
+        name, _slot = frontend_page.NEXT_FONT_ASSETS[0]
+        for payload in ("not base64!", "T1RUTw=="):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as tmp:
+                web = Path(tmp)
+                self._write_bundle(
+                    web,
+                    "<style>{{CARGENTO_STYLES}}</style><script>{{CARGENTO_APP}}</script>",
+                )
+                (web / "next" / name).write_text(payload, encoding="ascii")
+                with (
+                    mock.patch.object(frontend_page, "WEB_DIR", web),
+                    self.assertRaisesRegex(
+                        RuntimeError,
+                        rf"^next font asset {re.escape(name)} must be base64 WOFF2$",
+                    ),
+                ):
+                    frontend_page.load_next_styles()
+
+    def test_a_missing_next_font_stays_inside_the_next_loader_boundary(self) -> None:
+        name, _slot = frontend_page.NEXT_FONT_ASSETS[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            self._write_bundle(
+                web,
+                "<style>{{CARGENTO_STYLES}}</style><script>{{CARGENTO_APP}}</script>",
+            )
+            (web / "next" / name).unlink()
+            with (
+                mock.patch.object(frontend_page, "WEB_DIR", web),
+                self.assertRaises(FileNotFoundError),
+            ):
+                frontend_page.load_next_page()
+
     def test_every_next_part_exists_and_is_named(self) -> None:
         next_web = frontend_page.WEB_DIR / "next"
         if not next_web.is_dir():
@@ -114,6 +194,149 @@ class NextPageAssetContractTest(unittest.TestCase):
         for name in frontend_page.NEXT_PARTS:
             with self.subTest(part=name):
                 self.assertGreater((next_web / name).stat().st_size, 0)
+
+    def test_the_next_page_embeds_the_design_fonts_from_pinned_local_assets(self) -> None:
+        expected_fonts = {
+            "fonts/space-grotesk-v22-vietnamese.woff2.b64": (
+                6_772,
+                "d699664b145bfeeccc66a4cce7fa55e14eb63efd7ec6b0b2ec52e25dd98f3917",
+            ),
+            "fonts/space-grotesk-v22-latin-ext.woff2.b64": (
+                18_924,
+                "054c266fbb441ee059365dba0885d206f67ca05b375de869b88e02ebfccc9b9d",
+            ),
+            "fonts/space-grotesk-v22-latin.woff2.b64": (
+                22_320,
+                "a0d054c4af557de20afd6ca59f47ab353bcaec49c63ff04b6c9d39d0f8910557",
+            ),
+            "fonts/space-mono-v17-regular-vietnamese.woff2.b64": (
+                4_116,
+                "1ab5cb4b90a56d6031db3618250a1f1bb52a275df5a0ec9ae8e62686550f1af4",
+            ),
+            "fonts/space-mono-v17-regular-latin-ext.woff2.b64": (
+                9_752,
+                "b4f90459adf4851575a46d9a492c17ee34c97fe40d56979521de67d1ee77d75a",
+            ),
+            "fonts/space-mono-v17-regular-latin.woff2.b64": (
+                9_464,
+                "e0c8e616bda27642f4c3cebaecff6525d901e73afc8a227cbbb0f2af4810f300",
+            ),
+            "fonts/space-mono-v17-bold-vietnamese.woff2.b64": (
+                4_168,
+                "e9c42e9aad5bf74da01a810f8777a1ce45d924c4f28faf3a19b046b8f813321c",
+            ),
+            "fonts/space-mono-v17-bold-latin-ext.woff2.b64": (
+                9_732,
+                "512458b32bf452ac0e4b33fd6277bf4f07821acefb59db2d1498aa107679a1a6",
+            ),
+            "fonts/space-mono-v17-bold-latin.woff2.b64": (
+                9_552,
+                "af7cf6d2b897ec453acdcdacde4e9bcc8410718af5914de865b453e09f10eebc",
+            ),
+        }
+        vietnamese_range = (
+            "U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,"
+            "U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,"
+            "U+1EA0-1EF9,U+20AB"
+        )
+        latin_ext_range = (
+            "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,"
+            "U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,"
+            "U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+        )
+        latin_range = (
+            "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,"
+            "U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,"
+            "U+2212,U+2215,U+FEFF,U+FFFD"
+        )
+        expected_faces = {
+            "fonts/space-grotesk-v22-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_GROTESK_V22_VIETNAMESE}}",
+                vietnamese_range,
+            ),
+            "fonts/space-grotesk-v22-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_GROTESK_V22_LATIN_EXT}}",
+                latin_ext_range,
+            ),
+            "fonts/space-grotesk-v22-latin.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_GROTESK_V22_LATIN}}",
+                latin_range,
+            ),
+            "fonts/space-mono-v17-regular-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_VIETNAMESE}}",
+                vietnamese_range,
+            ),
+            "fonts/space-mono-v17-regular-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN_EXT}}",
+                latin_ext_range,
+            ),
+            "fonts/space-mono-v17-regular-latin.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_MONO_V17_REGULAR_LATIN}}",
+                latin_range,
+            ),
+            "fonts/space-mono-v17-bold-vietnamese.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_VIETNAMESE}}",
+                vietnamese_range,
+            ),
+            "fonts/space-mono-v17-bold-latin-ext.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN_EXT}}",
+                latin_ext_range,
+            ),
+            "fonts/space-mono-v17-bold-latin.woff2.b64": (
+                "{{CARGENTO_FONT_SPACE_MONO_V17_BOLD_LATIN}}",
+                latin_range,
+            ),
+        }
+        self.assertEqual(
+            tuple((name, marker) for name, (marker, _range) in expected_faces.items()),
+            frontend_page.NEXT_FONT_ASSETS,
+        )
+        for name, (size, digest) in expected_fonts.items():
+            with self.subTest(font=name):
+                encoded = "".join(
+                    frontend_page.next_asset_path(name).read_text(encoding="ascii").splitlines()
+                )
+                payload = base64.b64decode(encoded, validate=True)
+                self.assertEqual(b"wOF2", payload[:4])
+                self.assertEqual(size, len(payload))
+                self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
+
+        styles = frontend_page.next_asset_path("styles.css").read_text(encoding="utf-8")
+        raw_faces = [line for line in styles.splitlines() if line.startswith("@font-face{")]
+        for name, (marker, unicode_range) in expected_faces.items():
+            with self.subTest(face=name):
+                matches = [face for face in raw_faces if marker in face]
+                self.assertEqual(1, len(matches))
+                self.assertIn(f"unicode-range:{unicode_range}", matches[0])
+
+        assembled = frontend_page.load_next_page().decode()
+        self.assertNotIn("fonts.googleapis.com", assembled)
+        self.assertNotIn("fonts.gstatic.com", assembled)
+        self.assertNotIn("{{CARGENTO_FONT_", assembled)
+        self.assertEqual(9, assembled.count("data:font/woff2;base64,"))
+        assembled_faces = re.findall(r"@font-face\{([^}]*)\}", assembled)
+        grotesk = [face for face in assembled_faces if "font-family:'Space Grotesk'" in face]
+        mono = [face for face in assembled_faces if "font-family:'Space Mono'" in face]
+        self.assertEqual(3, len(grotesk))
+        self.assertTrue(all("font-weight:400 700" in face for face in grotesk))
+        self.assertEqual(6, len(mono))
+        self.assertEqual(3, sum("font-weight:400;" in face for face in mono))
+        self.assertEqual(3, sum("font-weight:700;" in face for face in mono))
+
+        expected_notices = {
+            "fonts/SpaceGrotesk-OFL.txt": "Copyright 2020 The Space Grotesk Project Authors",
+            "fonts/SpaceMono-OFL.txt": "Copyright 2016 The Space Mono Project Authors",
+        }
+        for name, copyright_line in expected_notices.items():
+            with self.subTest(notice=name):
+                notice = frontend_page.next_asset_path(name).read_text(encoding="utf-8")
+                self.assertIn(copyright_line, notice)
+                self.assertIn("SIL OPEN FONT LICENSE Version 1.1", notice)
+        sources = frontend_page.next_asset_path("fonts/SOURCES.txt").read_text(encoding="utf-8")
+        self.assertIn("Space Grotesk v22", sources)
+        self.assertIn("Space Mono v17", sources)
+        for _size, digest in expected_fonts.values():
+            self.assertIn(digest, sources)
 
     def test_the_next_asset_directory_is_not_a_python_package(self) -> None:
         next_web = frontend_page.WEB_DIR / "next"
@@ -148,7 +371,7 @@ class NextPageAssetContractTest(unittest.TestCase):
 
     def test_the_next_palette_tracks_system_light_and_dark_themes(self) -> None:
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
-        light = re.search(r"\A:root\{([^}]*)\}", styles, re.DOTALL)
+        light = re.search(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
         dark = re.search(
             r"@media\(prefers-color-scheme:dark\)\{\s*:root\{([^}]*)\}\s*\}",
             styles,
@@ -331,16 +554,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(21_164, len(styles))
+        self.assertEqual(24_200, len(styles))
         self.assertEqual(
-            "396a89c79204d39f7a54592e4b36f1c03e3f318e3d4ffa5cedc8e9499fe16ec1",
+            "2ae8e188d4fbe009b6eacf28e8396b5dbd1b98b02a7984baf0ed1328b94cd249",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(95_036, len(assembled))
+        self.assertEqual(224_270, len(assembled))
         self.assertEqual(
-            "c1ae4c13372cf8629d1fcebeb652eae0660dbec11a253848de11637156875f44",
+            "b437e76c0c81a8ad0474354d0b29b576483ff2256b10b80d775aa18f76e4eade",
             hashlib.sha256(assembled).hexdigest(),
         )
 
