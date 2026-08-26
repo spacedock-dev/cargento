@@ -84,6 +84,7 @@ function renderNext(){
     gate +
     '<details class="next-menu"><summary aria-label="More">···</summary>' +
     '<div class="next-menu-items">' +
+    '<button type="button" data-next-action="projects">projects overview <kbd>p</kbd></button>' +
     '<button type="button" data-next-action="sessions">flat session list <kbd>s</kbd></button>' +
     '<button type="button" data-next-action="dashboard">dashboard mode <kbd>d</kbd></button>' +
     "</div></details></div></header>" +
@@ -95,6 +96,11 @@ function navigateNext(route){
   nextRoute = nextRouteFromFragment(fragment);
   if(location.hash !== fragment) location.hash = fragment;
   renderNext();
+}
+
+function nextSelectProjects(){
+  nextOverviewTab = "projects";
+  navigateNext({view: "overview", project: null, session: null});
 }
 
 function nextSelectSessions(){
@@ -123,6 +129,7 @@ document.addEventListener("click", event => {
     ? event.target.closest("[data-next-action]")
     : null;
   if(!actionTarget) return;
+  if(actionTarget.dataset.nextAction === "projects") nextSelectProjects();
   if(["sessions", "needs-input"].includes(actionTarget.dataset.nextAction)) nextSelectSessions();
   if(actionTarget.dataset.nextAction === "dashboard") location.assign("/");
 });
@@ -147,7 +154,10 @@ document.addEventListener("keydown", event => {
     }
     return;
   }
-  if(String(event.key).toLowerCase() === "s"){
+  if(String(event.key).toLowerCase() === "p"){
+    event.preventDefault();
+    nextSelectProjects();
+  }else if(String(event.key).toLowerCase() === "s"){
     event.preventDefault();
     nextSelectSessions();
   }else if(String(event.key).toLowerCase() === "d"){
