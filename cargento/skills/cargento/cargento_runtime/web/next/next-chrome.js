@@ -72,7 +72,7 @@ function renderNext(){
   if(!app) return;
   const counts = nextCounts();
   const gate = counts.gates > 0
-    ? `<span class="next-gate">${counts.gates} need you</span>`
+    ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} need you</button>`
     : "";
   const stalled = nextRefreshFailures >= 2
     ? '<div class="next-stalled" data-next-state="stalled" role="status">Refresh stalled</div>'
@@ -123,7 +123,7 @@ document.addEventListener("click", event => {
     ? event.target.closest("[data-next-action]")
     : null;
   if(!actionTarget) return;
-  if(actionTarget.dataset.nextAction === "sessions") nextSelectSessions();
+  if(["sessions", "needs-input"].includes(actionTarget.dataset.nextAction)) nextSelectSessions();
   if(actionTarget.dataset.nextAction === "dashboard") location.assign("/");
 });
 

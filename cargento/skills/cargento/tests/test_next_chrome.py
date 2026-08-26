@@ -136,10 +136,46 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         )
 
         self.assertIn("● 1 running · 3 subagents", out)
-        self.assertIn("1 need you", out)
+        self.assertIn(
+            '<button type="button" class="next-gate" data-next-action="needs-input">'
+            "1 need you</button>",
+            out,
+        )
         self.assertNotIn("4 running", out)
         self.assertIn("2 projects · 4 sessions", out)
         self.assertIn("in this 24h window", out)
+
+    def test_the_need_you_pill_opens_the_session_queue(self) -> None:
+        out = self._run_page_js(
+            """
+await __settle();
+__fire("click", {
+  target: {closest(selector){
+    return selector === "[data-next-action]"
+      ? {dataset: {nextAction: "needs-input"}}
+      : null;
+  }}
+});
+console.log(JSON.stringify({route: nextRoute, hash: location.hash, html: __els.app.innerHTML}));
+""",
+            """
+location.hash = "#n=project:recce";
+__els.app = {innerHTML: ""};
+__fetchImpl = async () => ({ok: true, json: async () => ({
+  window_hours: 24,
+  summary: {working: 0, needs_input: 1, active_sessions: 1},
+  sessions: [{project: "recce", state: "needs_input", subagents: []}]
+})});
+""",
+        )
+
+        self.assertEqual(
+            {"view": "overview", "project": None, "session": None},
+            out["route"],
+        )
+        self.assertEqual("#n=overview", out["hash"])
+        self.assertIn('data-next-tab="sessions" aria-selected="true"', out["html"])
+        self.assertIn('data-next-body="sessions">', out["html"])
 
     def test_a_payload_with_no_gates_renders_no_pill(self) -> None:
         out = self._run_page_js(
@@ -159,6 +195,8 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
         self.assertIn("● 0 running · 0 subagents", out)
         self.assertNotIn("need you", out)
+        self.assertNotIn('class="next-gate"', out)
+        self.assertNotIn('data-next-action="needs-input"', out)
         self.assertIn('data-next-tab="projects"', out)
         self.assertIn('data-next-tab="sessions"', out)
         self.assertIn('data-next-body="projects"', out)

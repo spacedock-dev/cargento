@@ -31,7 +31,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-crumb,.next-tabs button,.next-menu button{border:0;background:none;color:inherit;font:inherit;cursor:pointer}
 .next-crumb{padding:0;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px}
 .next-running{color:var(--accent-ink)}
-.next-gate{padding:5px 9px;border:1px solid var(--warn);border-radius:999px;color:var(--warnink)}
+.next-gate{appearance:none;padding:5px 9px;border:1px solid var(--warn);border-radius:999px;background:none;color:var(--warnink);font:inherit;cursor:pointer}
+.next-gate:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .next-menu{position:relative}
 .next-menu summary{list-style:none;cursor:pointer;font-size:var(--fs-lg)}
 .next-menu summary::-webkit-details-marker{display:none}

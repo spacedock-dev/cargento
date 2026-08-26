@@ -131,6 +131,21 @@ class NextPageAssetContractTest(unittest.TestCase):
         used = set(re.findall(r"var\((--[\w-]+)", page))
         self.assertEqual(set(), used - declared, "next page uses CSS variables nothing declares")
 
+    def test_the_need_you_button_keeps_visible_keyboard_focus(self) -> None:
+        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        button = re.search(r"\.next-gate\{([^}]*)\}", styles)
+        focus = re.search(r"\.next-gate:focus-visible\{([^}]*)\}", styles)
+
+        self.assertIsNotNone(button)
+        self.assertIsNotNone(focus)
+        button_rules = dict(re.findall(r"([\w-]+):([^;]+)", button.group(1) if button else ""))
+        focus_rules = dict(re.findall(r"([\w-]+):([^;]+)", focus.group(1) if focus else ""))
+        self.assertEqual("none", button_rules.get("appearance"))
+        self.assertEqual("inherit", button_rules.get("font"))
+        self.assertEqual("pointer", button_rules.get("cursor"))
+        self.assertEqual("2px solid var(--ink)", focus_rules.get("outline"))
+        self.assertEqual("3px", focus_rules.get("outline-offset"))
+
     def test_the_next_palette_tracks_system_light_and_dark_themes(self) -> None:
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
         light = re.search(r"\A:root\{([^}]*)\}", styles, re.DOTALL)
@@ -200,6 +215,8 @@ class NextPageAssetContractTest(unittest.TestCase):
             for ink in ("--ink", "--ink2", "--ink3"):
                 with self.subTest(theme=theme, ink=ink):
                     self.assertGreater(contrast(values[ink], values[surface]), 4.5)
+            with self.subTest(theme=theme, focus="--ink"):
+                self.assertGreater(contrast(values["--ink"], values["--bg"]), 3.0)
 
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
@@ -262,8 +279,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "37d911e2ddfa839027459d5cbc7f21753e3415a434f603b5fb60e20f37cea7ad",
             ),
             "next-chrome.js": (
-                6_475,
-                "d1b5c613500a7085b6d1ee0cc524f6ded74770ad0b8dd80b712769455052d7c7",
+                6_547,
+                "bf7ea7946c6cee0fd85182a149afa76b95978fe9996689704e5d113386dfad07",
             ),
             "next-sessions.js": (
                 3_961,
@@ -314,16 +331,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(20_987, len(styles))
+        self.assertEqual(21_121, len(styles))
         self.assertEqual(
-            "6a5790b10845d7b6b2993bd1b898394558f5746925be0763e918e38b1c44091e",
+            "d153a68468ff0950ace042c9af00f84b5b98cc5f141484590f16b08179d26335",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(93_906, len(assembled))
+        self.assertEqual(94_112, len(assembled))
         self.assertEqual(
-            "772cead948e562d140d823c39168f34f19373806903ea12289d826ebff6101e1",
+            "42ec55ece4c89b28b477e2302b9599aabc0de211897567e9c83cc84dd536a521",
             hashlib.sha256(assembled).hexdigest(),
         )
 
