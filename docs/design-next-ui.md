@@ -254,11 +254,12 @@ alone cannot recover the intervals between them. State events keep both sides of
 the same reason. Once a project first appears, its window keeps every later payload boundary. A
 boundary with no rows for that project records its absence without inventing an idle session.
 
-One classifier owns state-transition meaning for both the workstream and delegation. A transition
-out of `needs_input`, or from `idle` to `working`, is a human turn. Its workstream node is hollow and
-it does not enter the unattended count. A transition into `needs_input` is also hollow because it
-opens a gate, but it is agent-side and does not increment human turns. Other transitions, including
-`working` to `idle`, use filled nodes and count as unattended.
+One classifier owns the attended or agent-side meaning of each state transition. A transition out
+of `needs_input`, or from `idle` to `working`, is an attended boundary. Its workstream node is hollow
+and it does not enter the unattended count. Delegation uses those boundaries as human-turn
+candidates, then applies the same-answer rule in NUI-11. A transition into `needs_input` is also
+hollow because it opens a gate, but it is agent-side. Other transitions, including `working` to
+`idle`, use filled nodes and count as unattended.
 
 The 100,000-logical-entry cap was chosen against the observed 22-session case at the five-second
 poll cadence: six hours produces 95,040 samples before transition entries. An advancing payload
@@ -338,9 +339,17 @@ in which case no trend is more honest than a flat arrow.
 For each delegated interval, the session rates in that payload are summed and those per-payload
 aggregates are time-weighted over delegated wall time. A session whose harness cannot measure rate
 makes the result a `≥` floor; if nothing in the delegated intervals has a measured rate, or no
-delegated interval exists, the token figure is absent rather than zero. Human turns are the
-observable union of transitions out of `needs_input` and `idle` to `working` prompt boundaries.
-Gate openings, ask registrations and turn stops are agent-side events and do not increment it.
+delegated interval exists, the token figure is absent rather than zero. Human-turn candidates are
+transitions out of `needs_input` and `idle` to `working` prompt boundaries. Delegation coalesces an
+immediate same-session `needs_input` to `idle` transition followed by `idle` to `working` into one
+inferred answer. A direct gate-to-working transition still counts once, and a later prompt boundary
+after another same-session state transition counts separately. Other sessions do not clear or
+consume the pending resumption.
+
+The payload has no response identifier, so the pairing uses harness and session ID without an
+invented time threshold. Events before the displayed window still establish pending state, but only
+events inside the window increment its count. Gate openings, ask registrations and turn stops remain
+agent-side events and do not increment it.
 
 The number begins again when the tab reloads. It is neither durable nor continuous with any figure
 on the default page; [DRC-4234](https://linear.app/recce/issue/DRC-4234) still owns the decision about
