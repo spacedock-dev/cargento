@@ -12,6 +12,27 @@ function nextProjectGoingOnSessions(sessions){
   return [...gates, ...working];
 }
 
+const NEXT_ACTIVITY_SUBAGENT_LIMIT = 6;
+
+function nextProjectActivitySubagents(session){
+  const subagents = Array.isArray(session.subagents) ? session.subagents : [];
+  if(!subagents.length) return "";
+  const rows = subagents.slice(0, NEXT_ACTIVITY_SUBAGENT_LIMIT).map((subagent, index) => {
+    const elapsed = nextMinutesSince(subagent && subagent.started_at);
+    const measured = elapsed == null ? "" :
+      `<span class="next-activity-subagent-elapsed">${elapsed}m</span>`;
+    return `<span class="next-activity-subagent" role="listitem" ` +
+      `data-next-activity-subagent="${index}">` +
+      `<span class="next-activity-subagent-name">${esc(subagent && subagent.name || "subagent")}</span>` +
+      `${measured}</span>`;
+  }).join("");
+  const remaining = subagents.length - NEXT_ACTIVITY_SUBAGENT_LIMIT;
+  const more = remaining > 0 ?
+    `<span class="next-activity-subagent-more" role="listitem">+${remaining} more</span>` : "";
+  return '<span class="next-activity-subagents" role="list" aria-label="Subagents">' +
+    `${rows}${more}</span>`;
+}
+
 function nextProjectActivityCard(session, harnesses, project){
   const sid = String(session.sid || "");
   const harness = String(session.harness || "");
@@ -29,7 +50,7 @@ function nextProjectActivityCard(session, harnesses, project){
     `data-next-going-on="${esc(sid)}" data-next-route="${esc(route)}">` +
     nextStatusDot(stateLabel, "next-activity-dot") +
     `<span class="next-activity-identity"><strong>${esc(title)}</strong>` +
-    `<small>${esc(detail)}</small></span>` +
+    `<small>${esc(detail)}</small>${nextProjectActivitySubagents(session)}</span>` +
     `<span class="next-activity-metric">${esc(metric)}</span></button>`;
 }
 

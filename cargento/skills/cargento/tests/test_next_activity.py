@@ -97,6 +97,16 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             raise AssertionError(f"no GOING ON card for {sid!r} in {html}")
         return match.group(0)
 
+    @staticmethod
+    def activity_subagent(card: str, index: int) -> str:
+        match = re.search(
+            rf'<span[^>]*data-next-activity-subagent="{index}"[\s\S]*?</span></span>',
+            card,
+        )
+        if match is None:
+            raise AssertionError(f"no activity subagent {index!r} in {card}")
+        return match.group(0)
+
     def test_going_on_keeps_gate_order_then_uses_the_active_attention_ladder(self) -> None:
         html = self.render()
         assert isinstance(html, str)
@@ -138,6 +148,70 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn('aria-label="working"', work)
         self.assertIn("1,235 /m", work)
         self.assertIn("Claude Code · running 1 subagent", work)
+
+    def test_card_subagents_are_bounded_escaped_and_use_payload_clock_ages(self) -> None:
+        html = self.render(
+            """
+__setNow(999999);
+nextData.sessions.find(session => session.sid === "work-z").subagents = [
+  {name: "worker <one>", model: "secret-model", started_at: 9700},
+  {name: "worker-two", started_at: null},
+  {name: "worker-three", started_at: 10010},
+  {name: "worker-four", started_at: "bad"},
+  null,
+  {name: "worker-six", started_at: 9600},
+  {name: "worker-seven", started_at: 9500},
+  {name: "worker-eight", started_at: 9400}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        card = self.activity_card(html, "work-z")
+
+        self.assertIn('class="next-activity-subagents" role="list" aria-label="Subagents"', card)
+        self.assertEqual(6, card.count("data-next-activity-subagent="))
+        measured = self.activity_subagent(card, 0)
+        unmeasured = self.activity_subagent(card, 1)
+        clamped = self.activity_subagent(card, 2)
+        invalid = self.activity_subagent(card, 3)
+        fallback = self.activity_subagent(card, 4)
+        self.assertIn("worker &lt;one&gt;", measured)
+        self.assertNotIn("worker <one>", measured)
+        self.assertNotIn("secret-model", measured)
+        self.assertIn("5m", measured)
+        self.assertIn("worker-two", unmeasured)
+        self.assertNotRegex(unmeasured, r"\d+m")
+        self.assertIn("worker-three", clamped)
+        self.assertIn("0m", clamped)
+        self.assertIn("worker-four", invalid)
+        self.assertNotRegex(invalid, r"\d+m")
+        self.assertIn("subagent", fallback)
+        self.assertNotRegex(fallback, r"\d+m")
+        self.assertIn("worker-six", card)
+        self.assertNotIn("worker-seven", card)
+        self.assertNotIn("worker-eight", card)
+        self.assertIn("+2 more", card)
+
+    def test_subagents_render_for_gates_and_malformed_collections_are_omitted(self) -> None:
+        html = self.render(
+            """
+nextData.sessions.find(session => session.sid === "gate-z").subagents = [
+  {name: "gate-worker", started_at: 9700}
+];
+nextData.sessions.find(session => session.sid === "work-z").subagents = {length: 99};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        gate = self.activity_card(html, "gate-z")
+        work = self.activity_card(html, "work-z")
+
+        self.assertIn("gate-worker", gate)
+        self.assertIn("5m", self.activity_subagent(gate, 0))
+        self.assertNotIn("next-activity-subagents", work)
 
     def test_a_card_click_sets_the_session_route(self) -> None:
         out = self.render(
