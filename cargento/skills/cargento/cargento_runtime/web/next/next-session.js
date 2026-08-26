@@ -1,4 +1,8 @@
 const NEXT_ANSWER_FAILURE = "no confirmation came back — it may already have been answered";
+const NEXT_SESSION_LONG_TURN_NOTE = "This request is running long (or estimated to). " +
+  "Double-check what the agent is doing matches your expectations.";
+const NEXT_SESSION_MCP_TOOL = /\bmcp__([A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*?)__([A-Za-z0-9_-]+)/g;
+const NEXT_SESSION_MCP_HOST_PREFIX = /^(?:claude_ai_|claude_code_|plugin_)/;
 const nextSessionAnswerNotes = new Map();
 
 function nextSessionFind(project, sid){
@@ -87,6 +91,43 @@ function nextSessionAskBlock(session, asks){
     `<strong>${esc(nextSessionAskingTitle(session))}</strong></div>${cards}</section>`;
 }
 
+// The next bundle is assembled independently, so this local equivalent keeps
+// MCP transport names out without pulling the stable bundle across the byte firewall.
+function nextSessionHumanTool(text){
+  return text.replace(NEXT_SESSION_MCP_TOOL, (whole, server, tool) => {
+    const service = server.replace(NEXT_SESSION_MCP_HOST_PREFIX, "").replace(/_+/g, " ").trim();
+    const action = tool.replace(/_+/g, " ").trim();
+    if(!action) return whole;
+    return (service ? `${service} · ` : "") + action;
+  });
+}
+
+function nextSessionLoopNote(loop){
+  if(!loop || typeof loop !== "object" || Array.isArray(loop)) return "";
+  const errors = nextNumber(loop.errors);
+  if(errors == null || !Number.isInteger(errors) || errors <= 0) return "";
+  const calls = errors === 1 ? "tool call" : "tool calls";
+  const rawTool = typeof loop.tool === "string" ? loop.tool.trim() : "";
+  const tool = rawTool ? ` (most recently ${nextSessionHumanTool(rawTool)})` : "";
+  return `${errors} ${calls} in a row came back as errors${tool}. ` +
+    "Check the agent is working the problem rather than repeating the failure.";
+}
+
+function nextSessionHealth(session){
+  const turn = session && session.turn;
+  const long = Boolean(turn && typeof turn === "object" && !Array.isArray(turn) &&
+    turn.long === true);
+  const loopNote = nextSessionLoopNote(session && session.loop);
+  if(!long && !loopNote) return "";
+  const kind = long ? "long-turn" : "failed-tool-loop";
+  const label = long ? "LONG TURN" : "FAILED TOOL LOOP";
+  const why = loopNote || NEXT_SESSION_LONG_TURN_NOTE;
+  return `<aside class="next-session-health" role="note" aria-label="${label}" ` +
+    `data-next-session-health="${kind}"><strong>${label}</strong>` +
+    '<span class="next-session-health-separator" aria-hidden="true"> — </span>' +
+    `<span>${esc(why)}</span></aside>`;
+}
+
 function nextSessionTaskGlyph(status){
   if(status === "completed"){
     return '<span class="next-status-dot next-session-task-glyph" aria-label="completed">✓</span>';
@@ -163,7 +204,7 @@ function nextSessionView(project, sid){
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}">` +
     '<header class="next-session-detail-header"><span class="next-session-detail-label">SESSION</span>' +
     `<h1>${esc(nextSessionTitle(session, asks))}</h1>${metaLine}</header>` +
-    nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
+    nextSessionHealth(session) + nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
     nextSessionSubagents(session) + nextSessionFooter(session) + "</article>";
 }
 

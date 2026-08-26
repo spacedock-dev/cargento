@@ -155,6 +155,102 @@ console.log(JSON.stringify(variants));
         self.assertNotIn("session started", out["idleWithoutStart"])
         self.assertIn("blocked 10m", out["waiting"])
 
+    def test_health_callout_uses_only_measured_long_turns_and_tool_loops(self) -> None:
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+session.state = "working";
+session.turn = {elapsed_h: "5m", long: true};
+session.loop = null;
+renderNext();
+variants.longOnly = __els.app.innerHTML;
+session.turn.long = false;
+session.loop = {errors: 4, tool: "Bash"};
+renderNext();
+variants.loopOnly = __els.app.innerHTML;
+session.loop = {errors: 4};
+renderNext();
+variants.loopWithoutTool = __els.app.innerHTML;
+session.turn.long = true;
+session.loop = {errors: 4, tool: "Bash"};
+renderNext();
+variants.both = __els.app.innerHTML;
+for(const state of ["idle", "needs_input"]){
+  session.state = state;
+  session.turn = null;
+  renderNext();
+  variants[state] = __els.app.innerHTML;
+}
+for(const [name, loop] of Object.entries({
+  absent: null,
+  zero: {errors: 0, tool: "Bash"},
+  fractional: {errors: 4.5, tool: "Bash"},
+  stringCount: {errors: "4", tool: "Bash"},
+  missingCount: {tool: "Bash"}
+})){
+  session.state = "working";
+  session.turn = null;
+  session.loop = loop;
+  renderNext();
+  variants[name] = __els.app.innerHTML;
+}
+session.turn = {long: "true"};
+session.loop = null;
+renderNext();
+variants.truthyLong = __els.app.innerHTML;
+session.loop = {
+  errors: 5,
+  tool: "mcp__claude_ai_Linear__save_issue<img src=x onerror='1'>"
+};
+renderNext();
+variants.mcp = __els.app.innerHTML;
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(1, out["longOnly"].count("data-next-session-health="))
+        self.assertIn('data-next-session-health="long-turn"', out["longOnly"])
+        self.assertIn("LONG TURN", out["longOnly"])
+        self.assertIn("This request is running long (or estimated to).", out["longOnly"])
+        self.assertIn('role="note" aria-label="LONG TURN"', out["longOnly"])
+        self.assertNotIn('role="alert"', out["longOnly"])
+
+        self.assertEqual(1, out["loopOnly"].count("data-next-session-health="))
+        self.assertIn('data-next-session-health="failed-tool-loop"', out["loopOnly"])
+        self.assertIn("FAILED TOOL LOOP", out["loopOnly"])
+        self.assertIn("4 tool calls in a row came back as errors", out["loopOnly"])
+        self.assertIn("most recently Bash", out["loopOnly"])
+        self.assertIn("4 tool calls in a row came back as errors", out["loopWithoutTool"])
+        self.assertNotIn("most recently", out["loopWithoutTool"])
+
+        self.assertEqual(1, out["both"].count("data-next-session-health="))
+        self.assertIn('data-next-session-health="long-turn"', out["both"])
+        self.assertIn("LONG TURN", out["both"])
+        self.assertIn("4 tool calls in a row came back as errors", out["both"])
+        self.assertNotIn("FAILED TOOL LOOP", out["both"])
+        self.assertNotIn("This request is running long (or estimated to).", out["both"])
+
+        for state in ("idle", "needs_input"):
+            with self.subTest(state=state):
+                self.assertIn("FAILED TOOL LOOP", out[state])
+                self.assertIn("4 tool calls in a row came back as errors", out[state])
+        for variant in (
+            "absent",
+            "zero",
+            "fractional",
+            "stringCount",
+            "missingCount",
+            "truthyLong",
+        ):
+            with self.subTest(variant=variant):
+                self.assertNotIn("data-next-session-health", out[variant])
+
+        self.assertIn("Linear · save issue&lt;img", out["mcp"])
+        self.assertNotIn("claude_ai_", out["mcp"])
+        self.assertNotIn("<img src=x", out["mcp"])
+
     def test_blocked_session_renders_all_exact_asks_in_payload_order_and_escapes_them(self) -> None:
         html = self.render()
         assert isinstance(html, str)
