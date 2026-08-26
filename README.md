@@ -132,3 +132,5 @@ privately, as described in [SECURITY.md](SECURITY.md).
 ## 6. License
 
 Cargento is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
+The bundled Space Grotesk and Space Mono font subsets retain their SIL Open Font License notices in
+`cargento/skills/cargento/cargento_runtime/web/next/fonts/`.

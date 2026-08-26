@@ -73,7 +73,7 @@ Everything else lives in one file per responsibility:
 | `http_api.py` | The loopback server, its request handler, and network helpers. |
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. |
 | `cli.py` | Argument parsing, runtime assembly, and the three serve branches. |
-| `web/page.py` | Package-relative frontend loading, the ordered `APP_PARTS` and `NEXT_PARTS` script lists, and byte-preserving assembly of the default and opt-in pages. |
+| `web/page.py` | Package-relative frontend loading, the ordered `APP_PARTS` and `NEXT_PARTS` script lists, validation and data-URL embedding of the opt-in page's packaged fonts, and byte-preserving assembly of the default and opt-in pages. |
 
 The existing dashboard script is the same kind of split, applied to the frontend once it crossed the same
 threshold the Python did: over a thousand lines holding more than one responsibility. The parts are
@@ -150,8 +150,8 @@ appears in `sys.modules`.
 Frontend assets load relative to `web/page.py`, so an installed copy needs no repository and no
 working directory. A contract test walks the package with `pkgutil` from an unrelated directory, with
 `PYTHONPATH` removed and `PYTHONNOUSERSITE=1`, and proves every module's `__file__` and every declared
-asset path resolve inside the skill directory. It inspects every module it finds rather than a
-maintained list.
+asset path, including the opt-in page's font subsets, resolve inside the skill directory. It
+inspects every module it finds rather than a maintained list.
 
 ## R-4: Configuration is frozen, state is mutable, services are injected
 

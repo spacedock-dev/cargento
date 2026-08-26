@@ -7,12 +7,13 @@ Cargento ships three kinds of component that touch the network. The dashboard se
 reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. When the usage feature is on, the server also
 makes one kind of outbound request, the quota poll described in Usage quota reads (the quota
-fetcher); it carries no session data. Four small forwarders ship beside it, each wired into a
-harness's own configuration by the user or by the plugin: `notify_hook.py` POSTs a Claude
-`Notification` payload to the dashboard, `event_hook.py` posts command-hook lifecycle events for
-Claude and Codex, `agy_hook.py` posts Antigravity's hook events, and `statusline_hook.py` posts
-Antigravity's status-line state. All four share one transport, so the loopback check, the proxy
-suppression and the redirect refusal have a single implementation.
+fetcher); it carries no session data. The opt-in UI's Space fonts are packaged into its page, so
+loading either interface makes no request to a font provider. Four small forwarders ship beside it,
+each wired into a harness's own configuration by the user or by the plugin: `notify_hook.py` POSTs
+a Claude `Notification` payload to the dashboard, `event_hook.py` posts command-hook lifecycle
+events for Claude and Codex, `agy_hook.py` posts Antigravity's hook events, and
+`statusline_hook.py` posts Antigravity's status-line state. All four share one transport, so the
+loopback check, the proxy suppression and the redirect refusal have a single implementation.
 
 One of them runs somewhere it could do harm. Antigravity's `PreToolUse` hook may return a `decision`
 that allows, denies or re-prompts a tool call, so a reporting hook there can block the user's work.

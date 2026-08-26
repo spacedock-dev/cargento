@@ -374,6 +374,20 @@ poll as its whole transport. Both paths call the same `refreshNext()`, so failed
 continue to drive the stalled banner added with the original poll. No stream endpoint, server
 budget or revision rule changes.
 
+## NUI-14: the specified fonts travel inside the page
+
+The design names Space Grotesk at weights 400 through 700 and Space Mono at weights 400 and 700.
+System fallbacks made that choice depend on which fonts happened to be installed. The next bundle
+now ships the upstream Latin, Latin Extended and Vietnamese WOFF2 subsets. `page.py` checks each
+packaged payload and embeds it as a data URL while assembling the existing one-page response.
+
+Keeping the fonts inside that response preserves the split established in NUI-1 and NUI-4. There is
+no font route, no browser request to a font provider and no new failure surface for the default UI.
+A missing or malformed font prevents only the next page from loading, as a missing next-page script
+does. The explicit runtime inventory makes an incomplete installed copy fail validation before that
+point. Each family keeps its upstream SIL Open Font License beside the assets, and
+`web/next/fonts/SOURCES.txt` records the source URLs, decoded sizes and hashes.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain
