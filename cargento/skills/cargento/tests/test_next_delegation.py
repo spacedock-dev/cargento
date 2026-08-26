@@ -127,6 +127,99 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("100%", block)
         self.assertNotIn("no figure yet", block)
 
+    def test_project_absence_is_not_observed_delegated_time(self) -> None:
+        out = self.run_fixture(
+            """
+const session = __delegationPayload.sessions[0];
+__delegationPayload = {...__delegationPayload, generated: 1300, sessions: []};
+await refreshNext();
+__delegationPayload = {...__delegationPayload, generated: 1900, sessions: [{
+  ...session, state: "working"
+}]};
+await refreshNext();
+const window = nextWorkstreamProjectWindow("alpha/repo");
+const metric = nextDelegationMetric(window);
+const html = __els.app.innerHTML;
+__delegationPayload = {...__delegationPayload, generated: 2200, sessions: [{
+  ...session, state: "working"
+}]};
+await refreshNext();
+const resumedMetric = nextDelegationMetric(nextWorkstreamProjectWindow("alpha/repo"));
+console.log(JSON.stringify({
+  batchRows: window.batches.map(batch => batch.rows.length),
+  html,
+  metric,
+  resumedHtml: __els.app.innerHTML,
+  resumedMetric
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        block = self.delegation_block(out["html"])
+
+        self.assertEqual([1, 0, 1], out["batchRows"])
+        self.assertEqual(300, out["metric"]["delegatedSec"])
+        self.assertEqual(300, out["metric"]["totalSec"])
+        self.assertEqual(300, out["metric"]["observedSec"])
+        self.assertEqual(100, out["metric"]["delegatedPct"])
+        self.assertEqual(0, out["metric"]["humanTurns"])
+        self.assertIn("no figure yet", block)
+        self.assertNotIn("<progress", block)
+        self.assertEqual(600, out["resumedMetric"]["observedSec"])
+        self.assertEqual(600, out["resumedMetric"]["delegatedSec"])
+        self.assertIn("100%", self.delegation_block(out["resumedHtml"]))
+
+    def test_another_projects_snapshot_is_an_absence_boundary(self) -> None:
+        out = self.run_fixture(
+            """
+const session = __delegationPayload.sessions[0];
+__delegationPayload = {...__delegationPayload, generated: 1300, sessions: [{
+  ...session, sid: "session-two", project: "beta/repo"
+}]};
+await refreshNext();
+__delegationPayload = {
+  ...__delegationPayload, generated: 1900, sessions: [session]
+};
+await refreshNext();
+const window = nextWorkstreamProjectWindow("alpha/repo");
+console.log(JSON.stringify({
+  batchRows: window.batches.map(batch => batch.rows.length),
+  metric: nextDelegationMetric(window)
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual([1, 0, 1], out["batchRows"])
+        self.assertEqual(300, out["metric"]["observedSec"])
+        self.assertEqual(300, out["metric"]["delegatedSec"])
+        self.assertEqual(0, out["metric"]["humanTurns"])
+
+    def test_known_gate_time_survives_an_unknown_absence(self) -> None:
+        out = self.run_fixture(
+            """
+const session = __delegationPayload.sessions[0];
+nextWorkstreamGroups[0].samples[0].state = "needs_input";
+__delegationPayload = {...__delegationPayload, generated: 1300, sessions: []};
+await refreshNext();
+for(const generated of [1900, 2200]){
+  __delegationPayload = {
+    ...__delegationPayload, generated, sessions: [{...session, state: "working"}]
+  };
+  await refreshNext();
+}
+const metric = nextDelegationMetric(nextWorkstreamProjectWindow("alpha/repo"));
+console.log(JSON.stringify(metric));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(600, out["observedSec"])
+        self.assertEqual(600, out["totalSec"])
+        self.assertEqual(300, out["delegatedSec"])
+        self.assertEqual(50, out["delegatedPct"])
+        self.assertEqual(0, out["humanTurns"])
+
     def test_no_delegated_segment_withholds_rate_instead_of_printing_zero(self) -> None:
         html = self.run_fixture(
             """
@@ -266,6 +359,36 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn("DELEGATION · LAST 6H", block)
         self.assertNotIn("data-next-delegation-trend", block)
+
+    def test_an_absence_gap_withholds_a_twelve_hour_trend(self) -> None:
+        out = self._run_page_js(
+            """
+const working = {state: "working", rate: 10, rateKnown: true};
+const window = {
+  batches: [
+    {at: 0, rows: [working]},
+    {at: 21600, rows: [working]},
+    {at: 21601, rows: []},
+    {at: 21602, rows: [working]},
+    {at: 43200, rows: [working]}
+  ],
+  endedAt: 43200,
+  events: [],
+  samples: [],
+  startedAt: 0
+};
+console.log(JSON.stringify({
+  current: nextDelegationRange(window, 21600, 43200),
+  previous: nextDelegationRange(window, 0, 21600),
+  trend: nextDelegationTrend(window)
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(21_600, out["previous"]["observedSec"])
+        self.assertEqual(21_599, out["current"]["observedSec"])
+        self.assertIsNone(out["trend"])
 
     def test_trend_compares_two_complete_six_hour_windows(self) -> None:
         html = self.run_fixture(

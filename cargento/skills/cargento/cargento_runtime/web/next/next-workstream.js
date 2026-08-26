@@ -80,8 +80,8 @@ function nextWorkstreamRateKnown(harness, rate, sources){
 function nextWorkstreamAppendGroup(group){
   const samples = Array.isArray(group.samples) ? group.samples : [];
   const events = Array.isArray(group.events) ? group.events : [];
-  const weight = samples.length + events.length;
-  if(weight === 0) return;
+  // Empty advancing payloads still mark unknown time; one entry keeps them bounded.
+  const weight = Math.max(1, samples.length + events.length);
   nextWorkstreamGroups.push({at: group.at, events, samples, weight});
   nextWorkstreamEntryCount += weight;
   while(nextWorkstreamEntryCount > NEXT_WORKSTREAM_ENTRY_CAP && nextWorkstreamGroups.length > 1){
@@ -218,6 +218,7 @@ function nextObserveWorkstream(payload){
 }
 
 function nextWorkstreamProjectWindow(project){
+  const batches = [];
   const samples = [];
   const events = [];
   let startedAt = null;
@@ -227,10 +228,12 @@ function nextWorkstreamProjectWindow(project){
     if((groupSamples.length > 0 || groupEvents.length > 0) && startedAt == null){
       startedAt = group.at;
     }
+    if(startedAt != null) batches.push({at: group.at, rows: groupSamples});
     samples.push(...groupSamples);
     events.push(...groupEvents);
   }
   return {
+    batches,
     endedAt: nextWorkstreamLastGenerated,
     events,
     samples,

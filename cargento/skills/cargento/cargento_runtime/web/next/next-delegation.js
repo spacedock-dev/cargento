@@ -10,16 +10,15 @@ const NEXT_DELEGATION_MAX_WINDOW_SEC = 6 * 60 * 60;
    delegation percentage DOWN: subtracting that gap would invent a period in
    which the project could proceed unaided.
    Transitions coalesced between polls remain unknowable in either direction. */
-function nextDelegationBatches(samples){
-  const grouped = [];
-  for(const sample of samples || []){
-    const at = nextNumber(sample && sample.at);
+function nextDelegationBatches(window){
+  const batches = [];
+  for(const batch of window && Array.isArray(window.batches) ? window.batches : []){
+    const at = nextNumber(batch && batch.at);
     if(at == null) continue;
-    const latest = grouped.length > 0 ? grouped[grouped.length - 1] : null;
-    if(!latest || latest.at !== at) grouped.push({at, rows: []});
-    grouped[grouped.length - 1].rows.push(sample);
+    const rows = batch && Array.isArray(batch.rows) ? batch.rows : [];
+    batches.push({at, rows});
   }
-  return grouped;
+  return batches;
 }
 
 function nextDelegationHumanTurns(events, startedAt, endedAt){
@@ -31,7 +30,7 @@ function nextDelegationHumanTurns(events, startedAt, endedAt){
 }
 
 function nextDelegationRange(window, startedAt, endedAt){
-  const batches = nextDelegationBatches(window.samples);
+  const batches = nextDelegationBatches(window);
   let coveredSince = null;
   let delegatedSec = 0;
   let observedSec = 0;
@@ -43,7 +42,7 @@ function nextDelegationRange(window, startedAt, endedAt){
     const batch = batches[index];
     const left = Math.max(startedAt, batch.at);
     const right = Math.min(endedAt, batches[index + 1].at);
-    if(right <= left) continue;
+    if(right <= left || batch.rows.length === 0) continue;
     if(coveredSince == null) coveredSince = left;
     const duration = right - left;
     observedSec += duration;
@@ -87,7 +86,7 @@ function nextDelegationMetric(window){
   const endedAt = nextNumber(window && window.endedAt);
   const retainedSince = nextNumber(window && window.startedAt);
   if(endedAt == null || retainedSince == null || endedAt <= retainedSince){
-    return nextDelegationRange(window || {events: [], samples: []}, endedAt || 0, endedAt || 0);
+    return nextDelegationRange(window || {batches: [], events: []}, endedAt || 0, endedAt || 0);
   }
   const startedAt = Math.max(retainedSince, endedAt - NEXT_DELEGATION_MAX_WINDOW_SEC);
   return nextDelegationRange(window, startedAt, endedAt);

@@ -180,6 +180,61 @@ console.log(JSON.stringify({
         self.assertEqual(11, out["first"])
         self.assertEqual(out["cap"] + 10, out["last"])
 
+    def test_empty_boundaries_are_retained_and_bounded(self) -> None:
+        out = self._run_page_js(
+            """
+for(let index = 0; index < NEXT_WORKSTREAM_ENTRY_CAP + 10; index += 1){
+  nextWorkstreamAppendGroup({at: index + 1, samples: [], events: []});
+}
+console.log(JSON.stringify({
+  cap: NEXT_WORKSTREAM_ENTRY_CAP,
+  count: nextWorkstreamEntryCount,
+  first: nextWorkstreamGroups[0].at,
+  last: nextWorkstreamGroups[nextWorkstreamGroups.length - 1].at,
+  length: nextWorkstreamGroups.length
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(out["cap"], out["count"])
+        self.assertEqual(out["cap"], out["length"])
+        self.assertEqual(11, out["first"])
+        self.assertEqual(out["cap"] + 10, out["last"])
+
+    def test_project_batches_begin_with_evidence_and_keep_later_boundaries(self) -> None:
+        out = self._run_page_js(
+            """
+nextWorkstreamAppendGroup({
+  at: 1,
+  samples: [{kind: "sample", project: "beta/repo"}],
+  events: []
+});
+nextWorkstreamAppendGroup({
+  at: 2,
+  samples: [{kind: "sample", project: "alpha/repo"}],
+  events: []
+});
+nextWorkstreamAppendGroup({at: 3, samples: [], events: []});
+nextWorkstreamAppendGroup({
+  at: 4,
+  samples: [{kind: "sample", project: "beta/repo"}],
+  events: []
+});
+const window = nextWorkstreamProjectWindow("alpha/repo");
+console.log(JSON.stringify({
+  at: window.batches.map(batch => batch.at),
+  rows: window.batches.map(batch => batch.rows.length),
+  startedAt: window.startedAt
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(2, out["startedAt"])
+        self.assertEqual([2, 3, 4], out["at"])
+        self.assertEqual([1, 0, 0], out["rows"])
+
     def test_the_window_label_reflects_the_retained_buffer(self) -> None:
         out = self.run_fixture(
             """
