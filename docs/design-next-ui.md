@@ -240,9 +240,10 @@ tail-bounded, a defensive path far outside the measured population.
 
 The section names the retained span rather than copying the mock's fixed six-hour label. Before a
 span exists it says `since this tab opened`; elapsed labels come from payload `generated` times, not
-the viewer clock. The rail is empty until a post-baseline event arrives and says so explicitly.
-Reloading discards the ledger. Only the collapsed preference survives, under the next bundle's
-storage namespace and behind a storage failure boundary.
+the viewer clock. Its header always keeps the `N of M unattended` ratio; expansion appends the
+retained span instead of replacing that ratio. The rail is empty until a post-baseline event arrives
+and says so explicitly. Reloading discards the ledger. Only the collapsed preference survives,
+under the next bundle's storage namespace and behind a storage failure boundary.
 
 Rendering consumes the ledger through a project-window function rather than reading its mutable
 arrays. A future server history source can replace that function without changing the rail, but no
