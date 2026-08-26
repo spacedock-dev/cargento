@@ -138,6 +138,12 @@ long-turn and session-ID ladder as the sessions overview. Their cards share the 
 harness labels and measured wait or token-rate phrases with that overview, then route with both the
 project label and session ID.
 
+Each activity card also names its published subagents. The compact list keeps payload order and
+shows at most six rows, followed by `+N more` when the payload carries more. An elapsed age appears
+only when `started_at` is measurable against the payload's `generated` clock; missing or invalid
+stamps leave the name in place without inventing an age. Malformed subagent collections produce no
+list, and malformed entries keep the neutral `subagent` fallback used by session detail.
+
 The rate phrase preserves the payload's distinction between absence and zero. A session from a
 rate-blind harness carries `rate_per_min: null`; a reporting harness that measured no output in the
 window carries `0`. The summary remains the sum of present measurements, while the harness strip
