@@ -117,6 +117,11 @@ seconds against the payload's `generated` clock. That floor is one complete toke
 window. The 90-second collector threshold answers a different question: whether recent store
 activity is enough to call a session working.
 
+The project header folds those same per-entity states into an `N entities unhealthy` count. It
+renders the count only when at least one named plan exists. A plan with no published entities
+reports a measured zero; no plan omits the count and its divider. Stages do not become steps, and
+the header makes no step-health claim.
+
 The payload does not distinguish an initial entity from a completed one, and it carries no pull
 request state. PLAN therefore has no completion glyph, completion count, merge state or review
 state. Its three empty messages keep the payload's distinctions: no Spacedock declaration, a first
