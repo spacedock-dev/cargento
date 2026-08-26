@@ -63,8 +63,13 @@ console.log(JSON.stringify({
         self.assertNotIn("Refocus <img", out["html"])
         self.assertIn("Not delivered.", out["html"])
         self.assertIn("Cargento has no write path into a session.", out["html"])
+        self.assertIn('aria-checked="false"', out["html"])
         self.assertEqual([self.STORAGE_KEY], out["writes"])
         self.assertIn(self.STORAGE_KEY, out["stored"])
+        self.assertEqual(
+            [{"text": "Keep tests green", "enabled": False}],
+            json.loads(out["stored"][self.STORAGE_KEY]),
+        )
 
     def test_the_headers_and_rows_claim_no_enforcement(self) -> None:
         stored = json.dumps([{"text": "Keep tests green", "enabled": True}])

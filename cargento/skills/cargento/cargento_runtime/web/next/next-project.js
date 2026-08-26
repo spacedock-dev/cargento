@@ -167,6 +167,6 @@ function nextProjectView(project){
     `<div data-next-project-section="going-on">${nextProjectGoingOn(context)}</div>` +
     `<div data-next-project-section="done">${nextProjectDone(context)}</div>` +
     `<div data-next-project-section="workstream">${nextProjectWorkstream(context)}</div></main>` +
-    '<aside class="next-project-detail-rail" data-next-project-rail></aside>' +
+    `<aside class="next-project-detail-rail" data-next-project-rail>${nextProjectControls(context)}</aside>` +
     '</div></article>';
 }
