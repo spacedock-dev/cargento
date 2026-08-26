@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import tempfile
@@ -144,6 +145,81 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIn("color:var(--accent-ink)", live_rule.group(1) if live_rule else "")
         self.assertIn("animation:next-live-pulse", live_rule.group(1) if live_rule else "")
         self.assertIn("animation:none", reduced.group(1) if reduced else "")
+
+    def test_load_next_page_preserves_its_byte_oracles(self) -> None:
+        # Per-part first, deliberately. Every part feeds the assembled page, so a
+        # one-part edit fails the assembled oracle too. Naming the part that moved
+        # is the more useful failure of the two.
+        expected_parts = {
+            "next-boot.js": (
+                4_467,
+                "37d911e2ddfa839027459d5cbc7f21753e3415a434f603b5fb60e20f37cea7ad",
+            ),
+            "next-chrome.js": (
+                6_475,
+                "d1b5c613500a7085b6d1ee0cc524f6ded74770ad0b8dd80b712769455052d7c7",
+            ),
+            "next-sessions.js": (
+                4_371,
+                "e423883841b6460e12fdce76ccb5f294365f82a34e67c64ecd3b67861443c995",
+            ),
+            "next-projects.js": (
+                4_211,
+                "df0855a9717723a0966267d8921fae3b2ae6b082d3bd6475fb4453714ac9b407",
+            ),
+            "next-project.js": (
+                7_963,
+                "8b5eb09d3f7edb62b4c1b88bc8fdddb93db0e025a4b099c41c5dd9ec831982f0",
+            ),
+            "next-activity.js": (
+                3_034,
+                "94f34095255e1c453079f3be1748afaa506884f0a933834989c6de85084943dd",
+            ),
+            "next-session.js": (
+                8_139,
+                "a584f09e0d8813d973acd00ec577a7008f88079dee818979e0802ff7006050e4",
+            ),
+            "next-workstream.js": (
+                11_217,
+                "8a0c1ee5835d96744bf7a2d20cec4d936da8032b3c57dba387a414b30505e0e7",
+            ),
+            "next-delegation.js": (
+                6_643,
+                "067545d9d3b2a0f8910b61587a7dec32a59640a4e78d69d75588e7833e2d30b3",
+            ),
+            "next-controls.js": (
+                6_761,
+                "ef871e0e9dac2f7bd698fdefc1f38ed3b0a17333cca7f68fe53a5f761fef771d",
+            ),
+            "next-render.js": (
+                802,
+                "fc842fa72b4c12e25ee34c6aa0403e12689653985be5e198677e3cfb831234b3",
+            ),
+            "next-live.js": (
+                3_470,
+                "aa1aaee8762d734fe8841c88a10ece2c5a4e38b8fe6b6df6f26c62d2d7563d3e",
+            ),
+        }
+        self.assertEqual(tuple(expected_parts), frontend_page.NEXT_PARTS)
+        for name, (size, digest) in expected_parts.items():
+            with self.subTest(part=name):
+                data = frontend_page.next_asset_path(name).read_bytes()
+                self.assertEqual(size, len(data))
+                self.assertEqual(digest, hashlib.sha256(data).hexdigest())
+
+        styles = frontend_page.next_asset_path("styles.css").read_bytes()
+        self.assertEqual(19_530, len(styles))
+        self.assertEqual(
+            "18a8a2bd48dfa58128ec467b0562c3ebf2e1727ae01155cb78bd083af1b67a38",
+            hashlib.sha256(styles).hexdigest(),
+        )
+
+        assembled = frontend_page.load_next_page()
+        self.assertEqual(87_329, len(assembled))
+        self.assertEqual(
+            "8ed152d0f5b40e77aa0c4a4151c4bc6186c56c736f27abdcc43b6ea7e87198c7",
+            hashlib.sha256(assembled).hexdigest(),
+        )
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
