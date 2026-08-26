@@ -118,8 +118,27 @@ The payload does not distinguish an initial entity from a completed one, and it 
 request state. PLAN therefore has no completion glyph, completion count, merge state or review
 state. Its three empty messages keep the payload's distinctions: no Spacedock declaration, a first
 officer whose workflow has no fresh entities, and an ensign whose plan lives with its first officer.
-The main column and rail are separate section-block regions so later layers can add work state and
-controls without rebuilding PLAN.
+The main column and rail are separate section-block regions. The activity layer fills the two
+reserved work-state blocks without rebuilding PLAN.
+
+## NUI-7: project activity is a current-payload answer
+
+GOING ON answers from the project's session rows. Sessions waiting for input keep payload order
+because the server has already established their precedence. Re-sorting that queue in the browser
+would erase evidence the collector supplied. The remaining active rows use the same stable
+long-turn and session-ID ladder as the sessions overview. Their cards share the payload clock,
+harness labels and measured wait or token-rate phrases with that overview, then route with both the
+project label and session ID.
+
+DONE is deliberately narrower. It walks each project session and its Claude task list in payload
+order, selecting only tasks whose published status is `completed`. It does not sort by task times or
+deduplicate subjects. Task identity is local to a session, and the same subject can represent two
+real pieces of work. Spacedock entities are not a completion source: terminal entities do not reach
+this payload, and the remaining plan rows carry no completed marker.
+
+Both blocks render an explicit empty sentence. DONE names the payload because it is a view of the
+latest snapshot, not a retained history or a claim that a project has never completed work. A
+time-ordered list would require the persistent-history decision tracked in DRC-4234.
 
 ## What this does not decide
 
