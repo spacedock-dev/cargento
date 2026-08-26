@@ -170,6 +170,15 @@ transcript's creation time. A needs-input row derives its blocked age against th
 `generated` clock. An idle row may use the same clock for an explicitly named session-start age.
 Missing timestamps remove those clauses. They never become zero.
 
+The detail health callout is bounded to two measurements already present on the row:
+`turn.long` and the failed-tool-loop peak in `loop`. A long turn keeps the `LONG TURN` label;
+when both measurements exist, the loop sentence replaces the generic long-turn explanation rather
+than producing a second notice. A loop without a long turn uses `FAILED TOOL LOOP`, and remains
+visible after the session stops because the server retains that peak until the next prompt. A
+missing or malformed positive integer count removes the loop notice. Neither path infers a stalled
+or failed outcome. Its sentences match the default views, and the next bundle keeps a local MCP
+tool-name formatter because importing the default script would cross the byte firewall.
+
 Questions render only when the payload advertises the ask capability. Matching is exact on the
 full session ID, keeps payload order, and shows every match. The callout uses the same
 `<harness> is asking you` sentence as native and browser notifications. Each option posts its
