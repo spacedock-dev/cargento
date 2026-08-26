@@ -251,7 +251,8 @@ payloads add nothing.
 Every advancing payload also contributes one sample per session with its project, state and
 measured token rate. These samples are the evidence the later delegation panel needs; transitions
 alone cannot recover the intervals between them. State events keep both sides of the transition for
-the same reason.
+the same reason. Once a project first appears, its window keeps every later payload boundary. A
+boundary with no rows for that project records its absence without inventing an idle session.
 
 One classifier owns state-transition meaning for both the workstream and delegation. A transition
 out of `needs_input`, or from `idle` to `working`, is a human turn. Its workstream node is hollow and
@@ -260,8 +261,9 @@ opens a gate, but it is agent-side and does not increment human turns. Other tra
 `working` to `idle`, use filled nodes and count as unattended.
 
 The 100,000-logical-entry cap was chosen against the observed 22-session case at the five-second
-poll cadence: six hours produces 95,040 samples before transition entries. Whole
-payload groups are dropped oldest-first. Only a single payload larger than the entire cap is
+poll cadence: six hours produces 95,040 samples before transition entries. An advancing payload
+with no samples or events costs one logical entry, so empty boundaries cannot grow outside the cap.
+Whole payload groups are dropped oldest-first. Only a single payload larger than the entire cap is
 tail-bounded, a defensive path far outside the measured population.
 
 The section names the retained span rather than copying the mock's fixed six-hour label. Before a
@@ -307,16 +309,22 @@ the direction invariant do not change.
 The project rail's delegation figure integrates adjacent sample batches from the in-tab workstream
 ledger. A batch owns the wall-clock interval until the next advancing payload, clipped to the
 displayed window. That makes an irregular refresh cost the time it actually spans instead of one
-vote in a poll-count average. An interval enters the figure when at least one sampled session is
-working or needs input. It is delegated only when at least one session is working and none needs
-input. An all-idle interval enters neither the numerator nor the denominator because no agent ran.
+vote in a poll-count average. A non-empty interval with at least one working session and no gate
+adds to the numerator, denominator and observed coverage. Any `needs_input` session makes the
+interval denominator-only while still advancing coverage. An all-idle interval advances coverage
+but enters neither side of the ratio because no agent ran.
 
-All-idle time still advances the observed coverage of the window; it does not change the ratio.
-That definition chooses a bias. If a gate stays open over lunch, the whole gap counts as human time,
-so the percentage is biased **down**, not silently corrected upward. The project could not proceed
-without an answer during the observed gap; subtracting part of it would invent availability. A gate
-that opens or closes between two polls still has up to one poll interval of uncertainty in either
-direction. Transitions that both happen between polls are not recoverable from snapshots.
+A zero-row project batch is different from idle. It proves only that the global payload advanced,
+so its interval adds no numerator, denominator or observed coverage. A later reappearance cannot
+recover the missing state or create a human turn. The evidence floor and the two-window trend both
+stay withheld across that unknown gap.
+
+The known cases still choose a deliberate bias. If a gate stays open over lunch, the whole observed
+gap counts as human time, so the percentage is biased **down**, not silently corrected upward. The
+project could not proceed without an answer during that gap; subtracting part of it would invent
+availability. A gate that opens or closes between two polls still has up to one poll interval of
+uncertainty in either direction. Transitions that both happen between polls are not recoverable from
+snapshots.
 
 Ten minutes is the minimum observed evidence window because each published `rate_per_min` is
 itself a trailing ten-minute mean. An all-idle window still has no denominator and remains
