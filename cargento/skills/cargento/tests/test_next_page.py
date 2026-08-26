@@ -146,6 +146,18 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIn("animation:next-live-pulse", live_rule.group(1) if live_rule else "")
         self.assertIn("animation:none", reduced.group(1) if reduced else "")
 
+    def test_activity_subagent_names_can_shrink_inside_the_card(self) -> None:
+        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        pill = re.search(r"\.next-activity-subagent\{([^}]*)\}", styles)
+        name = re.search(r"\.next-activity-subagent-name\{([^}]*)\}", styles)
+
+        self.assertIsNotNone(pill)
+        self.assertIsNotNone(name)
+        self.assertIn("min-width:0", pill.group(1) if pill else "")
+        self.assertIn("max-width:100%", pill.group(1) if pill else "")
+        self.assertIn("min-width:0", name.group(1) if name else "")
+        self.assertIn("overflow-wrap:anywhere", name.group(1) if name else "")
+
     def test_load_next_page_preserves_its_byte_oracles(self) -> None:
         # Per-part first, deliberately. Every part feeds the assembled page, so a
         # one-part edit fails the assembled oracle too. Naming the part that moved
@@ -208,16 +220,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(20_123, len(styles))
+        self.assertEqual(20_215, len(styles))
         self.assertEqual(
-            "a77ecca5c44332c4abfb42fc129e4d95e50248de9b18f963874809b393bd9558",
+            "4db56fcbb545efabc513e5bd7d513958a4be3ea99e252c9f61bc934d80404487",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(92_435, len(assembled))
+        self.assertEqual(92_527, len(assembled))
         self.assertEqual(
-            "b4f4b284c9dd5cc14140846a4099027f9084998789610265e2864dc5ca547e4c",
+            "837e2ce7e144f79c46c419d10d88f1fc0fcc2ab258ad5eb25a1e9f2552e1b01c",
             hashlib.sha256(assembled).hexdigest(),
         )
 
