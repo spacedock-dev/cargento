@@ -3,11 +3,12 @@ const NEXT_DELEGATION_MAX_WINDOW_SEC = 6 * 60 * 60;
 
 /* Delegation is elapsed observed project time with at least one working
    session and no session in `needs_input`, divided by working-or-gated time.
-   All-idle intervals count toward neither side. Each snapshot holds until the
-   next one arrives, so the arithmetic follows wall time rather than poll
-   count. A gate left open over lunch therefore counts lunch as human time and
-   deliberately biases the delegation percentage DOWN: subtracting that gap
-   would invent a period in which the project could proceed unaided.
+   All-idle intervals count toward neither side, though they still prove that
+   the window was observed. Each snapshot holds until the next one arrives, so
+   the arithmetic follows wall time rather than poll count. A gate left open
+   over lunch therefore counts lunch as human time and deliberately biases the
+   delegation percentage DOWN: subtracting that gap would invent a period in
+   which the project could proceed unaided.
    Transitions coalesced between polls remain unknowable in either direction. */
 function nextDelegationBatches(samples){
   const grouped = [];
@@ -35,6 +36,7 @@ function nextDelegationRange(window, startedAt, endedAt){
   const batches = nextDelegationBatches(window.samples);
   let coveredSince = null;
   let delegatedSec = 0;
+  let observedSec = 0;
   let rateArea = 0;
   let rateFloor = false;
   let rateMeasured = false;
@@ -44,11 +46,12 @@ function nextDelegationRange(window, startedAt, endedAt){
     const left = Math.max(startedAt, batch.at);
     const right = Math.min(endedAt, batches[index + 1].at);
     if(right <= left) continue;
+    if(coveredSince == null) coveredSince = left;
+    const duration = right - left;
+    observedSec += duration;
     const gated = batch.rows.some(sample => sample.state === "needs_input");
     const working = batch.rows.some(sample => sample.state === "working");
     if(!gated && !working) continue;
-    if(coveredSince == null) coveredSince = left;
-    const duration = right - left;
     totalSec += duration;
     if(gated) continue;
     delegatedSec += duration;
@@ -74,6 +77,7 @@ function nextDelegationRange(window, startedAt, endedAt){
     delegatedSec,
     endedAt,
     humanTurns: nextDelegationHumanTurns(window.events, actualStart, endedAt),
+    observedSec,
     rateFloor,
     ratePerMin: delegatedSec > 0 && rateMeasured ? rateArea / delegatedSec : null,
     startedAt: actualStart,
@@ -107,8 +111,8 @@ function nextDelegationTrend(window){
     endedAt - NEXT_DELEGATION_MAX_WINDOW_SEC,
   );
   if(
-    current.totalSec < NEXT_DELEGATION_MAX_WINDOW_SEC ||
-    previous.totalSec < NEXT_DELEGATION_MAX_WINDOW_SEC ||
+    current.observedSec < NEXT_DELEGATION_MAX_WINDOW_SEC ||
+    previous.observedSec < NEXT_DELEGATION_MAX_WINDOW_SEC ||
     current.delegatedPct == null || previous.delegatedPct == null
   ) return null;
   return Math.round(current.delegatedPct - previous.delegatedPct);
@@ -134,7 +138,7 @@ function nextDelegationRateMarkup(metric){
 function nextProjectDelegation(context){
   const window = nextWorkstreamProjectWindow(context.group.label);
   const metric = nextDelegationMetric(window);
-  const withheld = metric.totalSec < NEXT_DELEGATION_MIN_WINDOW_SEC || metric.delegatedPct == null;
+  const withheld = metric.observedSec < NEXT_DELEGATION_MIN_WINDOW_SEC || metric.delegatedPct == null;
   const label = withheld ? "SINCE THIS TAB OPENED" : nextWorkstreamWindowLabel(metric).toUpperCase();
   const header = `<header><span>DELEGATION · ${esc(label)}</span></header>`;
   if(withheld){

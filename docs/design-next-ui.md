@@ -239,20 +239,21 @@ vote in a poll-count average. An interval enters the figure when at least one sa
 working or needs input. It is delegated only when at least one session is working and none needs
 input. An all-idle interval enters neither the numerator nor the denominator because no agent ran.
 
+All-idle time still advances the observed coverage of the window; it does not change the ratio.
 That definition chooses a bias. If a gate stays open over lunch, the whole gap counts as human time,
 so the percentage is biased **down**, not silently corrected upward. The project could not proceed
 without an answer during the observed gap; subtracting part of it would invent availability. A gate
 that opens or closes between two polls still has up to one poll interval of uncertainty in either
 direction. Transitions that both happen between polls are not recoverable from snapshots.
 
-Ten minutes of working-or-gated time is the minimum evidence window because each published
-`rate_per_min` is itself a trailing ten-minute mean. Passive idle time cannot age the panel into a
-figure. Below that floor the block says `no figure yet` and prints no percentage, bar, token rate
-or human-turn count. The headline grows with the retained span up to six hours, the window the
-ledger cap was sized to preserve at the measured 22-session population. A trend needs two
-independent full windows: it compares the latest six hours with the six before them only when
-twelve retained hours exist. At the measured population the cap may prevent that condition, in
-which case no trend is more honest than a flat arrow.
+Ten minutes is the minimum observed evidence window because each published `rate_per_min` is
+itself a trailing ten-minute mean. An all-idle window still has no denominator and remains
+withheld. Below that floor the block says `no figure yet` and prints no percentage, bar, token
+rate or human-turn count. The headline grows with the retained span up to six hours, the window
+the ledger cap was sized to preserve at the measured 22-session population. A trend needs two
+independent full observed windows: it compares the latest six hours with the six before them only
+when twelve retained hours exist. At the measured population the cap may prevent that condition,
+in which case no trend is more honest than a flat arrow.
 
 For each delegated interval, the session rates in that payload are summed and those per-payload
 aggregates are time-weighted over delegated wall time. A session whose harness cannot measure rate

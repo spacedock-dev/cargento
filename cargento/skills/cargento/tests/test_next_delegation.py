@@ -140,6 +140,36 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("no token-rate figure", block)
         self.assertNotIn("0 tok/m", block)
 
+    def test_gate_overrides_a_concurrent_working_session(self) -> None:
+        html = self.run_fixture(
+            """
+const working = __delegationPayload.sessions[0];
+const gated = {
+  ...working, sid: "session-two", state: "needs_input", rate_per_min: 80
+};
+__delegationPayload = {
+  ...__delegationPayload, generated: 1600, sessions: [working, gated]
+};
+nextWorkstreamGroups = [];
+nextWorkstreamEntryCount = 0;
+nextWorkstreamPreviousSessions = new Map();
+nextWorkstreamSeenAsks = new Map();
+nextWorkstreamLastGenerated = null;
+nextWorkstreamObservedSince = null;
+nextObserveWorkstream({...__delegationPayload, generated: 1000});
+nextObserveWorkstream(__delegationPayload);
+nextData = __delegationPayload;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        self.assertIn("0%", block)
+        self.assertIn("no token-rate figure", block)
+        self.assertNotIn("tok/m while delegated", block)
+
     def test_unmeasured_session_turns_the_rate_into_a_floor(self) -> None:
         html = self.run_fixture(
             """
@@ -205,14 +235,15 @@ console.log(JSON.stringify(__els.app.innerHTML));
     def test_trend_compares_two_complete_six_hour_windows(self) -> None:
         html = self.run_fixture(
             """
+nextWorkstreamGroups[0].samples[0].state = "needs_input";
 for(const [generated, state] of [
-  [11800, "working"],
+  [1600, "idle"],
+  [22000, "working"],
   [22600, "working"],
+  [23200, "idle"],
+  [43600, "working"],
   [44200, "working"]
 ]){
-  if(generated === 11800){
-    nextWorkstreamGroups[0].samples[0].state = "needs_input";
-  }
   __delegationPayload = {
     ...__delegationPayload, generated,
     sessions: [{...__delegationPayload.sessions[0], state}]
