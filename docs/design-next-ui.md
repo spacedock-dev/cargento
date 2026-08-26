@@ -164,8 +164,11 @@ the project activity cards, so it no longer stops at project detail.
 
 The header uses `title`, then `last_prompt`, with the first matching question as a fallback. Its
 metadata is built only from measurements the row carries: the registry label, short session ID,
-activity detail, and a started or blocked age against the payload's `generated` clock. A missing
-timestamp removes its clause. It never becomes zero.
+and activity detail. A working row labels its measured `turn.elapsed_h` as the current start age;
+an absent, empty, or malformed turn measurement removes that clause instead of falling back to the
+transcript's creation time. A needs-input row derives its blocked age against the payload's
+`generated` clock. An idle row may use the same clock for an explicitly named session-start age.
+Missing timestamps remove those clauses. They never become zero.
 
 Questions render only when the payload advertises the ask capability. Matching is exact on the
 full session ID, keeps payload order, and shows every match. The callout uses the same
