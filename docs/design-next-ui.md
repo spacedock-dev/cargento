@@ -96,6 +96,11 @@ session-detail renderer in NUI-8 consumes the route each row carries.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
 
+The global `p` and `s` shortcuts reciprocally select the Projects and Sessions overview tabs, and
+the More menu exposes both actions as native buttons. Their keys are case-insensitive, but neither
+runs while an input, select or textarea owns focus, or while Meta, Control or Alt is held. Those
+guards keep navigation from taking over typing and browser or operating system commands.
+
 Every client-derived age uses one payload-clock grammar: `Ns` below a minute, `Nm` below an hour,
 `Nh Nm` below a day, then `Nd Nh`. Values are floored from the payload's `generated` time, never the
 browser clock. Missing or invalid timestamps omit the age, while a valid future timestamp clamps to
