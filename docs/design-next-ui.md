@@ -83,6 +83,10 @@ does not flash the page on a transient miss. When that gate count is nonzero, it
 button that opens the existing sessions overview. It navigates to the attention-ordered queue; it
 does not answer, dismiss or otherwise control a gate.
 
+The running and subagent summary begins with the shared filled live dot. That marker remains when
+both counts are zero because it says the payload-derived summary is live, not that an individual
+session is active. NUI-12 owns the motion and reduced-motion rules.
+
 The overview chrome owns `projects` and `sessions` body slots without owning either view. The
 projects slot now groups the current payload by its display label and renders the measured task
 progress and current state. NOW names that state as blocked, an active-running count, or muted
@@ -336,11 +340,12 @@ persistent history.
 
 ## NUI-12: motion means observed activity, not mere attention
 
-The same live treatment appears in three places: fresh subagents in session detail, working
-sessions in GOING ON and active working rows in the sessions overview. Each container carries `next-live`, and
-its filled accent dot pulses. The class follows evidence already in the payload. A listed subagent
-has passed the collector's freshness test; session rows and GOING ON cards also require `active`.
-No browser timer infers that work is alive.
+The same live treatment appears in four places, with two different claims. The header always marks
+its running and subagent summary as live, including when both counts are zero, because the cue is
+about the current payload rather than an individual session. Fresh subagents in session detail,
+working sessions in GOING ON and active working rows in the sessions overview use the marker only
+for observed activity. A listed subagent has passed the collector's freshness test; session rows
+and GOING ON cards also require `active`. No browser timer infers that work is alive.
 
 A gate stays amber and static even when its session still has `active: true`. It is important, but
 it is waiting rather than moving, and animation must not turn attention priority into a claim of
