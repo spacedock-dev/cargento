@@ -86,7 +86,7 @@ progress and current state. Estimate and delegation stay visibly withheld: neith
 project scope, and folding per-session values would turn a guess into a measurement. The
 sessions slot now renders the current payload in three independent blocks: the gate queue keeps
 the server's order, working rows use the established attention ladder, and the idle tail puts the
-nearest activity first. The session detail route still stops at an empty region.
+nearest activity first. The session-detail renderer in NUI-8 consumes the route each row carries.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
 
@@ -140,6 +140,36 @@ Both blocks render an explicit empty sentence. DONE names the payload because it
 latest snapshot, not a retained history or a claim that a project has never completed work. A
 time-ordered list would require the persistent-history decision tracked in DRC-4234.
 
+## NUI-8: session detail stays inside the current payload
+
+A session route carries the project display label and full session ID. The detail lookup requires
+both. A stale route, including the right ID under the wrong project label, gets an explicit
+outside-payload state instead of a guessed row. The flat session table now emits the same route as
+the project activity cards, so it no longer stops at project detail.
+
+The header uses `title`, then `last_prompt`, with the first matching question as a fallback. Its
+metadata is built only from measurements the row carries: the registry label, short session ID,
+activity detail, and a started or blocked age against the payload's `generated` clock. A missing
+timestamp removes its clause. It never becomes zero.
+
+Questions render only when the payload advertises the ask capability. Matching is exact on the
+full session ID, keeps payload order, and shows every match. The callout uses the same
+`<harness> is asking you` sentence as native and browser notifications. Each option posts its
+numeric index to the existing `/api/answer` endpoint. Only `answered: true` confirms the action;
+otherwise the question stays put with a failure note keyed to its ask ID. There is no optimistic
+removal.
+
+Task provenance stays Claude-only because no other collector publishes that list. The count is
+derived from the rows being rendered, and their payload order is unchanged. Subagents also keep
+payload order. Their live dot is static, and elapsed time appears only when `started_at` was
+measured; model names are outside this view. The footer prefers measured session output tokens,
+falls back to measured turn output tokens, and distinguishes an absent reading from a real zero.
+
+Reusing `web/session.js` or `web/ask.js` would join the two script scopes and break the default-page
+byte firewall. A new session endpoint would duplicate the current payload and expand the HTTP
+surface without supplying new evidence. The separate `next-session.js` part needs neither. It also
+adds no retained history; that decision remains DRC-4234.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain
@@ -147,8 +177,9 @@ windowed or withheld after reload. Whether Cargento should persist session histo
 decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is not a prerequisite for the
 opt-in UI.
 
-Project and session rows are live from the existing payload. The project detail renders the honest
-Spacedock plan; the session detail belongs to a later layer.
+Project and session rows are live from the existing payload. Their detail views render only that
+snapshot: the project shows the honest Spacedock plan, while the session shows its current asks,
+tasks, subagents and measured token total.
 
 ## Way back
 
