@@ -46,8 +46,8 @@ therefore uses one `#n=` token: `overview`, `project:<encoded-project>` or
 `session:<encoded-project>:<encoded-session>`. No form contains that substring. Hash changes are
 the browser-history input as well as the output of breadcrumb and Escape navigation, so shared
 project and session links survive a reload without another state store. Every storage key written
-by the next bundle begins `cargento.next.`. In particular, a later next-page stream may use
-`cargento.next.leader` and `cargento.next.revision`; it must not read or write the default page's
+by the next bundle begins `cargento.next.`. The next-page stream follows that rule with
+`cargento.next.leader` and `cargento.next.revision`; it does not read or write the default page's
 `cargento.leader` or `cargento.revision` lease.
 
 `tests/test_next_isolation.py` freezes both directions. State left by the next page cannot change a

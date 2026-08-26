@@ -11,12 +11,13 @@ a later change either follows it or overturns it deliberately.
 The materialized snapshot and the SSE stream have since landed as `snapshot.py` and `stream.py`, each
 importing no runtime module so that `state` can own them without inverting R-2. `events.py` has landed
 as the envelope and reducer layer beneath them, and `observation.py` as the coordinator that drives
-it. The ingress route that would feed the coordinator is still a proposal; the whole design lives in
+it. The loopback ingress route and bundled event hook now feed that coordinator. The remaining
+adapter and rollout work lives in
 [`plans/event-driven-session-observation.md`](plans/event-driven-session-observation.md).
 
 ## The problem these decisions answer
 
-One file that holds configuration, nine harness collectors, notification policy, HTTP handling,
+One file that holds configuration, ten harness collectors, notification policy, HTTP handling,
 process lifecycle and the frontend loader has no seams. Three specific costs made it worth fixing:
 
 - Any change had to be reasoned about against everything else in the file.
