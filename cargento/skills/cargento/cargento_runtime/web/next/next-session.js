@@ -52,16 +52,16 @@ function nextSessionMeta(session){
   if(shortSid) parts.push(shortSid);
   if(session.state_detail) parts.push(String(session.state_detail));
   if(session.state === "needs_input"){
-    const blocked = nextMinutesSince(session.blocked_since);
-    if(blocked != null) parts.push(`blocked ${blocked}m`);
+    const blocked = nextDurationSince(session.blocked_since);
+    if(blocked != null) parts.push(`blocked ${blocked}`);
   }else if(session.state === "working"){
     const turn = session.turn;
     const elapsed = turn && typeof turn === "object" && !Array.isArray(turn) &&
       typeof turn.elapsed_h === "string" ? turn.elapsed_h.trim() : "";
     if(elapsed) parts.push(`started ${elapsed} ago`);
   }else if(session.state === "idle"){
-    const started = nextMinutesSince(session.started_at);
-    if(started != null) parts.push(`session started ${started}m ago`);
+    const started = nextDurationSince(session.started_at);
+    if(started != null) parts.push(`session started ${started} ago`);
   }
   return parts.join(" · ");
 }
@@ -158,10 +158,10 @@ function nextSessionSubagents(session){
   const subagents = Array.isArray(session.subagents) ? session.subagents : [];
   if(!subagents.length) return "";
   const rows = subagents.map((subagent, index) => {
-    const elapsed = nextMinutesSince(subagent && subagent.started_at);
+    const elapsed = nextDurationSince(subagent && subagent.started_at);
     const measured = elapsed == null
       ? ""
-      : `<span class="next-session-subagent-elapsed">${elapsed}m</span>`;
+      : `<span class="next-session-subagent-elapsed">${elapsed}</span>`;
     return `<div class="next-session-subagent next-live" data-next-session-subagent="${index}">` +
       `${nextStatusDot("running", "next-session-subagent-glyph")}` +
       `<strong class="next-session-subagent-name">${esc(subagent && subagent.name || "subagent")}</strong>` +

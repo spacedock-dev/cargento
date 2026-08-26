@@ -57,9 +57,20 @@ function nextAgeSeconds(stamp){
   return Math.max(0, generated - at);
 }
 
-function nextMinutesSince(stamp){
+function nextFormatDuration(seconds){
+  if(typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return null;
+  const whole = Math.floor(seconds);
+  if(whole < 60) return `${whole}s`;
+  if(whole < 3600) return `${Math.floor(whole / 60)}m`;
+  if(whole < 86400){
+    return `${Math.floor(whole / 3600)}h ${Math.floor((whole % 3600) / 60)}m`;
+  }
+  return `${Math.floor(whole / 86400)}d ${Math.floor((whole % 86400) / 3600)}h`;
+}
+
+function nextDurationSince(stamp){
   const age = nextAgeSeconds(stamp);
-  return age == null ? null : Math.floor(age / 60);
+  return age == null ? null : nextFormatDuration(age);
 }
 
 function nextHarnessLabels(){
@@ -88,15 +99,15 @@ function nextSessionWorkingOrder(rows){
 
 function nextSessionMetric(session){
   if(session.state === "needs_input"){
-    const wait = nextMinutesSince(session.blocked_since);
-    return wait == null ? "" : `${wait}m wait`;
+    const wait = nextDurationSince(session.blocked_since);
+    return wait == null ? "" : `${wait} wait`;
   }
   if(session.state === "working"){
     const rate = nextNumber(session.rate_per_min);
     return rate == null ? "" : `${Math.round(rate).toLocaleString("en-US")} /m`;
   }
-  const idle = nextMinutesSince(session.last_activity);
-  return idle == null ? "" : `${idle}m idle`;
+  const idle = nextDurationSince(session.last_activity);
+  return idle == null ? "" : `${idle} idle`;
 }
 
 function nextStatusDot(label, className, filled = true){

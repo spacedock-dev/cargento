@@ -154,7 +154,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             """
 __setNow(999999);
 nextData.sessions.find(session => session.sid === "work-z").subagents = [
-  {name: "worker <one>", model: "secret-model", started_at: 9700},
+  {name: "worker <one>", model: "secret-model", started_at: 2260},
   {name: "worker-two", started_at: null},
   {name: "worker-three", started_at: 10010},
   {name: "worker-four", started_at: "bad"},
@@ -180,11 +180,11 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("worker &lt;one&gt;", measured)
         self.assertNotIn("worker <one>", measured)
         self.assertNotIn("secret-model", measured)
-        self.assertIn("5m", measured)
+        self.assertIn("2h 9m", measured)
         self.assertIn("worker-two", unmeasured)
         self.assertNotRegex(unmeasured, r"\d+m")
         self.assertIn("worker-three", clamped)
-        self.assertIn("0m", clamped)
+        self.assertIn("0s", clamped)
         self.assertIn("worker-four", invalid)
         self.assertNotRegex(invalid, r"\d+m")
         self.assertIn("subagent", fallback)

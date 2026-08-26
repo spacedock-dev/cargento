@@ -202,7 +202,9 @@ const entity = {live: true, session};
 const fresh = nextProjectEntityState(entity);
 session.last_activity = 9399;
 const stale = nextProjectEntityState(entity);
-console.log(JSON.stringify({fresh, stale, floor: NEXT_PROJECT_STALLED_SEC}));
+session.last_activity = 2260;
+const older = nextProjectEntityState(entity);
+console.log(JSON.stringify({fresh, stale, older, floor: NEXT_PROJECT_STALLED_SEC}));
 """
         )
         assert isinstance(out, dict)
@@ -210,6 +212,7 @@ console.log(JSON.stringify({fresh, stale, floor: NEXT_PROJECT_STALLED_SEC}));
         self.assertEqual(600, out["floor"])
         self.assertEqual({"label": "", "unhealthy": False}, out["fresh"])
         self.assertEqual({"label": "stalled 10m", "unhealthy": True}, out["stale"])
+        self.assertEqual({"label": "stalled 2h 9m", "unhealthy": True}, out["older"])
 
     def test_plan_never_fabricates_completion_or_pull_request_states(self) -> None:
         html = self.render()

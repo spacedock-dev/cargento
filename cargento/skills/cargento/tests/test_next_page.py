@@ -275,8 +275,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                4_467,
-                "37d911e2ddfa839027459d5cbc7f21753e3415a434f603b5fb60e20f37cea7ad",
+                4_918,
+                "4b801dc5c185732eaddd86501f1e866cb062d11a739e2696df5a45044aac9a3f",
             ),
             "next-chrome.js": (
                 6_547,
@@ -291,16 +291,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "c430a56866fd1219b97267375f2b0b3bad3acf3b2dfbcb34c54e51e6845a68ce",
             ),
             "next-project.js": (
-                8_055,
-                "fc7ccdbceaf571623b8771dd78287d36d8271a6b7b6b4ad02acb93c277e56be8",
+                8_057,
+                "6896fd91fe77c9a239ae4282c530697aac7b9281855ccb50d9f41c1e14f8c62c",
             ),
             "next-activity.js": (
                 4_370,
-                "ee01ddb17dcc561196af143115e21d429f6b44d845513c40a12f119d354f5ef8",
+                "0c3cb4fca08ba93793e746b466cbd323bf13668c6941062bdfe4e79cda21c657",
             ),
             "next-session.js": (
                 11_338,
-                "a7740b6c5ca3bf8ff357f7ea25b541beccca59f62960444c807b4c2c4267aa80",
+                "7d827a707f187d3673a88b3c73c6ac9fa104c2c3640ead9305604f6590d62b70",
             ),
             "next-workstream.js": (
                 11_676,
@@ -338,9 +338,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(94_112, len(assembled))
+        self.assertEqual(94_565, len(assembled))
         self.assertEqual(
-            "42ec55ece4c89b28b477e2302b9599aabc0de211897567e9c83cc84dd536a521",
+            "42182b82d4bc19d084031d49b547fcb9d05da9dfa7a221fd70fd22feab7bfffd",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -364,6 +364,38 @@ class NextPageBehaviorTest(NextPageJsHarness):
             "&lt;img src=x onerror=&#39;1&#39; data-note=&quot;&amp;&quot;&gt;",
             out,
         )
+
+    def test_payload_clock_durations_use_compact_second_through_day_tiers(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = {generated: 10000};
+const values = [null, NaN, Infinity, -1, 0, 59.9, 60, 3599, 3600, 7740,
+  86400, 90 * 86400 + 3 * 3600];
+console.log(JSON.stringify({
+  formatted: values.map(nextFormatDuration),
+  since: [null, "bad", 10010, 9700].map(nextDurationSince)
+}));
+"""
+        )
+
+        self.assertEqual(
+            [
+                None,
+                None,
+                None,
+                None,
+                "0s",
+                "59s",
+                "1m",
+                "59m",
+                "1h 0m",
+                "2h 9m",
+                "1d 0h",
+                "90d 3h",
+            ],
+            out["formatted"],
+        )
+        self.assertEqual([None, None, "0s", "5m"], out["since"])
 
     def test_the_next_bundle_mounts_the_overview_breadcrumb(self) -> None:
         out = self._run_page_js(

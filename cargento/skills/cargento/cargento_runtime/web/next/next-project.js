@@ -72,7 +72,7 @@ function nextProjectEntityState(entity){
   }
   const age = nextAgeSeconds(entity.session.last_activity);
   if(age != null && age >= NEXT_PROJECT_STALLED_SEC){
-    return {label: `stalled ${Math.floor(age / 60)}m`, unhealthy: true};
+    return {label: `stalled ${nextFormatDuration(age)}`, unhealthy: true};
   }
   return {label: "", unhealthy: false};
 }

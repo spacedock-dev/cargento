@@ -18,9 +18,9 @@ function nextProjectActivitySubagents(session){
   const subagents = Array.isArray(session.subagents) ? session.subagents : [];
   if(!subagents.length) return "";
   const rows = subagents.slice(0, NEXT_ACTIVITY_SUBAGENT_LIMIT).map((subagent, index) => {
-    const elapsed = nextMinutesSince(subagent && subagent.started_at);
+    const elapsed = nextDurationSince(subagent && subagent.started_at);
     const measured = elapsed == null ? "" :
-      `<span class="next-activity-subagent-elapsed">${elapsed}m</span>`;
+      `<span class="next-activity-subagent-elapsed">${elapsed}</span>`;
     return `<span class="next-activity-subagent" role="listitem" ` +
       `data-next-activity-subagent="${index}">` +
       `<span class="next-activity-subagent-name">${esc(subagent && subagent.name || "subagent")}</span>` +

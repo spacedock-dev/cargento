@@ -187,6 +187,36 @@ console.log(JSON.stringify(variants));
         self.assertNotIn("session started", out["idleWithoutStart"])
         self.assertIn("blocked 10m", out["waiting"])
 
+    def test_multi_hour_metadata_and_subagent_ages_share_the_duration_grammar(self) -> None:
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+session.state = "working";
+session.turn = {elapsed_h: "5h 40m"};
+session.subagents[0].started_at = 2260;
+renderNext();
+variants.working = __els.app.innerHTML;
+session.state = "idle";
+session.started_at = 2260;
+renderNext();
+variants.idle = __els.app.innerHTML;
+session.state = "needs_input";
+session.blocked_since = 2260;
+renderNext();
+variants.waiting = __els.app.innerHTML;
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertIn("started 5h 40m ago", out["working"])
+        self.assertIn("2h 9m", self.subagent_row(out["working"], 0))
+        self.assertIn("session started 2h 9m ago", out["idle"])
+        self.assertIn("blocked 2h 9m", out["waiting"])
+        for html in out.values():
+            self.assertNotIn("129m", html)
+
     def test_health_callout_uses_only_measured_long_turns_and_tool_loops(self) -> None:
         out = self.render(
             """

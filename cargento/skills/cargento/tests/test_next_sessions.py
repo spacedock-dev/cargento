@@ -160,6 +160,21 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("42 /m", html)
         self.assertIn("9m idle", html)
 
+    def test_multi_hour_wait_and_idle_metrics_use_compact_durations(self) -> None:
+        html = self.render(
+            """
+nextData.sessions.find(row => row.sid === "gate-z").blocked_since = 2260;
+nextData.sessions.find(row => row.sid === "idle-new").last_activity = 2260;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("2h 9m wait", self.session_row(html, "gate-z"))
+        self.assertIn("2h 9m idle", self.session_row(html, "idle-new"))
+        self.assertNotIn("129m", html)
+
     def test_an_unknown_rate_is_blank_while_a_measured_zero_is_shown(self) -> None:
         html = self.render(
             """
