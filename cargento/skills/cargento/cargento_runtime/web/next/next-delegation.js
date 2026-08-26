@@ -1,12 +1,13 @@
 const NEXT_DELEGATION_MIN_WINDOW_SEC = 600;
 const NEXT_DELEGATION_MAX_WINDOW_SEC = 6 * 60 * 60;
 
-/* Delegation is elapsed observed project time with no session in
-   `needs_input`, divided by all elapsed observed project time. Each snapshot
-   holds until the next one arrives, so the arithmetic follows wall time rather
-   than poll count. A gate left open over lunch therefore counts lunch as human
-   time and deliberately biases the delegation percentage DOWN: subtracting
-   that gap would invent a period in which the project could proceed unaided.
+/* Delegation is elapsed observed project time with at least one working
+   session and no session in `needs_input`, divided by working-or-gated time.
+   All-idle intervals count toward neither side. Each snapshot holds until the
+   next one arrives, so the arithmetic follows wall time rather than poll
+   count. A gate left open over lunch therefore counts lunch as human time and
+   deliberately biases the delegation percentage DOWN: subtracting that gap
+   would invent a period in which the project could proceed unaided.
    Transitions coalesced between polls remain unknowable in either direction. */
 function nextDelegationBatches(samples){
   const grouped = [];
@@ -43,10 +44,13 @@ function nextDelegationRange(window, startedAt, endedAt){
     const left = Math.max(startedAt, batch.at);
     const right = Math.min(endedAt, batches[index + 1].at);
     if(right <= left) continue;
+    const gated = batch.rows.some(sample => sample.state === "needs_input");
+    const working = batch.rows.some(sample => sample.state === "working");
+    if(!gated && !working) continue;
     if(coveredSince == null) coveredSince = left;
     const duration = right - left;
     totalSec += duration;
-    if(batch.rows.some(sample => sample.state === "needs_input")) continue;
+    if(gated) continue;
     delegatedSec += duration;
     let aggregateRate = 0;
     let batchMeasured = false;

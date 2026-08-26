@@ -20,7 +20,7 @@ let __delegationPayload = {
   }],
   sessions: [{
     sid: "session-one", harness: "claude", project: "alpha/repo",
-    state: "idle", state_detail: "awaiting your message", rate_per_min: 10,
+    state: "working", state_detail: "running", rate_per_min: 10,
     finished_at: null, active: false, subagents: []
   }],
   asks: []
@@ -39,6 +39,7 @@ __fetchImpl = async () => ({ok: true, json: async () => __delegationPayload});
     def test_known_split_reports_delegation_rate_and_human_turns(self) -> None:
         html = self.run_fixture(
             """
+nextWorkstreamGroups[0].samples[0].state = "idle";
 for(const [generated, state, rate] of [
   [1300, "needs_input", 100],
   [1600, "working", 30],
@@ -57,7 +58,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
         block = self.delegation_block(html)
 
-        self.assertIn("75%", block)
+        self.assertIn("50%", block)
         self.assertIn("of the time ran without you", block)
         self.assertIn("30 tok/m while delegated", block)
         self.assertIn("2 human turns", block)
@@ -82,6 +83,26 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("<progress", block)
         self.assertNotIn("tok/m", block)
         self.assertNotIn("human turn", block)
+
+    def test_all_idle_time_does_not_become_delegated_time(self) -> None:
+        html = self.run_fixture(
+            """
+nextWorkstreamGroups[0].samples[0].state = "idle";
+__delegationPayload = {
+  ...__delegationPayload,
+  generated: 1600,
+  sessions: [{...__delegationPayload.sessions[0], state: "idle"}]
+};
+await refreshNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        self.assertIn("no figure yet", block)
+        self.assertNotIn("%", block)
+        self.assertNotIn("<progress", block)
 
     def test_no_delegated_segment_withholds_rate_instead_of_printing_zero(self) -> None:
         html = self.run_fixture(
@@ -185,9 +206,9 @@ console.log(JSON.stringify(__els.app.innerHTML));
         html = self.run_fixture(
             """
 for(const [generated, state] of [
-  [11800, "idle"],
-  [22600, "idle"],
-  [44200, "idle"]
+  [11800, "working"],
+  [22600, "working"],
+  [44200, "working"]
 ]){
   if(generated === 11800){
     nextWorkstreamGroups[0].samples[0].state = "needs_input";
