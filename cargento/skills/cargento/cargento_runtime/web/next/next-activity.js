@@ -1,9 +1,15 @@
+/* `active` is freshness — inside the display window — not "generating now", so
+   filtering on it alone put every session the window still carries into GOING
+   ON. One live Codex row read as eleven, ten of them idle and captioned
+   "awaiting your message". The state is the only thing that says a session is
+   doing something, and it is what the header count and the sessions view
+   already read. */
 function nextProjectGoingOnSessions(sessions){
   const gates = sessions.filter(session => session.state === "needs_input");
-  const active = nextSessionWorkingOrder(
-    sessions.filter(session => session.active === true && session.state !== "needs_input"),
+  const working = nextSessionWorkingOrder(
+    sessions.filter(session => session.active === true && session.state === "working"),
   );
-  return [...gates, ...active];
+  return [...gates, ...working];
 }
 
 function nextProjectActivityCard(session, harnesses, project){
@@ -14,14 +20,11 @@ function nextProjectActivityCard(session, harnesses, project){
   const detail = activity ? `${harnessLabel} · ${activity}` : harnessLabel;
   const title = String(session.title || session.last_prompt || project);
   const route = nextRouteToken({view: "session", project, session: sid});
-  const blocked = session.state === "needs_input" ? " next-activity-card--blocked" : "";
-  const live = session.active === true && session.state !== "needs_input" ? " next-live" : "";
-  const stateLabel = session.state === "needs_input"
-    ? "needs input"
-    : (session.state === "working" ? "working" : "active");
-  const metric = ["needs_input", "working"].includes(session.state)
-    ? nextSessionMetric(session)
-    : "";
+  const gate = session.state === "needs_input";
+  const blocked = gate ? " next-activity-card--blocked" : "";
+  const live = gate ? "" : " next-live";
+  const stateLabel = gate ? "needs input" : "working";
+  const metric = nextSessionMetric(session);
   return `<button type="button" class="next-activity-card${blocked}${live}" ` +
     `data-next-going-on="${esc(sid)}" data-next-route="${esc(route)}">` +
     nextStatusDot(stateLabel, "next-activity-dot") +

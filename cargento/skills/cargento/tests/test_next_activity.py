@@ -69,6 +69,12 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
       tasks: [{id: "7", subject: "Archived payload item", status: "completed"}]
     },
     {
+      sid: "idle-fresh", harness: "codex", project: "alpha/repo",
+      state: "idle", active: true, title: "Idle but still in the window",
+      state_detail: "awaiting your message",
+      last_activity: 9900, subagents: [], tasks: []
+    },
+    {
       sid: "other", harness: "claude", project: "other/repo",
       state: "working", active: true, title: "Other project",
       rate_per_min: 9, last_activity: 9999, subagents: [],
@@ -103,6 +109,17 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn('data-next-going-on="inactive-work"', html)
         self.assertNotIn('data-next-going-on="idle"', html)
         self.assertNotIn("Other project", html)
+
+    def test_a_fresh_idle_session_is_not_going_on(self) -> None:
+        """`active` is freshness, not work. Reading it as work put every session
+        the display window still carried into GOING ON — the whole idle tail of a
+        busy repo, each row captioned "awaiting your message"."""
+        html = self.render()
+        assert isinstance(html, str)
+
+        self.assertNotIn('data-next-going-on="idle-fresh"', html)
+        self.assertNotIn("Idle but still in the window", html)
+        self.assertIn('data-next-going-on="work-a"', html)
 
     def test_cards_render_payload_clock_metrics_registry_labels_and_activity(self) -> None:
         html = self.render()
