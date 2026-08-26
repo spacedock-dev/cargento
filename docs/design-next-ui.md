@@ -275,9 +275,10 @@ such source or retention policy is implied here. DRC-4234 owns that later decisi
 
 The project rail includes STEER and GUARDRAILS because the preview needs the interaction shape, but
 neither is a session-control surface. Submitting a steer keeps a bounded draft record in that tab,
-renders the escaped draft, and says both that it was not delivered and that Cargento has no session
-write path. It makes no request. A disabled field was rejected because it could not demonstrate the
-interaction, while an enabled field with no receipt would look like a successful send.
+retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
+escaped receipt says both that it was not delivered and that Cargento has no session write path. It
+makes no request. A disabled field was rejected because it could not demonstrate the interaction,
+while an enabled field with no receipt would look like a successful send.
 
 Guardrail rules are viewer preferences. They are stored under a project-label key in the next
 bundle's localStorage namespace, capped at 50 rules of 500 characters, and kept in memory if storage
