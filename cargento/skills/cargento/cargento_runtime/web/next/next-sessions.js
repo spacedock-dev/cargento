@@ -56,7 +56,7 @@ function nextSessionRow(session, labels, collisions){
   const harness = String(session.harness == null ? "" : session.harness);
   const harnessLabel = labels.get(harness) || harness;
   const title = String(session.title || session.last_prompt || "");
-  const route = nextRouteToken({view: "project", project, session: null});
+  const route = nextRouteToken({view: "session", project, session: String(session.sid || "")});
   const stateClass = session.state === "needs_input"
     ? " next-session-row--blocked"
     : (session.state === "working" ? " next-session-row--working" : "");

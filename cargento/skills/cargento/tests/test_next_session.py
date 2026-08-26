@@ -306,18 +306,22 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn(asking_title(""), html)
         self.assertNotIn("unregistered is asking you", html)
 
-    def test_a_session_outside_the_payload_has_an_explicit_state(self) -> None:
-        html = self.render(
+    def test_a_missing_sid_or_wrong_project_has_an_explicit_outside_payload_state(self) -> None:
+        out = self.render(
             """
 nextRoute = {view: "session", project: "alpha/repo", session: "missing"};
 renderNext();
-console.log(JSON.stringify(__els.app.innerHTML));
+const missing = __els.app.innerHTML;
+nextRoute = {view: "session", project: "other/repo", session: "session-1234567890abcdef"};
+renderNext();
+console.log(JSON.stringify({missing, wrongProject: __els.app.innerHTML}));
 """
         )
-        assert isinstance(html, str)
+        assert isinstance(out, dict)
 
-        self.assertIn('data-next-session-state="outside-payload"', html)
-        self.assertIn("This session is outside the current payload.", html)
+        for html in out.values():
+            self.assertIn('data-next-session-state="outside-payload"', html)
+            self.assertIn("This session is outside the current payload.", html)
 
 
 if __name__ == "__main__":

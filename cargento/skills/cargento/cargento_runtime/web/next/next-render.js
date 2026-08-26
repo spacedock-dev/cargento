@@ -11,6 +11,7 @@ function nextOverviewBody(tab){
 
 function nextDetailBody(route){
   if(route.view === "project") return nextProjectView(route.project);
+  if(route.view === "session") return nextSessionView(route.project, route.session);
   return "";
 }
 
