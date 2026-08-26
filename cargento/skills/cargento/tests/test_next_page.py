@@ -131,6 +131,76 @@ class NextPageAssetContractTest(unittest.TestCase):
         used = set(re.findall(r"var\((--[\w-]+)", page))
         self.assertEqual(set(), used - declared, "next page uses CSS variables nothing declares")
 
+    def test_the_next_palette_tracks_system_light_and_dark_themes(self) -> None:
+        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        light = re.search(r"\A:root\{([^}]*)\}", styles, re.DOTALL)
+        dark = re.search(
+            r"@media\(prefers-color-scheme:dark\)\{\s*:root\{([^}]*)\}\s*\}",
+            styles,
+            re.DOTALL,
+        )
+        expected = {
+            "light": {
+                "--bg": "#f6f3ec",
+                "--panel": "#fffdf8",
+                "--ink": "#26241d",
+                "--ink2": "#423e33",
+                "--ink3": "#615d52",
+                "--line": "#ded7c7",
+                "--accent": "oklch(0.80 0.16 122)",
+                "--alert": "oklch(0.48 0.20 27)",
+                "--sunk": "#f0ece2",
+                "--line2": "#b3aa95",
+                "--accent-ink": "oklch(0.34 0.07 130)",
+                "--warn": "oklch(0.74 0.11 78)",
+                "--warnink": "oklch(0.44 0.10 70)",
+            },
+            "dark": {
+                "--bg": "#1a1916",
+                "--panel": "#222019",
+                "--ink": "#efece3",
+                "--ink2": "#c9c5ba",
+                "--ink3": "#a19d92",
+                "--line": "#3a362c",
+                "--accent": "oklch(0.84 0.17 122)",
+                "--alert": "oklch(0.76 0.17 27)",
+                "--sunk": "#161512",
+                "--line2": "#5a5245",
+                "--accent-ink": "oklch(0.86 0.10 128)",
+                "--warn": "oklch(0.78 0.11 78)",
+                "--warnink": "oklch(0.82 0.10 76)",
+            },
+        }
+
+        self.assertIsNotNone(light)
+        self.assertIsNotNone(dark)
+        blocks = {
+            "light": light.group(1) if light else "",
+            "dark": dark.group(1) if dark else "",
+        }
+        for theme, values in expected.items():
+            tokens = dict(re.findall(r"(--[\w-]+):([^;]+);", blocks[theme]))
+            with self.subTest(theme=theme):
+                self.assertEqual(values, {name: tokens.get(name) for name in values})
+
+        def luminance(value: str) -> float:
+            channels = [int(value[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [
+                channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+                for channel in channels
+            ]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        def contrast(first: str, second: str) -> float:
+            high, low = sorted((luminance(first), luminance(second)), reverse=True)
+            return (high + 0.05) / (low + 0.05)
+
+        for theme, surface in (("light", "--sunk"), ("dark", "--panel")):
+            values = expected[theme]
+            for ink in ("--ink", "--ink2", "--ink3"):
+                with self.subTest(theme=theme, ink=ink):
+                    self.assertGreater(contrast(values[ink], values[surface]), 4.5)
+
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
         live_rule = re.search(r"\.next-live \.next-status-dot\{([^}]*)\}", styles)
@@ -244,16 +314,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(20_672, len(styles))
+        self.assertEqual(20_987, len(styles))
         self.assertEqual(
-            "3570703d51a3f5b10850faf09d0be9183214c53bebc7a17afb8ed146589118ce",
+            "6a5790b10845d7b6b2993bd1b898394558f5746925be0763e918e38b1c44091e",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(93_591, len(assembled))
+        self.assertEqual(93_906, len(assembled))
         self.assertEqual(
-            "8c5c5ed4d7c3ffdcdca8beedce2454b39421aaffb58fd751e2dd8001f6357ba4",
+            "772cead948e562d140d823c39168f34f19373806903ea12289d826ebff6101e1",
             hashlib.sha256(assembled).hexdigest(),
         )
 

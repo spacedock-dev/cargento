@@ -1,16 +1,24 @@
 :root{
-  /* Copied rather than imported from the frozen bundle. This preview is dark
-     unconditionally, so its root values are the old bundle's dark values. */
+  /* Copied rather than imported from the frozen bundle so the two page
+     assemblies keep independent byte contracts. */
   --fs-2xs:11.5px; --fs-xs:12.5px; --fs-sm:14px; --fs-md:15.5px; --fs-lg:17px; --fs-xl:19px;
   --fs-2xl:23px; --fs-num:28px; --fs-brand:38px; --fs-hero:52px;
   --sel-bg:color-mix(in oklab,var(--accent) 26%,transparent);
   --sel-bd:color-mix(in oklab,var(--accent) 52%,transparent);
-  --bg:#1a1916; --panel:#222019; --ink:#efece3; --ink2:#c9c5ba; --ink3:#a19d92;
-  --line:#3a362c; --accent:oklch(0.84 0.17 122); --alert:oklch(0.76 0.17 27);
+  --bg:#f6f3ec; --panel:#fffdf8; --ink:#26241d; --ink2:#423e33; --ink3:#615d52;
+  --line:#ded7c7; --accent:oklch(0.80 0.16 122); --alert:oklch(0.48 0.20 27);
   --sans:'Space Grotesk',system-ui,-apple-system,sans-serif;
   --mono:'Space Mono',ui-monospace,monospace;
-  --sunk:#161512; --line2:#5a5245; --accent-ink:oklch(0.86 0.10 128);
-  --warn:oklch(0.78 0.11 78); --warnink:oklch(0.82 0.10 76);
+  --sunk:#f0ece2; --line2:#b3aa95; --accent-ink:oklch(0.34 0.07 130);
+  --warn:oklch(0.74 0.11 78); --warnink:oklch(0.44 0.10 70);
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#1a1916; --panel:#222019; --ink:#efece3; --ink2:#c9c5ba; --ink3:#a19d92;
+    --line:#3a362c; --accent:oklch(0.84 0.17 122); --alert:oklch(0.76 0.17 27);
+    --sunk:#161512; --line2:#5a5245; --accent-ink:oklch(0.86 0.10 128);
+    --warn:oklch(0.78 0.11 78); --warnink:oklch(0.82 0.10 76);
+  }
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
