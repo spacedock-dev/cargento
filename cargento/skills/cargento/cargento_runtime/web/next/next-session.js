@@ -50,9 +50,14 @@ function nextSessionMeta(session){
   if(session.state === "needs_input"){
     const blocked = nextMinutesSince(session.blocked_since);
     if(blocked != null) parts.push(`blocked ${blocked}m`);
-  }else{
+  }else if(session.state === "working"){
+    const turn = session.turn;
+    const elapsed = turn && typeof turn === "object" && !Array.isArray(turn) &&
+      typeof turn.elapsed_h === "string" ? turn.elapsed_h.trim() : "";
+    if(elapsed) parts.push(`started ${elapsed} ago`);
+  }else if(session.state === "idle"){
     const started = nextMinutesSince(session.started_at);
-    if(started != null) parts.push(`started ${started}m ago`);
+    if(started != null) parts.push(`session started ${started}m ago`);
   }
   return parts.join(" · ");
 }

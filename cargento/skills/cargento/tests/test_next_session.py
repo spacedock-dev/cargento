@@ -30,6 +30,7 @@ const __nextPayload = {{
     last_prompt: "Older instruction", state_detail: "open question · AskUserQuestion",
     blocked_since: 9400, last_activity: 9400, started_at: 8200,
     session_output_tokens: 12500, turn_output_tokens: 2400,
+    turn: {{elapsed_h: "5m"}},
     tasks: [
       {{id: "task-pending", subject: "Prepare payload", status: "pending"}},
       {{id: "task-done", subject: "Ship parser", status: "completed"}},
@@ -103,12 +104,56 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn(f'data-next-session-detail="{self.SID}"', html)
         self.assertIn(">Compile the release</h1>", html)
-        self.assertIn("Claude Code · session- · running tests · started 30m ago", html)
+        self.assertIn("Claude Code · session- · running tests · started 5m ago", html)
+        self.assertNotIn("started 30m ago", html)
         self.assertNotIn("blocked ", html)
         self.assertNotIn("AGENT IS ASKING", html)
         self.assertNotIn("TASKS ·", html)
         self.assertNotIn("SUBAGENTS", html)
         self.assertNotIn("output tokens", html)
+
+    def test_session_age_metadata_matches_state_and_requires_measurement(self) -> None:
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+session.state = "working";
+renderNext();
+variants.working = __els.app.innerHTML;
+for(const [name, turn] of Object.entries({
+  noTurn: null,
+  missingElapsed: {},
+  emptyElapsed: {elapsed_h: ""},
+  malformedElapsed: {elapsed_h: 5}
+})){
+  session.turn = turn;
+  renderNext();
+  variants[name] = __els.app.innerHTML;
+}
+session.state = "idle";
+session.turn = {elapsed_h: "5m"};
+renderNext();
+variants.idle = __els.app.innerHTML;
+session.started_at = null;
+renderNext();
+variants.idleWithoutStart = __els.app.innerHTML;
+session.state = "needs_input";
+session.blocked_since = 9400;
+renderNext();
+variants.waiting = __els.app.innerHTML;
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertIn("started 5m ago", out["working"])
+        self.assertNotIn("started 30m ago", out["working"])
+        for variant in ("noTurn", "missingElapsed", "emptyElapsed", "malformedElapsed"):
+            with self.subTest(variant=variant):
+                self.assertNotIn("started ", out[variant])
+        self.assertIn("session started 30m ago", out["idle"])
+        self.assertNotIn("session started", out["idleWithoutStart"])
+        self.assertIn("blocked 10m", out["waiting"])
 
     def test_blocked_session_renders_all_exact_asks_in_payload_order_and_escapes_them(self) -> None:
         html = self.render()
