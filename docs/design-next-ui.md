@@ -96,6 +96,11 @@ session-detail renderer in NUI-8 consumes the route each row carries.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
 
+Every client-derived age uses one payload-clock grammar: `Ns` below a minute, `Nm` below an hour,
+`Nh Nm` below a day, then `Nd Nh`. Values are floored from the payload's `generated` time, never the
+browser clock. Missing or invalid timestamps omit the age, while a valid future timestamp clamps to
+`0s`.
+
 ## NUI-6: a project keeps its workflows separate
 
 A project is a display-label fold over sessions, while a Spacedock plan is a workflow strip on one
@@ -115,10 +120,10 @@ duplicating an entity or treating two different workflows as one plan.
 
 Ownership stays narrower than grouping. A live entity's source session proves its harness, so that
 row may show the harness and derive `blocked on you` from the source session. A non-live roster row
-does not prove which session owns it and leaves the owner blank. `stalled Nm` starts after 600
-seconds against the payload's `generated` clock. That floor is one complete token-rate evidence
-window. The 90-second collector threshold answers a different question: whether recent store
-activity is enough to call a session working.
+does not prove which session owns it and leaves the owner blank. `stalled <duration>` starts after
+600 seconds against the payload's `generated` clock and uses the NUI-5 duration grammar. That floor
+is one complete token-rate evidence window. The 90-second collector threshold answers a different
+question: whether recent store activity is enough to call a session working.
 
 The project header folds those same per-entity states into an `N entities unhealthy` count. It
 renders the count only when at least one named plan exists. A plan with no published entities
@@ -144,8 +149,9 @@ project label and session ID.
 Each activity card also names its published subagents. The compact list keeps payload order and
 shows at most six rows, followed by `+N more` when the payload carries more. An elapsed age appears
 only when `started_at` is measurable against the payload's `generated` clock; missing or invalid
-stamps leave the name in place without inventing an age. Malformed subagent collections produce no
-list, and malformed entries keep the neutral `subagent` fallback used by session detail.
+stamps leave the name in place without inventing an age. The age uses the NUI-5 duration grammar.
+Malformed subagent collections produce no list, and malformed entries keep the neutral `subagent`
+fallback used by session detail.
 
 The rate phrase preserves the payload's distinction between absence and zero. A session from a
 rate-blind harness carries `rate_per_min: null`; a reporting harness that measured no output in the
@@ -185,7 +191,8 @@ and activity detail. A working row labels its measured `turn.elapsed_h` as the c
 an absent, empty, or malformed turn measurement removes that clause instead of falling back to the
 transcript's creation time. A needs-input row derives its blocked age against the payload's
 `generated` clock. An idle row may use the same clock for an explicitly named session-start age.
-Missing timestamps remove those clauses. They never become zero.
+Those two client-derived ages use the NUI-5 duration grammar; the working turn keeps the server's
+published string. Missing timestamps remove those clauses. They never become zero.
 
 The header also carries a static rail for the three published states: warning for needs input,
 accent for working, and muted for idle. Matching visually hidden text keeps the state from becoming
@@ -212,11 +219,12 @@ removal.
 Task provenance stays Claude-only because no other collector publishes that list. The count is
 derived from the rows being rendered, and their payload order is unchanged. Subagents also keep
 payload order. Their live dot is static, and elapsed time appears only when `started_at` was
-measured; model names are outside this view. For working sessions, the footer prefers measured
-turn output tokens. For waiting and idle sessions, it prefers the measured session total. Either
-state falls back to the other measured source and labels the visible number `this turn` or
-`this session` from the source it actually chose. An absent reading stays absent and a real zero
-stays visible, so a lifetime total cannot read as if it described the current request.
+measured, using the NUI-5 duration grammar; model names are outside this view. For working sessions,
+the footer prefers measured turn output tokens. For waiting and idle sessions, it prefers the
+measured session total. Either state falls back to the other measured source and labels the visible
+number `this turn` or `this session` from the source it actually chose. An absent reading stays
+absent and a real zero stays visible, so a lifetime total cannot read as if it described the current
+request.
 
 Reusing `web/session.js` or `web/ask.js` would join the two script scopes and break the default-page
 byte firewall. A new session endpoint would duplicate the current payload and expand the HTTP
