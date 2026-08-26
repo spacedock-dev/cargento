@@ -324,14 +324,20 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual(3, sum("font-weight:700;" in face for face in mono))
 
         expected_notices = {
-            "fonts/SpaceGrotesk-OFL.txt": "Copyright 2020 The Space Grotesk Project Authors",
-            "fonts/SpaceMono-OFL.txt": "Copyright 2016 The Space Mono Project Authors",
+            "fonts/SpaceGrotesk-OFL.txt": (
+                4_402,
+                "c6dec685825f73b18c20926fddc65e8315642e12986f15db0699170940a09efc",
+            ),
+            "fonts/SpaceMono-OFL.txt": (
+                4_392,
+                "8e4ee42b2553e1e01504e61cb0d46d148cd8c9e5eacaa3622a7df2d4f2955b9f",
+            ),
         }
-        for name, copyright_line in expected_notices.items():
+        for name, (size, digest) in expected_notices.items():
             with self.subTest(notice=name):
-                notice = frontend_page.next_asset_path(name).read_text(encoding="utf-8")
-                self.assertIn(copyright_line, notice)
-                self.assertIn("SIL OPEN FONT LICENSE Version 1.1", notice)
+                notice = frontend_page.next_asset_path(name).read_bytes()
+                self.assertEqual(size, len(notice))
+                self.assertEqual(digest, hashlib.sha256(notice).hexdigest())
         sources = frontend_page.next_asset_path("fonts/SOURCES.txt").read_text(encoding="utf-8")
         self.assertIn("Space Grotesk v22", sources)
         self.assertIn("Space Mono v17", sources)

@@ -1,7 +1,7 @@
 ---
 name: cargento
 description: Open Cargento, a local agent-cartography dashboard for Claude Code, Codex, Pi, Gemini, Antigravity, Copilot, OpenCode, Cursor, Goose, and Droid sessions, with subagents, task progress, token rate, ETAs, and Claude input-wait notifications. Use for “open cargento” or “monitor agent progress”.
-license: Apache-2.0
+license: Apache-2.0 AND OFL-1.1
 ---
 
 # Cargento

@@ -54,6 +54,11 @@ PORTABILITY_MARKERS = {
     "subagent_type": "describe the required worker capability instead of a Claude API field",
 }
 SHARED_FRONTMATTER_FIELDS = {"name", "description", "license"}
+# The skill now carries font software whose OFL terms must survive distribution;
+# pinning the expression prevents its metadata from reverting to Apache-only.
+SHIPPED_SKILL_LICENSES = {
+    ("cargento", "cargento"): "Apache-2.0 AND OFL-1.1",
+}
 MAX_CATALOG_TOKEN_ESTIMATE = 4_000
 # Prose documentation outside the plugin tree. validate_skills() covers bundled
 # skill Markdown; without this list the repository's own docs get no link check
@@ -1069,6 +1074,9 @@ def validate_skills(plugin_root: Path, validation: Validation) -> tuple[set[str]
         if name in names:
             validation.error(path, f"duplicate skill name {name!r}")
         names.add(name)
+        expected_license = SHIPPED_SKILL_LICENSES.get((plugin_root.name, name))
+        if expected_license is not None and metadata.get("license") != expected_license:
+            validation.error(path, f"frontmatter license must be {expected_license!r}")
         description = validate_skill_description(description, path, validation)
         catalog_lines.append(
             render_catalog_estimate_line(plugin_root.name, name, description, path)
