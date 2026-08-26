@@ -200,7 +200,12 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 """,
         )
 
-        self.assertIn("● 1 running · 3 subagents", out)
+        self.assertIn(
+            '<span class="next-running next-live">'
+            '<span class="next-status-dot" aria-label="live">●</span> '
+            "1 running · 3 subagents</span>",
+            out,
+        )
         self.assertIn(
             '<button type="button" class="next-gate" data-next-action="needs-input">'
             "1 need you</button>",
@@ -258,7 +263,12 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 """,
         )
 
-        self.assertIn("● 0 running · 0 subagents", out)
+        self.assertIn(
+            '<span class="next-running next-live">'
+            '<span class="next-status-dot" aria-label="live">●</span> '
+            "0 running · 0 subagents</span>",
+            out,
+        )
         self.assertNotIn("need you", out)
         self.assertNotIn('class="next-gate"', out)
         self.assertNotIn('data-next-action="needs-input"', out)
@@ -336,10 +346,10 @@ __fetchImpl = async () => {
 """,
         )
 
-        self.assertIn("● 1 running", out["good"])
+        self.assertIn('aria-label="live">●</span> 1 running', out["good"])
         self.assertNotIn("Refresh stalled", out["once"])
         self.assertIn("Refresh stalled", out["twice"])
-        self.assertIn("● 1 running", out["twice"])
+        self.assertIn('aria-label="live">●</span> 1 running', out["twice"])
         self.assertIn('data-next-state="stalled"', out["twice"])
 
 

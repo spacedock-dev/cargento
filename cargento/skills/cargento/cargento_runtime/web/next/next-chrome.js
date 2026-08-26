@@ -80,7 +80,7 @@ function renderNext(){
   app.innerHTML = '<header class="next-header">' +
     `<nav class="next-breadcrumb" aria-label="Breadcrumb">${nextBreadcrumb()}</nav>` +
     '<div class="next-header-right">' +
-    `<span class="next-running">● ${counts.running} running · ${counts.subagents} subagents</span>` +
+    `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} subagents</span>` +
     gate +
     '<details class="next-menu"><summary aria-label="More">···</summary>' +
     '<div class="next-menu-items">' +
