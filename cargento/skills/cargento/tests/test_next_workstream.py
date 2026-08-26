@@ -44,7 +44,9 @@ for(const [generated, state, rate] of [
 }
 const window = nextWorkstreamProjectWindow("alpha/repo");
 console.log(JSON.stringify({
-  events: window.events.map(event => ({at: event.at, state: event.state})),
+  events: window.events.map(event => ({
+    at: event.at, from: event.fromState, state: event.state, to: event.toState
+  })),
   samples: window.samples.map(sample => sample.rate),
   html: __els.app.innerHTML
 }));
@@ -54,9 +56,14 @@ console.log(JSON.stringify({
 
         self.assertEqual(
             [
-                {"at": 1060, "state": "working"},
-                {"at": 1120, "state": "needs_input"},
-                {"at": 1180, "state": "idle"},
+                {"at": 1060, "from": "idle", "state": "working", "to": "working"},
+                {
+                    "at": 1120,
+                    "from": "working",
+                    "state": "needs_input",
+                    "to": "needs_input",
+                },
+                {"at": 1180, "from": "needs_input", "state": "idle", "to": "idle"},
             ],
             out["events"],
         )

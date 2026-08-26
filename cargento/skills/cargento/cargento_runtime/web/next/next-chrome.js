@@ -129,7 +129,13 @@ document.addEventListener("click", event => {
 
 document.addEventListener("keydown", event => {
   const tag = event.target && String(event.target.tagName || "").toLowerCase();
-  if(event.metaKey || event.ctrlKey || event.altKey || ["input", "select", "textarea"].includes(tag)) return;
+  if(event.metaKey || event.ctrlKey || event.altKey) return;
+  if(nextWorkstreamToggleTarget(event) && ["Enter", " ", "Spacebar"].includes(event.key)){
+    event.preventDefault();
+    nextWorkstreamToggle();
+    return;
+  }
+  if(["input", "select", "textarea"].includes(tag)) return;
   if(event.key === "Escape"){
     if(nextRoute.view === "session"){
       event.preventDefault();

@@ -23,7 +23,9 @@ async function refreshNext(){
   try{
     const response = await fetch(nextDataUrl());
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
-    nextData = await response.json();
+    const fresh = await response.json();
+    nextObserveWorkstream(fresh);
+    nextData = fresh;
     nextRefreshFailures = 0;
   }catch(_error){
     nextRefreshFailures += 1;

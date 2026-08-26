@@ -198,6 +198,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/next/next-project.js",
     "skills/cargento/cargento_runtime/web/next/next-activity.js",
     "skills/cargento/cargento_runtime/web/next/next-session.js",
+    "skills/cargento/cargento_runtime/web/next/next-workstream.js",
     "skills/cargento/cargento_runtime/web/next/next-render.js",
     "skills/cargento/cargento_runtime/web/page.py",
 )

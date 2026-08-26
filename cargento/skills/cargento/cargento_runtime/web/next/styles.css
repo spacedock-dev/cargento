@@ -126,6 +126,21 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-activity-done li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;align-items:start;min-height:42px;padding:11px 10px;border-bottom:1px solid var(--line);font-size:var(--fs-sm)}
 .next-activity-done-glyph{color:var(--accent-ink);font-family:var(--mono)}
 .next-activity-empty{min-height:42px;margin:0;padding:12px 10px;border-bottom:1px solid var(--line);color:var(--ink2);font-size:var(--fs-xs)}
+.next-workstream{border-top:1px solid var(--line2)}
+.next-workstream-header{border-bottom:1px solid var(--line)}
+.next-workstream-header button{display:flex;justify-content:space-between;width:100%;padding:12px 10px;border:0;background:transparent;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);text-align:left;cursor:pointer}
+.next-workstream-header button:hover{background:var(--panel)}
+.next-workstream-header button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.next-workstream-header small{font:inherit;text-transform:none}
+.next-workstream ol{margin:0;padding:0;list-style:none}
+.next-workstream-event{display:grid;grid-template-columns:48px 16px minmax(130px,auto) minmax(20px,1fr) auto;gap:9px;align-items:center;min-height:42px;padding:7px 10px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:var(--fs-xs)}
+.next-workstream-event time,.next-workstream-right{color:var(--ink3);font-size:var(--fs-2xs)}
+.next-workstream-node{color:var(--accent-ink)}
+.next-workstream-event--human .next-workstream-node,.next-workstream-right--ask{color:var(--warnink)}
+.next-workstream-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next-workstream-leader{height:1px;border-top:1px dotted var(--line2)}
+.next-workstream-right{white-space:nowrap}
+.next-workstream-empty{min-height:42px;margin:0;padding:12px 10px;border-bottom:1px solid var(--line);color:var(--ink2);font-size:var(--fs-xs)}
 .next-project-detail-empty{padding:24px;border:1px solid var(--line);color:var(--ink2);font-size:var(--fs-sm)}
 .next-session-detail{max-width:900px;margin:34px auto 0;padding:0 24px}
 .next-session-detail-header{padding:8px 0 28px;border-bottom:1px solid var(--line2)}
