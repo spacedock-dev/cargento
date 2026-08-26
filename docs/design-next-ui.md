@@ -86,7 +86,9 @@ progress and current state. Estimate and delegation stay visibly withheld: neith
 project scope, and folding per-session values would turn a guess into a measurement. The
 sessions slot now renders the current payload in three independent blocks: the gate queue keeps
 the server's order, working rows use the established attention ladder, and the idle tail puts the
-nearest activity first. The session-detail renderer in NUI-8 consumes the route each row carries.
+nearest activity first. Its neutral `METRIC` column keeps each cell's state-specific `wait`, `/m`,
+or `idle` unit instead of calling all three values rates. The session-detail renderer in NUI-8
+consumes the route each row carries.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
 
