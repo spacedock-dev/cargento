@@ -1426,15 +1426,16 @@ console.log(JSON.stringify(out));
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_a_harness_that_reports_no_rate_does_not_read_as_zero(self) -> None:
-        # Copilot, OpenCode, Cursor and Droid never populate rate_per_min. Both
-        # views say so rather than printing the 0 those rows carry: the regular
+        # Copilot, OpenCode, Cursor and Droid never populate rate_per_min. Their
+        # wire value is null, and both views say so rather than printing zero:
+        # the regular
         # card reads "rate unknown" and the ledger cell shows a dash. A fabricated
         # "0 /m" would be indistinguishable from a session that really did
         # generate nothing, which is a different fact.
         checks = """
 render(payload([
   mk({sid: "cp", session: "cp", harness: "copilot", state: "working", active: true,
-      last_activity: 99999, rate_per_min: 0}),
+      last_activity: 99999, rate_per_min: null}),
   mk({sid: "cl", session: "cl", state: "working", active: true,
       last_activity: 99999, rate_per_min: 1200})]));
 const h = __els.app.innerHTML;
@@ -1448,8 +1449,8 @@ console.log(JSON.stringify({
 
     # A strip that states, per harness, whether a rate from it is a measurement
     # at all — which is what the server publishes as `reports_rate`. Copilot is
-    # the rate-less row here; its sessions carry the same 0 Claude's would for a
-    # session that generated nothing, so only this flag separates them.
+    # the rate-less row here; its sessions carry null while Claude can carry a
+    # measured zero.
     BURN_FIXTURE = """
 const strip = [
   {key: "claude", label: "Claude Code", discovered: true, error: null, reports_rate: true},
@@ -1459,7 +1460,7 @@ const working = (sid, harness, rate) => mk({sid, session: sid, harness, state: "
   active: true, last_activity: 99990, rate_per_min: rate});
 const burnBoard = (over) => Object.assign(payload([
   working("slow", "claude", 40), working("fast", "codex", 3100),
-  working("zero", "claude", 0), working("mute", "copilot", 0),
+  working("zero", "claude", 0), working("mute", "copilot", null),
   working("mid", "codex", 900)]), {harnesses: strip, rate_window_sec: 600}, over || {});
 const seq = h => [...h.matchAll(/data-arg="[a-z]+:([a-z]+)" role="button"/g)].map(m => m[1]);
 const dividers = h => [...h.matchAll(/cm-div-k">([^<]*)<\\/span><span class="cm-div-n">(\\d+)</g)]
@@ -1484,8 +1485,8 @@ const waiting = (sid, harness, rate) => mk({sid, session: sid, harness,
 // stopped nearly two minutes ago.
 const contra = () => burnBoard({sessions: [
   stopped("stop", "claude", 9000, 110), working("work", "codex", 300),
-  working("zed", "claude", 0), working("mute", "copilot", 0),
-  waiting("held", "claude", 4000), stopped("hush", "copilot", 0, 3000)]});
+  working("zed", "claude", 0), working("mute", "copilot", null),
+  waiting("held", "claude", 4000), stopped("hush", "copilot", null, 3000)]});
 // One row's rate cell exactly as rendered — "" for an empty cell, so a missing
 // number and a dash cannot be mistaken for each other here either.
 const rateCellOf = (h, key) => {
@@ -1712,9 +1713,9 @@ console.log(JSON.stringify(out));
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_footer_total_says_when_it_is_only_a_floor(self) -> None:
-        # `summary.rate_per_min` sums every ACTIVE session's rate, and the four
-        # harnesses that never measure one contribute the same 0 a reporting
-        # harness sends for a session that generated nothing — so on a mixed board
+        # `summary.rate_per_min` sums every measured ACTIVE session rate, while
+        # the four harnesses that never measure one contribute no number — so on
+        # a mixed board
         # the footer's single number is the measured part of the output printed as
         # all of it. The ledger dashes those rows one at a time; this is the number
         # a reader takes for the board, and calm used to print it bare while the
@@ -1734,7 +1735,7 @@ const rated = (sessions, total) => burnBoard(
   {sessions, summary: Object.assign({}, payload([]).summary, {rate_per_min: total,
     active_sessions: sessions.filter(x => x.active).length})});
 // One measured session, one active session whose harness takes no measurement.
-const partial = rated([working("live", "claude", 450), working("mute", "copilot", 0)], 450);
+const partial = rated([working("live", "claude", 450), working("mute", "copilot", null)], 450);
 render(partial);
 out.partial = foot(__els.app.innerHTML);
 out.partialNote = floorOf(__els.app.innerHTML);
@@ -1750,10 +1751,10 @@ out.exactNote = floorOf(__els.app.innerHTML);
 out.exactClean = !/≥|a floor|no rate from/.test(__els.app.innerHTML);
 // The whole board unmeasured: a bare 0 here would read as "nothing is being
 // generated", which is the one thing this payload cannot say. Singular, too.
-render(rated([working("mute", "copilot", 0)], 0));
+render(rated([working("mute", "copilot", null)], 0));
 out.blind = foot(__els.app.innerHTML);
 out.blindNote = floorOf(__els.app.innerHTML);
-// The same 0, measured. Claude reports a rate, so a session of it generating
+// A zero, measured. Claude reports a rate, so a session of it generating
 // nothing IS in the total, correctly and completely — the absence of a
 // measurement is what makes a floor, never the size of one.
 render(rated([working("zero", "claude", 0)], 0));
@@ -1763,12 +1764,12 @@ out.measuredZeroNote = floorOf(__els.app.innerHTML);
 // from it and must not make the total a floor.
 render(rated([working("live", "claude", 450),
               mk({sid: "gone", session: "gone", harness: "copilot", state: "working",
-                  active: false, last_activity: 99990, rate_per_min: 0})], 450));
+                  active: false, last_activity: 99990, rate_per_min: null})], 450));
 out.inactive = foot(__els.app.innerHTML);
 out.inactiveNote = floorOf(__els.app.innerHTML);
 // Two harnesses missing: both named, and the sentence agrees with itself.
-render(rated([working("live", "claude", 450), working("mute", "copilot", 0),
-              working("cur", "cursor", 0)], 450));
+render(rated([working("live", "claude", 450), working("mute", "copilot", null),
+              working("cur", "cursor", null)], 450));
 out.twoNote = floorOf(__els.app.innerHTML);
 console.log(JSON.stringify(out));
 """

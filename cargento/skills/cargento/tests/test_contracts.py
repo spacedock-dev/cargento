@@ -127,6 +127,39 @@ class ApplicationIsolationTest(unittest.TestCase):
             usage_is_fetch=usage_is_fetch,
         )
 
+    @staticmethod
+    def _rate_spec(
+        key: str,
+        *,
+        reports_rate: bool,
+        rate_per_min: int = 0,
+        active: bool = False,
+    ) -> aggregate.HarnessSpec:
+        def collect(
+            config: RuntimeConfig,
+            state: RuntimeState,
+            now: float,
+            window_hours: float,
+            show_all: bool,
+        ) -> list[dict[str, Any]]:
+            del state, window_hours, show_all
+            row = runtime_sessions.base_session(key, f"{key}-0", config.home)
+            row.update(
+                last_activity=now,
+                rate_per_min=rate_per_min,
+                active=active,
+                state="working" if active else "idle",
+            )
+            return [row]
+
+        return aggregate.HarnessSpec(
+            key=key,
+            label=key.title(),
+            discover=lambda _config, _state: True,
+            collect=collect,
+            reports_rate=reports_rate,
+        )
+
     def _application(
         self,
         *,
@@ -201,6 +234,41 @@ class ApplicationIsolationTest(unittest.TestCase):
         self.assertEqual(([], []), (diag_a, diag_b))
         self.assertIsNot(popups_a, popups_b)
         self.assertEqual((11.0, 22.0), (state_a.server_started, state_b.server_started))
+
+    def test_rate_blind_rows_publish_unknown_without_erasing_a_real_zero(self) -> None:
+        application, *_ = self._application(
+            home="/home/rates",
+            started=1.0,
+            clock=1000.0,
+            notifier="none",
+            harnesses=(
+                self._rate_spec("blind", reports_rate=False),
+                self._rate_spec("measured", reports_rate=True),
+            ),
+        )
+
+        rows = application.collect(show_all=True)["sessions"]
+        rates = {row["harness"]: row["rate_per_min"] for row in rows}
+
+        self.assertIsNone(rates["blind"])
+        self.assertEqual(0, rates["measured"])
+
+    def test_summary_sums_measured_rates_when_an_active_rate_is_unknown(self) -> None:
+        application, *_ = self._application(
+            home="/home/rates",
+            started=1.0,
+            clock=1000.0,
+            notifier="none",
+            harnesses=(
+                self._rate_spec("blind", reports_rate=False, rate_per_min=99, active=True),
+                self._rate_spec("measured", reports_rate=True, rate_per_min=7, active=True),
+            ),
+        )
+
+        data = application.collect(show_all=True)
+
+        self.assertIsNone(data["sessions"][0]["rate_per_min"])
+        self.assertEqual(7, data["summary"]["rate_per_min"])
 
     def _get(self, port: int, path: str) -> tuple[int, bytes]:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
@@ -1607,7 +1675,9 @@ class HarnessContractTest(HarnessContractTestCase):
                 data = self.collect(build, when=self.NOW + 86_400)
                 for session in self.sessions_for(data, key):
                     self.assertNotEqual("working", session["state"])
-                    self.assertEqual(0, session["rate_per_min"])
+                    reports_rate = next(spec.reports_rate for spec in REGISTRY if spec.key == key)
+                    expected_rate = 0 if reports_rate else None
+                    self.assertEqual(expected_rate, session["rate_per_min"])
 
     def test_one_session_in_two_candidate_roots_yields_one_row(self) -> None:
         # De-duplication has to be wired into collect(), not merely available:

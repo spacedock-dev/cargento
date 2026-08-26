@@ -109,8 +109,8 @@ class FrontendAssetContractTest(unittest.TestCase):
                 "e44eb8e73af3f6fe9c98f5dd65d763f6508b7bf029c98dcc308bf6688541a71e",
             ),
             "regular.js": (
-                49_394,
-                "de12571765fe60312097a7c67cf9a1644404d8bca2a0508dac1dc3d70b4696ed",
+                49_323,
+                "b6d833f4aacda7b1e7cb24f8abf9dd66949272e3fc80e8d3118a9b6441a8265e",
             ),
             "mode.js": (
                 4_619,
@@ -168,9 +168,9 @@ class FrontendAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(321_570, len(assembled))
+        self.assertEqual(321_499, len(assembled))
         self.assertEqual(
-            "e895211478eeeb6e17ff8230aa7a837f499d334f7e82795dc0393c726e7107b1",
+            "85147ae8dd4516f21b9fbbe02ad25b32b83b8b796fb79d8196ec538f630aa8be",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -633,10 +633,11 @@ class CargentoServerTest(PageJsHarness):
 
     def test_only_the_harnesses_with_token_accounting_declare_a_rate(self) -> None:
         # Rate coverage is partial and the page has to be told which half it is
-        # looking at, because a harness that never measured and a session that
-        # generated nothing both publish 0. Asserted as a literal set, not as a
-        # re-read of the registry: comparing the flag to itself would hold no
-        # matter which way a row was set. OpenCode, Cursor and Droid read no
+        # looking at. A harness that never measures now publishes null, while a
+        # reporting session that generated nothing publishes a real zero.
+        # Asserted as a literal set, not as a re-read of the registry: comparing
+        # the flag to itself would hold no matter which way a row was set.
+        # OpenCode, Cursor and Droid read no
         # token accounting at all, and Copilot's store carries AI-Unit quota
         # receipts with no per-message token counts — flipping one of them on
         # here without teaching its collector to fill `rate_per_min` would make
@@ -2842,8 +2843,7 @@ console.log(JSON.stringify({
 
     # A board of working sessions plus the strip that says, per harness, whether
     # a rate from it is a measurement at all. Copilot is the rate-less row: its
-    # sessions carry the same 0 Claude's would for a session that generated
-    # nothing, and only `reports_rate` separates the two facts.
+    # sessions carry null, while Claude can carry a measured zero.
     BURN_FIXTURE = """
 const sess = (sid, harness, rate) => ({
   harness, session: sid, sid, project: "proj", title: sid, last_prompt: "",
@@ -2883,7 +2883,7 @@ const cards = (sessions, over) => {
 out.marked = cards(all).map(pill);
 // A rate-less session on the board weakens the claim to the subset that can be
 // compared, and says how many rows it could not see.
-const withMute = [...all, sess("mute", "copilot", 0)];
+const withMute = [...all, sess("mute", "copilot", null)];
 out.hedged = cards(withMute).map(pill);
 out.hedgedTip = pillTip(cards(withMute)[0]);
 // Two sessions at the same rate are a tie, not a winner. Marking one of them
@@ -2892,7 +2892,7 @@ out.tied = cards([sess("a", "codex", 500), sess("b", "claude", 500),
                   sess("c", "claude", 10)]).map(pill);
 // Nothing generating is not a race. Neither is a board where nothing measured.
 out.allZero = cards([sess("a", "claude", 0), sess("b", "codex", 0)]).map(pill);
-out.allUnknown = cards([sess("a", "copilot", 0), sess("b", "copilot", 0)]).map(pill);
+out.allUnknown = cards([sess("a", "copilot", null), sess("b", "copilot", null)]).map(pill);
 // The claim is scoped to what this view draws cards for. An idle session can
 // still carry a non-zero trailing mean, and it must not take the marker from a
 // session that is actually generating.
@@ -2971,7 +2971,7 @@ console.log(JSON.stringify(out));
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_a_working_card_says_when_the_rate_is_unknown_rather_than_zero(self) -> None:
         # Copilot, OpenCode, Cursor and Droid read no token accounting, so their
-        # rows publish 0. Omitting the meter left a blank corner that reads as
+        # rows publish null. Omitting the meter left a blank corner that reads as
         # zero, and drawing the sparkline would have been a flat line asserting a
         # measured silence. Both are claims about a number nobody has.
         checks = (
@@ -2983,7 +2983,7 @@ const out = {};
 for(const key of ["copilot:mute", "claude:zero"]){
   sessRateHistory.set(key, [{t: 900, v: 0}, {t: 950, v: 0}]);
 }
-const d = board([sess("mute", "copilot", 0), sess("zero", "claude", 0)]);
+const d = board([sess("mute", "copilot", null), sess("zero", "claude", 0)]);
 const mute = workingCard(d, d.sessions[0]);
 const zero = workingCard(d, d.sessions[1]);
 out.unknown = [mute.includes("rate unknown"), mute.includes(">0<"),
@@ -3060,7 +3060,7 @@ const wide = [["claude", "Claude", true], ["codex", "Codex", true], ["pi", "Pi",
     ({key, label, discovered: true, error: null, reports_rate}));
 const wideSessions = [sess("a", "claude", 300), sess("b", "codex", 250),
   sess("c", "pi", 200), sess("d", "gemini", 150), sess("e", "antigravity", 100),
-  sess("f", "goose", 50), sess("g", "droid", 0)];
+  sess("f", "goose", 50), sess("g", "droid", null)];
 """
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -3106,9 +3106,9 @@ console.log(JSON.stringify(out));
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
     def test_the_output_rate_total_says_when_it_is_only_a_floor(self) -> None:
-        # `summary.rate_per_min` sums every active session's rate, and a harness
-        # that never measures contributes the same 0 as a session that generated
-        # nothing. Unqualified, the tile's numeral reads as the board's output
+        # `summary.rate_per_min` sums the measured rates of active sessions, while
+        # a harness that never measures contributes no number. Unqualified, the
+        # tile's numeral reads as the board's output
         # while being the measured part of it — Claude and Droid on screen, Droid
         # burning hard, and the hero shows the Claude-only figure.
         checks = (
@@ -3120,7 +3120,7 @@ const sub = h => (h.match(/class="tile-sub"[^>]*>([^<]*)</) || [null, null])[1];
 const subTip = h => (h.match(/class="tile-sub" title="([^"]*)"/) || [null, null])[1];
 const tile = (sessions, total) =>
   rateTile(board(sessions, {summary: {rate_per_min: total}}));
-const mixed = tile([sess("a", "claude", 450), sess("b", "copilot", 0)], 450);
+const mixed = tile([sess("a", "claude", 450), sess("b", "copilot", null)], 450);
 out.floored = [val(mixed), sub(mixed)];
 out.flooredTip = subTip(mixed);
 // Every active session measured: an exact figure, and no hedge on it.
@@ -3134,11 +3134,11 @@ out.measuredZero = [val(quiet), sub(quiet)];
 // still makes the total a floor — the sum is over active sessions, not working
 // ones, and the wording says which.
 const idleMute = tile([sess("a", "claude", 450),
-  {...sess("b", "copilot", 0), state: "idle"}], 450);
+  {...sess("b", "copilot", null), state: "idle"}], 450);
 out.idleCounts = sub(idleMute);
 // An inactive session is outside the window and outside the sum both.
 const stale = tile([sess("a", "claude", 450),
-  {...sess("b", "copilot", 0), active: false}], 450);
+  {...sess("b", "copilot", null), active: false}], 450);
 out.inactiveIgnored = [val(stale), sub(stale)];
 console.log(JSON.stringify(out));
 """

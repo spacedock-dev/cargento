@@ -193,12 +193,15 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("no token-rate figure", block)
         self.assertNotIn("tok/m while delegated", block)
 
-    def test_unmeasured_session_turns_the_rate_into_a_floor(self) -> None:
-        html = self.run_fixture(
+    def test_null_rate_turns_the_rate_into_a_floor_without_hiding_real_zero(self) -> None:
+        out = self.run_fixture(
             """
 const measured = __delegationPayload.sessions[0];
+const measuredZero = {
+  ...measured, sid: "session-zero", rate_per_min: 0
+};
 const unknown = {
-  ...measured, sid: "session-two", harness: "cursor", rate_per_min: 0
+  ...measured, sid: "session-two", harness: "cursor", rate_per_min: null
 };
 __delegationPayload = {
   ...__delegationPayload,
@@ -207,7 +210,7 @@ __delegationPayload = {
     ...__delegationPayload.harnesses,
     {key: "cursor", label: "Cursor", reports_rate: false, error: null}
   ],
-  sessions: [measured, unknown]
+  sessions: [measured, measuredZero, unknown]
 };
 nextWorkstreamGroups = [];
 nextWorkstreamEntryCount = 0;
@@ -219,13 +222,22 @@ nextObserveWorkstream({...__delegationPayload, generated: 1000});
 nextObserveWorkstream(__delegationPayload);
 nextData = __delegationPayload;
 renderNext();
-console.log(JSON.stringify(__els.app.innerHTML));
+const samples = nextWorkstreamGroups.flatMap(group => group.samples);
+console.log(JSON.stringify({
+  html: __els.app.innerHTML,
+  zeroKnown: samples.some(sample =>
+    sample.sid === "session-zero" && sample.rate === 0 && sample.rateKnown),
+  unknownKept: samples.some(sample =>
+    sample.sid === "session-two" && sample.rate === null && !sample.rateKnown)
+}));
 """
         )
-        assert isinstance(html, str)
-        block = self.delegation_block(html)
+        assert isinstance(out, dict)
+        block = self.delegation_block(out["html"])
 
         self.assertIn("≥10 tok/m while delegated", block)
+        self.assertTrue(out["zeroKnown"])
+        self.assertTrue(out["unknownKept"])
 
     def test_the_heading_names_the_real_twelve_minute_window(self) -> None:
         html = self.run_fixture(

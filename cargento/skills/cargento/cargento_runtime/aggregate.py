@@ -170,11 +170,10 @@ class HarnessSpec:
     ``reports_rate`` says whether this harness's collector can populate
     ``rate_per_min`` at all. Four of the ten cannot: OpenCode, Cursor and Droid
     read no token accounting, and Copilot's store carries only quota receipts.
-    Those rows publish 0 — the same number a reporting harness sends for a
-    session that generated nothing in the window — so a row on its own cannot
-    say which of the two it is. Declaring it here is what lets a consumer render
-    an absence as unknown and rank a real zero, instead of sorting a harness
-    that never measured below a session it can prove is slow.
+    Those rows publish null, while a reporting harness sends 0 for a session
+    that generated nothing in the window. Declaring the capability here keeps
+    collector defaults numeric while the application can still make the wire
+    value honest and consumers can rank a real zero.
 
     ``reports_needs_input`` is the same shape on the field where getting it
     wrong costs more. Six of the ten cannot observe a gate at all, and their
@@ -329,6 +328,14 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
     )
 
 
+def _hide_unmeasured_rates(rows: list[Session], harnesses: tuple[HarnessSpec, ...]) -> None:
+    """Replace a rate-blind collector's numeric placeholder with wire-level unknown."""
+    reporting = {spec.key for spec in harnesses if spec.reports_rate}
+    for row in rows:
+        if row["harness"] not in reporting:
+            row["rate_per_min"] = None
+
+
 class Application:
     """One dashboard process's collection surface.
 
@@ -401,9 +408,8 @@ class Application:
                 "label": spec.label,
                 "discovered": found,
                 # Whether a `rate_per_min` from this harness is a measurement at
-                # all. Stated per harness rather than per session because it is a
-                # property of the store, and because a session row cannot carry
-                # the distinction: its 0 is the same 0 either way.
+                # all. Stated per harness because it is a property of the store;
+                # the matching session field is null when the answer is no.
                 "reports_rate": spec.reports_rate,
                 # Whether this harness can report a gate at all, for the same
                 # reason `reports_rate` is here: the page cannot derive it, and
@@ -440,6 +446,7 @@ class Application:
                 )
 
         out_sessions = sessions.dedupe_sessions(out_sessions)
+        _hide_unmeasured_rates(out_sessions, self.harnesses)
         self._mark_unreachable_by_events(out_sessions)
         # Between dedupe and the sort, deliberately. Dedupe keys on
         # (harness, sid), which no overlay changes, and the sort ranks on `state`,
@@ -485,7 +492,9 @@ class Application:
             "summary": {
                 "needs_input": sum(1 for x in active_sessions if x["state"] == "needs_input"),
                 "working": sum(1 for x in active_sessions if x["state"] == "working"),
-                "rate_per_min": sum(x["rate_per_min"] for x in active_sessions),
+                "rate_per_min": sum(
+                    x["rate_per_min"] for x in active_sessions if x["rate_per_min"] is not None
+                ),
                 "active_sessions": len(active_sessions),
                 "open_tasks": sum(x["open"] for x in out_sessions),
                 "progress_pct": round(total_done * 100 / total_tasks) if total_tasks else 0,

@@ -63,19 +63,17 @@ const rateWindowLabel = d => fmtDur(rateWindowSec(d)) + " mean";
    surface that consults only the first calls the second a measured zero:
 
    - `reports_rate` false. Four of the ten harnesses read no token accounting, so
-     their rows carry the same 0 a reporting harness sends for a session that
-     generated nothing.
+     their rows carry null instead of a fabricated measurement.
    - `error` set. The collector raised, so whatever the store might have said
      about this harness was never read. `discovered` is still true and
      `reports_rate` still says the harness does report a rate — it is a property
      of the harness, not of the attempt — and taking that promise at face value
      after the read failed is what rendered a failure as a measured zero.
 
-   Both are stated per harness because a session row cannot carry the
-   distinction: its 0 is the same 0 either way. `fallback` is the caller's only
-   remaining evidence when the strip says nothing — a positive rate proves the
-   collector reports one, and a zero stays unknown rather than being promoted to
-   a measurement. */
+   Both are stated per harness because capability and collection failure belong
+   to the source, not one row. `fallback` is the caller's only remaining evidence
+   when the strip says nothing — a positive rate proves the collector reports
+   one, and a zero stays unknown rather than being promoted to a measurement. */
 function harnessRateKnown(h, fallback){
   if(!h) return fallback;
   if(h.error) return false;
@@ -96,9 +94,9 @@ function rateKnown(d, sess){
    saying so. Two different holes make it a floor, and a surface that knows only
    the first presents the second as exact:
 
-   - an active session whose harness takes no token measurement. It adds the same
-     0 to `summary.rate_per_min` as a session that generated nothing, so the sum
-     is the measured part of the board's output printed as all of it.
+   - an active session whose harness takes no token measurement. Its null rate
+     contributes no value to `summary.rate_per_min`, so the numeric sum is still
+     only the measured part of the board's output.
    - a discovered harness whose collector raised. It published no sessions at
      all, so it is missing from the sum and from every session count taken over
      it — a floor note that counts only active sessions therefore finds nothing
@@ -834,4 +832,3 @@ function idleRow(d, sess){
 }
 
 function toggleIdle(){ idleExpanded = !idleExpanded; if(lastData) render(lastData); }
-

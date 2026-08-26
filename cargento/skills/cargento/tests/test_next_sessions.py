@@ -128,6 +128,22 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("next-live", idle)
         self.assertIn("9m idle", idle)
 
+    def test_an_unknown_rate_is_blank_while_a_measured_zero_is_shown(self) -> None:
+        html = self.render(
+            """
+nextData.sessions.find(row => row.sid === "work-a").rate_per_min = null;
+nextData.sessions.find(row => row.sid === "work-z").rate_per_min = 0;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        unknown = self.session_row(html, "work-a")
+        measured_zero = self.session_row(html, "work-z")
+        self.assertNotIn("/m", unknown)
+        self.assertIn("0 /m", measured_zero)
+
     def test_a_working_row_without_the_active_flag_stays_static(self) -> None:
         html = self.render(
             """
