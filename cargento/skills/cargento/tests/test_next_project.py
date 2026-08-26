@@ -148,7 +148,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("blocked on you", pending)
         self.assertNotIn("stalled", pending)
 
-    def test_the_header_estimate_is_withheld_and_the_unhealthy_count_is_real(self) -> None:
+    def test_the_header_estimate_is_withheld_and_the_unhealthy_entity_count_is_real(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         status = re.search(r'<div class="next-project-detail-status"[\s\S]*?</div>', html)
@@ -158,9 +158,40 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn(
             "no estimate left · no confidence</span>"
             '<span class="next-project-detail-divider" aria-hidden="true">|</span>'
-            "<span>2 steps unhealthy — <span data-next-withheld>estimate withheld",
+            "<span>2 entities unhealthy — <span data-next-withheld>estimate withheld",
             status_html,
         )
+
+    def test_the_unhealthy_entity_label_uses_the_singular(self) -> None:
+        html = self.render(
+            """
+nextData.sessions.find(session => session.sid === "alpha-work").last_activity = 9999;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("1 entity unhealthy", html)
+        self.assertNotIn("1 entities unhealthy", html)
+        self.assertNotIn("1 step unhealthy", html)
+
+    def test_a_declared_plan_with_no_entities_reports_a_measured_zero(self) -> None:
+        html = self.render(
+            """
+for(const session of nextData.sessions){
+  const workflows = session.spacedock && session.spacedock.workflows || [];
+  for(const workflow of workflows) workflow.entities = [];
+}
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("0 entities unhealthy", html)
+        self.assertNotIn("0 entity unhealthy", html)
+        self.assertNotIn("0 steps unhealthy", html)
 
     def test_stalled_uses_the_named_floor_and_payload_clock(self) -> None:
         out = self.render(
@@ -226,6 +257,9 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn("plan lives with its first officer", out["worker/repo"])
         for html in out.values():
             self.assertNotIn("data-next-plan=", html)
+            self.assertNotIn("unhealthy", html)
+            self.assertNotRegex(html, r"\bsteps?\b")
+            self.assertNotIn("next-project-detail-divider", html)
 
 
 if __name__ == "__main__":

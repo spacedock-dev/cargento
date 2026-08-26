@@ -140,16 +140,20 @@ function nextProjectDetailHeader(context){
     ? `<p class="next-project-detail-collision" title="${esc(NEXT_DUPLICATE_LABEL_LIMIT)}">` +
       `${context.group.sessions.length} sessions share this label</p>`
     : "";
-  const unhealthy = nextProjectUnhealthyCount(context.plans);
-  const stepLabel = `${unhealthy} ${unhealthy === 1 ? "step" : "steps"} unhealthy`;
+  let health = "";
+  if(context.plans.length){
+    const unhealthy = nextProjectUnhealthyCount(context.plans);
+    const entityLabel = `${unhealthy} ${unhealthy === 1 ? "entity" : "entities"} unhealthy`;
+    health = '<span class="next-project-detail-divider" aria-hidden="true">|</span>' +
+      `<span>${esc(entityLabel)} — <span data-next-withheld>estimate withheld</span></span>`;
+  }
   return '<header class="next-project-detail-header">' +
     `<div><span class="next-project-detail-label">project</span>` +
     `<h1 class="next-project-detail-name">${esc(context.group.label)}</h1>${workflows}</div>` +
     last + collision +
     '<div class="next-project-detail-status">' +
     `<span data-next-withheld>${nextWithheldLine("no estimate left", "no confidence")}</span>` +
-    '<span class="next-project-detail-divider" aria-hidden="true">|</span>' +
-    `<span>${esc(stepLabel)} — <span data-next-withheld>estimate withheld</span></span></div>` +
+    `${health}</div>` +
     '</header>';
 }
 
