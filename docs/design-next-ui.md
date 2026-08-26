@@ -196,6 +196,32 @@ Rendering consumes the ledger through a project-window function rather than read
 arrays. A future server history source can replace that function without changing the rail, but no
 such source or retention policy is implied here. DRC-4234 owns that later decision.
 
+## NUI-10: project controls demonstrate local state, not delivery
+
+The project rail includes STEER and GUARDRAILS because the preview needs the interaction shape, but
+neither is a session-control surface. Submitting a steer keeps a bounded draft record in that tab,
+renders the escaped draft, and says both that it was not delivered and that Cargento has no session
+write path. It makes no request. A disabled field was rejected because it could not demonstrate the
+interaction, while an enabled field with no receipt would look like a successful send.
+
+Guardrail rules are viewer preferences. They are stored under a project-label key in the next
+bundle's localStorage namespace, capped at 50 rules of 500 characters, and kept in memory if storage
+throws. The project label is enough for a local preview preference. It is not stable enough for a
+server store that changes what agents do. Stored values are untrusted input, so both loaded and new
+rules pass through the shared escaping function every time they render. The header and every row
+say that no observer is enforcing them.
+
+Two existing boundaries rule out wiring up either control. DEC-2 does not permit unsolicited free
+text into a running session. The ask lane only returns a numeric option index for a question the
+agent initiated; its A-2 rule exists specifically so the loopback endpoint cannot introduce text
+into agent context. Reusing that endpoint for steer text would remove the protection that made its
+loopback exposure acceptable. A disk-backed guardrail store also waits on a stable project key and
+an autonomous-observer decision.
+
+`next-controls.js` therefore owns rendering and browser events only. It adds no HTTP route, POST,
+MCP operation, persisted runtime state or model call, so the audited mutating-route inventory and
+the direction invariant do not change.
+
 ## What this does not decide
 
 The second bundle does not create durable event, turn or UI history. History-backed regions remain
