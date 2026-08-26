@@ -227,8 +227,9 @@ removal.
 
 Task provenance stays Claude-only because no other collector publishes that list. The count is
 derived from the rows being rendered, and their payload order is unchanged. Subagents also keep
-payload order. Their live dot is static, and elapsed time appears only when `started_at` was
-measured, using the NUI-5 duration grammar; model names are outside this view. For working sessions,
+payload order. Their live dot pulses unless reduced motion disables animation, and elapsed time
+appears only when `started_at` was measured, using the NUI-5 duration grammar; model names are
+outside this view. For working sessions,
 the footer prefers measured turn output tokens. For waiting and idle sessions, it prefers the
 measured session total. Either state falls back to the other measured source and labels the visible
 number `this turn` or `this session` from the source it actually chose. An absent reading stays

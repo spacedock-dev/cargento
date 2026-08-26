@@ -98,7 +98,7 @@ self-proving: the assembled page hash in `test_page.py` did not change.
 | `web/main.js` | `render()` and `refresh()`. |
 | `web/live.js` | Leader election across tabs, the SSE stream, and the fallback poll. |
 | `web/next/index.html` | The two-slot shell for the opt-in page. It is assembled independently of `web/index.html`. |
-| `web/next/styles.css` | The next page's dark-first token copy, live-dot pulse and reduced-motion override. It never extends the byte-pinned default stylesheet. |
+| `web/next/styles.css` | The next page's light-root token copy, system dark override, live-dot pulse and reduced-motion override. It never extends the byte-pinned default stylesheet. |
 | `web/next/next-boot.js` | Query reads, HTML escaping, shared payload-number and time helpers, harness labels, session attention ordering and metrics, status dots, first-seen project groups and the next page's fragment route. It is first in `NEXT_PARTS`; its grammar is owned by [design-next-ui.md](design-next-ui.md). |
 | `web/next/next-chrome.js` | Breadcrumbs, header counts, the overview tab shell, route controls and the one delegated keyboard listener. The selected tab asks the view dispatcher for its body. |
 | `web/next/next-sessions.js` | The sessions overview table: the untouched gate queue, the shared working attention ladder, active-row live dots, the nearest-idle tail, measured activity and rate phrases, the all-state shared-label caveat, and each row's project-plus-full-session route. |
