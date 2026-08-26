@@ -190,6 +190,13 @@ function nextSessionFooter(session){
     `${nextCompactTokens(value)} output tokens this ${source}</footer>`;
 }
 
+function nextSessionDetailState(state){
+  if(state === "needs_input") return {label: "needs input", token: "needs_input"};
+  if(state === "working") return {label: "working", token: "working"};
+  if(state === "idle") return {label: "idle", token: "idle"};
+  return null;
+}
+
 function nextSessionView(project, sid){
   const session = nextSessionFind(project, sid);
   if(!session){
@@ -199,10 +206,16 @@ function nextSessionView(project, sid){
   nextPruneSessionAnswerNotes();
   const asks = nextSessionAsks(session);
   const blocked = session.state === "needs_input" ? " next-session-detail--blocked" : "";
+  const state = nextSessionDetailState(session.state);
+  const stateAttr = state ? ` data-next-session-state="${state.token}"` : "";
+  const stateLabel = state ?
+    `<span class="next-visually-hidden">State: ${state.label}</span>` : "";
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
-  return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}">` +
-    '<header class="next-session-detail-header"><span class="next-session-detail-label">SESSION</span>' +
+  return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
+    `${stateAttr}>` +
+    `<header class="next-session-detail-header">${stateLabel}` +
+    '<span class="next-session-detail-label">SESSION</span>' +
     `<h1>${esc(nextSessionTitle(session, asks))}</h1>${metaLine}</header>` +
     nextSessionHealth(session) + nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
     nextSessionSubagents(session) + nextSessionFooter(session) + "</article>";

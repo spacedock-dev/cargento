@@ -112,6 +112,38 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("SUBAGENTS", html)
         self.assertNotIn("output tokens", html)
 
+    def test_header_rail_names_only_known_states_and_keeps_the_blocked_alert(self) -> None:
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+for(const state of ["working", "idle", "needs_input", "unknown<script>"]){
+  session.state = state;
+  renderNext();
+  variants[state] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        for state, label in (
+            ("working", "working"),
+            ("idle", "idle"),
+            ("needs_input", "needs input"),
+        ):
+            with self.subTest(state=state):
+                self.assertIn(f'data-next-session-state="{state}"', out[state])
+                self.assertIn(f"State: {label}", out[state])
+                self.assertIn(">Resolve the gate</h1>", out[state])
+        self.assertNotIn("next-session-detail--blocked", out["working"])
+        self.assertNotIn("next-session-detail--blocked", out["idle"])
+        self.assertIn("next-session-detail--blocked", out["needs_input"])
+        self.assertIn("AGENT IS ASKING", out["needs_input"])
+        self.assertNotIn("data-next-session-state=", out["unknown<script>"])
+        self.assertNotIn("State:", out["unknown<script>"])
+        self.assertNotIn("unknown<script>", out["unknown<script>"])
+
     def test_session_age_metadata_matches_state_and_requires_measurement(self) -> None:
         out = self.render(
             """

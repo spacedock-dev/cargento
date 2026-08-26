@@ -158,6 +158,30 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIn("min-width:0", name.group(1) if name else "")
         self.assertIn("overflow-wrap:anywhere", name.group(1) if name else "")
 
+    def test_session_detail_state_rails_use_the_fixed_palette(self) -> None:
+        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        inset = re.search(
+            r"\.next-session-detail\[data-next-session-state\] "
+            r"\.next-session-detail-header\{([^}]*)\}",
+            styles,
+        )
+
+        self.assertIsNotNone(inset)
+        self.assertIn("padding-left:16px", inset.group(1) if inset else "")
+        for state, color in (
+            ("needs_input", "var(--warn)"),
+            ("working", "var(--accent)"),
+            ("idle", "var(--line2)"),
+        ):
+            with self.subTest(state=state):
+                rule = re.search(
+                    rf'\.next-session-detail\[data-next-session-state="{state}"\] '
+                    r"\.next-session-detail-header\{([^}]*)\}",
+                    styles,
+                )
+                self.assertIsNotNone(rule)
+                self.assertIn(f"box-shadow:inset 3px 0 {color}", rule.group(1) if rule else "")
+
     def test_load_next_page_preserves_its_byte_oracles(self) -> None:
         # Per-part first, deliberately. Every part feeds the assembled page, so a
         # one-part edit fails the assembled oracle too. Naming the part that moved
@@ -188,8 +212,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ee01ddb17dcc561196af143115e21d429f6b44d845513c40a12f119d354f5ef8",
             ),
             "next-session.js": (
-                10_783,
-                "20f948c86823b1ea398f8898f3545358a4be67e277971330ca4db235c1150d4d",
+                11_338,
+                "a7740b6c5ca3bf8ff357f7ea25b541beccca59f62960444c807b4c2c4267aa80",
             ),
             "next-workstream.js": (
                 11_676,
@@ -220,16 +244,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(20_215, len(styles))
+        self.assertEqual(20_672, len(styles))
         self.assertEqual(
-            "4db56fcbb545efabc513e5bd7d513958a4be3ea99e252c9f61bc934d80404487",
+            "3570703d51a3f5b10850faf09d0be9183214c53bebc7a17afb8ed146589118ce",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(92_579, len(assembled))
+        self.assertEqual(93_591, len(assembled))
         self.assertEqual(
-            "aafd5b0b2166360bac2a793c46096ea27dbaf515d6336f7aa258b6e1a818d1c9",
+            "8c5c5ed4d7c3ffdcdca8beedce2454b39421aaffb58fd751e2dd8001f6357ba4",
             hashlib.sha256(assembled).hexdigest(),
         )
 

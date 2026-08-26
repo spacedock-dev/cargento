@@ -187,6 +187,10 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-project-detail-empty{padding:24px;border:1px solid var(--line);color:var(--ink2);font-size:var(--fs-sm)}
 .next-session-detail{max-width:900px;margin:34px auto 0;padding:0 24px}
 .next-session-detail-header{padding:8px 0 28px;border-bottom:1px solid var(--line2)}
+.next-session-detail[data-next-session-state] .next-session-detail-header{padding-left:16px}
+.next-session-detail[data-next-session-state="needs_input"] .next-session-detail-header{box-shadow:inset 3px 0 var(--warn)}
+.next-session-detail[data-next-session-state="working"] .next-session-detail-header{box-shadow:inset 3px 0 var(--accent)}
+.next-session-detail[data-next-session-state="idle"] .next-session-detail-header{box-shadow:inset 3px 0 var(--line2)}
 .next-session-detail-label,.next-session-section>h2,.next-session-ask-callout>span{display:block;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400;text-transform:uppercase}
 .next-session-detail h1{margin:9px 0 12px;font-size:var(--fs-2xl);font-weight:500}
 .next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-xs)}
