@@ -22,11 +22,31 @@ function nextDelegationBatches(window){
 }
 
 function nextDelegationHumanTurns(events, startedAt, endedAt){
-  return (events || []).filter(event => {
+  const ordered = [];
+  for(const event of events || []){
     const at = nextNumber(event && event.at);
-    if(at == null || at < startedAt || at > endedAt || event.kind !== "state") return false;
-    return nextWorkstreamTransition(event.fromState, event.toState).humanTurn;
-  }).length;
+    if(at == null || at > endedAt || event.kind !== "state") continue;
+    ordered.push({at, event});
+  }
+  ordered.sort((left, right) => left.at - right.at);
+
+  let count = 0;
+  const pendingIdleResumptions = new Set();
+  for(const entry of ordered){
+    const event = entry.event;
+    const key = nextWorkstreamSessionKey(event);
+    const idleResumption = event.fromState === "idle" && event.toState === "working";
+    const suppress = pendingIdleResumptions.has(key) && idleResumption;
+    pendingIdleResumptions.delete(key);
+
+    // One answer can surface as gate exit, then idle resumption, without a response ID.
+    if(event.fromState === "needs_input" && event.toState === "idle"){
+      pendingIdleResumptions.add(key);
+    }
+    if(entry.at < startedAt || suppress) continue;
+    if(nextWorkstreamTransition(event.fromState, event.toState).humanTurn) count += 1;
+  }
+  return count;
 }
 
 function nextDelegationRange(window, startedAt, endedAt){

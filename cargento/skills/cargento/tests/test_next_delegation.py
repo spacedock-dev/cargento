@@ -65,6 +65,91 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("<progress", block)
         self.assertLess(html.index("DELEGATION"), html.index("STEER · LOCAL ONLY"))
 
+    def test_gate_exit_across_idle_resumption_counts_one_human_turn(self) -> None:
+        out = self.run_fixture(
+            """
+const session = __delegationPayload.sessions[0];
+nextWorkstreamGroups = [];
+nextWorkstreamEntryCount = 0;
+nextWorkstreamPreviousSessions = new Map();
+nextWorkstreamSeenAsks = new Map();
+nextWorkstreamLastGenerated = null;
+nextWorkstreamObservedSince = null;
+nextObserveWorkstream({
+  ...__delegationPayload,
+  generated: 1000,
+  sessions: [{...session, state: "needs_input"}]
+});
+for(const [generated, state] of [
+  [1300, "idle"],
+  [1600, "working"],
+  [1900, "working"]
+]){
+  __delegationPayload = {
+    ...__delegationPayload, generated, sessions: [{...session, state}]
+  };
+  nextObserveWorkstream(__delegationPayload);
+}
+nextData = __delegationPayload;
+renderNext();
+const window = nextWorkstreamProjectWindow("alpha/repo");
+console.log(JSON.stringify({
+  events: window.events.map(event => [event.fromState, event.toState]),
+  html: __els.app.innerHTML,
+  metric: nextDelegationMetric(window)
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        block = self.delegation_block(out["html"])
+
+        self.assertEqual([["needs_input", "idle"], ["idle", "working"]], out["events"])
+        self.assertEqual(1, out["metric"]["humanTurns"])
+        self.assertIn("1 human turn", block)
+        self.assertNotIn("2 human turns", block)
+
+    def test_human_turn_coalescing_is_session_scoped_and_window_aware(self) -> None:
+        out = self._run_page_js(
+            """
+const state = (at, sid, fromState, toState) => ({
+  at, fromState, harness: "claude", kind: "state", sid, toState
+});
+const direct = [state(100, "one", "needs_input", "working")];
+const sequence = [
+  state(100, "one", "needs_input", "idle"),
+  state(200, "one", "idle", "working")
+];
+const laterPrompt = [
+  ...sequence,
+  state(300, "one", "working", "idle"),
+  state(400, "one", "idle", "working")
+];
+const interleaved = [
+  state(100, "one", "needs_input", "idle"),
+  state(150, "two", "idle", "working"),
+  state(200, "one", "idle", "working")
+];
+console.log(JSON.stringify({
+  direct: nextDelegationHumanTurns(direct, 0, 500),
+  interleaved: nextDelegationHumanTurns(interleaved, 0, 500),
+  laterPrompt: nextDelegationHumanTurns(laterPrompt, 0, 500),
+  sequence: nextDelegationHumanTurns(sequence, 0, 500),
+  windowSplit: nextDelegationHumanTurns(sequence, 150, 500)
+}));
+"""
+        )
+
+        self.assertEqual(
+            {
+                "direct": 1,
+                "interleaved": 2,
+                "laterPrompt": 2,
+                "sequence": 1,
+                "windowSplit": 0,
+            },
+            out,
+        )
+
     def test_a_young_buffer_withholds_the_figure_and_bar(self) -> None:
         html = self.run_fixture(
             """
