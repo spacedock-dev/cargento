@@ -85,12 +85,11 @@ projects slot now groups the current payload by its display label and renders th
 progress and current state. NOW names that state as blocked, an active-running count, or muted
 idle; it stays blank only when a member state is unknown. Estimate and delegation stay visibly
 withheld: neither value exists at project scope, and folding per-session values would turn a guess
-into a measurement. The sessions slot now renders the current payload in three independent
-blocks: the gate queue keeps
-the server's order, working rows use the established attention ladder, and the idle tail puts the
-nearest activity first. Its neutral `METRIC` column keeps each cell's state-specific `wait`, `/m`,
-or `idle` unit instead of calling all three values rates. The session-detail renderer in NUI-8
-consumes the route each row carries.
+into a measurement. The sessions slot renders the current payload as one flat attention-ordered
+table. Its gate prefix keeps the server's order, working rows use the established attention ladder,
+and the idle tail puts the nearest activity first. Its neutral `METRIC` column keeps each cell's
+state-specific `wait`, `/m`, or `idle` unit instead of calling all three values rates. The
+session-detail renderer in NUI-8 consumes the route each row carries.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
 
