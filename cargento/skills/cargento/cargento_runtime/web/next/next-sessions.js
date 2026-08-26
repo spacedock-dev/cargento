@@ -71,22 +71,13 @@ function nextSessionRow(session, labels, collisions){
     `<td class="next-session-metric">${esc(nextSessionMetric(session))}</td></tr>`;
 }
 
-function nextSessionBlock(state, label, rows, labels, collisions){
-  const body = rows.map(session => nextSessionRow(session, labels, collisions)).join("");
-  return `<tbody data-next-session-block="${state}">` +
-    `<tr class="next-session-group"><th colspan="3" scope="rowgroup">${label}</th></tr>` +
-    `${body}</tbody>`;
-}
-
 function nextSessionsView(){
   const blocks = nextSessionBlocks();
   const labels = nextHarnessLabels();
   const collisions = nextSessionCollisionCounts();
+  const rows = [...blocks.gates, ...blocks.working, ...blocks.idle]
+    .map(session => nextSessionRow(session, labels, collisions)).join("");
   return '<div class="next-sessions-table-wrap"><table class="next-sessions-table">' +
     '<thead><tr><th scope="col">SESSION</th><th scope="col">ACTIVITY</th>' +
-    '<th scope="col">METRIC</th></tr></thead>' +
-    nextSessionBlock("needs_input", "needs you", blocks.gates, labels, collisions) +
-    nextSessionBlock("working", "working", blocks.working, labels, collisions) +
-    nextSessionBlock("idle", "idle", blocks.idle, labels, collisions) +
-    "</table></div>";
+    `<th scope="col">METRIC</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }

@@ -80,10 +80,16 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             raise AssertionError(f"no row for {sid!r} in {html}")
         return match.group(0)
 
-    def test_each_block_keeps_its_independent_ordering_contract(self) -> None:
+    def test_flat_list_preserves_each_segment_ordering_contract(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
+        self.assertLess(
+            html.index('data-next-session="gate-a"'), html.index('data-next-session="work-z"')
+        )
+        self.assertLess(
+            html.index('data-next-session="work-a"'), html.index('data-next-session="idle-new"')
+        )
         self.assertLess(
             html.index('data-next-session="gate-z"'), html.index('data-next-session="gate-a"')
         )
@@ -97,14 +103,30 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             html.index('data-next-session="idle-mid"'), html.index('data-next-session="idle-old"')
         )
 
-    def test_the_gate_block_is_not_reordered(self) -> None:
+    def test_flat_list_uses_one_body_without_state_headings(self) -> None:
         html = self.render()
         assert isinstance(html, str)
-        gates = re.search(r'data-next-session-block="needs_input"[\s\S]*?</tbody>', html)
 
-        self.assertIsNotNone(gates)
-        gate_html = gates.group(0) if gates else ""
-        self.assertLess(gate_html.index("First gate"), gate_html.index("Second gate"))
+        self.assertEqual(1, html.count("<tbody>"))
+        self.assertNotIn("data-next-session-block", html)
+        self.assertNotIn("next-session-group", html)
+        self.assertNotIn('scope="rowgroup"', html)
+
+    def test_empty_flat_list_keeps_headers_and_one_empty_body(self) -> None:
+        html = self.render(
+            """
+nextData.sessions = [];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        for heading in ("SESSION", "ACTIVITY", "METRIC"):
+            self.assertIn(f">{heading}</th>", html)
+        self.assertEqual(1, html.count("<tbody></tbody>"))
+        self.assertNotIn("data-next-session-block", html)
+        self.assertNotIn("next-session-group", html)
 
     def test_rows_render_measured_metrics_registry_labels_and_activity(self) -> None:
         html = self.render()

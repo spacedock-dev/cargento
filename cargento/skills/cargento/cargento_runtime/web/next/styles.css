@@ -67,8 +67,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-project-now--idle{color:var(--ink3)}
 .next-sessions-table-wrap{margin-top:28px;overflow-x:auto}
 .next-sessions-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
-.next-sessions-table thead th,.next-session-group th{padding:10px 14px;border-bottom:1px solid var(--line2);color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400;text-align:left;text-transform:uppercase}
-.next-session-group th{padding-top:22px;background:var(--sunk)}
+.next-sessions-table thead th{padding:10px 14px;border-bottom:1px solid var(--line2);color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400;text-align:left;text-transform:uppercase}
 .next-session-row{cursor:pointer}
 .next-session-row:hover{background:var(--panel)}
 .next-session-row td{padding:15px 14px;border-bottom:1px solid var(--line);vertical-align:top}
