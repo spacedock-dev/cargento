@@ -30,14 +30,17 @@ _UNSAFE_CHARS = re.compile("[\\x00-\\x1f\\x7f\\u200b\\u200e\\u200f\\u202a-\\u202
 # exposure; a screenshot is.
 #
 # The list below was derived rather than guessed, the way `injected_prompt` and
-# `harness_control` were, and by COUNTING rather than by reading: 12,685
-# transcripts and 1,982,123 records, the whole local Claude and Codex store.
-# Each entry carries its occurrence count and the number of files it appears in.
-# Of 21,076 genuine operator prompts — the gate the instruction line already uses
-# — 13 carry one of these, and those 13 are what the dashboard publishes today.
+# `harness_control` were, and by COUNTING rather than by reading: every
+# transcript file in the local Claude and Codex store, read end to end. Each
+# entry carries its occurrence count and the number of files it appears in. Of
+# the genuine operator prompts in that store — the gate the instruction line
+# already uses — 20 carry one of these, and those 20 are what the dashboard
+# publishes today: 18 of 21,116 on Claude and 2 of 1,004 on Codex, re-measured
+# 2026-08-27 with the same figure before and after this branch widened the list.
 #
-# `docs/design-credential-redaction.md` holds the false-positive classification
-# of those 13, the two thresholds it set, and every alternative rejected here.
+# `docs/design-credential-redaction.md` holds the false-positive classification,
+# the corpus figures, the two thresholds they set, and every alternative
+# rejected here.
 #
 # Redacted **in place**, keeping the words around the match, because the words
 # are the instruction and the point of the line. The marker is deliberately
@@ -48,6 +51,14 @@ _UNSAFE_CHARS = re.compile("[\\x00-\\x1f\\x7f\\u200b\\u200e\\u200f\\u202a-\\u202
 _SECRET_MARKER: Final = "…REDACTED"  # noqa: S105 - the marker replaces a secret, it is not one
 
 # `(name, characters of the match kept in front of the marker, anchored, pattern)`.
+#
+# Every body is bounded above as well as below, and the upper bound is the
+# vendor's own longest issued key with headroom rather than a round number. An
+# open-ended `{n,}` body is greedy across `-` and `_`, so a key glued to the
+# words behind it took the words with it: 85 characters matched and 71 of them
+# instruction, on a probe. A run longer than any key that format issues is not
+# that format, so the cap ends the match there and the rest of the line survives.
+# `docs/design-credential-redaction.md` carries the per-shape lengths.
 #
 # `anchored` shapes must start a token: without it `dask-<40 chars>` reads as an
 # OpenAI key and `mask-ant-…` as an Anthropic one. A hyphen counts as inside a
@@ -66,7 +77,7 @@ _SECRET_SHAPES: Final = (
     # `sk-ant-api03-`, `sk-ant-oat01-`, `sk-ant-ort01-` are the three variants in
     # the store; the shared prefix is matched rather than the three, so the
     # fourth is covered before anyone notices it exists.
-    ("anthropic", 7, True, r"sk-ant-[A-Za-z0-9_-]{16,}"),  # 89 in 35 files
+    ("anthropic", 7, True, r"sk-ant-[A-Za-z0-9_-]{16,110}"),  # 89 in 35 files
     # 32, not the 20 an OpenAI key's body needs. 20 was measured and rejected:
     # it alters 25 further genuine prompts, and every one is a hyphenated
     # identifier that merely opens a token with `sk-`.
@@ -75,43 +86,92 @@ _SECRET_SHAPES: Final = (
     # still matches, in two prompts. Requiring an uppercase character in the body
     # would clear it, and was rejected too: OpenRouter spells its key `sk-or-v1-`
     # plus 64 lowercase hex, so the rule that fixes two prompts loses a vendor.
-    ("openai", 3, True, r"sk-[A-Za-z0-9_-]{32,}"),  # 99 in 14 files
+    ("openai", 3, True, r"sk-[A-Za-z0-9_-]{32,180}"),  # 99 in 14 files
     # Stripe's secret and restricted keys. `pk_live_` is deliberately absent: a
     # publishable key is published on purpose.
-    ("stripe", 8, True, r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}"),  # 74 in 19 files
+    ("stripe", 8, True, r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,120}"),  # 74 in 19 files
     ("aws", 4, True, r"(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Za-z0-9_-])"),  # 246 in 50 files
-    ("github", 4, True, r"gh[pousr]_[A-Za-z0-9]{36,}"),  # 57 in 17 files
+    # The other half of the AWS pair, which the marker beside `AKIA…REDACTED`
+    # used to imply was covered and was not. A bare 40-character base64 run is
+    # not distinguishable from a hash, a diff or a path segment, so this one is
+    # cued instead of shaped: the key name has to sit in front of it. It keeps
+    # the cue and the separator rather than a fixed count of leading characters,
+    # which is what `_SECRET_KEEP_TO_BODY` exists for.
+    (
+        "aws_secret",  # 0 values; 431 cue mentions in 202 files (2026-08-27)
+        0,
+        False,
+        (
+            r"(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY|secretAccessKey)"
+            r"[\"']?\s{0,4}[:=]\s{0,4}[\"']?"
+            r"[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])"
+        ),
+    ),
+    ("github", 4, True, r"gh[pousr]_[A-Za-z0-9]{36,255}"),  # 57 in 17 files
     # Zero in the store, and on the list anyway: `github_pat_` is the format
     # GitHub issues today and `ghp_` above is the one it replaced. A filter that
     # covers only the legacy spelling of a token still in circulation is the
     # false confidence this whole change exists to avoid.
-    ("github_fine", 11, True, r"github_pat_[A-Za-z0-9_]{40,}"),  # 0
-    ("gitlab", 6, True, r"glpat-[A-Za-z0-9_-]{20,}"),  # 16 in 3 files
+    ("github_fine", 11, True, r"github_pat_[A-Za-z0-9_]{40,96}"),  # 0
+    ("gitlab", 6, True, r"glpat-[A-Za-z0-9_-]{20,64}"),  # 16 in 3 files
     ("npm", 4, True, r"npm_[A-Za-z0-9]{36}"),  # 12 in 4 files
+    # Linear's personal API key. Found by the same sweep that found `xapp-`:
+    # 25 full-length occurrences across 16 files already inside the collector's
+    # own glob, none of which reached a published head, which is the state
+    # `github_pat_` was in the day before one did. 67 further lines carry the
+    # bare prefix with nothing of the right length behind it.
+    ("linear", 8, True, r"lin_api_[A-Za-z0-9]{40,64}"),  # 25 in 16 files (2026-08-27)
     # `xapp-` is the app-level token beside the four `xox` bot and user ones. It
     # was found by sweeping past the candidate list, which is the only reason it
     # is here: nothing about `xox` would have suggested it.
-    ("slack", 5, True, r"(?:xox[baprs]|xapp)-[A-Za-z0-9-]{15,}"),  # 22 in 3 files
-    ("posthog", 4, True, r"phc_[A-Za-z0-9]{32,}"),  # 507 in 343 files
+    ("slack", 5, True, r"(?:xox[baprs]|xapp)-[A-Za-z0-9-]{15,96}"),  # 22 in 3 files
+    ("posthog", 4, True, r"phc_[A-Za-z0-9]{32,64}"),  # 507 in 343 files
     # Zero values, and 45 mentions of the bare prefix across 22 files — a
     # guidance list naming the shape, never a key of the right length behind it.
     # Kept for the reason `github_fine` is: absence today is not a contract.
     ("google", 4, True, r"AIza[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])"),  # 0
     # Three base64url segments, not one. A lone `eyJ…` run is base64 for `{"` and
     # turns up in any pasted payload; the two dots are what make it a token.
-    ("jwt", 3, True, r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),  # 852 in 126
+    # 1,024 and 4,096 are a JOSE header and a claim set with room to spare; the
+    # signature half of RS512 is 342 characters.
+    (
+        "jwt",  # 852 in 126 files
+        3,
+        True,
+        r"eyJ[A-Za-z0-9_-]{8,1024}\.[A-Za-z0-9_-]{8,4096}\.[A-Za-z0-9_-]{8,1024}",
+    ),
     # The body is swallowed with the header, because redacting the header alone
-    # leaves the key on the row one line further down. The body class excludes
-    # the space that `\s` would have allowed, so a prompt that merely names the
-    # header loses the word after it rather than the sentence: a PEM body is
-    # base64 and line breaks, never a space.
+    # leaves the key on the row one line further down.
+    #
+    # The body is base64 runs separated by whitespace, not a class holding the
+    # separator: `safe_text` substitutes a space for every line break BEFORE the
+    # filter runs, so a class of `[A-Za-z0-9+/=\r\n]` could not match one
+    # character of a body on the path that publishes it, and the whole key went
+    # out beside the header. Allowing a bare space into the class instead was
+    # what the first spelling of this rejected, because it swallows the sentence
+    # after a header that names the format and carries no key — which is all
+    # 1,058 of the local occurrences. The 16-character minimum per run is the
+    # distinction: a PEM line is 64 characters and an English word is not.
+    #
+    # The separator admits a tab and runs to 40 characters, not 4. A block pasted
+    # inside a fenced example or a YAML value keeps its indent after the line
+    # break becomes a space, so at an indent of 4 the run chain broke after the
+    # header and 6 body lines published behind the marker: 468 characters, on
+    # both the `safe_text` and `redact_clip` paths. Widening the separator is
+    # behaviour-neutral on the real store rather than a trade: over 1,140 PEM
+    # matches in 61 files, 0 matched spans grow and 0 extra characters are
+    # swallowed. The 16-character run minimum is what still does the
+    # false-positive work, so the wider gap costs nothing to the sentence after a
+    # header that names the format and carries no key.
     (
         "pem",  # 1,058 in 46 files, every one header-only
         11,
         False,
         (
-            r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\r\n]*"
-            r"(?:-----END[^\n]*-----)?"
+            r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"
+            r"(?:[ \t\r\n]{0,40}[A-Za-z0-9+/=]{16,76}){0,200}"
+            r"(?:[ \t\r\n]{0,40}[A-Za-z0-9+/=]{1,15}(?=[ \t\r\n]{0,40}-----END))?"
+            r"(?:[ \t\r\n]{0,40}-----END[^\n]*-----)?"
         ),
     ),
     # The username goes with the password. It is not itself a secret, but half a
@@ -143,6 +203,17 @@ _SECRET_KEEP: Final = {name: keep for name, keep, _, _ in _SECRET_SHAPES}
 _SECRET_ANCHORED: Final = frozenset(name for name, _, anchored, _ in _SECRET_SHAPES if anchored)
 _TOKEN_CHARS: Final = frozenset(string.ascii_letters + string.digits + "_-")
 
+# A cued shape keeps everything but the last N characters of its match, because
+# what names the kind is the cue in front of the value rather than a fixed count
+# of leading characters. `aws_secret_access_key = …REDACTED` says which
+# credential to go and rotate; `…REDACTED` alone says nothing and takes the
+# words of the instruction with it.
+_SECRET_KEEP_TO_BODY: Final = {"aws_secret": 40}
+
+# The longest prefix any shape keeps in front of the marker, which is what the
+# bound in `redact_clip` has to be able to step over.
+_SECRET_MAX_KEEP: Final = max(_SECRET_KEEP.values())
+
 # The match length at or above which a shape needs no anchor: `name -> length`.
 #
 # The anchor above fails OPEN, and that is a bypass rather than a rough edge. One
@@ -165,6 +236,7 @@ _SECRET_UNAMBIGUOUS: Final = {
     "anthropic": 90,
     "aws": 20,  # `AKIA` plus 16 is the whole shape; it has no longer form.
     "github_fine": 51,  # `github_pat_` plus its 40.
+    "linear": 48,  # `lin_api_` plus its 40, which is the only length it has.
 }
 
 # The literal every shape opens with, scanned with `in` before the alternation
@@ -198,12 +270,21 @@ _SECRET_HINTS: Final = (
     "github_pat_",
     "glpat-",
     "npm_",
+    "lin_api_",
     "xox",
     "xapp-",
     "phc_",
     "AIza",
     "eyJ",
     "-----BEGIN ",
+    # The AWS secret key's cue, in the three spellings the vendor's own tooling
+    # writes: the CLI's config file, the environment variable, and the SDKs'
+    # camel case. Both cases spelled out rather than one case-insensitive scan,
+    # because the gate is `str.__contains__` and lowering the string first would
+    # cost more than the extra scan.
+    "secret_access_key",
+    "SECRET_ACCESS_KEY",
+    "secretAccessKey",
 )
 
 # The shortest thing any hinted shape can match: `AKIA` plus its 16. Below it the
@@ -225,6 +306,9 @@ def _mark_secret(match: re.Match[str]) -> str | None:
     anchored = name in _SECRET_ANCHORED and (unambiguous is None or len(body) < unambiguous)
     if anchored and match.start() and match.string[match.start() - 1] in _TOKEN_CHARS:
         return None
+    from_body = _SECRET_KEEP_TO_BODY.get(name)
+    if from_body is not None:
+        return body[:-from_body] + _SECRET_MARKER
     return body[: _SECRET_KEEP.get(name, 0)] + _SECRET_MARKER
 
 
@@ -281,6 +365,46 @@ def redact_secrets(text: str) -> str:
     return text
 
 
+def redact_clip(text: str, limit: int) -> str:
+    """Credential shapes marked, and then the result bounded — in that order.
+
+    The order is the whole point and it is why this is a function rather than
+    two lines at each call site. A key cut at a 140-character cap is still a
+    hundred usable characters of key, and a shape whose tail fell off no longer
+    matches, so a caller that slices first publishes exactly the values the
+    filter exists to catch. Ten collectors each remembering to do it in the
+    right order is the list `redact_secrets` warns about; this is the one place
+    that knows.
+
+    The bound may overrun by up to `_SECRET_MAX_KEEP + len(_SECRET_MARKER)`
+    characters, and only ever to finish a marker the cut landed inside. Measured
+    on `last_prompt`: a key starting at lead 124 to 131 published a marker with
+    its tail cut off, and one at 132 or beyond published the kept prefix and no
+    marker at all — a row ending in `sk-ant-` that reads as a truncated key
+    rather than a redacted one. No key body was published at any lead, so this
+    is about what the operator can believe, not about a leak. `instruction_line`
+    takes the same liberty with its cap plus one and for the same reason.
+
+    A cued shape keeps more than `_SECRET_MAX_KEEP` characters in front of its
+    marker, so a cut can still land inside `aws_secret_access_key = ` and leave
+    it half written. What is lost there is the key's NAME, which is a word like
+    any other word the cap cuts; the value is inside the marker either way.
+    """
+    marked = redact_secrets(text)
+    if len(marked) <= limit:
+        return marked
+    # A marker that begins before the cut, or one whose kept prefix does, and so
+    # straddles it either way. The search runs from the earliest offset a
+    # straddling marker could start at to the latest, and the first hit is the
+    # one the cut is inside.
+    first = max(limit - len(_SECRET_MARKER) + 1, 0)
+    last = limit + _SECRET_MAX_KEEP + len(_SECRET_MARKER) - 1
+    start = marked.find(_SECRET_MARKER, first, last)
+    if start != -1:
+        return marked[: start + len(_SECRET_MARKER)]
+    return marked[:limit]
+
+
 def safe_text(value: Any, limit: int) -> str:
     """Untrusted text, safe to put on a row: no control characters, no
     credentials, bounded.
@@ -290,23 +414,32 @@ def safe_text(value: Any, limit: int) -> str:
     harness record could make a row read as something it does not say. Legitimate
     right-to-left text does not need them, since bidi resolves implicitly.
 
-    Redaction runs **before** the bound, not after. A key cut at the cap is still
-    a hundred usable characters of key, and a shape whose tail fell off no longer
-    matches, so bounding first would publish exactly the values this is here to
-    catch. A control character struck through the middle of a key defeats the
-    match in either order; that is a limit of shape matching, not of the ordering.
+    Redaction runs **before** the bound, and `redact_clip` is where that order
+    lives. A key cut at the cap is still a hundred usable characters of key, and
+    a shape whose tail fell off no longer matches, so bounding first would
+    publish exactly the values this is here to catch.
+
+    A control character struck through the middle of a key defeats the match on
+    the whole key in either order, and the match is not all that is at stake.
+    The substitution above turns that character into a space, so the head in
+    front of it still matches on its own and redacts, while the TAIL behind it
+    is a run with no prefix to match on and publishes beside the marker: 75
+    characters of key on a probe that put the separator 40 characters in. That
+    is a limit of shape matching rather than of the ordering, and `SECURITY.md`
+    carries it with the rest of the residual.
 
     This is a hot path — a tool name, a model id and a title each pass through it
     on every collect — so the redaction is gated. Measured on the shipped
-    alternation: 366 to 412 ns on a four-character tool name, 1.70 to 3.49 us on
-    a 140-character prompt line, 18.9 to 46.6 us on a 2,000-character observer
-    blob. `_SECRET_HINTS` carries what the gate buys and why. End to end that is
-    a whole collect moving from 32.3 ms to 33.9 ms on
-    `bench_collect --simulate balanced-five`, which is what the 4.8% buys.
+    alternation: 0.49 us on a four-character tool name, 3.71 us on a
+    140-character prompt line, 51.5 us on a 2,000-character observer blob.
+    `_SECRET_HINTS` carries what the gate buys and why, and
+    `docs/design-credential-redaction.md` has the same five inputs before the
+    filter existed. End to end a whole collect moves 32.2 ms to 33.6 ms on
+    `bench_collect --simulate balanced-five`, which is what the 4.3% buys.
     """
     text = str(value or "").encode("utf-8", "replace").decode("utf-8")
     text = _UNSAFE_CHARS.sub(" ", text)
-    return redact_secrets(text)[:limit]
+    return redact_clip(text, limit)
 
 
 def iso_epoch(value: Any) -> float | None:
@@ -385,18 +518,38 @@ def norm_epoch(value: Any) -> float:
     return value / 1000 if value > 1e12 else value
 
 
-def extract_text(value: Any, depth: int = 0) -> str:
+EXTRACT_TEXT_CAP_CHARS: Final = 2000
+
+
+def extract_text(value: Any, depth: int = 0, *, cap: int = EXTRACT_TEXT_CAP_CHARS) -> str:
+    """One record's text, bounded.
+
+    The bound is on both branches, which it was not: a list of blocks was capped
+    and a bare string was returned whole. A prompt is a bare string on most
+    harnesses and there is no bound on how long one is, so `safe_text` scanned
+    the entire pasted file to publish 140 characters of it, and the Codex
+    instruction walk ran `states_work` and `injected_prompt` over the same. The
+    default is 2,000 because that is what the list branch already used, and it is
+    fourteen times the widest field anything downstream publishes.
+
+    `cap` exists because a caller that reads the text for a SIGNAL rather than
+    for publication needs a different bound, and the default silently took one
+    away: the observer scans the newest assistant message for a block indicator
+    anywhere in it, so a 2,000-character bound made an indicator past that offset
+    unreachable and the block field came back empty. A caller passing its own cap
+    has to be able to vouch for it, which is why this is keyword-only.
+    """
     if depth > 4 or value is None:
         return ""
     if isinstance(value, str):
-        return value
+        return value[:cap]
     if isinstance(value, list):
-        parts = (extract_text(item, depth + 1) for item in value)
-        return " ".join(part for part in parts if part)[:2000]
+        parts = (extract_text(item, depth + 1, cap=cap) for item in value)
+        return " ".join(part for part in parts if part)[:cap]
     if isinstance(value, dict):
         for key in ("text", "content", "message", "prompt", "value"):
             if key in value:
-                text = extract_text(value[key], depth + 1)
+                text = extract_text(value[key], depth + 1, cap=cap)
                 if text:
                     return text
     return ""

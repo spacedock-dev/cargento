@@ -23,7 +23,7 @@ from typing import Any
 from unittest import mock
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import observer
+from cargento_runtime import observer, records
 
 from . import test_page_calm
 from .page_harness import PageJsHarness
@@ -463,6 +463,29 @@ class ObserverAnalyzerTest(unittest.TestCase):
                 ],
             )
             self.assertEqual("The branch is pushed, waiting for you.", self.analyze(path)["block"])
+
+    def test_a_block_past_the_publish_cap_is_still_found(self) -> None:
+        # Bounding `extract_text` bounded what the block scan can SEE, not only
+        # what it publishes. Pi and Droid carry a bare string rather than a list
+        # of blocks, so the 2,000-character default put an indicator past that
+        # offset out of reach and the field came back empty with nothing saying
+        # so. Falsifying edit: drop the `cap=` argument in `_message_from` — the
+        # indicator sits at offset 2,520, past the default and inside the 8,192
+        # the observer vouches for.
+        filler = "I read the manifest and checked the store. " * 60
+        indicator = "I am blocked on the missing credential for the staging store."
+        body = f"{filler}{indicator}"
+        self.assertGreater(body.index(indicator), records.EXTRACT_TEXT_CAP_CHARS)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp,
+                [
+                    _pi_session("cap-001"),
+                    _pi_message("m1", None, "user", "Deploy the staging store"),
+                    _pi_message("m2", "m1", "assistant", body),
+                ],
+            )
+            self.assertEqual(indicator, self.analyze(path)["block"])
 
     def test_no_spacedock_withdraws_the_project_reads(self) -> None:
         # `--no-spacedock` is the switch that turns off the project reads, and
@@ -1350,15 +1373,23 @@ await __settle();
 await __settle();
 out.error = __els.app.innerHTML.includes("observer-error");
 
-// `bbb2` is the Codex row in the shared fixture. The route resolves a
-// transcript for Claude and Pi only, so a control there would always 404.
+// `bbb2` is the Codex row in the shared fixture, and `resolve_transcript` grew
+// a Codex branch: the control follows the resolver rather than lagging it.
 calmAction("open", K("codex", "bbb2"));
 out.codexHasControl = __els.app.innerHTML.includes('data-calm="observe" data-arg="codex:bbb2"');
+
+// A harness the resolver has no branch for still gets none, which is the half
+// of the gate that keeps a control off a row that could only 404.
+render(payload([blocked, busy, quiet,
+  mk({sid: "ddd4", session: "ddd4", harness: "cursor", title: "Cursor row"})]));
+calmAction("open", K("cursor", "ddd4"));
+out.cursorHasControl = __els.app.innerHTML.includes('data-calm="observe" data-arg="cursor:ddd4"');
 console.log(JSON.stringify(out));
 """
         out = self.run_calm(checks)
         self.assertTrue(out["error"])
-        self.assertFalse(out["codexHasControl"])
+        self.assertTrue(out["codexHasControl"])
+        self.assertFalse(out["cursorHasControl"])
 
 
 class ObserverPanelTest(PageJsHarness):

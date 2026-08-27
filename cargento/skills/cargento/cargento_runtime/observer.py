@@ -17,6 +17,7 @@ to a crash or a hallucination.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -155,7 +156,7 @@ def _blocks_carry_tool_result(content: Any) -> bool:
     )
 
 
-def _message_from(role: Any, content: Any, harness: str) -> dict[str, str] | None:
+def _message_from(role: Any, content: Any, harness: str, cap: int) -> dict[str, str] | None:
     """The (role, text) pair for one already-unwrapped message, or None.
 
     The one place the injected-shape rejection is applied, so every harness arm
@@ -163,12 +164,20 @@ def _message_from(role: Any, content: Any, harness: str) -> dict[str, str] | Non
     would publish a harness's own machinery as the operator's goal on 51.6% of
     Codex rollouts and 62.5% of Claude sessions — a confident wrong answer where
     there is a silent sentinel today, which is the worse of the two failures.
+
+    `cap` is `observer_model_context_chars` and not `extract_text`'s own default,
+    because the block half scans this text for an indicator ANYWHERE in it rather
+    than reading its opening. On the bare-string harnesses (Pi and Droid, whose
+    content is a string and not a list of blocks) the 2,000-character default put
+    an indicator past that offset out of reach and the block came back empty,
+    with nothing on the panel saying so. The bound this passes is the one the
+    module already vouches for on the value it hands the caller.
     """
     if role not in ("user", "assistant"):
         return None
     if _blocks_carry_tool_result(content):
         return None
-    text = records.extract_text(content).strip()
+    text = records.extract_text(content, cap=cap).strip()
     if not text:
         return None
     if role == "assistant":
@@ -182,7 +191,7 @@ def _message_from(role: Any, content: Any, harness: str) -> dict[str, str] | Non
     return {"role": "user", "text": body}
 
 
-def _claude_message(record: dict[str, Any], record_type: str) -> dict[str, str] | None:
+def _claude_message(record: dict[str, Any], record_type: str, cap: int) -> dict[str, str] | None:
     """One (role, text) pair from a Claude ``user``/``assistant`` record, or None.
 
     A subagent's transcript is interleaved into its parent's file, and a
@@ -195,10 +204,10 @@ def _claude_message(record: dict[str, Any], record_type: str) -> dict[str, str] 
     if record.get("isSidechain") or record.get("isMeta"):
         return None
     message = records.message_dict(record)
-    return _message_from(message.get("role") or record_type, message.get("content"), "claude")
+    return _message_from(message.get("role") or record_type, message.get("content"), "claude", cap)
 
 
-def _parse_message_record(record: Any) -> dict[str, str] | None:
+def _parse_message_record(record: Any, cap: int) -> dict[str, str] | None:
     """One (role, text) pair from a JSONL message record, or None.
 
     Three record shapes, additively: ``type: "message"`` with a nested
@@ -222,14 +231,16 @@ def _parse_message_record(record: Any) -> dict[str, str] | None:
     record_type = record.get("type")
     if record_type == "message":
         message = records.message_dict(record)
-        return _message_from(message.get("role"), message.get("content"), _SHARED_MESSAGE_HARNESS)
+        return _message_from(
+            message.get("role"), message.get("content"), _SHARED_MESSAGE_HARNESS, cap
+        )
     if record_type in ("user", "assistant"):
-        return _claude_message(record, record_type)
+        return _claude_message(record, record_type, cap)
     if record_type == "response_item":
         payload = records.as_dict(record.get("payload"))
         if payload.get("type") != "message":
             return None
-        return _message_from(payload.get("role"), payload.get("content"), "codex")
+        return _message_from(payload.get("role"), payload.get("content"), "codex", cap)
     return None
 
 
@@ -344,7 +355,7 @@ def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
         stamp = records.parse_ts(record.get("timestamp"))
         if stamp:
             last_ts = stamp
-        parsed = _parse_message_record(record)
+        parsed = _parse_message_record(record, config.observer_model_context_chars)
         if parsed is None:
             continue
         key = _dedup_key(record) or f"#{position}"
@@ -592,14 +603,41 @@ def write_sidecar(
     """Write the observer sidecar to the observer's own store; return its path.
 
     None when the names are not writable ones, which is a refusal rather than a
-    fallback: there is no second location a sidecar belongs in.
+    fallback: there is no second location a sidecar belongs in. None as well
+    when the write itself fails, so that an `OSError` cannot reach the handler
+    and turn a full disk into an unhandled 500.
+
+    What the caller then does with the derivation is NOT "serves it from memory",
+    which an earlier draft of this docstring claimed: `http_api` answers 400 and
+    discards it. That is the wrong code for a server-side write failure and the
+    wrong disposal for work already done, but choosing between 200 with a
+    best-effort sidecar and 500 is a route policy rather than a write concern, so
+    this records the behaviour instead of asserting a better one. The `OSError`
+    arm below is unreached by any test (see DRC-4269).
+
+    Temp file plus `os.replace`, and `0o600` in the `os.open` call rather than a
+    chmod afterwards, both the same shape as `lifecycle.write_state` and
+    `dismissals.save` and for the same two reasons: a reader mid-write sees the
+    old file or the new one, and the file is never briefly world-readable. This
+    one holds prompt-derived text — the goal is the operator's own words, run
+    through `records.safe_text` — which is why the mode matters on a file that
+    used to inherit the umask. The mode is advisory and Windows ignores it, as
+    `SECURITY.md` records for the other two.
     """
     path = sidecar_path(config, harness, sid)
     if path is None:
         return None
-    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(result))
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(result))
+        os.replace(tmp, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        return None
     return path
 
 

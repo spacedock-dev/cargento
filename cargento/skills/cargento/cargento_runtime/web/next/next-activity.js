@@ -46,10 +46,19 @@ function nextProjectActivityCard(session, harnesses, project){
   const live = gate ? "" : " next-live";
   const stateLabel = gate ? "needs input" : "working";
   const metric = nextSessionMetric(session);
+  /* The same second line the session table and the detail header carry, from
+     the same renderer, because a third copy of "when may this be shown" is a
+     third chance to disagree with the runtime about it. Clipped to one line
+     here and not wrapped as it is there: GOING ON is scanned rather than read,
+     and a card that grows by two lines whenever the newest prompt is long
+     pushes the next card off the fold. What is lost is the tail of a line
+     already bounded at 140 characters; the label and age, which are what make
+     the line survivable, are never in the part that clips. */
+  const instruction = nextInstructionLine(session, title, "next-activity-instruction", "span");
   return `<button type="button" class="next-activity-card${blocked}${live}" ` +
     `data-next-going-on="${esc(sid)}" data-next-route="${esc(route)}">` +
     nextStatusDot(stateLabel, "next-activity-dot") +
-    `<span class="next-activity-identity"><strong>${esc(title)}</strong>` +
+    `<span class="next-activity-identity"><strong>${esc(title)}</strong>${instruction}` +
     `<small>${esc(detail)}</small>${nextProjectActivitySubagents(session)}</span>` +
     `<span class="next-activity-metric">${esc(metric)}</span></button>`;
 }

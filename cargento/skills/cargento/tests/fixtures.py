@@ -151,7 +151,26 @@ def build_antigravity(root: Path, when: float, sid: str, title: str) -> dict[str
     cache = root / "cache" / "last_conversations.json"
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({f"/w/{title}": sid}), encoding="utf-8")
-    (root / "log").mkdir(parents=True, exist_ok=True)
+    # The CLI log is where the prompt comes from, and without one this fixture
+    # produced a row with no `title` and no `last_prompt` at all. Every
+    # cross-harness assertion about published prompt text passed on it by
+    # asserting nothing. `workspaceDirs` names `/w/proj` rather than the title,
+    # so the cached workspace above still decides `project` and this only adds
+    # the prompt.
+    log = root / "log" / "cli-1.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(
+        "\n".join(
+            (
+                "workspaceDirs=[/w/proj] appDataDir=/x",
+                f"HandleUserInput called with text: {json.dumps(title)}",
+                f"Forwarding user message to conversation {sid}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    os.utime(log, (when, when))
     # The collector derives conversations/, log/ and cache/ from the one root.
     return {"ANTIGRAVITY_CLI_DIR": str(root)}
 

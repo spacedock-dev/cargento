@@ -487,7 +487,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
         if runtime_observer.write_sidecar(config, harness, sid, result) is None:
             # Refused, not fallen back: the names reached the transcript resolver
             # so they are shaped ids, and there is no second place a sidecar goes.
-            self.send_error(400, "harness and sid must be plain names")
+            # A failed write reads the same here, so the message names the
+            # outcome rather than one of its two causes.
+            self.send_error(400, "the observation could not be recorded")
             return
         self._send(json.dumps(result).encode(), "application/json")
 

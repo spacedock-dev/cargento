@@ -76,6 +76,33 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             "last instruction · Approve the release", self.project_row(html, "alpha/repo")
         )
 
+    def test_the_cell_prefers_the_filtered_asked_line_over_the_raw_prompt(self) -> None:
+        # `last_prompt` is the raw newest record on every harness but Codex, so
+        # a Claude row can carry a harness-injected string there while the
+        # runtime's own filtered reading of the same prompt sits beside it.
+        html = self.render(
+            """
+const gate = nextData.sessions.find(session => session.sid === "alpha-gate");
+gate.instruction = {label: "asked", text: "Cut the release branch", at: 9900};
+const beta = nextData.sessions.find(session => session.sid === "beta-work");
+beta.last_prompt = "proceed";
+beta.instruction = {label: "earlier", text: "Not the newest thing asked", at: 9000};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        alpha = self.project_row(html, "alpha/repo")
+        self.assertIn("last instruction · Cut the release branch", alpha)
+        self.assertNotIn("Approve the release", alpha)
+        # The other two labels stay out. This cell has nowhere to put a label,
+        # and "agent" and "earlier" are the readings that need one: published
+        # bare they claim to be the newest instruction when they are not.
+        beta_row = self.project_row(html, "beta/app")
+        self.assertIn("last instruction · proceed", beta_row)
+        self.assertNotIn("Not the newest thing asked", beta_row)
+
     def test_the_estimate_and_delegation_columns_are_withheld(self) -> None:
         html = self.render()
         assert isinstance(html, str)

@@ -563,7 +563,9 @@ def collect(
         session.update(
             {
                 "title": (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "last_prompt": records.redact_clip(
+                    (info or {}).get("last_prompt") or "", records.LAST_PROMPT_CAP_CHARS
+                ),
                 "provider": (info or {}).get("provider"),
                 "model": (info or {}).get("model"),
                 "state": session_state,

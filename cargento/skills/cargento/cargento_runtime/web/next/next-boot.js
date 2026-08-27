@@ -103,17 +103,24 @@ function nextInstructionEchoes(text, title){
   return head.endsWith("…") && line.startsWith(head.slice(0, -1));
 }
 
-function nextInstructionLine(session, title, className){
+function nextInstructionLine(session, title, className, tag){
   const instruction = session && session.instruction;
   if(!instruction || typeof instruction !== "object" || Array.isArray(instruction)) return "";
   const label = NEXT_INSTRUCTION_LABELS.get(String(instruction.label || ""));
   const text = String(instruction.text == null ? "" : instruction.text).trim();
   if(!label || !text || nextInstructionEchoes(text, title)) return "";
   const age = nextDurationSince(instruction.at);
-  const prefix = age == null ? label : `${label}, ${age}`;
-  return `<p class="${esc(className)}" data-next-instruction="${esc(instruction.label)}">` +
-    `<span class="next-instruction-label">${esc(prefix)}:</span> ` +
-    `<span class="next-instruction-text">${esc(text)}</span></p>`;
+  // The age sits OUTSIDE the label span. `.next-instruction-label` uppercases,
+  // and the age inside it rendered "ASKED, 4M:" — a duration whose unit is a
+  // capital letter reads as an initialism, and the whole prefix reads as one
+  // label rather than as a label and the age of the record it came from.
+  const stamp = age == null ? ":" : `, ${age}:`;
+  // A `<p>` is flow content, and the GOING ON card is a `<button>`, which takes
+  // phrasing content only. One renderer for the policy, two element names.
+  const el = tag === "span" ? "span" : "p";
+  return `<${el} class="${esc(className)}" data-next-instruction="${esc(instruction.label)}">` +
+    `<span class="next-instruction-label">${esc(label)}</span>${esc(stamp)} ` +
+    `<span class="next-instruction-text">${esc(text)}</span></${el}>`;
 }
 
 function nextHarnessLabels(){

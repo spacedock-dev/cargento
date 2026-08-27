@@ -6,7 +6,7 @@ import json
 import os
 from typing import TYPE_CHECKING, Any
 
-from cargento_runtime import claude_data, notifications
+from cargento_runtime import claude_data, notifications, records
 from cargento_runtime import io as runtime_io
 from cargento_runtime import quota as runtime_quota
 from cargento_runtime import sessions as runtime_sessions
@@ -684,7 +684,9 @@ def collect(
                 # analysis: an inactive session is not analyzed at all and
                 # publishes None, which is "not read" and not "no model".
                 "model": (info or {}).get("model"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "last_prompt": records.redact_clip(
+                    (info or {}).get("last_prompt") or "", records.LAST_PROMPT_CAP_CHARS
+                ),
                 "state": session_state,
                 "state_detail": state_detail,
                 "blocked_since": blocked_since,

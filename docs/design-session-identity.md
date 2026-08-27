@@ -303,6 +303,24 @@ Measured coverage of the shipped readers, over the same corpora: Codex publishes
 Claude publishes a second line on 1,906 of 3,771 transcripts (50.5%, 1,733 "asked" and 173
 "earlier").
 
+### What it did to the default dashboard
+
+The calm view's drawer quotes `last_prompt` under a `last prompt` heading, and it quotes it only
+where the string differs from the title above it. The test is exact equality. On Codex both fields
+now come out of the same backward walk over the same prompt, clipped at 80 characters for the title
+and 140 for `last_prompt`, so any prompt longer than 80 characters fails that test and the drawer
+quotes a wider clip of the line it sits under. Over 2,931 rows of one local store, 50 Codex rows
+carry a `last_prompt`, exact equality suppresses 19, and 26 of the remaining 31 are the same prompt
+re-clipped. The same shape reaches Claude on 30 of 164 rows, where a session with no `ai-title`
+falls back to `prompt_title` of its opening prompt.
+
+It stays as it is. The walk that produced the duplication is what gives that view a Codex title on
+280 of 457 rollouts, read through `prompt_title` rather than lifted out of raw record markup, and a
+repeated quote in an opened drawer costs less than a row named after its directory. The next UI's
+`nextInstructionEchoes` already suppresses the wider case, comparing against the title minus its
+ellipsis; porting that test to the calm view is a change with its own risk to the rows it would
+newly silence, so it is recorded here rather than made here.
+
 ### Rejected
 
 - **Reading one record shape.** The turn-start preamble moved at CLI 0.149.
