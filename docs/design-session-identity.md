@@ -318,7 +318,11 @@ Claude publishes a second line on 1,906 of 3,771 transcripts (50.5%, 1,733 "aske
 - **An unbounded walk with no turn floor.** `io.reverse_lines` carries no notion of a turn, and
   26 to 43% of turns hold no commentary of their own, so the walk crosses silently into the
   previous turn and presents its intent as this one's. The floor is an explicit `task_started`
-  record, and a walk that never reaches one publishes no preamble.
+  record, and a walk that never reaches one publishes no preamble. Reaching one is not by
+  itself proof, either: a turn that has not written its own `task_started` yet lets the walk
+  run past the newest prompt and reach the PREVIOUS turn's floor, which would validate that
+  turn's commentary as this turn's intent. So a preamble is only ever taken from records newer
+  than the newest genuine prompt, which makes it this turn's by construction.
 - **A naive "newest user record" read.** Injected on 230 of 456 rollouts (50.4%). Seventeen
   measured Codex shapes and fourteen Claude ones are rejected by `records.injected_prompt`, and a
   tag filter alone is not enough: after it, 306 of 2,868 Claude files still have a newest "prompt"
@@ -327,8 +331,13 @@ Claude publishes a second line on 1,906 of 3,771 transcripts (50.5%, 1,733 "aske
   prompts have a first line under 80 characters and most are short AND informative. A "under 40
   characters, walk back" rule replaces 402 good lines to fix 81 bad ones, and an independent
   reviewer's "24 characters or fewer" swept in "create the PR" and "apply the fix". The rule is a
-  word count on the RENDERED line, at six words or fewer, with slash commands exempt because
-  `/release` is two words rendered and a whole instruction meant.
+  word count at six words or fewer, with slash commands exempt because `/release` is two words
+  rendered and a whole instruction meant. The RENDERING decides the shape, which is where a
+  slash command becomes recognisable; the tag-stripped BODY decides the count. Counting the
+  rendering instead was wrong on 97 of 2,066 local newest prompts, because `prompt_title`
+  returns line 1 only: a short opener over a multi-line body ("a backend python test is
+  failing:"), and one-line prompts whose first 140 characters are mostly a pasted URL, which
+  `shorten_paths` leaves whole so it counts as a single word.
 - **Positional rules on the turn group.** Grouping on `passthrough.turn_id`, first-of-group is
   injected 48.4% of the time and last-of-group 32.3%. One title in three would be junk, and per the
   `||` chain above, junk permanently.
