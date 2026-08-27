@@ -111,6 +111,43 @@ today and strands every existing session. Rejected: hoisting classification abov
 which buys nothing while each harness answers the question from a different field, and moves
 harness knowledge into a module whose whole point is not having any.
 
+## S-6: The boot envelope has a third provenance shape, and it is Codex's
+
+The provenance rule is that boot output counts only when it arrives as *command output*, because
+scanning the raw line would let anything a person pasted nominate an absolute path for Cargento to
+open. `spacedock.tool_result_text` is where that rule is applied, and it read two shapes: Claude's
+`type: "tool_result"` content blocks and Pi's `toolResult` role message.
+
+Codex writes neither. A Codex rollout record has no `message` key at all, and the tool echo lives
+under `payload`. The consequence was quiet and total: 0 of 458 local rollouts yielded a boot
+envelope, so `observer.resolve_workflow` found no workflow and every Codex session running one
+published an empty stage. Nothing failed, and nothing said so.
+
+Two payload spellings carry it, and each carries `output` in two value shapes. All four were
+counted on the local rollout store rather than read off an API description, which is the evidence
+standard `docs/captures/README.md` sets for an adapter gate:
+
+| payload type | `output` is a string | `output` is a list of `{type, text}` blocks |
+|---|---|---|
+| `function_call_output` | 15,730 records | 897 records |
+| `custom_tool_call_output` | 2,956 records | 18,477 records |
+
+Of the 23 rollouts naming a `definition_dir` anywhere, 18 carry a boot envelope on one of those two
+payload types, and 10 of the 18 have it inside the `spacedock_boot_scan_bytes` head window. Reading
+them takes the count of Codex sessions with a resolvable workflow from 0 to 10.
+
+Nothing else under `payload` is read. A `function_call`'s own `arguments` field carries the same
+JSON on the way in, and it is the model's request rather than the command's output, so accepting it
+would give a model's proposal the authority of a tool result. That is the same distinction the Pi
+role gate makes, and it is why the branch tests the payload type rather than looking for
+`definition_dir` anywhere under the record.
+
+Rejected: also reading `event_msg`/`item_completed`. It looked like a third path, because 3 further
+rollouts mention a `definition_dir` there and nowhere else. They turn out to be `CommandExecution`
+items, which record the shell invocation together with its captured stdout, and 0 of the 4 such
+records carry a boot envelope at all. The mention is the command line, not its output. So the shape
+would add a maintenance surface and no session.
+
 ## Rejected alternatives worth keeping rejected
 
 Run `spacedock status` ourselves. It would answer every question above directly and correctly. It

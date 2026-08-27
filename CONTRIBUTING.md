@@ -105,6 +105,21 @@ and how long the hook itself took. It never records a prompt, a tool argument, a
 path. A research tool that captured those would be a worse leak than the thing it is researching,
 because it writes to disk and accumulates.
 
+`scripts/derive_prompt_shapes.py` re-derives the counts written into the harness-injected-prompt
+comment block in `cargento_runtime/records.py`: which markup tag leads a harness's own machinery,
+how often, and which of those a turn scanner already refuses. Point it at your own store with
+`--claude-root` and `--codex-root`, or run it bare for the defaults. Every count in that comment
+block is one of its outputs, so a reviewer can check the numbers instead of trusting them, and a new
+harness build that changes a tag shows up as a name the vocabulary does not list.
+
+It obeys the same rule `capture_hook.py` does, and for a sharper reason: a derivation script reads
+every prompt anyone ever typed, credentials included. It prints counts and shape names only, and the
+guard is a whitelist rather than a filter, so a label that is not a short markup name, a literal
+already in the source, or one of a fixed set of column headings raises instead of printing. Its test
+seeds a distinctive prompt into a fixture store and asserts the whole output carries none of it.
+Discovering a new prose prefix is out of scope for the same reason: it cannot be done without
+printing prose.
+
 ### Tests
 
 Every behavior change to `server.py` or `cargento_runtime/` needs a regression test in
