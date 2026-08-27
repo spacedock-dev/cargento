@@ -86,7 +86,9 @@ class RuntimeState:
     turn_scan: dict[str, Any] = field(default_factory=dict)
     agent_class_cache: dict[str, tuple[bool, str, str]] = field(default_factory=dict)
     spacedock_role_cache: dict[str, str] = field(default_factory=dict)
-    spacedock_boot_cache: dict[tuple[str, int], list[dict[str, Any]]] = field(default_factory=dict)
+    # {"pos": int, "envelopes": list} per transcript, advanced under scanner_lock.
+    # A cursor rather than a keyed cache: see S-6 in docs/design-spacedock.md.
+    spacedock_boot_scan: dict[str, dict[str, Any]] = field(default_factory=dict)
     spacedock_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = field(
         default_factory=dict
     )
