@@ -58,10 +58,17 @@ _GENERIC_OPENER_PREFIXES = (
 # blocked, and "error:" matches any agent quoting a log line it has already
 # dealt with. A false block is worse than no block: it is the one field on the
 # panel a reader would act on.
+# `blocked on` was the last bare phrase left, and it is now gone for the same
+# reason: measured over 857 sessions once the parser reached Claude and Codex,
+# it produced 4 blocks and all 4 were prose about a PR or another issue —
+# "the PR is blocked only by required review", "your conclusion that … is still
+# blocked on Spacedock PR work is correct". None was the agent's own state. Two
+# of them hit the 200-character cap with the triggering phrase truncated away,
+# so the rendered card showed a block whose visible text contained no block
+# language at all. The first-person forms above already carry the real case.
 _BLOCK_INDICATORS = (
     "i'm blocked",
     "i am blocked",
-    "blocked on",
     "i'm stuck",
     "i am stuck",
     "waiting for you",
@@ -97,62 +104,172 @@ def _is_generic_opener(text: str) -> bool:
     return any(stripped.startswith(prefix) for prefix in _GENERIC_OPENER_PREFIXES)
 
 
-def _parse_message_record(record: Any) -> dict[str, str] | None:
-    """One (role, text) pair from a JSONL message record, or None.
+# `type: "message"` is Pi's shape and Droid's, and `_parse_message_record`
+# deliberately takes no harness parameter (the shapes below are disjoint across
+# the whole local corpus, so the union needs no gate). That leaves the shared
+# shape with no single name to hand the injected-tag lookup, which is exactly
+# the case `records.injected_prompt` documents: a harness it has no measured
+# vocabulary for gets the union of every measured set.
+_SHARED_MESSAGE_HARNESS = "pi-or-droid"
 
-    Guards every field the way the collectors guard theirs: untyped JSON
-    from disk. Skips tool results (a user turn whose content is a tool_result
-    is a system echo, not a directive) and records with no text.
+
+def _blocks_carry_tool_result(content: Any) -> bool:
+    """Whether a content list holds a tool_result block, in either spelling.
+
+    Claude and Pi write ``type: "tool_result"``; Codex writes the same echo as a
+    ``function_call_output`` payload, which never reaches here because it is not
+    a ``message``. A user turn carrying one is a system echo, not a directive.
     """
-    if not isinstance(record, dict) or record.get("type") != "message":
-        return None
-    message = records.message_dict(record)
-    role = message.get("role")
+    return isinstance(content, list) and any(
+        isinstance(block, dict) and block.get("type") == "tool_result" for block in content
+    )
+
+
+def _message_from(role: Any, content: Any, harness: str) -> dict[str, str] | None:
+    """The (role, text) pair for one already-unwrapped message, or None.
+
+    The one place the injected-shape rejection is applied, so every harness arm
+    below gets it. Without it, teaching the parser the Claude and Codex shapes
+    would publish a harness's own machinery as the operator's goal on 51.6% of
+    Codex rollouts and 62.5% of Claude sessions — a confident wrong answer where
+    there is a silent sentinel today, which is the worse of the two failures.
+    """
     if role not in ("user", "assistant"):
         return None
-    content = message.get("content")
-    if isinstance(content, list) and any(
-        isinstance(block, dict) and block.get("type") == "tool_result" for block in content
-    ):
+    if _blocks_carry_tool_result(content):
         return None
     text = records.extract_text(content).strip()
     if not text:
         return None
-    return {"role": role, "text": text}
+    if role == "assistant":
+        return {"role": "assistant", "text": text}
+    # The operator's own words, with the harness's image markers peeled off the
+    # front — `strip_prompt_wrappers` is what makes `[Image #1] fix the build`
+    # publishable as a goal rather than as a marker.
+    body = records.strip_prompt_wrappers(text)
+    if not body or records.injected_prompt(text, harness):
+        return None
+    return {"role": "user", "text": body}
+
+
+def _claude_message(record: dict[str, Any], record_type: str) -> dict[str, str] | None:
+    """One (role, text) pair from a Claude ``user``/``assistant`` record, or None.
+
+    A subagent's transcript is interleaved into its parent's file, and a
+    subagent's prompt is the parent agent's dispatch rather than the operator's.
+    Measured with this parser over the local Claude corpus, the record supplying
+    the goal was ``isSidechain`` on 74 of 394 sessions. Neither this function's
+    predecessor nor ``records._turn_signal`` tested the flag; ``isMeta``, which
+    both refuse, is the harness's own bookkeeping and goes with it.
+    """
+    if record.get("isSidechain") or record.get("isMeta"):
+        return None
+    message = records.message_dict(record)
+    return _message_from(message.get("role") or record_type, message.get("content"), "claude")
+
+
+def _parse_message_record(record: Any) -> dict[str, str] | None:
+    """One (role, text) pair from a JSONL message record, or None.
+
+    Three record shapes, additively: ``type: "message"`` with a nested
+    ``message.role`` (Pi and Droid), ``type: "user"``/``"assistant"`` (Claude),
+    and ``type: "response_item"`` with ``payload.type == "message"`` (Codex).
+    Requiring the first alone is what returned zero messages on 3,769 of 3,769
+    local Claude transcripts and 457 of 457 Codex rollouts.
+
+    No ``harness`` parameter, and that is a measurement rather than a shortcut:
+    the three shapes are disjoint over the whole local corpus (0 of 457 Codex
+    and 0 of 600 Claude files carry a top-level ``type == "message"``; Codex
+    carries no ``user``/``assistant`` record and Claude no ``response_item``),
+    and this function has one call chain in which the caller has already
+    resolved a single file for a single requested harness.
+
+    Guards every field the way the collectors guard theirs: untyped JSON from
+    disk.
+    """
+    if not isinstance(record, dict):
+        return None
+    record_type = record.get("type")
+    if record_type == "message":
+        message = records.message_dict(record)
+        return _message_from(message.get("role"), message.get("content"), _SHARED_MESSAGE_HARNESS)
+    if record_type in ("user", "assistant"):
+        return _claude_message(record, record_type)
+    if record_type == "response_item":
+        payload = records.as_dict(record.get("payload"))
+        if payload.get("type") != "message":
+            return None
+        return _message_from(payload.get("role"), payload.get("content"), "codex")
+    return None
+
+
+def _dedup_key(record: dict[str, Any]) -> str:
+    """The record's own identity, or empty when it carries none.
+
+    Not ``record["id"]``, which is what this read before: **0 of 8,312 Claude
+    and 0 of 14,389 Codex records carry a top-level ``id``**, so the key
+    degraded silently to the message text and a prompt repeated verbatim later
+    in the session kept its first, oldest position. Claude spells it ``uuid``
+    and Codex ``payload.id``; Pi and Droid do spell it ``id``.
+    """
+    for value in (
+        record.get("uuid"),
+        record.get("id"),
+        records.as_dict(record.get("payload")).get("id"),
+    ):
+        if isinstance(value, str) and value:
+            return value
+    return ""
 
 
 def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
     """User and assistant texts from a JSONL transcript, head + tail bounded.
 
-    The head carries the opening directive; the tail carries the recent
-    window. Records are deduped by id so the overlap region between head and
-    tail does not double-count.
+    The head carries the opening directive; the tail carries the recent window.
+    Records are deduped by their own id so the overlap region between head and
+    tail does not double-count, and returned in **record-timestamp** order.
+
+    Ordering by timestamp and not by list position, because the two windows are
+    concatenated: on any file larger than head + tail the newest message by
+    position is the last line of the *head*, so `directives[-1]` published the
+    session's opening prompt as its current goal. Measured on the local corpus,
+    the goal came from the head window on 55.0% of Codex rollouts over that
+    size. File order breaks ties, which is what keeps a transcript whose
+    records carry no stamp reading exactly as it did before.
     """
-    messages: list[dict[str, str]] = []
-    seen: set[str] = set()
     try:
         head = runtime_io.read_prefix_bytes(path, max_bytes=config.observer_head_bytes)
     except OSError:
         head = b""
     head_lines = head.decode("utf-8", "replace").split("\n")
     tail_lines = runtime_io.read_tail(config, path)
-    for raw in head_lines + tail_lines:
+    ordered: list[tuple[float, int, dict[str, str]]] = []
+    seen: set[str] = set()
+    # Carried forward so a stampless record sorts beside the stamped one before
+    # it rather than ahead of the whole file.
+    last_ts = 0.0
+    for position, raw in enumerate(head_lines + tail_lines):
         if not raw or not raw.lstrip().startswith("{"):
             continue
         try:
             record = json.loads(raw)
         except (ValueError, json.JSONDecodeError):
             continue
+        if not isinstance(record, dict):
+            continue
+        stamp = records.parse_ts(record.get("timestamp"))
+        if stamp:
+            last_ts = stamp
         parsed = _parse_message_record(record)
         if parsed is None:
             continue
-        entry_id = record.get("id") if isinstance(record, dict) else None
-        key = entry_id if isinstance(entry_id, str) and entry_id else parsed["text"]
+        key = _dedup_key(record) or parsed["text"]
         if key in seen:
             continue
         seen.add(key)
-        messages.append(parsed)
-    return messages
+        ordered.append((last_ts, position, parsed))
+    ordered.sort(key=lambda item: (item[0], item[1]))
+    return [parsed for _ts, _position, parsed in ordered]
 
 
 def _user_directives(messages: list[dict[str, str]]) -> list[str]:
@@ -187,7 +304,16 @@ def _derive_goal_deterministic(
         # Assistant work exists but no concrete directive was found: the
         # goal is unknown, not fabricated.
         return NO_GOAL, None
-    goal = directives[-1].split("\n")[0].strip()
+    # `prompt_title` rather than `split("\n")[0]`, and the reason is the one
+    # shape `records.injected_prompt` deliberately admits. A slash command is
+    # the operator's intent spelled in the harness's markup, so it is not
+    # rejected — but published raw it reads as `<command-message>…`, which was
+    # 60 of 400 Claude sessions and 5 of 457 Codex rollouts. `prompt_title`
+    # already owns that rendering (`/review 1287 — with fresh eyes`), and
+    # strips the wrapper tags off everything else.
+    goal = transcripts.prompt_title(config, directives[-1], limit=config.observer_goal_cap_chars)
+    if not goal:
+        return NO_GOAL, None
     return records.safe_text(goal, config.observer_goal_cap_chars), None
 
 
@@ -368,6 +494,14 @@ def read_sidecar(config: RuntimeConfig, harness: str, sid: str) -> dict[str, Any
     return value if isinstance(value, dict) else None
 
 
+def _mtime(path: str) -> float:
+    """One file's mtime, or 0 when it went away between the glob and the stat."""
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
+
+
 def resolve_transcript(
     config: RuntimeConfig,
     state: RuntimeState,
@@ -399,6 +533,26 @@ def resolve_transcript(
             if os.path.basename(path).removesuffix(".jsonl").startswith(sid)
         ]
         return found[0] if len(found) == 1 else None
+    if harness == "codex":
+        # `sessions/<yyyy>/<mm>/<dd>/rollout-<timestamp>-<uuid>.jsonl`. Neither
+        # branch beside this one transfers: the Claude stem match cannot be
+        # reused because a rollout's uuid sits at the *end* of the filename, and
+        # Pi's `pi_meta` reads a different first line. So the id is matched
+        # against `session_meta`, the same field `collectors/codex.py` keys on.
+        #
+        # Newest mtime and not the first match, because one `session_id` is
+        # legitimately spread over several files: a resume and each subagent
+        # thread write their own rollout under it (`collectors/codex.py:129`),
+        # and `:174` resolves that collision the same way. The first by glob
+        # order is the oldest, which is the one nothing is being written to.
+        found = [
+            path
+            for path in runtime_io.glob_stores(
+                config, "codex.sessions", "*", "*", "*", "rollout-*.jsonl"
+            )
+            if transcripts.codex_meta(config, state, path).get("session_id") == sid
+        ]
+        return max(found, key=_mtime) if found else None
     if harness != "pi":
         return None
     # Pi's default store is nested and a custom one is flat, so both shapes are

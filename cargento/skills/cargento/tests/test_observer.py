@@ -60,6 +60,80 @@ def _pi_session(sid: str, cwd: str = "/home/test/project") -> str:
     return json.dumps({"type": "session", "id": sid, "cwd": cwd})
 
 
+def _claude_message(
+    uuid: str,
+    role: str,
+    content: Any,
+    *,
+    ts: str = "2026-08-17T02:00:00Z",
+    sidechain: bool = False,
+    meta: bool = False,
+) -> str:
+    """One Claude-style JSONL record: ``type`` is the role, ``uuid`` is the id.
+
+    The field names are the ones a live transcript carries — surveyed over
+    `~/.claude/projects`, where all 289 user and assistant records in the sample
+    carried `parentUuid`, `isSidechain`, `type`, `message`, `uuid` and
+    `timestamp`, and **none** carried a top-level `id`. The text is invented,
+    per the convention `docs/captures/` sets: shapes, never values.
+    """
+    record: dict[str, Any] = {
+        "parentUuid": None,
+        "isSidechain": sidechain,
+        "userType": "external",
+        "cwd": "/home/test/project",
+        "sessionId": "s-1",
+        "version": "2.1.222",
+        "gitBranch": "main",
+        "type": role,
+        "message": {"role": role, "content": content},
+        "uuid": uuid,
+        "timestamp": ts,
+    }
+    if meta:
+        record["isMeta"] = True
+    return json.dumps(record)
+
+
+def _codex_message(
+    payload_id: str,
+    role: str,
+    text: str,
+    *,
+    ts: str = "2026-08-17T02:00:00Z",
+) -> str:
+    """One Codex-style JSONL record: ``response_item`` wrapping a message payload.
+
+    Again the live shape: the id lives at `payload.id` (never at the top level),
+    the text at `payload.content[].text`, and the block type differs by role —
+    `input_text` for the operator, `output_text` for the agent.
+    """
+    block = "input_text" if role == "user" else "output_text"
+    return json.dumps(
+        {
+            "timestamp": ts,
+            "type": "response_item",
+            "payload": {
+                "id": payload_id,
+                "type": "message",
+                "role": role,
+                "content": [{"type": block, "text": text}],
+            },
+        }
+    )
+
+
+def _codex_session_meta(sid: str, cwd: str = "/home/test/project") -> str:
+    """A Codex rollout's line 1, which is what `transcripts.codex_meta` reads."""
+    return json.dumps(
+        {
+            "timestamp": "2026-08-17T01:59:00Z",
+            "type": "session_meta",
+            "payload": {"id": sid, "cwd": cwd, "cli_version": "0.149.1"},
+        }
+    )
+
+
 def _write_entity(entity_dir: Path, slug: str, status: str) -> Path:
     """Write one entity file with ``status:`` frontmatter."""
     entity_dir.mkdir(parents=True, exist_ok=True)
@@ -253,6 +327,12 @@ class ObserverAnalyzerTest(unittest.TestCase):
             "The log said error: missing header, which the include fixes.",
             "I was unable to reproduce it until I widened the window.",
             "Waiting for the suite to finish, then I will push.",
+            # `blocked on` went the same way once the parser reached Claude and
+            # Codex: over 857 real sessions it produced four blocks and all four
+            # were prose about a PR or another issue. Both lines below are the
+            # shape of those four.
+            "The PR is mergeable and blocked only by required review.",
+            "Your conclusion that live egress is still blocked on the other PR is correct.",
         ):
             with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp:
                 path = self._write_transcript(
@@ -471,6 +551,227 @@ class ObserverAnalyzerTest(unittest.TestCase):
         self.assertEqual("no goal derived", result["goal"])
 
 
+class ObserverRecordShapeTest(unittest.TestCase):
+    """One test per harness record shape, so this cannot revert to Pi-only.
+
+    The analyzer required ``type: "message"`` — Pi's shape and Droid's — and
+    returned zero messages on 3,769 of 3,769 local Claude transcripts and 457 of
+    457 Codex rollouts, publishing the ``no goal derived`` sentinel for sessions
+    full of work. Teaching it the other two shapes and nothing else would have
+    been worse: measured here over the same corpora, the published goal was a
+    harness-injected shape on 234 of 457 Codex rollouts (51.2%) and 247 of a
+    seeded 400-transcript Claude sample (61.8%). A confident wrong answer where
+    there had been a silent one.
+    """
+
+    NOW = 1_700_000_000.0
+    WINDOW = 86_400.0
+
+    def setUp(self) -> None:
+        self.config, self.state = make_runtime()
+
+    def analyze(self, lines: list[str], **changes: Any) -> dict[str, Any]:
+        config = dataclasses.replace(self.config, **changes) if changes else self.config
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "session.jsonl"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return observer.analyze(
+                config, self.state, str(path), now=self.NOW, window_sec=self.WINDOW
+            )
+
+    def test_a_claude_transcript_derives_a_goal(self) -> None:
+        result = self.analyze(
+            [
+                _claude_message("u1", "user", "Rewrite the changelog for the release"),
+                _claude_message(
+                    "u2",
+                    "assistant",
+                    [{"type": "text", "text": "Reading the tags now."}],
+                    ts="2026-08-17T02:01:00Z",
+                ),
+            ]
+        )
+        self.assertEqual("Rewrite the changelog for the release", result["goal"])
+
+    def test_a_codex_rollout_derives_a_goal(self) -> None:
+        result = self.analyze(
+            [
+                _codex_session_meta("019f1c51-6cf9-7981-9a2d-172428800000"),
+                _codex_message("p1", "user", "Rewrite the changelog for the release"),
+                _codex_message("p2", "assistant", "Reading the tags now.", ts="2026-08-17T02:01Z"),
+            ]
+        )
+        self.assertEqual("Rewrite the changelog for the release", result["goal"])
+
+    def test_the_pi_and_droid_shape_still_parses(self) -> None:
+        # The union is additive on purpose. Falsifying edit: gate the shapes on a
+        # `harness` argument and this fixture stops parsing.
+        result = self.analyze(
+            [
+                _pi_session("shape-001"),
+                _pi_message("m1", None, "user", "Rewrite the changelog for the release"),
+                _pi_message("m2", "m1", "assistant", "Reading the tags now."),
+            ]
+        )
+        self.assertEqual("Rewrite the changelog for the release", result["goal"])
+
+    def test_an_injected_shape_is_never_published_as_the_goal(self) -> None:
+        # The whole reason this change could not ship on the parser alone. Each
+        # pair below is one harness's own machinery in the user channel; the
+        # analyzer must fall back to the sentinel rather than publish it.
+        for label, lines in (
+            (
+                "claude-tag",
+                [
+                    _claude_message(
+                        "u1", "user", "<task-notification>agent done</task-notification>"
+                    ),
+                    _claude_message("u2", "assistant", "Acknowledged.", ts="2026-08-17T02:01:00Z"),
+                ],
+            ),
+            (
+                "claude-compaction",
+                [
+                    _claude_message(
+                        "u1", "user", "Analyze this conversation and determine what happened."
+                    ),
+                    _claude_message("u2", "assistant", "Acknowledged.", ts="2026-08-17T02:01:00Z"),
+                ],
+            ),
+            (
+                "claude-sidechain",
+                [
+                    _claude_message(
+                        "u1", "user", "Search the tree for the dead route", sidechain=True
+                    ),
+                    _claude_message("u2", "assistant", "Acknowledged.", ts="2026-08-17T02:01:00Z"),
+                ],
+            ),
+            (
+                "claude-meta",
+                [
+                    _claude_message("u1", "user", "Set the model to opus", meta=True),
+                    _claude_message("u2", "assistant", "Acknowledged.", ts="2026-08-17T02:01:00Z"),
+                ],
+            ),
+            (
+                "codex-tag",
+                [
+                    _codex_session_meta("019f1c51-6cf9-7981-9a2d-172428800001"),
+                    _codex_message("p1", "user", "<recommended_plugins>\nHere is a list."),
+                    _codex_message("p2", "assistant", "Acknowledged.", ts="2026-08-17T02:01Z"),
+                ],
+            ),
+            (
+                "codex-prose",
+                [
+                    _codex_session_meta("019f1c51-6cf9-7981-9a2d-172428800002"),
+                    _codex_message("p1", "user", "# AGENTS.md instructions for /home/test/project"),
+                    _codex_message("p2", "assistant", "Acknowledged.", ts="2026-08-17T02:01Z"),
+                ],
+            ),
+        ):
+            with self.subTest(shape=label):
+                result = self.analyze(lines)
+                self.assertEqual(observer.NO_GOAL, result["goal"])
+                # Assistant work exists, so this is the "unknown, not
+                # fabricated" branch rather than the generic-opener one.
+                self.assertIsNone(result["reason"])
+
+    def test_a_slash_command_is_the_operators_intent_and_is_published(self) -> None:
+        # The deliberate carve-out. `records.injected_prompt` does not reject the
+        # slash-command wrappers, because a slash command is what the person
+        # asked for, spelled in the harness's markup — and `transcripts.prompt_title`
+        # owns reading it back out. Falsifying edit: add `command-message` to
+        # `records._CLAUDE_USER_TAGS` and this session loses its goal entirely.
+        result = self.analyze(
+            [
+                _claude_message(
+                    "u1",
+                    "user",
+                    "<command-message>code-review is running…</command-message>\n"
+                    "<command-name>/code-review</command-name>\n"
+                    "<command-args>1287 with fresh eyes</command-args>",
+                ),
+                _claude_message("u2", "assistant", "Reading the diff.", ts="2026-08-17T02:01:00Z"),
+            ]
+        )
+        self.assertEqual("/code-review 1287 with fresh eyes", result["goal"])
+
+    def test_the_newest_directive_is_the_newest_by_stamp_not_by_position(self) -> None:
+        # `_extract_messages` concatenates the head window and the tail window,
+        # and `_derive_goal_deterministic` takes `directives[-1]`, so "newest"
+        # used to mean "last in that concatenation". File position is not record
+        # order: a resumed Claude session replays the earlier transcript's
+        # records into the new file, and the replayed block carries its original
+        # stamps while sitting after records written later.
+        #
+        # Falsifying edit: drop the `ordered.sort` in `_extract_messages` — the
+        # goal then becomes "the replayed opening prompt".
+        result = self.analyze(
+            [
+                _claude_message("u1", "user", "the newest prompt", ts="2026-08-17T09:00:00Z"),
+                _claude_message("u2", "assistant", "Working.", ts="2026-08-17T09:01:00Z"),
+                _claude_message(
+                    "u3", "user", "the replayed opening prompt", ts="2026-08-17T02:00:00Z"
+                ),
+            ]
+        )
+        self.assertEqual("the newest prompt", result["goal"])
+
+    def test_the_head_window_and_the_tail_window_are_both_read(self) -> None:
+        # The two windows are disjoint on any file over head + tail (465,536 B
+        # with the shipped figures), and the opening directive lives in the head.
+        # The windows are shrunk here rather than the file grown: a 465 KB
+        # fixture proves the same thing and costs a disk write per run.
+        filler = [
+            _claude_message(f"f{i}", "assistant", "x" * 200, ts=f"2026-08-17T02:{i:02d}:00Z")
+            for i in range(2, 40)
+        ]
+        result = self.analyze(
+            [
+                _claude_message("u1", "user", "the opening prompt", ts="2026-08-17T02:00:00Z"),
+                *filler,
+                _claude_message("u2", "assistant", "Still going.", ts="2026-08-17T02:59:00Z"),
+            ],
+            observer_head_bytes=1_200,
+            tail_bytes=1_200,
+        )
+        self.assertEqual("the opening prompt", result["goal"])
+
+    def test_a_repeated_prompt_does_not_keep_its_oldest_position(self) -> None:
+        # The dedup key read `record["id"]`, which **0 of 8,312 Claude and 0 of
+        # 14,389 Codex records carry**, so it degraded silently to the message
+        # text: a prompt repeated verbatim later in the session was dropped as a
+        # duplicate of its own first occurrence, and the goal stayed on whatever
+        # came between them. Falsifying edit: key on `record.get("id")` again.
+        result = self.analyze(
+            [
+                _claude_message("u1", "user", "align the release notes", ts="2026-08-17T02:00:00Z"),
+                _claude_message("u2", "user", "run the migration", ts="2026-08-17T02:01:00Z"),
+                _claude_message("u3", "user", "align the release notes", ts="2026-08-17T02:02:00Z"),
+                _claude_message("u4", "assistant", "On it.", ts="2026-08-17T02:03:00Z"),
+            ]
+        )
+        self.assertEqual("align the release notes", result["goal"])
+
+    def test_a_tool_result_echo_is_not_a_directive(self) -> None:
+        # A user turn whose content is a tool_result is the harness echoing its
+        # own output back, on every one of the three shapes.
+        result = self.analyze(
+            [
+                _claude_message("u1", "user", "Fix the failing build", ts="2026-08-17T02:00:00Z"),
+                _claude_message(
+                    "u2",
+                    "user",
+                    [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}],
+                    ts="2026-08-17T02:05:00Z",
+                ),
+            ]
+        )
+        self.assertEqual("Fix the failing build", result["goal"])
+
+
 class ObserverTranscriptResolutionTest(RuntimeTestCase):
     """Which transcript `/api/observe?harness=&sid=` resolves to, per harness."""
 
@@ -506,10 +807,41 @@ class ObserverTranscriptResolutionTest(RuntimeTestCase):
                 config, state = runtime()
                 self.assertIsNone(observer.resolve_transcript(config, state, "claude", "sess-"))
 
-    def test_an_unknown_harness_and_an_unnamed_id_resolve_to_nothing(self) -> None:
-        config, state = runtime()
-        self.assertIsNone(observer.resolve_transcript(config, state, "codex", "abc"))
-        self.assertIsNone(observer.resolve_transcript(config, state, "pi", "a/../b"))
+    def test_a_codex_rollout_resolves_by_session_meta_and_newest_wins(self) -> None:
+        # A rollout's uuid sits at the END of `rollout-<timestamp>-<uuid>.jsonl`,
+        # so the Claude branch's stem `startswith` cannot be reused; the id is
+        # matched against `session_meta` instead, which is the field
+        # `collectors/codex.py` keys on.
+        #
+        # Newest mtime and not the first match, because one `session_id` is
+        # legitimately spread over several files: a resume and each subagent
+        # thread write their own rollout under it. The first by glob order is the
+        # oldest — the one nothing is being written to.
+        sid = "019f1c51-6cf9-7981-9a2d-172428800003"
+        with tempfile.TemporaryDirectory() as tmp:
+            day = Path(tmp) / "2026" / "08" / "17"
+            day.mkdir(parents=True)
+            older = day / f"rollout-2026-08-17T01-00-00-{sid}.jsonl"
+            newer = day / f"rollout-2026-08-17T09-00-00-{sid}.jsonl"
+            other = day / "rollout-2026-08-17T10-00-00-019f1c51-6cf9-7981-9a2d-172428800004.jsonl"
+            for path, resumed in ((older, sid), (newer, sid), (other, "other-session")):
+                path.write_text(_codex_session_meta(resumed) + "\n", encoding="utf-8")
+            os.utime(str(older), (1_700_000_000, 1_700_000_000))
+            os.utime(str(newer), (1_700_000_900, 1_700_000_900))
+            with store_patch(CODEX_SESSIONS_DIR=str(tmp)):
+                config, state = runtime()
+                found = observer.resolve_transcript(config, state, "codex", sid)
+        self.assertEqual(str(newer), found)
+
+    def test_an_unregistered_harness_and_an_unnamed_id_resolve_to_nothing(self) -> None:
+        # The Codex store is patched to an empty directory on purpose: without
+        # it `runtime()` resolves the developer's real `~/.codex/sessions`, and
+        # this assertion passed vacuously on a machine with no rollouts.
+        with tempfile.TemporaryDirectory() as tmp, store_patch(CODEX_SESSIONS_DIR=tmp):
+            config, state = runtime()
+            self.assertIsNone(observer.resolve_transcript(config, state, "codex", "abc"))
+            self.assertIsNone(observer.resolve_transcript(config, state, "gemini", "abc"))
+            self.assertIsNone(observer.resolve_transcript(config, state, "pi", "a/../b"))
 
 
 class ObserverRouteTest(RuntimeTestCase):
