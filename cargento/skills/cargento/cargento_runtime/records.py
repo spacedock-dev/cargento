@@ -369,6 +369,23 @@ _PROMPT_IMAGE_WRAPPER_RE = re.compile(
 # "<3 this".
 _PROMPT_LEADING_TAG_RE = re.compile(r"^</?([A-Za-z][A-Za-z0-9_-]*)[\s>/]")
 
+# The slash-command tags — `<command-message>`, `<command-name>`,
+# `<command-args>` — are deliberately absent from both sets. They WRAP the
+# operator's intent rather than replacing it: a slash command is what the
+# person asked for, spelled in the harness's own markup. `transcripts.prompt_title`
+# already owns rendering them, through a dedicated `_COMMAND_NAME_RE` /
+# `_COMMAND_ARGS_RE` path that reads the bytes back out as
+# `/claude-code-review 1287 - with a fresh pair of eyes...`, so rejecting them
+# here would have left two primitives in one runtime disagreeing about the same
+# record. Measured before removal: 1,493 of 15,109 `_turn_signal`-reachable
+# Claude prompts carried a `<command-name>` with non-empty `<command-args>` and
+# every one was rejected, which left 213 of 3,100 collector-gated sessions with
+# no recoverable operator intent at all.
+#
+# `<teammate-message>` stays listed, and the cost is accepted rather than
+# overlooked: a message from another agent is not the operator's instruction,
+# so the 563 sessions carrying one show nothing from it.
+
 # Measured leading a Codex user-role record; counts are corpus occurrences.
 _CODEX_USER_TAGS = frozenset(
     {
@@ -378,11 +395,9 @@ _CODEX_USER_TAGS = frozenset(
         "environment_context",  # 42
         "subagent_notification",  # 36
         "task-notification",  # 34
-        "command-name",  # 22
         "local-command-stdout",  # 18
         "bash-input",  # 14
         "bash-stdout",  # 14
-        "command-message",  # 12
         "user_shell_command",  # 5
         "turn_aborted",  # 3
     }
@@ -400,6 +415,7 @@ _CODEX_DEVELOPER_TAGS = frozenset(
         "apps_instructions",  # 377
         "plugins_instructions",  # 377
         "multi_agent_mode",  # 359
+        "collaboration_mode",  # 53
         "app-context",  # 3
     }
 )
@@ -408,10 +424,8 @@ _CODEX_DEVELOPER_TAGS = frozenset(
 _CLAUDE_USER_TAGS = frozenset(
     {
         "task-notification",  # 1771
-        "command-message",  # 1656
         "teammate-message",  # 1176
         "local-command-caveat",  # 1064
-        "command-name",  # 893
         "local-command-stdout",  # 620
         "bash-input",  # 242
         "bash-stdout",  # 241

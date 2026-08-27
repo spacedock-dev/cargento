@@ -327,6 +327,58 @@ class InjectedPromptTest(unittest.TestCase):
             with self.subTest(tag=tag):
                 self.assertTrue(records.injected_prompt(f"<{tag}>body</{tag}>", "claude"))
 
+    def test_the_measured_vocabulary_is_pinned_literally(self) -> None:
+        """The two tests above iterate the very sets they assert against, so
+        they stay green for any contents: delete the corpus's largest injection
+        shape and nothing fails. These figures are the vocabulary itself, so a
+        tag that goes missing or an unmeasured one that creeps in is caught.
+        """
+        self.assertEqual(11, len(records._CODEX_USER_TAGS))
+        self.assertEqual(7, len(records._CODEX_DEVELOPER_TAGS))
+        self.assertEqual(9, len(records._CLAUDE_USER_TAGS))
+        self.assertEqual(
+            {
+                "bash-input",
+                "bash-stdout",
+                "local-command-stdout",
+                "task-notification",
+                "teammate-message",
+            },
+            (records._CODEX_USER_TAGS | records._CODEX_DEVELOPER_TAGS) & records._CLAUDE_USER_TAGS,
+        )
+        for tag in ("recommended_plugins", "skill", "subagent_notification", "user_shell_command"):
+            self.assertIn(tag, records._CODEX_USER_TAGS)
+        for tag in ("permissions", "multi_agent_mode", "collaboration_mode"):
+            self.assertIn(tag, records._CODEX_DEVELOPER_TAGS)
+        for tag in ("local-command-caveat", "system-reminder", "local-command-stderr"):
+            self.assertIn(tag, records._CLAUDE_USER_TAGS)
+        # The slash-command wrappers are absent on purpose; see the test below.
+        for tag in ("command-message", "command-name", "command-args"):
+            self.assertNotIn(tag, records._ANY_INJECTED_TAG)
+
+    def test_a_slash_command_is_the_operator_speaking(self) -> None:
+        """A slash command is what the person asked for, in harness markup.
+
+        Rejecting it cost 1,493 of 15,109 `_turn_signal`-reachable Claude
+        prompts, and `transcripts.prompt_title` renders these same bytes as
+        `/review 1287`, so the predicate agreeing with it is the contract.
+        """
+        text = (
+            "<command-message>review is running…</command-message>\n"
+            "<command-name>/review</command-name>\n"
+            "<command-args>1287</command-args>"
+        )
+        for harness in ("codex", "claude", "droid"):
+            with self.subTest(harness=harness):
+                self.assertFalse(records.injected_prompt(text, harness))
+
+    def test_a_teammate_message_is_still_not_the_operator(self) -> None:
+        # The measured cost is accepted, not overlooked: 563 local sessions
+        # carry one and will show nothing from it.
+        self.assertTrue(
+            records.injected_prompt("<teammate-message>go</teammate-message>", "claude")
+        )
+
     def test_an_attribute_bearing_tag_is_still_recognised(self) -> None:
         # The commonest injection of all carries attributes, so a matcher that
         # only understood `<name>` would miss 1,176 Claude records.
