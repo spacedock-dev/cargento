@@ -277,14 +277,39 @@ def states_work(config: RuntimeConfig, text: str) -> bool:
     as `/burndown DRC-4266 and the board`; counting words on the raw record calls
     that a bare continuation and buries the one thing the operator actually
     asked for.
+
+    The RENDERING decides the shape; the BODY decides the word count. Those are
+    two different questions and reading both off `prompt_title` conflated them,
+    because that function returns line 1 only. Counting there called 97 of 2,066
+    local newest prompts bare when the operator had written an instruction: a
+    five-word opener over a five-line body ("a backend python test is failing:"),
+    and one-line prompts whose first 140 characters are mostly a pasted URL, which
+    `shorten_paths` leaves whole so it counts as a single word. Every one of the
+    97 moves the same way — a real newest instruction published instead of an
+    older one quoted in its place — and none moves the other.
     """
     rendered = prompt_title(config, text, records.INSTRUCTION_CAP_CHARS)
     if not rendered:
         return False
+    # A harness control is not work, however it renders. `/clear` and `/login`
+    # drive the session rather than describe it, and published in the labelled
+    # slot they are indistinguishable from an instruction: 202 of 1,906 lines on
+    # the local Claude corpus. The same predicate the observer's goal slot uses,
+    # deliberately, because two primitives disagreeing about whether `/clear` is
+    # an objective is the class of bug this shares with DRC-4265.
+    if records.harness_control(rendered):
+        return False
     # A slash command names work by construction, however short. `/release` is
     # two words rendered and a whole instruction meant, and the word count is the
-    # wrong instrument for the one prompt shape that is already explicit.
-    return rendered.startswith("/") or not records.bare_continuation(rendered)
+    # wrong instrument for the one prompt shape that is already explicit. A bare
+    # SKILL invocation is the operator's intent and stays here — only the
+    # measured control names above are refused.
+    if rendered.startswith("/"):
+        return True
+    # `text`, not `rendered`: the count belongs on the whole prompt.
+    # `bare_continuation` strips the wrapper tags itself, so the markup a
+    # rendering would have removed is not counted either way.
+    return not records.bare_continuation(text)
 
 
 def instruction_from(
@@ -400,6 +425,20 @@ def _codex_walk(config: RuntimeConfig, path: str) -> _CodexCandidates:
     only when the walk actually reached this turn's `task_started`; otherwise the
     ladder falls through to a labelled older prompt rather than presenting a
     previous turn's intent as this one's.
+
+    `reached_floor` alone does not carry that guarantee, and reading it as though
+    it did was the bug: it proves only that SOME turn opened behind the walk, not
+    that it was this one. A turn that has not written `task_started` yet lets the
+    walk run past the newest prompt, overwrite the preamble with the PREVIOUS
+    turn's commentary, and then set the floor on that turn — publishing a
+    statement of intent the operator's newest instruction has already superseded.
+
+    So the preamble is bounded structurally instead: it is only ever assigned
+    while no prompt has been seen, which makes it strictly newer than the newest
+    genuine prompt and therefore this turn's by construction. Gating the RETURN
+    on a "this turn wrote no floor" flag was tried first and is worse — the two
+    differ only when a turn has commentary but no floor of its own, and there the
+    flag suppresses a preamble that is genuinely current.
     """
     prompt: tuple[str, float] | None = None
     preamble: tuple[str, float] | None = None
@@ -417,7 +456,10 @@ def _codex_walk(config: RuntimeConfig, path: str) -> _CodexCandidates:
             continue
         kind, text, at = _codex_scan_record(record)
         if kind == "commentary":
-            if not reached_floor and text.strip():
+            # `prompt is None` is the load-bearing clause, not `reached_floor`:
+            # commentary reached after the newest prompt belongs to an earlier
+            # turn whatever the floor says.
+            if not reached_floor and prompt is None and text.strip():
                 preamble = (text, at)
         elif kind == "floor":
             reached_floor = True

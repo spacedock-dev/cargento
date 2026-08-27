@@ -1160,6 +1160,45 @@ class CodexInstructionTest(unittest.TestCase):
 
         self.assertIsNone(result["instruction"])
 
+    def test_a_floor_behind_the_newest_prompt_does_not_validate_a_stale_preamble(
+        self,
+    ) -> None:
+        # The floor's own failure mode. This turn has not written `task_started`
+        # yet, so the walk runs past the newest prompt, picks up the PREVIOUS
+        # turn's commentary, and then reaches that turn's floor — which
+        # `reached_floor` alone reads as proof the preamble is current. The
+        # record order is the real one: prompt, floor, commentary, work.
+        result = self.scan(
+            self._user_old(0, "Rebuild the quota cache from the receipts"),
+            self._task_started(1),
+            self._commentary_old(2, "PREVIOUS TURN INTENT: I'll rebuild the cache"),
+            self._user_old(3, "proceed"),
+        )
+
+        assert result["instruction"] is not None
+        # Not "agent"/"PREVIOUS TURN INTENT…", which is a statement of intent
+        # made BEFORE the operator's newest instruction.
+        self.assertEqual("earlier", result["instruction"]["label"])
+        self.assertEqual("Rebuild the quota cache from the receipts", result["instruction"]["text"])
+
+    def test_this_turns_own_commentary_survives_a_later_floor(self) -> None:
+        # The other side of the same gate, so the fix cannot degrade to "never
+        # publish a preamble". Commentary NEWER than the newest prompt is this
+        # turn's by construction, whichever turn's `task_started` the walk
+        # eventually lands on.
+        result = self.scan(
+            self._user_old(0, "Rebuild the quota cache from the receipts"),
+            self._task_started(1),
+            self._user_old(2, "proceed"),
+            self._commentary_old(3, "Next I'll re-run the fetch against the cache"),
+        )
+
+        assert result["instruction"] is not None
+        self.assertEqual("agent", result["instruction"]["label"])
+        self.assertEqual(
+            "Next I'll re-run the fetch against the cache", result["instruction"]["text"]
+        )
+
     def test_an_injected_shape_is_never_published_as_a_prompt(self) -> None:
         # The naive "newest user record" read is injected on 230 of 456 rollouts
         # (50.4%), and on 143 the ONLY user records are `<recommended_plugins>`.

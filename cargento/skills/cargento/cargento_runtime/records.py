@@ -540,6 +540,59 @@ def bare_continuation(text: str) -> bool:
     return len(strip_prompt_wrappers(text).split()) <= _CONTINUATION_MAX_WORDS
 
 
+# A rendered directive that is one slash-command token and nothing else. The
+# name is matched against the set below; the shape only isolates it.
+_BARE_COMMAND_RE = re.compile(r"^/([A-Za-z0-9][A-Za-z0-9:._-]*)$")
+
+# Slash commands that drive the harness rather than the work, with their
+# occurrence counts as the last published goal in the local corpus. Shared
+# across harnesses rather than split per harness, on the same reasoning as the
+# injected-prose prefixes above: `clear` and `login` were measured in both, and
+# none of the rest is a name one harness could mean differently.
+_HARNESS_CONTROL_COMMANDS: Final = frozenset(
+    {
+        "add-dir",  # claude 2
+        "clear",  # claude 72, codex 1
+        "context",  # claude 2
+        "exit",  # claude 7
+        "insights",  # claude 1
+        "login",  # claude 70, codex 3
+        "mcp",  # claude 11
+        "model",  # claude 5
+        "plugin",  # claude 21
+        "reload-plugins",  # claude 7
+        "reload-skills",  # claude 1
+        "stickers",  # claude 1
+    }
+)
+
+
+def harness_control(rendered: str | None) -> bool:
+    """Whether a *rendered* directive drives the harness rather than the work.
+
+    Applied to what `transcripts.prompt_title` produces, not to the raw record:
+    the raw spelling is `<command-name>/clear</command-name>` and the value
+    actually published is `/clear`, so a predicate reading the raw text never
+    meets the one the page shows.
+
+    A measured name list and NOT the structural rule "a bare command carries no
+    arguments, so it carries no goal". That rule was checked against the same
+    corpus and is wrong: bare-command goals are also skill invocations —
+    `/create-pr`, `/cargento:cargento`, `/security-review` — and a skill invoked
+    with no arguments is exactly what the operator asked for. Argument-carrying
+    commands are untouched either way; `prompt_title` renders those as
+    `/code-review 1287 with fresh eyes`, which never matches here.
+
+    Lives in `records` rather than in either caller because two surfaces publish
+    the same reading of the same directive: `observer.py` picks a session goal
+    and `transcripts.states_work` picks the instruction line beneath a session
+    title. Two lists would be two chances to disagree about whether `/clear` is
+    an objective.
+    """
+    match = _BARE_COMMAND_RE.match(rendered or "")
+    return match is not None and match.group(1).casefold() in _HARNESS_CONTROL_COMMANDS
+
+
 def instruction_line(
     label: str,
     text: str | None,
@@ -553,8 +606,15 @@ def instruction_line(
     second-hand line is survivable at all — so a reading with no label is not
     published. ``at`` is the record's own stamp; the page renders the age from
     it, and 0 means unstamped rather than "now".
+
+    The bound is the cap plus one because `transcripts.clip` appends its ellipsis
+    AFTER cutting to the cap, so a clipped title is cap + 1 characters and a
+    scrub at the cap takes the `…` back off — 29 of 1,906 published Claude lines
+    ended in an unmarked mid-token cut that way. `safe_text` only ever shortens,
+    so this cannot truncate what rendering already bounded. The same reasoning,
+    and the same `+ 1`, guards line 1 in `transcripts.codex_instruction`.
     """
-    bounded = safe_text(text, limit).strip()
+    bounded = safe_text(text, limit + 1).strip()
     if not bounded or not label:
         return None
     return {"label": label, "text": bounded, "at": at if at and at > 0 else 0}

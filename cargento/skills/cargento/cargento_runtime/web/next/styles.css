@@ -94,7 +94,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-identity strong{display:block;font-size:var(--fs-sm)}
 .next-session-live-glyph{display:inline-block;margin-right:8px}
 .next-session-identity>span{display:block;margin-top:5px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-xs)}
-.next-session-row-instruction{margin:5px 0 0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-xs);line-height:1.45}
+.next-session-row-instruction{margin:5px 0 0;overflow-wrap:anywhere;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-xs);line-height:1.45}
 .next-session-identity .next-session-collision{max-width:430px;color:var(--warnink);font-family:var(--sans);font-size:var(--fs-2xs)}
 .next-session-activity{min-width:220px;color:var(--ink2)}
 .next-session-done{color:var(--accent-ink)}
@@ -213,7 +213,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-detail[data-next-session-state="idle"] .next-session-detail-header{box-shadow:inset 3px 0 var(--line2)}
 .next-session-detail-label,.next-session-section>h2,.next-session-ask-callout>span{display:block;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400;text-transform:uppercase}
 .next-session-detail h1{margin:9px 0 12px;font-size:var(--fs-2xl);font-weight:500}
-.next-session-detail-instruction{margin:0 0 10px;color:var(--ink2);font-size:var(--fs-sm);line-height:1.5}
+.next-session-detail-instruction{margin:0 0 10px;overflow-wrap:anywhere;color:var(--ink2);font-size:var(--fs-sm);line-height:1.5}
 .next-instruction-label{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);text-transform:uppercase}
 .next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-xs)}
 .next-session-health{margin:20px 0 0;padding:14px 16px;border-left:3px solid var(--warn);background:var(--panel);color:var(--ink2);font-size:var(--fs-sm);line-height:1.5}

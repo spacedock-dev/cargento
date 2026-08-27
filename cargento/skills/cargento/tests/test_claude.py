@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import claude_data, notifications, records, spacedock
+from cargento_runtime import claude_data, notifications, records, spacedock, transcripts
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import claude as claude_collector
@@ -2223,6 +2223,103 @@ class ClaudeInstructionTest(unittest.TestCase):
         assert line is not None
         self.assertEqual("asked", line["label"])
         self.assertEqual("/release", line["text"])
+
+    def test_a_short_opener_over_a_real_body_is_not_a_continuation(self) -> None:
+        # The word count belongs on the BODY, not on `prompt_title`'s line 1.
+        # Counting line 1 called 97 of 2,066 local newest prompts bare when the
+        # operator had written an instruction, and quoted an older prompt in
+        # place of the one they had just sent.
+        line = self.read(
+            self._prompt(0, "Reconcile the harness registry with the docs"),
+            self._prompt(
+                60,
+                "a backend python test is failing:\n\n"
+                "tests/test_quota.py::test_receipt_floor times out on the socket read.\n"
+                "Reproduce it, find the cause, and fix it without touching config.py.",
+            ),
+        )
+
+        assert line is not None
+        self.assertEqual("asked", line["label"])
+        self.assertTrue(line["text"].startswith("a backend python test is failing:"))
+
+    def test_a_prompt_that_is_mostly_a_pasted_url_is_not_a_continuation(self) -> None:
+        # The other half of the same defect, and a one-LINE case, so it is the
+        # 140-character clip doing the damage rather than a line break.
+        # `shorten_paths` deliberately leaves a URL whole — the repo and issue
+        # number in it are the informative part — so a long one eats the whole
+        # title budget and what is left counts as five words.
+        url = (
+            "https://app.notion.com/p/infuseai/The-overview-of-all-your-agents"
+            "-work-in-your-head-3b279451d357816e9f2bc7d1a4e0"
+        )
+        prompt = (
+            f"Open {url} and reconcile every harness row in the registry against "
+            "what the collectors actually publish, then write up the drift you find."
+        )
+        # The fixture only bites while line 1 renders to six words or fewer.
+        probe_config, _probe_state = make_runtime()
+        rendered = transcripts.prompt_title(probe_config, prompt, records.INSTRUCTION_CAP_CHARS)
+        assert rendered is not None
+        self.assertTrue(records.bare_continuation(rendered), rendered)
+
+        line = self.read(
+            self._prompt(0, "Reconcile the harness registry with the docs"),
+            self._prompt(60, prompt),
+        )
+
+        assert line is not None
+        self.assertEqual("asked", line["label"])
+        self.assertTrue(line["text"].startswith("Open "), line["text"])
+
+    def test_a_bare_harness_control_is_refused_and_leaves_the_line_beneath_it(self) -> None:
+        # 202 of 1,906 published lines on the local Claude corpus were a bare
+        # `/clear`, `/login`, `/plugin` or `/mcp` sitting in the labelled slot,
+        # indistinguishable from an instruction. Refusing one leaves the real
+        # instruction beneath it standing rather than erasing it — the same
+        # behaviour `observer.py` ships for the goal slot (DRC-4265).
+        for control in ("/clear", "/login", "/mcp", "/plugin", "/reload-plugins"):
+            with self.subTest(control=control):
+                line = self.read(
+                    self._prompt(0, "Reconcile the harness registry with the docs"),
+                    self._prompt(60, f"<command-name>{control}</command-name>"),
+                )
+
+                assert line is not None
+                self.assertEqual("earlier", line["label"])
+                self.assertEqual("Reconcile the harness registry with the docs", line["text"])
+
+    def test_a_bare_skill_invocation_is_the_operators_intent_and_survives(self) -> None:
+        # The carve-out #222 measured and this must not undo. The structural rule
+        # "a bare command carries no arguments, so it carries no goal" was checked
+        # against the same corpus and is wrong: a skill invoked with no arguments
+        # is exactly what the operator asked for. Only the measured control names
+        # are refused.
+        for skill in ("/create-pr", "/cargento:cargento", "/security-review"):
+            with self.subTest(skill=skill):
+                line = self.read(
+                    self._prompt(0, "Reconcile the harness registry with the docs"),
+                    self._prompt(60, f"<command-name>{skill}</command-name>"),
+                )
+
+                assert line is not None
+                self.assertEqual("asked", line["label"])
+                self.assertEqual(skill, line["text"])
+
+    def test_a_control_name_carrying_arguments_still_publishes(self) -> None:
+        # `prompt_title` renders an argument-carrying command as `/name args`,
+        # which the bare-token shape never matches. `/model opus` is the operator
+        # telling the session to do something, not driving the harness blind.
+        line = self.read(
+            self._prompt(
+                0,
+                "<command-name>/model</command-name><command-args>opus for the rest</command-args>",
+            )
+        )
+
+        assert line is not None
+        self.assertEqual("asked", line["label"])
+        self.assertEqual("/model opus for the rest", line["text"])
 
     def test_the_prompt_is_found_behind_a_bounded_tail(self) -> None:
         # The newest real prompt sits a median 40 KB from EOF but p95 650 KB, so

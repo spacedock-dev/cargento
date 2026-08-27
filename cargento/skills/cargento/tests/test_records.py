@@ -483,11 +483,27 @@ class InstructionLineTest(unittest.TestCase):
         line = records.instruction_line("earlier", hostile, 12.0)
 
         assert line is not None
-        self.assertEqual(records.INSTRUCTION_CAP_CHARS, len(line["text"]))
+        # Cap plus one, not the cap: the ellipsis `clip` appends sits one past
+        # the width it cut to, and scrubbing at the cap takes it back off. This
+        # is the bound, not the rendered width \u2014 every real caller hands this
+        # already-clipped text, so one character of headroom is what keeps the
+        # truncation marked. See the docstring, and line 1's identical `+ 1`.
+        self.assertEqual(records.INSTRUCTION_CAP_CHARS + 1, len(line["text"]))
         self.assertNotIn("\u202e", line["text"])
         self.assertNotIn("\x07", line["text"])
         self.assertEqual("earlier", line["label"])
         self.assertEqual(12.0, line["at"])
+
+    def test_a_clipped_line_keeps_the_ellipsis_that_marks_it_clipped(self) -> None:
+        # 29 of 1,906 published Claude lines ended in an unmarked mid-token cut,
+        # because `clip` appends `\u2026` AFTER cutting to the cap and the scrub then
+        # trimmed exactly that character off. A cut with no marker reads as the
+        # operator having written a truncated sentence.
+        clipped = "x" * records.INSTRUCTION_CAP_CHARS + "\u2026"
+        line = records.instruction_line("asked", clipped, 12.0)
+
+        assert line is not None
+        self.assertTrue(line["text"].endswith("\u2026"), line["text"][-20:])
 
     def test_an_unusable_stamp_is_published_as_zero_rather_than_as_now(self) -> None:
         # The page renders an age from this. A missing stamp read as the current

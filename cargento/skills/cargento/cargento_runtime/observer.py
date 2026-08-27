@@ -51,32 +51,6 @@ _GENERIC_OPENER_PREFIXES = (
     "skill(",
 )
 
-# A rendered directive that is one slash-command token and nothing else. The
-# name is matched against the set below; the shape only isolates it.
-_BARE_COMMAND_RE = re.compile(r"^/([A-Za-z0-9][A-Za-z0-9:._-]*)$")
-
-# Slash commands that drive the harness rather than the work, with their
-# occurrence counts as the last published goal in the local corpus. Shared
-# across harnesses rather than split per harness, on `records`'s reasoning for
-# its injected-prose prefixes: `clear` and `login` were measured in both, and
-# none of the rest is a name one harness could mean differently.
-_HARNESS_CONTROL_COMMANDS = frozenset(
-    {
-        "add-dir",  # claude 2
-        "clear",  # claude 72, codex 1
-        "context",  # claude 2
-        "exit",  # claude 7
-        "insights",  # claude 1
-        "login",  # claude 70, codex 3
-        "mcp",  # claude 11
-        "model",  # claude 5
-        "plugin",  # claude 21
-        "reload-plugins",  # claude 7
-        "reload-skills",  # claude 1
-        "stickers",  # claude 1
-    }
-)
-
 # Block indicators, scanned in the newest assistant message only. Self-state
 # phrases, and not the bare words this started with: `cannot`, `can't`,
 # `unable`, `failed to` and `error:` match ordinary reporting prose — "I can't
@@ -128,30 +102,6 @@ def _is_generic_opener(text: str) -> bool:
     """Whether a user message is a generic skill-load directive, not a goal."""
     stripped = text.strip().lower()
     return any(stripped.startswith(prefix) for prefix in _GENERIC_OPENER_PREFIXES)
-
-
-def _is_harness_control(rendered: str | None) -> bool:
-    """Whether a *rendered* directive is a harness control rather than a goal.
-
-    Applied to what `prompt_title` produces, not to the raw record, which is why
-    the guard beside it could not do this job: `_is_generic_opener` reads
-    `<command-name>/clear</command-name>` and the value actually published is
-    `/clear`. The two spellings never met, so 200 of 1,469 published Claude
-    goals (13.6%) and 4 of 141 Codex ones were a bare `/clear`, `/login`,
-    `/plugin` or `/mcp` sitting in the ordinary goal slot, indistinguishable
-    from a derived objective; in 25 of them a real objective the session
-    contained was displaced.
-
-    A measured name list and NOT the structural rule "a bare command carries no
-    arguments, so it carries no goal". That rule was checked against the same
-    corpus first and is wrong: 39 further bare-command goals are skill
-    invocations — `/create-pr`, `/cargento:cargento`, `/security-review` — and
-    a skill invoked with no arguments is exactly what the operator asked for.
-    Argument-carrying commands are untouched either way; `prompt_title` renders
-    those as `/code-review 1287 with fresh eyes`, which never matches here.
-    """
-    match = _BARE_COMMAND_RE.match(rendered or "")
-    return match is not None and match.group(1).casefold() in _HARNESS_CONTROL_COMMANDS
 
 
 # `type: "message"` is Pi's shape and Droid's, and `_parse_message_record`
@@ -334,7 +284,7 @@ def _user_directives(config: RuntimeConfig, messages: list[dict[str, str]]) -> l
     """Concrete user directives, newest last, openers and controls dropped.
 
     Two rejections, and they read different spellings of the same message on
-    purpose: `_is_generic_opener` reads the raw text, `_is_harness_control`
+    purpose: `_is_generic_opener` reads the raw text, `records.harness_control`
     reads what `prompt_title` will publish. Filtering here rather than at the
     point of publication is what lets a `/clear` fall back to the objective
     the session already contains instead of erasing it.
@@ -346,7 +296,7 @@ def _user_directives(config: RuntimeConfig, messages: list[dict[str, str]]) -> l
         rendered = transcripts.prompt_title(
             config, msg["text"], limit=config.observer_goal_cap_chars
         )
-        if _is_harness_control(rendered):
+        if records.harness_control(rendered):
             continue
         kept.append(msg["text"])
     return kept
@@ -379,7 +329,7 @@ def _derive_goal_deterministic(
     # shape `records.injected_prompt` deliberately admits. A slash command is
     # the operator's intent spelled in the harness's markup, so it is not
     # rejected as machinery (the harness's own controls are, but by
-    # `_is_harness_control` above, on the rendered name) — but published raw
+    # `records.harness_control` above, on the rendered name) — but published raw
     # it reads as `<command-message>…`, which was 60 of 400 Claude sessions and
     # 5 of 457 Codex rollouts. `prompt_title`
     # already owns that rendering (`/review 1287 — with fresh eyes`), and

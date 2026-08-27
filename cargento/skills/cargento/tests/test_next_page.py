@@ -474,6 +474,24 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIn("min-width:0", name.group(1) if name else "")
         self.assertIn("overflow-wrap:anywhere", name.group(1) if name else "")
 
+    def test_instruction_lines_break_an_unbreakable_token(self) -> None:
+        # The instruction line quotes what the operator typed, and 50 of 1,789
+        # published lines carry a single token over 80 characters (longest 113) —
+        # pasted URLs, which `shorten_paths` leaves whole on purpose because the
+        # repo and issue number in them are the informative part. Under
+        # `max-width:760px` the detail padding drops to 0, so one such token
+        # gives the whole page a horizontal scrollbar. Every comparable surface
+        # in this stylesheet already guards it.
+        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        for selector in (
+            r"\.next-session-row-instruction",
+            r"\.next-session-detail-instruction",
+        ):
+            with self.subTest(selector=selector):
+                rule = re.search(selector + r"\{([^}]*)\}", styles)
+                self.assertIsNotNone(rule)
+                self.assertIn("overflow-wrap:anywhere", rule.group(1) if rule else "")
+
     def test_session_detail_state_rails_use_the_fixed_palette(self) -> None:
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
         inset = re.search(
@@ -560,16 +578,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(24_551, len(styles))
+        self.assertEqual(24_597, len(styles))
         self.assertEqual(
-            "4a519ef9525874497b47e5225a50c3faf9499738183322e1092b4aa2e4155f54",
+            "ab81bb508c578348e98355d6ff470d54d05b0c1790fd133bf540ca0a15009aae",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(228_031, len(assembled))
+        self.assertEqual(228_077, len(assembled))
         self.assertEqual(
-            "d74f335e203c17d38c40a1003afff9c2855abbeda8c47c0de42641ed5475f7b5",
+            "418082f56063457b848f07964a8fe12fb0ba1219addb3285678004cb54cb3701",
             hashlib.sha256(assembled).hexdigest(),
         )
 
