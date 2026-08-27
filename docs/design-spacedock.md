@@ -99,8 +99,9 @@ officer, and the same payload carries the paths. Only a first officer runs `spac
 so presence is good evidence, and it needs no new source.
 
 It costs two things, both accepted rather than overlooked. Every Pi session pays a bounded transcript
-head scan on refresh, where Claude pays a cached lookup and stops; the scan is capped at
-`spacedock_boot_scan_bytes` and cached on `(path, size)`, so a settled transcript costs one `stat`.
+scan on refresh, where Claude pays a cached lookup and stops; each pass reads about
+`spacedock_boot_scan_bytes` of whole lines from a per-path cursor (S-6), so a settled transcript
+costs one `stat` and a growing one costs its new bytes once.
 And classification now depends on tool output rather than a launch-time declaration, which is a
 weaker signal: tool output is whatever a tool printed. The guards that matter sit downstream and are
 unchanged, so a crafted envelope still has to survive path canonicalisation, the symlink and
@@ -110,6 +111,32 @@ Rejected: inventing a Pi-side marker, which needs Spacedock to write something P
 today and strands every existing session. Rejected: hoisting classification above the collectors,
 which buys nothing while each harness answers the question from a different field, and moves
 harness knowledge into a module whose whole point is not having any.
+
+## S-6: The boot envelope is reached with a cursor, not a head
+
+The reader used to take one fixed 512 KB head, on the stated ground that boot output "is written
+once at session start". That is true of a first officer launched as the agent. It is false of a
+session that adopts the role mid-conversation by loading the skill, which is a shape the product
+supports and which Spacedock's own documentation leads a captain to: boot then runs wherever the
+conversation had reached. On the transcript this was found from, the envelope sat 3.3 MB into a
+7.0 MB file, so no strip ever appeared and the project panel read "declares no workflow".
+
+Widening the head would only move the cliff. Instead each pass reads about
+`spacedock_boot_scan_bytes` from a per-path cursor and keeps what it found, so the total cost is
+once per byte rather than once per byte per refresh, and the cliff is gone rather than further away.
+A transcript that has been walked to its end costs one `stat`, which is what keeps S-5's per-session
+Pi cost where it was; reaching `spacedock_max_boot_records` pins the cursor for the same reason.
+
+Two details are load-bearing rather than incidental. The pass reads whole lines through `readline`,
+not a fixed slice: a record split across two passes parses as neither, and a tool result carrying a
+boot envelope can be larger than the budget on its own, which a fixed slice would stall the cursor
+on forever. And a trailing line without its newline is left unread, because transcripts are read
+while a harness is writing them and consuming half a record advances the cursor past a line that
+never gets parsed.
+
+The cursor lives in `state.spacedock_boot_scan` and advances under `scanner_lock`, like
+`turns.scan_turns`. Two concurrent `/api/data` requests would otherwise both advance it and each
+parse half the new bytes.
 
 ## Rejected alternatives worth keeping rejected
 
@@ -122,8 +149,10 @@ arbitrary side effects.
 Watch for later `status` envelopes instead of adding a state read. Cheaper in principle, since it
 adds no new read surface, and it fails in practice. The transcripts examined contained `boot`
 envelopes and nothing else: a first officer's routine status checks are not emitted as JSON, so
-there is no fresher envelope to find. Widening the 512 KiB head scan to the whole transcript would
-have made the collection pass quadratic in transcript size for no additional data.
+there is no fresher envelope to find. That is still the reason this is rejected, and it is a
+different question from reaching the `boot` envelope itself, which S-6 had to widen the scan for.
+An earlier note here called whole-transcript scanning quadratic in transcript size; that described
+the brace-balancing parser `boot_records` replaced, and it is no longer true of either reader.
 
 Require the entity directory to sit inside the workflow directory. This is the natural containment
 check, and it would silently re-create the original bug for any `split-root` workflow, which

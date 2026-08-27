@@ -304,13 +304,13 @@ def clear_state(state: RuntimeState) -> None:
         state.cwd_cache.clear()
         state.agent_class_cache.clear()
         state.spacedock_role_cache.clear()
-        state.spacedock_boot_cache.clear()
         state.spacedock_workflow_cache.clear()
         state.spacedock_entity_cache.clear()
         state.cursor_metadata_cache.clear()
     with state.scanner_lock:
         state.pi_scan.clear()
         state.turn_scan.clear()
+        state.spacedock_boot_scan.clear()
     with state.collect_memo_lock:
         state.snapshot.clear()
     with state.usage_fetch_lock:

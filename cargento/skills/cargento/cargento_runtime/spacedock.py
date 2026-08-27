@@ -12,7 +12,7 @@ import json
 import os
 import re
 import stat as stat_module
-from typing import TYPE_CHECKING, Any, TypeGuard
+from typing import IO, TYPE_CHECKING, Any, TypeGuard
 
 from cargento_runtime import records, sessions
 from cargento_runtime import state as runtime_state
@@ -363,34 +363,73 @@ def boot_entity_dir(envelopes: list[dict[str, Any]], workflow_dir: str) -> str:
 
 
 def transcript_boot(config: RuntimeConfig, state: RuntimeState, path: str) -> list[dict[str, Any]]:
-    """Boot envelopes from a transcript's head, cached per (path, size).
+    """Boot envelopes from a transcript, scanned forward across refreshes.
 
-    Boot output is written once at session start and never rewritten, so the
-    scan is amortised: keying on size lets a still-growing session pick the
-    envelope up on a later refresh without rescanning an unchanged prefix.
+    An earlier version read only the first ``spacedock_boot_scan_bytes`` on the
+    stated assumption that boot output "is written once at session start". That
+    holds for a first officer launched as the agent, and not for a session that
+    adopts the role mid-conversation by loading the skill: boot then lands
+    wherever the conversation had reached. Measured on a real transcript, the
+    envelope sat 3.3 MB into a 7.0 MB file, so the strip never appeared.
+
+    So the cursor advances instead of the window widening. Each pass reads about
+    one budget's worth of whole lines from where the last pass stopped and keeps
+    what it found, which makes the total cost once per byte rather than once per
+    byte per refresh. Whole lines because a record split across two passes would
+    parse as neither, and read through ``readline`` rather than a fixed slice
+    because a tool result carrying an envelope can be longer than the budget on
+    its own and a fixed slice would stall the cursor on it forever.
+
+    Serialized via the scanner lock, like ``turns.scan_turns``: two concurrent
+    /api/data requests would otherwise both advance the cursor and each parse
+    half the new bytes.
     """
     try:
         size = os.path.getsize(path)
     except OSError:
         return []
-    key = (path, min(size, config.spacedock_boot_scan_bytes))
-    with state.cache_lock:
-        cached = state.spacedock_boot_cache.get(key)
-    if cached is not None:
-        return cached
-    envelope_records: list[dict[str, Any]] = []
-    try:
-        with open(path, "rb") as handle:
-            blob = handle.read(config.spacedock_boot_scan_bytes)
+    with state.scanner_lock:
+        scan = state.spacedock_boot_scan.get(path)
+        if scan is None or int(scan["pos"]) > size:  # new, truncated or rotated
+            scan = {"pos": 0, "envelopes": []}
+            runtime_state.bounded_put(
+                state.spacedock_boot_scan, path, scan, limit=config.max_cache_entries
+            )
+        envelopes: list[dict[str, Any]] = scan["envelopes"]
+        if int(scan["pos"]) >= size or len(envelopes) >= config.spacedock_max_boot_records:
+            # Nothing appended, or the record cap is already met. Leaving the
+            # cursor where it is keeps a settled transcript at one `stat`.
+            return list(envelopes)
+        try:
+            with open(path, "rb") as handle:
+                handle.seek(int(scan["pos"]))
+                blob = _boot_pass_bytes(config, handle)
+        except OSError:
+            return list(envelopes)
+        scan["pos"] = int(scan["pos"]) + len(blob)
         if b"definition_dir" in blob:
-            envelope_records = boot_records(config, blob)
-    except OSError:
-        return []
-    with state.cache_lock:
-        runtime_state.bounded_put(
-            state.spacedock_boot_cache, key, envelope_records, limit=config.max_cache_entries
-        )
-    return envelope_records
+            room = config.spacedock_max_boot_records - len(envelopes)
+            envelopes.extend(boot_records(config, blob)[:room])
+        return list(envelopes)
+
+
+def _boot_pass_bytes(config: RuntimeConfig, handle: IO[bytes]) -> bytes:
+    """One pass of complete lines, stopping at or just past the byte budget.
+
+    A trailing partial line is left unread so the next pass sees it whole. The
+    budget is therefore a floor on where a pass stops rather than a ceiling on
+    what it reads: one line longer than the budget is read whole, because the
+    alternative is never reading it.
+    """
+    lines: list[bytes] = []
+    read = 0
+    while read < config.spacedock_boot_scan_bytes:
+        line = handle.readline()
+        if not line.endswith(b"\n"):
+            break  # EOF, or a line still being written
+        lines.append(line)
+        read += len(line)
+    return b"".join(lines)
 
 
 def open_regular(path: str) -> int | None:

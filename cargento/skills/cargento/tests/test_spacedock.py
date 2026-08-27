@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import spacedock
+from cargento_runtime.collectors import claude as claude_collector
 
+from . import support
 from .support import (
     make_runtime,
     runtime,
@@ -426,9 +428,10 @@ class SpacedockReadContractTest(unittest.TestCase):
         _config, state = runtime()
         with state_of().cache_lock:
             state.spacedock_workflow_cache.clear()
-            state.spacedock_boot_cache.clear()
             state.spacedock_role_cache.clear()
             state.spacedock_entity_cache.clear()
+        with state_of().scanner_lock:
+            state.spacedock_boot_scan.clear()
 
     def workflow(self, body: str | None = None) -> Path:
         holder = tempfile.TemporaryDirectory(prefix="cargento-sd-")
@@ -915,3 +918,327 @@ class SpacedockReadContractTest(unittest.TestCase):
         self.assertEqual(
             [], spacedock.session_workflows(config, state, boot, [], time.time(), 3600)
         )
+
+
+class SpacedockBootCursorTest(unittest.TestCase):
+    """``transcript_boot`` walks a transcript forward across refreshes.
+
+    The reader used to take one fixed head, on the assumption that boot output
+    lands at session start. A session that adopts the first-officer role
+    mid-conversation breaks that assumption: the envelope then sits wherever the
+    conversation had reached, and on a real 7.0 MB transcript that was 3.3 MB in.
+    """
+
+    ENVELOPE = (
+        '{"command":"boot","id_style":"slug",'
+        '"dispatchable":[{"slug":"drc-1","current":"review","next":"posted"}],'
+        '"definition_dir":"/w/one","entity_dir":"/w/one/.state"}'
+    )
+
+    def boot_line(self, prefix: str = "") -> bytes:
+        """One transcript record carrying the envelope as tool output."""
+        return (
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "content": prefix + "=== BOOT ===\n" + self.ENVELOPE,
+                            }
+                        ]
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
+
+    def filler_line(self, size: int) -> bytes:
+        """A record with no envelope in it, sized to push the cursor along."""
+        return (
+            json.dumps(
+                {"type": "user", "message": {"content": [{"type": "text", "text": "x" * size}]}}
+            ).encode()
+            + b"\n"
+        )
+
+    def transcript(self, body: bytes) -> str:
+        holder = tempfile.TemporaryDirectory(prefix="cargento-boot-")
+        self.addCleanup(holder.cleanup)
+        path = Path(holder.name) / "session.jsonl"
+        path.write_bytes(body)
+        return str(path)
+
+    def drain(self, config: Any, state: Any, path: str, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Call until the cursor reaches EOF, the way successive refreshes do."""
+        found: list[dict[str, Any]] = []
+        for _ in range(limit):
+            found = spacedock.transcript_boot(config, state, path)
+            if int(state.spacedock_boot_scan[path]["pos"]) >= os.path.getsize(path):
+                return found
+        raise AssertionError("cursor never reached EOF")
+
+    def test_envelope_past_the_first_pass_is_still_found(self) -> None:
+        """The regression. One pass' budget of filler, then the envelope: the
+        first pass must miss it and a later one must find it. Asserting the miss
+        matters as much as the find — it is what proves the walk moved, rather
+        than the whole file having been read in one go."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=2_048)
+        path = self.transcript(self.filler_line(4_000) * 3 + self.boot_line())
+
+        self.assertEqual([], spacedock.transcript_boot(config, state, path))
+        self.assertEqual(
+            ["/w/one"], spacedock.workflow_dirs(config, self.drain(config, state, path))
+        )
+
+    def test_a_record_longer_than_one_pass_is_read_whole(self) -> None:
+        """A tool result carrying a boot envelope is exactly the kind of record
+        that outgrows the pass budget. A fixed-size slice would find no newline
+        in it, so the cursor would sit on that line for the life of the session;
+        ``readline`` reads it whole instead."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=512)
+        path = self.transcript(self.boot_line("y" * 4_000))
+
+        self.assertEqual(1, len(self.drain(config, state, path)))
+
+    def test_a_record_straddling_the_budget_is_not_split(self) -> None:
+        """The envelope's own record begins inside one pass and ends in the next.
+        Handing half of it to the parser twice would parse neither half."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=1_024)
+        head = self.filler_line(900)
+        self.assertLess(len(head), 1_024)  # so the boot record spans the boundary
+        path = self.transcript(head + self.boot_line("z" * 600))
+
+        self.assertEqual(1, len(self.drain(config, state, path)))
+
+    def test_appended_bytes_are_scanned_without_rereading_the_prefix(self) -> None:
+        """A live session appends. The cursor picks up from where it stopped, so
+        an envelope written after the first refresh is found on a later one."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=2_048)
+        path = self.transcript(self.filler_line(100))
+
+        self.assertEqual([], self.drain(config, state, path))
+        before = int(state.spacedock_boot_scan[path]["pos"])
+        with Path(path).open("ab") as handle:
+            handle.write(self.boot_line())
+
+        self.assertEqual(1, len(self.drain(config, state, path)))
+        self.assertGreater(int(state.spacedock_boot_scan[path]["pos"]), before)
+
+    def test_a_half_written_record_is_left_for_the_next_pass(self) -> None:
+        """Transcripts are read while a harness is writing them, so the last line
+        is routinely incomplete. Consuming it would advance the cursor past a
+        record that had not arrived yet, and the envelope inside it would never
+        be parsed once the rest landed."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=2_048)
+        whole = self.boot_line()
+        cut = len(whole) // 2
+        path = self.transcript(whole[:cut])
+
+        self.assertEqual([], spacedock.transcript_boot(config, state, path))
+        self.assertEqual(0, int(state.spacedock_boot_scan[path]["pos"]))  # nothing consumed
+
+        with Path(path).open("ab") as handle:
+            handle.write(whole[cut:])
+
+        self.assertEqual(1, len(self.drain(config, state, path)))
+
+    def test_a_settled_transcript_costs_no_read(self) -> None:
+        """Once the cursor is at EOF the next refresh must not open the file.
+        That is the cost claim S-5 makes for every Pi session, and an
+        incremental reader keeps it only if it stops at EOF."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=2_048)
+        path = self.transcript(self.boot_line())
+        first = self.drain(config, state, path)
+
+        with (
+            mock.patch.object(Path, "open", side_effect=AssertionError("reopened")),
+            mock.patch("builtins.open", side_effect=AssertionError("reopened")),
+        ):
+            again = spacedock.transcript_boot(config, state, path)
+
+        self.assertEqual(first, again)
+        self.assertEqual(1, len(again))
+
+    def test_truncation_restarts_the_walk(self) -> None:
+        """A rotated or truncated transcript leaves the cursor past the end. It
+        has to restart, or the new file is never read at all."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=2_048)
+        path = self.transcript(self.filler_line(3_000) + self.boot_line())
+        self.assertEqual(1, len(self.drain(config, state, path)))
+
+        Path(path).write_bytes(self.boot_line())
+        stale = int(state.spacedock_boot_scan[path]["pos"])
+
+        found = self.drain(config, state, path)
+
+        self.assertGreater(stale, os.path.getsize(path))  # the cursor was past the end
+        # One envelope, not two: the reset drops what the old file had yielded
+        # rather than carrying it onto a file that no longer contains it.
+        self.assertEqual(1, len(found))
+        self.assertEqual(os.path.getsize(path), int(state.spacedock_boot_scan[path]["pos"]))
+
+    def test_the_record_cap_holds_across_passes(self) -> None:
+        """The cap bounds what one session can publish, and the accumulator has
+        to enforce it. ``boot_records`` caps each pass on its own, so a cap
+        applied only per pass still lets several passes sum past it: here one
+        envelope in the first pass and three in the second would total four
+        against a cap of three. Reaching the cap also pins the cursor, so a
+        transcript full of envelopes is not walked forever."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=1_024, spacedock_max_boot_records=3)
+        first_pass = self.boot_line() + self.filler_line(800)
+        self.assertGreater(len(first_pass), 1_024)  # so the next boot lines land in pass two
+        path = self.transcript(first_pass + self.boot_line() * 3)
+
+        self.assertEqual(1, len(spacedock.transcript_boot(config, state, path)))
+        found = spacedock.transcript_boot(config, state, path)
+        pinned = int(state.spacedock_boot_scan[path]["pos"])
+
+        self.assertEqual(3, len(found))
+        self.assertEqual(3, len(spacedock.transcript_boot(config, state, path)))
+        self.assertEqual(pinned, int(state.spacedock_boot_scan[path]["pos"]))
+
+    def test_the_cap_pins_the_cursor_short_of_the_end(self) -> None:
+        """The cap has to stop the walk on its own account, not only because the
+        file happened to run out. Here the cap is met with bytes still unread:
+        the cursor must stay put, or a transcript whose cap is met early goes on
+        being read to the end on every refresh for nothing."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=1_024, spacedock_max_boot_records=3)
+        path = self.transcript(self.boot_line() * 3 + self.filler_line(800) * 4)
+
+        self.assertEqual(3, len(spacedock.transcript_boot(config, state, path)))
+        pinned = int(state.spacedock_boot_scan[path]["pos"])
+        self.assertLess(pinned, os.path.getsize(path))  # there are bytes left
+
+        self.assertEqual(3, len(spacedock.transcript_boot(config, state, path)))
+        self.assertEqual(pinned, int(state.spacedock_boot_scan[path]["pos"]))
+
+    def test_the_accumulator_is_not_handed_to_callers(self) -> None:
+        """Callers mutating the returned list would corrupt the cursor's own
+        record of what it has found."""
+        config, state = make_runtime(spacedock_boot_scan_bytes=2_048)
+        path = self.transcript(self.boot_line())
+
+        returned = self.drain(config, state, path)
+        returned.clear()
+
+        self.assertEqual(1, len(spacedock.transcript_boot(config, state, path)))
+
+    def test_an_unreadable_transcript_yields_nothing(self) -> None:
+        """Defensive parsing: a missing file is not an error the collector sees."""
+        config, state = make_runtime()
+
+        self.assertEqual([], spacedock.transcript_boot(config, state, "/nonexistent/session.jsonl"))
+
+
+class SpacedockDeepBootCollectorTest(unittest.TestCase):
+    """The wiring behind the cursor, through the Claude collector.
+
+    `SpacedockBootCursorTest` pins `transcript_boot` on its own. This one asserts
+    the user-visible claim: a declared first officer whose boot output sits past
+    the first pass ends up with a stage strip on its card, which is a claim about
+    the collector, the workflow read and the entity read together.
+    """
+
+    README = (
+        "---\n"
+        "commissioned-by: spacedock@0.22.0\n"
+        "state: .spacedock-state\n"
+        "stages:\n"
+        "  states:\n"
+        "    - name: intake\n"
+        "      initial: true\n"
+        "    - name: review\n"
+        "    - name: posted\n"
+        "      terminal: true\n"
+        "---\n"
+    )
+
+    def setUp(self) -> None:
+        _config, state = runtime()
+        with state.cache_lock:
+            state.spacedock_workflow_cache.clear()
+            state.spacedock_role_cache.clear()
+            state.spacedock_entity_cache.clear()
+            state.agent_class_cache.clear()
+        with state.scanner_lock:
+            state.spacedock_boot_scan.clear()
+
+    def build(self, *, filler_passes: int) -> tuple[str, Path]:
+        """A workflow with one entity mid-flight, and an FO transcript whose boot
+        envelope sits behind ``filler_passes`` passes of unrelated records."""
+        holder = tempfile.TemporaryDirectory(prefix="cargento-deep-")
+        self.addCleanup(holder.cleanup)
+        root = Path(holder.name).resolve() / "wf"
+        root.mkdir()
+        (root / "README.md").write_text(self.README, encoding="utf-8")
+        entity_dir = root / ".spacedock-state"
+        entity_dir.mkdir()
+        (entity_dir / "drc-1.md").write_text(
+            '---\nid:\ntitle: "a thing"\nstatus: review\n---\n\n# report\n', encoding="utf-8"
+        )
+
+        envelope = json.dumps(
+            {
+                "command": "boot",
+                "id_style": "slug",
+                "dispatchable": [{"slug": "drc-1", "current": "review", "next": "posted"}],
+                "definition_dir": str(root),
+                "entity_dir": str(entity_dir),
+            }
+        )
+        head = json.dumps({"agentSetting": spacedock.SPACEDOCK_FO}).encode() + b"\n"
+        filler = (
+            json.dumps(
+                {"type": "user", "message": {"content": [{"type": "text", "text": "x" * 4_000}]}}
+            ).encode()
+            + b"\n"
+        )
+        boot = (
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [{"type": "tool_result", "content": "=== BOOT ===\n" + envelope}]
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
+        path = Path(holder.name) / "session.jsonl"
+        path.write_bytes(head + filler * filler_passes + boot)
+        return str(path), root
+
+    def strips(self, transcript: str) -> dict[str, Any] | None:
+        config, state = runtime()
+        return claude_collector.session_spacedock(config, state, transcript, [], time.time(), 3600)
+
+    def test_a_deep_boot_reaches_the_card_after_a_few_refreshes(self) -> None:
+        transcript, _root = self.build(filler_passes=4)  # ~16 KB of filler
+
+        with mock.patch.dict(support.CONFIG_OVERRIDES, {"spacedock_boot_scan_bytes": 4_200}):
+            first = self.strips(transcript)
+            self.assertEqual("first-officer", (first or {})["role"])
+            self.assertEqual([], (first or {})["workflows"])  # boot not reached yet
+
+            for _ in range(12):
+                latest = self.strips(transcript)
+                if (latest or {})["workflows"]:
+                    break
+
+        workflows = (latest or {})["workflows"]
+        self.assertEqual(1, len(workflows))
+        self.assertEqual("wf", workflows[0]["workflow"])
+        self.assertEqual(["intake", "review", "posted"], workflows[0]["stages"])
+        self.assertEqual(["drc-1"], [e["slug"] for e in workflows[0]["entities"]])
+        self.assertEqual("review", workflows[0]["entities"][0]["stage"])
+
+    def test_a_shallow_boot_still_reaches_the_card_on_the_first_pass(self) -> None:
+        """The launch shape that already worked must not have become slower to
+        appear: an FO launched as the agent boots at the top of its transcript."""
+        transcript, _root = self.build(filler_passes=0)
+
+        first = self.strips(transcript)
+
+        self.assertEqual("wf", (first or {})["workflows"][0]["workflow"])

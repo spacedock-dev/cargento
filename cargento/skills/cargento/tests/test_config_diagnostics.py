@@ -448,7 +448,7 @@ class RuntimeConfigTest(unittest.TestCase):
             "turn_scan",
             "agent_class_cache",
             "spacedock_role_cache",
-            "spacedock_boot_cache",
+            "spacedock_boot_scan",
             "spacedock_workflow_cache",
             "spacedock_entity_cache",
             "cursor_metadata_cache",
