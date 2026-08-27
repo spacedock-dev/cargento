@@ -230,9 +230,8 @@ differ from `last_prompt`, and 2 have no `last_prompt` at all. The other two lab
 that cell, which has nowhere to put a label and would otherwise present an agent quoting itself, or
 a line that is explicitly not the newest thing asked, as the project's last instruction.
 
-The header's
-metadata is built only from measurements the row carries: the registry label, short session ID,
-and activity detail. A working row labels its measured `turn.elapsed_h` as the current start age;
+The header's metadata is built only from measurements the row carries: the registry label, short
+session ID, and activity detail. A working row labels its measured `turn.elapsed_h` as the current start age;
 an absent, empty, or malformed turn measurement removes that clause instead of falling back to the
 transcript's creation time. A needs-input row derives its blocked age against the payload's
 `generated` clock. An idle row may use the same clock for an explicitly named session-start age.
