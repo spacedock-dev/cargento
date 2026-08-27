@@ -135,7 +135,7 @@ def collect(
                                     jd = json.loads(m["data"] or "{}")
                                 except (ValueError, TypeError):
                                     jd = {}
-                                last_prompt = records.extract_text(jd)[:140] or last_prompt
+                                last_prompt = records.extract_text(jd) or last_prompt
                     except sqlite3.Error:
                         pass
                     turn = turns.turn_progress(
@@ -149,8 +149,16 @@ def collect(
                 )
                 s.update(
                     {
-                        "title": (r["title"] or "").strip()[:80] or None,
-                        "last_prompt": last_prompt,
+                        "title": records.redact_clip(
+                            (r["title"] or "").strip(), records.PROMPT_TITLE_CAP_CHARS
+                        )
+                        or None,
+                        # Redacted here rather than where it is assigned, for
+                        # the reason `collectors/goose.py` gives: once, on what
+                        # is published, not on every prompt the loop walks past.
+                        "last_prompt": records.redact_clip(
+                            last_prompt, records.LAST_PROMPT_CAP_CHARS
+                        ),
                         "state": session_state,
                         "state_detail": state_detail,
                         "active": active,

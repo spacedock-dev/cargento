@@ -52,9 +52,12 @@ The posture rests on two invariants:
    state and never a harness store. Its two components are the harness key and the session id, and
    both must match `[A-Za-z0-9._-]{1,128}` before either reaches a path. `records.safe_text`
    bounds a string and strips control characters, and passes a separator straight through, so the
-   grammar is what keeps the write inside that directory rather than the join. What the route reads
-   is covered by Project reads below: the transcript, and the same two kinds of frontmatter a stage
-   strip reads, under the same guards and the same `--no-spacedock` switch.
+   grammar is what keeps the write inside that directory rather than the join. The file holds
+   prompt-derived text, so it is written the way the state file and the dismissal store are: a temp
+   file created owner-only and renamed into place, with a failed write reported as a failure rather
+   than raised at the request. Published text records what that redaction covers. What the route
+   reads is covered by Project reads below: the transcript, and the same two kinds of frontmatter a
+   stage strip reads, under the same guards and the same `--no-spacedock` switch.
 
 Anything that weakens either invariant is a security bug: a bind reaching an address the operator did
 not ask for, a request admitted that the bind's own Host gate should have refused, file reads outside
@@ -329,23 +332,45 @@ survive, because those are the instruction and the reason the line is on the car
 visible deliberately. Someone who sees it learns their prompt history holds a live key, which is the
 only route by which it gets rotated.
 
-The list of shapes is measured against the local corpus and lives in one place, `records.redact_secrets`.
-It is applied at two: inside `records.safe_text`, which nearly every published string already passes
-through, including the ask question and its options; and over the assembled rows in `aggregate`,
-which is what reaches the fields the collectors build by hand rather than through a bound. Those are
-`title`, `last_prompt`, `state_detail`, the instruction line, task subjects and a subagent name. An
-ask answer needs no cover, being an index into options the asking agent wrote rather than text. The
-measurement, the false-positive rate and the rejected alternatives are in
-[`docs/design-credential-redaction.md`](docs/design-credential-redaction.md).
+The list of shapes is measured against the local corpus and lives in one place,
+`records.redact_secrets`. It is applied at three. Inside `records.safe_text`, which nearly every
+published string already passes through, including the ask question and its options, Codex's title
+and the observer's goal. At the slice, through `records.redact_clip`, for the strings the other nine
+collectors build out of their own store by hand: `title` and `last_prompt`. And over the assembled rows
+in `aggregate`, a backstop under both that also reaches `state_detail`, the instruction line, task
+subjects and a subagent name. An ask answer needs no cover, being an index into options the asking
+agent wrote rather than text. The measurement, the false-positive rate and the rejected alternatives
+are in [`docs/design-credential-redaction.md`](docs/design-credential-redaction.md).
+
+The order matters as much as the coverage. Redaction runs before the bound, never after, because a
+key cut at a 140-character cap is still a hundred usable characters of key and a shape whose tail has
+fallen off no longer matches. A slice that ran first is what published a URL credential cut short of
+its `@`.
+
+The card, the browser notification body and the native popup are pixels, and a screenshot is what
+each of them risks. The fourth thing carrying this text is a file: the observer sidecar under
+`~/.cargento/observer/`, one JSON file per session holding the derived goal, which is the operator's
+own words. It is redacted on the way in like everything else, and it is
+written owner-only through a temp file and a rename, so a reader mid-write sees the old file or the
+new one and neither is ever briefly world-readable. The mode is advisory and Windows ignores it, the
+same caveat the state file and the dismissal store carry.
 
 This reduces the exposure and does not close it, and both directions of error are real. A shape list
 covers the formats it was measured against, so a credential in a format nobody has seen goes through
-unmarked, and a control character struck through the middle of a key defeats the match. In the other
-direction a genuine instruction line can be altered: 13 of 21,076 real prompts in the local corpus,
-of which three are provably not secrets. That rate was re-measured after the filter was widened to
-cover a key with a character in front of it and a URL credential clipped short of its `@`, and it did
-not move. Nothing here changes the rule outside the software, which is not to paste a credential into
-a prompt, and to rotate one that was.
+unmarked. A control character struck through the middle of a key defeats the match on the whole key,
+and what follows is worse than nothing being published: the substitution that scrubs the character
+turns it into a space, so the head in front of it still matches and redacts while the tail behind it
+publishes beside the marker, 75 characters of key on a probe. A run longer than any key its format
+issues is cut at the cap, and the characters past the cap publish. And the AWS secret access key is
+matched only when one of three spellings of its key name sits in front of the value, because a bare
+40-character base64 run cannot be told apart from a hash or a diff.
+
+In the other direction a genuine instruction line can be altered: 20 of 22,120 real prompts in the
+local corpus, 18 on Claude and 2 on Codex. That rate was re-measured when the filter was widened to
+cover a key with a character in front of it, a URL credential clipped short of its `@`, capped
+bodies, Linear keys and the cued AWS secret, and it did not move on any of them. Nothing here changes
+the rule outside the software, which is not to paste a credential into a prompt, and to rotate one
+that was.
 
 ## Known and accepted
 

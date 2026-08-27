@@ -541,6 +541,15 @@ class RedactSecretsTest(unittest.TestCase):
         ("github fine-grained pat", "github_pat_" + "V" * 60, "github_pat_…REDACTED"),
         ("gitlab pat", "glpat-" + "W" * 20, "glpat-…REDACTED"),
         ("npm token", "npm_" + "X" * 36, "npm_…REDACTED"),
+        ("linear api key", "lin_api_" + "Z" * 40, "lin_api_…REDACTED"),
+        # The cued shape. What names the kind is the key name in front of the
+        # value, so that is what survives instead of a fixed count of leading
+        # characters, and `AKIA…REDACTED` stops implying the pair is covered.
+        (
+            "aws secret access key",
+            "aws_secret_access_key = " + "Q" * 40,
+            "aws_secret_access_key = …REDACTED",
+        ),
         ("slack bot token", "xoxb-" + "0" * 12 + "-" + "0" * 12 + "-" + "F" * 24, "xoxb-…REDACTED"),
         ("slack app token", "xapp-1-" + "Y" * 20, "xapp-…REDACTED"),
         ("posthog key", "phc_" + "G" * 43, "phc_…REDACTED"),
@@ -678,6 +687,105 @@ class RedactSecretsTest(unittest.TestCase):
             ("https with a port", "ping ops@example.com about https://example.com:8443"),
             ("scheme, port and a path", "me@x.io said http://127.0.0.1:4553/api/data?next=true"),
             ("ssh url", "ssh://git@github.com/o/r.git beside http://127.0.0.1:4553"),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(text, records.redact_secrets(text))
+
+    def test_a_separator_inside_a_key_leaves_its_tail_beside_the_marker(self) -> None:
+        # The residual, pinned rather than described. A control character
+        # through the middle of a key defeats the match on the whole key, and
+        # `safe_text` turns that character into a space: the head still matches
+        # on its own and redacts, and the tail behind it is a run with no prefix
+        # to match on. Both SECURITY.md and the design doc used to say the match
+        # was defeated and stop there, which reads as "nothing is published".
+        split = "sk-ant-api03-" + "A" * 40 + "\x01" + "B" * 75
+        published = records.safe_text(f"rotate {split} now", 400)
+        self.assertIn("sk-ant-…REDACTED", published)
+        self.assertEqual(75, published.count("B"))
+        self.assertNotIn("A" * 4, published, "the head in front of the separator still redacts")
+
+    def test_a_body_longer_than_the_format_issues_stops_at_the_cap(self) -> None:
+        # Greedy hyphen-inclusive bodies over-reached: a key glued to the words
+        # behind it took the words with it, 85 characters matched with 71 of
+        # them instruction. The cap is the vendor's own longest key, so what a
+        # run past it can cost is bounded.
+        run = "sk-ant-oat01-" + "A" * 40 + "-then" * 40
+        redacted = records.redact_secrets(run)
+        self.assertIn("sk-ant-…REDACTED", redacted)
+        # `sk-ant-` plus the 110-character cap is the most one match can eat, so
+        # everything past it stands. Without the cap the whole run was one match.
+        survivors = redacted[len("sk-ant-…REDACTED") :]
+        self.assertGreaterEqual(len(survivors), len(run) - 117)
+        self.assertTrue(survivors.endswith("-then"))
+
+    def test_a_key_of_each_vendors_documented_length_is_fully_redacted(self) -> None:
+        # The other half of the cap: it may not fall short of a real key, or the
+        # tail past it publishes. One synthetic key per shape at the longest
+        # length that vendor issues, asserted to leave no body behind.
+        for name, fake in (
+            ("anthropic", "sk-ant-api03-" + "A" * 95),
+            ("openai project", "sk-proj-" + "C" * 156),
+            ("openrouter", "sk-or-v1-" + "c" * 64),
+            ("stripe", "sk_live_" + "U" * 99),
+            ("github classic", "ghp_" + "D" * 36),
+            ("github fine-grained", "github_pat_" + "V" * 82),
+            ("gitlab", "glpat-" + "W" * 50),
+            ("slack app", "xapp-1-A" + "0" * 10 + "-" + "1" * 13 + "-" + "F" * 64),
+            ("posthog", "phc_" + "G" * 43),
+            ("linear", "lin_api_" + "Z" * 40),
+        ):
+            with self.subTest(shape=name):
+                redacted = records.redact_secrets(f"rotate {fake} today")
+                self.assertTrue(redacted.startswith("rotate "))
+                self.assertTrue(
+                    redacted.endswith("\u2026REDACTED today"),
+                    "characters of the key survived past the cap",
+                )
+
+    def test_the_marker_is_never_published_half_written(self) -> None:
+        # Measured on `last_prompt`: a key starting at lead 124 to 131 published
+        # a marker with its tail cut off, and one at 132 or beyond published the
+        # kept prefix and no marker at all — a row ending in `sk-ant-`, which
+        # reads as a truncated key rather than a redacted one. No key body was
+        # published at any lead, so this is about what the operator can believe.
+        key = "sk-ant-api03-" + "Z" * 95
+        for lead in range(110, 141):
+            with self.subTest(lead=lead):
+                published = records.safe_text("x" * lead + " " + key, 140)
+                self.assertNotIn("Z", published)
+                self.assertTrue(
+                    published.endswith("sk-ant-…REDACTED"),
+                    "the marker is cut in half or missing entirely",
+                )
+
+    def test_a_pem_body_does_not_survive_the_control_character_scrub(self) -> None:
+        # `safe_text` substitutes a space for every line break BEFORE the filter
+        # runs, so a body class holding `\r\n` and not a space could not match
+        # one character of a body on the path that publishes it: the header
+        # redacted and the whole key went out behind it.
+        body = "\n".join(["L" * 64] * 6)
+        pem = f"-----BEGIN RSA PRIVATE KEY-----\n{body}\n-----END RSA PRIVATE KEY-----"
+        published = records.safe_text(pem, 600)
+        self.assertEqual("-----BEGIN …REDACTED", published)
+
+    def test_a_header_with_no_key_behind_it_costs_no_sentence(self) -> None:
+        # The reason the body is base64 runs rather than a class holding the
+        # space: all 1,058 local PEM occurrences are a header naming the format
+        # with prose behind it. A PEM line is 64 characters and a word is not.
+        line = "-----BEGIN RSA PRIVATE KEY----- appears in the documentation for it"
+        self.assertEqual(
+            "-----BEGIN …REDACTED appears in the documentation for it",
+            records.redact_secrets(line),
+        )
+
+    def test_a_bare_forty_character_run_is_not_an_aws_secret(self) -> None:
+        # The cue is what makes the shape decidable. Without it a git SHA, a
+        # base64 chunk of a diff and a path segment all read as a secret key,
+        # and the filter would blank an instruction line on every one.
+        for name, text in (
+            ("base64 blob", "paste " + "Q" * 40 + " into the form"),
+            ("a nearby but unrelated word", "the secret is " + "Q" * 40),
+            ("a cue with no value behind it", "set aws_secret_access_key from the vault"),
         ):
             with self.subTest(name=name):
                 self.assertEqual(text, records.redact_secrets(text))

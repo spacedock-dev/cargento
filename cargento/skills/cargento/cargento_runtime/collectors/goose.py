@@ -134,7 +134,7 @@ def _collect_db(
                         is_prompt = m["role"] == "user" and _user_prompt(content)
                         events.append((ep, is_prompt))
                         if is_prompt:
-                            last_prompt = records.extract_text(content)[:140] or last_prompt
+                            last_prompt = records.extract_text(content) or last_prompt
                 except runtime_io.sqlite_module.Error:
                     pass
                 try:
@@ -169,8 +169,14 @@ def _collect_db(
             )
             s.update(
                 {
-                    "title": (r["description"] or "").strip()[:80] or None,
-                    "last_prompt": last_prompt,
+                    "title": records.redact_clip(
+                        (r["description"] or "").strip(), records.PROMPT_TITLE_CAP_CHARS
+                    )
+                    or None,
+                    # Redacted here rather than where it is assigned, which is
+                    # inside the message loop: the filter belongs on what is
+                    # published, once, not on every prompt the loop walks past.
+                    "last_prompt": records.redact_clip(last_prompt, records.LAST_PROMPT_CAP_CHARS),
                     "state": session_state,
                     "state_detail": state_detail,
                     "active": active,

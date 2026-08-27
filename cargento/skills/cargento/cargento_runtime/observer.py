@@ -17,6 +17,7 @@ to a crash or a hallucination.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -493,14 +494,35 @@ def write_sidecar(
     """Write the observer sidecar to the observer's own store; return its path.
 
     None when the names are not writable ones, which is a refusal rather than a
-    fallback: there is no second location a sidecar belongs in.
+    fallback: there is no second location a sidecar belongs in. None as well
+    when the write itself fails, because the caller's answer to both is the
+    same — it has the derivation in memory and serves that — and an `OSError`
+    reaching the handler would turn a full disk into a 500 on a route that had
+    already done its work.
+
+    Temp file plus `os.replace`, and `0o600` in the `os.open` call rather than a
+    chmod afterwards, both the same shape as `lifecycle.write_state` and
+    `dismissals.save` and for the same two reasons: a reader mid-write sees the
+    old file or the new one, and the file is never briefly world-readable. This
+    one holds prompt-derived text — the goal is the operator's own words, run
+    through `records.safe_text` — which is why the mode matters on a file that
+    used to inherit the umask. The mode is advisory and Windows ignores it, as
+    `SECURITY.md` records for the other two.
     """
     path = sidecar_path(config, harness, sid)
     if path is None:
         return None
-    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(result))
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        handle_fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(result))
+        os.replace(tmp, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        return None
     return path
 
 

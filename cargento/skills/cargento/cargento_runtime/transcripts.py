@@ -587,6 +587,20 @@ def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
     return info
 
 
+def _published_title(title: Any) -> str | None:
+    """One analyzer's newest prompt line, redacted and then bounded.
+
+    Called once per transcript rather than once per user record, which is not a
+    tidy-up: the loops below overwrite `title` on every prompt they pass, and
+    redacting inside one of them put `redact_secrets` at the top of a whole
+    collection's profile — 3,504 calls and 20% of the time on
+    `bench_collect --simulate balanced-five`, where the assembled row needs one.
+    """
+    if not isinstance(title, str) or not title:
+        return None
+    return records.redact_clip(title, records.PROMPT_TITLE_CAP_CHARS) or None
+
+
 def analyze_gemini_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]:
     """Gemini chats/*.jsonl tail: type 'user' | 'gemini' records with
     per-message tokens; resumed-session $set snapshots are expanded."""
@@ -618,7 +632,7 @@ def analyze_gemini_transcript(config: RuntimeConfig, path: str) -> dict[str, Any
                 txt = records.extract_text(message.get("content")).strip()
                 if txt:
                     info["last_prompt"] = txt
-                    info["title"] = txt.split("\n")[0][:80]
+                    info["title"] = txt.split("\n")[0]
             elif t == "gemini":
                 toks = message.get("tokens") or {}
                 if ep and isinstance(toks, dict) and toks.get("output"):
@@ -626,6 +640,7 @@ def analyze_gemini_transcript(config: RuntimeConfig, path: str) -> dict[str, Any
                 for tc in records.as_list(message.get("toolCalls")):
                     if isinstance(tc, dict) and tc.get("name"):
                         info["last_tool"] = tc.get("name")
+    info["title"] = _published_title(info["title"])
     return info
 
 
@@ -783,7 +798,7 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
             txt = records.extract_text(data).strip()
             if txt:
                 info["last_prompt"] = txt
-                info["title"] = txt.split("\n")[0][:80]
+                info["title"] = txt.split("\n")[0]
         elif t == "tool.execution_start":
             name = data.get("toolName") or data.get("name") or data.get("tool")
             if name:
@@ -836,6 +851,7 @@ def analyze_copilot_events(config: RuntimeConfig, path: str) -> dict[str, Any]:
                 info["pending_agents"].pop(key)
             elif info["pending_agents"]:  # unmatched key scheme: drop oldest
                 info["pending_agents"].pop(next(iter(info["pending_agents"])))
+    info["title"] = _published_title(info["title"])
     return info
 
 
@@ -870,9 +886,10 @@ def analyze_droid_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
             txt = records.extract_text(content).strip()
             if txt:
                 info["last_prompt"] = txt
-                info["title"] = txt.split("\n")[0][:80]
+                info["title"] = txt.split("\n")[0]
         elif msg.get("role") == "assistant":
             for c in blocks:
                 if isinstance(c, dict) and c.get("type") == "tool_use":
                     info["last_tool"] = c.get("name")
+    info["title"] = _published_title(info["title"])
     return info

@@ -115,7 +115,9 @@ def collect(
         s.update(
             {
                 "title": (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "last_prompt": records.redact_clip(
+                    (info or {}).get("last_prompt") or "", records.LAST_PROMPT_CAP_CHARS
+                ),
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,

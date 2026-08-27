@@ -438,7 +438,7 @@ def _meta_fields(rows: list[Any], sibling_cwd: str) -> tuple[str | None, str, st
                     "",
                 )
                 if name:
-                    title = name[:80]
+                    title = records.redact_clip(name, records.PROMPT_TITLE_CAP_CHARS)
             if not root_id:
                 # The id of the newest message list. Validated as 64 clean hex
                 # characters, because everything downstream of it is a lookup

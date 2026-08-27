@@ -912,6 +912,17 @@ class PublishedTextSweepTest(unittest.TestCase):
         self.assertNotIn("A" * 20, json.dumps(row))
         self.assertIn(self.MARKER, row["subagents"][0]["name"])
 
+    def test_the_instruction_line_on_an_assembled_row_carries_no_credential(self) -> None:
+        # The one branch of the sweep no fixture reaches: only Claude and Codex
+        # publish a line 2, and neither builds it by hand — `records.safe_text`
+        # already covers both. That is exactly why it needs asserting here. A
+        # collector that starts writing one is covered without being asked, and
+        # this is the assertion that says so.
+        row: Any = {"instruction": {"label": "asked", "text": f"deploy with {self.FAKE}"}}
+        aggregate._redact_published_text([row])
+        self.assertNotIn("A" * 20, json.dumps(row))
+        self.assertIn(self.MARKER, row["instruction"]["text"])
+
     def test_a_malformed_row_does_not_stop_the_sweep(self) -> None:
         # Collectors are a failure boundary, so the sweep has to survive a row
         # whose lists hold something other than dicts.
@@ -998,12 +1009,20 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.config",
             "cargento_runtime.io",
         },
+        # `records` arrived with the redact-then-slice fix. Every collector that
+        # bounds a prompt with a slice has to redact BEFORE it, or the sweep in
+        # `aggregate` is handed a shape whose tail has already fallen off and no
+        # longer matches — which is what published a clipped `@` out of a URL
+        # credential. `records.redact_clip` is the one place that ordering
+        # lives, so the two collectors that had no reason to import `records`
+        # now do. It is a leaf, so both edges stay inward.
         "cargento_runtime.collectors.claude": {
             "cargento_runtime.claude_data",
             "cargento_runtime.config",
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.quota",
+            "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.spacedock",
             "cargento_runtime.state",
@@ -1035,9 +1054,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.sessions",
             "cargento_runtime.state",
         },
+        # `records` for the same reason `collectors.claude` has it: the title
+        # and the prompt are bounded here, and the bound has to run after the
+        # filter rather than before it.
         "cargento_runtime.collectors.droid": {
             "cargento_runtime.config",
             "cargento_runtime.io",
+            "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.state",
             "cargento_runtime.transcripts",
@@ -1731,6 +1754,26 @@ class HarnessContractTest(HarnessContractTestCase):
                 published = (row["title"] or "") + (row["last_prompt"] or "")
                 if published:
                     self.assertIn("sk-ant-\u2026REDACTED", serialized)
+
+    def test_no_harness_publishes_a_credential_the_cap_cut_in_half(self) -> None:
+        # DRC-4269. The ordering, driven through the collectors rather than
+        # asserted on `safe_text` alone — which is what let the defect ship. Ten
+        # collectors sliced `title` and `last_prompt` out of the transcript and
+        # the sweep in `aggregate` ran afterwards, so a shape the slice had
+        # already cut no longer matched and the head of it published unmarked.
+        # The lead puts the 140-character cap nine characters into the key's
+        # body, which is below the sixteen the shape needs. A slice that ran
+        # first would leave a run the filter can no longer see, which is the
+        # whole mechanism.
+        fake = "sk-ant-api03-" + "A" * 95
+        self.TITLE = "x" * 105 + " deploy with " + fake
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                data = self.collect(build, when=self.NOW)
+                rows = self.sessions_for(data, key)
+                self.assertEqual(1, len(rows))
+                row = {k: v for k, v in rows[0].items() if k != "project"}
+                self.assertNotIn("A" * 8, json.dumps(row, ensure_ascii=False))
 
     def test_a_stale_store_reads_idle_but_still_appears(self) -> None:
         for key, build in HARNESSES:

@@ -6,7 +6,7 @@ import os
 from typing import TYPE_CHECKING
 
 from cargento_runtime import io as runtime_io
-from cargento_runtime import sessions, transcripts, turns
+from cargento_runtime import records, sessions, transcripts, turns
 
 if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
@@ -58,8 +58,13 @@ def collect(
         scan = turns.scan_turns(config, state, fp, "droid") if info else None
         s.update(
             {
-                "title": (meta.get("title") or "").strip()[:80] or (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "title": records.redact_clip(
+                    (meta.get("title") or "").strip(), records.PROMPT_TITLE_CAP_CHARS
+                )
+                or (info or {}).get("title"),
+                "last_prompt": records.redact_clip(
+                    (info or {}).get("last_prompt") or "", records.LAST_PROMPT_CAP_CHARS
+                ),
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,

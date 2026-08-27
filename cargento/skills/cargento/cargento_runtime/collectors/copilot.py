@@ -520,7 +520,9 @@ def collect(
         s.update(
             {
                 "title": (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "last_prompt": records.redact_clip(
+                    (info or {}).get("last_prompt") or "", records.LAST_PROMPT_CAP_CHARS
+                ),
                 # A session Cargento cannot account for must not read as one that
                 # spent nothing: every route to the declared None is in
                 # _session_consumption, and the zero it publishes is only ever

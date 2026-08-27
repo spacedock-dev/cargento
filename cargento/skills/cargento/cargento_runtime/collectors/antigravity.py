@@ -688,8 +688,9 @@ def collect(
                 # opaque `MODEL_PLACEHOLDER_*` enum. Reading "google" off the
                 # string "Gemini" is inference, which this field forbids.
                 "model": models.get(sid),
-                "title": prompt.split("\n")[0][:80] or None,
-                "last_prompt": prompt[:140],
+                "title": records.redact_clip(prompt.split("\n")[0], records.PROMPT_TITLE_CAP_CHARS)
+                or None,
+                "last_prompt": records.redact_clip(prompt, records.LAST_PROMPT_CAP_CHARS),
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,
