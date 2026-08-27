@@ -212,11 +212,13 @@ function nextSessionView(project, sid){
     `<span class="next-visually-hidden">State: ${state.label}</span>` : "";
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
+  const title = nextSessionTitle(session, asks);
+  const instruction = nextInstructionLine(session, title, "next-session-detail-instruction");
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr}>` +
     `<header class="next-session-detail-header">${stateLabel}` +
     '<span class="next-session-detail-label">SESSION</span>' +
-    `<h1>${esc(nextSessionTitle(session, asks))}</h1>${metaLine}</header>` +
+    `<h1>${esc(title)}</h1>${instruction}${metaLine}</header>` +
     nextSessionHealth(session) + nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
     nextSessionSubagents(session) + nextSessionFooter(session) + "</article>";
 }

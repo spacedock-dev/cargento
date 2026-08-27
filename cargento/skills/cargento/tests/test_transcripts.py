@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import json
+import os
 import random
 import tempfile
 import threading
@@ -955,3 +956,327 @@ class ReviewFixTest(unittest.TestCase):
         # Quadratic would be ~16x for 4x the bytes. Linear is ~4x; allow 8x for
         # a loaded CI runner while still failing a quadratic regression.
         self.assertLess(timings[1], max(timings[0], 0.01) * 8, f"non-linear: {timings}")
+
+
+class CodexInstructionTest(unittest.TestCase):
+    """The backward walk that finds Codex's prompt, and the line beneath it.
+
+    Every fixture here is built to fail if the reader ever narrows back to one
+    record shape or drops the turn floor, because both were tried and both look
+    correct on a small fixture.
+    """
+
+    PAD = 8_000
+
+    @staticmethod
+    def _at(offset: float) -> str:
+        return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(1_780_000_000 + offset)) + "Z"
+
+    @classmethod
+    def _task_started(cls, offset: float) -> dict[str, Any]:
+        return {
+            "timestamp": cls._at(offset),
+            "type": "event_msg",
+            "payload": {"type": "task_started", "started_at": cls._at(offset)},
+        }
+
+    @classmethod
+    def _user_old(cls, offset: float, text: str) -> dict[str, Any]:
+        """CLI 0.142-0.146: the `event_msg`/`user_message` shape."""
+        return {
+            "timestamp": cls._at(offset),
+            "type": "event_msg",
+            "payload": {"type": "user_message", "message": text},
+        }
+
+    @classmethod
+    def _user_item(cls, offset: float, text: str) -> dict[str, Any]:
+        """CLI 0.149: `item_completed` with a `UserMessage` item."""
+        return {
+            "timestamp": cls._at(offset),
+            "type": "event_msg",
+            "payload": {
+                "type": "item_completed",
+                "item": {"type": "UserMessage", "content": [{"type": "text", "text": text}]},
+            },
+        }
+
+    @classmethod
+    def _user_response(cls, offset: float, text: str) -> dict[str, Any]:
+        """The `response_item` shape, present in 456 of 457 local rollouts."""
+        return {
+            "timestamp": cls._at(offset),
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": text}],
+            },
+        }
+
+    @classmethod
+    def _commentary_old(cls, offset: float, text: str) -> dict[str, Any]:
+        return {
+            "timestamp": cls._at(offset),
+            "type": "event_msg",
+            "payload": {"type": "agent_message", "message": text, "phase": "commentary"},
+        }
+
+    @classmethod
+    def _commentary_item(cls, offset: float, text: str) -> dict[str, Any]:
+        return {
+            "timestamp": cls._at(offset),
+            "type": "event_msg",
+            "payload": {
+                "type": "item_completed",
+                "item": {
+                    "type": "AgentMessage",
+                    "phase": "commentary",
+                    "content": [{"type": "Text", "text": text}],
+                },
+            },
+        }
+
+    @classmethod
+    def _padding(cls, offset: float) -> dict[str, Any]:
+        # Stands in for the `reasoning` records whose encrypted blobs flood the
+        # tail on a real rollout. The fixtures below use it to put the prompt
+        # genuinely out of a tail read's reach.
+        return {
+            "timestamp": cls._at(offset),
+            "type": "event_msg",
+            "payload": {"type": "token_count", "info": {"blob": "z" * 400}},
+        }
+
+    def scan(self, *entries: dict[str, Any]) -> dict[str, Any]:
+        config, state = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rollout-x.jsonl"
+            path.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+            return runtime_transcripts.codex_instruction(config, state, str(path))
+
+    def test_the_prompt_is_found_where_a_tail_read_cannot_reach_it(self) -> None:
+        # The reported bug, as a fixture. 171 of the 276 local rollouts holding a
+        # genuine prompt (62.0%) have the newest one outside `tail_bytes`.
+        config, _ = make_runtime()
+        entries = [
+            self._task_started(0),
+            self._user_old(1, "Reconcile the harness registry with the docs"),
+        ]
+        entries += [self._padding(2) for _ in range(1_200)]
+
+        config2, state = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rollout-deep.jsonl"
+            path.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+            blob = path.read_bytes()
+            # Only meaningful if the prompt really is out of reach. Pin that too.
+            self.assertNotIn(b"Reconcile the harness", blob[-config.tail_bytes :])
+            result = runtime_transcripts.codex_instruction(config2, state, str(path))
+
+        self.assertEqual("Reconcile the harness registry with the docs", result["title"])
+
+    def test_all_three_user_record_shapes_are_read(self) -> None:
+        # Not belt-and-braces: `event_msg`/`user_message` is live on 255 of 457
+        # rollouts and gone by CLI 0.149.1, `response_item` covers 456 of 457,
+        # and `item_completed`/`UserMessage` is the ONLY path carrying the prompt
+        # on 4 files. Dropping any one blinds the reader on a real population.
+        for name, build in (
+            ("event_msg/user_message", self._user_old),
+            ("event_msg/item_completed/UserMessage", self._user_item),
+            ("response_item/message/user", self._user_response),
+        ):
+            with self.subTest(shape=name):
+                result = self.scan(self._task_started(0), build(1, "Rewrite the collector docs"))
+
+                self.assertEqual("Rewrite the collector docs", result["title"])
+                self.assertEqual("Rewrite the collector docs", result["last_prompt"])
+
+    def test_both_preamble_shapes_are_read(self) -> None:
+        # The record moved at CLI 0.149. Measured across all 457 local rollouts:
+        # the `agent_message` path fires on 0 of the 88 files on 0.149.1, and the
+        # `item_completed` path fires on 0 of the 306 files before it.
+        for name, build in (
+            ("event_msg/agent_message", self._commentary_old),
+            ("event_msg/item_completed/AgentMessage", self._commentary_item),
+        ):
+            with self.subTest(shape=name):
+                result = self.scan(
+                    self._task_started(0),
+                    self._user_old(1, "proceed"),
+                    build(2, "I'll compare the two registries, then reconcile the docs"),
+                )
+
+                self.assertEqual(
+                    {
+                        "label": "agent",
+                        "text": "I'll compare the two registries, then reconcile the docs",
+                        "at": records.parse_ts(self._at(2)),
+                    },
+                    result["instruction"],
+                )
+
+    def test_line_two_quotes_the_turns_first_commentary_and_not_its_last(self) -> None:
+        # First is a statement of intent, last is a progress report, and they
+        # differ in 227 of 281 current turns (80.8%). A plain backward walk
+        # returns the last one, which is what the floor and the overwrite order
+        # exist to correct.
+        result = self.scan(
+            self._task_started(0),
+            self._user_old(1, "carry on"),
+            self._commentary_old(2, "I'm taking over task 5 in the isolated worktree"),
+            self._commentary_old(3, "The full gate is clean. Coverage remains 85.2%"),
+        )
+
+        assert result["instruction"] is not None
+        self.assertEqual(
+            "I'm taking over task 5 in the isolated worktree", result["instruction"]["text"]
+        )
+
+    def test_a_previous_turns_commentary_never_stands_in_for_this_turns_intent(self) -> None:
+        # 26-43% of turns carry no commentary of their own. Without the explicit
+        # `task_started` floor the walk crosses into the previous turn and
+        # publishes its intent under this turn's label, which reads as a
+        # measurement and is not one.
+        result = self.scan(
+            self._task_started(0),
+            self._user_old(1, "Rebuild the quota cache from the receipts"),
+            self._commentary_old(2, "I'll rebuild the cache and re-run the fetch"),
+            self._task_started(3),
+            self._user_old(4, "proceed"),
+        )
+
+        assert result["instruction"] is not None
+        self.assertEqual("earlier", result["instruction"]["label"])
+        self.assertEqual("Rebuild the quota cache from the receipts", result["instruction"]["text"])
+
+    def test_a_walk_that_never_reaches_a_floor_publishes_no_preamble(self) -> None:
+        # No `task_started` anywhere means the turn boundary was never observed,
+        # so no commentary in the file can be shown as THIS turn's intent.
+        result = self.scan(
+            self._commentary_old(0, "I'll start by reading the registry"),
+            self._user_old(1, "go on"),
+        )
+
+        self.assertIsNone(result["instruction"])
+
+    def test_an_injected_shape_is_never_published_as_a_prompt(self) -> None:
+        # The naive "newest user record" read is injected on 230 of 456 rollouts
+        # (50.4%), and on 143 the ONLY user records are `<recommended_plugins>`.
+        for text in (
+            "<recommended_plugins>\nHere is a list of plugins",
+            "# AGENTS.md instructions for the repository",
+            "[Request interrupted by user]",
+            "<environment_context>\ncwd: /w/proj",
+        ):
+            with self.subTest(text=text):
+                result = self.scan(self._task_started(0), self._user_old(1, text))
+
+                self.assertIsNone(result["title"])
+                self.assertEqual("", result["last_prompt"])
+                self.assertIsNone(result["instruction"])
+
+    def test_nothing_at_all_is_published_when_no_genuine_prompt_exists(self) -> None:
+        # The publish-nothing branch, and the reason it is not a shortfall: the
+        # page's title chain is a `||`, so a junk value there does not merely
+        # mislead once, it masks the project name for the life of the row. On the
+        # local corpus this is 177 of 457 rollouts (38.7%).
+        result = self.scan(
+            self._task_started(0),
+            self._user_old(1, "<recommended_plugins>\nHere is a list"),
+            self._commentary_old(2, "I'll read the plugin list first"),
+        )
+
+        self.assertEqual({"title": None, "last_prompt": "", "instruction": None}, result)
+
+    def test_a_compaction_boundary_stops_an_older_prompt_being_quoted(self) -> None:
+        # Behind a boundary is context the turn no longer holds. Codex crosses one
+        # in 28.2% of mid-flight cases, so this is the common path, not the edge.
+        shapes: list[tuple[str, dict[str, Any]]] = [
+            ("event_msg/compacted", {"type": "event_msg", "payload": {"type": "compacted"}}),
+            (
+                "item_completed/ContextCompaction",
+                {
+                    "type": "event_msg",
+                    "payload": {"type": "item_completed", "item": {"type": "ContextCompaction"}},
+                },
+            ),
+        ]
+        for name, compaction in shapes:
+            with self.subTest(shape=name):
+                result = self.scan(
+                    self._task_started(0),
+                    self._user_old(1, "Rebuild the quota cache from the receipts"),
+                    {**compaction, "timestamp": self._at(2)},
+                    self._task_started(3),
+                    self._user_old(4, "proceed"),
+                )
+
+                self.assertIsNone(result["instruction"])
+
+    def test_codex_never_repeats_its_own_title_on_the_second_line(self) -> None:
+        # Codex's line 1 IS the newest prompt, verbatim, so an "asked" line
+        # beneath it would say the same thing twice and cost a row two lines.
+        result = self.scan(
+            self._task_started(0),
+            self._user_old(1, "Reconcile the harness registry with the docs"),
+            self._commentary_old(2, "I'll compare the two registries first"),
+        )
+
+        self.assertEqual("Reconcile the harness registry with the docs", result["title"])
+        self.assertIsNone(result["instruction"])
+
+    def test_a_slash_command_is_the_operators_intent_and_survives(self) -> None:
+        # The deliberate carve-out: `<command-name>` is a WRAPPER, not an
+        # injection. Rejecting it left 213 of 3,100 gated sessions with no
+        # recoverable intent at all.
+        result = self.scan(
+            self._task_started(0),
+            self._user_old(
+                1,
+                "<command-message>burndown is running</command-message>"
+                "<command-name>/burndown</command-name><command-args>DRC-4264</command-args>",
+            ),
+        )
+
+        self.assertEqual("/burndown DRC-4264", result["title"])
+
+    def test_the_reading_is_cached_on_size_and_mtime_and_reread_when_either_moves(self) -> None:
+        config, state = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rollout-c.jsonl"
+            first = [self._task_started(0), self._user_old(1, "Draft the release notes")]
+            path.write_text("".join(json.dumps(e) + "\n" for e in first), encoding="utf-8")
+            self.assertEqual(
+                "Draft the release notes",
+                runtime_transcripts.codex_instruction(config, state, str(path))["title"],
+            )
+            second = [*first, self._task_started(2), self._user_old(3, "Publish the release")]
+            path.write_text("".join(json.dumps(e) + "\n" for e in second), encoding="utf-8")
+            os.utime(path, (time.time() + 5, time.time() + 5))
+
+            self.assertEqual(
+                "Publish the release",
+                runtime_transcripts.codex_instruction(config, state, str(path))["title"],
+            )
+
+    def test_a_malformed_rollout_reads_as_nothing_rather_than_raising(self) -> None:
+        # Every field is untyped JSON from disk. One bad rollout must not take the
+        # whole Codex collector with it.
+        hostile: list[Any] = [5, "str", [1, 2], {"k": "v"}, None, True]
+        for value in hostile:
+            with self.subTest(value=repr(value)):
+                self.scan(
+                    {"type": "event_msg", "payload": value},
+                    {"type": "event_msg", "payload": {"type": "item_completed", "item": value}},
+                    {"type": "response_item", "payload": {"type": "message", "role": value}},
+                    {"type": value, "payload": value},
+                )
+
+    def test_a_missing_file_reads_as_nothing(self) -> None:
+        config, state = make_runtime()
+
+        self.assertEqual(
+            {"title": None, "last_prompt": "", "instruction": None},
+            runtime_transcripts.codex_instruction(config, state, "/nonexistent/rollout.jsonl"),
+        )

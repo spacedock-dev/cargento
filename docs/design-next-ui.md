@@ -194,7 +194,14 @@ both. A stale route, including the right ID under the wrong project label, gets 
 outside-payload state instead of a guessed row. The flat session table now emits the same route as
 the project activity cards, so it no longer stops at project detail.
 
-The header uses `title`, then `last_prompt`, with the first matching question as a fallback. Its
+The header uses `title`, then `last_prompt`, with the first matching question as a fallback.
+Beneath it, on both the detail header and the flat session table, sits the row's `instruction`:
+a labelled second line carrying what the session is working on now, since the title above it
+answers a different question and on a long Claude session answers it about work that finished
+hours ago. The line renders only with its label and the age of the record it came from, and it
+is dropped when the payload publishes none, when the label is not one the runtime issues, or
+when its text is a prefix of the title and would only say the same thing twice at a different
+clip width. Its
 metadata is built only from measurements the row carries: the registry label, short session ID,
 and activity detail. A working row labels its measured `turn.elapsed_h` as the current start age;
 an absent, empty, or malformed turn measurement removes that clause instead of falling back to the

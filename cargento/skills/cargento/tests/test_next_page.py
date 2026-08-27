@@ -504,16 +504,16 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                4_918,
-                "4b801dc5c185732eaddd86501f1e866cb062d11a739e2696df5a45044aac9a3f",
+                6_930,
+                "96eeec8ff876425216e98a6a73ff8345f5ca85722e2da26377a76f912f18b0e2",
             ),
             "next-chrome.js": (
                 6_990,
                 "a1937f422d61aba21c0f96d11731649705d1b5aac1889220759d0f61c2f9010a",
             ),
             "next-sessions.js": (
-                3_961,
-                "6e2fd02868a09b1437cd719192da8da08b4fabe4c352b351e0d9c37f94fc0e32",
+                4_049,
+                "32d5c41372d380af6b1ea44904af4af79b6cee49a47f7e734b39a2a6773318f8",
             ),
             "next-projects.js": (
                 4_450,
@@ -528,8 +528,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "0c3cb4fca08ba93793e746b466cbd323bf13668c6941062bdfe4e79cda21c657",
             ),
             "next-session.js": (
-                11_338,
-                "7d827a707f187d3673a88b3c73c6ac9fa104c2c3640ead9305604f6590d62b70",
+                11_469,
+                "b444364d6365c4a2ba89354d4e58b55dad16fb3ef87541bf60fc387efd461836",
             ),
             "next-workstream.js": (
                 11_858,
@@ -560,16 +560,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(24_200, len(styles))
+        self.assertEqual(24_551, len(styles))
         self.assertEqual(
-            "2ae8e188d4fbe009b6eacf28e8396b5dbd1b98b02a7984baf0ed1328b94cd249",
+            "4a519ef9525874497b47e5225a50c3faf9499738183322e1092b4aa2e4155f54",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(225_179, len(assembled))
+        self.assertEqual(227_761, len(assembled))
         self.assertEqual(
-            "443c083e0d50fe75a2d60f40df66a63c7d12d6dc5bb8af439e83924dffb259ed",
+            "e8467f513ddf492de78fd2910d571a370f243b3ec18355e13ecd99490ee9eb07",
             hashlib.sha256(assembled).hexdigest(),
         )
 

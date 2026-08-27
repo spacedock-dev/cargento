@@ -237,15 +237,279 @@ def prompt_title(config: RuntimeConfig, text: str, limit: int = 80) -> str | Non
 
 
 # ---------------------------------------------------------------------------
+# The instruction line
+#
+# Two harnesses answer "what is this session working on" badly in opposite ways.
+# Codex publishes nothing, because its prompt has moved record shape and sits a
+# median 350 KB outside the bounded tail (DRC-4264); Claude publishes a title
+# generated once from the opening prompt and never refreshed, which names
+# finished work on three long sessions in four (DRC-4266). The answer to both is
+# one labelled second line, built here so the two readers cannot disagree about
+# what it may say.
+#
+# The rule, and every clause of it is load-bearing:
+#
+#   the newest GENUINE prompt states work  -> that, labelled "asked"
+#   it is a bare continuation ("proceed")  -> the agent's own turn-start
+#                                             statement of intent, labelled
+#                                             "agent"; else the newest older
+#                                             prompt that states work, labelled
+#                                             "earlier", and only when no
+#                                             compaction boundary intervenes
+#   none of those                          -> NOTHING
+#
+# Nothing, rather than a best guess, because the page's fallback is a `||` chain:
+# a wrong value there does not merely mislead, it permanently masks the project
+# name that would otherwise show. A confident wrong line is worse than a blank.
+#
+# The label is not decoration either. It is what makes a second-hand line
+# survivable: "agent" says an agent said this about itself, "earlier" says this
+# is not the newest thing asked. Without one, the same text is a claim the
+# runtime cannot support, which is why `records.instruction_line` refuses to
+# publish an unlabelled reading.
+
+
+def states_work(config: RuntimeConfig, text: str) -> bool:
+    """Does this prompt, AS THE PAGE WILL RENDER IT, name work?
+
+    Rendered first and counted second, never the other way round. A slash
+    command arrives as 60 characters of markup that `prompt_title` reads back out
+    as `/burndown DRC-4266 and the board`; counting words on the raw record calls
+    that a bare continuation and buries the one thing the operator actually
+    asked for.
+    """
+    rendered = prompt_title(config, text, records.INSTRUCTION_CAP_CHARS)
+    if not rendered:
+        return False
+    # A slash command names work by construction, however short. `/release` is
+    # two words rendered and a whole instruction meant, and the word count is the
+    # wrong instrument for the one prompt shape that is already explicit.
+    return rendered.startswith("/") or not records.bare_continuation(rendered)
+
+
+def instruction_from(
+    config: RuntimeConfig,
+    prompt: tuple[str, float] | None,
+    preamble: tuple[str, float] | None,
+    older: tuple[str, float] | None,
+    *,
+    title_is_prompt: bool = False,
+) -> dict[str, Any] | None:
+    """Pick line 2 from the three candidates a reader produced.
+
+    ``title_is_prompt`` is what separates the two harnesses. Codex's line 1 IS
+    the newest prompt, so repeating it underneath says nothing and costs a row
+    two lines; Claude's line 1 is a title generated from the opening prompt, so
+    the newest prompt underneath it is the whole point. The flag is the caller's
+    to set because only the caller knows what its own line 1 will hold.
+    """
+    if prompt is None:
+        return None
+    cap = records.INSTRUCTION_CAP_CHARS
+    text, at = prompt
+    if states_work(config, text):
+        if title_is_prompt:
+            return None
+        return records.instruction_line("asked", prompt_title(config, text, cap), at)
+    for label, candidate in (("agent", preamble), ("earlier", older)):
+        if candidate is not None:
+            title = prompt_title(config, candidate[0], cap)
+            return records.instruction_line(label, title, candidate[1])
+    return None
+
+
+# Byte prefilters, checked before any JSON parse. The reverse reader's own
+# `contains` argument is a per-CHUNK filter and cannot express this set: the
+# scan needs five unrelated record shapes, and the one substring common to them
+# is short enough to match most of the file. So the walk takes no chunk filter
+# and pays a `bytes.__contains__` per line instead, which is C-speed and skips
+# the parse for better than nine records in ten.
+_CODEX_SCAN_MARKERS: Final = (
+    b'"user',  # `"user_message"`, and `"role":"user"`
+    b"UserMessage",  # CLI 0.149's item_completed user shape
+    b"agent_message",  # the pre-0.149 preamble
+    b"AgentMessage",  # the 0.149 preamble
+    b"task_started",  # the turn floor
+    b"ompact",  # `compacted`, `context_compacted`, `ContextCompaction`
+)
+
+
+def _codex_scan_record(record: dict[str, Any]) -> tuple[str, str, float]:
+    """Classify one Codex rollout record for the instruction scan.
+
+    BOTH shapes of each thing are read, and that is not belt-and-braces. The
+    turn-start preamble moved at CLI 0.149: verified across all 457 local
+    rollouts, `event_msg`/`agent_message` with `phase == "commentary"` covers
+    ~95% of the 306 files on 0.142.5-0.146.1 and **0 of the 88** on 0.149.1,
+    while `event_msg`/`item_completed` with an `AgentMessage` item covers 86 of
+    those 88 and none of the older ones. A single-shape reader finds nothing on
+    the build the operator is actually running. The user record split the same
+    way — `event_msg`/`user_message` is live in 255 of 457 rollouts and gone by
+    0.149.1, `response_item`/message/user is in 456 of 457 — and 0.149 adds a
+    third, `item_completed` with a `UserMessage` item, which is the only path
+    carrying the prompt on 4 files.
+    """
+    payload = records.as_dict(record.get("payload"))
+    at = records.parse_ts(record.get("timestamp") or "") or 0.0
+    kind = payload.get("type")
+    outer = record.get("type")
+    found: tuple[str, Any] = ("", None)
+    if outer == "response_item":
+        if kind == "message" and payload.get("role") == "user":
+            found = ("prompt", payload.get("content"))
+    elif outer == "event_msg":
+        if kind == "task_started":
+            found = ("floor", None)
+        elif kind == "user_message":
+            found = ("prompt", payload.get("message"))
+        elif kind in ("compacted", "context_compacted"):
+            found = ("compaction", None)
+        elif kind == "agent_message":
+            # `phase` is absent on 6,562 of the older records and present as
+            # "commentary" on 7,598. Absent is not commentary: the unphased shape
+            # is the final answer under another name, and reading it as intent
+            # would put a summary of finished work under an "agent" label.
+            if payload.get("phase") == "commentary":
+                found = ("commentary", payload.get("message"))
+        elif kind == "item_completed":
+            item = records.as_dict(payload.get("item"))
+            item_type = item.get("type")
+            # The text is at `item.content[].text`, a list of blocks, and never
+            # at `item.text`. The block `type` is spelled "Text" on an
+            # AgentMessage and "text" on a UserMessage; `extract_text` walks both.
+            if item_type == "AgentMessage" and item.get("phase") == "commentary":
+                found = ("commentary", item.get("content"))
+            elif item_type == "UserMessage":
+                found = ("prompt", item.get("content"))
+            elif item_type == "ContextCompaction":
+                found = ("compaction", None)
+    return (found[0], records.extract_text(found[1]), at)
+
+
+_CodexCandidates = tuple[
+    "tuple[str, float] | None", "tuple[str, float] | None", "tuple[str, float] | None"
+]
+
+
+def _codex_walk(config: RuntimeConfig, path: str) -> _CodexCandidates:
+    """Walk one rollout backward for its prompt, its preamble and an older prompt.
+
+    The turn floor is explicit. `io.reverse_lines` carries no notion of a turn,
+    so an unbounded walk crosses silently into the previous one whenever this
+    turn has no commentary — and 26-43% of turns have none. A preamble survives
+    only when the walk actually reached this turn's `task_started`; otherwise the
+    ladder falls through to a labelled older prompt rather than presenting a
+    previous turn's intent as this one's.
+    """
+    prompt: tuple[str, float] | None = None
+    preamble: tuple[str, float] | None = None
+    older: tuple[str, float] | None = None
+    reached_floor = False
+    compacted = False
+    for raw in runtime_io.reverse_lines(config, path):
+        if not raw.startswith(b"{") or not any(m in raw for m in _CODEX_SCAN_MARKERS):
+            continue
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        kind, text, at = _codex_scan_record(record)
+        if kind == "commentary":
+            if not reached_floor and text.strip():
+                preamble = (text, at)
+        elif kind == "floor":
+            reached_floor = True
+        elif kind == "compaction":
+            if prompt is None:
+                continue
+            # A compaction boundary older than the newest prompt puts everything
+            # behind it in a context this turn no longer holds, so it may not be
+            # quoted as what the session is doing. Codex crosses one in 28.2% of
+            # mid-flight cases. Nothing further back can help, so stop.
+            compacted = True
+            if reached_floor:
+                break
+        elif kind == "prompt":
+            body = text.strip()
+            if not body or records.injected_prompt(body, "codex"):
+                continue
+            if prompt is None:
+                prompt = (body, at)
+                if states_work(config, body):
+                    break
+            elif not compacted and states_work(config, body):
+                older = (body, at)
+                break
+    return (prompt, preamble if reached_floor else None, older)
+
+
+def codex_instruction(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[str, Any]:
+    """Codex's session title, newest prompt and instruction line, or nothing.
+
+    Read backward from EOF rather than out of the bounded tail, the mechanism
+    `claude_data.session_title` already uses and for the same reason: of the 276
+    local rollouts holding a genuine prompt, 171 (62.0%) have the newest one
+    outside `tail_bytes`, because `reasoning` records carry encrypted blobs that
+    flood the tail. Reverse against forward on the eight largest rollouts
+    benchmarks 50 ms against 880 ms; the walk measures 2.6 ms median and 93 ms
+    worst case across all 457 local rollouts.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return {"title": None, "last_prompt": "", "instruction": None}
+    cache_key = (stat.st_mtime_ns, stat.st_size)
+    with state.cache_lock:
+        cached = state.codex_instruction_cache.get(path)
+    if cached is not None and cached[:2] == cache_key:
+        return cached[2]
+
+    prompt, preamble, older = _codex_walk(config, path)
+
+    # Rendered first and scrubbed second, never the other way round: `safe_text`
+    # turns a newline into a space, so a prompt scrubbed first has no first line
+    # left for `prompt_title` to take. The bound is the cap plus one because
+    # `clip` appends its ellipsis after cutting, and `safe_text` only ever
+    # shortens, so this cannot truncate what rendering already bounded.
+    rendered = prompt_title(config, prompt[0], records.PROMPT_TITLE_CAP_CHARS) if prompt else None
+    title = (
+        records.safe_text(rendered, records.PROMPT_TITLE_CAP_CHARS + 1).strip() or None
+        if rendered
+        else None
+    )
+    result = {
+        "title": title,
+        "last_prompt": records.safe_text(
+            prompt[0] if prompt else "", records.LAST_PROMPT_CAP_CHARS
+        ),
+        "instruction": instruction_from(config, prompt, preamble, older, title_is_prompt=True),
+    }
+    with state.cache_lock:
+        runtime_state.bounded_put(
+            state.codex_instruction_cache,
+            path,
+            (*cache_key, result),
+            limit=config.max_cache_entries,
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Transcript analyzers (tail pass -> title, prompt, usage, activity)
 
 
 def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]:
-    """Codex rollout tail: user_message (prompt/title), token_count (usage),
-    tool calls. Turn spans come from scan_turns; cwd/subagents from meta."""
+    """Codex rollout tail: token_count (usage), tool calls, rate limits.
+
+    Turn spans come from scan_turns; cwd/subagents from meta; the prompt, the
+    title and the instruction line from `codex_instruction`, which walks backward
+    because a tail read misses the newest prompt on 62% of the rollouts that
+    carry one. This function used to derive the title here too, at a second cap,
+    off the one user record shape that CLI 0.149 no longer writes.
+    """
     info: dict[str, Any] = {
-        "title": None,
-        "last_prompt": None,
         "usage_events": [],
         "last_tool": None,
         "last_event_ts": 0,
@@ -265,12 +529,7 @@ def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
         p = records.as_dict(d.get("payload"))
         if t == "event_msg":
             pt = p.get("type")
-            if pt == "user_message":
-                msg = p.get("message")
-                msg = msg.strip() if isinstance(msg, str) else ""
-                info["last_prompt"] = msg
-                info["title"] = msg.split("\n")[0][:80] or None
-            elif pt == "token_count":
+            if pt == "token_count":
                 out = records.as_dict(records.as_dict(p.get("info")).get("last_token_usage")).get(
                     "output_tokens"
                 )

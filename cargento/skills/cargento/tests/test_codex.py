@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from cargento_runtime import records
 from cargento_runtime import records as runtime_records
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime import turns as runtime_turns
@@ -636,3 +637,149 @@ class CodexModelPrefixScanTest(RuntimeTestCase):
         # returned at the gap rather than walking back to the declaration.
         self.assertGreater(second["last_start"], base + 50_000)
         self.assertEqual("gpt-5.6-sol", second["model"])
+
+
+class CodexInstructionRowTest(RuntimeTestCase):
+    """What a Codex session row actually publishes, end to end.
+
+    The reported bug is a row that says `running 2 subagents` and nothing about
+    the work, so the assertions here are on the collected row rather than on the
+    reader that feeds it.
+    """
+
+    SID = "44444444-4444-4444-4444-444444444444"
+
+    def _collect(self, entries: list[dict[str, Any]], now: float) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "2026" / "08" / "27" / "rollout-row.jsonl"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                "".join(json.dumps(e) + "\n" for e in entries),
+                encoding="utf-8",
+            )
+            os.utime(path, (now, now))
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                collected = codex_collector.collect(config, state, now, 24, False)
+        (session,) = collected
+        return session
+
+    def test_a_running_session_names_what_it_was_asked_to_do(self) -> None:
+        now = time.time()
+        entries: list[dict[str, Any]] = [
+            {"type": "session_meta", "payload": {"id": self.SID, "cwd": "/tmp/project"}},
+            _task_started(now - 120),
+            {
+                "timestamp": _stamp(now - 119),
+                "type": "event_msg",
+                "payload": {
+                    "type": "user_message",
+                    "message": "Reconcile the harness registry with the shipped docs",
+                },
+            },
+        ]
+        entries += [_padding(now - 60) for _ in range(500)]
+
+        session = self._collect(entries, now)
+
+        self.assertEqual("Reconcile the harness registry with the shipped docs", session["title"])
+        self.assertEqual(
+            "Reconcile the harness registry with the shipped docs", session["last_prompt"]
+        )
+        # Line 1 says the work, so there is nothing for line 2 to add.
+        self.assertIsNone(session["instruction"])
+
+    def test_a_continuation_puts_the_agents_own_intent_on_the_second_line(self) -> None:
+        now = time.time()
+        entries: list[dict[str, Any]] = [
+            {"type": "session_meta", "payload": {"id": self.SID, "cwd": "/tmp/project"}},
+            _task_started(now - 120),
+            {
+                "timestamp": _stamp(now - 119),
+                "type": "event_msg",
+                "payload": {"type": "user_message", "message": "proceed"},
+            },
+            {
+                "timestamp": _stamp(now - 100),
+                "type": "event_msg",
+                "payload": {
+                    "type": "item_completed",
+                    "item": {
+                        "type": "AgentMessage",
+                        "phase": "commentary",
+                        "content": [
+                            {
+                                "type": "Text",
+                                "text": "I'll compare the repository guidance files first",
+                            }
+                        ],
+                    },
+                },
+            },
+        ]
+        entries += [_padding(now - 60) for _ in range(500)]
+
+        session = self._collect(entries, now)
+
+        self.assertEqual("proceed", session["title"])
+        self.assertEqual(
+            {
+                "label": "agent",
+                "text": "I'll compare the repository guidance files first",
+                "at": records.parse_ts(_stamp(now - 100)),
+            },
+            session["instruction"],
+        )
+
+    def test_a_session_with_no_genuine_prompt_publishes_neither_line(self) -> None:
+        # The `||` chain on the page then falls through to the project name,
+        # which is today's behaviour and the honest one. 143 local rollouts have
+        # `<recommended_plugins>` as their only user record.
+        now = time.time()
+        session = self._collect(
+            [
+                {"type": "session_meta", "payload": {"id": self.SID, "cwd": "/tmp/project"}},
+                _task_started(now - 120),
+                {
+                    "timestamp": _stamp(now - 119),
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "<recommended_plugins>\nHere is a list of plugins",
+                    },
+                },
+            ],
+            now,
+        )
+
+        self.assertIsNone(session["title"])
+        self.assertEqual("", session["last_prompt"])
+        self.assertIsNone(session["instruction"])
+        self.assertEqual("tmp/project", session["project"])
+
+    def test_untrusted_prompt_text_is_bounded_and_scrubbed_on_the_row(self) -> None:
+        # `last_prompt` used to be a raw `[:140]` slice with no `safe_text` at
+        # all. It is untrusted transcript text bound for the DOM, so it is
+        # bounded here and escaped again at the render site.
+        now = time.time()
+        hostile = "Reconcile\u202e the\x07 registry " + "z" * 400
+        session = self._collect(
+            [
+                {"type": "session_meta", "payload": {"id": self.SID, "cwd": "/tmp/project"}},
+                _task_started(now - 120),
+                {
+                    "timestamp": _stamp(now - 119),
+                    "type": "event_msg",
+                    "payload": {"type": "user_message", "message": hostile},
+                },
+            ],
+            now,
+        )
+
+        self.assertEqual(records.LAST_PROMPT_CAP_CHARS, len(session["last_prompt"]))
+        self.assertNotIn("\u202e", session["last_prompt"])
+        self.assertNotIn("\x07", session["last_prompt"])
+        assert session["title"] is not None
+        # `transcripts.clip` appends the ellipsis after cutting to the cap.
+        self.assertLessEqual(len(session["title"]), records.PROMPT_TITLE_CAP_CHARS + 1)
+        self.assertNotIn("\u202e", session["title"])

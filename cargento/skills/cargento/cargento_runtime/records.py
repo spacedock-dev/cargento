@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 # C0 and DEL, the zero-width space, the two directional marks, and the bidi
 # embedding and isolate ranges. Listed one by one across U+200B to U+200F rather
@@ -494,3 +494,67 @@ def injected_prompt(text: str, harness: str) -> bool:
     if tag:
         return tag.group(1).casefold() in _INJECTED_TAGS.get(harness, _ANY_INJECTED_TAG)
     return body in _INJECTED_PROMPTS or body.startswith(_INJECTED_PROMPT_PREFIXES)
+
+
+# ---------------------------------------------------------------------------
+# The instruction line
+#
+# Widths first, in one place, because they were in two and drifted: the 80 was
+# applied inside `transcripts.analyze_codex_transcript` and the 140 at
+# `collectors/codex.py`, so no reader could see both at once.
+#
+# 140 is the width `last_prompt` has always been clipped to and is kept rather
+# than rederived; 80 is the width `transcripts.prompt_title` already defaults to.
+PROMPT_TITLE_CAP_CHARS: Final = 80
+LAST_PROMPT_CAP_CHARS: Final = 140
+# The line-2 cap. It lives here rather than in `config` because the width is not
+# a tuning knob — it is the same untrusted-text bound `last_prompt` carries, on a
+# field published beside it — and `config.py` is a documented merge hotspot.
+INSTRUCTION_CAP_CHARS: Final = 140
+
+# A prompt this short states no work. Measured on Claude's 204-session cohort
+# (DRC-4266): 60 of 204 newest real prompts are six words or fewer — "proceed",
+# "commit, push, and create a PR" — and 24 are three or fewer.
+#
+# Six, not a character count, and the distinction is the whole finding. A "<40
+# characters" rule was measured and rejected: it would replace 402 good lines to
+# fix 81 bad ones, because most short prompts are short AND informative
+# ("create a pr"). This threshold never substitutes for the newest prompt; it
+# only decides whether a SECOND, labelled line is worth adding beneath it, which
+# is the one use a length rule survives.
+_CONTINUATION_MAX_WORDS: Final = 6
+
+
+def bare_continuation(text: str) -> bool:
+    """Does this prompt carry an instruction, or only tell the agent to go on?
+
+    True for "proceed" and "yes, do that"; false for "resolve the blocker and
+    create the pr". Callers use it to decide whether a labelled second line
+    earns its space, never to replace what the operator actually said.
+
+    Give it a RENDERED line, not a raw record. A slash command arrives as sixty
+    characters of markup that counts as six words and reads as a continuation,
+    while the line a person sees is `/burndown DRC-4266 and the board`.
+    `transcripts.states_work` is the pairing that gets this right.
+    """
+    return len(strip_prompt_wrappers(text).split()) <= _CONTINUATION_MAX_WORDS
+
+
+def instruction_line(
+    label: str,
+    text: str | None,
+    at: float | None,
+    *,
+    limit: int = INSTRUCTION_CAP_CHARS,
+) -> dict[str, Any] | None:
+    """One published line-2 reading, bounded, or nothing.
+
+    ``label`` is what the page prefixes the line with — the reason a stale or
+    second-hand line is survivable at all — so a reading with no label is not
+    published. ``at`` is the record's own stamp; the page renders the age from
+    it, and 0 means unstamped rather than "now".
+    """
+    bounded = safe_text(text, limit).strip()
+    if not bounded or not label:
+        return None
+    return {"label": label, "text": bounded, "at": at if at and at > 0 else 0}

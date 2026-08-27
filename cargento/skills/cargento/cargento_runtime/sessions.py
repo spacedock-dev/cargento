@@ -268,6 +268,23 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         "consumption": None,
         "title": None,
         "last_prompt": "",
+        # The second line beneath the title. A mapping of label, text and at, or
+        # None. The label is one of "asked", "agent" or "earlier", and the page
+        # renders it with the age of the stamp in front of the text.
+        #
+        # A key of its own rather than a wider `last_prompt`, and the reason is
+        # not tidiness: `last_prompt` is read at ten render sites, two of which
+        # are not the session card — `next-projects.js` puts it FIRST in its own
+        # chain and `calm.js` renders it as a standalone line — so a labelled
+        # "earlier, 40m: …" packed into it would leak onto both surfaces with no
+        # label to explain it. `records.safe_text` also collapses newlines, so
+        # two lines cannot share one string field at all.
+        #
+        # None means no honest reading was available, which is a published fact:
+        # the page renders line 1 alone, exactly as it does today. It is never a
+        # guess, because the title chain is a `||` — a wrong value there masks
+        # the project name permanently rather than merely misleading once.
+        "instruction": None,
         "state": "idle",
         "state_detail": "awaiting your message",
         "active": False,

@@ -311,6 +311,7 @@ class CargentoServerTest(RuntimeTestCase):
             "consumption",
             "title",
             "last_prompt",
+            "instruction",
             "state",
             "state_detail",
             "active",

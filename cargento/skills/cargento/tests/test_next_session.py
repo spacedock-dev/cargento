@@ -569,5 +569,119 @@ console.log(JSON.stringify({missing, wrongProject: __els.app.innerHTML}));
             self.assertIn("This session is outside the current payload.", html)
 
 
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextInstructionLineTest(NextPageJsHarness):
+    """The second line under a session title: what renders, and what refuses to.
+
+    Line 1 answers "which session is this" and line 2 answers "what is it doing
+    now". Each is labelled, because the two questions have different answers on
+    a long session and a reader who cannot tell them apart is worse off than one
+    who was shown nothing.
+    """
+
+    SID = "session-1234567890abcdef"
+    BASE = """
+location.hash = "#n=sessions";
+__els.app = {{innerHTML: ""}};
+const __nextPayload = {{
+  generated: 10000,
+  window_hours: 24,
+  summary: {{working: 1, needs_input: 0}},
+  harnesses: [{{key: "claude", label: "Claude Code"}}, {{key: "codex", label: "Codex"}}],
+  sessions: [{{
+    sid: "{sid}", session: "session-", harness: "claude", project: "alpha/repo",
+    state: "working", active: true, title: {title},
+    last_prompt: "", state_detail: "generating…",
+    last_activity: 9400, started_at: 8200, instruction: {instruction},
+    tasks: [], subagents: []
+  }}]
+}};
+__fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
+"""
+
+    def rows(self, instruction: str, title: str = '"Resolve the gate"') -> str:
+        html = self._run_page_js(
+            "await __settle();\nconsole.log(JSON.stringify(nextSessionsView()));",
+            self.BASE.format(sid=self.SID, title=title, instruction=instruction),
+        )
+        assert isinstance(html, str)
+        return html
+
+    def detail(self, instruction: str, title: str = '"Resolve the gate"') -> str:
+        html = self._run_page_js(
+            "await __settle();\n"
+            'nextRoute = {view: "session", project: "alpha/repo", '
+            f'session: "{self.SID}"}};\n'
+            "renderNext();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
+            self.BASE.format(sid=self.SID, title=title, instruction=instruction),
+        )
+        assert isinstance(html, str)
+        return html
+
+    def test_the_line_carries_its_label_and_the_age_of_the_record(self) -> None:
+        # Never the text alone. "earlier" without an age is a claim about
+        # recency the payload does not make, and an age without a label reads as
+        # the newest instruction when it is not.
+        line = '{label: "earlier", text: "Reconcile the registry", at: 9400}'
+        for html in (self.rows(line), self.detail(line)):
+            self.assertIn("earlier, 10m:", html)
+            self.assertIn("Reconcile the registry", html)
+            self.assertIn('data-next-instruction="earlier"', html)
+
+    def test_each_label_in_the_vocabulary_renders_and_nothing_else_does(self) -> None:
+        for label in ("asked", "agent", "earlier"):
+            with self.subTest(label=label):
+                html = self.detail(f'{{label: "{label}", text: "Real work", at: 9400}}')
+                self.assertIn(f"{label}, 10m:", html)
+        # A label the runtime does not publish is not rendered on trust. The
+        # payload is a file this page did not write.
+        for label in ("", "urgent", "<b>"):
+            with self.subTest(label=label):
+                html = self.detail(f'{{label: "{label}", text: "Real work", at: 9400}}')
+                self.assertNotIn("Real work", html)
+
+    def test_no_instruction_renders_line_one_alone(self) -> None:
+        # The publish-nothing branch reaching the page. Never a blank row, and
+        # never a placeholder standing where a measurement would be.
+        for value in ("null", "undefined", '"a string"', "[]", "0"):
+            with self.subTest(value=value):
+                html = self.detail(value)
+                self.assertIn("Resolve the gate", html)
+                self.assertNotIn("next-instruction-label", html)
+
+    def test_the_line_is_dropped_when_it_would_only_repeat_the_title(self) -> None:
+        # `calm.js` already computes both fields and would show the same string
+        # twice. The prefix test is what makes this hold across the two caps:
+        # line 1 clips at 80 and line 2 at 140, so the same prompt reaches them
+        # as two different strings.
+        same = '{label: "asked", text: "Resolve the gate", at: 9400}'
+        self.assertNotIn("next-instruction-label", self.detail(same))
+        longer = '{label: "asked", text: "Resolve the gate and ship it", at: 9400}'
+        self.assertNotIn("next-instruction-label", self.detail(longer, title='"Resolve the gate…"'))
+
+    def test_an_unusable_stamp_renders_the_label_without_an_age(self) -> None:
+        # 0 is "unstamped", and the page must not turn that into "0s ago".
+        html = self.detail('{label: "agent", text: "Real work", at: 0}')
+
+        self.assertIn("agent:", html)
+        self.assertNotIn("agent, 0s:", html)
+
+    def test_untrusted_instruction_text_is_escaped_at_the_render_site(self) -> None:
+        # Bounded at the collector and escaped again here. Neither layer is a
+        # substitute for the other.
+        html = self.detail('{label: "asked", text: "<img src=x onerror=alert>", at: 9400}')
+
+        self.assertNotIn("<img src=x", html)
+        self.assertIn("&lt;img src=x", html)
+
+    def test_a_codex_row_whose_title_is_its_prompt_shows_one_line(self) -> None:
+        # Codex's line 1 IS the newest prompt, so the collector publishes no
+        # "asked" line for it at all. This pins the page half of that decision.
+        html = self.rows("null", title='"Reconcile the harness registry"')
+
+        self.assertIn("Reconcile the harness registry", html)
+        self.assertNotIn("next-instruction-label", html)
+
+
 if __name__ == "__main__":
     unittest.main()

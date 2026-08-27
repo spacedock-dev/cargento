@@ -255,6 +255,94 @@ provider is never paired with a different entry's model.
   instead: the working card, the needs-input row, and the calm detail panel. An idle session is
   spending nobody's quota.
 
+## D-6: a session shows two lines, and each is labelled for the question it answers
+
+A title answers "which session is this". "What is it working on now" is a different question,
+and answering both with one string means answering one of them wrongly. Two harnesses did that
+in opposite directions.
+
+Codex answered neither. Its title came from a bounded tail read of the `event_msg`/`user_message`
+record, and current builds write the prompt somewhere else: of the 276 local rollouts holding a
+genuine prompt, 171 (62.0%) have the newest one outside `tail_bytes`, because `reasoning` records
+carry encrypted blobs that flood the tail. Claude answered the first question and looked healthy
+doing it. Its `ai-title` is generated once and never refreshed: of the 425 transcripts carrying two
+or more of those records, 424 carry a single distinct value, and across the 22 that compacted
+mid-session none changed. On sessions with four or more real prompts the title shares no content
+word with the newest one in 112 of 152 decidable cases (73.7%).
+
+So line 1 keeps its job, and a second labelled line carries the current instruction:
+
+```
+line 1  the session's identity, unchanged in meaning
+line 2  the newest genuine prompt where it states work   -> "asked, 4m: ..."
+        a bare continuation ("proceed") instead          -> the agent's own turn-start
+                                                            statement of intent, above an
+                                                            explicit task_started floor,
+                                                            "agent, 4m: ..."
+                                                         -> else the newest older prompt that
+                                                            states work, and only when no
+                                                            compaction boundary intervenes,
+                                                            "earlier, 2h: ..."
+        none of those                                    -> nothing at all
+```
+
+Codex publishes no "asked" line, because there its line 1 already is that prompt verbatim.
+
+Nothing, rather than a best guess, is the load-bearing clause. The page resolves a title through a
+`||` chain, so a wrong value does not mislead once, it masks the project name for the life of the
+row. On the local corpus 177 of 457 rollouts (38.7%) reach that branch, which is the design working
+rather than a shortfall: 143 of them have `<recommended_plugins>` as their only user record and
+contain no operator instruction anywhere.
+
+The label is the other one. It is what makes a second-hand or slightly stale line survivable:
+"agent" says an agent is quoting itself, "earlier" says this is not the newest thing asked. A
+reading with no label is refused rather than published bare.
+
+Measured coverage of the shipped readers, over the same corpora: Codex publishes a title on 280 of
+457 rollouts (61.3%) and a second line on 58 (12.7%, of which 48 are "agent" and 10 "earlier");
+Claude publishes a second line on 1,906 of 3,771 transcripts (50.5%, 1,733 "asked" and 173
+"earlier").
+
+### Rejected
+
+- **Reading one record shape.** The turn-start preamble moved at CLI 0.149.
+  `event_msg`/`agent_message` with `phase: "commentary"` covers 295 of the 306 local rollouts on
+  0.142.5 through 0.146.1 and **0 of the 88** on 0.149.1; `event_msg`/`item_completed` with an
+  `AgentMessage` item covers 78 of those 88 and none of the older files. The user record split the
+  same way. Both shapes are read, on both records, for that reason and no other.
+- **A plain backward walk for the preamble.** It returns the turn's LAST commentary, which is a
+  progress report ("The full gate is clean. Coverage remains 85.2%"), not its first, which is a
+  statement of intent ("I'm taking over task 5 in the isolated worktree"). Those differ in 227 of
+  281 current turns (80.8%). Publishing the former under an "agent" label says the session was
+  asked to do the thing it just finished.
+- **An unbounded walk with no turn floor.** `io.reverse_lines` carries no notion of a turn, and
+  26 to 43% of turns hold no commentary of their own, so the walk crosses silently into the
+  previous turn and presents its intent as this one's. The floor is an explicit `task_started`
+  record, and a walk that never reaches one publishes no preamble.
+- **A naive "newest user record" read.** Injected on 230 of 456 rollouts (50.4%). Seventeen
+  measured Codex shapes and fourteen Claude ones are rejected by `records.injected_prompt`, and a
+  tag filter alone is not enough: after it, 306 of 2,868 Claude files still have a newest "prompt"
+  that is not an instruction, and the dominant contaminants carry no markup at all.
+- **A character-length rule for "this prompt states no work".** Tempting and wrong: 51.7% of newest
+  prompts have a first line under 80 characters and most are short AND informative. A "under 40
+  characters, walk back" rule replaces 402 good lines to fix 81 bad ones, and an independent
+  reviewer's "24 characters or fewer" swept in "create the PR" and "apply the fix". The rule is a
+  word count on the RENDERED line, at six words or fewer, with slash commands exempt because
+  `/release` is two words rendered and a whole instruction meant.
+- **Positional rules on the turn group.** Grouping on `passthrough.turn_id`, first-of-group is
+  injected 48.4% of the time and last-of-group 32.3%. One title in three would be junk, and per the
+  `||` chain above, junk permanently.
+- **Walking back to an older prompt silently, with no label.** Stale on 28.3% of decidable
+  mid-flight pairs, and Codex crosses a compaction boundary in 28.2% of them. A labelled older
+  line is admissible where a silent substitution is not, which is the whole difference between
+  this and the substitution `observer.py` already refuses to make.
+- **Deriving the line in `turns.scan_turns`.** The scanner's import graph is pinned and excludes
+  `transcripts`, so `prompt_title` is unreachable from it, and its over-budget branch loses the
+  prompt permanently across a restart.
+- **Reusing `last_prompt` for the second line.** It is read at ten render sites, two of which are
+  not the session card, and `records.safe_text` collapses newlines so two lines cannot share one
+  string field anyway.
+
 ## What was ruled out along the way
 
 Worth recording, because the issue as filed pointed at collection and the cause was

@@ -131,8 +131,15 @@ def session_title(config: RuntimeConfig, state: RuntimeState, path: str) -> str 
             continue
         value = record.get("aiTitle")
         if record.get("type") == "ai-title" and isinstance(value, str) and value:
-            title = value
-            break
+            # The only untrusted vendor string in the runtime that used to reach
+            # the payload unbounded — the model branch a few lines up is guarded,
+            # and `collectors/claude.py` passes this one through unclipped.
+            # Measured harmless on the local corpus (max 69 characters, no C0 or
+            # bidi across all 457 published values), so this is latent rather
+            # than live, and closed here rather than preserved.
+            title = records.safe_text(value, records.PROMPT_TITLE_CAP_CHARS).strip() or None
+            if title:
+                break
 
     if title is None:
         try:
@@ -162,6 +169,82 @@ def session_title(config: RuntimeConfig, state: RuntimeState, path: str) -> str 
             state.claude_title_cache, path, (*cache_key, title), limit=config.max_cache_entries
         )
     return title
+
+
+def session_instruction(
+    config: RuntimeConfig, state: RuntimeState, path: str
+) -> dict[str, Any] | None:
+    """What this Claude session was last asked to do, labelled, or nothing.
+
+    The line beside `session_title`, not a replacement for it. That title is
+    generated once from the opening prompt and never refreshed — 424 of the 425
+    transcripts carrying two or more `ai-title` records carry one distinct value,
+    and across the 22 files that compacted mid-session none changed — so on a
+    long session it names work that finished hours ago. Line 1 keeps it, because
+    it is the session's identity and a reader recognises the row by it; this is
+    the line that answers what the session is doing NOW.
+
+    Read backward for the same reason the title is: the newest real prompt sits
+    a median 40 KB from EOF but p95 650 KB, outside the bounded tail.
+
+    Claude writes no turn-start commentary, so the "agent" rung of the ladder is
+    unreachable here and a bare continuation falls straight through to a labelled
+    older prompt. That is deliberate: on the 204-session cohort 60 newest prompts
+    (29.4%) are six words or fewer, and "proceed" published as the current
+    instruction is true and useless.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    cache_key = (stat.st_mtime_ns, stat.st_size)
+    with state.cache_lock:
+        cached = state.claude_instruction_cache.get(path)
+    if cached is not None and cached[:2] == cache_key:
+        return cached[2]
+
+    prompt: tuple[str, float] | None = None
+    older: tuple[str, float] | None = None
+    # Superset filter, as `last_user_event` uses: every record this reads is a
+    # `user` one, including the compaction summary that bounds the walk.
+    for raw in runtime_io.reverse_lines(config, path, contains=b'"user"'):
+        if not raw.startswith(b"{") or b'"user"' not in raw:
+            continue
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(record, dict) or record.get("type") != "user":
+            continue
+        if record.get("isCompactSummary") is True:
+            # Everything behind this is context the session no longer holds, so
+            # no older prompt beyond it may be quoted as current work. Records
+            # NEWER than it are still in context, which is why this only stops
+            # the walk once the newest prompt is already in hand.
+            if prompt is not None:
+                break
+            continue
+        signal = records._turn_signal(record, "claude")  # noqa: SLF001
+        if not signal or signal[0] != "prompt":
+            continue
+        body = records.extract_text(records.message_dict(record).get("content")).strip()
+        if not body or records.injected_prompt(body, "claude"):
+            continue
+        at = records.parse_ts(record.get("timestamp") or "") or 0.0
+        if prompt is None:
+            prompt = (body, at)
+            if transcripts.states_work(config, body):
+                break
+        elif transcripts.states_work(config, body):
+            older = (body, at)
+            break
+
+    line = transcripts.instruction_from(config, prompt, None, older)
+    with state.cache_lock:
+        runtime_state.bounded_put(
+            state.claude_instruction_cache, path, (*cache_key, line), limit=config.max_cache_entries
+        )
+    return line
 
 
 def last_user_event(config: RuntimeConfig, state: RuntimeState, path: str) -> str | None:

@@ -184,6 +184,16 @@ def collect(
         if not (active or show_all):
             continue
         info = transcripts.analyze_codex_transcript(config, fp) if active else None
+        # The prompt and the instruction line come from a backward walk rather
+        # than from `info`, whose tail read misses the newest prompt on 62% of
+        # the rollouts that have one (DRC-4264). Behind the same `active` gate as
+        # the analysis: a stale `?all=1` row pays for no read and reports no
+        # title, which is "not read" rather than "no prompt".
+        asked = (
+            transcripts.codex_instruction(config, state, fp)
+            if active
+            else {"title": None, "last_prompt": "", "instruction": None}
+        )
         # Hoisted above `subagents` because the model is published beside them,
         # and kept behind the `if info` guard so a stale `?all=1` row still pays
         # for no scan. Such a row reports no model rather than an old one: the
@@ -215,8 +225,9 @@ def collect(
         )
         s.update(
             {
-                "title": (info or {}).get("title"),
-                "last_prompt": ((info or {}).get("last_prompt") or "")[:140],
+                "title": asked["title"],
+                "last_prompt": asked["last_prompt"],
+                "instruction": asked["instruction"],
                 "state": session_state,
                 "state_detail": state_detail,
                 "active": active,

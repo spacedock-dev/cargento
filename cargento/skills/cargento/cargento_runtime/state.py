@@ -57,6 +57,21 @@ class RuntimeState:
     metadata_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
     claude_title_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
     claude_user_event_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
+    # transcript path -> ((mtime_ns, size), the published instruction reading).
+    # Both are `bounded_put` at `config.max_cache_entries`, like every cache
+    # above them.
+    #
+    # What these do NOT do is spare a live session: the key moves on every event,
+    # and a live session is the whole point of the field. They pay for the
+    # opposite case — an idle or `?all=1` row re-read on each refresh, where the
+    # walk is over a file that stopped changing — and that is the population
+    # where the walk is long, because it reaches back through a finished turn.
+    codex_instruction_cache: dict[str, tuple[int, int, dict[str, Any]]] = field(
+        default_factory=dict
+    )
+    claude_instruction_cache: dict[str, tuple[int, int, dict[str, Any] | None]] = field(
+        default_factory=dict
+    )
     # sess_dir -> (directory mtimes, subagent transcript paths). A subagent tree
     # whose directory mtimes have not moved cannot have gained or lost a
     # transcript, so only the glob is memoised; mtimes are restated on every

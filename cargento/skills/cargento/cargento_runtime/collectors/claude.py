@@ -532,6 +532,16 @@ def collect(
         s.update(
             {
                 "title": (info or {}).get("title"),
+                # Line 1 above is the session's identity — the `ai-title`, fixed
+                # before the second prompt on 200 of 204 long sessions — and this
+                # is the line that says what it is doing now. Behind the same
+                # guard as the analysis, so an unread row reports nothing rather
+                # than something old.
+                "instruction": (
+                    claude_data.session_instruction(config, state, transcript)
+                    if (info and transcript)
+                    else None
+                ),
                 # The session's own model, from the non-sidechain half of the
                 # analysis: an inactive session is not analyzed at all and
                 # publishes None, which is "not read" and not "no model".

@@ -65,7 +65,9 @@ function nextSessionRow(session, labels, collisions){
   const liveDot = live ? nextStatusDot("working", "next-session-live-glyph") : "";
   return `<tr class="next-session-row${stateClass}${liveClass}" data-next-session="${esc(session.sid)}" ` +
     `data-next-route="${esc(route)}"><td class="next-session-identity">` +
-    `<strong>${liveDot}${esc(title)}</strong><span>${esc(project)} · ${esc(harnessLabel)}</span>` +
+    `<strong>${liveDot}${esc(title)}</strong>` +
+    `${nextInstructionLine(session, title, "next-session-row-instruction")}` +
+    `<span>${esc(project)} · ${esc(harnessLabel)}</span>` +
     `${nextSessionCollision(session, collisions)}</td>` +
     `<td class="next-session-activity">${nextSessionActivity(session)}</td>` +
     `<td class="next-session-metric">${esc(nextSessionMetric(session))}</td></tr>`;

@@ -2077,3 +2077,202 @@ class QuestionOnTheRowTest(RuntimeTestCase):
             row["state_detail"].startswith("open question (AskUserQuestion), waiting"),
             row["state_detail"],
         )
+
+
+class ClaudeInstructionTest(unittest.TestCase):
+    """The line beneath a Claude session title: what it is doing NOW.
+
+    Line 1 is the `ai-title`, which is generated once from the opening prompt and
+    never refreshed — 424 of the 425 transcripts carrying two or more of those
+    records carry one distinct value — so on a long session it names finished
+    work. These fixtures pin the second line that says otherwise.
+    """
+
+    @staticmethod
+    def _at(offset: float) -> str:
+        return (
+            datetime.fromtimestamp(1_780_000_000 + offset, UTC).strftime("%Y-%m-%dT%H:%M:%S")
+            + ".000Z"
+        )
+
+    @classmethod
+    def _prompt(cls, offset: float, text: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "type": "user",
+            "timestamp": cls._at(offset),
+            "message": {"role": "user", "content": text},
+            **extra,
+        }
+
+    def read(self, *entries: dict[str, Any]) -> dict[str, Any] | None:
+        config, state = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "abcdef12-0000-0000-0000-000000000000.jsonl"
+            path.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+            return claude_data.session_instruction(config, state, str(path))
+
+    def test_the_newest_real_prompt_is_the_line_and_the_opener_is_not(self) -> None:
+        # Anchor A from DRC-4266, the strictest of the four readings: the NEWEST
+        # real prompt. On the 204-session cohort the title is off-subject against
+        # it on 112 of 152 decidable sessions (73.7%), which is exactly the gap
+        # this line closes.
+        line = self.read(
+            self._prompt(0, "Improve the write wall repository discoverability"),
+            self._prompt(60, "Now reconcile the harness registry with the docs"),
+        )
+
+        assert line is not None
+        self.assertEqual("asked", line["label"])
+        self.assertEqual("Now reconcile the harness registry with the docs", line["text"])
+        self.assertEqual(records.parse_ts(self._at(60)), line["at"])
+
+    def test_a_bare_continuation_falls_back_to_a_labelled_older_prompt(self) -> None:
+        # 60 of the 204 cohort (29.4%) have a newest real prompt of six words or
+        # fewer. "proceed" published as the current instruction is true and
+        # useless; the older line is labelled so it cannot pass for the newest.
+        line = self.read(
+            self._prompt(0, "Reconcile the harness registry with the docs"),
+            self._prompt(60, "proceed"),
+        )
+
+        assert line is not None
+        self.assertEqual("earlier", line["label"])
+        self.assertEqual("Reconcile the harness registry with the docs", line["text"])
+        self.assertEqual(records.parse_ts(self._at(0)), line["at"])
+
+    def test_an_injected_shape_is_not_an_instruction(self) -> None:
+        # Tag rejection alone is not enough: after it, 306 of 2,868 files (10.7%)
+        # still have a newest "prompt" that is not an instruction, and the
+        # dominant contaminants — the compaction preamble and the interrupt
+        # notice — carry no XML wrapper at all.
+        for text in (
+            "<task-notification>agent finished</task-notification>",
+            "This session is being continued from a previous conversation",
+            "[Request interrupted by user]",
+            "Another Claude session sent a message: hello",
+            "Analyze this conversation and determine the next step",
+            "Warmup",
+        ):
+            with self.subTest(text=text):
+                line = self.read(
+                    self._prompt(0, "Reconcile the harness registry with the docs"),
+                    self._prompt(60, text),
+                )
+
+                assert line is not None
+                self.assertEqual("Reconcile the harness registry with the docs", line["text"])
+                self.assertEqual("asked", line["label"])
+
+    def test_nothing_is_published_when_no_real_prompt_exists(self) -> None:
+        self.assertIsNone(
+            self.read(
+                self._prompt(0, "<task-notification>done</task-notification>"),
+                self._prompt(60, "[Request interrupted by user]"),
+            )
+        )
+        self.assertIsNone(self.read())
+
+    def test_a_compaction_boundary_stops_an_older_prompt_being_quoted(self) -> None:
+        # Behind the boundary is context the session no longer holds.
+        line = self.read(
+            self._prompt(0, "Reconcile the harness registry with the docs"),
+            self._prompt(30, "compaction summary", isCompactSummary=True),
+            self._prompt(60, "proceed"),
+        )
+
+        self.assertIsNone(line)
+
+    def test_a_prompt_newer_than_the_boundary_still_reads(self) -> None:
+        # The boundary only blocks what is BEHIND it. A compacted session that
+        # has since been given real work must still show that work.
+        line = self.read(
+            self._prompt(0, "Old work from before the compaction"),
+            self._prompt(30, "compaction summary", isCompactSummary=True),
+            self._prompt(60, "Reconcile the harness registry with the docs"),
+        )
+
+        assert line is not None
+        self.assertEqual("Reconcile the harness registry with the docs", line["text"])
+
+    def test_a_slash_command_renders_as_the_command_it_was(self) -> None:
+        # `prompt_title` already owns this rendering, and routing through it is
+        # why line 2 grows no tag-stripping code of its own.
+        line = self.read(
+            self._prompt(
+                0,
+                "<command-message>burndown is running</command-message>"
+                "<command-name>/burndown</command-name>"
+                "<command-args>DRC-4266 and the board</command-args>",
+            )
+        )
+
+        assert line is not None
+        self.assertEqual("asked", line["label"])
+        self.assertEqual("/burndown DRC-4266 and the board", line["text"])
+
+    def test_a_bare_slash_command_is_an_instruction_and_not_a_continuation(self) -> None:
+        # The word count is the wrong instrument for the one prompt shape that is
+        # already explicit: `/release` renders to two words and means a whole
+        # workflow. Counting it as a continuation buries what the operator
+        # deliberately invoked and shows an older line in its place.
+        line = self.read(
+            self._prompt(0, "Reconcile the harness registry with the docs"),
+            self._prompt(60, "<command-name>/release</command-name>"),
+        )
+
+        assert line is not None
+        self.assertEqual("asked", line["label"])
+        self.assertEqual("/release", line["text"])
+
+    def test_the_prompt_is_found_behind_a_bounded_tail(self) -> None:
+        # The newest real prompt sits a median 40 KB from EOF but p95 650 KB, so
+        # a tail read is not a substitute for the backward walk.
+        config, state = make_runtime()
+        entries = [self._prompt(0, "Reconcile the harness registry with the docs")]
+        entries += [
+            {"type": "assistant", "timestamp": self._at(1), "message": {"content": "z" * 900}}
+            for _ in range(700)
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "abcdef12-0000-0000-0000-000000000000.jsonl"
+            path.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+            blob = path.read_bytes()
+            self.assertNotIn(b"Reconcile the harness", blob[-config.tail_bytes :])
+            line = claude_data.session_instruction(config, state, str(path))
+
+        assert line is not None
+        self.assertEqual("Reconcile the harness registry with the docs", line["text"])
+
+    def test_a_malformed_transcript_reads_as_nothing_rather_than_raising(self) -> None:
+        hostile: list[Any] = [5, "str", [1, 2], {"k": "v"}, None, True]
+        for value in hostile:
+            with self.subTest(value=repr(value)):
+                self.read({"type": "user", "message": value, "timestamp": value})
+
+    def test_a_missing_file_reads_as_nothing(self) -> None:
+        config, state = make_runtime()
+
+        self.assertIsNone(
+            claude_data.session_instruction(config, state, "/nonexistent/transcript.jsonl")
+        )
+
+
+class ClaudeTitleBoundTest(unittest.TestCase):
+    def test_the_generated_title_is_bounded_and_scrubbed_like_every_vendor_string(self) -> None:
+        # It reached the payload with no cap and no scrub, the only untrusted
+        # vendor string in the runtime that did. Measured harmless on the local
+        # corpus, which is why this is hardening rather than a fix — but a row
+        # that renders a bidi override says something it does not say.
+        config, state = make_runtime()
+        hostile = "Improve\u202e the\x07 write wall " + "z" * 300
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "abcdef12-0000-0000-0000-000000000000.jsonl"
+            path.write_text(
+                json.dumps({"type": "ai-title", "aiTitle": hostile}) + "\n", encoding="utf-8"
+            )
+            title = claude_data.session_title(config, state, str(path))
+
+        assert title is not None
+        self.assertLessEqual(len(title), records.PROMPT_TITLE_CAP_CHARS)
+        self.assertNotIn("\u202e", title)
+        self.assertNotIn("\x07", title)

@@ -73,6 +73,45 @@ function nextDurationSince(stamp){
   return age == null ? null : nextFormatDuration(age);
 }
 
+// The second line beneath a session title: what the session is working on now,
+// where the title above it cannot say. Never rendered without its label and the
+// age of the record it came from — "agent, 4m:" is an agent quoting itself and
+// "earlier, 2h:" is not the newest thing asked, and a reader who cannot see
+// which has been handed a claim the runtime cannot support.
+//
+// Returns "" rather than a blank line when there is nothing honest to say, and
+// when the line would only repeat the title: `calm.js` already renders the
+// title and the prompt as separate elements and would show the same string
+// twice on a session whose first prompt is still its newest.
+const NEXT_INSTRUCTION_LABELS = new Map([
+  ["asked", "asked"],
+  ["agent", "agent"],
+  ["earlier", "earlier"],
+]);
+
+function nextInstructionEchoes(text, title){
+  const trim = value => String(value == null ? "" : value).replace(/…$/, "").trim().toLowerCase();
+  const line = trim(text);
+  const head = trim(title);
+  if(!line || !head) return false;
+  // A prefix, not just equality: line 1 clips at 80 characters and line 2 at
+  // 140, so the same prompt reaches them as two different strings.
+  return line.startsWith(head) || head.startsWith(line);
+}
+
+function nextInstructionLine(session, title, className){
+  const instruction = session && session.instruction;
+  if(!instruction || typeof instruction !== "object" || Array.isArray(instruction)) return "";
+  const label = NEXT_INSTRUCTION_LABELS.get(String(instruction.label || ""));
+  const text = String(instruction.text == null ? "" : instruction.text).trim();
+  if(!label || !text || nextInstructionEchoes(text, title)) return "";
+  const age = nextDurationSince(instruction.at);
+  const prefix = age == null ? label : `${label}, ${age}`;
+  return `<p class="${esc(className)}" data-next-instruction="${esc(instruction.label)}">` +
+    `<span class="next-instruction-label">${esc(prefix)}:</span> ` +
+    `<span class="next-instruction-text">${esc(text)}</span></p>`;
+}
+
 function nextHarnessLabels(){
   const labels = new Map();
   const harnesses = nextData && Array.isArray(nextData.harnesses) ? nextData.harnesses : [];
