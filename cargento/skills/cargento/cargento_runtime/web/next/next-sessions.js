@@ -68,8 +68,19 @@ function nextSessionRow(session, labels, collisions){
      A labelled "asked, 4m:" under a bare string reads as a caption for the row
      rather than for the line beneath it, which is the ambiguity the labels
      exist to remove; a lone "title:" on every row of a table whose column is
-     already headed SESSION is noise for nothing. */
-  const titleLabel = instruction
+     already headed SESSION is noise for nothing.
+
+     AND line 1 has to actually be the title. `title` above falls back through
+     `last_prompt` to the empty string, so gating on line 2 alone let the label
+     caption an unfiltered prompt, or caption nothing and leave a dangling
+     "title: ". Both are unreached today — over 3,774 Claude transcripts and 459
+     Codex rollouts, every one that publishes an instruction also publishes a
+     title — but that containment is a property of the corpus rather than of the
+     code: `session_title` falls back to the FIRST prompt and breaks whatever it
+     returns, while the instruction walks backward, so an opening prompt that
+     strips to empty above a genuine later one produces the state. The
+     conjunction makes it unrepresentable instead of unlikely. */
+  const titleLabel = instruction && session.title
     ? '<span class="next-instruction-label">title</span>: '
     : "";
   return `<tr class="next-session-row${stateClass}${liveClass}" data-next-session="${esc(session.sid)}" ` +

@@ -591,7 +591,7 @@ const __nextPayload = {{
   sessions: [{{
     sid: "{sid}", session: "session-", harness: "claude", project: "alpha/repo",
     state: "working", active: true, title: {title},
-    last_prompt: "", state_detail: "generating…",
+    last_prompt: {last_prompt}, state_detail: "generating…",
     last_activity: 9400, started_at: 8200, instruction: {instruction},
     tasks: [], subagents: []
   }}]
@@ -599,10 +599,17 @@ const __nextPayload = {{
 __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
 """
 
-    def rows(self, instruction: str, title: str = '"Resolve the gate"') -> str:
+    def rows(
+        self,
+        instruction: str,
+        title: str = '"Resolve the gate"',
+        last_prompt: str = '""',
+    ) -> str:
         html = self._run_page_js(
             "await __settle();\nconsole.log(JSON.stringify(nextSessionsView()));",
-            self.BASE.format(sid=self.SID, title=title, instruction=instruction),
+            self.BASE.format(
+                sid=self.SID, title=title, instruction=instruction, last_prompt=last_prompt
+            ),
         )
         assert isinstance(html, str)
         return html
@@ -613,7 +620,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
             'nextRoute = {view: "session", project: "alpha/repo", '
             f'session: "{self.SID}"}};\n'
             "renderNext();\nconsole.log(JSON.stringify(__els.app.innerHTML));",
-            self.BASE.format(sid=self.SID, title=title, instruction=instruction),
+            self.BASE.format(sid=self.SID, title=title, instruction=instruction, last_prompt='""'),
         )
         assert isinstance(html, str)
         return html
@@ -660,6 +667,34 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
         alone = self.rows("null")
         self.assertIn("Resolve the gate", alone)
         self.assertNotIn("next-instruction-label", alone)
+
+    def test_the_title_label_never_names_something_that_is_not_the_title(self) -> None:
+        # The label was gated on line 2 existing, never on line 1 being a title,
+        # so it made a claim line 1's own data need not support. `title` falls
+        # back through `last_prompt` to the empty string; the label consulted
+        # neither. Falsifying edit: gate `titleLabel` on `instruction` alone —
+        # the first case labels a raw prompt "title", the second renders a bare
+        # "title: " with nothing behind it.
+        asked = '{label: "asked", text: "Reconcile the registry", at: 9400}'
+
+        # Line 1 falls back to the unfiltered `last_prompt`. It is still the best
+        # line 1 available, so it renders — but it is not a title and is not
+        # called one.
+        fallback = self.rows(asked, title="null", last_prompt='"Deploy the staging store"')
+        self.assertIn("Deploy the staging store", fallback)
+        self.assertIn("Reconcile the registry", fallback)
+        self.assertNotIn('<span class="next-instruction-label">title</span>', fallback)
+
+        # Neither field is there. The caption has nothing to caption, and line 2
+        # still has to render: `nextInstructionEchoes` returns false on an empty
+        # head, so nothing else suppresses it.
+        empty = self.rows(asked, title="null", last_prompt='""')
+        self.assertIn("Reconcile the registry", empty)
+        self.assertNotIn('<span class="next-instruction-label">title</span>', empty)
+        # The dangling-colon signature specifically: a caption whose subject was
+        # cut off. `<strong></strong>` would pass here for free, because the live
+        # dot occupies the element on this fixture.
+        self.assertNotIn(": </strong>", empty)
 
     def test_no_instruction_renders_line_one_alone(self) -> None:
         # The publish-nothing branch reaching the page. Never a blank row, and
