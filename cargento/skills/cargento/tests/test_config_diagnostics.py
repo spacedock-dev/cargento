@@ -504,6 +504,7 @@ class StoreRootsTest(unittest.TestCase):
         roots = self.resolve("darwin", {}, self.POSIX_HOME)
         self.assertEqual(["/home/u/.claude/projects"], roots["claude.projects"])
         self.assertEqual(["/home/u/.claude/tasks"], roots["claude.tasks"])
+        self.assertEqual(["/home/u/.claude/teams"], roots["claude.teams"])
         self.assertEqual(["/home/u/.codex/sessions"], roots["codex.sessions"])
         self.assertEqual(["/home/u/.gemini/tmp"], roots["gemini.tmp"])
         self.assertEqual(["/home/u/.copilot"], roots["copilot.root"])
@@ -642,6 +643,10 @@ class StoreRootsTest(unittest.TestCase):
         # back to a stale default.
         self.assertEqual(["/opt/cc/projects"], roots["claude.projects"])
         self.assertEqual(["/opt/cc/tasks"], roots["claude.tasks"])
+        # CLAUDE_CONFIG_DIR relocates the teams registry with the rest of the
+        # Claude stores; a member roster left behind at the default would be
+        # read against a session store nothing else searches.
+        self.assertEqual(["/opt/cc/teams"], roots["claude.teams"])
         self.assertEqual(["/opt/cx/sessions"], roots["codex.sessions"])
         self.assertEqual(["/opt/cp"], roots["copilot.root"])
 

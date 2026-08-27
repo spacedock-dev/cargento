@@ -2373,3 +2373,241 @@ class ClaudeTitleBoundTest(unittest.TestCase):
         self.assertLessEqual(len(title), records.PROMPT_TITLE_CAP_CHARS)
         self.assertNotIn("\u202e", title)
         self.assertNotIn("\x07", title)
+
+
+class TeamRosterTest(RuntimeTestCase):
+    """A member registered in the teams registry that never wrote a transcript.
+
+    The observation behind DRC-4263: three subagents parked on a startup
+    permission prompt for 22 minutes, alive in their panes, with no transcript
+    between them. Their lead read Working while the operator's message was
+    fresh, then Idle, and the project panel then said nothing was going on at
+    all. The registry entry is the only thing on disk that knows they exist.
+    """
+
+    PARENT = "aaaa1111-0000-0000-0000-000000000000"
+
+    def build(
+        self,
+        tmp: str,
+        members: list[dict[str, Any]],
+        *,
+        now: float,
+        parent_age: float = 600,
+    ) -> tuple[Path, Path]:
+        proj = Path(tmp) / "projects" / "-Users-test-repo"
+        proj.mkdir(parents=True)
+        parent_fp = proj / f"{self.PARENT}.jsonl"
+        parent_fp.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": self.PARENT,
+                    "timestamp": datetime.fromtimestamp(now - parent_age, UTC).isoformat(),
+                    "message": {"role": "user", "content": "build the feature"},
+                }
+            )
+            + "\n"
+        )
+        os.utime(parent_fp, (now - parent_age, now - parent_age))
+        teams = Path(tmp) / "teams" / f"session-{self.PARENT[:8]}"
+        teams.mkdir(parents=True)
+        (teams / "config.json").write_text(
+            json.dumps(
+                {
+                    "name": f"session-{self.PARENT[:8]}",
+                    "leadSessionId": self.PARENT,
+                    "members": [
+                        {
+                            "agentId": f"team-lead@session-{self.PARENT[:8]}",
+                            "name": "team-lead",
+                            "backendType": "in-process",
+                        },
+                        *members,
+                    ],
+                }
+            )
+        )
+        return proj, Path(tmp) / "teams"
+
+    def member(self, name: str, joined_ms: float) -> dict[str, Any]:
+        return {
+            "agentId": f"{name}@session-{self.PARENT[:8]}",
+            "name": name,
+            "agentType": "general-purpose",
+            "joinedAt": joined_ms,
+            "backendType": "tmux",
+        }
+
+    def collect_one(self, tmp: str, teams: Path, now: float) -> dict[str, Any]:
+        with (
+            store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+            store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            store_patch(TEAMS_DIR=str(teams)),
+        ):
+            sessions = collect_claude(now, 24, False)
+        self.assertEqual(1, len(sessions))
+        return sessions[0]
+
+    def test_a_registered_member_that_never_started_reports_needs_input(self) -> None:
+        # The whole defect in one case: two members on the roster, no transcript
+        # for either, a lead quiet for ten minutes. Removing the roster read
+        # leaves this session idle and unnamed, which is what the dashboard
+        # showed.
+        now = time.time()
+        joined = (now - 1320) * 1000  # 22 minutes ago, in epoch milliseconds
+        with tempfile.TemporaryDirectory() as tmp:
+            _, teams = self.build(
+                tmp,
+                [self.member("evidence-skeptic", joined), self.member("design-skeptic", joined)],
+                now=now,
+            )
+            session = self.collect_one(tmp, teams, now)
+
+        self.assertEqual("needs_input", session["state"])
+        self.assertIn("2 subagents have not started", session["state_detail"])
+        self.assertEqual(
+            ["design-skeptic", "evidence-skeptic"],
+            sorted(agent["name"] for agent in session["subagents"]),
+        )
+        self.assertEqual(joined / 1000, session["blocked_since"])
+
+    def test_one_unstarted_member_is_named_on_the_row(self) -> None:
+        # "2 subagents" is not actionable; the name is. A single pending member
+        # says which one, and its wait is measured from the join.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, teams = self.build(
+                tmp, [self.member("steering-analyst", (now - 300) * 1000)], now=now
+            )
+            session = self.collect_one(tmp, teams, now)
+
+        self.assertEqual("needs_input", session["state"])
+        self.assertEqual("steering-analyst has not started, waiting 5m", session["state_detail"])
+
+    def test_a_member_that_has_written_a_transcript_is_not_pending(self) -> None:
+        # The join in its normal form: the child's agentName plus its teamName
+        # reassemble the roster's agentId. A member that started is running work
+        # and must keep the session Working rather than turn the row red.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        child_id = "bbbb2222-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, teams = self.build(
+                tmp, [self.member("evidence-skeptic", (now - 600) * 1000)], now=now
+            )
+            (proj / f"{child_id}.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": child_id,
+                        "agentName": "evidence-skeptic",
+                        "teamName": f"session-{self.PARENT[:8]}",
+                        "timestamp": iso,
+                        "message": {"role": "user", "content": "read the evidence"},
+                    }
+                )
+                + "\n"
+            )
+            session = self.collect_one(tmp, teams, now)
+
+        self.assertEqual("working", session["state"])
+        self.assertEqual(["evidence-skeptic"], [a["name"] for a in session["subagents"]])
+
+    def test_a_legacy_hex_member_joins_through_its_own_transcript(self) -> None:
+        # Historical members carry a hex agentId and no name at all, and their
+        # transcript is agent-<id>.jsonl under the session's subagents/. A join
+        # keyed on agentName alone would report every one of them as unstarted.
+        now = time.time()
+        agent_id = "a1e621a43b4af4fbc"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, teams = self.build(
+                tmp,
+                [{"agentId": agent_id, "joinedAt": (now - 600) * 1000}],
+                now=now,
+            )
+            subagents = proj / self.PARENT / "subagents"
+            subagents.mkdir(parents=True)
+            fp = subagents / f"agent-{agent_id}.jsonl"
+            fp.write_text(json.dumps({"type": "user", "timestamp": "2026-01-01T00:00:00Z"}) + "\n")
+            os.utime(fp, (now - 600, now - 600))
+            session = self.collect_one(tmp, teams, now)
+
+        self.assertEqual("idle", session["state"])
+        self.assertEqual([], session["subagents"])
+
+    def test_a_member_that_has_only_just_joined_is_not_reported_yet(self) -> None:
+        # Every healthy fan-out passes through this window on its way to a first
+        # transcript byte. Without the floor a normal dispatch flashes a red band
+        # for a few seconds each time.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, teams = self.build(
+                tmp, [self.member("evidence-skeptic", (now - 10) * 1000)], now=now
+            )
+            session = self.collect_one(tmp, teams, now)
+
+        self.assertEqual("idle", session["state"])
+        self.assertEqual([], session["subagents"])
+
+    def test_an_old_roster_does_not_resurrect_a_stale_session(self) -> None:
+        # The registry stamps a join and never ages it, so nothing in the file
+        # says this team stopped mattering. The display window has to, or a lead
+        # that died mid-dispatch holds a red row for as long as it is on the
+        # board. Mutation-checked: dropping the upper bound passed the suite.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, teams = self.build(
+                tmp,
+                [self.member("evidence-skeptic", (now - 40 * 3600) * 1000)],
+                now=now,
+                parent_age=40 * 3600,
+            )
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+                store_patch(TEAMS_DIR=str(teams)),
+            ):
+                sessions = collect_claude(now, 24, True)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("idle", sessions[0]["state"])
+        self.assertEqual([], sessions[0]["subagents"])
+
+    def test_the_lead_is_never_a_subagent_of_itself(self) -> None:
+        # The lead has no joinedAt and no transcript beyond the session's own,
+        # so a roster read that did not exclude it would report every team
+        # session as blocked on itself.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, teams = self.build(tmp, [], now=now)
+            session = self.collect_one(tmp, teams, now)
+
+        self.assertEqual("idle", session["state"])
+        self.assertEqual([], session["subagents"])
+
+    def test_a_broken_registry_is_skipped_rather_than_fatal(self) -> None:
+        # Untrusted JSON from a store nothing validates: a truncated file, a
+        # members list that is not a list, and a member that is not a dict all
+        # arrive from the same directory as the good one. The older layout keeps
+        # inboxes with no config.json at all.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            _, teams = self.build(
+                tmp, [self.member("evidence-skeptic", (now - 600) * 1000)], now=now
+            )
+            (teams / "session-deadbeef").mkdir()
+            (teams / "session-deadbeef" / "config.json").write_text("{not json")
+            (teams / "session-cafe0000").mkdir()
+            (teams / "session-cafe0000" / "config.json").write_text(
+                json.dumps({"members": "team-lead"})
+            )
+            (teams / "session-feed0000").mkdir()
+            (teams / "session-feed0000" / "config.json").write_text(
+                json.dumps({"members": [42, {"name": "no-id"}]})
+            )
+            (teams / "5929bca9-740a-498a-ac5f-087ca9f22121" / "inboxes").mkdir(parents=True)
+            session = self.collect_one(tmp, teams, now)
+
+        self.assertEqual("needs_input", session["state"])
+        self.assertEqual(["evidence-skeptic"], [a["name"] for a in session["subagents"]])

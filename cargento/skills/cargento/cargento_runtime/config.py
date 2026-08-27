@@ -336,6 +336,11 @@ def resolve_store_roots(
     return {
         "claude.projects": ordered(join(claude_home, "projects")),
         "claude.tasks": ordered(join(claude_home, "tasks")),
+        # The teams registry, one directory per lead session. It is the only
+        # store that names a dispatched subagent BEFORE that subagent has
+        # written a transcript byte, which is the whole on-disk trace of one
+        # blocked at a startup gate (DRC-4263).
+        "claude.teams": ordered(join(claude_home, "teams")),
         "codex.sessions": ordered(join(codex_home, "sessions")),
         "pi.sessions": ordered(pi_sessions),
         "gemini.tmp": ordered(join(gemini_home, "tmp")),

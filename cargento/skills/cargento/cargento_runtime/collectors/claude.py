@@ -29,6 +29,102 @@ SUBAGENT_GLOBS = (
     ("subagents", "workflows", "*", "agent-*.jsonl"),
 )
 
+# The lead's own row in the teams registry. The lead IS the session, so it is
+# never reported as a subagent of itself.
+TEAM_LEAD_NAME = "team-lead"
+
+
+def load_team_members(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
+    """parent prefix -> the non-lead members registered in the teams registry.
+
+    A dispatched member appears in ``teams/session-<sid>/config.json`` at the
+    moment it is spawned, which is before it has written a transcript byte. For
+    a healthy agent that window is seconds; for one parked on a startup
+    permission prompt it is unbounded, and the registry entry plus an inbox file
+    are then its only trace on disk (DRC-4263).
+
+    The registry is a ROSTER, not a heartbeat: one file mtime covers every
+    member, and it moves only on a join or a leave, so nothing here can age an
+    individual member the way ``load_subagents`` ages a transcript. Callers get
+    ``joined`` per member and must bound it themselves. Reading it is safe as a
+    live-only signal because ``members[]`` is pruned on completion — measured on
+    two finished sessions that were left holding their lead alone while their
+    members' inbox files survived.
+
+    An older layout keeps ``teams/<uuid>/inboxes/`` with no ``config.json`` at
+    all; the glob simply does not match it, and those members are reachable
+    through their ``agent-<hex>.jsonl`` transcripts anyway.
+    """
+    by_prefix: dict[str, list[dict[str, Any]]] = {}
+    for fp in runtime_io.glob_stores(config, "claude.teams", "*", "config.json"):
+        try:
+            with open(fp, encoding="utf-8") as f:
+                registry = json.load(f)
+            registered = os.stat(fp).st_mtime
+        except (OSError, ValueError):  # ValueError covers UnicodeDecodeError
+            continue
+        if not isinstance(registry, dict):
+            continue
+        prefix = os.path.basename(os.path.dirname(fp)).removeprefix("session-")[:8]
+        if not prefix:
+            continue
+        for member in registry.get("members") or ():
+            # Untrusted JSON from a store nothing validates: a member that is not
+            # a dict, or carries no id, is skipped rather than published as a row.
+            if not isinstance(member, dict):
+                continue
+            agent_id = member.get("agentId")
+            if not isinstance(agent_id, str) or not agent_id:
+                continue
+            name = member.get("name")
+            label = name if isinstance(name, str) and name else agent_id.split("@", 1)[0]
+            if label == TEAM_LEAD_NAME:
+                continue
+            joined = member.get("joinedAt")
+            when = registered
+            if isinstance(joined, (int, float)) and not isinstance(joined, bool) and joined > 0:
+                # Milliseconds on every registry measured. Scaled by magnitude
+                # rather than assumed, so a seconds-valued field would read as a
+                # stale join (excluded) instead of one 55,000 years in the future.
+                when = joined / 1000 if joined > 1e11 else float(joined)
+            by_prefix.setdefault(prefix, []).append(
+                {
+                    "agent_id": agent_id,
+                    "local": agent_id.split("@", 1)[0],
+                    "label": label[:70],
+                    "joined": when,
+                }
+            )
+    return by_prefix
+
+
+def started_agent_ids(prefix: str, children: list[dict[str, Any]], paths: list[str]) -> set[str]:
+    """Identifiers of every member of one team that HAS written a transcript.
+
+    The join is on the agent id — ``<name>@session-<parent prefix>``, which is
+    what a child transcript's ``agentName`` and ``teamName`` reassemble to — and
+    not on the name alone, because a name is unique only inside its own team and
+    the registry says nothing about which team a bare name came from.
+
+    The bare local part goes in beside the full id anyway. Everything here is
+    already scoped to one parent prefix, so it cannot match a stranger's agent,
+    and it is the direction that fails safe: an extra entry can only mark a
+    member as started, never invent one that has not.
+    """
+    started = set()
+    for child in children:
+        name = child.get("agent_name")
+        if name:
+            started.add(f"{name}@session-{prefix}")
+            started.add(name)
+    for path in paths:
+        # Legacy members carry a hex id and no name at all; their transcript is
+        # `agent-<id>.jsonl` under the session's own subagents/ directory.
+        base = os.path.basename(path)
+        if base.startswith("agent-") and base.endswith(".jsonl"):
+            started.add(base[len("agent-") : -len(".jsonl")])
+    return started
+
 
 def load_tasks(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
     """session prefix -> list of task dicts."""
@@ -297,6 +393,7 @@ def collect(
     show_all: bool,
 ) -> list[Session]:
     tasks_by_session = load_tasks(config)
+    team_members = load_team_members(config)
     transcripts: dict[str, str] = {}  # prefix -> newest transcript path
     agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
     for fp in runtime_io.glob_stores(config, "claude.projects", "*", "*.jsonl"):
@@ -320,6 +417,9 @@ def collect(
                             "path": fp,
                             "mtime": mtime,
                             "label": (agent_name or "subagent")[:70],
+                            # The label is truncated for display; the roster join
+                            # needs the name as written or a long one misses.
+                            "agent_name": agent_name,
                         }
                     )
                 continue
@@ -375,6 +475,27 @@ def collect(
                 config, now, c["mtime"], config.working_threshold_sec
             )  # fresh = running
         ]
+        # Registered, joined long enough ago that a healthy agent would have
+        # written its first record, and still holding no transcript anywhere.
+        # Sandwiched between two windows that already exist rather than a
+        # threshold of its own: `working_threshold_sec` below, so a normal
+        # fan-out does not flash a red band during the seconds every member
+        # takes to start; `window_hours` above, so the roster can never
+        # resurrect a row the board would not otherwise be showing. The
+        # registry's own mtime cannot do either job -- one stamp covers all
+        # members and moves only on a join or a leave.
+        started_ids = started_agent_ids(prefix, children, [p for p, _ in agent_files])
+        pending_members = [
+            m
+            for m in team_members.get(prefix, [])
+            if m["agent_id"] not in started_ids
+            and m["local"] not in started_ids
+            and not runtime_sessions.is_fresh(
+                config, now, m["joined"], config.working_threshold_sec
+            )
+            and runtime_sessions.is_fresh(config, now, m["joined"], window_hours * 3600)
+        ]
+        pending_members.sort(key=lambda m: m["joined"])
         latest_agent_mtime = max(
             (a["mtime"] for a in subagents),
             default=0,
@@ -453,6 +574,23 @@ def collect(
                 f"{asks}, waiting {waited}"
                 if asks
                 else f"open question ({p['name']}), waiting {waited}"
+            )
+        # A member that was dispatched and never started outranks Working, and
+        # it is deliberately the second test rather than the first: an open
+        # AskUserQuestion names the actual question, which is the better line to
+        # put in front of the operator when both are true. It outranks Working
+        # because the session going on being busy is what hides this -- the
+        # observation that opened DRC-4263 was three agents parked on a startup
+        # permission prompt for 22 minutes while their lead read as working, and
+        # then as idle, and finally as nothing at all.
+        elif pending_members:
+            session_state = "needs_input"
+            blocked_since = pending_members[0]["joined"]
+            waited = runtime_sessions.fmt_duration(runtime_sessions.age(config, now, blocked_since))
+            state_detail = (
+                f"{pending_members[0]['label']} has not started, waiting {waited}"
+                if len(pending_members) == 1
+                else f"{len(pending_members)} subagents have not started, waiting {waited}"
             )
         # Fresh activity in the session's *own* transcript still beats a hook:
         # Claude Code emits "waiting for your input" notifications for sessions
@@ -591,6 +729,12 @@ def collect(
                 "eta_h": runtime_sessions.fmt_duration(eta_sec) if eta_sec else None,
                 "turn": runtime_turns.turn_progress(scan, session_state, now, config),
                 "loop": runtime_turns.loop_signal(scan, config),
+                # Registered-but-unstarted members are published beside the
+                # running ones and nowhere else: they carry no mtime that
+                # advances, so folding them into `last_activity` or into the
+                # Working test would let a roster entry stand in for work that
+                # has demonstrably not begun. `started_at` is when the member
+                # joined the team, which is the instant the wait began.
                 "subagents": [
                     {
                         "name": a["label"],
@@ -598,6 +742,10 @@ def collect(
                         "started_at": a["started_at"],
                     }
                     for a in subagents
+                ]
+                + [
+                    {"name": m["label"], "model": None, "started_at": m["joined"]}
+                    for m in pending_members
                 ],
                 "tasks": tasks,
                 "spacedock": session_spacedock(

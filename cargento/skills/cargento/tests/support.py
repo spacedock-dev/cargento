@@ -76,6 +76,7 @@ CONFIG_OVERRIDES: dict[str, Any] = {}
 STORE_KEYS: dict[str, str] = {
     "PROJECTS_DIR": "claude.projects",
     "TASKS_DIR": "claude.tasks",
+    "TEAMS_DIR": "claude.teams",
     "CODEX_SESSIONS_DIR": "codex.sessions",
     "PI_SESSIONS_DIR": "pi.sessions",
     "GEMINI_TMP": "gemini.tmp",

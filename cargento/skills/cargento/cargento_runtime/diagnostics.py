@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 _REPORT_KEY_ORDER = (
     "claude.projects",
     "claude.tasks",
+    "claude.teams",
     "codex.sessions",
     "pi.sessions",
     "gemini.tmp",

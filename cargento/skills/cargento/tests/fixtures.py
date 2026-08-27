@@ -39,6 +39,7 @@ def write_antigravity_metadata(path: Path, blob: bytes) -> None:
 STORE_CONSTANTS = (
     "PROJECTS_DIR",
     "TASKS_DIR",
+    "TEAMS_DIR",
     "CODEX_SESSIONS_DIR",
     "PI_SESSIONS_DIR",
     "GEMINI_TMP",
