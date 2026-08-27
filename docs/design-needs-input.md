@@ -6,16 +6,19 @@ map, including which file owns the collector and which owns hook classification,
 call between a standing prompt and a session that looks busy, and it exists mainly to record the
 attempts that did not work, because two of them were made and reverted before the third landed.
 
-## N-1: there are three needs-input paths, and only one of them was broken
+## N-1: there is more than one needs-input path, and only one of them was broken
 
 Worth establishing first, because the defect was originally filed as though there were one path and
-it was dead. Three independent mechanisms can put a Claude row into Needs input:
+it was dead. Four independent mechanisms can put a Claude row into Needs input. Three of them
+existed when this was written; the roster row arrived with DRC-4263 and is the only one that raises
+a wait about somebody other than the reader:
 
 | Path | Source | Covers |
 |---|---|---|
 | Transcript | a pending question found by reading the session's records | `AskUserQuestion`, `ExitPlanMode`, and only when the record has reached disk. See N-4 |
 | Event overlay | the plugin-bundled `PermissionRequest` hook | `ExitPlanMode` observed directly (N-4). `AskUserQuestion` seen once in the wild, on the DRC-4097 incident row, which carried `acquisition: event`. Any other tool gate, and a subagent's, is **inferred** from the hook being tool-scoped and has not been seen |
 | Notification | the user-installed `Notification` hook, posted to the loopback API | MCP elicitation dialogs, worker permission and network requests |
+| Teams roster | a member registered in `teams/session-<sid>/config.json` that has written no transcript | A dispatched subagent that never started. The wait is the subagent's, not the lead's, and the store carries no more than that: once a member has written its first record, nothing on disk distinguishes one blocked at a gate from one that is busy |
 
 Codex has since become the second harness that can report a gate, and it has exactly one path: the
 event overlay, from its own bundled `PermissionRequest` hook. It is not a fourth row in that table
