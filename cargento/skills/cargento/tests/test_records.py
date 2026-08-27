@@ -611,6 +611,77 @@ class RedactSecretsTest(unittest.TestCase):
         inside = "not-a-sk-" + "R" * 40
         self.assertEqual(inside, records.redact_secrets(inside))
 
+    def test_an_unambiguous_key_is_redacted_whatever_precedes_it(self) -> None:
+        # The anchor used to fail OPEN: one character in front of a key and the
+        # whole thing published verbatim, same length, no marker. Anyone who has
+        # pasted a key onto the end of a word had published it. Above the length
+        # where a shape has no innocent reading the anchor no longer applies.
+        for lead in ("x", "1", "_", "-"):
+            for name, fake in (
+                ("anthropic", "sk-ant-api03-" + "A" * 100),
+                ("aws", "AKIAIOSFODNN7EXAMPLE"),
+                ("github fine-grained", "github_pat_" + "C" * 40),
+            ):
+                with self.subTest(shape=name, lead=lead):
+                    redacted = records.redact_secrets(lead + fake)
+                    self.assertIn("REDACTED", redacted)
+                    self.assertLess(len(redacted), len(lead + fake))
+        # And below it the anchor still holds, which is what rejects 78 of the
+        # 177 `sk-` candidates in the local store.
+        short = "x" + "sk-ant-" + "B" * 20
+        self.assertEqual(short, records.redact_secrets(short))
+
+    def test_a_rejected_span_does_not_shield_a_later_credential(self) -> None:
+        # `re.sub` resumes at the end of the span it just declined, so a
+        # near-miss swallowed the correctly anchored key behind it and both
+        # published. Scanning resumes one character in instead.
+        line = "x" + "sk-" + "R" * 40 + " then AKIAIOSFODNN7EXAMPLE"
+        redacted = records.redact_secrets(line)
+        self.assertIn("AKIA…REDACTED", redacted)
+        self.assertNotIn("EXAMPLE", redacted)
+        self.assertIn("R" * 40, redacted, "the near-miss itself is not a credential")
+
+    def test_a_url_credential_with_no_username_is_redacted(self) -> None:
+        # `redis://:password@host` is the form Redis documents, and the username
+        # half required a character, so every one of these published the whole
+        # password. NOTAREALPASSWORD is the fixture the connection-string fake
+        # above uses.
+        for scheme in ("redis", "rediss", "postgres", "postgresql", "mysql", "mongodb", "amqp"):
+            with self.subTest(scheme=scheme):
+                line = f"connect {scheme}://:NOTAREALPASSWORD@db.example:6379/0"
+                redacted = records.redact_secrets(line)
+                self.assertNotIn("NOTAREALPASSWORD", redacted)
+                self.assertEqual(
+                    f"connect {scheme}://…REDACTED@db.example:6379/0",
+                    redacted,
+                )
+
+    def test_a_url_credential_clipped_before_the_at_sign_is_redacted(self) -> None:
+        # A title is cut at 80 characters and `last_prompt` at 140, and the cut
+        # can land between the password and the `@` the shape was anchored on.
+        # Two corpus records sit at the title cap. Every clip that keeps any of
+        # the password must still be marked.
+        line = "redis://someone:NOTAREALPASSWORD@db.example:6379/0"
+        for clip in range(line.index(":", 8) + 2, line.index("@") + 2):
+            with self.subTest(clip=clip):
+                redacted = records.redact_secrets(line[:clip])
+                self.assertIn("REDACTED", redacted)
+                self.assertNotIn("NOTAREALPASSWORD"[: clip - 16], redacted)
+
+    def test_a_host_and_port_at_the_end_of_a_line_is_left_alone(self) -> None:
+        # The guard on the clipped-`@` arm. Without it every address ending in a
+        # port reads as a credential, and the dashboard's own URL is in prompts
+        # here constantly. The `@` puts each of these on the slow path, so the
+        # pattern is doing the work rather than the gate.
+        for name, text in (
+            ("dashboard url at the end", "mail me@example.com then open http://127.0.0.1:4553"),
+            ("https with a port", "ping ops@example.com about https://example.com:8443"),
+            ("scheme, port and a path", "me@x.io said http://127.0.0.1:4553/api/data?next=true"),
+            ("ssh url", "ssh://git@github.com/o/r.git beside http://127.0.0.1:4553"),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(text, records.redact_secrets(text))
+
     def test_a_credential_is_redacted_before_the_line_is_bounded(self) -> None:
         # Bounding first would publish the head of the key: a hundred characters
         # of it fit inside the cap, and the tail that fell off is what stops the
