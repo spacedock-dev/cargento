@@ -90,13 +90,17 @@ const NEXT_INSTRUCTION_LABELS = new Map([
 ]);
 
 function nextInstructionEchoes(text, title){
-  const trim = value => String(value == null ? "" : value).replace(/…$/, "").trim().toLowerCase();
-  const line = trim(text);
-  const head = trim(title);
+  const norm = value => String(value == null ? "" : value).trim().toLowerCase();
+  const line = norm(text);
+  const head = norm(title);
   if(!line || !head) return false;
-  // A prefix, not just equality: line 1 clips at 80 characters and line 2 at
-  // 140, so the same prompt reaches them as two different strings.
-  return line.startsWith(head) || head.startsWith(line);
+  if(line === head) return true;
+  // The one case beyond equality: line 1 clips at 80 characters and line 2 at
+  // 140, so one prompt reaches them as two strings and the shorter ends in an
+  // ellipsis. Deliberately not a plain prefix test — a short generated title
+  // that happens to open a longer, genuinely newer instruction is not a
+  // duplicate, and suppressing it would lose the line this whole feature adds.
+  return head.endsWith("…") && line.startsWith(head.slice(0, -1));
 }
 
 function nextInstructionLine(session, title, className){

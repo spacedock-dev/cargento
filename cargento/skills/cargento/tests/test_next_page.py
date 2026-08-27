@@ -504,8 +504,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                6_930,
-                "96eeec8ff876425216e98a6a73ff8345f5ca85722e2da26377a76f912f18b0e2",
+                7_200,
+                "d5f40852df06672c64377315977c902605d5d538d2ee268c7d4ce828921040d4",
             ),
             "next-chrome.js": (
                 6_990,
@@ -567,9 +567,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(227_761, len(assembled))
+        self.assertEqual(228_031, len(assembled))
         self.assertEqual(
-            "e8467f513ddf492de78fd2910d571a370f243b3ec18355e13ecd99490ee9eb07",
+            "d74f335e203c17d38c40a1003afff9c2855abbeda8c47c0de42641ed5475f7b5",
             hashlib.sha256(assembled).hexdigest(),
         )
 

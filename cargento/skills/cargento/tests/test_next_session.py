@@ -651,13 +651,26 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
 
     def test_the_line_is_dropped_when_it_would_only_repeat_the_title(self) -> None:
         # `calm.js` already computes both fields and would show the same string
-        # twice. The prefix test is what makes this hold across the two caps:
-        # line 1 clips at 80 and line 2 at 140, so the same prompt reaches them
-        # as two different strings.
+        # twice on a session whose first prompt is still its newest.
         same = '{label: "asked", text: "Resolve the gate", at: 9400}'
         self.assertNotIn("next-instruction-label", self.detail(same))
-        longer = '{label: "asked", text: "Resolve the gate and ship it", at: 9400}'
-        self.assertNotIn("next-instruction-label", self.detail(longer, title='"Resolve the gate…"'))
+        # And once more across the two caps: line 1 clips at 80 and line 2 at
+        # 140, so one prompt reaches them as two strings, the shorter ellipsed.
+        clipped = '{label: "asked", text: "Resolve the gate and ship it", at: 9400}'
+        self.assertNotIn(
+            "next-instruction-label", self.detail(clipped, title='"Resolve the gate…"')
+        )
+
+    def test_a_title_that_merely_opens_a_longer_instruction_is_not_a_duplicate(self) -> None:
+        # The reason the rule is not a plain prefix test. A generated title is a
+        # summary of the OPENING prompt, so one that happens to be the first few
+        # words of a genuinely newer instruction is the case this feature exists
+        # for, and suppressing it would delete exactly the line that was added.
+        longer = '{label: "asked", text: "Resolve the gate blocking the Windows job", at: 9400}'
+        html = self.detail(longer, title='"Resolve the gate"')
+
+        self.assertIn("asked, 10m:", html)
+        self.assertIn("blocking the Windows job", html)
 
     def test_an_unusable_stamp_renders_the_label_without_an_age(self) -> None:
         # 0 is "unstamped", and the page must not turn that into "0s ago".
