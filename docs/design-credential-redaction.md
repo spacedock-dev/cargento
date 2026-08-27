@@ -83,12 +83,25 @@ passes through: the title, the instruction line, the observer goal, model names,
 notification body, and the ask question and its options, which the HTTP ingress bounds through it
 because `asks` is a leaf that cannot reach `records` itself. Nothing had to opt in.
 
-Over the assembled rows in `aggregate._redact_published_text`, because `title` and `last_prompt` are
-the two published strings that never reach `safe_text`. Nine collectors build them out of the
-transcript by hand and bound them with a slice, which is how `last_prompt` came to be published raw
-in the first place. Nine call sites would be nine chances for the tenth harness to be forgotten, so
-the sweep runs once over every row from every harness. Task subjects go through the same sweep: an
-agent's todo written from a prompt that held a key can quote it.
+Over the assembled rows in `aggregate._redact_published_text`, because several published strings
+never reach `safe_text` at all. The collectors build them out of the transcript by hand and bound
+them with a slice, which is how `last_prompt` came to be published raw in the first place. Ten call
+sites would be ten chances for the eleventh harness to be forgotten, so the sweep runs once over
+every row from every harness.
+
+The swept set is `title`, `last_prompt`, `state_detail`, the instruction line's `text`,
+`tasks[].subject`, `tasks[].activeForm` and `subagents[].name`. Task subjects are there because an
+agent's todo written from a prompt that held a key can quote it. The last two joined after the first
+version shipped without them, and both were measured publishing a credential run with no marker:
+`state_detail` carried a 108-character run while `tasks[].activeForm` on the same row correctly
+showed `sk-ant-…REDACTED`, because the collector copies the task into the line before the sweep runs;
+and a subagent name carried a 95-character one, which on opencode is the child session's own title,
+the same string the sweep redacts when that session is a parent row.
+
+That miss is the argument for the sweep restated. The fields are a table rather than a block apiece,
+and the bar for joining it is "could a collector ever put transcript text here", not "does one
+today". `state_detail` in particular is read at ten render sites across six web files, one of them
+the browser notification body, which is the only published string that leaves the page.
 
 A guard at each render site was rejected for the reason the second paragraph gives. The set of render
 sites is a list, and a list is a thing the next feature forgets to join.
@@ -116,18 +129,52 @@ The anchor is not cosmetic. A hyphen counts as inside a token, and that one deci
 the 177 `sk-` candidates in the local store: 177 is what a rule that treats a preceding hyphen as a
 boundary finds, and 99 is what the shipped rule finds.
 
+### The anchor used to fail open, and the shape-conditional repair
+
+The first version of the anchor returned the match unchanged when the preceding character was inside
+a token. That is a bypass, not a rough edge. One character in front of a key, `x` or a digit or `_`
+or `-`, and `sk-ant-api03-` followed by a hundred characters published verbatim: same length, no
+marker. So did `AKIA` plus its sixteen, and `github_pat_` plus its forty. Anyone who has ever pasted
+a key onto the end of a word had published it.
+
+It was worse than one span. `re.sub` resumes at the end of the match it just declined, so a
+near-miss run swallowed the correctly anchored key sitting behind it and both went out: 142
+characters in, 142 out, where the same key one space later redacted to 45.
+
+Dropping the anchor was rejected: it is what rejects those 78 candidates, and they are hyphenated
+identifiers rather than keys. The anchor is kept and made conditional on the one property that
+separates the two, which is length. A `sk-ant-` run of 90 characters, `AKIA`/`ASIA` plus exactly its
+16 with nothing token-shaped behind it, or `github_pat_` plus its 40 has no innocent reading whatever
+sits in front of it, so above those lengths the anchor no longer applies. Below them it applies
+exactly as before. `openai` is deliberately not on that list: its 32-character body is the same
+length class the false positives live in, so a threshold there would trade away the rejection the
+anchor exists for.
+
+The scan is hand-rolled rather than `re.sub` for the second half of the bug. A rejected span is
+re-entered at `match.start() + 1`, so it can no longer shield a valid match that starts inside it.
+
+Re-measured over the same corpus, the change adds no matches at all: the same 12 prompts are altered
+before and after, with identical per-shape span counts.
+
 ## C-6: The gate, and what it costs
 
 `safe_text` is a hot path. A literal substring scan runs before the alternation, and the alternation
-runs only if one of the shape prefixes is present, or if the text holds both `@` and `://`. Measured
-per call:
+runs only if one of the shape prefixes is present, or if the text holds `://` with a colon somewhere
+after it. Measured per call:
 
 | Input | Before | After | Alternation with no gate |
 |---|---|---|---|
 | 4-character tool name | 366 ns | 412 ns | 461 ns |
 | 22-character model id | 529 ns | 967 ns | 3,214 ns |
 | 140-character prompt line | 1.70 us | 3.49 us | 23.2 us |
+| 140-character line carrying an address with a port | 1.70 us | 22.0 us | 23.2 us |
 | 2,000-character observer blob | 18.9 us | 46.6 us | 321 us |
+
+The fourth row is what the clipped-`@` fix in C-7 costs. A line holding `http://127.0.0.1:4553` now
+runs the alternation, because the `@` that used to admit a URL credential to the gate is exactly the
+character a clip at the title cap removes. Nothing else moved, and a whole collection is unchanged
+within noise on `scripts/bench_collect.py --simulate balanced-five --repeat 7`, because the synthetic
+store's prompts carry no URLs.
 
 End to end that is a whole collection moving from 32.3 ms to 33.9 ms, a 4.8% cost, on
 `scripts/bench_collect.py --simulate balanced-five --repeat 7`.
@@ -145,6 +192,30 @@ The alternation was checked for backtracking blowup on adversarial input, since 
 untrusted text. The worst of eight probes (4,000 characters of near-miss AWS prefixes) takes 0.62 ms,
 and the `://user:password` shape with an `@` sitting before the scheme rather than after it takes
 0.51 ms on 3,000 characters. Nothing here is quadratic in a way a prompt could exploit.
+
+## C-7: The URL credential has two ends, and neither half may be required
+
+`://user:password@host` was first written as `://[^\s/:@]+:[^\s/@]+(?=@)`, and both bounds were
+wrong in a way that published a complete password.
+
+The username half required a character. `redis://:password@host` is the form Redis documents, and on
+every one of seven schemes tried, all 24 characters of a synthetic password published with no marker.
+The half is now `*`.
+
+The `@` was required to be present. A title is cut at 80 characters and `last_prompt` at 140, and the
+cut can land between the password and the `@` the shape was anchored on: clips measured at three
+points published 6, 11 and 12 password characters unmarked, and two records in the local corpus sit
+at the title cap. The match now ends `(?=@|$)`.
+
+The `$` arm needs a guard, or every address ending in a port reads as a credential, and the
+dashboard's own `http://127.0.0.1:4553` is in prompts here constantly. The guard is
+`(?![0-9]+$)`: a port is digits and a password that survived a clip is generally not. That trades a
+clipped all-numeric password, which is the cheaper of the two errors, since blanking the dashboard
+URL would have cost more instruction lines than any other false positive in this repository.
+
+The gate moved with it. `@` alone could not admit the clipped case, so `://` is now paired with a
+colon somewhere after it instead, which is what both halves of the shape need and what an ordinary
+`https://host/path` does not have. C-6 has what that costs.
 
 ## False positives, and the two thresholds they set
 
@@ -164,6 +235,13 @@ match, never by reading it:
 
 So the honest reading is seven correct, three wrong, three unjudged. Two thresholds came out of it.
 
+The widening in C-5 and C-7 was re-measured against that same corpus before it shipped, because a
+filter that catches more is only an improvement if it does not also blank more instruction lines. It
+does not: 12 prompts altered before and 12 after, out of 21,077, with no prompt changing sides and no
+shape gaining a span. The small drift from the figures above is the store having grown since, and the
+re-run excludes the transcripts the review itself wrote, which are full of synthetic probes and would
+otherwise be counted as findings.
+
 The OpenAI body requires 32 characters rather than the 20 the format needs. At 20 the filter alters
 25 further genuine prompts, and every one is a hyphenated identifier. 32 does not clear the two
 above; requiring an uppercase character in the body would, and that was rejected too, because
@@ -177,6 +255,9 @@ one word.
 Four candidates that look like credentials and must survive are pinned as tests: a 40-character hex
 git SHA, a UUID, a base64 blob in a pasted diff, and a long absolute file path. So are the dashboard's
 own URL, a scp-style git remote, a URL with a user and no password, and a `postgres:16` image tag.
+The address cases are pinned twice over since C-7, once as they appear and once alongside an `@`
+elsewhere in the line, which forces them onto the alternation rather than letting the gate answer
+for them.
 
 ## What this does not buy
 

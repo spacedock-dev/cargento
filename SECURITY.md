@@ -332,17 +332,20 @@ only route by which it gets rotated.
 The list of shapes is measured against the local corpus and lives in one place, `records.redact_secrets`.
 It is applied at two: inside `records.safe_text`, which nearly every published string already passes
 through, including the ask question and its options; and over the assembled rows in `aggregate`,
-which is what reaches `title` and `last_prompt`, since nine collectors build those by hand rather
-than through a bound. An ask answer needs no cover, being an index into options the asking agent
-wrote rather than text. The measurement, the false-positive rate and the rejected alternatives are in
+which is what reaches the fields the collectors build by hand rather than through a bound. Those are
+`title`, `last_prompt`, `state_detail`, the instruction line, task subjects and a subagent name. An
+ask answer needs no cover, being an index into options the asking agent wrote rather than text. The
+measurement, the false-positive rate and the rejected alternatives are in
 [`docs/design-credential-redaction.md`](docs/design-credential-redaction.md).
 
 This reduces the exposure and does not close it, and both directions of error are real. A shape list
 covers the formats it was measured against, so a credential in a format nobody has seen goes through
 unmarked, and a control character struck through the middle of a key defeats the match. In the other
 direction a genuine instruction line can be altered: 13 of 21,076 real prompts in the local corpus,
-of which three are provably not secrets. Nothing here changes the rule outside the software, which is
-not to paste a credential into a prompt, and to rotate one that was.
+of which three are provably not secrets. That rate was re-measured after the filter was widened to
+cover a key with a character in front of it and a URL credential clipped short of its `@`, and it did
+not move. Nothing here changes the rule outside the software, which is not to paste a credential into
+a prompt, and to rotate one that was.
 
 ## Known and accepted
 

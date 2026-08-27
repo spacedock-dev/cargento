@@ -139,11 +139,11 @@ at the width `sessions.MODEL_CAP_CHARS` declares. Neither is a layering break: `
 nothing from inside the package, and every collector already depends on it. The alternative was a
 second literal 40 beside the declared one, which is how two caps drift apart.
 
-A third arrived with the credential filter. `aggregate` gained `records`, because `title` and
-`last_prompt` are the two published strings that never reach `records.safe_text`: nine collectors
-build them out of the transcript by hand and bound them with a slice. Aggregate is the one place
-that holds every row from every harness before any of it is published, so the sweep runs there
-rather than in nine collectors and whichever one is added next. `records` is a leaf, so the edge
+A third arrived with the credential filter. `aggregate` gained `records`, because several published
+strings never reach `records.safe_text`: the collectors build `title`, `last_prompt`, `state_detail`
+and a subagent name out of the transcript by hand and bound them with a slice. Aggregate is the one
+place that holds every row from every harness before any of it is published, so the sweep runs there
+rather than in ten collectors and whichever one is added next. `records` is a leaf, so the edge
 points inward like the other two. See
 [`design-credential-redaction.md`](design-credential-redaction.md).
 
