@@ -76,6 +76,13 @@ jobs:
               README.md|HOW_TO_USE.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md) return 0 ;;
               COMPATIBILITY.md|SECURITY.md|CODE_OF_CONDUCT.md) return 0 ;;
               .github/PULL_REQUEST_TEMPLATE.md|.github/ISSUE_TEMPLATE/*) return 0 ;;
+              # THIS file is code: it is the gate, and the only honest way to
+              # know the gate still works is to run it. Every other workflow is
+              # not — it cannot change what the five jobs below measure, and it
+              # already has its own trigger and its own status. Adding a comment
+              # to version-guard.yml used to re-run three OS matrices.
+              .github/workflows/quality-gate.yml) return 1 ;;
+              .github/workflows/*) return 0 ;;
               docs/*.md)
                 while IFS= read -r asserted; do
                   [ -n "$asserted" ] || continue

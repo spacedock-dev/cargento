@@ -69,7 +69,9 @@ documentation alone skips them, because none of them reads it. The `quality-gate
 always runs and always reports, so a prose-only PR is never left waiting on a check that never
 arrives. `SKILL.md` and any file under `docs/` that a test opens by name count as code here,
 not as prose, and `validate` runs on every PR regardless: it is the check that resolves the
-Markdown links and heading anchors.
+Markdown links and heading anchors. Among the workflow files only `quality-gate.yml` itself
+counts as code, since the others cannot change what those jobs measure and each already
+reports its own status.
 
 `scripts/bench_collect.py` is not part of the gate. It measures what a collection costs, in total and
 per harness, against your own stores: `python3 scripts/bench_collect.py --repeat 7` prints a median,
