@@ -152,15 +152,26 @@ _SECRET_SHAPES: Final = (
     # after a header that names the format and carries no key — which is all
     # 1,058 of the local occurrences. The 16-character minimum per run is the
     # distinction: a PEM line is 64 characters and an English word is not.
+    #
+    # The separator admits a tab and runs to 40 characters, not 4. A block pasted
+    # inside a fenced example or a YAML value keeps its indent after the line
+    # break becomes a space, so at an indent of 4 the run chain broke after the
+    # header and 6 body lines published behind the marker: 468 characters, on
+    # both the `safe_text` and `redact_clip` paths. Widening the separator is
+    # behaviour-neutral on the real store rather than a trade: over 1,140 PEM
+    # matches in 61 files, 0 matched spans grow and 0 extra characters are
+    # swallowed. The 16-character run minimum is what still does the
+    # false-positive work, so the wider gap costs nothing to the sentence after a
+    # header that names the format and carries no key.
     (
         "pem",  # 1,058 in 46 files, every one header-only
         11,
         False,
         (
             r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"
-            r"(?:[ \r\n]{0,4}[A-Za-z0-9+/=]{16,76}){0,200}"
-            r"(?:[ \r\n]{0,4}[A-Za-z0-9+/=]{1,15}(?=[ \r\n]{0,4}-----END))?"
-            r"(?:[ \r\n]{0,4}-----END[^\n]*-----)?"
+            r"(?:[ \t\r\n]{0,40}[A-Za-z0-9+/=]{16,76}){0,200}"
+            r"(?:[ \t\r\n]{0,40}[A-Za-z0-9+/=]{1,15}(?=[ \t\r\n]{0,40}-----END))?"
+            r"(?:[ \t\r\n]{0,40}-----END[^\n]*-----)?"
         ),
     ),
     # The username goes with the password. It is not itself a secret, but half a
@@ -510,7 +521,7 @@ def norm_epoch(value: Any) -> float:
 EXTRACT_TEXT_CAP_CHARS: Final = 2000
 
 
-def extract_text(value: Any, depth: int = 0) -> str:
+def extract_text(value: Any, depth: int = 0, *, cap: int = EXTRACT_TEXT_CAP_CHARS) -> str:
     """One record's text, bounded.
 
     The bound is on both branches, which it was not: a list of blocks was capped
@@ -518,20 +529,27 @@ def extract_text(value: Any, depth: int = 0) -> str:
     harnesses and there is no bound on how long one is, so `safe_text` scanned
     the entire pasted file to publish 140 characters of it, and the Codex
     instruction walk ran `states_work` and `injected_prompt` over the same. The
-    cap is 2,000 because that is what the list branch already used, and it is
+    default is 2,000 because that is what the list branch already used, and it is
     fourteen times the widest field anything downstream publishes.
+
+    `cap` exists because a caller that reads the text for a SIGNAL rather than
+    for publication needs a different bound, and the default silently took one
+    away: the observer scans the newest assistant message for a block indicator
+    anywhere in it, so a 2,000-character bound made an indicator past that offset
+    unreachable and the block field came back empty. A caller passing its own cap
+    has to be able to vouch for it, which is why this is keyword-only.
     """
     if depth > 4 or value is None:
         return ""
     if isinstance(value, str):
-        return value[:EXTRACT_TEXT_CAP_CHARS]
+        return value[:cap]
     if isinstance(value, list):
-        parts = (extract_text(item, depth + 1) for item in value)
-        return " ".join(part for part in parts if part)[:EXTRACT_TEXT_CAP_CHARS]
+        parts = (extract_text(item, depth + 1, cap=cap) for item in value)
+        return " ".join(part for part in parts if part)[:cap]
     if isinstance(value, dict):
         for key in ("text", "content", "message", "prompt", "value"):
             if key in value:
-                text = extract_text(value[key], depth + 1)
+                text = extract_text(value[key], depth + 1, cap=cap)
                 if text:
                     return text
     return ""

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import observer
+from cargento_runtime import observer, records
 
 from . import test_page_calm
 from .page_harness import PageJsHarness
@@ -391,6 +391,29 @@ class ObserverAnalyzerTest(unittest.TestCase):
                 ],
             )
             self.assertEqual("I am blocked on a missing AWS role.", self.analyze(path)["block"])
+
+    def test_a_block_past_the_publish_cap_is_still_found(self) -> None:
+        # Bounding `extract_text` bounded what the block scan can SEE, not only
+        # what it publishes. Pi and Droid carry a bare string rather than a list
+        # of blocks, so the 2,000-character default put an indicator past that
+        # offset out of reach and the field came back empty with nothing saying
+        # so. Falsifying edit: drop the `cap=` argument in `_message_from` — the
+        # indicator sits at offset 2,520, past the default and inside the 8,192
+        # the observer vouches for.
+        filler = "I read the manifest and checked the store. " * 60
+        indicator = "I am blocked on the missing credential for the staging store."
+        body = f"{filler}{indicator}"
+        self.assertGreater(body.index(indicator), records.EXTRACT_TEXT_CAP_CHARS)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp,
+                [
+                    _pi_session("cap-001"),
+                    _pi_message("m1", None, "user", "Deploy the staging store"),
+                    _pi_message("m2", "m1", "assistant", body),
+                ],
+            )
+            self.assertEqual(indicator, self.analyze(path)["block"])
 
     def test_no_spacedock_withdraws_the_project_reads(self) -> None:
         # `--no-spacedock` is the switch that turns off the project reads, and

@@ -768,6 +768,24 @@ class RedactSecretsTest(unittest.TestCase):
         published = records.safe_text(pem, 600)
         self.assertEqual("-----BEGIN …REDACTED", published)
 
+    def test_an_indented_pem_body_does_not_survive_either(self) -> None:
+        # The separator, not the body class. A block pasted inside a fenced
+        # example or a YAML value keeps its indent once the line break becomes a
+        # space, and at an indent of 4 the run chain broke after the header: 6
+        # body lines and 468 characters published behind the marker. Probed at
+        # the indents either side of where it used to break.
+        for indent in (0, 1, 3, 4, 8, 20):
+            with self.subTest(indent=indent):
+                pad = " " * indent
+                body = "\n".join([pad + "L" * 64] * 6)
+                pem = (
+                    f"{pad}-----BEGIN RSA PRIVATE KEY-----\n{body}\n"
+                    f"{pad}-----END RSA PRIVATE KEY-----"
+                )
+                published = records.safe_text(pem, 600)
+                self.assertNotIn("L" * 16, published)
+                self.assertIn("…REDACTED", published)
+
     def test_a_header_with_no_key_behind_it_costs_no_sentence(self) -> None:
         # The reason the body is base64 runs rather than a class holding the
         # space: all 1,058 local PEM occurrences are a header naming the format

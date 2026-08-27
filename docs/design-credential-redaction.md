@@ -333,7 +333,7 @@ column above is what one match can consume.
 The bound cuts both ways and both directions were checked. A cap below a real key would leave the
 tail past it published, which is worse than the over-reach it fixes, so the caps sit well above the
 longest form each vendor issues: 110 for an Anthropic body where the key is 101, 180 for OpenAI where
-a project key is 161, 96 for a Linear key that is only ever 40. `RedactSecretsTest` builds one
+a project key is 161, 64 for a Linear key that is only ever 40. `RedactSecretsTest` builds one
 synthetic key per shape at that longest documented length and asserts nothing survives the marker.
 Above the cap the match ends and the rest of the run publishes, which is the deliberate trade: a run
 longer than any key that format issues is not that key, and treating it as one is how the instruction
