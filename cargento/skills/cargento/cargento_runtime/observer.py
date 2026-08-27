@@ -51,6 +51,32 @@ _GENERIC_OPENER_PREFIXES = (
     "skill(",
 )
 
+# A rendered directive that is one slash-command token and nothing else. The
+# name is matched against the set below; the shape only isolates it.
+_BARE_COMMAND_RE = re.compile(r"^/([A-Za-z0-9][A-Za-z0-9:._-]*)$")
+
+# Slash commands that drive the harness rather than the work, with their
+# occurrence counts as the last published goal in the local corpus. Shared
+# across harnesses rather than split per harness, on `records`'s reasoning for
+# its injected-prose prefixes: `clear` and `login` were measured in both, and
+# none of the rest is a name one harness could mean differently.
+_HARNESS_CONTROL_COMMANDS = frozenset(
+    {
+        "add-dir",  # claude 2
+        "clear",  # claude 72, codex 1
+        "context",  # claude 2
+        "exit",  # claude 7
+        "insights",  # claude 1
+        "login",  # claude 70, codex 3
+        "mcp",  # claude 11
+        "model",  # claude 5
+        "plugin",  # claude 21
+        "reload-plugins",  # claude 7
+        "reload-skills",  # claude 1
+        "stickers",  # claude 1
+    }
+)
+
 # Block indicators, scanned in the newest assistant message only. Self-state
 # phrases, and not the bare words this started with: `cannot`, `can't`,
 # `unable`, `failed to` and `error:` match ordinary reporting prose — "I can't
@@ -102,6 +128,30 @@ def _is_generic_opener(text: str) -> bool:
     """Whether a user message is a generic skill-load directive, not a goal."""
     stripped = text.strip().lower()
     return any(stripped.startswith(prefix) for prefix in _GENERIC_OPENER_PREFIXES)
+
+
+def _is_harness_control(rendered: str | None) -> bool:
+    """Whether a *rendered* directive is a harness control rather than a goal.
+
+    Applied to what `prompt_title` produces, not to the raw record, which is why
+    the guard beside it could not do this job: `_is_generic_opener` reads
+    `<command-name>/clear</command-name>` and the value actually published is
+    `/clear`. The two spellings never met, so 200 of 1,469 published Claude
+    goals (13.6%) and 4 of 141 Codex ones were a bare `/clear`, `/login`,
+    `/plugin` or `/mcp` sitting in the ordinary goal slot, indistinguishable
+    from a derived objective; in 25 of them a real objective the session
+    contained was displaced.
+
+    A measured name list and NOT the structural rule "a bare command carries no
+    arguments, so it carries no goal". That rule was checked against the same
+    corpus first and is wrong: 39 further bare-command goals are skill
+    invocations — `/create-pr`, `/cargento:cargento`, `/security-review` — and
+    a skill invoked with no arguments is exactly what the operator asked for.
+    Argument-carrying commands are untouched either way; `prompt_title` renders
+    those as `/code-review 1287 with fresh eyes`, which never matches here.
+    """
+    match = _BARE_COMMAND_RE.match(rendered or "")
+    return match is not None and match.group(1).casefold() in _HARNESS_CONTROL_COMMANDS
 
 
 # `type: "message"` is Pi's shape and Droid's, and `_parse_message_record`
@@ -229,12 +279,20 @@ def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
     Records are deduped by their own id so the overlap region between head and
     tail does not double-count, and returned in **record-timestamp** order.
 
-    Ordering by timestamp and not by list position, because the two windows are
-    concatenated: on any file larger than head + tail the newest message by
-    position is the last line of the *head*, so `directives[-1]` published the
-    session's opening prompt as its current goal. Measured on the local corpus,
-    the goal came from the head window on 55.0% of Codex rollouts over that
-    size. File order breaks ties, which is what keeps a transcript whose
+    Ordering by timestamp and not by list position, because list position is
+    not record order. The concatenation itself is fine — the head is read
+    first and the tail last, so `head_lines + tail_lines` already runs oldest
+    to newest across the two windows. What file position cannot express is a
+    file whose own records are out of order: a resumed session replays the
+    earlier transcript's records into the new file, and the replayed block
+    carries its original stamps while sitting after records written later, so
+    `directives[-1]` would be the replayed opening prompt.
+
+    Stated honestly, this is a correctness invariant rather than a measured
+    win: over the whole local corpus the sort reorders 0 of 3,494 non-empty
+    message lists and changes 0 published goals. It is kept because the shape
+    it guards against is real (`resume`), cheap to hold, and silent when it
+    fires. File order breaks ties, which is what keeps a transcript whose
     records carry no stamp reading exactly as it did before.
     """
     try:
@@ -272,13 +330,26 @@ def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
     return [parsed for _ts, _position, parsed in ordered]
 
 
-def _user_directives(messages: list[dict[str, str]]) -> list[str]:
-    """Concrete user directives, excluding generic openers, newest last."""
-    return [
-        msg["text"]
-        for msg in messages
-        if msg["role"] == "user" and not _is_generic_opener(msg["text"])
-    ]
+def _user_directives(config: RuntimeConfig, messages: list[dict[str, str]]) -> list[str]:
+    """Concrete user directives, newest last, openers and controls dropped.
+
+    Two rejections, and they read different spellings of the same message on
+    purpose: `_is_generic_opener` reads the raw text, `_is_harness_control`
+    reads what `prompt_title` will publish. Filtering here rather than at the
+    point of publication is what lets a `/clear` fall back to the objective
+    the session already contains instead of erasing it.
+    """
+    kept: list[str] = []
+    for msg in messages:
+        if msg["role"] != "user" or _is_generic_opener(msg["text"]):
+            continue
+        rendered = transcripts.prompt_title(
+            config, msg["text"], limit=config.observer_goal_cap_chars
+        )
+        if _is_harness_control(rendered):
+            continue
+        kept.append(msg["text"])
+    return kept
 
 
 def _has_assistant_output(messages: list[dict[str, str]]) -> bool:
@@ -297,7 +368,7 @@ def _derive_goal_deterministic(
     message is a generic opener and no assistant text was produced, the
     analyzer returns the sentinel without calling the model.
     """
-    directives = _user_directives(messages)
+    directives = _user_directives(config, messages)
     if not directives and not _has_assistant_output(messages):
         return NO_GOAL, NO_GOAL_REASON
     if not directives:
@@ -307,8 +378,10 @@ def _derive_goal_deterministic(
     # `prompt_title` rather than `split("\n")[0]`, and the reason is the one
     # shape `records.injected_prompt` deliberately admits. A slash command is
     # the operator's intent spelled in the harness's markup, so it is not
-    # rejected — but published raw it reads as `<command-message>…`, which was
-    # 60 of 400 Claude sessions and 5 of 457 Codex rollouts. `prompt_title`
+    # rejected as machinery (the harness's own controls are, but by
+    # `_is_harness_control` above, on the rendered name) — but published raw
+    # it reads as `<command-message>…`, which was 60 of 400 Claude sessions and
+    # 5 of 457 Codex rollouts. `prompt_title`
     # already owns that rendering (`/review 1287 — with fresh eyes`), and
     # strips the wrapper tags off everything else.
     goal = transcripts.prompt_title(config, directives[-1], limit=config.observer_goal_cap_chars)
@@ -540,18 +613,31 @@ def resolve_transcript(
         # Pi's `pi_meta` reads a different first line. So the id is matched
         # against `session_meta`, the same field `collectors/codex.py` keys on.
         #
-        # Newest mtime and not the first match, because one `session_id` is
-        # legitimately spread over several files: a resume and each subagent
-        # thread write their own rollout under it (`collectors/codex.py:129`),
-        # and `:174` resolves that collision the same way. The first by glob
-        # order is the oldest, which is the one nothing is being written to.
-        found = [
-            path
-            for path in runtime_io.glob_stores(
-                config, "codex.sessions", "*", "*", "*", "rollout-*.jsonl"
-            )
-            if transcripts.codex_meta(config, state, path).get("session_id") == sid
-        ]
+        # One `session_id` is legitimately spread over several files: a resume
+        # and each subagent thread write their own rollout under it. Those two
+        # multiplicities are not the same, and they are resolved separately —
+        # subagent threads are excluded, resumes are picked by newest mtime —
+        # which is also the order `collectors/codex.py` does it in: it drops a
+        # subagent rollout (`if meta.get("subagent"): continue`) before it keeps
+        # the newest file per session id.
+        #
+        # Excluded and not merely outranked, because a subagent rollout carries
+        # its PARENT's `session_id` — 262 of 262 locally — so max-mtime hands
+        # back the child whenever the child is the file being written, and
+        # `analyze` then publishes the parent agent's dispatch prompt as the
+        # operator's goal. In 262 of 262 local subagent runs there is a window
+        # where that is what the resolver returns, covering 32.8 h of 102.8 h of
+        # aggregate subagent wall-clock; the frozen corpus shows 0 because every
+        # one of its 31 mixed groups was measured after the parent resumed
+        # writing. The meta is already read for the id match, so this is free.
+        found = []
+        for path in runtime_io.glob_stores(
+            config, "codex.sessions", "*", "*", "*", "rollout-*.jsonl"
+        ):
+            meta = transcripts.codex_meta(config, state, path)
+            if meta.get("subagent") or meta.get("session_id") != sid:
+                continue
+            found.append(path)
         return max(found, key=_mtime) if found else None
     if harness != "pi":
         return None

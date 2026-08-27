@@ -123,13 +123,24 @@ def _codex_message(
     )
 
 
-def _codex_session_meta(sid: str, cwd: str = "/home/test/project") -> str:
-    """A Codex rollout's line 1, which is what `transcripts.codex_meta` reads."""
+def _codex_session_meta(
+    sid: str, cwd: str = "/home/test/project", *, subagent: bool = False
+) -> str:
+    """A Codex rollout's line 1, which is what `transcripts.codex_meta` reads.
+
+    ``thread_source`` is the field the collector's subagent test reads, and a
+    subagent thread's rollout carries its PARENT's session id — measured on 262
+    of 262 local subagent rollouts, none of which declared an id of its own.
+    """
+    payload: dict[str, Any] = {"id": sid, "cwd": cwd, "cli_version": "0.149.1"}
+    if subagent:
+        payload["thread_source"] = "subagent"
+        payload["agent_nickname"] = "explorer"
     return json.dumps(
         {
             "timestamp": "2026-08-17T01:59:00Z",
             "type": "session_meta",
-            "payload": {"id": sid, "cwd": cwd, "cli_version": "0.149.1"},
+            "payload": payload,
         }
     )
 
@@ -698,6 +709,110 @@ class ObserverRecordShapeTest(unittest.TestCase):
         )
         self.assertEqual("/code-review 1287 with fresh eyes", result["goal"])
 
+    def test_a_bare_harness_control_command_is_not_an_objective(self) -> None:
+        # `/clear`, `/login`, `/plugin`, `/mcp` and the rest drive the harness,
+        # not the work, and they rendered into the ordinary goal slot looking
+        # exactly like a derived objective: 200 of 1,469 published Claude goals
+        # (13.6%) and 4 of 141 Codex ones.
+        #
+        # The guard beside this one could not fire, and the reason is an
+        # ordering bug rather than a missing rule: `_is_generic_opener` reads the
+        # RAW `<command-name>/clear</command-name>` spelling while the value
+        # actually published is `prompt_title(raw)` — `/clear`. The two
+        # spellings never meet. Falsifying edit: move the `_is_harness_control`
+        # test off the rendered value and back onto `msg["text"]`.
+        for harness, lines in (
+            (
+                "claude",
+                [
+                    _claude_message(
+                        "u1",
+                        "user",
+                        "<command-message>clear</command-message>\n"
+                        "<command-name>/clear</command-name>\n"
+                        "<command-args></command-args>",
+                    ),
+                    _claude_message("u2", "assistant", "Cleared.", ts="2026-08-17T02:01:00Z"),
+                ],
+            ),
+            (
+                "codex",
+                [
+                    _codex_session_meta("019f1c51-6cf9-7981-9a2d-172428800009"),
+                    _codex_message("p1", "user", "/login"),
+                    _codex_message("p2", "assistant", "Signed in.", ts="2026-08-17T02:01Z"),
+                ],
+            ),
+        ):
+            with self.subTest(harness=harness):
+                self.assertEqual(observer.NO_GOAL, self.analyze(lines)["goal"])
+
+    def test_a_control_command_does_not_displace_the_objective_beneath_it(self) -> None:
+        # The rejection happens where `_is_generic_opener`'s does — over the
+        # directive list — rather than at the point of publication, so the real
+        # objective the session already contains survives the `/clear` typed
+        # after it. Measured: 25 of the 200 Claude cases are this shape.
+        result = self.analyze(
+            [
+                _claude_message(
+                    "u1", "user", "Fix the flaky quota test", ts="2026-08-17T02:00:00Z"
+                ),
+                _claude_message("u2", "assistant", "On it.", ts="2026-08-17T02:01:00Z"),
+                _claude_message(
+                    "u3",
+                    "user",
+                    "<command-name>/clear</command-name>",
+                    ts="2026-08-17T02:02:00Z",
+                ),
+            ]
+        )
+        self.assertEqual("Fix the flaky quota test", result["goal"])
+
+    def test_a_bare_skill_invocation_is_still_an_objective(self) -> None:
+        # The rule is a measured name list and NOT "a bare command carries no
+        # arguments, so it carries no goal". That structural rule was checked
+        # against the same corpus and is wrong: 39 further bare-command goals
+        # are skill invocations, and a skill invoked with no arguments is
+        # exactly what the operator asked for. Falsifying edit: reject on
+        # `_BARE_COMMAND_RE` alone and this goal disappears.
+        result = self.analyze(
+            [
+                _claude_message("u1", "user", "<command-name>/create-pr</command-name>"),
+                _claude_message("u2", "assistant", "Opening it.", ts="2026-08-17T02:01:00Z"),
+            ]
+        )
+        self.assertEqual("/create-pr", result["goal"])
+
+    def test_the_injected_tag_set_is_gated_on_the_record_s_harness(self) -> None:
+        # Each arm of `_parse_message_record` hands `injected_prompt` its own
+        # harness literal, and nothing else in the suite pinned that: mutating
+        # the Claude arm's literal to `"codex"` left the whole suite green while
+        # degrading 4 real Claude goals, every one of them a `<system-reminder>`
+        # published as the operator's objective.
+        #
+        # Two directions, because one literal per arm needs one test per arm.
+        # Falsifying edits: `"claude"` -> `"codex"` in `_claude_message`, and
+        # `"codex"` -> `"claude"` in the `response_item` branch.
+        claude_only = self.analyze(
+            [
+                _claude_message(
+                    "u1",
+                    "user",
+                    "<system-reminder>\nYou are running in non-interactive mode.",
+                ),
+                _claude_message("u2", "assistant", "Understood.", ts="2026-08-17T02:01:00Z"),
+            ]
+        )
+        self.assertEqual(observer.NO_GOAL, claude_only["goal"])
+        codex_only = self.analyze(
+            [
+                _codex_session_meta("019f1c51-6cf9-7981-9a2d-172428800010"),
+                _codex_message("p1", "user", "<recommended_plugins>\nHere is a list."),
+                _codex_message("p2", "assistant", "Understood.", ts="2026-08-17T02:01Z"),
+            ]
+        )
+        self.assertEqual(observer.NO_GOAL, codex_only["goal"])
+
     def test_the_newest_directive_is_the_newest_by_stamp_not_by_position(self) -> None:
         # `_extract_messages` concatenates the head window and the tail window,
         # and `_derive_goal_deterministic` takes `directives[-1]`, so "newest"
@@ -832,6 +947,48 @@ class ObserverTranscriptResolutionTest(RuntimeTestCase):
                 config, state = runtime()
                 found = observer.resolve_transcript(config, state, "codex", sid)
         self.assertEqual(str(newer), found)
+
+    def test_a_subagent_rollout_never_stands_in_for_its_parent(self) -> None:
+        # A subagent thread's rollout carries its PARENT's `session_id` — 262 of
+        # 262 locally — so a max-mtime pick over the id alone hands back the
+        # child whenever the child is the file being written, and `analyze` then
+        # publishes the parent agent's dispatch prompt as the operator's goal.
+        # In 262 of 262 local subagent runs there is a window where that is what
+        # the resolver returns (32.8 h of 102.8 h of aggregate subagent
+        # wall-clock); the static corpus shows 0 only because each of its 31
+        # mixed groups was captured after the parent resumed writing, which is
+        # exactly why a fixture is needed rather than a corpus count.
+        #
+        # Falsifying edit: drop the `meta.get("subagent")` test from the Codex
+        # branch of `resolve_transcript` and the NEWER child file is returned.
+        sid = "019f1c51-6cf9-7981-9a2d-172428800005"
+        with tempfile.TemporaryDirectory() as tmp:
+            day = Path(tmp) / "2026" / "08" / "17"
+            day.mkdir(parents=True)
+            parent = day / f"rollout-2026-08-17T01-00-00-{sid}.jsonl"
+            child = day / "rollout-2026-08-17T09-00-00-019f1c51-6cf9-7981-9a2d-172428800006.jsonl"
+            parent.write_text(_codex_session_meta(sid) + "\n", encoding="utf-8")
+            # The child declares the parent's id, which is the whole collision.
+            child.write_text(_codex_session_meta(sid, subagent=True) + "\n", encoding="utf-8")
+            os.utime(str(parent), (1_700_000_000, 1_700_000_000))
+            os.utime(str(child), (1_700_000_900, 1_700_000_900))
+            with store_patch(CODEX_SESSIONS_DIR=str(tmp)):
+                config, state = runtime()
+                found = observer.resolve_transcript(config, state, "codex", sid)
+        self.assertEqual(str(parent), found)
+
+    def test_a_session_that_is_only_a_subagent_thread_resolves_to_nothing(self) -> None:
+        # The exclusion is not "prefer the parent", it is "a child is never the
+        # answer": a subagent rollout is not a session a person opened.
+        sid = "019f1c51-6cf9-7981-9a2d-172428800007"
+        with tempfile.TemporaryDirectory() as tmp:
+            day = Path(tmp) / "2026" / "08" / "17"
+            day.mkdir(parents=True)
+            child = day / "rollout-2026-08-17T09-00-00-019f1c51-6cf9-7981-9a2d-172428800008.jsonl"
+            child.write_text(_codex_session_meta(sid, subagent=True) + "\n", encoding="utf-8")
+            with store_patch(CODEX_SESSIONS_DIR=str(tmp)):
+                config, state = runtime()
+                self.assertIsNone(observer.resolve_transcript(config, state, "codex", sid))
 
     def test_an_unregistered_harness_and_an_unnamed_id_resolve_to_nothing(self) -> None:
         # The Codex store is patched to an empty directory on purpose: without
