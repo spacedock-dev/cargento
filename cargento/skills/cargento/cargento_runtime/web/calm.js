@@ -765,10 +765,13 @@ function calmExpansion(r, d){
      eleventh for a control that removes a session would sit one pixel from the
      caret that merely opens it. Calm's keyboard covers the one-keystroke path:
      `x` on the cursor row. */
-  /* `observe` is only offered where the route can answer. It resolves a
-     transcript for Claude and Pi and nothing else, and a control that 404s is
-     worse than an absent one. */
-  const observable = r.harness === "pi" || r.harness === "claude";
+  /* `observe` is only offered where the route can answer. `resolve_transcript`
+     has three branches — Claude, Codex and Pi — and nothing else, and a control
+     that 404s is worse than an absent one. Codex arrived in the resolver
+     (excluding subagent rollouts, which carry their parent's session id) without
+     this list moving with it, so the harness with the deepest rollout to read
+     was the one row a reader could not observe. */
+  const observable = r.harness === "pi" || r.harness === "claude" || r.harness === "codex";
   const observeBtn = observable
     ? `<button type="button" class="cm-act" data-calm="observe"` +
       ` data-arg="${esc(r.key)}">observe</button>`

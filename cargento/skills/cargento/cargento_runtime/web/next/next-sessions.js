@@ -63,10 +63,18 @@ function nextSessionRow(session, labels, collisions){
   const live = session.active === true && session.state === "working";
   const liveClass = live ? " next-live" : "";
   const liveDot = live ? nextStatusDot("working", "next-session-live-glyph") : "";
+  const instruction = nextInstructionLine(session, title, "next-session-row-instruction");
+  /* Line 1 takes a label only where line 2 is there to be told apart from it.
+     A labelled "asked, 4m:" under a bare string reads as a caption for the row
+     rather than for the line beneath it, which is the ambiguity the labels
+     exist to remove; a lone "title:" on every row of a table whose column is
+     already headed SESSION is noise for nothing. */
+  const titleLabel = instruction
+    ? '<span class="next-instruction-label">title</span>: '
+    : "";
   return `<tr class="next-session-row${stateClass}${liveClass}" data-next-session="${esc(session.sid)}" ` +
     `data-next-route="${esc(route)}"><td class="next-session-identity">` +
-    `<strong>${liveDot}${esc(title)}</strong>` +
-    `${nextInstructionLine(session, title, "next-session-row-instruction")}` +
+    `<strong>${liveDot}${titleLabel}${esc(title)}</strong>${instruction}` +
     `<span>${esc(project)} · ${esc(harnessLabel)}</span>` +
     `${nextSessionCollision(session, collisions)}</td>` +
     `<td class="next-session-activity">${nextSessionActivity(session)}</td>` +

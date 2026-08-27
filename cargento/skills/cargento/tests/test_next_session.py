@@ -624,21 +624,42 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
         # the newest instruction when it is not.
         line = '{label: "earlier", text: "Reconcile the registry", at: 9400}'
         for html in (self.rows(line), self.detail(line)):
-            self.assertIn("earlier, 10m:", html)
+            self.assertIn('<span class="next-instruction-label">earlier</span>, 10m:', html)
             self.assertIn("Reconcile the registry", html)
             self.assertIn('data-next-instruction="earlier"', html)
+
+    def test_only_the_label_word_is_inside_the_uppercased_span(self) -> None:
+        # `.next-instruction-label` applies `text-transform:uppercase`, so an age
+        # inside it rendered "ASKED, 4M:" — the unit of a duration as a capital
+        # letter, which reads as an initialism and folds the age into the label.
+        line = '{label: "asked", text: "Reconcile the registry", at: 9400}'
+        for html in (self.rows(line), self.detail(line)):
+            self.assertIn('<span class="next-instruction-label">asked</span>', html)
+            self.assertNotIn('class="next-instruction-label">asked, 10m', html)
 
     def test_each_label_in_the_vocabulary_renders_and_nothing_else_does(self) -> None:
         for label in ("asked", "agent", "earlier"):
             with self.subTest(label=label):
                 html = self.detail(f'{{label: "{label}", text: "Real work", at: 9400}}')
-                self.assertIn(f"{label}, 10m:", html)
+                self.assertIn(f'<span class="next-instruction-label">{label}</span>, 10m:', html)
         # A label the runtime does not publish is not rendered on trust. The
         # payload is a file this page did not write.
         for label in ("", "urgent", "<b>"):
             with self.subTest(label=label):
                 html = self.detail(f'{{label: "{label}", text: "Real work", at: 9400}}')
                 self.assertNotIn("Real work", html)
+
+    def test_the_table_labels_line_one_only_where_line_two_stands_under_it(self) -> None:
+        # An unlabelled line 1 above a labelled line 2 reads as though the label
+        # captions the row. On a row with nothing beneath it there is nothing to
+        # tell apart, and the column heading already says SESSION.
+        labelled = self.rows('{label: "asked", text: "Reconcile the registry", at: 9400}')
+        self.assertIn('<span class="next-instruction-label">title</span>: ', labelled)
+        self.assertIn("Resolve the gate", labelled)
+
+        alone = self.rows("null")
+        self.assertIn("Resolve the gate", alone)
+        self.assertNotIn("next-instruction-label", alone)
 
     def test_no_instruction_renders_line_one_alone(self) -> None:
         # The publish-nothing branch reaching the page. Never a blank row, and
@@ -669,15 +690,15 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
         longer = '{label: "asked", text: "Resolve the gate blocking the Windows job", at: 9400}'
         html = self.detail(longer, title='"Resolve the gate"')
 
-        self.assertIn("asked, 10m:", html)
+        self.assertIn('<span class="next-instruction-label">asked</span>, 10m:', html)
         self.assertIn("blocking the Windows job", html)
 
     def test_an_unusable_stamp_renders_the_label_without_an_age(self) -> None:
         # 0 is "unstamped", and the page must not turn that into "0s ago".
         html = self.detail('{label: "agent", text: "Real work", at: 0}')
 
-        self.assertIn("agent:", html)
-        self.assertNotIn("agent, 0s:", html)
+        self.assertIn('<span class="next-instruction-label">agent</span>:', html)
+        self.assertNotIn("agent</span>, 0s:", html)
 
     def test_untrusted_instruction_text_is_escaped_at_the_render_site(self) -> None:
         # Bounded at the collector and escaped again here. Neither layer is a

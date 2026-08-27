@@ -1,7 +1,31 @@
+/* The filtered reading of the newest prompt, where the payload carries one.
+   `instruction.text` with the "asked" label IS the newest genuine prompt: the
+   injected harness shapes dropped, slash markup read back out, and the whole
+   string through `safe_text`. `last_prompt` is the raw newest record on every
+   harness but Codex, so on a Claude row the two are two readings of one prompt
+   and this takes the filtered one. Measured over 2,931 local rows: 114 carry an
+   "asked" line, 15 of those differ from `last_prompt`, and 2 have no
+   `last_prompt` at all.
+
+   Only that label. This cell renders "last instruction · …" with nowhere to put
+   a label, and the other two labels are exactly the readings that need one:
+   "agent" is an agent quoting itself and "earlier" says this is not the newest
+   thing asked. Published bare they would be the claim
+   `transcripts.instruction_from` refuses to make. */
+function nextProjectInstructionText(session){
+  const instruction = session && session.instruction;
+  const labelled = instruction && typeof instruction === "object" &&
+    !Array.isArray(instruction) && String(instruction.label || "") === "asked";
+  const filtered = labelled
+    ? String(instruction.text == null ? "" : instruction.text).trim()
+    : "";
+  return filtered || String(session.last_prompt || session.title || "").trim();
+}
+
 function nextProjectInstruction(sessions){
   let chosen = null;
   for(const session of sessions){
-    const text = String(session.last_prompt || session.title || "").trim();
+    const text = nextProjectInstructionText(session);
     if(!text) continue;
     const at = nextFiniteNumber(session.last_activity);
     if(!chosen || at > chosen.at) chosen = {at, text};

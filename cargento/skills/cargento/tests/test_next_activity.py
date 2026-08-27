@@ -213,6 +213,36 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("5m", self.activity_subagent(gate, 0))
         self.assertNotIn("next-activity-subagents", work)
 
+    def test_a_card_carries_the_same_labelled_second_line_the_other_surfaces_do(self) -> None:
+        # GOING ON was the one next-UI surface the instruction line skipped, so
+        # the card most likely to be read named work that may have finished.
+        # Same renderer as the session table and the detail header: the policy
+        # for when a line may be shown has one definition, not three.
+        html = self.render(
+            """
+nextData.sessions.find(session => session.sid === "gate-z").instruction =
+  {label: "asked", text: "Recompute the byte pins", at: 9400};
+nextData.sessions.find(session => session.sid === "work-a").instruction =
+  {label: "urgent", text: "Never rendered", at: 9400};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        gate = self.activity_card(html, "gate-z")
+
+        self.assertIn('data-next-instruction="asked"', gate)
+        self.assertIn('<span class="next-instruction-label">asked</span>, 10m:', gate)
+        self.assertIn("Recompute the byte pins", gate)
+        # A card is a `<button>`, which takes phrasing content, so this one line
+        # renders as a span where the other two surfaces use a paragraph.
+        self.assertIn('<span class="next-activity-instruction"', gate)
+        self.assertNotIn("<p ", gate)
+        # A label outside the published vocabulary is refused here too.
+        self.assertNotIn("Never rendered", html)
+        # And a row the payload publishes no line for keeps its two lines.
+        self.assertNotIn("next-activity-instruction", self.activity_card(html, "work-z"))
+
     def test_a_card_click_sets_the_session_route(self) -> None:
         out = self.render(
             """

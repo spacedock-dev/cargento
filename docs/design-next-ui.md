@@ -195,15 +195,43 @@ outside-payload state instead of a guessed row. The flat session table now emits
 the project activity cards, so it no longer stops at project detail.
 
 The header uses `title`, then `last_prompt`, with the first matching question as a fallback.
-Beneath it, on both the detail header and the flat session table, sits the row's `instruction`:
-a labelled second line carrying what the session is working on now, since the title above it
-answers a different question and on a long Claude session answers it about work that finished
-hours ago. The line renders only with its label and the age of the record it came from, and it
-is dropped when the payload publishes none, when the label is not one the runtime issues, or
-when its text is a prefix of the title and would only say the same thing twice at a different
-clip width. Its
-metadata is built only from measurements the row carries: the registry label, short session ID,
-and activity detail. A working row labels its measured `turn.elapsed_h` as the current start age;
+Beneath it, on the detail header, the flat session table and each GOING ON card, sits the row's
+`instruction`: a labelled second line carrying what the session is working on now, since the title
+above it answers a different question and on a long Claude session answers it about work that
+finished hours ago. One renderer serves all three, so the rule for when a line may be shown has a
+single definition. The line renders only with its label and the age of the record it came from,
+and it is dropped when the payload publishes none, when the label is not one the runtime issues,
+when its text equals the title, and when the title ends in an ellipsis and the text continues it,
+which is one prompt reaching the two lines at their two clip widths. Not the reverse: a short
+title that merely opens a longer, genuinely newer instruction is the case the line exists for, so
+a plain prefix test would delete exactly what was added. Over 2,931 rows of one local store the
+equality branch suppresses 13 lines and the clipped-title branch 30, while the reverse rule fires
+on none of them.
+
+Each surface clips the line to what it can carry. The detail header and the table row wrap it; a
+GOING ON card holds it to one line, because that block is scanned rather than read and a card that
+grows whenever the newest prompt is long pushes the next card off the fold. The label and the age
+are never in the part that clips. The card renders the line as a span rather than a paragraph,
+since the card is a button and takes phrasing content only.
+
+The age sits outside the label span. `.next-instruction-label` uppercases, which turned "asked, 4m:"
+into "ASKED, 4M:". A duration whose unit is a capital letter reads as an initialism, and the whole
+prefix reads as one label rather than as a label and a measurement. In the session table line 1
+takes a label of its own, but only on rows where line 2 stands under it: a labelled second line
+below a bare first line reads as a caption for the row, and a lone "title:" on every row of a table
+whose column is already headed SESSION buys nothing.
+
+The projects overview reads the same field for a different purpose. Its `last instruction` cell
+takes the newest session in the group and prefers `instruction.text` where the label is `asked`,
+falling back to `last_prompt` and then `title`. That label is the newest genuine prompt with the
+harness-injected shapes dropped and slash markup read back out, while `last_prompt` on every
+harness but Codex is the raw record: on the same 2,931 rows, 114 carry an `asked` line, 15 of those
+differ from `last_prompt`, and 2 have no `last_prompt` at all. The other two labels stay out of
+that cell, which has nowhere to put a label and would otherwise present an agent quoting itself, or
+a line that is explicitly not the newest thing asked, as the project's last instruction.
+
+The header's metadata is built only from measurements the row carries: the registry label, short
+session ID, and activity detail. A working row labels its measured `turn.elapsed_h` as the current start age;
 an absent, empty, or malformed turn measurement removes that clause instead of falling back to the
 transcript's creation time. A needs-input row derives its blocked age against the payload's
 `generated` clock. An idle row may use the same clock for an explicitly named session-start age.
