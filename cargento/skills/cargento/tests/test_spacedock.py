@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import spacedock
+from cargento_runtime.collectors import claude as claude_collector
 
+from . import support
 from .support import (
     make_runtime,
     runtime,
@@ -1128,3 +1130,115 @@ class SpacedockBootCursorTest(unittest.TestCase):
         config, state = make_runtime()
 
         self.assertEqual([], spacedock.transcript_boot(config, state, "/nonexistent/session.jsonl"))
+
+
+class SpacedockDeepBootCollectorTest(unittest.TestCase):
+    """The wiring behind the cursor, through the Claude collector.
+
+    `SpacedockBootCursorTest` pins `transcript_boot` on its own. This one asserts
+    the user-visible claim: a declared first officer whose boot output sits past
+    the first pass ends up with a stage strip on its card, which is a claim about
+    the collector, the workflow read and the entity read together.
+    """
+
+    README = (
+        "---\n"
+        "commissioned-by: spacedock@0.22.0\n"
+        "state: .spacedock-state\n"
+        "stages:\n"
+        "  states:\n"
+        "    - name: intake\n"
+        "      initial: true\n"
+        "    - name: review\n"
+        "    - name: posted\n"
+        "      terminal: true\n"
+        "---\n"
+    )
+
+    def setUp(self) -> None:
+        _config, state = runtime()
+        with state.cache_lock:
+            state.spacedock_workflow_cache.clear()
+            state.spacedock_role_cache.clear()
+            state.spacedock_entity_cache.clear()
+            state.agent_class_cache.clear()
+        with state.scanner_lock:
+            state.spacedock_boot_scan.clear()
+
+    def build(self, *, filler_passes: int) -> tuple[str, Path]:
+        """A workflow with one entity mid-flight, and an FO transcript whose boot
+        envelope sits behind ``filler_passes`` passes of unrelated records."""
+        holder = tempfile.TemporaryDirectory(prefix="cargento-deep-")
+        self.addCleanup(holder.cleanup)
+        root = Path(holder.name).resolve() / "wf"
+        root.mkdir()
+        (root / "README.md").write_text(self.README, encoding="utf-8")
+        entity_dir = root / ".spacedock-state"
+        entity_dir.mkdir()
+        (entity_dir / "drc-1.md").write_text(
+            '---\nid:\ntitle: "a thing"\nstatus: review\n---\n\n# report\n', encoding="utf-8"
+        )
+
+        envelope = json.dumps(
+            {
+                "command": "boot",
+                "id_style": "slug",
+                "dispatchable": [{"slug": "drc-1", "current": "review", "next": "posted"}],
+                "definition_dir": str(root),
+                "entity_dir": str(entity_dir),
+            }
+        )
+        head = json.dumps({"agentSetting": spacedock.SPACEDOCK_FO}).encode() + b"\n"
+        filler = (
+            json.dumps(
+                {"type": "user", "message": {"content": [{"type": "text", "text": "x" * 4_000}]}}
+            ).encode()
+            + b"\n"
+        )
+        boot = (
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [{"type": "tool_result", "content": "=== BOOT ===\n" + envelope}]
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
+        path = Path(holder.name) / "session.jsonl"
+        path.write_bytes(head + filler * filler_passes + boot)
+        return str(path), root
+
+    def strips(self, transcript: str) -> dict[str, Any] | None:
+        config, state = runtime()
+        return claude_collector.session_spacedock(config, state, transcript, [], time.time(), 3600)
+
+    def test_a_deep_boot_reaches_the_card_after_a_few_refreshes(self) -> None:
+        transcript, _root = self.build(filler_passes=4)  # ~16 KB of filler
+
+        with mock.patch.dict(support.CONFIG_OVERRIDES, {"spacedock_boot_scan_bytes": 4_200}):
+            first = self.strips(transcript)
+            self.assertEqual("first-officer", (first or {})["role"])
+            self.assertEqual([], (first or {})["workflows"])  # boot not reached yet
+
+            for _ in range(12):
+                latest = self.strips(transcript)
+                if (latest or {})["workflows"]:
+                    break
+
+        workflows = (latest or {})["workflows"]
+        self.assertEqual(1, len(workflows))
+        self.assertEqual("wf", workflows[0]["workflow"])
+        self.assertEqual(["intake", "review", "posted"], workflows[0]["stages"])
+        self.assertEqual(["drc-1"], [e["slug"] for e in workflows[0]["entities"]])
+        self.assertEqual("review", workflows[0]["entities"][0]["stage"])
+
+    def test_a_shallow_boot_still_reaches_the_card_on_the_first_pass(self) -> None:
+        """The launch shape that already worked must not have become slower to
+        appear: an FO launched as the agent boots at the top of its transcript."""
+        transcript, _root = self.build(filler_passes=0)
+
+        first = self.strips(transcript)
+
+        self.assertEqual("wf", (first or {})["workflows"][0]["workflow"])
