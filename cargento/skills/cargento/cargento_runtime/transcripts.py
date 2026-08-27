@@ -372,8 +372,9 @@ def _codex_scan_record(record: dict[str, Any]) -> tuple[str, str, float]:
 
     BOTH shapes of each thing are read, and that is not belt-and-braces. The
     turn-start preamble moved at CLI 0.149: verified across all 458 local
-    rollouts, `event_msg`/`agent_message` with `phase == "commentary"` covers
-    ~95% of the files on 0.142.5-0.146.1 and none of the 89 on 0.149.x, while
+    rollouts, `event_msg`/`agent_message` with `phase == "commentary"` covers 294
+    of the 305 release builds on 0.142.5-0.146.1 (96.4%) and none of the 89 on
+    0.149.x, while
     `event_msg`/`item_completed` with an `AgentMessage` item reaches 87 of those
     89 and none of the older ones. A single-shape reader finds nothing on the
     build the operator is actually running.
@@ -383,6 +384,13 @@ def _codex_scan_record(record: dict[str, Any]) -> tuple[str, str, float]:
     unphased `AgentMessage` is the final answer rather than a statement of
     intent, and publishing one under an "agent" label would quote finished work
     as current.
+
+    Both denominators above count RELEASE builds, and the distinction is load
+    bearing rather than pedantic: fold the 0.145.0-alpha prereleases back in and
+    the older figure falls to 296 of 357 (82.9%), because `phase == "commentary"`
+    reached 1 of 51 alpha files. A prerelease is the one population where the
+    shape was mid-move, so a single denominator spanning both would describe
+    neither build a person runs.
 
     The user record split the same way — `event_msg`/`user_message` is gone by
     0.149.1 and `response_item`/message/user is in all but one rollout — and

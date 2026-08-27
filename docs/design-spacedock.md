@@ -132,9 +132,16 @@ standard `docs/captures/README.md` sets for an adapter gate:
 | `function_call_output` | 15,730 records | 897 records |
 | `custom_tool_call_output` | 2,956 records | 18,477 records |
 
-Of the 23 rollouts naming a `definition_dir` anywhere, 18 carry a boot envelope on one of those two
-payload types, and 10 of the 18 have it inside the `spacedock_boot_scan_bytes` head window. Reading
-them takes the count of Codex sessions with a resolvable workflow from 0 to 10.
+Of the 23 rollouts naming a `definition_dir` anywhere, 22 carry one on one of those two payload
+types and 14 carry an envelope the reader actually parses: 9 on `function_call_output`, 6 on
+`custom_tool_call_output`, one file carrying both. That is 50 records, 43 of them on
+`function_call_output`. Ten of the 14 files have one inside the `spacedock_boot_scan_bytes` head
+window, which is what takes the count of Codex sessions with a resolvable workflow from 0 to 10.
+
+The wider figure, 18 files and 12 of them on `function_call_output`, counts something else and is
+recorded here so nobody re-derives it and thinks the reader regressed: it counts a file whose
+`definition_dir` record carries a `{"command"` candidate object in its tool output, parsed or not.
+Four of those 18 hold a candidate the envelope reader rejects.
 
 Nothing else under `payload` is read. A `function_call`'s own `arguments` field carries the same
 JSON on the way in, and it is the model's request rather than the command's output, so accepting it

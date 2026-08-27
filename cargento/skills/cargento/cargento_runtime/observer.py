@@ -242,10 +242,15 @@ def _dedup_key(record: dict[str, Any]) -> str:
     in the session kept its first, oldest position. Claude spells it ``uuid``
     and Codex ``payload.id``; Pi and Droid do spell it ``id``.
 
-    Empty is a real answer and not a failure: ``payload.id`` is absent on 599 of
-    the 784 Codex user-message records (76.4%) inside this module's own head and
-    tail windows, measured over the whole local rollout store. The caller's
-    fallback is positional for that reason — see ``_window_lines``.
+    Empty is a real answer and not a failure: ``payload.id`` is absent on 500 of
+    the 655 Codex user-message records (76.3%) the DISJOINT windows this module
+    now cuts return, measured over the whole local rollout store. The count
+    matters less than the instrument: the same measurement on the old
+    ``head + read_tail`` concatenation gives 599 of 785, and the surplus is the
+    overlap region counted twice, which is the bug ``_window_lines`` fixes. The
+    share is 76.3% either way, so the load-bearing claim (about three quarters
+    carry no id) does not rest on which instrument you use. The caller's fallback
+    is positional for that reason — see ``_window_lines``.
     """
     for value in (
         record.get("uuid"),

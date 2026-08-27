@@ -54,9 +54,19 @@ CODEX_GLOB = "*/*/*/rollout-*.jsonl"
 # A markup tag name, and short enough to be one. The length bound is the part
 # that matters: without it a hyphenated run with no spaces in it — which is what
 # a prompt looks like once it is one long token — reads as a tag name and would
-# be printed. The longest name in any of `records.py`'s vocabularies is 21
-# characters.
-_TAG_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}$")
+# be printed. The longest TAG name in any of `records.py`'s vocabularies is 21
+# characters (`subagent_notification`); the longer entries there are prose
+# prefixes, which reach stdout through `_safe_label`'s membership clauses and not
+# through this pattern.
+#
+# 24 and not 40. At 40 a prompt opening with `<` plus a 40-character
+# `[A-Za-z0-9_-]` run reached stdout verbatim, which falsified this module's own
+# docstring on the one script whose job is to read every prompt in the store. The
+# discovery affordance survives the narrower bound: over 3,774 local Claude
+# transcripts there are exactly 2 distinct unlisted leading tag names occurring
+# more than once, both 21 characters or shorter, and 0 occurrences of the
+# over-long aggregate.
+_TAG_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,23}$")
 
 # Leading image-marker populations, reported separately because they are three
 # populations and were once counted as one. `[Image #N]` is Codex's spelling

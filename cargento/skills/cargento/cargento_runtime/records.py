@@ -754,7 +754,9 @@ _CLAUDE_USER_TAGS = frozenset(
         "bash-input",  # 242
         "bash-stdout",  # 241
         "system-reminder",  # 227, 223 of them refused by `_turn_signal`
-        "channel",  # 8 — a Slack-plugin envelope, request text inside the tag
+        # The fourth refused entry, and the header's total needs it: 1,065 + 621
+        # + 223 + 8 = 1,917.
+        "channel",  # 8, all refused by `_turn_signal` — a Slack-plugin envelope
         "local-command-stderr",  # 1
     }
 )

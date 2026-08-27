@@ -161,6 +161,29 @@ class SafeLabelTest(unittest.TestCase):
             with self.subTest(label=label), self.assertRaises(derive.UnsafeLabelError):
                 derive._safe_label(label)
 
+    def test_the_length_bound_is_pinned_at_the_boundary(self) -> None:
+        # The bound was 40 while the comment justifying it said 21, so a
+        # 40-character run reached stdout verbatim and the negative case above
+        # (44 characters) proved rejection one class too high to catch it. Both
+        # sides of the real edge, so neither can drift again unnoticed.
+        longest_real_tag = "subagent_notification"  # 21, the longest in records.py
+        self.assertEqual(21, len(longest_real_tag))
+        self.assertEqual(longest_real_tag, derive._safe_label(longest_real_tag))
+
+        at_bound = "a" + "b" * 23  # 24 characters: the last one still printable
+        self.assertEqual(24, len(at_bound))
+        self.assertEqual(at_bound, derive._safe_label(at_bound))
+
+        over_bound = "a" + "b" * 24  # 25, and every longer run with it
+        with self.assertRaises(derive.UnsafeLabelError):
+            derive._safe_label(over_bound)
+
+    def test_an_over_long_leading_tag_aggregates_rather_than_printing(self) -> None:
+        # The other half: a discovered name too long to vouch for must come back
+        # as the aggregate label, not as itself.
+        body = "<" + "q" * 30 + "> please review this"
+        self.assertEqual(derive._OVER_LONG_TAG, derive._leading_tag(body))
+
     def test_the_three_allowed_classes_pass(self) -> None:
         self.assertEqual("task-notification", derive._safe_label("task-notification"))
         self.assertEqual("files scanned", derive._safe_label("files scanned"))

@@ -188,8 +188,11 @@ def _codex_tool_output(record: dict[str, Any]) -> list[str] | None:
     ``function_call_output`` carries ``output`` as a string on 15,730 records and
     as a list of ``{"type": …, "text": …}`` blocks on 897;
     ``custom_tool_call_output`` carries it as a string on 2,956 and as such a
-    list on 18,477. Of the 23 rollouts naming a ``definition_dir``, the boot
-    envelope arrives on a ``function_call_output`` in 12.
+    list on 18,477. Of the 23 rollouts naming a ``definition_dir``, 14 carry an
+    envelope this parses, 9 of them on a ``function_call_output`` and 6 on a
+    ``custom_tool_call_output`` (one file carries both). Counting files with a
+    ``{"command"`` candidate rather than a parsed envelope gives 18 and 12
+    instead, which is a different question; see design-spacedock.md decision S-6.
 
     Nothing else under ``payload`` is read. A ``function_call``'s own arguments
     are the model's request rather than the command's output, which is the
