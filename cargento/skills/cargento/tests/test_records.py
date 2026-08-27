@@ -516,5 +516,134 @@ class InstructionLineTest(unittest.TestCase):
                 self.assertEqual(0, line["at"])
 
 
+class RedactSecretsTest(unittest.TestCase):
+    """Credential shapes on their way to the DOM.
+
+    Every value below is synthetic and deliberately obvious: a documented
+    placeholder, or a real prefix followed by a run of one letter. Nothing in
+    this repository — test, fixture, capture or commit message — may carry a
+    value that would work, which is the whole reason the shape list was measured
+    by counting rather than by reading.
+    """
+
+    # (name, a fake of that shape, what the operator should be shown instead)
+    FAKES = (
+        ("anthropic api key", "sk-ant-api03-" + "A" * 95, "sk-ant-…REDACTED"),
+        ("anthropic oauth token", "sk-ant-oat01-" + "B" * 95, "sk-ant-…REDACTED"),
+        ("openai key", "sk-" + "C" * 48, "sk-…REDACTED"),
+        ("stripe secret key", "sk_live_" + "U" * 24, "sk_live_…REDACTED"),
+        ("stripe restricted key", "rk_test_" + "U" * 24, "rk_test_…REDACTED"),
+        # The documented AWS placeholder, and its session-credential sibling.
+        ("aws access key", "AKIAIOSFODNN7EXAMPLE", "AKIA…REDACTED"),
+        ("aws session key", "ASIAIOSFODNN7EXAMPLE", "ASIA…REDACTED"),
+        ("github pat", "ghp_" + "D" * 36, "ghp_…REDACTED"),
+        ("github oauth", "gho_" + "E" * 36, "gho_…REDACTED"),
+        ("github fine-grained pat", "github_pat_" + "V" * 60, "github_pat_…REDACTED"),
+        ("gitlab pat", "glpat-" + "W" * 20, "glpat-…REDACTED"),
+        ("npm token", "npm_" + "X" * 36, "npm_…REDACTED"),
+        ("slack bot token", "xoxb-" + "0" * 12 + "-" + "0" * 12 + "-" + "F" * 24, "xoxb-…REDACTED"),
+        ("slack app token", "xapp-1-" + "Y" * 20, "xapp-…REDACTED"),
+        ("posthog key", "phc_" + "G" * 43, "phc_…REDACTED"),
+        ("google api key", "AIza" + "H" * 35, "AIza…REDACTED"),
+        ("jwt", "eyJ" + "I" * 20 + "." + "J" * 20 + "." + "K" * 20, "eyJ…REDACTED"),
+        (
+            "pem private key",
+            "-----BEGIN RSA PRIVATE KEY-----\n" + "L" * 64 + "\n-----END RSA PRIVATE KEY-----",
+            "-----BEGIN …REDACTED",
+        ),
+        (
+            "connection string",
+            "postgres://someone:NOTAREALPASSWORD@db.example:5432/app",
+            "postgres://…REDACTED@db.example:5432/app",
+        ),
+    )
+
+    def test_every_measured_shape_is_replaced_by_a_visible_marker(self) -> None:
+        for name, fake, expected in self.FAKES:
+            with self.subTest(shape=name):
+                self.assertEqual(expected, records.redact_secrets(fake))
+
+    def test_the_words_around_a_credential_survive_it(self) -> None:
+        # Dropping the line would lose the instruction, which is the useful part
+        # and the whole reason the card carries one.
+        line = f"rotate {'ghp_' + 'M' * 36} then push the branch"
+        self.assertEqual("rotate ghp_…REDACTED then push the branch", records.redact_secrets(line))
+
+    def test_the_marker_is_visible_rather_than_silent(self) -> None:
+        # An operator who cannot see that something was removed never learns
+        # their prompt history holds a live key, and so never rotates it.
+        self.assertIn("REDACTED", records.redact_secrets("AIza" + "N" * 35))
+
+    def test_two_credentials_on_one_line_are_both_replaced(self) -> None:
+        line = f"{'sk-ant-api03-' + 'P' * 90} and {'ghp_' + 'Q' * 36}"
+        redacted = records.redact_secrets(line)
+        self.assertEqual("sk-ant-…REDACTED and ghp_…REDACTED", redacted)
+
+    def test_what_the_filter_must_leave_alone(self) -> None:
+        # Each of these is a thing that really appears in a prompt and really
+        # looks like a secret to a careless rule. A blanked instruction line is
+        # the cost of getting one of them wrong.
+        for name, text in (
+            ("git sha", "revert e83c5163316f89bfbde7d9ab23ca2e25604af290 and rerun"),
+            ("uuid", "session 9f3c1a55-0000-4000-8000-000000000000 is stuck"),
+            ("base64 in a diff", "+ QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlq=="),
+            ("long path", "/Users/x/repos/p/cargento/skills/cargento/cargento_runtime/records.py"),
+            ("prose with gh", "check the highlight tonight and the light in the right place"),
+            ("hyphenated token", "dask-scheduler-configuration-defaults-file-name"),
+            ("plain url", "see https://github.com/spacedock-dev/marketplace/pull/223"),
+            ("scp remote", "git@github.com:spacedock-dev/marketplace.git"),
+            ("ssh url", "ssh://git@github.com/spacedock-dev/marketplace.git"),
+            # The dashboard's own address. A port reads as `host:number` and the
+            # `@` test lets it through the gate, so this is the false positive
+            # that would have blanked the most instruction lines in this repo.
+            ("dashboard url", "open http://127.0.0.1:4553/api/data?next=true"),
+            ("url with a user and no password", "clone https://someone@github.com/o/r.git"),
+            ("image tag", "docker run postgres:16 with the seed applied"),
+            ("hex blob", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+            ("iso stamp", "2026-08-27T07:15:44.002Z"),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(text, records.redact_secrets(text))
+
+    def test_a_shape_inside_a_longer_token_is_left_alone(self) -> None:
+        # The anchor. Without it an ordinary hyphenated identifier that happens
+        # to contain `sk-` reads as a key and the line is blanked.
+        inside = "not-a-sk-" + "R" * 40
+        self.assertEqual(inside, records.redact_secrets(inside))
+
+    def test_a_credential_is_redacted_before_the_line_is_bounded(self) -> None:
+        # Bounding first would publish the head of the key: a hundred characters
+        # of it fit inside the cap, and the tail that fell off is what stops the
+        # shape matching afterwards.
+        line = "x" * 100 + " " + "sk-ant-api03-" + "S" * 95
+        # What bounding first would have published: the cap falls inside the key.
+        self.assertIn("S" * 20, line[: records.LAST_PROMPT_CAP_CHARS])
+
+        bounded = records.safe_text(line, records.LAST_PROMPT_CAP_CHARS)
+        self.assertIn("sk-ant-…REDACTED", bounded)
+        self.assertNotIn("S", bounded)
+        self.assertLessEqual(len(bounded), records.LAST_PROMPT_CAP_CHARS)
+
+    def test_the_instruction_line_carries_no_credential(self) -> None:
+        # The surface PR #223 added, and the one that widened the exposure.
+        line = records.instruction_line("asked", "deploy with " + "sk-ant-oat01-" + "T" * 95, 12.0)
+        assert line is not None
+        self.assertEqual("deploy with sk-ant-…REDACTED", line["text"])
+
+    def test_the_gate_reaches_every_shape_on_the_list(self) -> None:
+        # The literal gate is an optimization, and an optimization in front of a
+        # security filter is a way to ship a measured shape switched off. Each
+        # alternative gets a fake here, so a shape added without a hint fails.
+        listed = {name for name, _, _, _ in records._SECRET_SHAPES}
+        covered = set()
+        for _name, fake, expected in self.FAKES:
+            match = records._SECRET_RE.search(fake)
+            assert match is not None
+            covered.add(match.lastgroup)
+            with self.subTest(shape=match.lastgroup):
+                self.assertEqual(expected, records.redact_secrets(fake))
+        self.assertEqual(listed, covered)
+
+
 if __name__ == "__main__":
     unittest.main()

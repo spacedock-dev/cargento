@@ -895,6 +895,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # holds that. The alternative was one caller per collector, which is the
         # arrangement that left nine harnesses notifying nobody. `notifications`
         # imports no module that imports aggregate, so this stays inward.
+        # `records` arrived with the credential filter (DRC-4267). `safe_text`
+        # redacts every string that passes through it, and `title` and
+        # `last_prompt` do not: nine collectors build those by hand. Aggregate is
+        # the one place that holds every row from every harness before it is
+        # published, so the sweep lives there rather than in nine collectors and
+        # whichever one is added next. `records` is a leaf, so this stays inward.
         "cargento_runtime.aggregate": {
             "cargento_runtime.collectors",
             "cargento_runtime.config",
@@ -903,6 +909,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.quota",
+            "cargento_runtime.records",
             "cargento_runtime.sessions",
             "cargento_runtime.snapshot",
             "cargento_runtime.state",
@@ -1651,6 +1658,33 @@ class HarnessContractTest(HarnessContractTestCase):
                 sessions = self.sessions_for(data, key)
                 self.assertEqual(1, len(sessions), f"expected one session, got {sessions}")
                 self.assertEqual("working", sessions[0]["state"])
+
+    def test_no_harness_publishes_a_credential_out_of_a_prompt(self) -> None:
+        # DRC-4267. Every row here is built from what the operator typed, and on
+        # the machine this was found on that text held seven live Anthropic
+        # keys. The fake is a real prefix and a run of one letter, which is the
+        # only kind of credential value this repository may hold.
+        #
+        # Asserted over the serialized row rather than over `title`, because the
+        # same prompt reaches `last_prompt` and the instruction line as well, and
+        # the requirement is about the DOM rather than about one field.
+        fake = "sk-ant-api03-" + "A" * 95
+        self.TITLE = f"deploy with {fake} and report back"
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                data = self.collect(build, when=self.NOW)
+                rows = self.sessions_for(data, key)
+                self.assertEqual(1, len(rows))
+                # `project` is dropped, and only `project`: three fixtures spell
+                # the working directory out of the same string they use for the
+                # prompt, so it carries the fake here in a way no real store
+                # does. A path is not prompt-derived text and is not in scope.
+                row = {k: v for k, v in rows[0].items() if k != "project"}
+                serialized = json.dumps(row, ensure_ascii=False)
+                self.assertNotIn("A" * 20, serialized)
+                published = (row["title"] or "") + (row["last_prompt"] or "")
+                if published:
+                    self.assertIn("sk-ant-\u2026REDACTED", serialized)
 
     def test_a_stale_store_reads_idle_but_still_appears(self) -> None:
         for key, build in HARNESSES:

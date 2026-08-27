@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, TypeAlias
 
-from . import dismissals, notifications, quota, sessions
+from . import dismissals, notifications, quota, records, sessions
 from . import events as runtime_events
 from . import io as runtime_io
 from . import snapshot as runtime_snapshot
@@ -328,6 +328,52 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
     )
 
 
+def _redact_published_text(rows: list[Session]) -> list[Session]:
+    """Credential shapes out of the row fields that carry operator text.
+
+    `records.safe_text` redacts on the way through and most published strings
+    pass through it, but `title` and `last_prompt` do not: nine collectors build
+    those out of the transcript by hand and bound them with a slice. Nine call
+    sites would be nine chances for the tenth harness to be forgotten, which is
+    how `last_prompt` came to be published raw in the first place, so the sweep
+    runs once over the assembled rows instead. A collector added later is covered
+    without being asked.
+
+    Placed before the overlays only because it can be: an overlay patches state,
+    never a title (see `events`). It is before `_notify_waits` deliberately — a
+    native popup is a screen exposure exactly as the card is.
+
+    `redact_secrets` rather than `safe_text`, because these two fields are
+    published raw by design and this is not the change that starts scrubbing
+    their control characters.
+
+    It mutates, and returns the list it was handed so the caller can chain. The
+    return value exists for that and nothing else.
+    """
+    for row in rows:
+        for key in ("title", "last_prompt"):
+            value = row.get(key)
+            if isinstance(value, str) and value:
+                row[key] = records.redact_secrets(value)
+        instruction = row.get("instruction")
+        if isinstance(instruction, dict):
+            text = instruction.get("text")
+            if isinstance(text, str) and text:
+                instruction["text"] = records.redact_secrets(text)
+        # A task subject is the agent's wording rather than the operator's, so it
+        # is not prompt-derived in the sense DRC-4267 uses. It is here because a
+        # todo written from a prompt that held a key can quote it, and the list
+        # is short enough that covering it costs nothing worth measuring.
+        for task in row.get("tasks") or ():
+            if not isinstance(task, dict):
+                continue
+            for key in ("subject", "activeForm"):
+                value = task.get(key)
+                if isinstance(value, str) and value:
+                    task[key] = records.redact_secrets(value)
+    return rows
+
+
 def _hide_unmeasured_rates(rows: list[Session], harnesses: tuple[HarnessSpec, ...]) -> None:
     """Replace a rate-blind collector's numeric placeholder with wire-level unknown."""
     reporting = {spec.key for spec in harnesses if spec.reports_rate}
@@ -445,7 +491,7 @@ class Application:
                     self.diagnostic_sink,
                 )
 
-        out_sessions = sessions.dedupe_sessions(out_sessions)
+        out_sessions = _redact_published_text(sessions.dedupe_sessions(out_sessions))
         _hide_unmeasured_rates(out_sessions, self.harnesses)
         self._mark_unreachable_by_events(out_sessions)
         # Between dedupe and the sort, deliberately. Dedupe keys on
