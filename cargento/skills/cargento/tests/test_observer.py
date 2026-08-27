@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import io as runtime_io
 from cargento_runtime import observer
 
 from . import test_page_calm
@@ -96,7 +97,7 @@ def _claude_message(
 
 
 def _codex_message(
-    payload_id: str,
+    payload_id: str | None,
     role: str,
     text: str,
     *,
@@ -107,20 +108,22 @@ def _codex_message(
     Again the live shape: the id lives at `payload.id` (never at the top level),
     the text at `payload.content[].text`, and the block type differs by role —
     `input_text` for the operator, `output_text` for the agent.
+
+    ``payload_id=None`` writes the record with no ``id`` key at all, which is the
+    MAJORITY shape and not an edge case: 599 of the 784 Codex user-message
+    records (76.4%) inside the observer's own head and tail windows carry none,
+    measured over the whole local rollout store. Every fixture here wrote the
+    id-carrying minority before, which is how the dedup fallback went untested.
     """
     block = "input_text" if role == "user" else "output_text"
-    return json.dumps(
-        {
-            "timestamp": ts,
-            "type": "response_item",
-            "payload": {
-                "id": payload_id,
-                "type": "message",
-                "role": role,
-                "content": [{"type": block, "text": text}],
-            },
-        }
-    )
+    payload: dict[str, Any] = {
+        "type": "message",
+        "role": role,
+        "content": [{"type": block, "text": text}],
+    }
+    if payload_id is not None:
+        payload = {"id": payload_id, **payload}
+    return json.dumps({"timestamp": ts, "type": "response_item", "payload": payload})
 
 
 def _codex_session_meta(
@@ -344,6 +347,22 @@ class ObserverAnalyzerTest(unittest.TestCase):
             # shape of those four.
             "The PR is mergeable and blocked only by required review.",
             "Your conclusion that live egress is still blocked on the other PR is correct.",
+            # The last three bare phrases went the same way. Re-measured over
+            # the whole local Claude corpus the table produced 7 blocks, and
+            # `not permitted`, `permission denied` and `waiting for your`
+            # supplied 4 of them — every one inside a quoted or fenced span, two
+            # of them hitting the 200-character cap with the trigger truncated
+            # away. Falsifying edit: put any of the three bare phrases back.
+            'The hook refused it: the log line was "operation not permitted".',
+            (
+                "The rebase printed `permission denied` for the vendored "
+                "submodule, which the checkout fixes."
+            ),
+            "The release is waiting for your PR to land, so nothing is needed here.",
+            # `waiting for you` is a prefix of `waiting for your`, so the trailing
+            # word-boundary test is what makes the line above stop matching.
+            # Falsifying edit: drop `_BLOCK_TRAILING_RE` from `_indicator_hit`.
+            "Everyone is waiting for your review of the design doc.",
         ):
             with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp:
                 path = self._write_transcript(
@@ -391,6 +410,59 @@ class ObserverAnalyzerTest(unittest.TestCase):
                 ],
             )
             self.assertEqual("I am blocked on a missing AWS role.", self.analyze(path)["block"])
+
+    def test_the_first_person_replacements_still_report_a_real_block(self) -> None:
+        # Narrowing three bare phrases must not cost the case they were there
+        # for. Each line is the self-state form of one of them, and the last is
+        # the bare `waiting for you` that survives the word-boundary test the
+        # possessive now fails. Falsifying edit: delete the first-person entries
+        # from `_BLOCK_INDICATORS` — every line here loses its block.
+        for line, expected in (
+            (
+                "I pulled the manifest. I am not permitted to write to that bucket.",
+                "I am not permitted to write to that bucket.",
+            ),
+            (
+                "I read the config. I do not have permission to restart the service.",
+                "I do not have permission to restart the service.",
+            ),
+            (
+                "The diff is ready. I am waiting for your decision on the schema.",
+                "I am waiting for your decision on the schema.",
+            ),
+            ("The branch is pushed, waiting for you.", "The branch is pushed, waiting for you."),
+        ):
+            with self.subTest(line=line), tempfile.TemporaryDirectory() as tmp:
+                path = self._write_transcript(
+                    tmp,
+                    [
+                        _pi_session("fp-002"),
+                        _pi_message("m1", None, "user", "Deploy it"),
+                        _pi_message("m2", "m1", "assistant", line),
+                    ],
+                )
+                self.assertEqual(expected, self.analyze(path)["block"])
+
+    def test_a_rejected_indicator_hit_does_not_hide_a_later_real_one(self) -> None:
+        # `str.find` returns the FIRST occurrence, so a possessive earlier in the
+        # message would otherwise shadow a genuine hand-off after it. Falsifying
+        # edit: replace `_indicator_hit`'s loop with a single `lower.find`.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp,
+                [
+                    _pi_session("fp-003"),
+                    _pi_message("m1", None, "user", "Deploy it"),
+                    _pi_message(
+                        "m2",
+                        "m1",
+                        "assistant",
+                        "The release is waiting for your PR to land. "
+                        "The branch is pushed, waiting for you.",
+                    ),
+                ],
+            )
+            self.assertEqual("The branch is pushed, waiting for you.", self.analyze(path)["block"])
 
     def test_no_spacedock_withdraws_the_project_reads(self) -> None:
         # `--no-spacedock` is the switch that turns off the project reads, and
@@ -834,25 +906,46 @@ class ObserverRecordShapeTest(unittest.TestCase):
         )
         self.assertEqual("the newest prompt", result["goal"])
 
+    def _two_window_lines(self) -> list[str]:
+        """A transcript whose goal is only in the head and whose block is only in
+        the tail, at the shrunk window sizes the caller passes."""
+        filler = [
+            _claude_message(f"f{i}", "assistant", "x" * 200, ts=f"2026-08-17T02:{i:02d}:00Z")
+            for i in range(2, 40)
+        ]
+        return [
+            _claude_message("u1", "user", "the opening prompt", ts="2026-08-17T02:00:00Z"),
+            *filler,
+            _claude_message(
+                "u2", "assistant", "I am blocked on a missing token.", ts="2026-08-17T02:59:00Z"
+            ),
+        ]
+
     def test_the_head_window_and_the_tail_window_are_both_read(self) -> None:
         # The two windows are disjoint on any file over head + tail (465,536 B
         # with the shipped figures), and the opening directive lives in the head.
         # The windows are shrunk here rather than the file grown: a 465 KB
         # fixture proves the same thing and costs a disk write per run.
-        filler = [
-            _claude_message(f"f{i}", "assistant", "x" * 200, ts=f"2026-08-17T02:{i:02d}:00Z")
-            for i in range(2, 40)
-        ]
-        result = self.analyze(
-            [
-                _claude_message("u1", "user", "the opening prompt", ts="2026-08-17T02:00:00Z"),
-                *filler,
-                _claude_message("u2", "assistant", "Still going.", ts="2026-08-17T02:59:00Z"),
-            ],
-            observer_head_bytes=1_200,
-            tail_bytes=1_200,
-        )
+        #
+        # Both readings are asserted, and the second one is the point: this test
+        # asserted the GOAL alone, which comes out of the head, so stubbing
+        # `read_tail` to return nothing left it green. The block comes only out
+        # of the tail, so it fails when either window is not read.
+        result = self.analyze(self._two_window_lines(), observer_head_bytes=1_200, tail_bytes=1_200)
         self.assertEqual("the opening prompt", result["goal"])
+        self.assertEqual("I am blocked on a missing token.", result["block"])
+
+    def test_the_tail_assertion_is_load_bearing(self) -> None:
+        # The falsification, committed rather than described: with `read_tail`
+        # stubbed out the head still supplies the goal, and only the block
+        # disappears. If a later edit makes the block reachable from the head,
+        # this fails and the test above stops proving anything.
+        with mock.patch.object(runtime_io, "read_tail", return_value=[]):
+            result = self.analyze(
+                self._two_window_lines(), observer_head_bytes=1_200, tail_bytes=1_200
+            )
+        self.assertEqual("the opening prompt", result["goal"])
+        self.assertEqual("", result["block"])
 
     def test_a_repeated_prompt_does_not_keep_its_oldest_position(self) -> None:
         # The dedup key read `record["id"]`, which **0 of 8,312 Claude and 0 of
@@ -869,6 +962,63 @@ class ObserverRecordShapeTest(unittest.TestCase):
             ]
         )
         self.assertEqual("align the release notes", result["goal"])
+
+    def test_a_repeated_codex_prompt_with_no_payload_id_keeps_the_newest(self) -> None:
+        # The same bug where it actually bites. `payload.id` is absent on 599 of
+        # the 784 Codex user-message records (76.4%) inside the observer's own
+        # windows, so the key falls through to the fallback on three records in
+        # four — and every Codex fixture here used to write the id-carrying
+        # minority, which is why this went untested. Falsifying edit: make the
+        # fallback `parsed["text"]` again and the goal becomes "run the
+        # migration".
+        result = self.analyze(
+            [
+                _codex_session_meta("019f1c51-6cf9-7981-9a2d-172428800011"),
+                _codex_message(None, "user", "align the release notes", ts="2026-08-17T02:00:00Z"),
+                _codex_message(None, "user", "run the migration", ts="2026-08-17T02:01:00Z"),
+                _codex_message(None, "user", "align the release notes", ts="2026-08-17T02:02:00Z"),
+                _codex_message(None, "assistant", "On it.", ts="2026-08-17T02:03:00Z"),
+            ]
+        )
+        self.assertEqual("align the release notes", result["goal"])
+
+    def test_a_replayed_record_is_still_deduped_by_its_own_id(self) -> None:
+        # The positional fallback must not cost the case the key exists for: a
+        # resumed transcript replays earlier records into the new file, carrying
+        # their original ids and their original stamps. Falsifying edit: drop the
+        # `seen` set — the replayed opener is then read twice, and the second
+        # copy is what `directives[-1]` would have to sort past.
+        lines = [
+            _claude_message("u1", "user", "the opening prompt", ts="2026-08-17T02:00:00Z"),
+            _claude_message("u2", "assistant", "Working.", ts="2026-08-17T02:01:00Z"),
+        ]
+        config = dataclasses.replace(self.config)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "session.jsonl"
+            path.write_text("\n".join([*lines, lines[0]]) + "\n", encoding="utf-8")
+            messages = observer._extract_messages(config, str(path))
+        self.assertEqual(
+            [("user", "the opening prompt"), ("assistant", "Working.")],
+            [(m["role"], m["text"]) for m in messages],
+        )
+
+    def test_a_clipped_goal_keeps_its_ellipsis(self) -> None:
+        # `prompt_title` appends the ellipsis AFTER cutting to the cap, so a
+        # clipped goal is cap + 1 characters and a scrub at the cap took the `…`
+        # straight back off — an unmarked mid-token cut on 8 of the 1,295 goals
+        # the local Claude corpus publishes. Falsifying edit: drop the `+ 1` from
+        # the `safe_text` bound in `_derive_goal_deterministic`.
+        # One long token, so `clip` finds no word boundary in the last third and
+        # cuts hard at the cap: that is the shape whose ellipsis is the 201st
+        # character and therefore the one the scrub used to remove.
+        cap = self.config.observer_goal_cap_chars
+        result = self.analyze(
+            [
+                _claude_message("u1", "user", "x" * (cap + 50)),
+                _claude_message("u2", "assistant", "On it.", ts="2026-08-17T02:01:00Z"),
+            ]
+        )
+        self.assertEqual("x" * cap + "…", result["goal"])
 
     def test_a_tool_result_echo_is_not_a_directive(self) -> None:
         # A user turn whose content is a tool_result is the harness echoing its
@@ -1013,17 +1163,25 @@ class ObserverRouteTest(RuntimeTestCase):
         return response.status, body
 
     def test_the_route_answers_with_the_sidecar_and_writes_it(self) -> None:
+        # A CLAUDE-shaped record in the Claude store. It used to be Pi's
+        # `type: "message"` shape — which occurs 0 times in 3,774 real Claude
+        # transcripts — so the only end-to-end test of this route exercised a
+        # parser arm the route can never reach on a real machine.
         sid = "abcdef12-3456-7890-abcd-ef1234567890"
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
             (projects / "-home-me-repo").mkdir(parents=True)
             (projects / "-home-me-repo" / f"{sid}.jsonl").write_text(
-                json.dumps(
-                    {
-                        "type": "message",
-                        "id": "m1",
-                        "message": {"role": "user", "content": "Fix the failing build"},
-                    }
+                "\n".join(
+                    [
+                        _claude_message("u1", "user", "Fix the failing build"),
+                        _claude_message(
+                            "u2",
+                            "assistant",
+                            [{"type": "text", "text": "I am blocked on a missing token."}],
+                            ts="2026-08-17T02:01:00Z",
+                        ),
+                    ]
                 )
                 + "\n",
                 encoding="utf-8",
@@ -1055,6 +1213,7 @@ class ObserverRouteTest(RuntimeTestCase):
         self.assertEqual(200, status)
         payload = json.loads(body)
         self.assertIn("Fix the failing build", payload["goal"])
+        self.assertEqual("I am blocked on a missing token.", payload["block"])
         self.assertEqual("", payload["stage"])  # no workflow booted
         # A sid that resolves to no transcript is a 404, not an empty 200: the
         # panel must be able to tell "nothing to observe" from "nothing found".
@@ -1062,6 +1221,57 @@ class ObserverRouteTest(RuntimeTestCase):
         # A sid that is not a name never reaches the resolver.
         self.assertEqual(404, unnamed)
         self.assertEqual(400, bare)
+        self.assertTrue(wrote_sidecar)
+
+    def test_the_route_answers_for_a_codex_rollout(self) -> None:
+        # The route advertises three harnesses and only one of them had an
+        # end-to-end test. Codex reaches every arm differently: the resolver
+        # matches `session_meta` rather than a filename stem, the parser reads
+        # `response_item` rather than `type: "user"`, and the records carry no
+        # `payload.id` — the majority shape on a real store.
+        sid = "019f1c51-6cf9-7981-9a2d-172428800012"
+        with tempfile.TemporaryDirectory() as tmp:
+            day = Path(tmp) / "sessions" / "2026" / "08" / "17"
+            day.mkdir(parents=True)
+            (day / f"rollout-2026-08-17T02-00-00-{sid}.jsonl").write_text(
+                "\n".join(
+                    [
+                        _codex_session_meta(sid),
+                        _codex_message(None, "user", "Rewrite the changelog for the release"),
+                        _codex_message(
+                            None,
+                            "assistant",
+                            "I am blocked on a missing token.",
+                            ts="2026-08-17T02:01:00Z",
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            home = Path(tmp) / "cargento-home"
+            with (
+                store_patch(CODEX_SESSIONS_DIR=str(Path(tmp) / "sessions")),
+                mock.patch.dict(os.environ, {"CARGENTO_HOME": str(home)}),
+            ):
+                httpd = make_server()
+                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    status, body = self._get(httpd, f"?harness=codex&sid={sid}")
+                finally:
+                    httpd.shutdown()
+                    httpd.server_close()
+                    thread.join(timeout=2)
+                sidecar = observer.sidecar_path(httpd.application.config, "codex", sid)
+                assert sidecar is not None
+                wrote_sidecar = os.path.isfile(sidecar)
+
+        self.assertEqual(200, status)
+        payload = json.loads(body)
+        self.assertEqual("Rewrite the changelog for the release", payload["goal"])
+        self.assertEqual("I am blocked on a missing token.", payload["block"])
+        self.assertEqual("", payload["stage"])  # no workflow booted
         self.assertTrue(wrote_sidecar)
 
 

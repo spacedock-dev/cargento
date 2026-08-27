@@ -235,6 +235,99 @@ class SpacedockParserTest(unittest.TestCase):
         self.assertEqual(1, len(records))
         self.assertEqual("/w/one", records[0]["definition_dir"])
 
+    def test_boot_records_finds_codex_tool_output_format(self) -> None:
+        """Codex writes tool output under ``payload``, in two spellings and two
+        value shapes, and had no branch at all — so the observer's stage half was
+        structurally unreachable there and every rollout running a workflow
+        published ``stage: ""``.
+
+        All four shapes are measured on the local rollout store rather than read
+        off an API description: ``function_call_output`` carries ``output`` as a
+        string on 15,730 records and as a block list on 897,
+        ``custom_tool_call_output`` as a string on 2,956 and as a block list on
+        18,477. Falsifying edit: remove the ``_codex_tool_output`` call from
+        ``tool_result_text`` — every arm below returns [].
+        """
+        config, _runtime = runtime()
+        envelope = (
+            '{"command":"boot","id_style":"slug",'
+            '"definition_dir":"/w/one","entity_dir":"/w/one",'
+            '"dispatchable":[{"slug":"drc-1","current":"review"}]}'
+        )
+        text = "=== BOOT ===\n" + envelope
+
+        def line(payload_type: str, output: Any) -> bytes:
+            return json.dumps(
+                {
+                    "timestamp": "2026-08-21T00:00:00Z",
+                    "type": "response_item",
+                    "payload": {"type": payload_type, "call_id": "call-1", "output": output},
+                }
+            ).encode()
+
+        for payload_type in ("function_call_output", "custom_tool_call_output"):
+            for label, output in (
+                ("string", text),
+                ("blocks", [{"type": "input_text", "text": text}]),
+            ):
+                with self.subTest(payload=payload_type, shape=label):
+                    found = spacedock.boot_records(config, line(payload_type, output))
+                    self.assertEqual(1, len(found))
+                    self.assertEqual("/w/one", found[0]["definition_dir"])
+                    self.assertEqual({"drc-1": "review"}, spacedock.boot_entities(found, "/w/one"))
+
+    def test_codex_conversation_text_cannot_nominate_a_path(self) -> None:
+        """The negative twin: the provenance rule is the same one Pi's branch
+        carries, and a Codex record that is not a tool OUTPUT must not nominate a
+        directory. A ``function_call``'s arguments are the model's request, and a
+        message is a person or a model talking. Falsifying edit: drop the payload
+        type gate in ``_codex_tool_output``.
+        """
+        config, _runtime = runtime()
+        envelope = (
+            '{"command":"boot","id_style":"slug",'
+            '"definition_dir":"/w/one","entity_dir":"/w/one",'
+            '"dispatchable":[]}'
+        )
+        for payload_type in ("function_call", "custom_tool_call", "message", "reasoning"):
+            with self.subTest(payload=payload_type):
+                record = json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": payload_type,
+                            "output": envelope,
+                            "arguments": envelope,
+                            "content": [{"type": "input_text", "text": envelope}],
+                        },
+                    }
+                ).encode()
+                self.assertEqual([], spacedock.boot_records(config, record))
+
+    def test_a_codex_tool_output_block_that_is_not_a_string_is_skipped(self) -> None:
+        """The same isinstance guard the Pi branch needs, on the Codex arm.
+
+        A block whose ``text`` is an object reaches ``str.find`` in the boot
+        scanner otherwise, and the ``AttributeError`` escapes the collector to
+        blank every row for that harness. An ``output`` that is neither a string
+        nor a list is the same class of untrusted value. Falsifying edit: drop
+        the isinstance checks from ``_codex_tool_output``.
+        """
+        config, _runtime = runtime()
+        for output in ([{"type": "input_text", "text": {"definition_dir": "/w/x"}}], 7, None):
+            with self.subTest(output=type(output).__name__):
+                record = json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "function_call_output",
+                            "output": output,
+                            "note": "definition_dir",
+                        },
+                    }
+                ).encode()
+                self.assertEqual([], spacedock.boot_records(config, record))
+
     def test_pi_conversation_text_cannot_nominate_a_path(self) -> None:
         """The negative twin of the Pi format test above.
 

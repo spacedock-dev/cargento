@@ -327,6 +327,14 @@ def instruction_from(
     two lines; Claude's line 1 is a title generated from the opening prompt, so
     the newest prompt underneath it is the whole point. The flag is the caller's
     to set because only the caller knows what its own line 1 will hold.
+
+    Deleting the flag and leaning on the frontend's own echo test was measured
+    and rejected: it emits 213 further "asked" lines across the 458 local
+    rollouts and `nextInstructionEchoes` suppresses all 213, including the 151
+    whose line 1 was clipped at 80 characters — that function's ellipsis clause
+    is written for exactly that case. Surfacing the withheld characters needs the
+    frontend rule to change, not this one, and until it does the flag is the
+    cheaper half of one policy rather than a duplicate of it.
     """
     if prompt is None:
         return None
@@ -363,16 +371,25 @@ def _codex_scan_record(record: dict[str, Any]) -> tuple[str, str, float]:
     """Classify one Codex rollout record for the instruction scan.
 
     BOTH shapes of each thing are read, and that is not belt-and-braces. The
-    turn-start preamble moved at CLI 0.149: verified across all 457 local
+    turn-start preamble moved at CLI 0.149: verified across all 458 local
     rollouts, `event_msg`/`agent_message` with `phase == "commentary"` covers
-    ~95% of the 306 files on 0.142.5-0.146.1 and **0 of the 88** on 0.149.1,
-    while `event_msg`/`item_completed` with an `AgentMessage` item covers 86 of
-    those 88 and none of the older ones. A single-shape reader finds nothing on
-    the build the operator is actually running. The user record split the same
-    way — `event_msg`/`user_message` is live in 255 of 457 rollouts and gone by
-    0.149.1, `response_item`/message/user is in 456 of 457 — and 0.149 adds a
-    third, `item_completed` with a `UserMessage` item, which is the only path
-    carrying the prompt on 4 files.
+    ~95% of the files on 0.142.5-0.146.1 and none of the 89 on 0.149.x, while
+    `event_msg`/`item_completed` with an `AgentMessage` item reaches 87 of those
+    89 and none of the older ones. A single-shape reader finds nothing on the
+    build the operator is actually running.
+
+    The narrowing below costs some of that reach and is kept anyway: requiring
+    `phase == "commentary"` on the item takes it from 87 files to 79, because an
+    unphased `AgentMessage` is the final answer rather than a statement of
+    intent, and publishing one under an "agent" label would quote finished work
+    as current.
+
+    The user record split the same way — `event_msg`/`user_message` is gone by
+    0.149.1 and `response_item`/message/user is in all but one rollout — and
+    0.149 adds a third, `item_completed` with a `UserMessage` item. That third is
+    read for the shape rather than for its reach: it appears on 26 files and is
+    the ONLY path carrying the prompt on **0** of them, so it changes no reading
+    today and exists so a build that drops the other two still has one.
     """
     payload = records.as_dict(record.get("payload"))
     at = records.parse_ts(record.get("timestamp") or "") or 0.0
@@ -495,8 +512,8 @@ def codex_instruction(config: RuntimeConfig, state: RuntimeState, path: str) -> 
     local rollouts holding a genuine prompt, 171 (62.0%) have the newest one
     outside `tail_bytes`, because `reasoning` records carry encrypted blobs that
     flood the tail. Reverse against forward on the eight largest rollouts
-    benchmarks 50 ms against 880 ms; the walk measures 2.6 ms median and 93 ms
-    worst case across all 457 local rollouts.
+    benchmarks 50 ms against 880 ms; the walk measures 2.5 ms median, 12 ms at
+    the 95th percentile and 84 ms worst case across all 458 local rollouts.
     """
     try:
         stat = os.stat(path)

@@ -66,17 +66,35 @@ _GENERIC_OPENER_PREFIXES = (
 # of them hit the 200-character cap with the triggering phrase truncated away,
 # so the rendered card showed a block whose visible text contained no block
 # language at all. The first-person forms above already carry the real case.
+#
+# `not permitted`, `permission denied` and `waiting for your` are the remainder,
+# and they go the same way. Re-measured over the whole local Claude corpus (3,774
+# transcripts, 2,828 with an assistant message) the table produced 7 blocks and
+# those three supplied 4 of them — every one inside a quoted or fenced span, two
+# of them again truncated away by the 200-character cap. They are replaced below
+# by the self-state forms that carry the real case; those forms match 0 records
+# today, which is the point. An indicator that never fires costs nothing, and
+# these three cost a wrong answer each.
 _BLOCK_INDICATORS = (
     "i'm blocked",
     "i am blocked",
     "i'm stuck",
     "i am stuck",
     "waiting for you",
-    "waiting for your",
     "waiting for approval",
-    "not permitted",
-    "permission denied",
+    "i'm waiting for your",
+    "i am waiting for your",
+    "i'm not permitted",
+    "i am not permitted",
+    "i don't have permission",
+    "i do not have permission",
 )
+
+# What may not follow an indicator. `waiting for you` is a prefix of `waiting for
+# your`, so without this the bare phrase would keep matching the possessive the
+# line above removes — and the two are not the same claim: "waiting for you." is
+# a hand-off, "waiting for your PR to land" is a report about someone else.
+_BLOCK_TRAILING_RE = re.compile(r"[A-Za-z0-9]")
 
 
 class ModelCaller(Protocol):
@@ -99,7 +117,14 @@ class ModelCaller(Protocol):
 
 
 def _is_generic_opener(text: str) -> bool:
-    """Whether a user message is a generic skill-load directive, not a goal."""
+    """Whether a user message is a generic skill-load directive, not a goal.
+
+    One concept with ``records.injected_prompt`` and two disjoint lists: both ask
+    "is this the harness talking". They are kept apart because this is a *goal*
+    rule and that is a *record* rule — a generic opener is a real user message
+    that states nothing, so no other reader should be made to drop it — but a
+    phrase that belongs on both has to be added to both.
+    """
     stripped = text.strip().lower()
     return any(stripped.startswith(prefix) for prefix in _GENERIC_OPENER_PREFIXES)
 
@@ -110,6 +135,11 @@ def _is_generic_opener(text: str) -> bool:
 # shape with no single name to hand the injected-tag lookup, which is exactly
 # the case `records.injected_prompt` documents: a harness it has no measured
 # vocabulary for gets the union of every measured set.
+#
+# So this value is deliberately NOT a key of `records._INJECTED_TAGS`, and the
+# dict miss is the mechanism rather than an accident. The Droid half of the name
+# is aspirational: `resolve_transcript` answers for claude, codex and pi only, so
+# no Droid transcript reaches this module today.
 _SHARED_MESSAGE_HARNESS = "pi-or-droid"
 
 
@@ -211,6 +241,11 @@ def _dedup_key(record: dict[str, Any]) -> str:
     degraded silently to the message text and a prompt repeated verbatim later
     in the session kept its first, oldest position. Claude spells it ``uuid``
     and Codex ``payload.id``; Pi and Droid do spell it ``id``.
+
+    Empty is a real answer and not a failure: ``payload.id`` is absent on 599 of
+    the 784 Codex user-message records (76.4%) inside this module's own head and
+    tail windows, measured over the whole local rollout store. The caller's
+    fallback is positional for that reason — see ``_window_lines``.
     """
     for value in (
         record.get("uuid"),
@@ -222,12 +257,54 @@ def _dedup_key(record: dict[str, Any]) -> str:
     return ""
 
 
+def _window_lines(config: RuntimeConfig, path: str) -> list[str]:
+    """The head window's lines then the tail window's, with no line in both.
+
+    Cut apart on byte offsets rather than deduped afterwards, because the two
+    windows overlap on any file under ``observer_head_bytes + tail_bytes`` —
+    completely, on any file the tail read swallows whole. The old concatenation
+    leaned on the dedup key to collapse that overlap, and the key falls back to
+    the message TEXT on the 76.4% of Codex user records carrying no
+    ``payload.id``: a prompt repeated verbatim later in the session was then
+    dropped as a duplicate of its own first occurrence, and the goal stayed on
+    whatever came between them. Disjoint windows make that fallback positional,
+    so the only thing the key still has to collapse is a genuine replay — a
+    resumed transcript rewriting earlier records, which carry their original ids.
+    """
+    tail_lines = runtime_io.read_tail(config, path)
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return tail_lines
+    if size <= config.tail_bytes:
+        # The tail read took the whole file, so the head window is a prefix of
+        # what is already here.
+        return tail_lines
+    try:
+        head = runtime_io.read_prefix_bytes(path, max_bytes=config.observer_head_bytes)
+    except OSError:
+        return tail_lines
+    # The first byte the tail read covers. A head line starting at or after it is
+    # in `tail_lines` already; one starting before it cannot be, because the tail
+    # read drops its own partial first line.
+    floor = size - config.tail_bytes
+    head_lines: list[str] = []
+    offset = 0
+    for raw in head.split(b"\n"):
+        if offset >= floor:
+            break
+        head_lines.append(raw.decode("utf-8", "replace"))
+        offset += len(raw) + 1
+    return head_lines + tail_lines
+
+
 def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
     """User and assistant texts from a JSONL transcript, head + tail bounded.
 
     The head carries the opening directive; the tail carries the recent window.
-    Records are deduped by their own id so the overlap region between head and
-    tail does not double-count, and returned in **record-timestamp** order.
+    ``_window_lines`` keeps the two disjoint, and records are deduped by their
+    own id so a resumed transcript's replayed block does not double-count.
+    Returned in **record-timestamp** order.
 
     Ordering by timestamp and not by list position, because list position is
     not record order. The concatenation itself is fine — the head is read
@@ -245,18 +322,12 @@ def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
     fires. File order breaks ties, which is what keeps a transcript whose
     records carry no stamp reading exactly as it did before.
     """
-    try:
-        head = runtime_io.read_prefix_bytes(path, max_bytes=config.observer_head_bytes)
-    except OSError:
-        head = b""
-    head_lines = head.decode("utf-8", "replace").split("\n")
-    tail_lines = runtime_io.read_tail(config, path)
     ordered: list[tuple[float, int, dict[str, str]]] = []
     seen: set[str] = set()
     # Carried forward so a stampless record sorts beside the stamped one before
     # it rather than ahead of the whole file.
     last_ts = 0.0
-    for position, raw in enumerate(head_lines + tail_lines):
+    for position, raw in enumerate(_window_lines(config, path)):
         if not raw or not raw.lstrip().startswith("{"):
             continue
         try:
@@ -271,7 +342,7 @@ def _extract_messages(config: RuntimeConfig, path: str) -> list[dict[str, str]]:
         parsed = _parse_message_record(record)
         if parsed is None:
             continue
-        key = _dedup_key(record) or parsed["text"]
+        key = _dedup_key(record) or f"#{position}"
         if key in seen:
             continue
         seen.add(key)
@@ -333,11 +404,19 @@ def _derive_goal_deterministic(
     # it reads as `<command-message>…`, which was 60 of 400 Claude sessions and
     # 5 of 457 Codex rollouts. `prompt_title`
     # already owns that rendering (`/review 1287 — with fresh eyes`), and
-    # strips the wrapper tags off everything else.
+    # strips the wrapper tags off everything else. It also collapses a long
+    # absolute path to its basename (`transcripts.shorten_paths`), so a goal
+    # naming a temp file reads as the file rather than as the path to it.
     goal = transcripts.prompt_title(config, directives[-1], limit=config.observer_goal_cap_chars)
     if not goal:
         return NO_GOAL, None
-    return records.safe_text(goal, config.observer_goal_cap_chars), None
+    # Cap plus one, for the reason `records.instruction_line` carries the same
+    # `+ 1`: `transcripts.clip` appends its ellipsis AFTER cutting to the cap, so
+    # a clipped goal is cap + 1 characters and a scrub at the cap took the `…`
+    # straight back off — an unmarked mid-token cut on 8 of the 1,295 goals the
+    # local Claude corpus publishes (269 of which clip at all). `safe_text` only
+    # ever shortens, so this cannot lengthen what rendering already bounded.
+    return records.safe_text(goal, config.observer_goal_cap_chars + 1), None
 
 
 def _derive_stage(
@@ -379,6 +458,21 @@ def _derive_stage(
     return entities[0][1] if entities else ""
 
 
+def _indicator_hit(lower: str, indicator: str) -> int:
+    """Where one indicator matches as a whole phrase in lowercased text, or -1.
+
+    Scans past a rejected hit rather than stopping at it: `str.find` returns the
+    first occurrence, and "waiting for your PR" earlier in a message must not
+    hide a genuine "waiting for you." later in it.
+    """
+    start = 0
+    while (pos := lower.find(indicator, start)) >= 0:
+        if not _BLOCK_TRAILING_RE.match(lower, pos + len(indicator)):
+            return pos
+        start = pos + 1
+    return -1
+
+
 def _derive_block(
     config: RuntimeConfig,
     messages: list[dict[str, str]],
@@ -400,7 +494,7 @@ def _derive_block(
         text = msg["text"]
         lower = text.lower()
         for indicator in _BLOCK_INDICATORS:
-            pos = lower.find(indicator)
+            pos = _indicator_hit(lower, indicator)
             if pos < 0:
                 continue
             # Extract the sentence around the indicator.

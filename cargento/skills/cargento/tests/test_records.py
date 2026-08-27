@@ -433,6 +433,38 @@ class InjectedPromptTest(unittest.TestCase):
         self.assertTrue(records.injected_prompt("Warmup", "claude"))
         self.assertFalse(records.injected_prompt("Warmup the cache before the run", "claude"))
 
+    def test_a_leading_invisible_character_does_not_defeat_every_branch(self) -> None:
+        """The one degenerate class that failed OPEN.
+
+        ``str.strip()`` removes whitespace and none of these is whitespace to
+        Python, so a single one in front of a record defeated the leading-tag
+        regex, the prose prefixes and the whole-body set at once — all three
+        branches — and `injected_prompt` answered "the operator said this" about
+        the harness's own machinery. `safe_text` strips most of the same set, but
+        it runs after this on every path that reads a prompt.
+
+        Falsifying edit: drop `_PROMPT_TRIM_RE` from `strip_prompt_wrappers`.
+        """
+        for name, lead in (
+            ("BOM", "\ufeff"),
+            ("zero-width space", "\u200b"),
+            ("word joiner", "\u2060"),
+            ("LRM", "\u200e"),
+            ("RLO", "\u202e"),
+            ("two of them", "\ufeff\u2060"),
+            ("one either side of a space", "\ufeff \u2060"),
+        ):
+            for body in (
+                "<local-command-caveat>x",
+                "Stop hook feedback: retry",
+                "Warmup",
+            ):
+                with self.subTest(lead=name, body=body):
+                    self.assertTrue(records.injected_prompt(lead + body, "claude"))
+        # And the other direction: the trim must not turn a real prompt into an
+        # injection, which it would if it ate anything visible.
+        self.assertFalse(records.injected_prompt("\ufeffFix the flaky Windows test", "claude"))
+
     def test_operator_text_survives(self) -> None:
         for text in (
             "Fix the flaky Windows test",

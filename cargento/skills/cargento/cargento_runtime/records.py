@@ -601,6 +601,12 @@ def _turn_signal(record: dict[str, Any], harness: str) -> tuple[str, Any] | None
         isinstance(item, dict) and item.get("type") == "tool_result" for item in content
     ):
         return None
+    # Both names are also in `_CLAUDE_USER_TAGS`, and the duplication is
+    # deliberate: this is a RECORD rule and that is a TEXT rule. Here the whole
+    # record is discarded before any turn is counted; there the leading tag
+    # merely disqualifies the text from standing in for a person's intent. The
+    # tag set covers seven further names this must NOT refuse, so it cannot be
+    # read from there — but a name added here belongs in both.
     if isinstance(content, str) and content.lstrip().startswith(
         ("<local-command-stdout>", "<local-command-caveat>")
     ):
@@ -617,10 +623,29 @@ def _turn_signal(record: dict[str, Any], harness: str) -> tuple[str, Any] | None
 # treats those as things a person said reports the wrong goal, the wrong stage,
 # and the wrong idea of who is waiting on whom.
 #
-# The lists below were derived rather than guessed: 2,737 Codex user-role texts
-# across 457 `rollout-*.jsonl` files, and 21,899 Claude user-role texts across
-# 3,769 transcripts matching the collector's own glob. Every entry carries its
-# measured count, and nothing without one is here.
+# The lists below were derived rather than guessed, and
+# `scripts/derive_prompt_shapes.py` is the code that derived them — kept, so a
+# reviewer can re-run it against their own store rather than take these on
+# trust. Every count below is one of its outputs, re-derived 2026-08-27; every
+# entry carries one, and nothing without one is here.
+#
+# **Which records were counted**, because the two halves count different ones:
+#
+#   Codex   458 `rollout-*.jsonl` files. The user set counts LEADING tags over
+#           the union of two populations — 1,007 `event_msg`/`user_message`
+#           texts and 1,734 `response_item` message texts with `role: "user"`.
+#           A union rather than a choice because the record shape moved mid-CLI,
+#           and it DOUBLE-COUNTS: a build that writes both spells one prompt
+#           twice, and 974 of the 1,007 `event_msg` prompts have a matching
+#           `response_item`. So these are occurrences of a shape, not prompts.
+#   Codex   1,826 `response_item` message texts with `role: "developer"`, for
+#           the developer set below.
+#   Claude  211,669 user-role texts across 3,774 transcripts matching the
+#           collector's own glob.
+#
+# A live store only grows, so re-running the script produces slightly larger
+# figures than these. What has to keep holding is the SHAPE of each claim — which
+# tag leads, which never does, which population a count is over — not the digits.
 #
 # The two harnesses do not share a vocabulary, which is why there are two sets
 # rather than one. Codex spells its injections with underscores
@@ -631,12 +656,18 @@ def _turn_signal(record: dict[str, Any], harness: str) -> tuple[str, Any] | None
 
 # `<image>` is a WRAPPER, not a rejection. All 36 Codex records that open with
 # one carry real operator text after it, so rejecting on the tag would drop
-# genuine prompts. Claude spells the same thing `[Image: source: /path/…]` in
-# plain text, and there the opposite holds: 385 of 386 such records are nothing
-# but image markers, and they reach the empty-after-stripping rejection instead.
-# The 386th spells it `[Image source:` with no colon, which is why the separator
-# is a class rather than a literal. The attribute matcher is loose because Codex
-# writes `name=[Image #1]` unquoted, spaces and `#` and `]` included.
+# genuine prompts. Claude spells the same thing in plain text, in three
+# populations that behave differently and were once counted as one:
+#
+#   `[Image: source: /path/…]`  387 records, 387 of them nothing but markers
+#   `[Image source: /path/…]`   9 records, all 9 nothing but markers
+#   `[Image #1]`                135 records, 134 carrying operator text after it
+#
+# The first two reach the empty-after-stripping rejection; the third is why this
+# is a wrapper at all, and why the separator is a character class rather than a
+# literal colon — `#` follows a space, not a colon. The attribute matcher is
+# loose because Codex writes `name=[Image #1]` unquoted, spaces and `#` and `]`
+# included.
 _PROMPT_IMAGE_WRAPPER_RE = re.compile(
     r"^\s*(?:<image\b[^>]*>\s*(?:</image>)?|\[Image[:\s][^\]]*\])\s*",
     re.IGNORECASE,
@@ -664,7 +695,7 @@ _PROMPT_LEADING_TAG_RE = re.compile(r"^</?([A-Za-z][A-Za-z0-9_-]*)[\s>/]")
 # overlooked: a message from another agent is not the operator's instruction,
 # so the 563 sessions carrying one show nothing from it.
 
-# Measured leading a Codex user-role record; counts are corpus occurrences.
+# Measured LEADING a Codex user-role record, over the union described above.
 _CODEX_USER_TAGS = frozenset(
     {
         "recommended_plugins",  # 226
@@ -677,7 +708,7 @@ _CODEX_USER_TAGS = frozenset(
         "bash-input",  # 14
         "bash-stdout",  # 14
         "user_shell_command",  # 5
-        "turn_aborted",  # 3
+        "turn_aborted",  # 3 here, and 52 leading a developer-role record
     }
 )
 
@@ -686,29 +717,44 @@ _CODEX_USER_TAGS = frozenset(
 # injection under has already moved once — `turn_aborted` appears under both —
 # and the cost is asymmetric: an unlisted tag renders harness markup as a
 # person's words, while a listed one that never arrives costs nothing.
+#
+# LEADING counts, which is the only kind that can make `injected_prompt` fire.
+# These were containment counts before, and the difference is not cosmetic: two
+# of the seven lead 0 records and can never fire at all, and reading a
+# containment count as evidence for a leading rule is what hid
+# `collaboration_mode` — 122 containments, 53 of them leading — until someone
+# counted the two separately. The zero pair stays for the asymmetry above, but it
+# is labelled rather than left looking measured.
 _CODEX_DEVELOPER_TAGS = frozenset(
     {
-        "permissions",  # 410
-        "skills_instructions",  # 388
-        "apps_instructions",  # 377
-        "plugins_instructions",  # 377
-        "multi_agent_mode",  # 359
+        "permissions",  # 338
+        "multi_agent_mode",  # 326
+        "skills_instructions",  # 80
         "collaboration_mode",  # 53
-        "app-context",  # 3
+        "app-context",  # 2
+        "apps_instructions",  # 0 leading (281 contained) — defensive only
+        "plugins_instructions",  # 0 leading (244 contained) — defensive only
     }
 )
 
-# Measured leading a Claude user-role record.
+# Measured LEADING a Claude user-role record.
+#
+# Four of these nine — 1,917 of the 5,393 occurrences — sit on records
+# `_turn_signal` already refuses, so they earn their place only on the readers
+# that do not go through it (`observer._message_from` is the one that matters).
+# The overlap is marked per entry rather than pruned: the two predicates answer
+# different questions, and a name dropped here because one caller happens to
+# reject it would silently un-reject it for the other.
 _CLAUDE_USER_TAGS = frozenset(
     {
-        "task-notification",  # 1771
-        "teammate-message",  # 1176
-        "local-command-caveat",  # 1064
-        "local-command-stdout",  # 620
+        "task-notification",  # 1804
+        "teammate-message",  # 1184
+        "local-command-caveat",  # 1065, all refused by `_turn_signal`
+        "local-command-stdout",  # 621, all refused by `_turn_signal`
         "bash-input",  # 242
         "bash-stdout",  # 241
+        "system-reminder",  # 227, 223 of them refused by `_turn_signal`
         "channel",  # 8 — a Slack-plugin envelope, request text inside the tag
-        "system-reminder",  # 4
         "local-command-stderr",  # 1
     }
 )
@@ -725,21 +771,41 @@ _ANY_INJECTED_TAG = frozenset[str]().union(*_INJECTED_TAGS.values())
 # would buy nothing and would make a harness that borrows another's wording
 # silently wrong.
 _INJECTED_PROMPT_PREFIXES = (
-    "# AGENTS.md instructions",  # codex 164
+    "# AGENTS.md instructions",  # codex 165
     "Analyze this conversation and determine",  # claude 1084
-    "Another Claude session sent a message:",  # codex 130, claude 636
-    "Base directory for this skill:",  # claude 3051
+    "Another Claude session sent a message:",  # codex 130, claude 645
+    "Base directory for this skill:",  # claude 3057
     "Caveat: The messages below were generated by the user while running",  # claude 43
     "Stop hook feedback:",  # claude 581
-    "This session is being continued from a previous conversation",  # claude 355
-    "[Request interrupted by user",  # codex 4, claude 294
+    "This session is being continued from a previous conversation",  # claude 356
+    "[Request interrupted by user",  # codex 4, claude 297
     "[external_agent_tool_result]",  # codex 4
 )
 
-# Matched whole rather than as a prefix. All 97 occurrences are exactly this
-# word, and as a prefix it would reject "Warmup the cache before the run",
-# which is an operator saying something.
+# Matched whole rather than as a prefix. All 97 occurrences over the Claude
+# population above are exactly this word, and as a prefix it would reject
+# "Warmup the cache before the run", which is an operator saying something.
+#
+# Subagent-only: all 97 are `isSidechain` records, 0 arrive on a Codex rollout,
+# and `_turn_signal` already refuses 12 of the 97. So the rule matters to the
+# readers that see a subagent's own transcript and to nothing else.
 _INJECTED_PROMPTS = frozenset({"Warmup"})
+
+
+# Trimmed off both ends before anything is matched against the vocabularies.
+# `str.strip()` removes whitespace and NONE of these is whitespace to Python, so
+# a single U+FEFF in front of `<system-reminder>` defeated the leading-tag regex,
+# the prose prefixes and the whole-body set — all three branches of
+# `injected_prompt` at once, and it is the one degenerate class that fails OPEN:
+# the answer becomes "the operator said this", and harness machinery is published
+# as a goal. `safe_text` strips most of the same set, but it runs after this on
+# every path that reads a prompt.
+#
+# The set is `_UNSAFE_CHARS` minus C0/DEL, plus U+2060 and U+FEFF: both are
+# invisible joiners no prompt legitimately opens with. U+200C and U+200D stay out
+# for the reason `_UNSAFE_CHARS` gives — they are orthographic.
+_PROMPT_TRIM_CLASS = "\\s\\ufeff\\u200b\\u2060\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069"
+_PROMPT_TRIM_RE = re.compile(f"^[{_PROMPT_TRIM_CLASS}]+|[{_PROMPT_TRIM_CLASS}]+$")
 
 
 def strip_prompt_wrappers(text: str) -> str:
@@ -749,9 +815,9 @@ def strip_prompt_wrappers(text: str) -> str:
     arrives as its own marker. What is left is either the operator's own words
     or nothing at all.
     """
-    stripped = text.strip()
+    stripped = _PROMPT_TRIM_RE.sub("", text)
     while True:
-        shorter = _PROMPT_IMAGE_WRAPPER_RE.sub("", stripped, count=1).strip()
+        shorter = _PROMPT_TRIM_RE.sub("", _PROMPT_IMAGE_WRAPPER_RE.sub("", stripped, count=1))
         if shorter == stripped:
             return stripped
         stripped = shorter
@@ -764,6 +830,11 @@ def injected_prompt(text: str, harness: str) -> bool:
     compaction summary, an envelope around something else. Callers use it to
     decide what may stand in for a person's intent, so a false positive costs a
     real prompt and a false negative reports markup as a goal.
+
+    `observer._is_generic_opener` asks the same question of a different thing —
+    a real user message that states no goal — and keeps its own short list. The
+    two are deliberately disjoint and deliberately separate; that function's
+    docstring owns why.
     """
     body = strip_prompt_wrappers(text)
     if not body:

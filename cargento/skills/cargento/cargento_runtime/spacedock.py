@@ -176,6 +176,42 @@ def stage_names(config: RuntimeConfig, lines: list[str]) -> list[str]:
     return [entry["name"] for entry in stage_entries(config, lines)]
 
 
+def _codex_tool_output(record: dict[str, Any]) -> list[str] | None:
+    """A Codex rollout's tool-output text, or None when the record is not one.
+
+    None rather than ``[]`` so the caller can tell "not a Codex record" from "a
+    Codex tool output that said nothing", and fall through to the Claude and Pi
+    shapes only in the first case.
+
+    Two payload spellings and two value shapes, all four measured on the local
+    rollout store rather than inferred from an API description:
+    ``function_call_output`` carries ``output`` as a string on 15,730 records and
+    as a list of ``{"type": …, "text": …}`` blocks on 897;
+    ``custom_tool_call_output`` carries it as a string on 2,956 and as such a
+    list on 18,477. Of the 23 rollouts naming a ``definition_dir``, the boot
+    envelope arrives on a ``function_call_output`` in 12.
+
+    Nothing else under ``payload`` is read. A ``function_call``'s own arguments
+    are the model's request rather than the command's output, which is the
+    provenance distinction the caller's docstring is about.
+    """
+    payload = record.get("payload")
+    if record.get("type") != "response_item" or not isinstance(payload, dict):
+        return None
+    if payload.get("type") not in ("function_call_output", "custom_tool_call_output"):
+        return None
+    output = payload.get("output")
+    if isinstance(output, str):
+        return [output]
+    if not isinstance(output, list):
+        return []
+    return [
+        block["text"]
+        for block in output
+        if isinstance(block, dict) and isinstance(block.get("text"), str)
+    ]
+
+
 def tool_result_text(record: dict[str, Any]) -> list[str]:
     """The text of every ``tool_result`` block in one transcript record.
 
@@ -184,15 +220,23 @@ def tool_result_text(record: dict[str, Any]) -> list[str]:
     conversation text — anything a user pasted or a model echoed — nominate an
     absolute path for Cargento to open.
 
-    Two transcript shapes carry that provenance. Claude writes tool results as
+    Three transcript shapes carry that provenance. Claude writes tool results as
     ``content`` blocks with ``type: "tool_result"``. Pi writes them as a
-    ``toolResult`` role message whose blocks carry ``type: "text"``.
+    ``toolResult`` role message whose blocks carry ``type: "text"``. Codex writes
+    neither — it has no ``message`` key at all and puts the echo under
+    ``payload`` — which is why the observer's stage half was structurally
+    unreachable there, publishing ``stage: ""`` for every rollout that ran a
+    workflow.
 
-    The two are read exclusively, not additively: a ``toolResult`` role returns
-    on its own blocks and never falls through to the ``tool_result`` scan below.
-    Nothing writes both shapes in one message today, so no behaviour changes,
-    but a transcript that did would lose the second half.
+    The Claude and Pi shapes are read exclusively, not additively: a
+    ``toolResult`` role returns on its own blocks and never falls through to the
+    ``tool_result`` scan below. Nothing writes both shapes in one message today,
+    so no behaviour changes, but a transcript that did would lose the second
+    half.
     """
+    codex = _codex_tool_output(record)
+    if codex is not None:
+        return codex
     message = record.get("message")
     if not isinstance(message, dict):
         return []

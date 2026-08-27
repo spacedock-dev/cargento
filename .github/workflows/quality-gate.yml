@@ -176,7 +176,8 @@ jobs:
             scripts.tests.test_bump_version \
             scripts.tests.test_lint_embedded \
             scripts.tests.test_bench_collect \
-            scripts.tests.test_capture_hook
+            scripts.tests.test_capture_hook \
+            scripts.tests.test_derive_prompt_shapes
           coverage report
 
   test:
@@ -209,7 +210,8 @@ jobs:
             scripts.tests.test_bump_version \
             scripts.tests.test_lint_embedded \
             scripts.tests.test_bench_collect \
-            scripts.tests.test_capture_hook
+            scripts.tests.test_capture_hook \
+            scripts.tests.test_derive_prompt_shapes
           coverage report
 
       # The threshold lives in pyproject.toml ([tool.coverage.report]
