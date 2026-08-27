@@ -313,6 +313,37 @@ changes what an agent does next, with your credentials, in your repository. The 
 is recorded under Known and accepted rather than solved here, because loopback is not a per-user
 boundary.
 
+## Published text (credential redaction)
+
+A harness transcript records what the operator typed, verbatim, so if a key was ever pasted into a
+prompt the store holds it. The dashboard reads those stores and publishes prompt text: the session
+title, the line beneath it, `last_prompt`, the observer goal, and a Codex title, which is a prompt
+because Codex writes no generated title. A sweep of the local Claude store on the machine this was
+built on found seven distinct live Anthropic credentials in ordinary prompt history. Loopback is no
+help against it: the dashboard is what someone opens to show a colleague what their agents are doing,
+so the exposure is the screen and the screenshot.
+
+Credential-shaped runs are replaced before publication, in place, by a visible marker that keeps the
+prefix naming the kind: `sk-ant-…REDACTED`, `AKIA…REDACTED`, `ghp_…REDACTED`. The words around it
+survive, because those are the instruction and the reason the line is on the card. The marker is
+visible deliberately. Someone who sees it learns their prompt history holds a live key, which is the
+only route by which it gets rotated.
+
+The list of shapes is measured against the local corpus and lives in one place, `records.redact_secrets`.
+It is applied at two: inside `records.safe_text`, which nearly every published string already passes
+through, including the ask question and its options; and over the assembled rows in `aggregate`,
+which is what reaches `title` and `last_prompt`, since nine collectors build those by hand rather
+than through a bound. An ask answer needs no cover, being an index into options the asking agent
+wrote rather than text. The measurement, the false-positive rate and the rejected alternatives are in
+[`docs/design-credential-redaction.md`](docs/design-credential-redaction.md).
+
+This reduces the exposure and does not close it, and both directions of error are real. A shape list
+covers the formats it was measured against, so a credential in a format nobody has seen goes through
+unmarked, and a control character struck through the middle of a key defeats the match. In the other
+direction a genuine instruction line can be altered: 13 of 21,076 real prompts in the local corpus,
+of which three are provably not secrets. Nothing here changes the rule outside the software, which is
+not to paste a credential into a prompt, and to rotate one that was.
+
 ## Known and accepted
 
 `--host` hands that same access to a network. `--host 0.0.0.0` is the operator
