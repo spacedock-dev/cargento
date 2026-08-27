@@ -141,6 +141,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-activity-identity strong,.next-activity-identity small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .next-activity-identity strong{font-size:var(--fs-sm)}
 .next-activity-identity small{margin-top:4px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-activity-instruction{display:block;margin-top:4px;overflow:hidden;color:var(--ink2);font-size:var(--fs-xs);text-overflow:ellipsis;white-space:nowrap}
 .next-activity-subagents{display:flex;flex-wrap:wrap;gap:5px 10px;align-items:baseline;margin-top:7px;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-2xs)}
 .next-activity-subagent{display:inline-flex;gap:4px;min-width:0;max-width:100%}
 .next-activity-subagent-name{min-width:0;overflow-wrap:anywhere}
