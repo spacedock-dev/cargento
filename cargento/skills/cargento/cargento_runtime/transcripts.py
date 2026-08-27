@@ -154,7 +154,16 @@ def pi_meta(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[str, 
 # as `<teammate-message teammate_id="...">`, so the naive "first line of the
 # first prompt" title renders raw markup. Measured over 248 real transcripts,
 # 138 titles began with one of these.
-_PROMPT_TAG_RE = re.compile(r"</?[a-z][a-z0-9-]*(?:\s[^>]*?)?/?>", re.IGNORECASE)
+#
+# The underscore in the name class is not decoration. Claude spells its wrappers
+# with hyphens, Codex spells its own with underscores — `<recommended_plugins>`,
+# `<environment_context>`, `<subagent_notification>`, `<user_shell_command>`,
+# `<turn_aborted>` — and without `_` those five survived stripping and the title
+# rendered as the bare tag. Measured across 24,636 user-role texts: 312 titles
+# change, every one of them from a bare tag to the text it wrapped, and 0 of the
+# 21,899 Claude texts move at all, because no Claude wrapper carries an
+# underscore.
+_PROMPT_TAG_RE = re.compile(r"</?[a-z][a-z0-9_-]*(?:\s[^>]*?)?/?>", re.IGNORECASE)
 _COMMAND_NAME_RE = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.DOTALL)
 _COMMAND_ARGS_RE = re.compile(r"<command-args>\s*(.*?)\s*</command-args>", re.DOTALL)
 # A filesystem path, not a URL: `://` is excluded so a GitHub link survives

@@ -575,6 +575,51 @@ class PromptTitleTest(unittest.TestCase):
         )
 
 
+class UnderscoreWrapperTest(unittest.TestCase):
+    """Codex names its wrappers with underscores, Claude with hyphens.
+
+    The tag matcher's name class carried `[a-z0-9-]` and no underscore, so every
+    Codex wrapper survived stripping and the title rendered as the bare tag.
+    Measured across 24,636 user-role texts, adding `_` moves 312 titles, all of
+    them Codex, and none of the 21,899 Claude ones.
+    """
+
+    def test_each_measured_codex_wrapper_shows_its_content(self) -> None:
+        wrapped = {
+            "recommended_plugins": "Here is a list of plugins",
+            "environment_context": "2026-07-02",
+            "subagent_notification": "the worker finished",
+            "user_shell_command": "git checkout main",
+            "turn_aborted": "The user interrupted the previous turn",
+        }
+        for tag, body in wrapped.items():
+            with self.subTest(tag=tag):
+                title = runtime_transcripts.prompt_title(CONFIG, f"<{tag}>\n{body}\n</{tag}>")
+
+                self.assertEqual(body, title)
+
+    def test_a_hyphenated_wrapper_is_unaffected(self) -> None:
+        # The Claude side is the live consumer today, and it must not move.
+        self.assertEqual(
+            "Read the dispatch file",
+            runtime_transcripts.prompt_title(
+                CONFIG,
+                '<teammate-message teammate_id="lead">\nRead the dispatch file\n</teammate-message>',
+            ),
+        )
+
+    def test_the_accepted_cost_is_prose_that_looks_like_a_tag(self) -> None:
+        """Widening the class means an underscored angle-bracket token in real
+        prose is now dropped as markup, name and all — the hyphenated class
+        always did this, and the underscore extends the reach. That is the
+        price, and it was paid against evidence: zero of the 21,899 measured
+        Claude prose texts moved, and the 312 that did were all bare tags."""
+        self.assertEqual(
+            "the is a template hole",
+            runtime_transcripts.prompt_title(CONFIG, "the <some_placeholder> is a template hole"),
+        )
+
+
 class CopilotSubagentEventsTest(unittest.TestCase):
     """Copilot's pending subagents: which child a pill is, and what it runs on.
 

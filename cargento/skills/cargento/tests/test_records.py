@@ -264,5 +264,136 @@ class QuotaEpochTest(unittest.TestCase):
             self.assertIsNone(quota._epoch(True))
 
 
+class StripPromptWrappersTest(unittest.TestCase):
+    """The image marker is an envelope around a prompt, not a prompt.
+
+    Both spellings were measured in the wild: Codex writes an XML-ish
+    `<image …>` and Claude writes `[Image: source: …]` in plain text.
+    """
+
+    def test_a_codex_image_wrapper_yields_the_text_behind_it(self) -> None:
+        # All 36 Codex records that open with one carried operator text after
+        # it, so this is the case that rejecting on the tag would have lost.
+        text = (
+            '<image name=[Image #1] path="/var/folders/tmp/Screenshot.png"> </image> '
+            "Where are you seeing this?"
+        )
+
+        self.assertEqual("Where are you seeing this?", records.strip_prompt_wrappers(text))
+
+    def test_an_unquoted_attribute_with_spaces_and_hashes_does_not_stop_it(self) -> None:
+        # Codex spells the name `[Image #1]` with no quotes at all, so an
+        # attribute matcher that expected quoting would leave the tag in place.
+        self.assertEqual("ok", records.strip_prompt_wrappers("<image name=[Image #1]> </image> ok"))
+
+    def test_several_attachments_are_all_peeled(self) -> None:
+        # One message can carry several screenshots, each its own marker.
+        codex = '<image path="/a.png"></image><image path="/b.png"></image>look at both'
+        claude = "[Image: source: /a.png] [Image: source: /b.png] look at both"
+
+        self.assertEqual("look at both", records.strip_prompt_wrappers(codex))
+        self.assertEqual("look at both", records.strip_prompt_wrappers(claude))
+
+    def test_the_no_colon_spelling_is_peeled_too(self) -> None:
+        # One record in 386 spells it this way, which is why the separator is a
+        # character class rather than a literal colon.
+        self.assertEqual("go", records.strip_prompt_wrappers("[Image source: /a.png] go"))
+
+    def test_a_marker_only_message_strips_to_nothing(self) -> None:
+        # 385 of 386 Claude `[Image:` records are exactly this.
+        self.assertEqual("", records.strip_prompt_wrappers("[Image: source: /a.png]"))
+
+    def test_ordinary_text_is_returned_unchanged_apart_from_trimming(self) -> None:
+        self.assertEqual(
+            "Fix the flaky test", records.strip_prompt_wrappers("  Fix the flaky test  ")
+        )
+
+
+class InjectedPromptTest(unittest.TestCase):
+    """Which user records are the harness talking, rather than the operator.
+
+    Every shape asserted here was counted in a local corpus: 2,737 Codex
+    user-role texts across 457 rollouts, and 21,899 Claude user-role texts
+    across 3,769 transcripts.
+    """
+
+    def test_every_measured_codex_tag_is_rejected(self) -> None:
+        for tag in sorted(records._CODEX_USER_TAGS | records._CODEX_DEVELOPER_TAGS):
+            with self.subTest(tag=tag):
+                self.assertTrue(records.injected_prompt(f"<{tag}>body</{tag}>", "codex"))
+
+    def test_every_measured_claude_tag_is_rejected(self) -> None:
+        for tag in sorted(records._CLAUDE_USER_TAGS):
+            with self.subTest(tag=tag):
+                self.assertTrue(records.injected_prompt(f"<{tag}>body</{tag}>", "claude"))
+
+    def test_an_attribute_bearing_tag_is_still_recognised(self) -> None:
+        # The commonest injection of all carries attributes, so a matcher that
+        # only understood `<name>` would miss 1,176 Claude records.
+        self.assertTrue(
+            records.injected_prompt(
+                '<teammate-message teammate_id="lead">go</teammate-message>', "claude"
+            )
+        )
+
+    def test_the_two_harness_vocabularies_do_not_transfer(self) -> None:
+        """Codex underscores and Claude hyphens are different sets, and only
+        five names are in both. Treating one list as universal would reject
+        operator text on the harness that never sends that shape."""
+        self.assertTrue(records.injected_prompt("<recommended_plugins>x", "codex"))
+        self.assertFalse(records.injected_prompt("<recommended_plugins>x", "claude"))
+        self.assertTrue(records.injected_prompt("<local-command-caveat>x", "claude"))
+        self.assertFalse(records.injected_prompt("<local-command-caveat>x", "codex"))
+
+    def test_an_unmeasured_harness_gets_the_union(self) -> None:
+        # No evidence to narrow with, and every name in either set is machinery
+        # no operator opens a prompt with.
+        for tag in ("recommended_plugins", "local-command-caveat"):
+            with self.subTest(tag=tag):
+                self.assertTrue(records.injected_prompt(f"<{tag}>x", "droid"))
+
+    def test_an_image_wrapper_is_stripped_rather_than_rejected(self) -> None:
+        text = '<image name=[Image #1] path="/tmp/a.png"></image> Where are you seeing this?'
+
+        self.assertFalse(records.injected_prompt(text, "codex"))
+
+    def test_a_wrapper_around_an_injection_is_still_rejected(self) -> None:
+        # Stripping happens first, so what the envelope carries is what decides.
+        self.assertTrue(
+            records.injected_prompt("[Image: source: /a.png] Stop hook feedback: retry", "claude")
+        )
+
+    def test_nothing_left_after_stripping_is_a_rejection(self) -> None:
+        for empty in ("", "   ", "[Image: source: /a.png]", "<image></image>"):
+            with self.subTest(text=empty):
+                self.assertTrue(records.injected_prompt(empty, "claude"))
+
+    def test_every_untagged_prefix_is_rejected_on_both_harnesses(self) -> None:
+        """No tag regex can reach these: the harness writes them as prose."""
+        for prefix in records._INJECTED_PROMPT_PREFIXES:
+            for harness in ("codex", "claude"):
+                with self.subTest(prefix=prefix, harness=harness):
+                    self.assertTrue(records.injected_prompt(prefix + " and then some", harness))
+
+    def test_warmup_is_matched_whole_not_as_a_prefix(self) -> None:
+        # All 97 occurrences are exactly this word. As a prefix it would reject
+        # a person asking for a warmup, which is a person saying something.
+        self.assertTrue(records.injected_prompt("Warmup", "claude"))
+        self.assertFalse(records.injected_prompt("Warmup the cache before the run", "claude"))
+
+    def test_operator_text_survives(self) -> None:
+        for text in (
+            "Fix the flaky Windows test",
+            "commit and push the changes",
+            "1",
+            # Markup that is not at the front is not an envelope.
+            "Replace the <div> wrapper in the header",
+            # An unlisted tag is somebody pasting markup, not the harness.
+            "<RecceActionProvider> renders twice, find out why",
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(records.injected_prompt(text, "claude"))
+
+
 if __name__ == "__main__":
     unittest.main()
