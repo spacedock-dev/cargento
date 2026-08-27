@@ -1,5 +1,11 @@
 name: Validate
 
+# DELIBERATELY UNFILTERED. `scripts/validate_plugins.py` resolves every
+# relative Markdown link and heading anchor across the owned docs, so a
+# prose-only change is exactly the change it exists to catch. It is also a
+# required check, and a required check with a `paths:` filter never reports on
+# a PR that misses the filter — branch protection reads that as pending
+# forever, so the PR can never merge. See AGENTS.md, Calibrating Effort.
 on:
   push:
     branches: [main]

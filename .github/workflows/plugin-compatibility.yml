@@ -12,6 +12,22 @@ name: Plugin Compatibility
 
 on:
   pull_request:
+    # Prose only. This canary installs upstream CLIs and smoke-tests the
+    # package LAYOUT; none of these files is part of it. Safe to filter because
+    # `latest-client-smoke` is NOT a required check — a filtered required check
+    # never reports, and branch protection reads "never reported" as pending
+    # forever. `SKILL.md` is deliberately absent: it ships inside the plugin.
+    paths-ignore:
+      - 'README.md'
+      - 'HOW_TO_USE.md'
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - 'CONTRIBUTING.md'
+      - 'COMPATIBILITY.md'
+      - 'SECURITY.md'
+      - 'CODE_OF_CONDUCT.md'
+      - 'docs/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
   push:
     branches:
       - main

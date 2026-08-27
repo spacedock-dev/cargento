@@ -21,6 +21,12 @@ name: Version Guard
 # touched version files. Comparing the PR head against its merge-base with
 # the base branch attributes only the PR's own changes.
 #
+# Why no `paths:` filter either: it is a required check, and a required check
+# that a filter excludes never reports at all — branch protection reads a
+# missing context as pending, not passing, so the PR blocks forever. The job
+# also costs about five seconds, so there is nothing to win. See AGENTS.md,
+# Calibrating Effort.
+#
 # Why no `branches:` filter: a stacked PR targets the branch of the layer
 # below it, not main, but `gh stack merge` lands the whole stack on main in
 # one atomic operation, so main's ruleset requires this check on EVERY layer.

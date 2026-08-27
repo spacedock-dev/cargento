@@ -24,8 +24,80 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect what the gate can measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+    steps:
+      # actions/checkout@v7.0.1 — pinned to immutable SHA.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Decide whether the measurable jobs need to run
+        id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # FAILS OPEN, deliberately. Anything this cannot compute runs the full
+          # gate. A wrong "false" silently skips the only check that would have
+          # caught a regression; a wrong "true" costs one runner. Those are not
+          # symmetric, so every unknown resolves to true.
+          emit() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "code=$1"; exit 0; }
+
+          [ "$EVENT" = "pull_request" ] || emit true
+
+          BASE=$(git merge-base "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)
+          [ -n "$BASE" ] || emit true
+
+          FILES=$(git diff --name-only "$BASE" "$HEAD_SHA" 2>/dev/null || true)
+          [ -n "$FILES" ] || emit true
+
+          # The deny list is DERIVED, not hand-written: any docs file a test
+          # opens by literal path is code as far as this gate is concerned.
+          # Hand-maintaining it is how the filter would go stale the first time
+          # someone asserts against a new design doc.
+          ASSERTED=$(grep -rhoE '"docs/[^"]+\.md"' cargento/skills/cargento/tests/*.py \
+                     | tr -d '"' | sort -u || true)
+
+          # `case` globs match `/`, unlike pathname expansion, so `docs/*.md`
+          # already covers `docs/plans/x.md` at any depth — a second
+          # `docs/*/*.md` alternative is dead and actionlint (SC2222) says so.
+          #
+          # Prose that no test reads and no linter parses. SKILL.md is NOT here:
+          # tests/test_documentation.py asserts its store paths against
+          # config.resolve_store_roots.
+          is_prose() {
+            case "$1" in
+              README.md|HOW_TO_USE.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md) return 0 ;;
+              COMPATIBILITY.md|SECURITY.md|CODE_OF_CONDUCT.md) return 0 ;;
+              .github/PULL_REQUEST_TEMPLATE.md|.github/ISSUE_TEMPLATE/*) return 0 ;;
+              docs/*.md)
+                while IFS= read -r asserted; do
+                  [ -n "$asserted" ] || continue
+                  [ "$1" = "$asserted" ] && return 1
+                done <<< "$ASSERTED"
+                return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            is_prose "$f" || emit true
+          done <<< "$FILES"
+
+          echo "Every changed path is prose the gate cannot measure."
+          emit false
+
   lint:
     name: Lint (ruff + format + frontend sources)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -50,6 +122,8 @@ jobs:
 
   typecheck:
     name: Type check (mypy --strict)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -68,6 +142,8 @@ jobs:
 
   runtime-floor:
     name: Runtime floor (Python 3.11)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -98,6 +174,8 @@ jobs:
 
   test:
     name: Tests + coverage threshold
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -218,6 +296,8 @@ jobs:
   # meaningful; this job only answers "does it run there at all".
   platform-tests:
     name: Tests (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -260,24 +340,56 @@ jobs:
   # every job above must succeed (a skip or failure anywhere fails the gate).
   quality-gate:
     name: quality-gate
-    needs: [lint, typecheck, runtime-floor, test, platform-tests]
+    needs: [changes, lint, typecheck, runtime-floor, test, platform-tests]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Verify all gate jobs succeeded
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          R_CHANGES: ${{ needs.changes.result }}
+          R_LINT: ${{ needs.lint.result }}
+          R_TYPECHECK: ${{ needs.typecheck.result }}
+          R_FLOOR: ${{ needs.runtime-floor.result }}
+          R_TEST: ${{ needs.test.result }}
+          R_PLATFORM: ${{ needs.platform-tests.result }}
         run: |
-          echo "lint:           ${{ needs.lint.result }}"
-          echo "typecheck:      ${{ needs.typecheck.result }}"
-          echo "runtime-floor:  ${{ needs.runtime-floor.result }}"
-          echo "test:           ${{ needs.test.result }}"
-          echo "platform-tests: ${{ needs.platform-tests.result }}"
-          if [ "${{ needs.lint.result }}" != "success" ] ||
-             [ "${{ needs.typecheck.result }}" != "success" ] ||
-             [ "${{ needs.runtime-floor.result }}" != "success" ] ||
-             [ "${{ needs.test.result }}" != "success" ] ||
-             [ "${{ needs.platform-tests.result }}" != "success" ]; then
-            echo "::error::One or more quality-gate jobs did not succeed."
+          set -euo pipefail
+          echo "changes:        $R_CHANGES (code=$CODE)"
+          echo "lint:           $R_LINT"
+          echo "typecheck:      $R_TYPECHECK"
+          echo "runtime-floor:  $R_FLOOR"
+          echo "test:           $R_TEST"
+          echo "platform-tests: $R_PLATFORM"
+
+          # The detector itself is never allowed to skip or fail. If it did, we
+          # do not know whether the five below were skipped on purpose or lost,
+          # and "we do not know" must not read as green on a required check.
+          if [ "$R_CHANGES" != "success" ]; then
+            echo "::error::The change detector did not succeed; refusing to report a gate result."
             exit 1
           fi
-          echo "Quality gate passed."
+
+          # `skipped` is a pass ONLY when the detector said there was nothing the
+          # job could measure. Anything else skipped means a dependency failed
+          # upstream and GitHub cascaded it, which is a failure, not a pass.
+          for pair in "lint:$R_LINT" "typecheck:$R_TYPECHECK" "runtime-floor:$R_FLOOR" \
+                      "test:$R_TEST" "platform-tests:$R_PLATFORM"; do
+            job=${pair%%:*}
+            res=${pair#*:}
+            if [ "$res" = "success" ]; then
+              continue
+            fi
+            if [ "$res" = "skipped" ] && [ "$CODE" = "false" ]; then
+              continue
+            fi
+            echo "::error::$job did not succeed (result=$res, code=$CODE)."
+            exit 1
+          done
+
+          if [ "$CODE" = "false" ]; then
+            echo "Quality gate passed: prose-only change, no measurable job to run."
+          else
+            echo "Quality gate passed."
+          fi

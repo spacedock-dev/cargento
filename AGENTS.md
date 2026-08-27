@@ -79,7 +79,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 |---|---|
 | `README.md` | The front door: what Cargento is, install per harness, skill inventory, links out. |
 | `HOW_TO_USE.md` | What a person configures by hand: the harness settings the plugin does not install, one verified procedure per task. |
-| `AGENTS.md` | **This file.** The repository contract for agents, the canonical pre-PR command list, and the parallel-worktree hazards measured while burning down the roadmap. |
+| `AGENTS.md` | **This file.** The repository contract for agents, the canonical pre-PR command list, the parallel-worktree hazards measured while burning down the roadmap, and how much review a change is worth (**Calibrating Effort**). |
 | `CLAUDE.md` | Claude-Code-only addenda; imports this file. |
 | `CONTRIBUTING.md` | The human contributor journey, and the dashboard implementation constraints. |
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
@@ -124,6 +124,16 @@ git commit -s -m "feat(skill): add new capability to cargento"
 **This block is the canonical pre-PR suite.** Every other document points here rather than keeping
 its own copy — divergent copies are how the gate drifts. Run it locally before opening any PR; do
 not rely on CI to surface failures:
+
+**One documented short path.** If the diff touches *only* prose — `README.md`, `HOW_TO_USE.md`,
+`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `COMPATIBILITY.md`, `SECURITY.md`,
+`CODE_OF_CONDUCT.md`, `.github/PULL_REQUEST_TEMPLATE.md`, or a file under `docs/` that no test
+opens by literal path — then `python3 scripts/validate_plugins.py` is the check that matters and
+the suite cannot be affected. CI applies the same rule (see Quality Gate), so the two agree by
+construction rather than by memory. **`SKILL.md` is not prose for this purpose**:
+`tests/test_documentation.py` asserts its `~/...` paths against `config.resolve_store_roots`.
+Neither is any `docs/` file a test reads — the CI detector derives that set by grepping the tests,
+so it cannot go stale.
 
 ```bash
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
@@ -225,9 +235,65 @@ harness's own hooks, and they outlive the sandbox. Thirteen of them survived a d
 here and drove the load average to 18, which then caused the contention failures above. Kill what
 you started, and scope the kill to what you started.
 
+## Calibrating Effort
+
+Rigor is a dial, not a constant. Measured across one run that merged five PRs: adversarial review
+cost **4h27m of wall clock and 6.9M tokens across 35 agents**, against **3h07m and 1.35M tokens
+across 5** for the implementation it was reviewing. Those 35 agents produced **10 findings that
+actually blocked a merge** — 3.5 agents per finding — and exhausted the session token budget twice.
+
+The checking earned its keep: every one of those five PRs shipped a real defect that fully green CI
+missed, and none was findable by reading the diff. It was the **uniformity** that cost. A 339-line
+additive PR with no callers got the same six-agent treatment as the one that owns both frontend
+byte-pin oracles.
+
+**Review depth — pick per PR, not per session.**
+
+| The change | Review |
+|---|---|
+| No user-visible behaviour change and nothing calls it yet | Self-verify: read the diff, run the checks, merge. |
+| Security, credential handling, or data loss | Full adversarial — several lenses, a completeness critic, an arbiter. |
+| Owns a conflict-prone surface (`web/` byte pins, `SKILL.md`, `config.py`) | Two lenses plus an arbiter. |
+| Anything else | Two lenses plus an arbiter. |
+
+What makes the rest affordable is an **arbiter that reproduces findings rather than ranking them**.
+Across that run it refuted 13 of the findings put to it — including two blockers the orchestrator
+had asserted himself, and several that were correct numbers attached to the wrong conclusion.
+Without that pass the lens count would have to rise to compensate.
+
+**One PR per conflict surface, not one per issue.** Issues are units of reasoning; PRs are units of
+merge risk. Five issues became five PRs on that run where three would have done. The only
+constraint that genuinely forces a split is that exactly one PR may touch `cargento_runtime/web/`
+(see Parallel Work). Every extra PR costs a review, a fix round, a CI cycle, and — because a
+ruleset requires branches be up to date — a merge serialization that puts every sibling behind.
+
+**Review the diff in the worktree before opening the PR.** Reviewing after means every PR runs CI
+twice: green, blocked by review, fixed, green again. That was roughly fifteen minutes per PR of
+pure waiting, and it is avoidable by reordering two steps.
+
+**Never promote a deferred finding into the current PR.** When an arbiter defers something, file
+it. Promoting it buys another implement-and-CI round for a finding already judged not worth
+blocking on. Four promotions on that run cost about an hour.
+
+**Give an estimate before starting.** A directive to spend tokens freely is not a directive to
+spend a day. Say what the work costs at full rigor and at calibrated rigor, and let the person
+choose. Nobody asked for twelve hours; they asked for the work.
+
 ## Quality Gate
 
 Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, the HTML/CSS/JS frontend source linter (`scripts/lint_embedded.py`), a direct-launch smoke test on the Python 3.11 runtime floor, the full unittest suite under `coverage` with the `fail_under` threshold from `pyproject.toml`, and `platform-tests` — the same unit suite re-run natively on Ubuntu, macOS and Windows. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
+
+**The required context always reports; its constituent jobs may not run.** A `changes` job decides
+whether the diff contains anything the gate can measure, and the five measurable jobs are gated on
+it. The `quality-gate` job itself always runs and always reports, so branch protection is never
+left waiting — which is the failure mode that made a naive `paths:` filter unusable here: a
+required check a filter excludes never reports, and GitHub reads a missing context as pending
+forever rather than as passing. The detector **fails open** — anything it cannot compute runs the
+full gate — and the aggregator accepts `skipped` only when the detector said `code=false`, so a
+job skipped because an upstream dependency died still fails the gate. `validate` and
+`version-guard` are deliberately unfiltered for the same required-check reason, and `validate` is
+in any case the check a prose change most needs: it resolves every relative Markdown link and
+heading anchor.
 
 ## Code Comments
 

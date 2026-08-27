@@ -64,6 +64,13 @@ same directories through the relative symlinks under `.agents/skills/`.
   label, which is visible in the PR timeline.
 - `platform-tests`, the unit suite re-run natively on Ubuntu, macOS and Windows.
 
+Those seven jobs run when the diff contains something they can measure. A change to prose
+documentation alone skips them, because none of them reads it. The `quality-gate` check itself
+always runs and always reports, so a prose-only PR is never left waiting on a check that never
+arrives. `SKILL.md` and any file under `docs/` that a test opens by name count as code here,
+not as prose, and `validate` runs on every PR regardless: it is the check that resolves the
+Markdown links and heading anchors.
+
 `scripts/bench_collect.py` is not part of the gate. It measures what a collection costs, in total and
 per harness, against your own stores: `python3 scripts/bench_collect.py --repeat 7` prints a median,
 and `--profile` gives a `cProfile` of one collect by function. Reach for it before optimising a
