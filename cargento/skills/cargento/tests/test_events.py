@@ -789,7 +789,7 @@ class GitReadingReduceTest(unittest.TestCase):
         patch = events.reduce_overlays(lapsed, now=NOW + 91, finished_at=0.0, git=(False, 0))
         self.assertEqual({}, patch)
 
-    def test_a_reading_older_than_the_session_s_last_write_is_not_published(self) -> None:
+    def test_a_reading_older_than_the_sessions_last_write_is_not_published(self) -> None:
         # The guard that did work: a session that wrote after the stop was
         # observed has a tree the reading no longer describes.
         patch = events.reduce_overlays(

@@ -1565,7 +1565,12 @@ class ApplicationOverlayTest(unittest.TestCase):
         # None left the suite green, so the aggregate half of the feature could
         # have been dead on arrival with CI green.
         marker = "a-very-distinctive-filename-8f3c21.txt"
-        porcelain = f" M {marker}\n?? another/{marker}\n".encode()
+        # A distinctive DIRECTORY too, not a plausible word like "another": the
+        # assertion is an absence, so a component that could legitimately appear
+        # in the payload for an unrelated reason makes the test flake instead of
+        # catching anything.
+        directory = "a-very-distinctive-dirname-4b7e05"
+        porcelain = f" M {marker}\n?? {directory}/{marker}\n".encode()
 
         def runner(*_args: object, **_kwargs: object) -> Any:
             return SimpleNamespace(returncode=0, stdout=porcelain, stderr=b"")
@@ -1598,7 +1603,7 @@ class ApplicationOverlayTest(unittest.TestCase):
         self.assertEqual(True, row["dirty"], "the reading never reached the wire")
         self.assertEqual(2, row["changed"])
         self.assertNotIn(marker, body.decode())
-        self.assertNotIn(b"another", body)
+        self.assertNotIn(directory, body.decode())
 
     def test_an_unprobed_row_publishes_both_keys_as_null_in_the_bytes(self) -> None:
         # AC6 at the wire, and the half a row-level assertion cannot make: the
@@ -2213,7 +2218,12 @@ class GitPathnamePrivacyTest(unittest.TestCase):
         # filename and asserting the reading cannot carry it is the whole check:
         # there is no field on `GitStatus` that could hold one.
         marker = "a-very-distinctive-filename-8f3c21.txt"
-        porcelain = f" M {marker}\n?? another/{marker}\n".encode()
+        # A distinctive DIRECTORY too, not a plausible word like "another": the
+        # assertion is an absence, so a component that could legitimately appear
+        # in the payload for an unrelated reason makes the test flake instead of
+        # catching anything.
+        directory = "a-very-distinctive-dirname-4b7e05"
+        porcelain = f" M {marker}\n?? {directory}/{marker}\n".encode()
 
         def runner(*_args: object, **_kwargs: object) -> Any:
             return SimpleNamespace(returncode=0, stdout=porcelain, stderr=b"")
