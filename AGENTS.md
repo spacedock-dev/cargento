@@ -56,7 +56,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── spacedock.py        # Spacedock workflow and entity cartography
         │   ├── state.py            # mutable process state, locks, and bounded caches
         │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
-        │   ├── transcripts.py      # shared metadata, prompt titles, non-Claude analyzers
+        │   ├── transcripts.py      # shared metadata, prompt titles, the Codex plan, non-Claude analyzers
         │   ├── turns.py            # generic incremental turn scanning and turn display
         │   └── web/                # HTML, CSS, JS, and byte-preserving page loaders
         │       └── next/           # independently assembled ?next=true frontend

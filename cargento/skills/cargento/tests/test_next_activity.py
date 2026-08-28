@@ -277,8 +277,13 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
 
         self.assertIsNotNone(done)
         done_html = done.group(0) if done else ""
+        # "Foreign completed task" is a Cursor row's own completed task, and it
+        # belongs here. It was excluded while DONE read `harness === "claude"`,
+        # which reported "No completed tracked tasks" over work every other
+        # harness had finished. Project scope still holds: see "Other completed".
         subjects = (
             "Repeat work",
+            "Foreign completed task",
             "Review &lt;script&gt;",
             "Repeat work",
             "Archived payload item",
@@ -293,9 +298,8 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
         self.assertEqual(2, done_html.count("Repeat work"))
         self.assertNotIn("Still pending", done_html)
         self.assertNotIn("Not finished", done_html)
-        self.assertNotIn("Foreign completed task", done_html)
         self.assertNotIn("Other completed", done_html)
-        self.assertEqual(4, done_html.count('aria-label="completed"'))
+        self.assertEqual(5, done_html.count('aria-label="completed"'))
 
     def test_done_has_no_spacedock_source(self) -> None:
         html = self._run_page_js(
