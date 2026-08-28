@@ -81,6 +81,30 @@ gates:
                 id: briefing:drc-4274:review:attempt-2:revision-1
                 digest: sha256:c3ee3fcd61dd4143d6100e858a7bab0053971fe5b5dc0279d32a4dc55ccdb0a4
                 room-ref: ./review/review/briefing-2
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4274:review:2
+                briefing: briefing:drc-4274:review:attempt-2:revision-1
+                by: person:captain
+                at: "2026-08-28T08:51:01.326719Z"
+                decision: approve
+                reason: |-
+                    APPROVED — merge authorized. Captain's decision at the review gate, attempt 2, after correction round 1.
+
+                    The reviewer re-verified on the corrected head and returned GO with no findings: nothing new, and nothing from cycle 1 reopened. The single authorized correction is accurate and better than the ask. Doc lines 46-47 now state the property rather than a count, honouring both constraints — zero harness names and zero numbers — so the wording cannot go stale inside a section promoted verbatim.
+
+                    The replacement was proved from the adapters rather than from the gate's account of them: Claude and Gemini both register SessionEnd and map it; Codex has an adapter and still cannot emit, carrying no SessionEnd key and registering eight events without it; Antigravity emits only store_changed; six harnesses have no adapter. Eight of ten rows can never be probed. It also repaired a defect beyond the one that was sent back — "no event adapter" was the wrong predicate, since two of the four adapter-bearing harnesses still cannot emit, so the original over-promised coverage by two rows.
+
+                    Scope was proved by diff rather than by re-reading: one file, one hunk, three added and four removed, entirely inside the authorized paragraph, so the fsmonitor wording's absent run count, the race characterisation and the working-directory claim could not have moved. The tokens twice, unconditional and finished_at remain at zero.
+
+                    All three checks were confirmed by API to belong to head 00444a78 rather than a superseded one, and the five skips were proved to be the filtered kind from the aggregator's own gating condition rather than from their label. mergeStateStatus CLEAN. Copilot left no comments and no reviews.
+
+                    The FO arbiter reproduced the corrected text independently at the pushed SHA and from the GitHub contents API; both are byte-identical at checksum fb55ad03, so the content that will merge is the content that was reviewed. The arbiter also nearly raised a false alarm from a stale gh pr diff view showing pre-PR draft text present in no version of the file, and checked at the SHA before contradicting the review; that is now a recorded rule.
+
+                    One observation accepted rather than routed: the PR body states 103 lines where the head is 102. The implementation named it in a PR comment rather than editing a body the gate's do-not-change list protects.
+              application:
+                target-stage: done
+                state: pending
 review-round:
     id: round:drc-4274:review:1
     stage: review
