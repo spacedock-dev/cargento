@@ -305,3 +305,12 @@ valuable and does not otherwise touch.
   now a button and a flag. A dashboard that vanishes because nobody looked at it is a new surprise,
   not a fix for the old one.
 - **Platform-correct runtime directories.** D-3.
+- **Inheriting `HTTPServer.server_bind`.** It sets `server_name` from `socket.getfqdn()`, a reverse
+  DNS lookup on the startup path for a value nothing in this codebase reads. A resolver with no
+  answer for `127.0.0.1` does not fail fast, it waits: measured at roughly 17.5 seconds per bind on
+  the macOS CI runner, where seven tests that bind, or spawn something that binds, accounted for
+  285 seconds of that leg's 316 while the other 1936 finished in 31. Ubuntu answers the same lookup
+  from `/etc/hosts` instantly, which is why it read as a macOS problem rather than as a lookup
+  nobody needed. `CargentoHTTPServer.server_bind` calls `socketserver.TCPServer.server_bind`
+  directly and sets `server_name` and `server_port` itself. Restoring the `super()` call reinstates
+  the stall, for the dashboard's own startup as much as for the suite.

@@ -153,10 +153,12 @@ A flipped comparison is the cheapest mutation to try, and the most revealing: ch
 `<=`, or one `and` to `or`, and run the suite. Anything that still passes is a boundary nothing
 pins.
 
-Known flake: the page tests shell out to `node` with a 30-second timeout. On the Windows runner that
-occasionally expires on process start, surfacing as
-`subprocess.TimeoutExpired: … page_test.js`. It is a runner-speed artifact rather than a page bug,
-so re-run the job before investigating, and check the traceback is a timeout and not an assertion.
+The page tests share one long-lived `node` process rather than starting one per check. It is
+started on the first check that needs it and replaced every 150, so a full suite spawns about three
+instead of 425. If it dies, every page test after it fails with `page-JS worker died:` followed by
+whatever node wrote to stderr. A check that never settles is reported by the worker itself after 30
+seconds as `page check did not settle within 30000ms`, which is a hung check rather than a slow
+runner: read it as a page bug, not as something to re-run.
 
 ### Rules the validator enforces
 
@@ -245,6 +247,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `APP_PARTS` order) under node against a stub DOM. `NextPageJsHarness` runs the independently
   assembled `NEXT_PARTS` against the same stubs. A test can fire a click or a keystroke and assert
   on what the page did. A source-text assertion passes forever after the behavior behind it breaks.
+  Each check runs in a fresh `vm` context inside the shared worker described above, so it still gets
+  a clean set of globals, but it is no longer a clean process: anything a check leaves on a timer
+  outlives it. Isolate through the stubs rather than by assuming the interpreter restarts.
 - Load the required default frontend before creating the daemon log, binding the socket, forking, or
   spawning a Windows child. Then acquire the log file and listening socket before forking (or, on Windows,
   before waiting on the re-spawned child). After the fork there is nowhere for a failure to go.
