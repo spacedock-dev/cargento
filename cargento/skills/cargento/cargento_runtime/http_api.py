@@ -8,6 +8,7 @@ import ipaddress
 import json
 import os
 import socket
+import socketserver
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -150,7 +151,24 @@ class CargentoHTTPServer(ThreadingHTTPServer):
                     f"Cargento: could not claim the port exclusively ({exc}); continuing",
                     self.application.diagnostic_sink,
                 )
-        super().server_bind()
+        # Deliberately NOT `super().server_bind()`. `HTTPServer.server_bind`
+        # resolves the bind address to a name with `socket.getfqdn()` — a
+        # reverse DNS lookup, on the startup path, for a value nothing here
+        # reads. Where the resolver has no answer for 127.0.0.1 it does not fail
+        # fast, it waits: on the macOS CI runner that was ~17.5s per bind, which
+        # is most of what made the macOS test leg take 316s against Ubuntu's 29s,
+        # and it is the same stall a person starting the dashboard on a machine
+        # with a slow resolver would sit through before the page came up.
+        #
+        # `server_name` and `server_port` are still set, because the base class
+        # promises them; the name is the host as given rather than whatever the
+        # resolver would have called it.
+        socketserver.TCPServer.server_bind(self)
+        # Read off the bound socket rather than the requested address, so a
+        # port of 0 reports the port the OS actually gave.
+        bound = self.socket.getsockname()
+        self.server_name = str(bound[0])
+        self.server_port = int(bound[1])
 
 
 class _RequestHandler(BaseHTTPRequestHandler):

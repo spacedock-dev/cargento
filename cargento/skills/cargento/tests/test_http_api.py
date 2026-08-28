@@ -1275,6 +1275,34 @@ class AskShutdownTest(RuntimeTestCase):
 
 
 class HostAndSocketTest(unittest.TestCase):
+    def test_a_bind_never_reverse_resolves_the_address(self) -> None:
+        """`HTTPServer.server_bind` calls `socket.getfqdn()`; this one must not.
+
+        It is a reverse DNS lookup on the startup path for a value nothing
+        reads, and a resolver with no answer for 127.0.0.1 waits rather than
+        failing fast. Measured on the macOS CI runner at ~17.5s per bind — seven
+        tests that bind, or spawn something that binds, were 285s of that leg's
+        316s, while the other 1936 finished in 31s.
+
+        Asserted by patching the lookup rather than by timing it: on a machine
+        with a working resolver the call is instant, so a duration assertion
+        here would be a test that cannot fail.
+        """
+        with mock.patch.object(
+            socket, "getfqdn", side_effect=AssertionError("bind reverse-resolved the address")
+        ) as getfqdn:
+            httpd = make_server()
+            try:
+                self.assertEqual(0, getfqdn.call_count)
+                # Still set, because the base class promises them, and the port
+                # is the one the OS actually handed out rather than the 0 asked
+                # for.
+                self.assertEqual("127.0.0.1", httpd.server_name)
+                self.assertEqual(httpd.socket.getsockname()[1], httpd.server_port)
+                self.assertNotEqual(0, httpd.server_port)
+            finally:
+                httpd.server_close()
+
     def test_host_header_forms_that_are_all_loopback(self) -> None:
         # rsplit(":", 1) mangled the bracketed IPv6 form into "[:" and never
         # folded case, so both were rejected as non-local.
