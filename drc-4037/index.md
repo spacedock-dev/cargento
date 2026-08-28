@@ -716,6 +716,30 @@ false surface, and the `web/` byte pins.
 
 ### Feedback Cycles
 
+- Cycle 1: REVISE — review gate, NO-GO; 4 Material, 1 Needs decision, 9 Deferred risk, 9 Polish; surface 25 files/+1315 LOC vs re-declared 918 (143%); AC unchanged
+
+**Surface, second overrun — ACCEPTED by the captain 2026-08-28, and the method changed rather than
+the tolerance.** The branch stands at 25 files, +1315/−118 against the re-declared 24 / +918 / −114:
+files and deletions within ±35%, added lines at +43.2% and outside it. Accepted because the axis is
+the same but the cause is not: correction round 1 is +414 lines of which the runtime is +32/−7 and
+roughly four lines are functional, the remainder being oracles the review demanded. Counting review's
+own output against a pre-review estimate measures how much review found. **The workflow README now
+re-baselines the estimate at a correction round**, which is the method fix the captain's
+accepted-once caveat required.
+
+**WHERE THIS STANDS — resume note, 2026-08-28.** PR #239 is open at `eff93f6`, `BLOCKED` on the
+required review. R2 through R7 are fixed, each watched to fail first, and both mutations the review
+measured green now fail. **R1 is open and is the gating item.** The captain ruled: amend the
+contract, and have triage cost a third bound before assuming none exists — the ruling and what the
+costing owes an answer to are recorded above. R1 is untouched in the code: no change to
+`SECURITY.md`'s promoted text, the invariant wording, or the feature's bounds.
+
+**The next action is a `triage` pass for R1**, not a review re-run. Its product is the third-bound
+answer plus a drafted contract amendment, the captain approves the wording at that gate, then
+`implementation` writes it, then the reviewer re-verifies the whole branch, then merge. **PR 2 — the
+render and the two byte-pin oracle sets — is a separate round after that; E4 is not `Done` until it
+lands.**
+
 **R1 — captain's ruling, 2026-08-28.** Recorded here on receipt rather than at the next gate, because
 a ruling on a held finding must not live only in a message.
 
