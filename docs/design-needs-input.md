@@ -594,6 +594,20 @@ onto the row, so it passes the same `session_activity` guard the idle overlay do
 resumed by a background task loses it. A working or waiting overlay clears it, and a collection that
 stops producing the row is its only other bound, since no event ends it.
 
+**The end-of-session git reading joined that lifecycle, after shipping without it.** DRC-4037 keeps
+one `git status` reading per session in a second map beside the marks, for the reason above: the
+event that produces a reading is the event that pops the ledger. What the first build did not do was
+retire the reading where the mark is retired, and the reducer's own clears cannot cover that gap.
+Those clears sit inside the working, waiting and idle overlay branches, so each lapses with the
+overlay carrying it while a reading does not, and the side channel's staleness guard read
+`bool(finished_at) and ...`, which is vacuously false the moment a working overlay has popped the
+mark. A session that ended, resumed, and then worked for longer than `overlay_working_ttl_sec`
+republished its last clean reading as `dirty: false` permanently, which is DRC-4101's confident green
+over absent evidence one field over. The reading now rides the mark's presence as well as its
+freshness, and `_mark_finished` discards it on the same two overlay kinds that discard the mark. The
+general lesson is that a guard which only runs at render time cannot protect state that outlives the
+thing carrying the guard.
+
 **The display threshold is measured, not inherited.** Across 10,119 returns to a stopped turn in
 1,355 local Claude transcripts, half were answered inside 106 seconds and nine in ten inside 966, so
 past 1,200 the odds are better than ten to one that nobody is coming back to that one soon. That is
@@ -614,6 +628,10 @@ constant and requires the prose to agree, because otherwise the two can only mat
   rather than worth alarming about, so the word sits in the `idle / wait` cell and in the regular
   view's idle row. A chip would also pull the count into the flagged total, the `f` filter and the
   attention ordering, none of which should move because a turn ended tidily.
+- **Clearing the git reading on every `session_ended`** rather than on the resume. It looks like the
+  tighter rule and buys nothing measurable: the resume discards the reading before any second end can
+  reach it, so no test could tell the two apart, and two ends with no turn between them, which is how
+  `/clear` followed by an exit arrives, would discard a reading that is still accurate.
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
   `acquisition`, which was defined for this and rendered nowhere until now. A test holds the
