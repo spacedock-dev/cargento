@@ -632,3 +632,148 @@ Proposed materiality **Polish**, proposed ownership **not this task** — a repa
 The four writes the triage gate authorized are on the board in the declared order, drafts used verbatim. The decision issue was minted by Linear as DRC-4271 with no `DEC-N` number invented; it carries no labels, which matches the observed convention rather than a guess — DEC-1, DEC-2, DEC-3, DEC-5 and DEC-6 (DRC-4053, 4054, 4122, 4182, 4234) all carry zero labels, so no decision-series label exists to apply. DRC-4029 is Blocked by DRC-4271, with its labels, scores, estimate and existing relations intact, and the milestone's new 2026-08-28 section sits above the 2026-08-23 heading with all three older sections below it. Zero repository files changed, against a zero-file expected surface with no tolerance.
 
 One thing did not go to plan and is escalated rather than fixed: Linear's markdown serializer moved five emphasis boundaries, three of them inside milestone text the draft said to leave untouched. No repair was attempted, because repairing an unapproved change with a second unapproved write is how a records edit compounds. Two further observations for the record: Linear auto-created a `relatedTo` edge from DRC-4271 to DRC-4028 from the issue mention in the drafted body — accurate, but not something the draft asked for, and left in place; and the drafted title does not follow the existing `DEC-N · Decision: ...` naming pattern the other decision issues use, which is the captain's call to make, not mine.
+
+---
+
+## Triage cycle 2 — 2026-08-28 · re-scope or cancel
+
+The first cycle escalated and the captain ruled. This cycle answers what the ruling deliberately
+left open: **is there a fourth statistic that carries the narrow claim honestly and is worth
+building, or should this item be cancelled?** Everything above this line is the record of cycle 1
+and is not edited.
+
+### Linear edits made — cycle 2
+
+**Nothing has been written to Linear this cycle.** Captured before any other work, as the pre-edit
+record; the drafts below are what the gate authorizes.
+
+#### Pre-edit record — captured 2026-08-28
+
+The issue body's Linear `updatedAt` is `2026-08-28T04:37:02.285Z`; the issue still carries no
+comments (`list_comments` returned zero). State `Todo`, `blockedBy: []`, `relatedTo` DRC-4271,
+DRC-4172, DRC-4028, DRC-4272. Labels `origin:workshop`, `alternative`, `cutoff:unsettled`,
+`release:r1`, `journey:mid-flight`.
+
+This is the body `implementation` wrote at the end of cycle 1, read back live — **including the two
+emphasis boundaries Linear's serializer moved**, which the FO dispositioned Polish/decline and which
+are therefore part of the record rather than a transcription error on my part. They are visible in
+"Two corrections to this issue's own claims" below: `**The **` before the code span, and a second
+bullet that lost its opening bold entirely.
+
+##### Current issue body — DRC-4029 "D6 · Come back at 3:40"
+
+````markdown
+Board item **D6**. **Blocked 2026-08-28** on a product decision nobody had filed, and released the same day when that decision was ruled. Triaged that day against the code and against this machine's live stores. Every sentence of the 2026-08-23 body is either restated below or preserved verbatim under *History*.
+
+**Release row:** r1 · **Journey stage:** Mid-flight · **Outcome group:** Spend attention well
+
+## What it is
+
+One clock time instead of twelve ETAs: a time you could write on a calendar, computed over the per-turn estimates every working card already shows.
+
+## The decision landed 2026-08-28, and the answer is No
+
+DEC-7 ([DRC-4271](<https://linear.app/recce/issue/DRC-4271/dec-7-decision-may-a-walk-away-time-read-as-an-all-clear-on-partial>)) was ruled by the owner on 2026-08-28 and is closed. The ruling: Cargento may not publish a single walk-away clock time whose plain reading is an all-clear, on partial coverage. Three reasons, in order of weight:
+
+1. **The disclosure does not cover the claim.** An all-clear is a claim about demands on attention, and that claim rests on needs-input coverage — four harnesses of ten. Publishing ETA coverage beside the number discloses a different quantity, so it does not mitigate the risk it was designed to mitigate.
+2. **Even the narrow completion claim is unreliable.** The published maximum is earlier than the true last completion 74% of the time; at three or four concurrent sessions it is 87% of the time, by a median of 9m50s.
+3. **The precedent already weighed this trade and came down against it.** D5 conceded a coverage-scoped promise "is honest" and rejected it as "materially different and less appealing". The 2026-08-28 measurements make that position worse, not better.
+
+"Only at full coverage" was refuted by measurement rather than declined: full ETA coverage across every working row held at 0 of 82 sampled instants at three-to-four concurrent sessions, the parallel-worktree load `AGENTS.md` calls normal here.
+
+**What the ruling does not decide, deliberately.** It is narrower than cancelling this item. The narrow claim the 2026-08-23 review settled — *the soonest expected completion among turns we can estimate*, with coverage published beside it — is not an all-clear and is untouched. **Whether D6 is re-scoped or cancelled is not decided here.** That belongs to this item's own next cycle, which the ruling releases, and it is why the item moves out of Blocked to Todo rather than to Canceled. DEC-7's gate on this item is removed and replaced with a related edge, so the closed evidence stays reachable without a closed issue holding a live gate.
+
+## Why it was blocked
+
+The 2026-08-23 review said the minimum is the wrong statistic and listed three candidates without choosing. Measuring them against this repository's own stores rules out all three, for three different reasons.
+
+Measured 2026-08-28 over 94 recent turns across 11 sessions: median turn **2m03s**, p75 5m50s, p90 11m22s, p95 15m17s. 15% reach ten minutes, 3% reach twenty. One live collect at that moment: two working sessions, **one** carrying an ETA.
+
+* **The minimum** is now measured useless rather than suspected: half of all turns finish inside two minutes, so the soonest completion is almost always now.
+* **"Exclude anything blocked or already flagged"** is half a no-op and half a regression. `turn_progress` already returns nothing unless the session is `working`, so blocked rows were never in the set. The only flag a working row can carry is `long turn`, which fires at fifteen minutes — so excluding flagged rows excludes precisely the turns long enough to be worth walking away on, and lowers the minimum.
+* **A later quantile** changes meaning with how many sessions happen to be running: over two estimable rows a p75 is nearly the maximum, over twelve it is a different promise. It has no one-sentence reading, and a one-sentence reading is the entire product.
+* **The maximum, "nothing would still be running",** is the only candidate that scales with the board, and it fails twice. It is biased optimistic by construction: a turn gets no ETA exactly when it already exceeds every past turn, so the rows without one are the rows running longest and the maximum is taken over the fast half of the board. And "everything will be done by 3:40" is an all-clear however it is worded, read as one by somebody who then leaves the desk.
+
+**The useful statistic is the one that reads as an all-clear, and the honest ones say "come back now".** That is a decision about what this product is willing to promise, six days after D5 was cancelled for making that promise on absent information. It is filed as a decision issue and this item blocks on it.
+
+## Two corrections to this issue's own claims
+
+* **The **`ask_operator` **deadline is not a better input for *this* number.** It is real — five minutes, swept against the ask's creation time — but it is a deadline for *you to answer*, not an estimate of when work finishes. It bounds an errand from above where D6's number bounds it from below, and one figure carrying both units is the error calm mode's two-column split exists to refuse. It belongs to the D5-shaped item. It also never reaches the browser: the published ask card carries an age and nothing else.
+* "Arithmetic over data already on screen" understates the build. `eta_h` is a formatted string floored to whole minutes, and no numeric ETA is published anywhere in the payload. The statistic has to be computed server-side and published as a new field. Build 15 is still about right in size, but the frontend half lands in `cargento_runtime/web/`, which allows one in-flight PR at a time.
+
+## What survives for the build, once the decision lands
+
+The narrow claim the 2026-08-23 review settled, which this triage did not disturb: whatever ships is *the soonest expected completion among turns we can estimate*, never "the soonest moment anything will want you", and its coverage is published beside it. D4 shipped in 0.6.x and covers the unpredictable arrivals, which is why the narrow claim is enough.
+
+Its stated worth is what the decision should be held against: a subset of D4, redundancy penalty 42, and what survives that penalty is *one clock time you can write down or hand to somebody, which supports pre-committing to a 20 minute errand.* Three per cent of measured turns reach twenty minutes.
+
+The honest risk this item already named is now the reason the decision exists rather than a footnote to it, and the measurement says that gap is wider than it was assumed to be: the rows the number cannot see are the slow ones.
+
+## Scores
+
+Impact 65, risk-adjusted 47, access 85, build 15, detector risk 18. Estimate XS. Quadrant marked unsettled, within 5 points of the impact cutoff. Unchanged.
+
+Detector risk 18 was scored against "is the ETA right" and covers none of the three findings now standing against it: the statistic may be wrong for the workload, the number hides its own coverage, and that hidden coverage is biased toward the fast half of the board. Left unchanged as the board's record.
+
+## History
+
+Carried forward above, not repeated here: what it is, publishing the coverage beside the time, the redundancy penalty, and the scores. The sections below are the ones 2026-08-28 compressed or superseded, kept verbatim as the record of what was believed on 2026-08-23.
+
+### 2026-08-23 — "What it must not claim, which the original framing did" (compressed into the body above)
+
+> The board note says "the soonest moment anything will want you". That is not what the data supports and it is the sentence that would make this dishonest.
+>
+> `turn_progress` yields an ETA only for a session that is **working** and has a past turn at least as long as the current one. So the set it minimises over excludes:
+>
+> * every **blocked** session, because state must be `working`
+> * every session whose current turn is already longer than any recent turn, which renders as "running longer than recent turns" with no figure
+> * every idle session
+> * a **gate arriving out of nowhere**, which is the single most common thing that actually wants you and has no ETA on any harness
+>
+> So the honest claim is narrower: *the soonest expected completion among turns we can estimate.* Not the soonest demand on your attention. Ship the narrow sentence, because the wide one is the one that loses trust the first time a permission prompt fires at 3:05.
+>
+> The mitigation already exists and is why this is still worth building: **D4 shipped in 0.6.x.** Unpredictable demands raise a notification. This item covers the predictable ones, the notifier covers the rest, and neither has to pretend to cover both.
+
+### 2026-08-23 — "What it assumes, and it is the honest risk" (compressed into the body above)
+
+> Hand someone a single time to come back and they will leave the desk, so in practice this functions as an all-clear it never states. That gap is where the risk was banked as differentiation. D5 was cancelled for stating the same thing out loud, which makes the gap this item relies on worth naming rather than leaving implicit: the difference is that a wrong time here is an inconvenience, while a wrong all-clear is a broken promise.
+
+### 2026-08-23 — "The flaw that matters most, and it is new" (superseded: the three candidates are now measured and all three are refused)
+
+> **The minimum degrades to uselessness exactly where this repository works.** With one or two sessions the soonest completion is a useful time. With a dozen working sessions the minimum is almost always a couple of minutes away, so "come back at 3:40" becomes "come back more or less now", permanently, and the signal stops being actionable at precisely the workload `AGENTS.md` calls normal here (several agents in several worktrees at once).
+>
+> That is not a presentation problem, it is the wrong statistic. Settle it before building. Candidates, none obviously right:
+>
+> * The soonest completion **among sessions you have nothing else to do about**, excluding any already blocked or already flagged.
+> * A later quantile rather than the minimum, so one fast session does not set the time for eleven slow ones.
+> * The soonest completion **that would leave nothing running**, which is a different and arguably more useful promise.
+
+### 2026-08-23 — "One input this did not have when it was scored" (superseded: refuted, see the corrections above)
+
+> A pending `ask_operator` question carries a real deadline, five minutes by default, after which it declines. That is the only demand on the board with a genuine clock rather than an estimate, and it is a strictly better input than any ETA. The ask lane shipped on 2026-08-23 ([DRC-4172](<https://linear.app/recce/issue/DRC-4172/let-a-session-ask-cargento-a-question-and-wait-for-the-answer-dec-2s>)).
+
+### 2026-08-23 — "What to build" (superseded: the estimates are formatted strings, so this is not arithmetic over what is on screen)
+
+> The minimum, or whichever statistic the question above settles on, over the per-turn estimates already computed. They render today on every working card as `~Xm left (est)` and drive calm mode's progress bar, so this is arithmetic over data already on screen. That is what build 15 was scored against and it still holds.
+````
+
+##### Current milestone description — "Spend attention well"
+
+Only the `## Update 2026-08-28` section is in play this cycle; it is captured verbatim below. The
+rest of the description is byte-identical to the capture already held in this entity at cycle 1,
+except for the three emphasis boundaries Linear's serializer moved during cycle 1's write, which are
+recorded in cycle 1's implementation report and were dispositioned Polish/decline.
+
+````markdown
+## Update 2026-08-28 — D6 is blocked on a decision, and this group now has no buildable walk-away item
+
+[DRC-4029](<https://linear.app/recce/issue/DRC-4029/d6-come-back-at-340>) was triaged against the code and against live stores on 2026-08-28 and is **Blocked** on a new decision issue. D5 was cancelled five days earlier, so the outcome this group is named for — look away safely — currently has nothing on it anyone can build.
+
+**What was measured.** 94 recent turns across 11 sessions, on a machine running the parallel-worktree load `AGENTS.md` calls normal here: median turn **2m03s**, p75 5m50s, p90 11m22s, p95 15m17s. 15% of turns reach ten minutes, 3% reach twenty. Re-derived across five slicings of 124–558 turns, which held that shape: median 2m03s–2m33s, p90 10m55s–12m20s, 12–15% of turns at ten minutes, 2–4% at twenty. The single live collect this update first cited — two working sessions, one ETA between them — is an n=1 observation and is superseded by replaying `turn_progress`' own rule over 558 turns: ETA coverage is 80% of turns and 64–71% of wall-clock, materially better than that one collect suggested.
+
+**All three candidate statistics are refused, each for its own reason.** The minimum is confirmed useless rather than merely suspected, since half of all turns finish inside two minutes. "Exclude anything blocked or flagged" is half a no-op — `turn_progress` already publishes nothing for a non-working session — and half a regression, because the only flag a working row carries fires at fifteen minutes, so it strips exactly the turns worth walking away on. A later quantile changes meaning with how many sessions happen to be running. And the maximum, the one candidate that scales with the board, is biased optimistic by construction: a turn loses its ETA precisely when it outruns its own history, so the rows the maximum cannot see are the slow ones.
+
+**Which leaves the decision, and it is a product decision rather than an engineering one.** The useful statistic is the one whose plain reading is an all-clear; the honest ones say "come back now". D5 was cancelled for promising freedom on absent information. The precedent settles more than this update first credited it with, for two reasons. D5's own reasons are explicitly ranked, they lead with "D6 already exists and the board prefers it", and the record concedes that a coverage-scoped promise "is honest" — rejecting it on value rather than on honesty. And the coverage an all-clear rests on is needs-input coverage, not ETA coverage, so publishing the second discloses nothing about the first. That question is filed as a decision issue blocking D6. Recorded here because nothing else records it: needs-input detection reached four harnesses on 2026-08-24, so D5's stated reopening condition — a harness other than Claude reporting needs-input state — has been met.
+
+**One correction to the 2026-08-23 update below.** It records the pending `ask_operator` deadline as "the only demand on the board with a genuine clock" and "a strictly better input than any ETA". Right about the clock, wrong about the direction: an ask deadline says when you must be *back*, not when you are free *until*. It bounds an errand from above where D6's number bounds it from below, and it never reaches the browser at all — the published ask card carries an age and nothing else. It is an input to D5's shape, not D6's.
+````
