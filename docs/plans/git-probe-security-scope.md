@@ -25,7 +25,7 @@ The probe is exactly this command, or there is no probe:
 
     git -c core.fsmonitor= --no-optional-locks status --porcelain
 
-The mechanism is subprocess execution rather than a file open. That is what separates this read from
+The mechanism is subprocess execution rather than a file open. That is what separates this feature from
 every other read Cargento performs, and both flags are load-bearing. Measured 2026-08-28 at git
 2.55.0 across four fresh repositories, one probe each, from an identical racy-clean state:
 
@@ -43,8 +43,8 @@ What is published, per session, is two fields and nothing else:
     {dirty: bool | None, changed: int | None}
 
 Both fields are nullable, and `null` means not probed. It is never a confident clean over no evidence.
-Six of the ten harnesses (Pi, Copilot, OpenCode, Cursor, Goose, Droid) have no event adapter and can
-never emit the end-of-session edge, so most rows carry `null`. `changed` counts porcelain entries
+Six of the ten harnesses have no event adapter and can never emit `session_ended` at all, so most
+rows carry `null`. `changed` counts porcelain entries
 rather than files: git collapses an untracked directory into a single entry, so a new directory
 holding three files is one entry, not three.
 
@@ -56,9 +56,9 @@ What is never read:
   behind it sits are all outside this feature.
 
 Porcelain output names paths. Those pathnames are matching hints and are never echoed to
-`/api/data`, the same rule and the same wording this document already applies to `cwd`.
+`/api/data`, the same rule and the same wording this document applies to `cwd`.
 
-The cadence is one-shot, on the session-ended edge. Never a poll, never on demand, and never on a
+The cadence is one-shot, on the `session_ended` edge. Never a poll, never on demand, and never on a
 turn stop: the completion stamp written when a turn stops is a different edge, and probing there
 would put one subprocess in the user's repository per turn for the life of the session.
 
