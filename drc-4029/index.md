@@ -555,6 +555,24 @@ _Chosen at review from AGENTS.md's Calibrating Effort table._
 
 ### Feedback Cycles
 
+**No correction round ran.** No reviewer was dispatched and no gate rejection occurred, so there is
+no `Cycle N` line to write; the entry below is a finding-disposition record, which
+`## Review-finding disposition` requires to be durable and which reached the worker as a message.
+
+- Disposition 2026-08-28, implementation — finding: Linear's serializer moved five emphasis
+  boundaries, three of them in milestone text the approved draft said to leave untouched.
+  Worker proposal: Polish / not this task / hold. **FO authorization: DECLINE, materiality Polish.**
+  Decided on evidence field 2: the released user's normal workflow is reading that milestone in
+  Linear, which renders from its document model rather than from this markdown, so there is no
+  observable loss there; the loss appears only in a strict CommonMark renderer outside Linear, which
+  is outside what this workflow promises. No repair was authorized and none was made — repairing an
+  unapproved change with a second unapproved write compounds a records edit, and the worker's own
+  falsifying test (`` `long` **latches** ``, already canonical, round-tripped untouched) indicates
+  the normalizer converges on fixed points, so a repair is a likely no-op carrying a write's risk.
+  The class was recorded instead as a standing constraint in the workflow README, because
+  `save_milestone` has no patch operation and the post-merge reconcile edits a milestone description
+  on every completed issue.
+
 ## Out of scope
 
 * **Building anything.** The issue is escalated, not planned.
