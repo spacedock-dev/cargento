@@ -1474,3 +1474,219 @@ consequence is unchanged and both records already say so. **Nothing shipped repe
 — the promoted `SECURITY.md` section deliberately states no count, which is why this reconciliation
 touches the Linear record only and not the artifact. Reported, not drafted: DRC-4122 is closed and
 its correction note is already written, so any further edit there is the FO's to disposition.
+
+## Stage Report: review
+
+Depth as scoped: **full adversarial — four lenses and a completeness critic run as
+separated passes, arbitrated here by reproduction.** Nothing was edited; every
+confirmed finding routes to `implementation` over `feedback-to`.
+
+- DONE: LENS 1 — the subprocess surface, attacked rather than read. argv construction, the environment the child inherits, the timeout and what happens when it expires, a symlinked repository, a submodule, a path that is not a repository, a repository the user cannot read, and a repository that disappears between the event and the probe. Both flags must be present in the argv on every platform; report what you ran for each case.
+  All eleven items exercised against real repositories under `/tmp`, never in this
+  tree. CLEAN: argv is an unconditional `Final` tuple and `cwd` reaches only
+  `os.path.isdir` and `subprocess.run(cwd=)` — never argv; both flags beat every env
+  attack (`GIT_CONFIG_COUNT`, `GIT_OPTIONAL_LOCKS=1`, `core.pager`/`GIT_PAGER`) **and
+  propagate into git's own submodule child** via `GIT_CONFIG_PARAMETERS` +
+  `GIT_OPTIONAL_LOCKS=0`, proved with `GIT_TRACE` on a superproject whose submodule
+  sets `core.fsmonitor` — the case no shipped test builds; symlinked `cwd`,
+  `--separate-git-dir`, a symlinked `.git` and a symlink loop all return sane
+  readings without hanging; unreadable repo and TOCTOU both return `None` with no
+  stderr escaping; POSIX timeout is a hard bound. **R1 (below) came out of this lens
+  and is the blocker.** Deferred: R8-R12, R16.
+- DONE: LENS 2 — the null-versus-false surface, and LENS 3 — the threading and lock constraint. For lens 2: prove `null` is published rather than `false` for a row that was never probed, and that the row proving it is one of the genuinely unprobeable harnesses rather than one the `scan-only` marker happens to cover — the cycle-1 criterion was unsound for exactly that reason. For lens 3: the session-end edge runs on the HTTP handler thread under the coordinator lock behind a two-second client timeout, so prove the probe does not run synchronously there, and that a slow or hanging probe cannot stall other events or time out the harness's own hook.
+  Lens 2: `null` confirmed **at the wire**, not at the dataclass — real `collect_json`
+  bytes carry `"dirty": null, "changed": null`. The eight/two split verified from
+  `IDENTITY_NORMALIZERS` and the adapter maps: probeable = claude, gemini;
+  unprobeable = codex + antigravity (`acquisition == "event"`, invisible to
+  `scan-only`) + six adapter-less. AC6 cause 2 **is** asserted against Codex, not via
+  `scan-only`, so the cycle-1 unsoundness did **not** recur. Produced **R2**, the
+  second blocker. Lens 3: **AC3 is the best-built part of this PR and is CLEAN by
+  measurement, not reading.** `_lock` is a non-reentrant `threading.Lock`; the lock
+  oracle does *not* stub `_spawn`, so the prober genuinely runs on the probe thread;
+  the AC's named falsifier (dispatch moved inside `with self._lock`) was run 30× in a
+  throwaway copy and FAILED 30/30, and four sibling tests deadlock outright — the
+  property is over-determined, not under. `submit` returns in 0.115 ms with the probe
+  blocked; 200 further submits max 0.026 ms; `/api/data` 200 in 6.49 ms behind 30 hung
+  probes; 30 real `SessionEnd` POSTs through `notify_hook` → `http_api` → `submit`
+  delivered 30/30, max 11.71 ms against the 2 s budget — a 170× margin. All five
+  `_git` accesses are under the lock; no nesting, no ordering hazard.
+- DONE: LENS 4 — the promoted text is byte-identical to what merged in `701b7f0`, the two intro amendments are applied, and `docs/plans/git-probe-security-scope.md` is deleted in the same commit that promotes it. COMPLETENESS CRITIC — what is missing rather than wrong: an acceptance criterion with no test, a bound with no enforcement, a failure mode with no case. **The builder self-disclosed one weakness before review: the two `core.fsmonitor` hazard tests build a POSIX shell script and chmod it, so on the Windows runner that test very likely passes vacuously rather than because the flag worked. Assess it, say whether the argv-level assertion genuinely covers the gap on that platform, and treat green there as green-with-caveat rather than as three-platform proof.** Report every finding WITHOUT fixing any of it.
+  **AC8 is immaculate**, verified twice independently: the promoted span and
+  `701b7f0`'s contract span are both 3232 bytes / 55 lines with identical sha256
+  (`23aef138…a8b5a83a`), `diff` silent, no trailing whitespace; the implementation's
+  3231 is the same span with the trailing newline excluded. Placed between the two
+  named sections at `##`; both amendments byte-identical to the plan's quoted
+  strings; `4ece71f` alone grows `SECURITY.md` +61/−1 and deletes the plan doc
+  −102; no dangling refs; `validate_plugins.py` exit 0. The drift guard is genuine,
+  mutation-tested six ways against the live `GIT_STATUS_ARGV`.
+  **On the self-disclosed weakness — confirmed and it is WIDER than disclosed (R7).**
+  Windows passes vacuously for two independent reasons the disclosure did not name:
+  `Path.write_text` emits CRLF so the shebang is `#!/bin/sh\r`, and `chmod(S_IEXEC)`
+  is a no-op. The argv assertion does **not** cover the gap — see **R6**, the sharpest
+  gap of the review: stripping both flags **at the call site** leaves
+  `test_the_probe_is_exactly_the_one_bounded_command` GREEN, because it pins the
+  constant and nothing asserts what `probe()` hands `runner`. So the two behavioural
+  tests are the sole guard against a call-site regression, and those are exactly the
+  ones vacuous on one of three runners. Verdict: **green-with-caveat, not
+  three-platform proof.** Critic also produced R3, R5, R15, R19, R21, R22, R25.
+- DONE: Every acceptance criterion reproduced from its `Verified by:` clause rather than trusted from the implementation's self-report; CI green on the current head; Copilot inline comments read.
+  AC1 argv/tuple ✓ (oracle weak — R14). AC2 flags load-bearing ✓ **reproduced**: index
+  mtime ADVANCED with `--no-optional-locks` dropped, UNCHANGED with it; fsmonitor hook
+  RAN with `-c core.fsmonitor=` dropped, did not with it — both armed at git 2.55.0.
+  But AC2's "neither writes nor executes" is FALSIFIED by R1, and its clean-skip
+  clause by R4. AC3 ✓ (measured above). AC4 ✓ both falsifiers match, incl. the
+  deliberate refusal to assert "once per session" because of `/clear`. AC5 partially
+  unpinned (R3, R5). AC6 seven causes covered ✓ but see R2. AC7 ✓ six sites verified
+  independently — `cli.py` 130/213, `config.py` 51/396/437, `lifecycle.py` 558 —
+  identical occupancy to `--no-usage`; all seven positional-complete `Namespace`
+  fixtures gained `no_git`. AC8 ✓. AC11 interactive, correctly **not** automated —
+  unsettled and captain-owned. **CI:** all 12 checks pass and all four workflow runs
+  report `head_sha be1723d`, so the green belongs to this head; `mergeStateStatus
+  CLEAN` and `origin/main` still at the merge base `701b7f0`, so no stale-green or
+  `BEHIND` problem. **Copilot:** never requested; 0 reviews, 0 inline comments — and
+  PRs 234/236/237/238 likewise, so Copilot review is not in use here. Vacuous, and
+  consistent with repo practice.
+
+### Findings — 4 Material, 1 Needs decision, 9 Deferred risk, 9 Polish
+
+**R1 · Material + Needs decision · BLOCKER.** The probe **writes inside the user's
+repository and executes a program the repository selects**, on the happy path, in any
+git-lfs repo. A committed `.gitattributes` (`*.bin filter=lfs`) — which travels with
+`git clone` and needs **no** repo-local config — makes `git status` spawn `git-lfs
+filter-process`, which installs a 350-byte executable `.git/hooks/pre-push`.
+Reproduced with a matched control: hook removed → `git_status.probe()` as the sole
+command → hook present; same repo and racy state with the filter attribute
+neutralised → hook absent. `.git/index` mtime unchanged throughout, so
+`--no-optional-locks` did its job perfectly and the write happened through a path the
+two bounds never contemplated. This falsifies, in the text **this PR adds**:
+`SECURITY.md`'s Invariant 2 — "neither **writes** there nor **executes** anything the
+repository supplies" (both halves) — the section's violation list ("any write inside
+the user's repository"), and AC2. Two lenses independently found the execute half;
+neither found the write. No argv-only fix exists: filter driver names are unbounded,
+so no `-c filter.X.clean=` generalises, and an in-tree `.gitattributes` survives
+`core.attributesFile`. **The remedy is contract wording or a third bound, which per
+`## Review-finding disposition` step 5 is the captain's alone.** Holds unchanged.
+
+**R2 · Material · BLOCKER.** The staleness guard is vacuous whenever `finished_at ==
+0.0`, and a **clean** reading is then republished as `dirty: false` over a session that
+kept working — `null`'s job done by `false`, the DRC-4101 shape AC6 exists to prevent.
+`events.py:537` reads `stale = bool(finished_at) and …`, and
+`observation.py:398-400` pops `_finished` on OVERLAY_WORKING, so `session_ended`
+(reading recorded) → `turn_started` leaves the reading with no guard. Once the WORKING
+overlay lapses (`overlay_working_ttl_sec = 90`, i.e. any turn over 90 s) no branch
+nulls the pair, and `_git` survives `note_rows`, so it is permanent. Reproduced via the
+real `parse`→`overlay_for` path: lapsed overlay + `git=(False,0)` → `{'dirty': False,
+'changed': 0}`; live overlay → correctly `None`. My first attempt **refuted** this — I
+hand-built the overlay without `expires_at` — and it only reproduced once built
+properly; recorded so the refutation is not mistaken for the finding.
+
+**R3 · Material · BLOCKER.** The guard that would have caught R2 does not exist. All
+three reducer clears (`events.py` ~:650/:668/:684) plus `aggregate.py`'s `git=`
+forward are **entirely unpinned**: two agents independently mutated them in throwaway
+copies — deleting all six lines, and separately forcing `git=None` — and the suite
+stayed green (253 and 213 tests OK). The single `git=` call in the whole test tree
+(`test_observation.py:2088`) passes `overlays=[]`, so no overlay branch ever runs with
+a reading present. AC5's own `Falsified by:` names exactly this mutation. The feature's
+`aggregate` half could be dead on arrival with CI green.
+
+**R4 · Material.** `tests/test_git_status.py` **errors instead of skipping** when git
+is absent, violating AC2's explicit clause ("must skip cleanly when `git` is absent").
+`@unittest.skipIf(GIT is None, …)` guards two classes but not `GitProbeReadingTest`
+(:126), whose tests call `_repo()` → `git init` with `check=True`. Reproduced with
+`PATH` pointed at a shim without git: **2 errors, 5 skips**, expected 11 skips. Masked
+because all three runners ship git. One decorator line. Harm is contributor-facing, so
+the FO may reasonably read it as Polish.
+
+**R5 · Material (test soundness).** `test_a_probed_row_publishes_two_scalars_and_no_path`
+is tautological — its distinctive marker is passed to nothing and the assertion is true
+of any implementation — and it uses `json.dumps(session)`, not `collect_json()`. AC5's
+named oracle (porcelain marker → `collect_json()` bytes) **does not exist**. Its
+sibling at :2069 *is* sound and is the real protection.
+
+**R6 · Material (test soundness).** No test asserts what `probe()` actually passes
+`runner`: stripping both flags at the call site keeps the argv test green. The `runner=`
+seam already exists; a two-line spy closes it. This is what makes R7 matter.
+
+**R7 · Needs decision.** No positive control on either hazard test, so neither can
+distinguish "the flag worked" from "the mechanism was never armed"; Windows is vacuous
+for the two reasons above, and the index test is equally vulnerable on a coarse-mtime
+filesystem — the half the builder did **not** disclose. Both mechanisms verified armed
+on macOS. Treat the three-platform green as green-with-caveat.
+
+**Deferred risk — file, do not promote** (per `AGENTS.md`): **R8** unbounded probe
+fan-out, measured 500 threads/500 subprocesses from 500 submits in 23 ms and ~240 per
+harness sustained (×4 normalizers ≈ 960); `_mark_git`'s 512 cap runs *after* the probe
+so it is not admission control, and `quota`'s in-flight set — which the docstring
+claims parity with — has no analogue here. **R9** `capture_output` buffers the whole
+porcelain with no size cap (~41 B/entry, 3× peak; 20 000 entries measured), the one
+bound `io.py` convention would have declared. **R10** on Windows the timeout is a
+**soft** bound: `run()` does `kill()` then `communicate()` with no timeout, so a
+grandchild holding the inherited pipes blocks the drain indefinitely — and R1 proves
+a repo-supplied filter child exists to do it. **R11** git walks up, so a non-repo
+`cwd` under a `$HOME` dotfiles repo publishes a reading about `$HOME`. **R12** bare
+`"git"`: hijackable via a leading relative/empty `PATH` element on POSIX (measured),
+and on Windows `CreateProcess` searches the **dashboard's own** cwd ahead of `PATH`
+(the attacker-chosen `cwd` is *not* searched — reasoned, no host). **R13** last-
+*completion*-wins in `_mark_git`, so an older reading can overwrite a newer one.
+**R14** AC1's single-invocation oracle misses 5 of 9 evasion shapes including
+`shell=True`, and false-positives on comments and a legitimate `shutil.which("git")`.
+**R15** bound 3 rests on `retires_overlays` membership, which nothing pins. **R16**
+inherited `GIT_DIR`/`GIT_WORK_TREE` detaches the reading from the directory it is
+attributed to; an `env=` scrub would close R16 and narrow R1.
+
+**Polish:** **R17** the codex test passes for the wrong reason (its green comes from
+the omitted `cwd`; verified a third time — `session_ended` is in the *global*
+`EVENT_NAMES` and all four normalizers fire the probe with a `cwd`), its comment and
+`git_for`'s docstring are false. **R18** the design-doc "correction" is still false —
+`lifecycle.py:780` starts `run_producer`, a `while not stop.wait(period)` loop, so
+"for a single task" does not hold, and the sentence is false under `--no-events`;
+plus a dangling anaphor. **R19** `git.failed` is dead code in production (real
+`probe()` swallows and returns `None`), `git.*` is filtered out of `drop_counters`,
+and the failure users actually hit — timeout — bumps nothing. **R20** an in-flight
+probe orphans its `git` child to PID 1 at exit; a late probe resurrects a pruned
+`_git` key. **R21** `…_bounded_by_the_overlay_cap` never reaches the cap. **R22**
+unborn HEAD, bare repo and newline filenames all behave but none is pinned. **R23** no
+test asserts the probe is ON by default. **R24** the AC7 prose inversion. **R25**
+`COMPATIBILITY.md` silent on git-absent ⇒ permanent `null` and a non-overridable
+timeout.
+
+### Refuted rather than filed
+
+- **My own candidate blocker, killed before it went anywhere:** "the probe ships on by
+  default, inverting bound 4." The merged contract says verbatim *"The probe is on by
+  default and that flag turns it off"* (`701b7f0:docs/plans/…` line 64) and the code
+  matches, mirroring `--no-usage`. The inversion lives only in **non-shipped** prose —
+  the entity's AC7 headline, the PR body, `4ece71f`'s commit body, and my own dispatch
+  scope notes. Every shipped doc is correct. Filed as R24 (Polish), not a defect.
+- **Lens 2 F3 / Lens 3 F2 classification REFUTED** from Material to Polish. Both
+  proposed Material; lens 2 recorded the disqualifying reason and did not apply it. The
+  test's *first* assertion (`assertNotIn("session_ended", CODEX_EVENTS.values())`) is
+  sound, is asserted against Codex rather than `scan-only`, and would fail on exactly
+  the change AC6 cause 2 names — so the criterion **is** discharged and evidence field
+  3 cannot be established. → R17.
+- **My own first reproduction of R2 refuted itself** (overlay built without
+  `expires_at`); only the faithful rebuild reproduced.
+
+### Verdict
+
+**NO-GO.** Four Material findings, one of them a security-invariant falsification on
+the happy path (R1), plus the missing guard (R3) that would have caught R2. R1 is
+additionally **Needs decision**: its remedy amends promoted contract text, which is
+captain-owned, so it holds unchanged rather than being fixed. AC8 is immaculate and
+AC3 is measured-clean and over-determined; the defects are concentrated in what the
+tests *fail to pin* and in a hazard class the two bounds never contemplated.
+Per the stage definition nothing was edited and the worktree still stands at
+`be1723d`, so the worktree/branch teardown that a GO would authorize was not started.
+
+### Summary
+
+Ran full adversarial as scoped — four lenses plus a completeness critic as separated
+passes, arbitrated by reproduction rather than ranking. Reproduced 2 findings the
+lenses raised, refuted 1 lens classification, refuted 1 candidate blocker of my own,
+and found the review's headline myself: the probe both executes a repository-selected
+program **and writes `.git/hooks/pre-push`** inside the user's repository on the happy
+path for any git-lfs repo, falsifying both halves of the invariant this PR adds to
+`SECURITY.md` while `--no-optional-locks` worked exactly as designed. CI green is
+genuine and belongs to head `be1723d`; AC8's promotion is byte-identical; AC3's
+threading contract is the best-built part of the change. Verdict NO-GO on 4 Material
+findings; R1's remedy is captain-owned, so it holds rather than routing as a fix.
