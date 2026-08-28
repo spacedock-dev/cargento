@@ -515,3 +515,40 @@ Both lenses ran as separated passes and every measurement in the document reprod
 The escalation trigger was tested rather than waved off. Recovering `quota-fetch-security-scope.md` from `7134a01` showed that every structure I might have called "beyond the seven" — the violation clause, the intro-amendment section, and the `SKILL.md` flag-table bullet — is the precedent's own shape, the last one line-for-line. That turned a plausible blocker into an evidenced pass.
 
 The sharpest finding is one the document survives: the amendment's own refutation of DEC-3's "twice" figure is conditional on hook exit code, and a failing hook does run the script twice at 2.55.0. Because the implementation declined to carry any count, the text is correct either way. The finding that does need a decision is not the implementation's to fix — doc line 46 is the captain's amendment verbatim, and the harnesses that can actually emit `session_ended` number two, not four.
+
+## Stage Report: implementation (cycle 2)
+
+- DONE: The two approved Linear writes performed FIRST and read back
+  Performed in cycle 1 and unchanged; this correction round was scoped to the deliverable's wording, and the gate directed that DRC-4122's amendment text is the captain's and stays.
+- DONE: `docs/plans/git-probe-security-scope.md` created in the worktree carrying all SEVEN elements
+  Still all seven, re-read end to end in `00444a7`; only the nullable-surface element's coverage sentence changed.
+- DONE: The diff must touch exactly that one path
+  `git diff --name-only origin/main..HEAD` returns `docs/plans/git-probe-security-scope.md` and nothing else. CI's detector agreed: `code=false`, all five measurable jobs `skipped`.
+- DONE: `python3 scripts/validate_plugins.py` exiting 0
+  Exit 0 locally on the corrected tree, and the `validate` check is green on head `00444a7`.
+- DONE: a grep over the diff proving no version field moved
+  `git diff $(git merge-base origin/main HEAD)..HEAD -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'` returns nothing; `version-guard` green on the new head.
+- DONE: the `sync-docs` skill invoked with its outcome stated
+  Re-invoked this round and it produced **no change**: no code moved on the branch, so nothing could have drifted; check (a) docs-only, (c) validator exit 0, (e) tone clean; (b) covered above, (d) not applicable since the skill body is untouched. The marker was deliberately left unstamped, per the parallel-worktree rule.
+- DONE: measure the actual surface against the 110 ± 30 line estimate and review the diff in the worktree
+  102 lines added, 0 removed, one path. Inside tolerance (80-140), one line under cycle 1's 103 because the corrected paragraph was reflowed. Reviewed in the worktree before pushing.
+- DONE: A PR opened, DCO signed off, body starting `Implements [DRC-4274](url) — <title>` with a `## Verification` section
+  PR #238, unchanged from cycle 1 per the gate's explicit instruction not to edit it. The correction round is recorded as a PR comment instead, which also names the one figure the body now states stale (103 lines, actually 102).
+- DONE: the PR number reported back
+  #238. New head `00444a78532100c02ace2d5f3739485c1e038774`; `mergeStateStatus` `CLEAN`, `quality-gate`, `validate` and `version-guard` all green on that head.
+- DONE: NO test is written
+  No test was written. AC1's falsifier is `scripts/validate_plugins.py`, an existing shipped check already demonstrated in cycle 1 failing on this file's own injected link and anchor defects. A test grepping our own document for its own sentences is the prose-grep this workflow bans by name.
+- SKIPPED: NO `Closes #NNNN` line is added unless a mirrored GitHub issue actually exists
+  No mirrored GitHub issue exists for DRC-4274, so no autoclose line.
+
+### Summary
+
+Correction round 1. The gate returned GO on substance with one ask: doc line 46 understated how little
+coverage the probe has. I reproduced the evidence independently rather than taking it from the gate —
+only `event_hook.py:82` and `:200` map to `session_ended`, `CODEX_EVENTS` carries no `SessionEnd`,
+`codex-hooks.json` registers none, and `agy_hook.py` emits only `store_changed` — which makes it eight
+of ten rows unprobed, not six. Both constraints were honoured: no harness names and no count, because
+the section is promoted into `SECURITY.md` verbatim and any number goes stale the first time an adapter
+gains `SessionEnd`. The replacement states the property instead: the probe fires on `session_ended`,
+most harnesses do not emit it today, so most rows carry `null`. The fsmonitor hazard, the race
+characterisation, the working-directory claim and the PR body are all untouched, as directed.
