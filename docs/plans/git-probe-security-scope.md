@@ -30,7 +30,7 @@ every other read Cargento performs, and both flags are load-bearing. Measured 20
 2.55.0 across four fresh repositories, one probe each, from an identical racy-clean state:
 
 - Without `--no-optional-locks`, the probe writes `.git/index`. The write is git resolving a racy
-  stat, not a per-invocation habit — and a repository a live session is editing is the normal case
+  stat, not a per-invocation habit, and a repository a live session is editing is the normal case
   for it rather than a corner case.
 - Without `-c core.fsmonitor=`, a `core.fsmonitor` script configured in the repository is executed
   under Cargento's identity. A repository can carry that setting in from wherever it was cloned.
@@ -42,7 +42,7 @@ What is published, per session, is two fields and nothing else:
 
     {dirty: bool | None, changed: int | None}
 
-Both fields are nullable, and `null` means not probed — never a confident clean over no evidence.
+Both fields are nullable, and `null` means not probed. It is never a confident clean over no evidence.
 Six of the ten harnesses (Pi, Copilot, OpenCode, Cursor, Goose, Droid) have no event adapter and can
 never emit the end-of-session edge, so most rows carry `null`. `changed` counts porcelain entries
 rather than files: git collapses an untracked directory into a single entry, so a new directory
@@ -52,7 +52,7 @@ What is never read:
 
 - File contents, of any file, at any point.
 - Diffs and blobs. Nothing asks what changed inside a file, only that something did.
-- Branch and upstream state of any kind — the branch name, its tracking branch, and how far ahead or
+- Branch and upstream state of any kind. The branch name, its tracking branch, and how far ahead or
   behind it sits are all outside this feature.
 
 Porcelain output names paths. Those pathnames are matching hints and are never echoed to
@@ -64,7 +64,7 @@ would put one subprocess in the user's repository per turn for the life of the s
 
 The off switch is `--no-git`. The probe is on by default and that flag turns it off. It mirrors
 `--no-spacedock` at every one of that flag's sites, including the branch that forwards flags to a
-respawned daemon — so a restart cannot re-enable a probe the user disabled. With the probe off no
+respawned daemon, so a restart cannot re-enable a probe the user disabled. With the probe off no
 git command runs at all, and both fields stay `null`.
 
 A violation of any boundary in this section is a security bug: a git command other than the one
