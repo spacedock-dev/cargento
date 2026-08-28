@@ -11,7 +11,7 @@ worktree: .worktrees/spacedock-ensign-drc-4037
 issue:
 pr:
 mod-block:
-linear-status: Todo
+linear-status: Backlog
 milestone: 'Nothing dies quietly'
 release: 'r2'
 estimate: 'L'
