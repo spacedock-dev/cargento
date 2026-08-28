@@ -1,5 +1,5 @@
 ---
-id:
+id: drc-4274
 title: Git probe groundwork · SECURITY.md scope section for the end-of-session git probe
 status: implementation
 source: https://linear.app/recce/issue/DRC-4274
@@ -76,6 +76,14 @@ gates:
                     The rest of the document stands. The three other findings are dispositioned as recorded: the twice-versus-once refutation is conditional on hook exit code and the document is correct under both because it carries no run count, which vindicates the implementation's wording and must not be "fixed"; the race-resolution characterisation is confirmed; and the working-directory retention claim belongs in DRC-4037's design rather than this PR.
 
                     AFTER THE FIX: the reviewer re-verifies the corrected line and the unchanged remainder, then the merge proceeds.
+review-round:
+    id: round:drc-4274:review:1
+    stage: review
+    cycle: 1
+    briefing:
+        id: briefing:drc-4274:review:attempt-1:revision-1
+        digest: sha256:630a2c7dfa12240736694da9057e6e83b2427e30930574cce356517b3051147c
+        room-ref: ./review/review/round-1
 ---
 
 [DRC-4274](https://linear.app/recce/issue/DRC-4274) — filed 2026-08-28 by this workflow's E4 cycle,
@@ -414,6 +422,8 @@ records that uniform six-agent review is what cost 4h27m and 6.9M tokens for 10 
 or if either lens finds a claim that does not reproduce.
 
 ### Feedback Cycles
+
+- Cycle 1: REVISE — review gate, one ask; surface 1 file/102 LOC vs estimate 110 ± 30 (93%); AC unchanged
 
 ## Out of scope
 
