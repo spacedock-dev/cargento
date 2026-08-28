@@ -1,7 +1,7 @@
 ---
 id:
 title: 'D6 · Come back at 3:40'
-status: recorded
+status: selection
 source: https://linear.app/recce/issue/DRC-4029
 started: 2026-08-28T02:02:06Z
 completed:
@@ -11,7 +11,7 @@ worktree:
 issue:
 pr:
 mod-block:
-linear-status: 'Backlog'
+linear-status: Todo
 milestone: 'Spend attention well'
 release: 'r1'
 estimate: 'XS'
