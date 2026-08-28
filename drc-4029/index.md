@@ -1,7 +1,7 @@
 ---
 id:
 title: 'D6 · Come back at 3:40'
-status: triage
+status: implementation
 source: https://linear.app/recce/issue/DRC-4029
 started: 2026-08-28T02:02:06Z
 completed:
@@ -53,7 +53,7 @@ gates:
                 reason: 'RULING: CANCEL DRC-4029. The captain ruled at the cycle-2 triage gate that D6 is cancelled rather than re-scoped. Accepts the recommendation and its five ranked reasons, the decisive one being that triage measured the ceiling shared by every statistic the DEC-7 ruling permits rather than testing candidates one at a time: an oracle assuming perfect estimates and total coverage had a median lead of 1m16s across 375 multi-session instants and reached the twenty-minute window the item was scored on 0 times, so the constraint is the quantity and no implementation can beat it. The strongest genuinely-open candidate, the settled minimum plus a suppression rule, was built and measured and failed on both axes at once — 0 of 375 renders at T=20m, and at T=10m it rendered three times and reality beat it three times by a median of 10m42s. Two further reasons the captain should be recorded as having seen: the item degrades as the product improves, because a minimum over more rows is smaller, so B2 landing makes D6 less useful rather than more; and where the statistic works at one session it duplicates the card own rendered estimate. A reopening condition is written into the drafted body as a re-runnable probe rather than a judgement, so cancellation is reversible on evidence. Evidence quality noted: DRC-4271 probe was re-run unchanged and one figure was reported as drifted rather than repeated, and code claims were re-checked at v0.17.1 after main moved. SCOPE OF THIS APPROVAL: drafted writes 1 to 3 only — the DRC-4029 body rewrite and move to Canceled, the milestone correction, and the state/labels/relations edit. Drafted write 4, the one-sentence edit to DRC-4272, was NOT authorized: the captain did not answer that question and it remains open. DRC-4272 is to be left untouched.'
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4029](https://linear.app/recce/issue/DRC-4029) — Linear priority Medium, estimate XS.
