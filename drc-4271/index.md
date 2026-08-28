@@ -27,6 +27,17 @@ gates:
                 id: briefing:drc-4271:triage:attempt-1:revision-1
                 digest: sha256:4f6a45bae71cbb68387a48cf39223c54f2df00cd07f3fb567124391fcc4354be
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4271:triage:1
+                briefing: briefing:drc-4271:triage:attempt-1:revision-1
+                by: person:captain
+                at: "2026-08-28T04:29:17.657554Z"
+                decision: approve
+                reason: 'RULING: NO. The captain ruled at the triage gate that Cargento may not publish a single walk-away clock time whose plain reading is an all-clear, on partial coverage. Accepts the recommended direction and its three ranked reasons: the published ETA coverage discloses a different quantity from the needs-input coverage an all-clear actually rests on (4 of 10 harnesses), so answer 1 does not mitigate the risk it is designed to mitigate; the narrow completion claim is itself unreliable, the published maximum being earlier than the truth 74% of the time and 87% at three or four sessions by a median of 9m50s; and DRC-4028 own ranked text already conceded a coverage-scoped promise is honest and rejected it on value, blessing D6 only because it delivers walk-away without claiming safety. Answer 3 was refuted rather than declined: full ETA coverage held at 0 of 82 sampled instants at normal parallel load. The ruling is narrower than cancelling D6 — the narrow claim DRC-4029 already settled is untouched, and re-scope versus cancellation belongs to its own cycle. Evidence quality noted: triage audited a document this workflow authored and reported two of its figures as unreproduced rather than repeating them, and the correction it found cut in favour of the answer it did not recommend.'
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4271](https://linear.app/recce/issue/DRC-4271) — Linear priority Medium, no estimate. Filed
