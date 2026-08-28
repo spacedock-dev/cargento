@@ -798,9 +798,20 @@ fourth coincidence.
 ### What was measured, 2026-08-28 (cycle 2)
 
 `drc-4029/probe_min_lead.py`, committed beside this entity. It reuses DRC-4271's interval
-reconstruction verbatim and the same random seed, so its sampled instants are comparable with
-`probe_max_error.py`'s. 44 sessions and 541 turns over a seven-day window; 4,000 sampled instants
-with at least one working session, of which 247 had two or more and 46 had three or four.
+reconstruction verbatim, the same random seed, and the same exhausted draw stream, so **its
+multi-session instants are the same 375 instants `probe_max_error.py` samples** — the two probes
+measure the minimum and the maximum over one set of moments. 44 sessions and 541 turns over a
+seven-day window; 5,922 sampled instants with at least one working session, of which 375 had two or
+more and 71 had three or four.
+
+That shared harness was checked rather than assumed. Re-running `probe_max_error.py` unchanged
+against the store as it stands today reports the same 44 sessions and 541 turns, and reproduces
+DRC-4271's published result: full ETA coverage at three-to-four concurrent sessions is 0 of 71
+(DRC-4271: 0 of 82), and the published maximum is earlier than the truth 76% of the time overall and
+87% at k = 3–4 (DRC-4271: 74% and 87%). One figure drifted and is reported rather than repeated: the
+median understatement at k = 3–4 came out **6m52s today against DRC-4271's 9m50s**, which the ruling
+quotes. Same direction, same order of magnitude, different number — the store grows daily, and this
+is what "machine-specific by construction" costs. Nothing in either cycle's conclusion turns on it.
 
 At each instant it computes two numbers:
 
@@ -811,36 +822,45 @@ At each instant it computes two numbers:
 
 | | renders | median lead | p75 | p90 | ≥5m | ≥10m | ≥20m |
 |---|---|---|---|---|---|---|---|
-| k = 1, published | 80% | 3m28s | 7m22s | 15m56s | 27.6% | 14.8% | 6.6% |
-| k = 1, **oracle** | 100% | 3m43s | 8m45s | 19m11s | 41.2% | 21.3% | 9.4% |
-| k = 2, published | 69% | 2m03s | 2m59s | 4m48s | 6.5% | 1.5% | **0.0%** |
-| k = 2, **oracle** | 100% | 1m26s | 2m54s | 5m01s | 10.4% | 1.0% | **0.0%** |
-| k = 3–4, published | 91% | 2m36s | 3m40s | 5m00s | 13.0% | 0.0% | **0.0%** |
-| k = 3–4, **oracle** | 100% | 0m51s | 1m47s | 1m55s | **0.0%** | 0.0% | **0.0%** |
-| all k ≥ 2, published | 73% | 2m15s | 3m13s | 5m00s | 7.7% | 1.2% | **0.0%** |
-| all k ≥ 2, **oracle** | 100% | 1m21s | 2m36s | 4m33s | 8.5% | 0.8% | **0.0%** |
+| k = 1, published | 80% | 3m27s | 7m19s | 16m03s | 27.6% | 14.7% | 6.7% |
+| k = 1, **oracle** | 100% | 3m40s | 8m40s | 19m11s | 40.6% | 21.4% | 9.4% |
+| k = 2, published | 69% | 2m01s | 2m55s | 4m38s | 5.6% | 1.0% | **0.0%** |
+| k = 2, **oracle** | 100% | 1m23s | 3m05s | 5m19s | 12.5% | 1.6% | **0.0%** |
+| k = 3–4, published | 85% | 2m45s | 4m03s | 5m07s | 12.7% | 0.0% | **0.0%** |
+| k = 3–4, **oracle** | 100% | 0m57s | 1m47s | 2m36s | **0.0%** | 0.0% | **0.0%** |
+| all k ≥ 2, published | 72% | 2m15s | 3m09s | 4m49s | 6.9% | 0.8% | **0.0%** |
+| all k ≥ 2, **oracle** | 100% | 1m16s | 2m41s | 4m59s | 10.1% | 1.3% | **0.0%** |
 
 Three things in that table decide the issue.
 
-**The ceiling is about a minute and a half.** At two or more concurrent sessions the oracle minimum
-has a median lead of 1m21s and reached twenty minutes in 0 of 247 sampled instants. At three or four
-sessions its ninetieth percentile is 1m55s. No estimator, no coverage work and no fourth statistic
-can produce a walk-away time from a quantity that is not there.
+**The ceiling is about a minute and a quarter.** At two or more concurrent sessions the oracle
+minimum has a median lead of 1m16s and reached twenty minutes in 0 of 375 sampled instants. At three
+or four sessions its ninetieth percentile is 2m36s, and it did not reach five minutes once. No
+estimator, no coverage work and no fourth statistic can produce a walk-away time from a quantity
+that is not there.
 
-**Every available improvement moves the number the wrong way.** The oracle is *earlier* than what
-`turn_progress` publishes — 1m21s against 2m15s at k ≥ 2, 51s against 2m36s at k = 3–4 — because a
-minimum taken over more rows is smaller. The published figure looks better than the truth precisely
-because it cannot see some of the rows. So better estimates, wider ETA coverage, and B2 landing all
-make this item worse, not better. That is unusual enough to be worth stating plainly: **D6 degrades
-as the rest of the product improves.**
+**Every available improvement moves the central number the wrong way.** The oracle's median lead is
+*earlier* than what `turn_progress` publishes — 1m16s against 2m15s at k ≥ 2, and 57s against 2m45s
+at k = 3–4 — because a minimum taken over more rows is smaller. The published figure looks better
+than the truth precisely because it cannot see some of the rows. So better estimates, wider ETA
+coverage and B2 landing all lower this number. That is unusual enough to state plainly: **D6
+degrades as the rest of the product improves.**
+
+One honesty note on that claim, because the wider sample qualifies it. At k = 2 the oracle's *tail*
+is slightly fatter than the published figure's — it clears five minutes 12.5% of the time against
+5.6% — because the published number is absent altogether at 31% of k = 2 instants, and those absences
+count against it. So the comparison there is between a figure that is longer but often missing and
+one that is shorter but always right. At k = 3–4 no such qualification applies: the oracle is worse
+across the whole distribution, never once reaching five minutes where the published figure did 12.7%
+of the time.
 
 **Where the number is useful, the item is redundant.** At one working session the published minimum
-has a median lead of 3m28s and clears twenty minutes 6.6% of the time. But at one working session
+has a median lead of 3m27s and clears twenty minutes 6.7% of the time. But at one working session
 D6's aggregate *is* that session's own `~Xm left (est)`, already rendered on its card. The item
 delivers a figure only where it adds nothing to what is on screen.
 
 The k = 1 row is also the control that makes the zeroes meaningful. The instrument does find windows
-of twenty minutes and more when they exist — 6.6% of 3,753 instants at k = 1, 9.4% on the oracle. It
+of twenty minutes and more when they exist — 6.7% of 5,547 instants at k = 1, 9.4% on the oracle. It
 found none at k ≥ 2. The zero is a signal, not a blind instrument.
 
 ### The fourth statistic, built and measured
@@ -852,17 +872,18 @@ visibly rather than publish a figure that means nothing — and it converts "com
 useless answer into an absent card. It is honest by construction, it needs no new data, and it is
 the one candidate none of the three prior refusals covers.
 
-It was measured on the same 247 instants at k ≥ 2. `wrong` means the card said "nothing before X"
+It was measured on the same 375 instants at k ≥ 2. `wrong` means the card said "nothing before X"
 and something completed before X:
 
 | threshold | renders | wrong when it renders | by a median of |
 |---|---|---|---|
-| T = 5m | 7.7% (19/247) | 84% | 4m43s (worst 10m42s) |
-| T = 10m | 1.2% (3/247) | **100%** | 10m42s |
-| T = 20m | **0.0% (0/247)** | — | — |
+| T = 5m | 6.9% (26/375) | 88% | 4m43s (worst 10m42s) |
+| T = 10m | 0.8% (3/375) | **100%** | 10m42s |
+| T = 20m | **0.0% (0/375)** | — | — |
 
 **It fails twice over.** At the threshold that carries the item's own stated value it never renders
-at all, which is the same non-delivery that refuted "only at full coverage" (0 of 82 instants).
+at all, which is the same non-delivery that refuted "only at full coverage" (0 of 71 instants at
+k = 3–4 on today's store, 0 of 82 when DRC-4271 measured it).
 Lower the threshold to make it render and it is wrong every time it does — a card that appears
 rarely and lies when it appears is worse than no card, because its rarity is what makes a reader
 trust it.
@@ -898,7 +919,7 @@ Five reasons, in order of weight.
 
 1. **The permitted family has a measured ceiling and it is about a minute and a half.** At the
    multi-session load this item exists for, a perfect estimator with total coverage has a median
-   lead of 1m21s and never reached twenty minutes across 247 instants. The constraint is the
+   lead of 1m16s and never reached twenty minutes across 375 instants. The constraint is the
    quantity, not the code.
 2. **The item gets worse as the product gets better.** Improving coverage lowers the minimum, by
    arithmetic. B2 landing, better estimates, more harnesses reporting — every direction the roadmap
@@ -907,11 +928,11 @@ Five reasons, in order of weight.
 3. **What survives the redundancy penalty is exactly what the ruling forbids.** The item's own
    record says the 42-point penalty against D4 leaves one thing standing: *"supports pre-committing
    to a 20 minute errand"*. After DEC-7 that pre-commitment may not be published, and the
-   measurement says the window it would rest on did not occur once in 247 sampled instants. Build 15
+   measurement says the window it would rest on did not occur once in 375 sampled instants. Build 15
    buys a card that either says "come back now" or does not render.
 4. **The strongest remaining candidate was built and it failed on both axes at once.** Rare *and*
    wrong is the combination that cannot be tuned out: raising the threshold empties the card,
-   lowering it fills the card with figures reality beat 84% of the time.
+   lowering it fills the card with figures reality beat 88% of the time.
 5. **Where the statistic works, it duplicates a rendered field.** At one session it is the card's own
    `~Xm left (est)`.
 
@@ -924,7 +945,7 @@ new is that so is everything else the ruling leaves standing.
 Each is a falsifier with a named test, not a hypothetical.
 
 - **A different workload.** Re-run `probe_min_lead.py`. If the oracle minimum at k ≥ 2 clears twenty
-  minutes in a material fraction of instants — say above 10%, against 0 of 247 here — the errand
+  minutes in a material fraction of instants — say above 10%, against 0 of 375 here — the errand
   value exists and D6 becomes buildable as the plain minimum. That needs much longer turns or far
   fewer concurrent sessions, so it is a claim about how someone works rather than about this code.
   The measurement is machine-specific by construction and another machine re-derives its own.
@@ -1068,28 +1089,28 @@ DEC-7 ruled on 2026-08-28 that Cargento may not publish a walk-away clock time w
 
 Every statistic the ruling leaves standing makes one shape of promise: *nothing you can predict will be ready before X*. That is sound only if X is no later than the true soonest completion, so **the true soonest completion is a hard ceiling on every candidate** — including ones nobody has thought of, because the ceiling is a property of the workload rather than of the estimator.
 
-The ceiling was measured over 4,000 sampled instants drawn from 541 turns across 44 sessions, comparing what this code would publish against a perfect estimator with total coverage:
+The ceiling was measured over 5,922 sampled instants drawn from 541 turns across 44 sessions, of which 375 had two or more sessions working at once, comparing what this code would publish against a perfect estimator with total coverage:
 
 | at two or more concurrent sessions | median lead | p90 | ≥ 20 minutes |
 |---|---|---|---|
-| what `turn_progress` would publish | 2m15s | 5m00s | 0 of 247 |
-| a perfect estimator, total coverage | 1m21s | 4m33s | 0 of 247 |
+| what `turn_progress` would publish | 2m15s | 4m49s | 0 of 375 |
+| a perfect estimator, total coverage | 1m16s | 4m59s | 0 of 375 |
 
-At three or four concurrent sessions the perfect estimator's ninetieth percentile is 1m55s.
+At three or four concurrent sessions the perfect estimator's ninetieth percentile is 2m36s, and it did not reach five minutes once.
 
 Three things follow, and together they close the item.
 
-**Better inputs make it worse.** The perfect estimator publishes an *earlier* time than the flawed one, because a minimum taken over more rows is smaller. Every direction this roadmap is already moving — wider ETA coverage, needs-input detection on more harnesses, better estimates — lowers this number. An item with that shape does not become buildable later.
+**Better inputs make it worse.** The perfect estimator's median lead is *earlier* than the flawed one's, because a minimum taken over more rows is smaller. Every direction this roadmap is already moving — wider ETA coverage, needs-input detection on more harnesses, better estimates — lowers this number. An item with that shape does not become buildable later.
 
-**The one candidate the ruling left genuinely open fails on both axes at once.** Publishing the minimum only when it is at least T minutes out — refusing visibly, the convention calm mode's `fastest` ordering already sets — renders on 0 of 247 instants at twenty minutes. Lowered to ten minutes it renders three times and reality beat it all three, by a median of 10m42s. Rare and wrong is the combination that cannot be tuned out.
+**The one candidate the ruling left genuinely open fails on both axes at once.** Publishing the minimum only when it is at least T minutes out — refusing visibly, the convention calm mode's `fastest` ordering already sets — renders on 0 of 375 instants at twenty minutes. Lowered to ten minutes it renders three times and reality beat it all three, by a median of 10m42s. Rare and wrong is the combination that cannot be tuned out.
 
-**What survived the redundancy penalty is what the ruling forbids.** This item is a subset of D4 with a penalty of 42, and its own record says one thing survives it: *one clock time you can write down or hand to somebody, which supports pre-committing to a 20 minute errand.* That pre-commitment may no longer be published, and the twenty-minute window it would rest on did not occur once in 247 sampled instants.
+**What survived the redundancy penalty is what the ruling forbids.** This item is a subset of D4 with a penalty of 42, and its own record says one thing survives it: *one clock time you can write down or hand to somebody, which supports pre-committing to a 20 minute errand.* That pre-commitment may no longer be published, and the twenty-minute window it would rest on did not occur once in 375 sampled instants.
 
-Where the number does work, the item is redundant. At a single working session the lead time clears twenty minutes 6.6% of the time — but at a single working session this aggregate is that card's own estimate, already on screen.
+Where the number does work, the item is redundant. At a single working session the lead time clears twenty minutes 6.7% of the time — but at a single working session this aggregate is that card's own estimate, already on screen.
 
 ## What would reopen it
 
-- **A workload with a real ceiling.** Re-run the probe. If the perfect-estimator minimum at two or more concurrent sessions clears twenty minutes in a material fraction of instants — above 10%, against 0 of 247 here — the errand value exists and this ships as the plain minimum. The measurement is machine-specific by construction and another machine derives its own.
+- **A workload with a real ceiling.** Re-run the probe. If the perfect-estimator minimum at two or more concurrent sessions clears twenty minutes in a material fraction of instants — above 10%, against 0 of 375 here — the errand value exists and this ships as the plain minimum. The measurement is machine-specific by construction and another machine derives its own.
 - **`turn_progress` changing its history rule.** If it stops drawing history per session, or publishes an estimate for a turn that has outrun its own history, the coverage and bias figures behind both triage cycles are void and the reasoning needs re-deriving.
 
 What does **not** reopen it: needs-input detection reaching the remaining harnesses. That completes the coverage an *attention* all-clear rests on, which is D5's product, not this one's. This item's number is a completion estimate and its ceiling is the workload.
