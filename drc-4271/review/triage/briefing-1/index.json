@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4271:triage:attempt-1:revision-1",
+  "question": "RULE on DEC-7: May Cargento publish a single walk-away clock time whose plain reading is \"everything will be done by then\", when the coverage that licenses that reading is partial? Three answers are on the table — Yes with coverage published beside the time; No; Only at full coverage. Triage recommends No, and notes that \"No\" is narrower than \"cancel D6\": whether DRC-4029 is re-scoped or cancelled belongs to its own cycle once this decision releases it. Your ruling is written to Linear by implementation, which closes DRC-4271 and moves DRC-4029 out of Blocked.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4271:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/93cf2fd93cac0fe55e22c6be44ac56a7d90a7c57/drc-4271.md",
+      "rev": "sha256:291674c01fa56e0629214fdfc6cadefc103c200c26dcf91e13992e0bc5778e49",
+      "mediaType": "text/markdown",
+      "summary": "Triage audited a document this workflow itself wrote yesterday, and two of its load-bearing figures did not survive contact with the stores. DEC-7 claimed ETA coverage of 1 of 2 from a single collect; replaying turn_progress rules over 558 turns puts it at 80% of turns and 64-71% of wall clock — much better than claimed. DEC-7 also inherited \"nine of ten harnesses\" from D5, which is stale: four harnesses now report needs-input (aggregate.py:252,266,302,322). Both were reported as unreproduced rather than repeated. The deeper finding is a framing error in DEC-7 itself: it asks whether partial information differs from absent information, but D5 absent signal was needs-input detection while D6 partial coverage is ETA coverage. Different quantities, so publishing ETA coverage beside the time discloses nothing about the claim an all-clear actually rests on. New measurement settles two of the three answers: the maximum D6 would publish is earlier than the truth 74% of the time, and at three or four concurrent sessions 87% of the time by a median of 9m50s; and full ETA coverage held at 0 of 82 sampled instants at that same load, which refutes \"only at full coverage\" outright rather than leaving it open. Checked against DRC-4028 own text rather than DEC-7 summary of it, the precedent constrains tightly: D5 ranked reasons lead with \"D6 already exists and the board prefers it\", it explicitly concedes a coverage-scoped promise \"is honest\" and rejects it on value, and it blessed D6 only because D6 delivers the walk-away behaviour \"without claiming safety\". Recommendation No, on three ranked reasons. Two second-order items surfaced: cancelling D6 would retroactively remove D5 weightiest cancellation reason, and D5 own stated reopening condition has already been met on 2026-08-24 with nobody recording it — flagged for separate filing, not decided here. Nothing written to Linear; three probes committed under drc-4271/."
+    }
+  ]
+}
