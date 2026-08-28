@@ -1161,6 +1161,41 @@ Supersedes the cycle-1 table. Split across the two PRs.
 | Docs | `SECURITY.md` (promotion + two amendments), `SKILL.md` flag table `:294`, `HOW_TO_USE.md` `:343`, `docs/design-runtime-architecture.md` | and delete `docs/plans/git-probe-security-scope.md` |
 
 **Estimate: ~17 files, +420 / −120 lines. Tolerance ±35%.** The −120 is mostly the deleted plan doc.
+**SUPERSEDED 2026-08-28 by the captain's re-declaration below.** Retained as written, because the
+figure the build was held to is part of the record and the reason it moved is only legible against it.
+
+#### Re-declared 2026-08-28 — accepted by the captain, not stretched
+
+The build measured **24 files, +918 / −114** against `origin/main` at `701b7f0`: files +41.2% and
+added +118.6% on a ±35% tolerance, deleted −5.0% and within. `implementation` stopped at the gate
+with the work finished and green rather than opening the PR, and the captain **accepted the overrun
+and re-declared** rather than authorising a trim.
+
+**Why it moved: the estimate was wrong about test volume, not the work wrong about scope.**
+
+| Area | Declared | Actual | Reading |
+| --- | --- | --- | --- |
+| Runtime | the 8 files this table names | 8 files, +310 | on estimate |
+| Docs and scripts | 5 files + the deleted plan doc | 7 files, +67 / −104 | on estimate; `AGENTS.md` added by `sync-docs` |
+| Tests | 6 files | 9 files, +541 | **the whole overrun** |
+
+Three of the nine test files were **compelled by existing required checks rather than chosen**, which
+is the part an estimate can be taught to see: `test_contracts.py`, because
+`test_runtime_import_graph_matches_the_reviewed_allowlist` rejects any new runtime module until its
+node and edges are declared; `test_notifications.py`, because it holds an `OverlaySource` fake that
+must satisfy the protocol once it grows a method; and `test_documentation.py`, which carries the
+drift-guard holding `SECURITY.md`'s promoted prose to the code.
+
+The rest is the acceptance criteria's own test demands, under-costed at triage: AC2 builds two real
+repositories, AC3 needs two threading oracles, AC4 two edge sequences, AC6 one test per cause across
+seven causes, AC1 a repository-wide single-invocation assertion, AC5 a pathname-absence check at two
+layers, AC7 three. Reaching the +35% ceiling would have meant deleting roughly 350 lines of exactly
+the oracles the full-adversarial tier was routed here to examine, so no trim was offered.
+
+**The acceptance does not generalise.** Recorded by the FO as a workflow rule at the same time: cost
+the oracles separately from the runtime, and check whether any existing required check compels a new
+test file, before declaring. An overrun of this shape again fixes the estimating method rather than
+the tolerance.
 
 **PR 2 — the render.**
 
