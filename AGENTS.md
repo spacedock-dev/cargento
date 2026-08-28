@@ -42,6 +42,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── diagnostics.py      # store-path reporting for --diagnose
         │   ├── dismissals.py       # the sessions marked handled, and when a mark lapses
         │   ├── events.py           # the untrusted event envelope and its overlay reducer
+        │   ├── git_status.py       # the end-of-session git probe: one command, two scalars
         │   ├── http_api.py         # the loopback server, its handler, and network helpers
         │   ├── io.py               # bounded file reads, safe globbing, and read-only SQLite
         │   ├── lifecycle.py        # state file, port probes, stop, and daemon detach
