@@ -47,6 +47,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4274:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4274-review-1
+              briefing:
+                id: briefing:drc-4274:review:attempt-1:revision-1
+                digest: sha256:630a2c7dfa12240736694da9057e6e83b2427e30930574cce356517b3051147c
+                room-ref: ./review/review/briefing-1
 ---
 
 [DRC-4274](https://linear.app/recce/issue/DRC-4274) — filed 2026-08-28 by this workflow's E4 cycle,
