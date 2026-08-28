@@ -1,7 +1,7 @@
 ---
 id:
 title: 'E4 · Ended with uncommitted work'
-status: triage
+status: implementation
 source: https://linear.app/recce/issue/DRC-4037
 started: 2026-08-28T06:33:15Z
 completed:
@@ -64,7 +64,7 @@ gates:
                     Evidence quality noted, including against the FO. This stage refuted the FO's own figure: the six --no-spacedock sites in E4's body reproduce, enumerated across cli.py twice, config.py three times and lifecycle.py once with --no-usage occupying the identical six as an independent check, and it was the groundwork cycle's three that was the miscount. On the other defect it found the root cause rather than the error alone — the six-of-ten-harnesses sentence was carried over from observation.finished_at's docstring where six is correct for a different question — and drafted a property rather than a count because Droid and Goose emit SessionEnd natively and are unreachable only for want of an adapter. Two build-shaping constraints absent from the merged contract were found by reading the tip: the session-end edge runs on the HTTP handler thread under the coordinator lock behind a two-second client timeout, and session_ended mints no overlay so the result has no carrier. One cycle-1 acceptance criterion was found unsound rather than merely incomplete and was rewritten.
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 
