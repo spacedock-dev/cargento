@@ -972,3 +972,147 @@ Cancelling D6 does not make D5 buildable, for two reasons that stand independent
 So: two of D5's three cancellation reasons survive, and the ruling adds a new constraint that did
 not exist when it was cancelled. The captain may reasonably decide the reopening case is now
 stronger, weaker, or unchanged; this cycle records the inputs and does not decide it.
+
+### Passages in the current body that the ruling or DRC-4271 falsified
+
+Six, of which the scope notes named two. Each is quoted from the pre-edit capture above.
+
+**1. The coverage claim, named in the scope notes.** In "Why it was blocked":
+
+> One live collect at that moment: two working sessions, **one** carrying an ETA.
+
+An n=1 observation asserted as fact. DRC-4271's triage replayed `turn_progress`' own rule over 558
+turns and got **80% of turns carrying an ETA, and 64–71% of working wall-clock**. Coverage is four
+rows in five, not one in two. The milestone was corrected for this on 2026-08-28; the issue was not,
+because the correction was not in the approved DEC-7 drafts.
+
+**2. The closing sentence, named in the scope notes.** Same section:
+
+> It is filed as a decision issue and this item blocks on it.
+
+False since 2026-08-28T04:34:36Z. DEC-7 is closed, DRC-4029 is `Todo`, and `blockedBy` is empty —
+the gate was replaced with a related edge. The sentence contradicts the body's own ruling section
+four paragraphs above it.
+
+**3. The optimistic-bias mechanism is overstated.** In the maximum's bullet:
+
+> the rows without one are the rows running longest
+
+DRC-4271 corrected this explicitly, as a correction to the mechanism rather than to the conclusion:
+the uncovered set is broader than "the longest rows". It is every non-working row, every row whose
+turn outruns **its own session's** history, and **every session on its first turn**, which has no
+history at all and may be short. The bias direction survives and is now measured — uncovered turns
+run 4–5× longer, median 7m56s against 2m05s — but the sentence as written describes a cleaner
+mechanism than the code has.
+
+**4. An arithmetic slip.** In the same section:
+
+> six days after D5 was cancelled
+
+D5 was cancelled 2026-08-23 and this was written 2026-08-28. Five days. The milestone's own
+2026-08-28 update says "five days earlier", so the two records disagree with each other. Not
+falsified by the ruling — just wrong, and worth fixing while the body is open.
+
+**5. A heading that assumes an unlanded decision.** The section titled:
+
+> ## What survives for the build, once the decision lands
+
+The decision landed the same day. The section's content — the settled narrow claim, and the
+redundancy penalty it must be held against — is still true and is what this cycle measured against;
+only its framing is stale.
+
+**6. A precision claim the audit downgraded.** In "Why it was blocked":
+
+> median turn **2m03s**, p75 5m50s, p90 11m22s, p95 15m17s
+
+Not falsified, but DRC-4271's replay across five slicings reproduced the median, p90, ≥10m and ≥20m
+figures and reported **p75 and p95 as reproducing only approximately** (p75 came out 5m15s–5m40s;
+p95 straddled). The body states all four to the second as though equally firm. The fix is the
+sample, not the numbers: 558 turns across five slicings rather than 94 across one.
+
+One further defect in the record, not a falsification and not repaired here. The pre-edit capture
+shows Linear's serializer moved two emphasis boundaries in "Two corrections to this issue's own
+claims" — `**The **` before a code span, and a second bullet that lost its opening bold. The FO
+dispositioned that class Polish/decline in cycle 1. The drafts below are authored so the trigger
+does not fire again: no emphasis boundary touches a code span, a link, or a bare issue identifier,
+since Linear's auto-mention of bare identifiers splits emphasis runs as well.
+
+### Drafted edits — for the gate to authorize, not yet written
+
+Three writes plus one that belongs to the captain. `implementation` performs 1–3 in order; 4 is
+drafted for the captain to authorize or decline separately, because it edits a record this issue
+does not own.
+
+#### 1. Rewritten DRC-4029 body, and the state moved to Canceled
+
+The forward-looking body is **3,050 characters against the current body's 5,900** before `History`.
+Nothing is deleted: the four sections this cycle supersedes are demoted to dated historical sections
+with the specific sentence that failed named in each label, and the five 2026-08-23 blockquotes
+already under `History` carry forward untouched.
+
+`## What would reopen it` follows the convention D5 set when it was cancelled, so a later reader
+finds the reopening condition where the board already puts it.
+
+````markdown
+Board item **D6**. **Cancelled 2026-08-28**, on the measurement below rather than on a change of mind: after DEC-7 ruled, the statistic this item needs was shown to have a ceiling of about ninety seconds at the load it exists for.
+
+**Release row:** r1 · **Journey stage:** Mid-flight · **Outcome group:** Spend attention well
+
+## What it is
+
+One clock time instead of twelve ETAs: a time you could write on a calendar, computed over the per-turn estimates every working card already shows.
+
+## Why it is cancelled
+
+DEC-7 ruled on 2026-08-28 that Cargento may not publish a walk-away clock time whose plain reading is an all-clear, on partial coverage. That ruling was narrower than cancelling this item, and deliberately so: the narrow claim settled 2026-08-23 — *the soonest expected completion among turns we can estimate*, coverage beside it — is not an all-clear and survived it. This section is what happened when that surviving claim was measured.
+
+Every statistic the ruling leaves standing makes one shape of promise: *nothing you can predict will be ready before X*. That is sound only if X is no later than the true soonest completion, so **the true soonest completion is a hard ceiling on every candidate** — including ones nobody has thought of, because the ceiling is a property of the workload rather than of the estimator.
+
+The ceiling was measured over 4,000 sampled instants drawn from 541 turns across 44 sessions, comparing what this code would publish against a perfect estimator with total coverage:
+
+| at two or more concurrent sessions | median lead | p90 | ≥ 20 minutes |
+|---|---|---|---|
+| what `turn_progress` would publish | 2m15s | 5m00s | 0 of 247 |
+| a perfect estimator, total coverage | 1m21s | 4m33s | 0 of 247 |
+
+At three or four concurrent sessions the perfect estimator's ninetieth percentile is 1m55s.
+
+Three things follow, and together they close the item.
+
+**Better inputs make it worse.** The perfect estimator publishes an *earlier* time than the flawed one, because a minimum taken over more rows is smaller. Every direction this roadmap is already moving — wider ETA coverage, needs-input detection on more harnesses, better estimates — lowers this number. An item with that shape does not become buildable later.
+
+**The one candidate the ruling left genuinely open fails on both axes at once.** Publishing the minimum only when it is at least T minutes out — refusing visibly, the convention calm mode's `fastest` ordering already sets — renders on 0 of 247 instants at twenty minutes. Lowered to ten minutes it renders three times and reality beat it all three, by a median of 10m42s. Rare and wrong is the combination that cannot be tuned out.
+
+**What survived the redundancy penalty is what the ruling forbids.** This item is a subset of D4 with a penalty of 42, and its own record says one thing survives it: *one clock time you can write down or hand to somebody, which supports pre-committing to a 20 minute errand.* That pre-commitment may no longer be published, and the twenty-minute window it would rest on did not occur once in 247 sampled instants.
+
+Where the number does work, the item is redundant. At a single working session the lead time clears twenty minutes 6.6% of the time — but at a single working session this aggregate is that card's own estimate, already on screen.
+
+## What would reopen it
+
+- **A workload with a real ceiling.** Re-run the probe. If the perfect-estimator minimum at two or more concurrent sessions clears twenty minutes in a material fraction of instants — above 10%, against 0 of 247 here — the errand value exists and this ships as the plain minimum. The measurement is machine-specific by construction and another machine derives its own.
+- **`turn_progress` changing its history rule.** If it stops drawing history per session, or publishes an estimate for a turn that has outrun its own history, the coverage and bias figures behind both triage cycles are void and the reasoning needs re-deriving.
+
+What does **not** reopen it: needs-input detection reaching the remaining harnesses. That completes the coverage an *attention* all-clear rests on, which is D5's product, not this one's. This item's number is a completion estimate and its ceiling is the workload.
+
+## Scores
+
+Impact 65, risk-adjusted 47, access 85, build 15, detector risk 18. Estimate XS. Quadrant marked unsettled, within 5 points of the impact cutoff. Left unchanged as the board's record, including at cancellation.
+
+Detector risk 18 was scored against "is the ETA right". It covers none of what actually stopped this: the statistic is wrong for the workload, the number hides its own coverage, and that coverage is biased toward the fast half of the board.
+
+## History
+````
+
+The `## History` heading above opens the demoted sections. `implementation` writes them in this
+order, then the five existing 2026-08-23 blockquotes verbatim beneath, unchanged:
+
+| New historical section | Label it carries |
+|---|---|
+| "The decision landed 2026-08-28, and the answer is No" | *2026-08-28 — the DEC-7 ruling as recorded when it landed (carried forward in compressed form above; the full reasoning is on DRC-4271, which is closed)* |
+| "Why it was blocked" | *2026-08-28 — as written when the item was blocked. Two figures in it are superseded: the coverage sentence was an n=1 observation and the replay over 558 turns gives 80% of turns and 64–71% of wall-clock; and the closing sentence describes a gate that was removed the same day. "The rows without one are the rows running longest" understates the excluded set, which also holds every session on its first turn. "Six days after D5 was cancelled" is five.* |
+| "Two corrections to this issue's own claims" | *2026-08-28 — both still stand and neither is superseded; demoted only because the item is closed* |
+| "What survives for the build, once the decision lands" | *2026-08-28 — the decision landed the same day; what this section describes is what the 2026-08-28 measurement was taken against* |
+
+Nothing else moves. Every blockquote already under `History` stays byte-identical, including the
+`DRC-4172` link inside it, which cycle 1 confirmed survives because Linear does not convert
+references inside blockquotes.
