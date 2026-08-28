@@ -27,6 +27,26 @@ gates:
                 id: briefing:drc-4274:triage:attempt-1:revision-1
                 digest: sha256:6b78d36f0137009cd97d5df36ef8323c1a865c5f6f1d6a45e311c59a495d865c
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4274:triage:1
+                briefing: briefing:drc-4274:triage:attempt-1:revision-1
+                by: person:captain
+                at: "2026-08-28T07:56:48.838004Z"
+                decision: approve
+                reason: |-
+                    APPROVED, both asks.
+
+                    (1) THE PLAN: the additive rewrite of DRC-4274 (nothing in the body was falsified, so nothing needed demoting), the narrow milestone correction restating bound 2 in its amended nullable form, and the plan document scope — the six elements DEC-3 requires plus a SEVENTH the issue body did not cover: an intro-amendment section naming the SECURITY.md sentences that change. That addition is the substantive finding of this stage. The Scope violation sentence enumerates FILE READS and this probe is SUBPROCESS EXECUTION, so without it E4 would promote a section into a Scope whose own violation clause does not reach it. The quota precedent handled exactly this the same way.
+
+                    (2) THE REVIEW-DEPTH REDUCTION, from full adversarial to two lenses plus an arbiter, is approved, and it is recorded as a deliberate override of a written AGENTS.md row rather than an oversight. Two rows of the Calibrating Effort table both reach this change and disagree: the security row, and the row for a change with no user-visible behaviour that nothing calls yet. Triage named the conflict openly instead of resolving it silently, and its reading is accepted — the security row exists for code that HANDLES sensitive material, and this diff only DESCRIBES a future handler, with no probe, no flag, no caller and no runtime surface in it. What is actually at risk is factual error in claims that get promoted verbatim into SECURITY.md unread, which two re-derivation lenses cover better than six diff-reading lenses cover a diff containing no code. AGENTS.md's own Calibrating Effort section records that uniform review is the expensive mistake.
+
+                    THE ESCALATION TRIGGER IS PART OF THIS APPROVAL: escalate to full adversarial if the document specifies anything beyond the seven elements, or if either lens finds a claim that does not reproduce.
+
+                    Evidence quality noted: both check-set questions were settled by exercise rather than by reading — the validator owned-set claim proved on a `git archive HEAD` copy where a deliberately broken scratch file produced exactly two errors and exit 1, and the CI detector simulated with its real is_prose function against the live derived list. The stage also refuted one of the FO's own premises, that two tests open a docs/plans path literally, when only one does.
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4274](https://linear.app/recce/issue/DRC-4274) — filed 2026-08-28 by this workflow's E4 cycle,
