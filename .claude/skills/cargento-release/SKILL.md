@@ -193,9 +193,24 @@ VERSION=<the number the operator just approved>        # e.g. VERSION=0.17.0
 git checkout main && git pull --ff-only origin main    # again; the wait may have been long
 gh run list --branch main --commit "$(git rev-parse origin/main)" \
   --json workflowName,status,conclusion                # green again, on the NEW tip
-git tag "v$VERSION"
+git -c tag.gpgsign=false tag "v$VERSION"
+git cat-file -t "v$VERSION"                            # must print `commit`, not `tag`
 git push origin "v$VERSION"
 ```
+
+`-c tag.gpgsign=false` is not decoration. On a machine with `tag.gpgsign true` a bare
+`git tag <name>` tries to create a signed tag, finds no message and dies with `no tag message?`
+before anything reaches the remote. The override forces the lightweight form, which is what this
+repository's release tags actually are: `git cat-file -t v0.16.0` prints `commit`, not `tag`, and
+the workflow's own `git tag -f` re-creates the tag lightweight anyway when it moves it onto the bump
+commit. Where signing is off the override does nothing, so it is safe to leave in. The `cat-file`
+line is there because the failure is silent in the other direction: an annotated tag pushes fine and
+you would only find out later that it does not match its siblings.
+
+This one was found the hard way, on the first real run. Every other command in this skill was run
+before it was written down; the tag command was the one that could not be rehearsed against the
+real remote, and it was the one that was wrong. It can be rehearsed locally: create a throwaway
+name, check the type, delete it, and never push it.
 
 That second green check is not paranoia. The workflow releases the `main` tip, not the commit you
 tagged, so anything that merged while the proposal sat waiting is in this release and the pre-flight
