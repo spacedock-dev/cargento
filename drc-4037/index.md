@@ -1355,16 +1355,16 @@ touched.
 
 - DONE: The authorized Linear writes performed FIRST and read back: the three drafted corrections to DRC-4037's body (A2.1-A2.3), the drafted milestone correction (B2), and one appended dated note on the closed DRC-4122 recording that its amendment section carries the wrong "six of the ten harnesses have no event adapter" predicate — appended only, its existing text unedited. Report every read-back discrepancy; they are the FO's to disposition.
   All five landed before any file was touched. A2.1-A2.3 by patch ops on DRC-4037; B2 by full-description write (milestones have no patch API); the DRC-4122 note by an `append` op, which is why nothing above it could be edited. Read back on all three surfaces — see **Discrepancies** below.
-- SKIPPED: PR 1 built and opened, touching NO file under `cargento_runtime/web/`: the section promoted from `docs/plans/git-probe-security-scope.md` into `SECURITY.md` byte-identically, the two intro amendments the document names applied, the plan document DELETED in the same commit that promotes it, the probe wired to `session_ended`, `--no-git` added at all six `--no-spacedock` sites, `dirty` and `changed` published as nullable on every row, and the doc updates. Test-first: write the failing test, watch it fail for the right reason, and say what it asserted before it passed.
-  **Built, committed and green; NOT opened.** The surface exceeds the declared tolerance, and this stage's own rule is to stop and put that to the captain rather than open the PR. Every other clause is satisfied: `4ece71f` carries the promotion (byte-identical, verified against `git show 701b7f0:docs/plans/git-probe-security-scope.md`, 3231 bytes), both intro amendments, and the plan doc's deletion in that one commit; `be1723d` is the `sync-docs` pass. No file under `cargento_runtime/web/`, `tests/test_page.py` or `tests/test_next_page.py` is touched.
+- DONE: PR 1 built and opened, touching NO file under `cargento_runtime/web/`: the section promoted from `docs/plans/git-probe-security-scope.md` into `SECURITY.md` byte-identically, the two intro amendments the document names applied, the plan document DELETED in the same commit that promotes it, the probe wired to `session_ended`, `--no-git` added at all six `--no-spacedock` sites, `dirty` and `changed` published as nullable on every row, and the doc updates. Test-first: write the failing test, watch it fail for the right reason, and say what it asserted before it passed.
+  **Built, green, and opened as [#239](https://github.com/spacedock-dev/cargento/pull/239) after the captain accepted the overrun.** It was held at the surface gate first — see the re-declaration under **Expected surface and tolerance (cycle 2)** — and opened only once tolerance had been re-declared rather than stretched silently. `gh pr view` confirms no file under `web/` and neither byte-pin oracle. Every other clause is satisfied: `4ece71f` carries the promotion (byte-identical, verified against `git show 701b7f0:docs/plans/git-probe-security-scope.md`, 3231 bytes), both intro amendments, and the plan doc's deletion in that one commit; `be1723d` is the `sync-docs` pass. No file under `cargento_runtime/web/`, `tests/test_page.py` or `tests/test_next_page.py` is touched.
 - DONE: The two constraints the merged contract does not name are satisfied and proven, not assumed.
   Both proven by behaviour rather than by inspection. AC3: `test_the_probe_does_not_run_while_the_coordinator_lock_is_held` calls `_lock.acquire(blocking=False)` from inside the probe and asserts it succeeds, so the assertion is about the running lock rather than about the source; `test_submit_returns_without_waiting_for_the_probe` blocks the probe on an Event and asserts `submit` has already returned. Falsifier exercised: moving the dispatch inside the `with self._lock` block does not merely fail, it **deadlocks** the suite, because a synchronous spawn re-enters a non-reentrant lock. N2: `dirty`/`changed` follow `finished_at`'s side channel (`observation._git`, `_mark_git` under the `event_overlay_max_sessions` refusal guard, `git_for` reader, `note_rows` bound) and are restated in all three `patch.update` blocks; `test_every_key_a_reducer_emits_is_patchable` and `test_the_patchable_set_is_exactly_the_documented_eight` both bite if either is dropped.
 - DONE: Run the full canonical pre-PR suite from AGENTS.md.
   Read from `AGENTS.md` § Pre-PR Checks, not a copy. `ruff check` clean; `ruff format --check` 100 files formatted; `mypy` clean, 110 files; `lint_embedded.py` clean; `validate_plugins.py` clean, and `--runtime-files ./cargento` reports 88 files with the new module in the inventory; `bump_version.py --current` 0.18.0 with **no version field moved** since the merge base. Suite run **once**, load average 3.4: 1991 tests, 91.4 s, OK (1 skip). Scripts tests 192, OK. `coverage report` 90.8% against `fail_under = 73`. Native validators both pass. No red in `test_http_api`, `test_page`, `test_lifecycle` or `test_quota`, so no single-module re-run was owed.
 - DONE: measure the surface against the estimate before opening the PR, review the diff in the worktree first.
   Measured before opening, which is what caught it. Diff reviewed in the worktree; `sync-docs` ran there too and found one pre-existing false claim (below).
-- FAILED: report the PR number and head SHA.
-  No PR number. Head SHA is `be1723d` on `spacedock-ensign/drc-4037`. Opening it is the FO's to authorize after the tolerance question is answered.
+- DONE: report the PR number and head SHA.
+  **[#239](https://github.com/spacedock-dev/cargento/pull/239), head `be1723d`** on `spacedock-ensign/drc-4037`. Opened after the captain accepted the overrun and the re-declaration was recorded above. `mergeStateStatus: BLOCKED` on the required review, which is the expected state for an unreviewed PR under the ruleset. No `Closes #NNNN` line: `gh issue list` finds no mirrored GitHub issue, and the stage definition allows the line only when one actually exists.
 
 ### Surface versus estimate — the reason the PR is not open
 
@@ -1414,3 +1414,27 @@ What stops the PR is the surface gate: 24 files and +918 lines against a declare
 ±35% tolerance. The excess is test volume the acceptance criteria themselves specify, not widened
 scope, and trimming it would remove the oracles the review tier exists to check. That is a captain's
 call on tolerance, so it goes back rather than being decided here.
+
+### Addendum — the captain accepted the overrun, and PR 1 is open
+
+The tolerance question came back **accept and re-declare, do not trim**. The reasoning is recorded
+in **Expected surface and tolerance (cycle 2)** rather than only here: the estimate was wrong about
+test volume, not the work wrong about scope, and three of the nine test files were compelled by
+existing required checks rather than chosen. The FO verified every figure independently, including
+that `test_runtime_import_graph_matches_the_reviewed_allowlist` is real, before putting it up.
+
+Order of operations, deliberately: the re-declaration landed in this entity **before** the PR opened,
+so a reviewer arriving at #239 reads the corrected surface rather than the stale one.
+
+A workflow rule was attached to the acceptance and is not this stage's to apply, but is recorded so
+the next estimate inherits it: **cost the oracles separately from the runtime, and check whether any
+existing required check compels a new test file, before declaring.** An overrun of this shape again
+fixes the estimating method rather than the tolerance.
+
+Both disclosed judgement calls stand as made — A2.3 applied to the sentence tail, and the emphasis
+mangling left unrepaired.
+
+**PR [#239](https://github.com/spacedock-dev/cargento/pull/239), head `be1723d`.** `mergeStateStatus`
+is `BLOCKED` pending the full-adversarial review the PR body routes to itself. PR 2 — the render and
+the two byte-pin oracle sets — is a separate round after this one merges, and E4 is not `Done` until
+it lands.
