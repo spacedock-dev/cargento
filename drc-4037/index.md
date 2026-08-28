@@ -1438,3 +1438,39 @@ mangling left unrepaired.
 is `BLOCKED` pending the full-adversarial review the PR body routes to itself. PR 2 — the render and
 the two byte-pin oracle sets — is a separate round after this one merges, and E4 is not `Done` until
 it lands.
+
+### CI green on `be1723d`, and one figure reconciled
+
+**All required checks pass on the PR head**, including `platform-tests` on all three runners:
+`quality-gate`, Tests on ubuntu / macos / windows, Tests + coverage threshold, Runtime floor
+(Python 3.11), Lint, Type check, `validate`, `version-guard`, `latest-client-smoke`.
+`mergeStateStatus` stays `BLOCKED` on the required review, which is the expected state.
+
+**A weakness in my own test, disclosed rather than left for review.** The two hazard tests build a
+POSIX shell script for `core.fsmonitor`. A positive control run by hand confirms the mechanism is
+live where it was checked — unflagged, the hook fires; flagged, the log is never created — so the
+assertion is genuine on macOS and Linux. On Windows it may pass because nothing could execute rather
+than because the flag worked. It is not a false green on the flag itself, which
+`test_the_probe_is_exactly_the_one_bounded_command` pins on every platform, but it is weaker on one
+runner than it reads as. The fix is a positive control inside the test (assert the hook DOES fire
+without the flag, so the test proves the mechanism is armed on whatever platform it runs on). Not
+added unilaterally: the PR is open and this would cost a second CI cycle, so it is the FO's to
+authorize as a fix now or file as deferred risk.
+
+**The `once` versus `twice` figure is not a contradiction — both are right, and the variable is the
+hook's exit status.** DEC-3 recorded the `core.fsmonitor` script running twice per invocation;
+triage re-measured at git 2.55.0 and recorded once, and DRC-4122's amendment and E4's bound 1 both
+carry that as a correction of a wrong figure. Measured here at git 2.55.0, same machine, identical
+repositories, varying only the hook's exit code:
+
+| hook exits | invocations |
+| --- | --- |
+| `0` | 1 |
+| `1` | 2 |
+
+Git re-runs the hook when it signals failure. So the original figure was not an error, it was a
+different hook, and the record currently reads as though someone had miscounted. The security
+consequence is unchanged and both records already say so. **Nothing shipped repeats either figure**
+— the promoted `SECURITY.md` section deliberately states no count, which is why this reconciliation
+touches the Linear record only and not the artifact. Reported, not drafted: DRC-4122 is closed and
+its correction note is already written, so any further edit there is the FO's to disposition.
