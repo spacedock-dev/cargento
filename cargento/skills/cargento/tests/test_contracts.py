@@ -963,6 +963,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.config",
             "cargento_runtime.dismissals",
             "cargento_runtime.events",
+            "cargento_runtime.git_status",
             "cargento_runtime.io",
             "cargento_runtime.notifications",
             "cargento_runtime.quota",
@@ -1226,6 +1227,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
             "cargento_runtime.events",
+            "cargento_runtime.git_status",
             "cargento_runtime.io",
             "cargento_runtime.probe",
         },
@@ -1241,6 +1243,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # The coarse store probe: stat only, no globbing and no reads. Imports
         # config for typing alone, which is why it sits at the bottom layer with
         # sessions and state rather than beside the collectors.
+        # The end-of-session git probe. A leaf on purpose: it imports no runtime
+        # module, holds no state and takes no lock, which is what lets the
+        # coordinator call it from a thread of its own without ordering concerns.
+        "cargento_runtime.git_status": set(),
         "cargento_runtime.probe": {"cargento_runtime.config"},
         "cargento_runtime.records": set(),
         "cargento_runtime.sessions": {"cargento_runtime.config"},

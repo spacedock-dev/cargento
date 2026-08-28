@@ -461,6 +461,10 @@ class _StubOverlays:
         del harness, sid  # this stub remembers no stop
         return 0.0
 
+    def git_for(self, harness: str, sid: str) -> None:
+        """Never probed: this stub has no repository behind it."""
+        del harness, sid
+
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         del keys  # the real coordinator ages unmatched overlays here; a stub has none
 
@@ -883,9 +887,20 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual("real title", session["title"])
         self.assertEqual(1234, session["tokens"])
 
-    def test_the_patchable_set_is_exactly_the_documented_six(self) -> None:
+    def test_the_patchable_set_is_exactly_the_documented_eight(self) -> None:
+        # Grew by two for the end-of-session git reading. Written out rather than
+        # derived, so adding a key to the module has to be a deliberate edit here.
         self.assertEqual(
-            {"state", "state_detail", "active", "blocked_since", "acquisition", "finished_at"},
+            {
+                "state",
+                "state_detail",
+                "active",
+                "blocked_since",
+                "acquisition",
+                "finished_at",
+                "dirty",
+                "changed",
+            },
             set(events.PATCHABLE),
         )
 

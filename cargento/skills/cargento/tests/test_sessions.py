@@ -319,6 +319,8 @@ class CargentoServerTest(RuntimeTestCase):
             "own_activity",
             "started_at",
             "finished_at",
+            "dirty",
+            "changed",
             "rate_per_min",
             "session_output_tokens",
             "turn_output_tokens",

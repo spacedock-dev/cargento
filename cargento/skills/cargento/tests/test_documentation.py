@@ -5,6 +5,7 @@ import re
 import unittest
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from cargento_runtime import cli, git_status
 from cargento_runtime import config as runtime_config
 from cargento_runtime.web import page as frontend_page
 
@@ -217,3 +218,58 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         ):
             with self.subTest(source=relative):
                 self.assertIn(claim, self.unwrapped(relative))
+
+
+class GitProbeContractDocumentationTest(unittest.TestCase):
+    """SECURITY.md's git-probe section is a contract, so the code must still meet it.
+
+    The section was written and reviewed on its own cycle before this code existed
+    (DRC-4274, promoted here from `docs/plans/git-probe-security-scope.md` and that
+    file deleted in the same commit). Prose and code can only agree by accident
+    unless something compares them, and this is the comparison.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    # Whitespace-collapsed, so a reflow that changes no words does not fail these.
+    # The command assertion below deliberately reads the raw text instead.
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+
+    def test_the_documented_command_is_the_argv_the_probe_builds(self) -> None:
+        # The contract prints the command as an indented code block. If either side
+        # gains or loses a flag, this fails — which is the point, because both
+        # flags are independently load-bearing and neither may be dropped quietly.
+        self.assertIn(
+            "    " + " ".join(git_status.GIT_STATUS_ARGV) + "\n",
+            self.SECURITY,
+        )
+
+    def test_the_contract_section_survived_the_promotion(self) -> None:
+        self.assertIn("## Repository git reads (the end-of-session probe)", self.SECURITY)
+        # The two intro amendments that had to ride with it. Without the first the
+        # section is filed under a Scope clause enumerating file reads, harness-store
+        # writes and non-loopback traffic — none of which is subprocess execution.
+        self.assertIn(
+            "running any program inside a user's repository other than the probe described in "
+            "Repository git reads (the end-of-session probe),",
+            self.FLAT,
+        )
+        self.assertIn(
+            "The git probe runs inside a repository the user chose rather than a harness store, "
+            "and it neither writes there nor executes anything the repository supplies.",
+            self.FLAT,
+        )
+
+    def test_the_plan_document_died_with_its_promotion(self) -> None:
+        # Leaving it in place states the contract in two places and lets them drift.
+        self.assertFalse((self.ROOT / "docs" / "plans" / "git-probe-security-scope.md").exists())
+
+    def test_the_documented_off_switch_is_the_flag_the_parser_accepts(self) -> None:
+        self.assertIn("The off switch is `--no-git`.", self.FLAT)
+        args = cli.build_parser().parse_args(["--no-git"])
+        self.assertTrue(args.no_git)
+
+    def test_the_contract_says_entries_rather_than_files(self) -> None:
+        # `changed` counts porcelain entries; git collapses an untracked directory
+        # into one. Rendering it as a file count is a wrong number under a true name.
+        self.assertIn("counts porcelain entries rather than files", self.FLAT)

@@ -312,6 +312,17 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # guessed completion renders identically to a measured one. A row that
         # cannot ever carry it says so through `acquisition` instead.
         "finished_at": None,
+        # What one end-of-session `git status` observed in this session's working
+        # repository, or None for both. None means NOT PROBED and never "clean":
+        # only a harness whose adapter maps a session-end event can be probed at
+        # all, and `--no-git`, a directory that is not a repository, an event with
+        # no `cwd`, git absent from PATH and a timed-out probe all land here too.
+        # Defaulting `dirty` to False instead would publish a confident clean over
+        # no evidence on almost every row — the DRC-4101 failure, one field over.
+        # `changed` counts porcelain ENTRIES, not files: git collapses an untracked
+        # directory into one entry, so every rendering must say entries.
+        "dirty": None,
+        "changed": None,
         "rate_per_min": 0,
         # Output-token readings from the transcript scanner. The session count
         # is present only after a byte-zero scan; the turn count only after that

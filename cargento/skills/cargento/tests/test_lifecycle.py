@@ -248,6 +248,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_events=False,
             no_dismiss=False,
             no_ask=False,
+            no_git=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -474,6 +475,7 @@ print(json.dumps({{
             no_events=False,
             no_dismiss=False,
             no_ask=False,
+            no_git=False,
             daemon=True,
         )
         with (
@@ -1260,6 +1262,7 @@ class CargentoServerTest(PageJsHarness):
             no_events=False,
             no_dismiss=False,
             no_ask=False,
+            no_git=False,
             daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
@@ -1289,6 +1292,7 @@ class CargentoServerTest(PageJsHarness):
                 no_events=False,
                 no_dismiss=False,
                 no_ask=False,
+                no_git=False,
                 daemon=True,
             ),
         )
@@ -1316,10 +1320,11 @@ class CargentoServerTest(PageJsHarness):
                 no_events=True,
                 no_dismiss=True,
                 no_ask=False,
+                no_git=True,
                 daemon=True,
             ),
         )
-        for flag in ("--no-spacedock", "--no-usage", "--no-events", "--no-dismiss"):
+        for flag in ("--no-spacedock", "--no-usage", "--no-events", "--no-dismiss", "--no-git"):
             self.assertIn(flag, argv)
 
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
@@ -1331,6 +1336,7 @@ class CargentoServerTest(PageJsHarness):
             no_events=False,
             no_dismiss=False,
             no_ask=False,
+            no_git=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1535,6 +1541,7 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_events": False,
             "no_dismiss": False,
             "no_ask": False,
+            "no_git": False,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -1548,6 +1555,20 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_usage=False))
         self.assertNotIn("--no-usage", argv)
+
+    def test_no_git_is_forwarded(self) -> None:
+        # DEC-3's off switch. Without the `spawn_argv` branch a user who disabled
+        # the probe gets it back on the respawned daemon, which is the whole
+        # failure this class exists for — and a probe re-enabled by a restart is
+        # a security regression rather than a cosmetic one.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_git=True))
+        self.assertIn("--no-git", argv)
+
+    def test_no_git_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_git=False))
+        self.assertNotIn("--no-git", argv)
 
     def test_no_ask_is_forwarded(self) -> None:
         config = cfg()

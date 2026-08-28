@@ -341,6 +341,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-dismiss` | Marking a session handled, and the store that remembers it |
 | `--no-events` | The event coordinator. State comes from scanning stores rather than from pushed events |
 | `--no-spacedock` | Reading Spacedock workflow state out of a project |
+| `--no-git` | The end-of-session git probe. No git command runs inside any repository |
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 

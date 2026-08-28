@@ -58,11 +58,15 @@ The posture rests on two invariants:
    than raised at the request. Published text records what that redaction covers. What the route
    reads is covered by Project reads below: the transcript, and the same two kinds of frontmatter a
    stage strip reads, under the same guards and the same `--no-spacedock` switch.
+   The git probe runs inside a repository the user chose rather than a harness store, and it neither
+   writes there nor executes anything the repository supplies.
 
 Anything that weakens either invariant is a security bug: a bind reaching an address the operator did
 not ask for, a request admitted that the bind's own Host gate should have refused, file reads outside
 the documented store paths and the project-read contract below (however the path was derived),
-writes to harness stores, or the hook client reaching a non-loopback destination.
+writes to harness stores, running any program inside a user's repository other than the probe
+described in Repository git reads (the end-of-session probe), or the hook client reaching a
+non-loopback destination.
 
 ## Project reads (Spacedock stage strips)
 
@@ -118,6 +122,62 @@ control-character and bidi stripping every untrusted string does. No other file 
 body and no filesystem path is ever published, and the page HTML-escapes every value.
 Pass `--no-spacedock` to switch the feature off. The read surface is then exactly the documented
 store paths.
+
+## Repository git reads (the end-of-session probe)
+
+One feature runs a program inside a directory the user chose. Cargento already records each
+session's working directory; when a session ends, the server runs one bounded git command there, so
+the board can show that a session stopped with work still in the tree.
+
+The probe is exactly this command, or there is no probe:
+
+    git -c core.fsmonitor= --no-optional-locks status --porcelain
+
+The mechanism is subprocess execution rather than a file open. That is what separates this feature from
+every other read Cargento performs, and both flags are load-bearing. Measured 2026-08-28 at git
+2.55.0 across four fresh repositories, one probe each, from an identical racy-clean state:
+
+- Without `--no-optional-locks`, the probe writes `.git/index`. The write is git resolving a racy
+  stat, not a per-invocation habit, and a repository a live session is editing is the normal case
+  for it rather than a corner case.
+- Without `-c core.fsmonitor=`, a `core.fsmonitor` script configured in the repository is executed
+  under Cargento's identity. A repository can carry that setting in from wherever it was cloned.
+
+Each flag disarms one of those hazards and neither disarms the other's, so neither may be dropped.
+There is no fallback to a plain `git status`.
+
+What is published, per session, is two fields and nothing else:
+
+    {dirty: bool | None, changed: int | None}
+
+Both fields are nullable, and `null` means not probed. It is never a confident clean over no evidence.
+The probe fires on `session_ended`, and most harnesses do not emit that event today, so most rows
+carry `null`. `changed` counts porcelain entries rather than files: git collapses an untracked
+directory into a single entry, so a new directory holding three files is one entry, not three.
+
+What is never read:
+
+- File contents, of any file, at any point.
+- Diffs and blobs. Nothing asks what changed inside a file, only that something did.
+- Branch and upstream state of any kind. The branch name, its tracking branch, and how far ahead or
+  behind it sits are all outside this feature.
+
+Porcelain output names paths. Those pathnames are matching hints and are never echoed to
+`/api/data`, the same rule and the same wording this document applies to `cwd`.
+
+The cadence is one-shot, on the `session_ended` edge. Never a poll, never on demand, and never on a
+turn stop: the completion stamp written when a turn stops is a different edge, and probing there
+would put one subprocess in the user's repository per turn for the life of the session.
+
+The off switch is `--no-git`. The probe is on by default and that flag turns it off. It mirrors
+`--no-spacedock` at every one of that flag's sites, including the branch that forwards flags to a
+respawned daemon, so a restart cannot re-enable a probe the user disabled. With the probe off no
+git command runs at all, and both fields stay `null`.
+
+A violation of any boundary in this section is a security bug: a git command other than the one
+above, either flag dropped, a read of file contents or diffs or branch state, a pathname reaching a
+response, a probe on any edge but session end, a probe while the feature is off, or any write inside
+the user's repository.
 
 ## Usage quota reads (the quota fetcher)
 

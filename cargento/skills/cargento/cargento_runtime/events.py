@@ -102,8 +102,23 @@ ALLOWED_FIELDS: Final = frozenset(
 # situations wearing one word: a turn that ended, and a session still waiting on
 # a reply nobody gave (DRC-4035). Only a `turn_stopped` separates them, so the
 # distinction cannot be recovered from a collected row.
+#
+# `dirty` and `changed` are the end-of-session git reading. They are here for the
+# same reason `finished_at` is — the coordinator remembers them outside the ledger
+# `session_ended` pops — and every branch below restates them, because a reading
+# taken when a session ended describes a tree that a resumed session may already
+# have changed.
 PATCHABLE: Final = frozenset(
-    {"state", "state_detail", "active", "blocked_since", "acquisition", "finished_at"}
+    {
+        "state",
+        "state_detail",
+        "active",
+        "blocked_since",
+        "acquisition",
+        "finished_at",
+        "dirty",
+        "changed",
+    }
 )
 
 ACQUISITION_EVENT: Final = "event"
@@ -500,6 +515,34 @@ def requires_reconcile(event: Event) -> bool:
     return event.event == "reconcile_required"
 
 
+def _side_channel_patch(
+    *,
+    finished_at: float,
+    session_activity: float,
+    activity_grace_sec: float,
+    git: tuple[bool, int] | None,
+) -> dict[str, Any]:
+    """The patch from what the coordinator remembers OUTSIDE the overlay ledger.
+
+    Both readings are here because `session_ended` pops that ledger whole, so
+    neither could survive in it. Both are reduced rather than written straight onto
+    the row so that they pass the same activity guard an idle overlay does: a mark
+    applied outside the reducer would survive a session resuming and reintroduce
+    DRC-4101 by another door.
+
+    The git reading rides `finished_at`'s guard because the two answer about the
+    same moment — a session that wrote after its stop was observed has a tree the
+    probe's reading no longer describes.
+    """
+    stale = bool(finished_at) and session_activity > finished_at + activity_grace_sec
+    patch: dict[str, Any] = {}
+    if finished_at and not stale:
+        patch["finished_at"] = finished_at
+    if git is not None and not stale:
+        patch["dirty"], patch["changed"] = git
+    return patch
+
+
 def reduce_overlays(
     overlays: Iterable[Overlay],
     *,
@@ -508,6 +551,7 @@ def reduce_overlays(
     session_activity: float = 0.0,
     activity_grace_sec: float = 0.0,
     finished_at: float = 0.0,
+    git: tuple[bool, int] | None = None,
 ) -> dict[str, Any]:
     """The field patch a session's live overlays imply, in `arrival_seq` order.
 
@@ -579,9 +623,12 @@ def reduce_overlays(
         (overlay.arrival_seq for overlay in ordered if overlay.kind in ENDS_A_WAIT),
         default=-1,
     )
-    patch: dict[str, Any] = {}
-    if finished_at and not session_activity > finished_at + activity_grace_sec:
-        patch["finished_at"] = finished_at
+    patch: dict[str, Any] = _side_channel_patch(
+        finished_at=finished_at,
+        session_activity=session_activity,
+        activity_grace_sec=activity_grace_sec,
+        git=git,
+    )
     for overlay in ordered:
         if overlay.kind == OVERLAY_NEEDS_INPUT and overlay.arrival_seq < not_waiting_since:
             continue
@@ -600,6 +647,11 @@ def reduce_overlays(
                     "blocked_since": None,
                     "acquisition": ACQUISITION_EVENT,
                     "finished_at": None,
+                    # Working again: whatever the probe saw at the last session
+                    # end is a reading of a tree this session has since moved on
+                    # from, and a stale dirty count is worse than none.
+                    "dirty": None,
+                    "changed": None,
                 }
             )
         elif overlay.kind == OVERLAY_NEEDS_INPUT:
@@ -613,6 +665,10 @@ def reduce_overlays(
                     # A gate is the other kind of idle, so the mark from an
                     # earlier turn must not still be claiming this one ended.
                     "finished_at": None,
+                    # Waiting on a person means the session is alive past the end
+                    # that produced the reading. Same staleness as Working.
+                    "dirty": None,
+                    "changed": None,
                 }
             )
         elif overlay.kind == OVERLAY_IDLE:
@@ -624,6 +680,11 @@ def reduce_overlays(
                     "blocked_since": None,
                     "acquisition": ACQUISITION_EVENT,
                     "finished_at": overlay.at,
+                    # A turn stop is not a session end, and only a session end
+                    # runs the probe. A live idle overlay therefore means a turn
+                    # ran after the reading was taken, so it no longer holds.
+                    "dirty": None,
+                    "changed": None,
                 }
             )
     return patch

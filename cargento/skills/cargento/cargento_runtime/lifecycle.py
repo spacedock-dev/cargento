@@ -555,6 +555,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-spacedock")
     if args.no_usage:
         argv.append("--no-usage")
+    if args.no_git:
+        argv.append("--no-git")
     if args.no_events:
         argv.append("--no-events")
     if args.no_dismiss:
