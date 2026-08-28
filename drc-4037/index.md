@@ -1,7 +1,7 @@
 ---
 id:
 title: 'E4 · Ended with uncommitted work'
-status: triage
+status: implementation
 source: https://linear.app/recce/issue/DRC-4037
 started: 2026-08-28T06:33:15Z
 completed:
@@ -37,7 +37,7 @@ gates:
                 reason: 'APPROVED, all three asks. (1) The delivery SPLIT is approved: a documentation-only groundwork issue delivering docs/plans/git-probe-security-scope.md, with E4 blocked on it, following DRC-4061 and DRC-4177 — a precedent verified at both ends by commit rather than by resemblance (plan doc added in its own PR 7134a01 #71 and 5ede7d1 #143, then promoted into SECURITY.md and deleted by the implementation PR a98bc64 and 3e92d12). (2) TWO OF THE FOUR BOUNDS RULED ON 2026-08-28 ARE AMENDED, each because triage measured that the bound as written cannot deliver its own intent. BOUND 3 is amended from finished_at to session_ended: finished_at is a turn-stop stamp written by _mark_finished on every idle overlay and popped on every working overlay (observation.py:354-376 and 360-362), so a probe hung there fires once per turn stop — forty turns, forty subprocesses inside the user repository — which is a poll with extra steps and the exact thing bound 3 exists to forbid. The bound property (one-shot, at session end) is unchanged; only the artifact that delivers it is corrected. BOUND 2 is amended from a non-nullable {dirty: bool, changed: int} to {dirty: bool | None, changed: int | None}, None meaning not probed: six of ten harnesses have no event adapter and can never emit session_ended, and with --no-git, a non-repository directory and git absent from PATH, most rows will never be probed, so a non-nullable flag publishes a confident false over no evidence. The captain was told explicitly that this one is a judgement rather than a correction of fact — that it departs from the ruling literal words to serve its intent, and that the alternative reading, in which a fixed two-scalar surface is part of what made option B stoppable, is defensible — and ruled to amend. The precedent cited is the product own: finished_at None means no stop observed and never did not finish, and acquisition exists to disclose unknowability rather than hide it. (3) E4 own sentence that a PR carrying both the amendment and the runtime change does not satisfy it is STRUCK: it is absent from DEC-3 outcome and forbids exactly what DEC-1 and DEC-2 implementation PRs did. Evidence quality noted: the two hazard flags are now independently load-bearing across four fresh probe repositories, stronger than DEC-3 record, so neither may be dropped; and one DEC-3 figure did not reproduce and must not be repeated in the amendment — the fsmonitor script ran once, not twice, at git 2.55.0, with the security consequence unchanged. SCOPE: drafted writes A, B and C only. A dated correction note on the closed DRC-4122 recording these two bound amendments was NOT authorized and is being put to the captain separately.'
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 
