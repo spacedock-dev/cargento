@@ -571,6 +571,34 @@ _Chosen at review from AGENTS.md's Calibrating Effort table._
 
 ### Feedback Cycles
 
+Newest first. No correction round has ever run on this entity — no reviewer was dispatched and no
+gate rejection occurred across either cycle — so there are no `Cycle N` lines. The entries are
+finding-disposition records, which `## Review-finding disposition` requires to be durable.
+
+- Disposition 2026-08-28, implementation cycle 2 — five read-back discrepancies reported by the
+  worker, none acted on. **FO authorization: DECLINE on all five.** Materiality **Polish** on 1–4;
+  item 5 (no Linear error returned, so no retry question arose) is a non-event correctly reported,
+  and reporting that a hazard did not fire is what makes the check auditable.
+  - *Item 1 exposed a defect in my rule, not in the work.* The bold-adjacent-to-code-span guard said
+    "in text you author" — but `implementation` did not author that prose, `triage` did, and the gate
+    approved it. Writing it verbatim was correct: altering approved prose to satisfy a formatting
+    guard is a second unapproved edit. **The guard was relocated to drafting time (`triage`) in the
+    workflow README**, where the author can actually apply it.
+  - *Item 2* — a mention split an italic run and created **no** relation, DRC-4271 already being an
+    edge. The promote-to-material condition standing since DEC-7 remains unobserved: auto-mention has
+    still never created a `blocks` or `blockedBy` edge, and the worker's read-back confirming exactly
+    the four baseline edges is what licenses saying so.
+  - *Items 3–4* — cosmetic normalization, and a pre-existing milestone boundary where repair is
+    measured not to work.
+  - **Four judgment calls were disclosed rather than absorbed**, and one mattered: drafted milestone
+    edit 3 contradicted itself ("replace the last two sentences" against "the needs-input sentence
+    stays"). The worker took the conservative reading, deleted only the named gate sentence, kept the
+    other byte-identical, and invented no prose. A self-contradicting draft is a `triage` defect;
+    surfacing it beat silently picking.
+  - **Drafted write 4 was not authorized and not performed.** The captain was asked whether DRC-4272
+    should have its closing conditional turned into a fact and did not answer, so it stays open.
+    Proved rather than asserted: DRC-4272's `updatedAt` is byte-identical to its `createdAt`.
+
 **No correction round ran.** No reviewer was dispatched and no gate rejection occurred, so there is
 no `Cycle N` line to write; the entry below is a finding-disposition record, which
 `## Review-finding disposition` requires to be durable and which reached the worker as a message.
