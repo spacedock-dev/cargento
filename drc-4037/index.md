@@ -1,7 +1,7 @@
 ---
 id:
 title: 'E4 · Ended with uncommitted work'
-status: recorded
+status: triage
 source: https://linear.app/recce/issue/DRC-4037
 started: 2026-08-28T06:33:15Z
 completed:
