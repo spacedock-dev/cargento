@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 #    the transcript's first records carry an ``agentSetting``. That alone proves
 #    the session is Spacedock, and costs nothing: it is in the head bytes the
 #    subagent classifier already reads.
-# 2. The first officer runs `spacedock status --boot` at startup and the JSON
+# 2. The first officer runs `spacedock status --boot` — measured here at 69%
+#    and 73% of the way through a transcript, not at startup — and the
 #    envelope lands in the transcript as a tool result, carrying the ABSOLUTE
 #    workflow directory and the ABSOLUTE entity-state directory, so nothing has
 #    to be discovered by scanning.
@@ -298,8 +299,87 @@ def _usable_dir(value: object) -> TypeGuard[str]:
     return True
 
 
+def rendered_pair(raw: str) -> tuple[str, str] | None:
+    """``(key, value)`` from one line of a rendered boot envelope, or None.
+
+    Only the shape ``key: value`` is assumed. The key may carry JSON's quotes
+    or none and the value may carry quotes and a trailing comma, because what
+    reaches the transcript is whatever the session chose to print. Partitioning
+    on the FIRST colon keeps a Windows value (``C:\\...``) intact.
+    """
+    line = raw.strip()
+    head, sep, tail = line.partition(":")
+    if not sep:
+        return None
+    key = head.strip().strip("\"'")
+    if not key:
+        return None
+    return (key, tail.strip().rstrip(",").strip().strip("\"'"))
+
+
+def rendered_envelope(config: RuntimeConfig, text: str) -> dict[str, Any] | None:
+    """The boot envelope a session PRINTED rather than pasted, or None.
+
+    The first officer is told to consume ``status --boot --json``, and nothing
+    tells it to echo that JSON verbatim. Measured on this machine: every real
+    first-officer session piped the envelope through a formatter, so the
+    transcript carried an indented rendering and the raw object never appeared
+    once in 120 transcripts over 21 days — the JSON branch above has never
+    matched a genuine session, only Cargento's own source and fixtures catted
+    into a tool result. The fields the strip needs survive any such rendering,
+    so they are read line by line rather than decoded.
+
+    Gated on a top-level ``command: boot`` for the same reason the JSON branch
+    checks ``envelope["command"] == "boot"``: without it, a tool result that
+    merely prints these key names — this module's own source — nominates a path.
+    Only top-level keys are read, so a nested decoy cannot supply one either.
+
+    No line bound is imposed here: the text is already a slice of the at most
+    ``spacedock_boot_scan_bytes`` the caller read, and this scan is linear with
+    trivial per-line work, unlike the ``raw_decode`` the candidate cap protects.
+    """
+    out: dict[str, Any] = {}
+    dispatchable: list[dict[str, str]] = []
+    item: dict[str, str] = {}
+    booted = False
+    in_dispatchable = False
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        pair = rendered_pair(raw)
+        if pair is None:
+            continue
+        key, value = pair
+        if not raw[:1].isspace():
+            in_dispatchable = key == "dispatchable"
+            if key == "command":
+                booted = booted or value == "boot"
+            elif key in ("definition_dir", "entity_dir") and value and key not in out:
+                # First occurrence wins, so a decoy in a trailing blob cannot
+                # displace the envelope the session actually booted from.
+                out[key] = value
+            continue
+        if not in_dispatchable or len(dispatchable) >= config.spacedock_max_entities:
+            continue
+        # Paired on `slug` rather than on the list syntax, so both the
+        # `-`-delimited and inline renderings of an item read the same.
+        if key == "slug" and value:
+            if item:
+                dispatchable.append(item)
+            item = {"slug": value}
+        elif key == "current" and value and item and "current" not in item:
+            item["current"] = value
+    if item and len(dispatchable) < config.spacedock_max_entities:
+        dispatchable.append(item)
+    if not booted or "definition_dir" not in out:
+        return None
+    out["command"] = "boot"
+    out["dispatchable"] = [
+        entry for entry in dispatchable if entry.get("slug") and entry.get("current")
+    ]
+    return out
+
+
 def boot_records(config: RuntimeConfig, data: bytes) -> list[dict[str, Any]]:
-    """Every ``spacedock status --boot`` envelope in a transcript head.
+    """Every ``spacedock status --boot`` envelope in a slice of a transcript.
 
     Decoded line by line as the JSONL it is, so the JSON decoder does the
     unescaping and each envelope is located inside already-plain text. An
@@ -319,6 +399,7 @@ def boot_records(config: RuntimeConfig, data: bytes) -> list[dict[str, Any]]:
         if not isinstance(record, dict):
             continue
         for text in tool_result_text(record):
+            found = len(out)
             position = 0
             for _ in range(config.spacedock_max_boot_candidates):
                 begin = text.find('{"command"', position)
@@ -343,6 +424,13 @@ def boot_records(config: RuntimeConfig, data: bytes) -> list[dict[str, Any]]:
                     out.append(envelope)
                     if len(out) >= config.spacedock_max_boot_records:
                         return out
+            if len(out) > found:
+                continue
+            rendered = rendered_envelope(config, text)
+            if rendered is not None:
+                out.append(rendered)
+                if len(out) >= config.spacedock_max_boot_records:
+                    return out
     return out
 
 
@@ -410,34 +498,67 @@ def boot_entity_dir(envelopes: list[dict[str, Any]], workflow_dir: str) -> str:
 
 
 def transcript_boot(config: RuntimeConfig, state: RuntimeState, path: str) -> list[dict[str, Any]]:
-    """Boot envelopes from a transcript's head, cached per (path, size).
+    """Boot envelopes from a transcript, scanned forward across refreshes.
 
-    Boot output is written once at session start and never rewritten, so the
-    scan is amortised: keying on size lets a still-growing session pick the
-    envelope up on a later refresh without rescanning an unchanged prefix.
+    An earlier version read only the first ``spacedock_boot_scan_bytes``, on the
+    reasoning that boot output is written once at session start and never
+    rewritten. Measured against real first-officer sessions on this machine, it
+    is not: two of them booted 69% and 73% of the way through their transcripts,
+    at bytes 803,503 and 821,199, because a first officer greets and discovers
+    before it boots and Claude Code writes records up to 109 KB apiece. A
+    head-only window found neither.
+
+    So the window walks rather than sits. Each pass reads at most
+    ``spacedock_boot_scan_bytes`` of not-yet-scanned bytes and remembers how far
+    it reached, which holds the per-refresh cost the head scan had while the
+    whole file is covered eventually. Progress is cached per path rather than
+    per ``(path, size)`` so a growing session keeps its place instead of
+    restarting the walk on every write.
     """
     try:
         size = os.path.getsize(path)
     except OSError:
         return []
-    key = (path, min(size, config.spacedock_boot_scan_bytes))
     with state.cache_lock:
-        cached = state.spacedock_boot_cache.get(key)
-    if cached is not None:
-        return cached
-    envelope_records: list[dict[str, Any]] = []
+        cached = state.spacedock_boot_cache.get(path)
+    records: list[dict[str, Any]]
+    scanned: int
+    records, scanned = cached if cached is not None else ([], 0)
+    if scanned > size:
+        # The file is shorter than the walk already covered, so it is not the
+        # one that progress was recorded against. Start it over.
+        records, scanned = [], 0
+    if scanned >= size or len(records) >= config.spacedock_max_boot_records:
+        return records
     try:
         with open(path, "rb") as handle:
+            handle.seek(scanned)
             blob = handle.read(config.spacedock_boot_scan_bytes)
-        if b"definition_dir" in blob:
-            envelope_records = boot_records(config, blob)
     except OSError:
-        return []
+        return records
+    chunk = blob
+    if scanned + len(blob) >= size:
+        consumed = len(blob)
+    else:
+        cut = blob.rfind(b"\n") + 1
+        if cut:
+            # Stop on a line boundary so an envelope straddling the window edge
+            # is read whole on the next pass instead of halved on this one.
+            chunk, consumed = blob[:cut], cut
+        else:
+            # One record longer than the whole window. Nothing in it can be
+            # read as a line, so step over it rather than stall here forever.
+            chunk, consumed = b"", len(blob)
+    if b"definition_dir" in chunk:
+        records = (records + boot_records(config, chunk))[: config.spacedock_max_boot_records]
     with state.cache_lock:
         runtime_state.bounded_put(
-            state.spacedock_boot_cache, key, envelope_records, limit=config.max_cache_entries
+            state.spacedock_boot_cache,
+            path,
+            (records, scanned + consumed),
+            limit=config.max_cache_entries,
         )
-    return envelope_records
+    return records
 
 
 def open_regular(path: str) -> int | None:
