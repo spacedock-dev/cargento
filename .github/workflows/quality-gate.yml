@@ -339,6 +339,11 @@ jobs:
         run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
       - name: Run dashboard test discovery
         run: python -m unittest discover -s cargento/skills/cargento/tests -t .
+      # TEMPORARY PROBE — remove before merge. Prints per-test timings so the
+      # macOS/Ubuntu gap can be attributed rather than guessed at.
+      - name: Per-test timings
+        if: always()
+        run: python .github/tmp_timings.py
       - name: Run script unit tests
         run: >-
           python -m unittest scripts.tests.test_validate_plugins
