@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4029:triage:attempt-1:revision-1",
+  "question": "Approve the four drafted Linear writes for DRC-4029 — file a decision issue asking whether Cargento may publish a walk-away time whose plain reading is an all-clear on partial, fast-biased coverage; add its blocks edge; replace the DRC-4029 body (moving it to Blocked); and insert a dated milestone section. Triage measured all three candidate statistics against live stores and refuses all three, so it escalates rather than building. Approving authorizes implementation to perform these writes as its first action and returns the entity to selection; DRC-4029 was the board only open release:r1 item.",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4029:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/4fa1e48e798e848bcea956f06947085df7101129/drc-4029.md",
+      "rev": "sha256:32a04ee65188c97d084fd41906e857fba198ec5ed51c5e1301a714b510eeb4c9",
+      "mediaType": "text/markdown",
+      "summary": "Triage found DRC-4029 unbuildable as written and escalated to a product decision, on measurement rather than argument. 94 recent turns across 11 sessions (median 2m03s, p75 5m50s, p90 11m22s, 3% reach twenty minutes) plus one live collect at 50% ETA coverage. The minimum is confirmed useless, not merely suspected. Candidate 1 is half a no-op (turns.py:386 already drops non-working rows) and half a regression (the only working-row flag fires at 900s, config.py:444, stripping exactly the long turns worth walking away on). A quantile has no stable reading across session counts. The maximum is biased optimistic by construction (turns.py:402-406: a turn loses its ETA precisely when it outruns its own history) and is an all-clear in all but wording — the promise D5 was cancelled for six days earlier. Two corrections to the record: the ask deadline bounds an errand from above rather than below and never reaches the browser (aggregate.py:619-635), and eta_h is a formatted string (sessions.py:94-104) so the build is a runtime change plus a payload field plus a frontend render, not arithmetic over what is on screen. Zero repository files changed, which is the whole expected surface for this stage. No acceptance criteria are written, deliberately: the stage contract conditions them on the statistic being settled, and it is escalated. Nothing has been written to Linear — the verbatim pre-edit record was committed in 62067e0 before the drafts landed in 4fa1e48."
+    }
+  ]
+}
