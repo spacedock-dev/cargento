@@ -654,6 +654,43 @@ false surface, and the `web/` byte pins.
 
 ### Feedback Cycles
 
+**No correction round ran.** No reviewer was dispatched and no gate rejection occurred, so there is
+no `Cycle N` line. The entry below is the finding-disposition record.
+
+- Disposition 2026-08-28, implementation — eleven discrepancies reported across a report and an
+  addendum, none acted on. **FO authorization: DECLINE on all eleven.** Items 1–6 and 7–11 are all
+  Polish or findings rather than defects, and three of them corrected rules the FO had written.
+  - *Item 9 settles 7 and 8 by itself.* Both halves were measured in one cycle: sending the clean
+    `` **label.** `code` `` returns the damaged `` **label. **`code` ``, and a later write drops the
+    damaged form's mark entirely. **There is no stable state to repair toward**, so declining is the
+    only coherent action rather than a judgement call.
+  - *Item 8 corrected the rule.* The README said the boundary moves; the damage is **progressive** —
+    move, then lose the mark — and it happened through a `patch` **append** op that re-transmitted no
+    existing byte, which is the sharpest confirmation that a targeted patch is not a targeted write.
+    Accepted visible cost, recorded rather than unnoticed: option B's label on DRC-4122 is now
+    unbolded while A, C and D remain bold.
+  - *Item 10 is the strongest measurement of the run.* The worker's appended section round-tripped
+    **byte-identical, zero boundary moves**, through the same API that damaged the hard-wrapped draft
+    beside it — a control and a treatment in one cycle. That converted the structural avoidance from
+    a plausible mitigation into a proven one, hours after the FO had written it as theory.
+  - *Items 1 and 2 also corrected FO rules:* markdown links do **not** prevent mention-created
+    relations, because a link whose href is a Linear issue URL is parsed as a mention too; and a
+    space does **not** prevent an emphasis split when a code span *follows* the run. Both mitigations
+    had been written by the FO and never tested.
+  - *Item 3 was the worker's own error, named as such:* an approved draft sent with 100-column hard
+    wrapping, which Linear read as hard breaks and re-marked per line. **Send Linear bodies
+    unwrapped** is now a rule, from the worker's own lesson.
+  - *Item 11* was checked unprompted and correctly: the risk that mentions would convert DRC-4122's
+    `blocks` edge to DRC-4026 was real and specific, and it was verified from the far end. The
+    promote-to-material condition remains unobserved across six cycles.
+- **Two process notes.** The worker stopped and asked whether "a state that reflects being blocked"
+  meant the Linear workflow state rather than guessing — the FO's wording was genuinely ambiguous,
+  and *name the artifact, not a category* is now a checklist-authoring rule. And its addendum, which
+  correctly preserved the original report as written, reused the `## Stage Report: {stage}` heading
+  and thereby hid three evidenced items from the parser; the completion guard caught it, the fix was
+  content-neutral, and *an addendum must nest as a `###`* is now a rule. **The guard was satisfied
+  rather than bypassed**, even though clearing the worktree had already disarmed it.
+
 _None yet._
 
 ## Out of scope
