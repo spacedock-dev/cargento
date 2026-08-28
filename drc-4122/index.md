@@ -1,17 +1,17 @@
 ---
 id:
 title: 'DEC-3 · Decision: Let Cargento read git state inside your repositories'
-status: implementation
+status: recorded
 source: https://linear.app/recce/issue/DRC-4122
 started: 2026-08-28T06:00:47Z
 completed:
 verdict:
 score: 0.6
-worktree: .worktrees/spacedock-ensign-drc-4122
+worktree:
 issue:
 pr:
 mod-block:
-linear-status: 'Backlog'
+linear-status: Done
 milestone: ''
 release: ''
 estimate: ''
