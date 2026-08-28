@@ -26,7 +26,7 @@ gates:
               briefing:
                 id: briefing:drc-4037:triage:attempt-1:revision-1
                 digest: sha256:b0573609f358b0e07223f3956f435d6ce07c889744872eda02f74fbbd03a81f5
-                room-ref: ./drc-4037/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 
