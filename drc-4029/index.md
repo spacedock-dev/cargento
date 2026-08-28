@@ -1137,3 +1137,145 @@ order, then the five existing 2026-08-23 blockquotes verbatim beneath, unchanged
 Nothing else moves. Every blockquote already under `History` stays byte-identical, including the
 `DRC-4172` link inside it, which cycle 1 confirmed survives because Linear does not convert
 references inside blockquotes.
+
+#### 2. Milestone correction — "Spend attention well"
+
+The 2026-08-28 update is amended in place rather than followed by a second section dated the same
+day, which would leave two same-day updates disagreeing about whether D6 is blocked. Nothing below
+that section is touched.
+
+**Replace the heading:**
+
+> `## Update 2026-08-28 — D6 is blocked on a decision, and this group now has no buildable walk-away item`
+
+with:
+
+> `## Update 2026-08-28 — D6 is cancelled, and this group has no walk-away item left`
+
+**Replace the opening sentence** — currently "was triaged against the code and against live stores
+on 2026-08-28 and is **Blocked** on a new decision issue" — with a sentence recording that the item
+was triaged, blocked, ruled on and cancelled the same day. The rest of that paragraph, including
+"the outcome this group is named for — look away safely — currently has nothing on it anyone can
+build", is unchanged and is now literally rather than temporarily true.
+
+**Replace the last two sentences of the "Which leaves the decision" paragraph.** "That question is
+filed as a decision issue blocking D6" describes a gate that no longer exists. The needs-input
+sentence after it is accurate and stays.
+
+**Append one paragraph**, the only new prose:
+
+````markdown
+**The decision was ruled the same day, and D6 was cancelled on what the ruling left standing.** The ruling was No: no walk-away clock time whose plain reading is an all-clear, on partial coverage. It was deliberately narrower than cancelling D6, because the narrow claim — *the soonest expected completion among turns we can estimate* — is not an all-clear and survived it. Measuring that surviving claim closed the item. Every statistic the ruling permits promises "nothing you can predict will be ready before X", which is sound only if X is no later than the true soonest completion, so the true soonest completion is a ceiling on all of them. Across 375 sampled instants with two or more sessions working, a perfect estimator with total coverage had a median lead of **1m16s** and never once reached twenty minutes — the window D6's own surviving value was scored on. The ceiling is the workload, not the estimator, and it moves the wrong way as coverage improves, because a minimum over more rows is smaller. So this group's outcome now waits on B2 completing needs-input coverage, which is D5's shape rather than D6's.
+````
+
+#### 3. State, labels and relations
+
+- **State:** `Todo` → `Canceled`.
+- **Labels:** unchanged — `origin:workshop`, `alternative`, `cutoff:unsettled`, `release:r1`,
+  `journey:mid-flight`. `cutoff:unsettled` stays accurate and the board's record is not revised at
+  cancellation, which is the discipline both prior cycles kept with the scores.
+- **Relations:** unchanged. The four `relatedTo` edges — DRC-4271, DRC-4172, DRC-4028, DRC-4272 —
+  all stay. No new edge is needed: DRC-4272 already relates to this issue.
+- **Scores:** unchanged, as recorded in the drafted body.
+
+**One consequence for `selection`, recorded and not acted on.** This was the board's only open
+`release:r1` item. Cancelling it leaves Release 1 with nothing open, so the next `selection` pass
+picks under rule 3 or later.
+
+#### 4. DRC-4272 — one sentence, for the captain rather than for this cycle
+
+Held separately because it edits a record this issue does not own, and because it is only correct if
+the gate approves cancellation. DRC-4272 closes with a conditional that cancellation makes true:
+
+> D5's weightiest recorded cancellation reason was that D6 already exists and the board prefers it.
+> If D6 is later cancelled, that reason disappears retroactively and this issue becomes the second
+> half of the case for looking at D5 again.
+
+The honest edit is to replace "If D6 is later cancelled" with the fact, and to add the two limits
+this cycle established so that the strengthened case is not read as more than it is: D5's other two
+ranked cancellation reasons are untouched, and DEC-7's ruling constrains D5 harder than it constrains
+D6, since D5 is the stated all-clear on thinner coverage. **Recommended, not drafted as final prose,
+and explicitly the captain's call** — the scope notes asked for the assessment and reserved the
+decision.
+
+### Acceptance criteria
+
+The product of this cycle is a recommendation and three record writes, so the criteria hold the
+measurement and the writes rather than a build.
+
+**Offline** — a fresh agent reproduces these without a human:
+
+1. **The ceiling result reproduces.** *Verified by:* `drc-4029/probe_min_lead.py`, run from
+   `cargento/skills/cargento`. At k ≥ 2 the oracle minimum's median lead is under two minutes and its
+   ≥20m share is 0%. **Falsified by** that share rising above roughly 10%, which is exactly the
+   condition the drafted body names as reopening the item. **Declared machine dependency:** it reads
+   the live `~/.claude/projects` store, so the numbers are this machine's and the method is portable.
+2. **The suppression rule fails on both axes.** *Verified by:* the same probe's final block. At
+   T = 20m it renders on 0 instants; at T = 10m it renders and is wrong every time. **Falsified by**
+   a render rate above a few per cent at T = 20m, or a wrong rate that falls as T rises.
+3. **The probe shares DRC-4271's harness rather than a re-implementation.** *Verified by:*
+   `diff <(sed -n '/^def intervals/,/^    return out/p' drc-4029/probe_min_lead.py) <(sed -n '/^def intervals/,/^    return out/p' drc-4271/probe_max_error.py)` returns empty, and both print the
+   same `sessions=` and `turns=` line on the same store. **Falsified by** either diverging, which
+   would mean the minimum and maximum were measured over different moments.
+4. **The optimistic-bias mechanism still exists in the code.** *Verified by:* `turn_progress`
+   returning `eta_h is None` for a scan whose `durations` are all shorter than `elapsed`
+   (`turns.py:405-410`). **Falsified by** the empty-`cands` branch publishing a figure, which would
+   void the coverage and bias reasoning in both cycles.
+5. **The writes land as drafted.** *Verified by:* a post-write `get_issue` on DRC-4029 showing
+   `status: Canceled`, the five labels unchanged, the four `relatedTo` edges intact, the Scores line
+   byte-identical, and all five 2026-08-23 blockquotes byte-identical under `History`. **Falsified
+   by** any of those moving.
+
+**Interactive** — needs the captain:
+
+6. **The cancellation itself.** *Verified by:* the captain's ruling at this gate. Cancelling a board
+   item is a product judgement; the measurement bounds it but does not make it.
+7. **Whether DRC-4272 is edited.** *Verified by:* the captain's answer. Draft 4 is deliberately not
+   written as final prose for this reason.
+
+### Expected surface and tolerance
+
+**This stage's own repository surface: two files, both new, both under this entity's state
+directory** — `drc-4029/probe_min_lead.py` and `drc-4029/README.md`. Tolerance: ±0. No file under
+`cargento/` changes, and no test runs, because no shipped code is touched.
+
+| Surface | Change | Tolerance |
+|---|---|---|
+| DRC-4029 body | rewritten to the cancellation; four 2026-08-28 sections demoted to dated history | ±1 issue |
+| DRC-4029 state | `Todo` → `Canceled` | exactly 1 |
+| "Spend attention well" milestone | the 2026-08-28 update's heading, two sentences, and one appended paragraph | ±1 paragraph |
+| DRC-4272 | one sentence, only if the captain authorizes draft 4 | 0 or 1 |
+
+**Semantics that may move: none.** No payload field, no `cargento_runtime/web/` change, no
+`tests/test_page.py` byte pins. The build this item was holding open is not being deferred — it is
+being closed — so the one-in-flight-PR constraint on `web/` is released rather than scheduled.
+
+### Test plan
+
+No repository test is added or run, because no shipped file changes. The measurement is held by the
+committed probe rather than by a unit test, for the reason DRC-4271 gave and this cycle confirms: a
+test pinned to one machine's session history asserts the fixture, not the behaviour. The probe is
+committed so the *method* is reproducible even though the *numbers* are not; `drc-4029/README.md`
+records how to run it and what would falsify each figure.
+
+### Review depth
+
+**Self-verify.** From `AGENTS.md`'s Calibrating Effort table: no user-visible behaviour change and
+nothing calls it — this cycle ships no code at all, and its product is a recommendation the gate
+rules on. The evidence that would normally justify adversarial lenses is instead carried by the
+probe, which a reviewer re-runs in ten seconds rather than reasoning about.
+
+### Out of scope
+
+- **Re-litigating DEC-7.** The ruling is settled and it is the captain's. Where this cycle touches
+  it, it applies it.
+- **Reopening or re-scoping D5.** Assessed above because the scope notes asked for the assessment;
+  the call is the captain's and draft 4 is the whole of what this cycle proposes.
+- **B2's remaining six harnesses.** DRC-4014 owns them. This cycle's finding is only that completing
+  them does not reopen this item.
+- **Revising the scores.** Impact 65, risk-adjusted 47, access 85, build 15, detector risk 18 stay as
+  the board's record, at cancellation as before.
+- **Repairing the serializer damage in the existing body.** Dispositioned Polish/decline by the FO in
+  cycle 1. The drafted rewrite replaces that text anyway and is authored so the trigger does not fire.
+- **The `?next=true` frontend.** It renders `elapsed_h` and never `eta_h`, so it never had a home for
+  this statistic and now never needs one.
