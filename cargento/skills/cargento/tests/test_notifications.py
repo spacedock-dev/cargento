@@ -31,6 +31,7 @@ from .support import (
     make_runtime,
     make_server,
     notify_handler,
+    poll_fast,
     runtime,
     serve_until_closed,
     state_of,
@@ -192,7 +193,7 @@ class CargentoServerTest(RuntimeTestCase):
             # applied afterwards would not reach the running instance.
             with store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")):
                 httpd = make_server()
-            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread = threading.Thread(target=poll_fast(httpd), daemon=True)
             thread.start()
             try:
                 with mock.patch.object(notifications, "notify_mac") as notify:
@@ -214,7 +215,7 @@ class CargentoServerTest(RuntimeTestCase):
         # only the first within the suppression window may popup. A different
         # message from the same session still pops.
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
 
         def expire_cooldowns() -> None:
@@ -357,7 +358,7 @@ class CargentoServerTest(RuntimeTestCase):
             old = now - 600
             os.utime(fp, (old, old))
             httpd = make_server()
-            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread = threading.Thread(target=poll_fast(httpd), daemon=True)
             thread.start()
             try:
                 with (
@@ -400,7 +401,7 @@ class CargentoServerTest(RuntimeTestCase):
 
     def test_structured_notification_type_overrides_message_text(self) -> None:
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             with mock.patch.object(notifications, "notify_mac") as notify:
@@ -497,7 +498,7 @@ class CargentoServerTest(RuntimeTestCase):
                 "message": "MCP input requested",
             }
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             self._post_notify(
@@ -527,7 +528,7 @@ class CargentoServerTest(RuntimeTestCase):
                 "message": "Claude needs your permission to use Bash",
             }
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             self._post_notify(
@@ -557,7 +558,7 @@ class CargentoServerTest(RuntimeTestCase):
             }
             state_of().last_session_state["deadbeef"] = "needs_input"
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             data = self._post_notify(
@@ -706,7 +707,7 @@ class CargentoServerTest(RuntimeTestCase):
             # so the POSTs must reach a server that knows the temporary store.
             with patches[0], patches[1]:
                 httpd = make_server()
-            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread = threading.Thread(target=poll_fast(httpd), daemon=True)
             thread.start()
             try:
                 with patches[0], patches[1]:
@@ -825,7 +826,7 @@ class CargentoServerTest(RuntimeTestCase):
                 parent_fp, parent_id = self._subagent_fanout(tmp, now)
                 # Built inside the patches: config is captured at construction.
                 httpd = make_server()
-            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread = threading.Thread(target=poll_fast(httpd), daemon=True)
             thread.start()
             try:
                 with patches[0], patches[1], mock.patch.object(notifications, "notify_mac"):
@@ -886,7 +887,7 @@ class NotifyHookTest(unittest.TestCase):
 
     def test_payload_reaches_a_running_server(self) -> None:
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         url = f"http://127.0.0.1:{httpd.server_port}/api/notify"
         try:
@@ -971,7 +972,7 @@ class NotifyHookTest(unittest.TestCase):
                 pass
 
         httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Proxy)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             with mock.patch.dict(
@@ -1012,7 +1013,7 @@ class NotifyHookTest(unittest.TestCase):
                 pass
 
         httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Redirector)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             url = f"http://127.0.0.1:{httpd.server_port}/api/notify"

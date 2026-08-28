@@ -10,6 +10,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import dataclasses
+import functools
 import importlib
 import importlib.util
 import io
@@ -269,6 +270,27 @@ def notify_handler(payload: dict[str, Any], *, application: Any = None) -> Any:
     return handler
 
 
+SERVE_POLL_INTERVAL = 0.005
+"""How often a test server checks whether it has been asked to shut down.
+
+`socketserver` defaults to 0.5s, and `shutdown()` blocks until the accept loop
+next wakes and notices — so every server a test stands up and tears down costs
+up to half a second of pure waiting. The suite stands up roughly a hundred of
+them, which measured as 28s of the 44s that `test_http_api` spent, all of it
+idle. The interval buys responsiveness with wakeups on an otherwise idle
+selector, which is the right trade in a test and the wrong one in the daemon
+the CLI runs; the shipped serve path keeps the stock interval.
+"""
+
+
+def poll_fast(httpd: Any) -> Any:
+    """A `serve_forever` callable that notices `shutdown()` promptly.
+
+    Use as a thread target in place of the bound `httpd.serve_forever`.
+    """
+    return functools.partial(httpd.serve_forever, SERVE_POLL_INTERVAL)
+
+
 def serve_until_closed(httpd: Any) -> threading.Thread:
     """Serve on a thread that closes the listening socket when the loop exits.
 
@@ -280,7 +302,7 @@ def serve_until_closed(httpd: Any) -> threading.Thread:
 
     def serve() -> None:
         try:
-            httpd.serve_forever()
+            httpd.serve_forever(SERVE_POLL_INTERVAL)
         finally:
             httpd.server_close()
 

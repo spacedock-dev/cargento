@@ -28,7 +28,7 @@ from cargento_runtime import aggregate, cli, diagnostics, quota, sessions
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
-from .support import SERVER_PATH, RuntimeTestCase, make_server, runtime
+from .support import SERVER_PATH, RuntimeTestCase, make_server, poll_fast, runtime
 
 if TYPE_CHECKING:
     from cargento_runtime.config import RuntimeConfig
@@ -1231,7 +1231,7 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
             return False
 
         application.request_usage_fetch = fake_trigger
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             self._get(httpd.server_port, "/api/data")
@@ -1485,7 +1485,7 @@ class UsageEndpointTest(RuntimeTestCase):
     def test_a_receipt_reaches_the_band_through_the_endpoint(self) -> None:
         application = cli.build_application(*runtime(), clock=time.time)
         httpd = make_server(application=application)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             body = json.dumps(
@@ -1513,7 +1513,7 @@ class UsageEndpointTest(RuntimeTestCase):
     def test_the_endpoint_rejects_what_notify_rejects(self) -> None:
         application = cli.build_application(*runtime(), clock=time.time)
         httpd = make_server(application=application)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             cap = application.config.usage_receipt_cap_bytes

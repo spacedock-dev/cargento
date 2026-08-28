@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import atexit
+import contextlib
 import json
 import shutil
 import subprocess
-import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,98 @@ PAGE_TEXT = (
     .replace("{{CARGENTO_STYLES}}", STYLES)
     .replace("{{CARGENTO_APP}}", APP_JS)
 )
+
+
+WORKER_PATH = Path(__file__).resolve().parent / "page_worker.js"
+
+
+class PageJsWorker:
+    """One node process, reused by every page-JS check in the run.
+
+    Spawning node per check cost 40ms of each check's 44ms on macOS, across 425
+    checks. The worker keeps the isolation (a fresh `vm` context per check) and
+    drops the spawn. See `page_worker.js` for the framing and the reasoning.
+    """
+
+    def __init__(self) -> None:
+        self._proc = subprocess.Popen(
+            [shutil.which("node") or "node", str(WORKER_PATH)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+        # Drained on a thread rather than read on demand. The worker answers on
+        # stdout and reports check failures in that reply, so stderr only ever
+        # carries node's own noise — but an undrained pipe fills at 64KB and
+        # blocks the worker mid-write, which would hang the run rather than fail
+        # it. Kept so a worker that dies has something to say.
+        self._noise: list[bytes] = []
+        self._drain = threading.Thread(target=self._collect_stderr, daemon=True)
+        self._drain.start()
+        atexit.register(self.close)
+
+    def _collect_stderr(self) -> None:
+        assert self._proc.stderr is not None
+        for line in self._proc.stderr:
+            self._noise.append(line)
+
+    def run(self, source: str) -> tuple[bool, str, str]:
+        """Run one check. Returns (ok, stdout, error text)."""
+        assert self._proc.stdin is not None
+        assert self._proc.stdout is not None
+        # Explicit UTF-8 both ways: the page carries glyphs outside Latin-1, and
+        # on Windows the default is the locale codec (cp1252), which raises
+        # instead of running the check. node speaks UTF-8.
+        body = source.encode("utf-8")
+        try:
+            self._proc.stdin.write(f"{len(body)}\n".encode("ascii") + body)
+            self._proc.stdin.flush()
+        except (BrokenPipeError, OSError) as exc:  # pragma: no cover — worker died
+            raise AssertionError(f"page-JS worker died: {self._stderr()}") from exc
+        header = self._proc.stdout.readline()
+        if not header:  # pragma: no cover — worker died mid-check
+            raise AssertionError(f"page-JS worker died: {self._stderr()}")
+        reply = json.loads(self._read_exactly(int(header)).decode("utf-8"))
+        return bool(reply["ok"]), reply.get("out", ""), reply.get("err", "")
+
+    def _read_exactly(self, length: int) -> bytes:
+        assert self._proc.stdout is not None
+        chunks: list[bytes] = []
+        remaining = length
+        while remaining:
+            chunk = self._proc.stdout.read(remaining)
+            if not chunk:  # pragma: no cover — worker died mid-reply
+                raise AssertionError(f"page-JS worker died: {self._stderr()}")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
+    def _stderr(self) -> str:  # pragma: no cover — only reached on a dead worker
+        self._drain.join(timeout=2)
+        return b"".join(self._noise).decode("utf-8", "replace")
+
+    def close(self) -> None:
+        if self._proc.poll() is not None:
+            return
+        with contextlib.suppress(OSError):
+            if self._proc.stdin is not None:
+                self._proc.stdin.close()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            self._proc.wait(timeout=5)
+            return
+        self._proc.kill()  # pragma: no cover — worker ignored the closed stdin
+
+
+_WORKER: PageJsWorker | None = None
+
+
+def page_js_worker() -> PageJsWorker:
+    """The run's worker, started on the first check that needs it."""
+    global _WORKER  # noqa: PLW0603 — one worker process per test process
+    if _WORKER is None:
+        _WORKER = PageJsWorker()
+    return _WORKER
 
 
 class PageJsHarness(RuntimeTestCase):
@@ -95,29 +189,19 @@ const __settle = () => new Promise(r => setImmediate(r));
     def _run_page_js(self, checks: str, prelude: str = "") -> Any:
         """`prelude` runs before the page script, for globals the page reads at
         load time (localStorage) or feature-detects (navigator.clipboard)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            js = Path(tmp) / "page_test.js"
-            # Checks run inside an async IIFE so they can await the async
-            # stubs (permission settles on a microtask, as in a browser).
-            # Explicit UTF-8 both ways: the page carries glyphs outside Latin-1,
-            # and on Windows the default is the locale codec (cp1252), which
-            # raises instead of running the check. node speaks UTF-8.
-            js.write_text(
-                self.PAGE_JS_STUBS
-                + prelude
-                + self.APP_JS
-                + "\n;(async () => {\n"
-                + checks
-                + "\n})();\n",
-                encoding="utf-8",
-            )
-            proc = subprocess.run(
-                [shutil.which("node") or "node", str(js)],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=30,
-                check=False,
-            )
-        self.assertEqual(0, proc.returncode, proc.stderr)
-        return json.loads(proc.stdout.strip().splitlines()[-1])
+        # Checks run inside an async IIFE so they can await the async stubs
+        # (permission settles on a microtask, as in a browser). The promise is
+        # parked on `globalThis` because the worker awaits it to know the check
+        # is done — under the old process-per-check design that signal was node
+        # exiting when its event loop drained.
+        source = (
+            self.PAGE_JS_STUBS
+            + prelude
+            + self.APP_JS
+            + "\n;globalThis.__cargentoDone = (async () => {\n"
+            + checks
+            + "\n})();\n"
+        )
+        ok, out, err = page_js_worker().run(source)
+        self.assertTrue(ok, err)
+        return json.loads(out.strip().splitlines()[-1])

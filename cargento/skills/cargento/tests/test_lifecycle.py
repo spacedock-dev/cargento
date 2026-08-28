@@ -29,6 +29,7 @@ from cargento_runtime import io as runtime_io
 from . import support
 from .page_harness import PageJsHarness
 from .support import (
+    SERVE_POLL_INTERVAL,
     SERVER_PATH,
     SERVER_STARTED,
     cfg,
@@ -36,6 +37,7 @@ from .support import (
     frontend_page,
     make_runtime,
     make_server,
+    poll_fast,
     serve_until_closed,
     state_of,
 )
@@ -597,7 +599,7 @@ class CargentoServerTest(PageJsHarness):
 
     def test_probe_port_classifies_cargento_foreign_and_closed(self) -> None:
         httpd = make_server()
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         port = httpd.server_port
         try:
@@ -624,7 +626,7 @@ class CargentoServerTest(PageJsHarness):
                 pass
 
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), Other)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             # 200 but not JSON: something else owns this port. Reporting it as
@@ -707,7 +709,7 @@ class CargentoServerTest(PageJsHarness):
     def test_port_released_is_false_while_a_server_still_holds_the_port(self) -> None:
         httpd = make_server()
         port = httpd.server_port
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
             self.assertFalse(lifecycle.port_released(cfg(), port), "bound and serving")
@@ -788,7 +790,7 @@ class CargentoServerTest(PageJsHarness):
 
         def serve_with_delayed_close() -> None:
             try:
-                httpd.serve_forever()
+                httpd.serve_forever(SERVE_POLL_INTERVAL)
             finally:
                 loop_exited.set()
                 allow_close.wait(timeout=10)

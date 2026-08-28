@@ -172,6 +172,26 @@ class _RequestHandler(BaseHTTPRequestHandler):
     # on purpose and a hostile client would do to stall a handler.
     REJECT_DRAIN_SECONDS: ClassVar[float] = 0.25
 
+    # Body bytes this request has already taken off the wire. Reset per request,
+    # and a class default so a handler-level test that calls one method directly
+    # still has it.
+    _body_consumed: int = 0
+
+    def _read_body(self, length: int) -> bytes:
+        """Read a declared body, remembering how much of it is now gone.
+
+        Every refusal that follows a successful read used to re-drain the same
+        bytes: `_drain_body` reads Content-Length again, the peer has nothing
+        left to send, and `read1` blocks until REJECT_DRAIN_SECONDS gives up. So
+        a validation 400 — an unusable question, a bad option list — cost its
+        handler thread the full 250ms drain, measured on the shipped /api/ask
+        route. Counting what was consumed leaves the drain for what it is for: a
+        peer still mid-write.
+        """
+        body: bytes = self.rfile.read(length)
+        self._body_consumed += len(body)
+        return body
+
     def _drain_body(self) -> None:
         """Read and discard a rejected request's body before answering.
 
@@ -193,7 +213,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             declared = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             return
-        remaining = max(0, min(declared, self.REJECT_DRAIN_CAP_BYTES))
+        remaining = max(0, min(declared - self._body_consumed, self.REJECT_DRAIN_CAP_BYTES))
         if not remaining:
             return
         deadline = time.monotonic() + self.REJECT_DRAIN_SECONDS
@@ -682,7 +702,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(413)
             return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(self._read_body(length) or b"{}")
         except (ValueError, json.JSONDecodeError, RecursionError):
             payload = {}
         if not isinstance(payload, dict):
@@ -728,7 +748,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(413)
             return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(self._read_body(length) or b"{}")
         except (ValueError, json.JSONDecodeError, RecursionError):
             payload = {}
         if not isinstance(payload, dict):
@@ -792,7 +812,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(413)
             return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(self._read_body(length) or b"{}")
         except (ValueError, json.JSONDecodeError, RecursionError):
             payload = {}
         if not isinstance(payload, dict):
@@ -807,6 +827,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:
+        self._body_consumed = 0
         if not self._local_ok():
             self._reject(403)
             return
@@ -845,7 +866,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(413)
             return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(self._read_body(length) or b"{}")
         except (ValueError, json.JSONDecodeError, RecursionError):
             payload = {}
         if not isinstance(payload, dict):
@@ -951,7 +972,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(413)
             return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(self._read_body(length) or b"{}")
         except (ValueError, json.JSONDecodeError, RecursionError):
             payload = {}
         if not isinstance(payload, dict):
@@ -1091,7 +1112,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(413)
             return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(self._read_body(length) or b"{}")
         except (ValueError, json.JSONDecodeError, RecursionError):
             payload = {}
         if not isinstance(payload, dict):
@@ -1130,7 +1151,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self._reject(413)
             return
         try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            payload = json.loads(self._read_body(length) or b"{}")
         except (ValueError, json.JSONDecodeError, RecursionError):
             payload = {}
         if not isinstance(payload, dict):

@@ -32,6 +32,7 @@ from .support import (
     make_config,
     make_runtime,
     make_server,
+    poll_fast,
     runtime,
     store_patch,
 )
@@ -1215,7 +1216,7 @@ class ObserverRouteTest(RuntimeTestCase):
                 mock.patch.dict(os.environ, {"CARGENTO_HOME": str(home)}),
             ):
                 httpd = make_server()
-                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+                thread = threading.Thread(target=poll_fast(httpd), daemon=True)
                 thread.start()
                 try:
                     status, body = self._get(httpd, f"?harness=claude&sid={sid}")
@@ -1278,7 +1279,7 @@ class ObserverRouteTest(RuntimeTestCase):
                 mock.patch.dict(os.environ, {"CARGENTO_HOME": str(home)}),
             ):
                 httpd = make_server()
-                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+                thread = threading.Thread(target=poll_fast(httpd), daemon=True)
                 thread.start()
                 try:
                     status, body = self._get(httpd, f"?harness=codex&sid={sid}")
