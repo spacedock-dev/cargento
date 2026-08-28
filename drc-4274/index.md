@@ -1,7 +1,7 @@
 ---
 id:
 title: Git probe groundwork · SECURITY.md scope section for the end-of-session git probe
-status: triage
+status: implementation
 source: https://linear.app/recce/issue/DRC-4274
 started: 2026-08-28T07:32:51Z
 completed:
@@ -46,7 +46,7 @@ gates:
                     Evidence quality noted: both check-set questions were settled by exercise rather than by reading — the validator owned-set claim proved on a `git archive HEAD` copy where a deliberately broken scratch file produced exactly two errors and exit 1, and the CI detector simulated with its real is_prose function against the live derived list. The stage also refuted one of the FO's own premises, that two tests open a docs/plans path literally, when only one does.
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4274](https://linear.app/recce/issue/DRC-4274) — filed 2026-08-28 by this workflow's E4 cycle,
