@@ -70,7 +70,8 @@ accepts, so a stray tag cannot become the baseline either.
 
 One check that does not block but should be reported: if `COMPATIBILITY.md`'s
 `docs-synced-through` marker is behind `main`, say so in the proposal. A release is the natural
-moment to stamp it, and **AGENTS.md, "Parallel Work"** says to do that once from `main` after
+moment to stamp it, and [AGENTS.md, "Parallel Work"](../../../AGENTS.md#parallel-work) says to
+do that once from `main` after
 merges. Do not stamp it silently inside a release run.
 
 ## 2. Gather the evidence
@@ -219,11 +220,16 @@ leaves some of them undone:
 ```bash
 VERSION=<the number you just tagged>
 git fetch --tags --force origin && git checkout main && git pull --ff-only origin main
-git log --oneline -1                       # the chore(release) bump commit
+git log --oneline -1                       # the chore(release) bump commit, if one was needed
 python3 scripts/bump_version.py --current  # equals the new version
 git rev-parse "v$VERSION^{commit}" && git rev-parse origin/stable   # tag moved, stable advanced
 gh release view "v$VERSION" --json name,tagName,url
 ```
+
+The bump commit is the one outcome that is conditional: the workflow skips it when the manifests
+already carry the tagged version, which is the initial-release path and the resume path. Step 1's
+parity check is what makes it unconditional on every normal release.
+
 
 If the run failed part way, re-push the same tag rather than picking a new number. Every step is
 idempotent and the workflow detects its own resume.
@@ -248,7 +254,8 @@ sentence against the log, and delete anything you cannot point at.
 
 **Then invoke `humanizer:humanizer` on the draft.** The notes are human-facing prose and they carry
 the same voice standard the prose docs do. If that skill is not installed, apply the standard by
-hand: it is written out in full in the `sync-docs` skill's "Voice and tone" section, which exists
+hand: it is written out in full in the [`sync-docs` skill's "Voice and tone"
+section](../sync-docs/SKILL.md#voice-and-tone), which exists
 precisely because this repository does not vendor the tool. No em dashes, no mechanical boldface,
 sentence case, no AI-vocabulary words, no participle tails, no upbeat closer.
 

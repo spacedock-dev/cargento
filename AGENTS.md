@@ -322,7 +322,7 @@ enforces both.
 
 Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does).
 
-Which number to cut is a separate question from how to cut it, and the `cargento-release` skill owns it: it reads the surfaces changed since the last tag rather than the commit prefixes, because across 26 measured version decisions the prefixes would have been wrong three times. It also owns the pre-flight checks, the post-tag verification, and the optional Slack announcement. Invoke it rather than reasoning from the commit log by hand. To release:
+Which number to cut is a separate question from how to cut it, and the `cargento-release` skill owns it: it reads the surfaces changed since the last tag rather than the commit prefixes, and its own history section carries the measured reason why. It also owns the pre-flight checks, the post-tag verification, and the optional Slack announcement. Invoke it rather than reasoning from the commit log by hand. To release:
 
 ```bash
 git checkout main && git pull
