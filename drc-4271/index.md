@@ -392,6 +392,32 @@ _Chosen at review._
 
 ### Feedback Cycles
 
+**No correction round ran.** No reviewer was dispatched and no gate rejection occurred, so there is
+no `Cycle N` line. The entry below is the finding-disposition record that
+`## Review-finding disposition` requires to be durable; it reached the worker as a message, and the
+worker correctly declined to write it into its own stage report.
+
+- Disposition 2026-08-28, implementation — nine discrepancies reported by the worker, none acted on.
+  **FO authorization: DECLINE on all nine.** No repair, no rerun.
+  - *Items 1–4, 7, 8 — serializer and auto-mention emphasis moves.* Materiality **Polish**. Text
+    content unchanged in every case and Linear renders from its document model, so nothing is
+    visibly wrong where people read it. Unrepairable: sending clean bytes is what produces the
+    shifted form, measured on DRC-4029.
+  - *Items 5–6 — `relatedTo` edges created by auto-mention that nobody requested.* Materiality
+    **Deferred risk**, examined closely because the pick order reads relations. Not Material: rule 1
+    keys on `blockedBy`, every edge created was `relatedTo`, so no gate was invented and no candidate
+    can be wrongly dropped; the edges are also not false. **Promote-to-material condition: auto-mention
+    ever creating a `blocks` or `blockedBy` edge**, which would silently gate real work. Escalate
+    immediately if observed.
+  - *Item 9 — `save_issue` returned `Error: Failed to remove 1 relation(s)` while every part of the
+    call had landed.* Not a defect in our records; a hazard in the tool. The worker verified before
+    retrying, and a retry on the error alone would have been a second unapproved write to a shared
+    record. Recorded as a standing rule rather than dispositioned.
+  - Three findings generalised beyond this cycle and were written into the workflow README as rules:
+    the serializer fires on `save_issue --patch` too, so a targeted patch is not a targeted write;
+    auto-mention is a second distinct mechanism that also creates relations; and a Linear error must
+    be checked against read-back state before any retry.
+
 ## Out of scope
 
 - **Designing D6's build.** Whether DRC-4029 is re-scoped or cancelled is its own cycle, once this
