@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from cargento_runtime.web import page as frontend_page
 
@@ -35,7 +35,22 @@ class PageJsWorker:
     drops the spawn. See `page_worker.js` for the framing and the reasoning.
     """
 
+    # Checks to run before starting a fresh process. Every check compiles the
+    # 260KB page script into its own context, and V8 reclaims those lazily:
+    # measured, the worker sat at 430MB after the suite's 425 checks and kept
+    # climbing to 592MB when the same checks were run three times over. Nothing
+    # is leaking that a restart cannot clear, and a restart costs one 40ms spawn,
+    # so the process is replaced periodically rather than left to grow with
+    # however many page tests the suite comes to hold.
+    CHECK_BUDGET = 150
+
     def __init__(self) -> None:
+        self._checks = 0
+        self._noise: list[bytes] = []
+        self._spawn()
+        atexit.register(self.close)
+
+    def _spawn(self) -> None:
         self._proc = subprocess.Popen(
             [shutil.which("node") or "node", str(WORKER_PATH)],
             stdin=subprocess.PIPE,
@@ -48,18 +63,28 @@ class PageJsWorker:
         # carries node's own noise — but an undrained pipe fills at 64KB and
         # blocks the worker mid-write, which would hang the run rather than fail
         # it. Kept so a worker that dies has something to say.
-        self._noise: list[bytes] = []
-        self._drain = threading.Thread(target=self._collect_stderr, daemon=True)
+        #
+        # Handed the pipe rather than reading `self._proc`, which a restart
+        # rebinds: a thread that followed the attribute would end up reading the
+        # replacement's stderr alongside its own drain.
+        self._drain = threading.Thread(
+            target=self._collect_stderr, args=(self._proc.stderr,), daemon=True
+        )
         self._drain.start()
-        atexit.register(self.close)
 
-    def _collect_stderr(self) -> None:
-        assert self._proc.stderr is not None
-        for line in self._proc.stderr:
+    def _collect_stderr(self, pipe: IO[bytes] | None) -> None:
+        if pipe is None:  # pragma: no cover — stderr is always a pipe here
+            return
+        for line in pipe:
             self._noise.append(line)
 
     def run(self, source: str) -> tuple[bool, str, str]:
         """Run one check. Returns (ok, stdout, error text)."""
+        if self._checks >= self.CHECK_BUDGET:
+            self.close()
+            self._spawn()
+            self._checks = 0
+        self._checks += 1
         assert self._proc.stdin is not None
         assert self._proc.stdout is not None
         # Explicit UTF-8 both ways: the page carries glyphs outside Latin-1, and
@@ -94,15 +119,26 @@ class PageJsWorker:
         return b"".join(self._noise).decode("utf-8", "replace")
 
     def close(self) -> None:
-        if self._proc.poll() is not None:
-            return
-        with contextlib.suppress(OSError):
-            if self._proc.stdin is not None:
-                self._proc.stdin.close()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            self._proc.wait(timeout=5)
-            return
-        self._proc.kill()  # pragma: no cover — worker ignored the closed stdin
+        proc = self._proc
+        if proc.poll() is None:
+            # Closing stdin is the shutdown signal: the worker finishes what it
+            # is running, then exits on end-of-stream.
+            with contextlib.suppress(OSError):
+                if proc.stdin is not None:
+                    proc.stdin.close()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:  # pragma: no cover — stdin ignored
+                proc.kill()
+                proc.wait(timeout=5)
+        # Explicitly, not at collection: a recycled worker's pipes would
+        # otherwise be closed by the finalizer, which reports them as an
+        # unclosed-file ResourceWarning in the middle of an unrelated test.
+        self._drain.join(timeout=5)
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                with contextlib.suppress(OSError):
+                    pipe.close()
 
 
 _WORKER: PageJsWorker | None = None
