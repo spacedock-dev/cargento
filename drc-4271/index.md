@@ -7,7 +7,7 @@ started: 2026-08-28T03:48:15Z
 completed:
 verdict:
 score: 0.9
-worktree:
+worktree: .worktrees/spacedock-ensign-drc-4271
 issue:
 pr:
 mod-block:
