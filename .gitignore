@@ -15,3 +15,13 @@ docs/visibility-2x2/items.json.tmp
 /visibility-2x2-template-alt/
 /visibility-2x2-template.zip
 /VISIBILITY_2X2_TEMPLATE_SUMMARY.md
+
+# Spacedock worktrees: per-entity checkouts, never source
+.worktrees/
+
+# Spacedock roadmap-burndown state: a linked worktree of the spacedock-state/roadmap-burndown orphan branch
+docs/roadmap-burndown/.spacedock-state/
+
+# Spacedock mods: vendored from the plugin at install time, not source.
+# Restoring: see docs/roadmap-burndown/README.md, "Workflow State".
+docs/roadmap-burndown/_mods/
