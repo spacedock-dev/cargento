@@ -43,10 +43,9 @@ What is published, per session, is two fields and nothing else:
     {dirty: bool | None, changed: int | None}
 
 Both fields are nullable, and `null` means not probed. It is never a confident clean over no evidence.
-Six of the ten harnesses have no event adapter and can never emit `session_ended` at all, so most
-rows carry `null`. `changed` counts porcelain entries
-rather than files: git collapses an untracked directory into a single entry, so a new directory
-holding three files is one entry, not three.
+The probe fires on `session_ended`, and most harnesses do not emit that event today, so most rows
+carry `null`. `changed` counts porcelain entries rather than files: git collapses an untracked
+directory into a single entry, so a new directory holding three files is one entry, not three.
 
 What is never read:
 
