@@ -777,3 +777,198 @@ recorded in cycle 1's implementation report and were dispositioned Polish/declin
 
 **One correction to the 2026-08-23 update below.** It records the pending `ask_operator` deadline as "the only demand on the board with a genuine clock" and "a strictly better input than any ETA". Right about the clock, wrong about the direction: an ask deadline says when you must be *back*, not when you are free *until*. It bounds an errand from above where D6's number bounds it from below, and it never reaches the browser at all — the published ask card carries an age and nothing else. It is an input to D5's shape, not D6's.
 ````
+
+### The question, and how it can be settled by measurement rather than by argument
+
+The ruling forbids a statistic whose plain reading is an all-clear. What it leaves standing is the
+narrow claim settled 2026-08-23: *the soonest expected completion among turns we can estimate*, with
+coverage beside it. Every statistic still permitted is therefore a claim of one shape:
+
+> Nothing you can predict will be ready before X.
+
+That claim is sound only if X is no later than the true soonest completion among the sessions
+running. **So the true soonest completion is a hard ceiling on the entire permitted family** — not a
+property of `turn_progress`, not a property of coverage, and not something a better estimator can
+move. A fourth statistic can only be a different way of choosing X below that ceiling.
+
+That makes the search finite. Measure the ceiling. If the ceiling is a couple of minutes at the load
+this item exists for, there is no fourth statistic, and the refusal is structural rather than a
+fourth coincidence.
+
+### What was measured, 2026-08-28 (cycle 2)
+
+`drc-4029/probe_min_lead.py`, committed beside this entity. It reuses DRC-4271's interval
+reconstruction verbatim and the same random seed, so its sampled instants are comparable with
+`probe_max_error.py`'s. 44 sessions and 541 turns over a seven-day window; 4,000 sampled instants
+with at least one working session, of which 247 had two or more and 46 had three or four.
+
+At each instant it computes two numbers:
+
+- **published** — the minimum over the rows `turn_progress` can actually estimate. What D6 would
+  ship today.
+- **oracle** — the minimum over the *true* completion of every live turn, covered or not. What a
+  perfect estimator with total coverage would publish. It bounds every possible improvement.
+
+| | renders | median lead | p75 | p90 | ≥5m | ≥10m | ≥20m |
+|---|---|---|---|---|---|---|---|
+| k = 1, published | 80% | 3m28s | 7m22s | 15m56s | 27.6% | 14.8% | 6.6% |
+| k = 1, **oracle** | 100% | 3m43s | 8m45s | 19m11s | 41.2% | 21.3% | 9.4% |
+| k = 2, published | 69% | 2m03s | 2m59s | 4m48s | 6.5% | 1.5% | **0.0%** |
+| k = 2, **oracle** | 100% | 1m26s | 2m54s | 5m01s | 10.4% | 1.0% | **0.0%** |
+| k = 3–4, published | 91% | 2m36s | 3m40s | 5m00s | 13.0% | 0.0% | **0.0%** |
+| k = 3–4, **oracle** | 100% | 0m51s | 1m47s | 1m55s | **0.0%** | 0.0% | **0.0%** |
+| all k ≥ 2, published | 73% | 2m15s | 3m13s | 5m00s | 7.7% | 1.2% | **0.0%** |
+| all k ≥ 2, **oracle** | 100% | 1m21s | 2m36s | 4m33s | 8.5% | 0.8% | **0.0%** |
+
+Three things in that table decide the issue.
+
+**The ceiling is about a minute and a half.** At two or more concurrent sessions the oracle minimum
+has a median lead of 1m21s and reached twenty minutes in 0 of 247 sampled instants. At three or four
+sessions its ninetieth percentile is 1m55s. No estimator, no coverage work and no fourth statistic
+can produce a walk-away time from a quantity that is not there.
+
+**Every available improvement moves the number the wrong way.** The oracle is *earlier* than what
+`turn_progress` publishes — 1m21s against 2m15s at k ≥ 2, 51s against 2m36s at k = 3–4 — because a
+minimum taken over more rows is smaller. The published figure looks better than the truth precisely
+because it cannot see some of the rows. So better estimates, wider ETA coverage, and B2 landing all
+make this item worse, not better. That is unusual enough to be worth stating plainly: **D6 degrades
+as the rest of the product improves.**
+
+**Where the number is useful, the item is redundant.** At one working session the published minimum
+has a median lead of 3m28s and clears twenty minutes 6.6% of the time. But at one working session
+D6's aggregate *is* that session's own `~Xm left (est)`, already rendered on its card. The item
+delivers a figure only where it adds nothing to what is on screen.
+
+The k = 1 row is also the control that makes the zeroes meaningful. The instrument does find windows
+of twenty minutes and more when they exist — 6.6% of 3,753 instants at k = 1, 9.4% on the oracle. It
+found none at k ≥ 2. The zero is a signal, not a blind instrument.
+
+### The fourth statistic, built and measured
+
+The strongest candidate the ruling leaves open is not a new average. It is the settled narrow claim
+plus a **suppression rule**: publish the minimum only when it is at least T minutes out, and render
+nothing otherwise. This is the convention calm mode's `fastest` ordering already sets — refuse
+visibly rather than publish a figure that means nothing — and it converts "come back now" from a
+useless answer into an absent card. It is honest by construction, it needs no new data, and it is
+the one candidate none of the three prior refusals covers.
+
+It was measured on the same 247 instants at k ≥ 2. `wrong` means the card said "nothing before X"
+and something completed before X:
+
+| threshold | renders | wrong when it renders | by a median of |
+|---|---|---|---|
+| T = 5m | 7.7% (19/247) | 84% | 4m43s (worst 10m42s) |
+| T = 10m | 1.2% (3/247) | **100%** | 10m42s |
+| T = 20m | **0.0% (0/247)** | — | — |
+
+**It fails twice over.** At the threshold that carries the item's own stated value it never renders
+at all, which is the same non-delivery that refuted "only at full coverage" (0 of 82 instants).
+Lower the threshold to make it render and it is wrong every time it does — a card that appears
+rarely and lies when it appears is worse than no card, because its rarity is what makes a reader
+trust it.
+
+That result also closes the probabilistic loophole. A statistic could try to sit *above* the true
+minimum on purpose — "90% chance nothing finishes before X" — trading soundness for a longer window.
+The suppression measurement is exactly that statistic's empirical form, and its calibration is what
+fails: at T = 10m reality beat the published time in 3 firings out of 3, by a median of 10m42s. The
+tail this product would need to sell is the tail the data does not have.
+
+Three further candidates were considered and rejected without a probe, because each is refuted by
+what the number would say rather than by how often it says it:
+
+- **The soonest completion among long-running turns only** — the inverse of cycle 1's refused
+  "exclude anything flagged". It produces a later time, but it is not a walk-away time: it says
+  nothing about the other sessions, so a reader cannot leave on it. It answers "when is the thing I
+  am waiting for done", which is the per-card ETA already rendered, hoisted to the top by D7's
+  attention ordering since 2026-08-21.
+- **A completion forecast rather than a clock time** — "four of six done by 3:40". Its plain reading
+  is not an all-clear, so the ruling permits it. But it is no longer the product that was scored: D6
+  is "one clock time you can write down or hand to somebody", and a forecast is neither writable on
+  a calendar nor actionable for leaving the desk. It is progress information, which is what the
+  dashboard already is.
+- **Any statistic over the maximum, with imputation for the uncovered rows.** Statistically this is
+  the interesting fix — the bias DEC-7 measured is correctable in principle. It is out of bounds
+  here regardless of merit: every statistic over the maximum publishes "nothing will still be
+  running by X", which is the all-clear the captain ruled against. Recorded so the gate can see it
+  was considered and why it was not measured, not to reopen it.
+
+### Recommendation: **cancel DRC-4029**
+
+Five reasons, in order of weight.
+
+1. **The permitted family has a measured ceiling and it is about a minute and a half.** At the
+   multi-session load this item exists for, a perfect estimator with total coverage has a median
+   lead of 1m21s and never reached twenty minutes across 247 instants. The constraint is the
+   quantity, not the code.
+2. **The item gets worse as the product gets better.** Improving coverage lowers the minimum, by
+   arithmetic. B2 landing, better estimates, more harnesses reporting — every direction the roadmap
+   is already moving in makes D6 less useful. An item with that shape does not become buildable
+   later; it becomes less buildable.
+3. **What survives the redundancy penalty is exactly what the ruling forbids.** The item's own
+   record says the 42-point penalty against D4 leaves one thing standing: *"supports pre-committing
+   to a 20 minute errand"*. After DEC-7 that pre-commitment may not be published, and the
+   measurement says the window it would rest on did not occur once in 247 sampled instants. Build 15
+   buys a card that either says "come back now" or does not render.
+4. **The strongest remaining candidate was built and it failed on both axes at once.** Rare *and*
+   wrong is the combination that cannot be tuned out: raising the threshold empties the card,
+   lowering it fills the card with figures reality beat 84% of the time.
+5. **Where the statistic works, it duplicates a rendered field.** At one session it is the card's own
+   `~Xm left (est)`.
+
+Cancelling is the answer to the re-scope-or-cancel question, not a judgement on the reasoning that
+produced the item. The 2026-08-23 review was right that the minimum is the wrong statistic; what is
+new is that so is everything else the ruling leaves standing.
+
+### What would change the answer
+
+Each is a falsifier with a named test, not a hypothetical.
+
+- **A different workload.** Re-run `probe_min_lead.py`. If the oracle minimum at k ≥ 2 clears twenty
+  minutes in a material fraction of instants — say above 10%, against 0 of 247 here — the errand
+  value exists and D6 becomes buildable as the plain minimum. That needs much longer turns or far
+  fewer concurrent sessions, so it is a claim about how someone works rather than about this code.
+  The measurement is machine-specific by construction and another machine re-derives its own.
+- **A change in what the product is being asked.** If the question becomes "when is *this* session
+  done" rather than "when am I free", the statistic is per-card and shipped. That is not a re-scope
+  of D6; it is a different item.
+- **Needs-input coverage completing.** If B2 ([DRC-4014](https://linear.app/recce/issue/DRC-4014))
+  brings the remaining six harnesses in, an attention-based all-clear rests on complete coverage for
+  the first time. That reopens **D5**, whose product that is. It does not reopen D6, whose number is
+  a completion estimate and whose ceiling this cycle measured.
+- **The mechanism changing.** If `turn_progress` stops drawing history per session, or publishes an
+  ETA for a turn that outruns its own history, the coverage and bias figures behind both cycles are
+  void and the whole line of reasoning needs re-deriving. Falsified by the empty-`cands` branch at
+  `turns.py:405-410` publishing a figure.
+
+### The knock-on to D5, assessed and not acted on
+
+DRC-4028's ranked cancellation reasons lead with *"D6 already exists and the board prefers it"*.
+Cancelling D6 removes that reason retroactively, so the assessment the scope notes asked for is
+whether that needs a filing or an edit.
+
+**It needs neither a new filing nor a new issue — it needs one sentence changed on
+[DRC-4272](https://linear.app/recce/issue/DRC-4272), and that is the captain's call rather than
+this cycle's.** DRC-4272 was filed at the end of cycle 1 and already anticipates this exact case in
+its closing line, verbatim:
+
+> D5's weightiest recorded cancellation reason was that D6 already exists and the board prefers it.
+> If D6 is later cancelled, that reason disappears retroactively and this issue becomes the second
+> half of the case for looking at D5 again.
+
+If the gate authorizes cancellation, that conditional becomes a fact and the honest edit is to say
+so. Nothing else about D5 changes, and the drafted edit is held in the drafts below rather than
+performed.
+
+**What the knock-on is not, and the record should say so before someone reads it the other way.**
+Cancelling D6 does not make D5 buildable, for two reasons that stand independently of it:
+
+- DRC-4028's other two ranked reasons — the r2-gated-on-r3 sequencing contradiction and its own
+  scores — are untouched by anything in either cycle.
+- DEC-7's ruling constrains D5 harder than it constrains D6. D5 *is* the explicit all-clear, and
+  needs-input coverage is four harnesses of ten. A ruling that forbids an implied all-clear on
+  partial coverage forbids a stated one on thinner coverage a fortiori. D5 becomes eligible for a
+  fresh look when B2 closes, which is what DRC-4272 already says and what DRC-4014 owns.
+
+So: two of D5's three cancellation reasons survive, and the ruling adds a new constraint that did
+not exist when it was cancelled. The captain may reasonably decide the reopening case is now
+stronger, weaker, or unchanged; this cycle records the inputs and does not decide it.
