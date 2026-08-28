@@ -562,3 +562,30 @@ the section is promoted into `SECURITY.md` verbatim and any number goes stale th
 gains `SessionEnd`. The replacement states the property instead: the probe fires on `session_ended`,
 most harnesses do not emit it today, so most rows carry `null`. The fsmonitor hazard, the race
 characterisation, the working-directory claim and the PR body are all untouched, as directed.
+
+## Stage Report: review (cycle 2)
+
+- DONE: The corrected sentence re-verified on head `00444a7`: it must state the property rather than a harness name list or a hard count, must be accurate — only Claude and Gemini emit `session_ended` today, so most rows carry `null` — and must not have introduced a new claim.
+  Doc lines 46-47 now read: "The probe fires on `session_ended`, and most harnesses do not emit that event today, so most rows carry `null`." **Accurate, and re-derived rather than inherited.** Two emitters, both proved from registration AND mapping: Claude (`cargento/hooks/hooks.json` registers `SessionEnd`; `CLAUDE_EVENTS` maps it at `event_hook.py:82`) and Gemini (`cargento-gemini/hooks/hooks.json:55` registers it; `GEMINI_EVENTS` maps it at `event_hook.py:200`). Codex **has an adapter and still cannot**: `CODEX_EVENTS` carries no `SessionEnd` key and `cargento/hooks/codex-hooks.json` registers eight events, none of them `SessionEnd`. Antigravity's `agy_hook.py` sends one event and it is `store_changed` (line 153). Six harnesses have no adapter. So 8 of 10 rows can never be probed, and "most" is true.
+- DONE: (same item) — does it survive cycle 1's scepticism, and is it a new claim?
+  **Yes, and no.** Both constraints held: zero harness names, zero counts, and the word `six` now appears 0 times in the file. "today" scopes the claim against the staleness that killed the count. The old wording's defect is genuinely gone — "no event adapter" excluded Codex and Antigravity, which *have* adapters and still cannot emit, so its plain reading over-promised coverage by two rows; "do not emit that event" reaches all eight. **Not a new claim:** line 61's cadence bound already says "one-shot, on the `session_ended` edge", so line 46 restates an element the document already carries, in the section that needs it to explain why `null` is the common case. It also drops the absolute "can never … at all" for the weaker, defensible "today", which is the right direction for text promoted verbatim.
+- DONE: The remainder of the document confirmed UNCHANGED against the cycle-1 findings — seven elements, fsmonitor with NO run count, race characterisation, working-directory claim.
+  Proved by diff rather than by re-reading: `git diff 9d9059f..00444a7` is **one file, one hunk, +3/−4**, entirely inside the paragraph the gate authorized. Nothing outside it could have moved. Spot-confirmed anyway: fsmonitor bullet (line 36) says the script "is executed under Cargento's identity" and carries **no run count** — still correct under both observed hook behaviours; race wording (line 33) still "git resolving a racy stat, not a per-invocation habit"; the working-directory claim at lines 20-21 verbatim. All seven elements present — 24-26, 28-38, 41-48, 50-58, 61-63, 65-68, and 76-93 (the last shifted one line up by the reflow that took the file 103 → 102). `twice`, `unconditional` and `finished_at` remain at 0 occurrences.
+- DONE: The PR re-verified on its CURRENT head — one path, `mergeStateStatus`, checks green, and the five skipped jobs still the filtered kind rather than the dead-upstream kind — and a verdict given.
+  Head `00444a78532100c02ace2d5f3739485c1e038774`, `mergeStateStatus: CLEAN`, state OPEN, files exactly `docs/plans/git-probe-security-scope.md`, +102/−0. **Every run confirmed by API to belong to this head, not a superseded one:** Quality Gate `33155881188`, Validate `33155881211`, Version Guard `33155881213`, all `head_sha: 00444a78…`, all `success`. Skips are the filtered kind, proved from the aggregator's mechanism as in cycle 1 rather than from the label: "Detect what the gate can measure" **passed**, and `quality-gate` reports success with all five measurable jobs `skipping` — which it can only do under `[ "$res" = "skipped" ] && [ "$CODE" = "false" ]`. AC2's dead-upstream falsifier is provably absent. Copilot: 0 inline review comments (`pulls/238/comments`), 0 reviews, 1 issue comment and it is the correction-round note the implementation posted. Nothing edited by this stage; no commit on the PR branch.
+
+### Findings
+
+**None.** Nothing new, and nothing from cycle 1 reopened.
+
+One observation, no disposition sought: the PR body still states "1 file, 103 lines added" where the head is 102. It is stale by one line, the implementation named it in its PR comment, and correcting it would mean editing the body the gate's do-not-change list protects. Recorded, not routed.
+
+### Verdict
+
+**GO.** The one authorized sentence is right, is better than what it replaced, and honours both constraints. Nothing else in the document moved — that is a diff result, not a reading. The PR is one path, CLEAN, and green on the head those checks actually belong to.
+
+### Summary
+
+The correction is accurate and I proved it from the adapters rather than from the gate's account: Claude and Gemini both register `SessionEnd` and map it, Codex registers eight events with `SessionEnd` absent from both its table and its mapping, and Antigravity emits only `store_changed` — eight of ten rows unprobed, so "most" holds. The replacement also repairs a defect the original had beyond the one the gate named: "no event adapter" was the wrong predicate, because two of the four adapter-bearing harnesses still cannot emit the event.
+
+Scope was confirmed by diff, not by re-reading. `9d9059f..00444a7` is one hunk of +3/−4 inside the authorized paragraph, so the fsmonitor wording's absent run count, the race characterisation and the working-directory claim could not have moved, and spot checks agree. All three CI runs were confirmed by API to carry head `00444a78…`, and the five skips are the filtered kind by the aggregator's own gating condition rather than by their label.
