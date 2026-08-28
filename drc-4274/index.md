@@ -55,6 +55,27 @@ gates:
                 id: briefing:drc-4274:review:attempt-1:revision-1
                 digest: sha256:630a2c7dfa12240736694da9057e6e83b2427e30930574cce356517b3051147c
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4274:review:1
+                briefing: briefing:drc-4274:review:attempt-1:revision-1
+                by: person:captain
+                at: "2026-08-28T08:29:36.856268Z"
+                decision: revise
+                reason: |-
+                    REVISE — accepts the direction, one concrete ask before merge.
+
+                    The captain accepts the reviewer's GO on substance. Both lenses ran as separated passes, every measurement in the deliverable reproduced, the escalation trigger was tested against the recovered precedent rather than waved off, and AC2 was proven from the aggregator's own mechanism rather than from the report. Nothing about that is being rejected.
+
+                    THE ONE ASK: doc line 46 currently reads "Six of the ten harnesses have no event adapter and can never emit `session_ended` at all". That sentence is the captain's own amendment text transcribed verbatim, and it is literally true, but its plain reading tells a future reader that the other four harnesses can be probed. They cannot. The FO arbiter reproduced this rather than taking it from the review: CODEX_EVENTS at event_hook.py:160 carries no SessionEnd mapping, codex-hooks.json registers none, agy_hook.py emits only store_changed and says so in its own comment, and only two mappings in event_hook.py produce session_ended. So eight of ten rows can never be probed, not six.
+
+                    WHY THIS IS WORTH A CORRECTION ROUND RATHER THAN A FOLLOW-UP FILING: this document is promoted into SECURITY.md unchanged and then deleted, so the sentence lands in the security posture with nobody reading it again in between. An understatement of how little coverage exists is precisely the class of error that must not ship there. The PR is prose-only with a two-minute check cycle, so the round is cheap. This is not a deferred finding being promoted into the current PR — it is a confirmed inaccuracy in the deliverable itself.
+
+                    TWO CONSTRAINTS ON THE FIX, both from findings this cycle already produced. First, do not replace it with a harness name list or a hard count that will go stale inside a verbatim-promoted document — the implementation's own pre-PR diff review caught exactly that hazard and removed a six-harness list for it. Second, the amendment text on DRC-4122 is the captain's and is not being changed by this round; only the deliverable's wording is.
+
+                    The rest of the document stands. The three other findings are dispositioned as recorded: the twice-versus-once refutation is conditional on hook exit code and the document is correct under both because it carries no run count, which vindicates the implementation's wording and must not be "fixed"; the race-resolution characterisation is confirmed; and the working-directory retention claim belongs in DRC-4037's design rather than this PR.
+
+                    AFTER THE FIX: the reviewer re-verifies the corrected line and the unchanged remainder, then the merge proceeds.
 ---
 
 [DRC-4274](https://linear.app/recce/issue/DRC-4274) — filed 2026-08-28 by this workflow's E4 cycle,
