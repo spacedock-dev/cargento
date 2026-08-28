@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cargento Release"
+  short_description: "Cut a Cargento release and announce it"
+  default_prompt: "Use $cargento-release to decide the next Cargento version and cut the release."
