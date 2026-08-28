@@ -38,6 +38,33 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+            - id: gate-attempt:drc-4037-triage-2
+              briefing:
+                id: briefing:drc-4037:triage:attempt-2:revision-1
+                digest: sha256:27b67a3571132db058138a8279f2fc13f56b8d8a56a3dc1701cead4c793bf8c6
+                room-ref: ./review/triage/briefing-2
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4037:triage:2
+                briefing: briefing:drc-4037:triage:attempt-2:revision-1
+                by: person:captain
+                at: "2026-08-28T09:55:46.064321Z"
+                decision: approve
+                reason: |-
+                    APPROVED, all four asks.
+
+                    (1) THE SHAPE: two PRs, split on cargento_runtime/web/ and nothing else. PR 1 carries the SECURITY.md promotion, the two intro amendments, the deletion of the plan document, the probe module and its session_ended wiring, the --no-git switch, the published dirty and changed fields, and the doc updates. PR 2 carries the render and the two byte-pin oracle sets. Both belong to E4 and the issue is not Done until PR 2 lands; no second issue is filed, because the render carries no decision content of its own. The split is justified by measured contention rather than by preference: the PR queue is clear of web/, but two live sibling worktrees already carry web diffs against origin/main at 76 and 30 files, E4 would be the third writer into a surface holding 56 pinned figures with no script that emits them, and a recompute forced by a sibling merge would land after review and make the expensive pass re-verify a diff it had already cleared. The promotion constraint is not broken: PR 1 ships both things the promoted section describes, so SECURITY.md is true at every commit and the plan document dies in the same commit that promotes it.
+
+                    (2) THE REVIEW TIERS, and they override nothing. Reading the AGENTS.md table literally gives a different row per PR, which is what pick-per-PR-not-per-session asks for. PR 1 takes full adversarial — several lenses, a completeness critic, an arbiter — because it runs a subprocess inside a directory the user chose, promotes a contract and amends an invariant. PR 2 takes two lenses plus an arbiter under the conflict-prone-surface row. The captain's earlier reduction to two lenses is explicitly NOT extended: it applied to a documentation-only issue that described a future handler, and PR 1 is the handler.
+
+                    (3) THE CORRECTIONS: the three drafted corrections to E4's own body and the one to its milestone are authorized as drafted.
+
+                    (4) THE DRC-4122 CORRECTION NOTE IS AUTHORIZED. One appended dated note on the closed decision issue, recording that its amendment section carries the wrong predicate. The existing text is not edited. Reason for authorizing what was declined last time: that section is the source others copy from, the wrong predicate has now propagated into two downstream documents, and each propagation was caught by a worker rather than by a reader.
+
+                    Evidence quality noted, including against the FO. This stage refuted the FO's own figure: the six --no-spacedock sites in E4's body reproduce, enumerated across cli.py twice, config.py three times and lifecycle.py once with --no-usage occupying the identical six as an independent check, and it was the groundwork cycle's three that was the miscount. On the other defect it found the root cause rather than the error alone — the six-of-ten-harnesses sentence was carried over from observation.finished_at's docstring where six is correct for a different question — and drafted a property rather than a count because Droid and Goose emit SessionEnd natively and are unreachable only for want of an adapter. Two build-shaping constraints absent from the merged contract were found by reading the tip: the session-end edge runs on the HTTP handler thread under the coordinator lock behind a two-second client timeout, and session_ended mints no overlay so the result has no carrier. One cycle-1 acceptance criterion was found unsound rather than merely incomplete and was rewritten.
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 
