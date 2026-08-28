@@ -1331,3 +1331,35 @@ the drafted body as a probe a later reader can re-run rather than a judgement th
 Six falsified passages are corrected in the drafted rewrite, four more than the scope notes named.
 Nothing was written to Linear. The knock-on to D5 needs one sentence on DRC-4272 rather than a
 filing, and that sentence is the captain's to authorize.
+
+## Stage Report: implementation (cycle 2)
+
+- DONE: Drafted writes 1, 2 and 3 performed and read back: the DRC-4029 body rewritten to the cancellation with its reopening condition, state moved to `Canceled`, the "Spend attention well" milestone corrected, and the labels/relations left exactly as drafted. Report every discrepancy the read-back finds — discrepancies are the FO's to disposition, not yours to pass or fail on.
+  One `save_issue` (body + state) and one `save_milestone`. Independent `get_issue` read-back: `status` `Canceled`, `canceledAt` `2026-08-28T05:39:52.047Z`, `stateHistory` showing `Todo` ended and `Canceled` opened. Five read-back discrepancies below; none changed text content.
+- DONE: Drafted write 4 — the one-sentence edit to DRC-4272 — is NOT authorized and must NOT be performed. The captain did not answer that question and it remains open. DRC-4272 is untouched this cycle; confirm in your report that you did not write to it.
+  **No write call of any kind targeted DRC-4272.** Proved rather than asserted: its `updatedAt` reads `2026-08-28T04:37:02.285Z`, byte-identical to its `createdAt`, so it has never been edited since it was filed — and it predates this cycle's writes at `05:39:52Z`. Its closing conditional ("If D6 is later cancelled…") stands unaltered, and it stays true after this cancellation. **The question is still open for the captain.**
+- DONE: The five 2026-08-23 `## History` blockquotes, the Scores line, the five labels and the four `relatedTo` edges survive the rewrite. Verify each by reading the record back after the write rather than from the write call's return value, and report anything that moved.
+  Blockquotes: `diff` of the read-back span against the pre-write capture `sed`-extracted from this entity returns empty, 3,919 bytes each side. Falsified by any non-empty diff. Scores line intact, detector risk 18 unmoved. Labels exactly the five. `relatedTo` exactly DRC-4271, DRC-4172, DRC-4028, DRC-4272 — **no unrequested edges**; `blocks` and `blockedBy` both empty.
+
+### Discrepancies found by read-back — reported, not repaired
+
+1. **Issue body, authored text.** ``**`turn_progress` changing its history rule.**`` came back as `` `turn_progress` **changing its history rule.** `` — the documented bold-adjacent-to-code-span move. The drafted prose put the bold directly against the code span; I wrote it verbatim rather than inserting the space that would have round-tripped clean, because the draft was approved as prose. Text content unchanged.
+2. **Issue body, authored label.** The bare `DRC-4271` in the label on demoted section 1 became a mention and **split the italic run in two**, exactly the documented mention hazard. It created **no** relation — DRC-4271 was already an edge, and read-back shows the four baseline edges only.
+3. **Issue body, cosmetic.** `-` bullets normalized to `*`, and the table delimiter row `|---|` to `| -- |`.
+4. **Milestone, pre-existing text the edit was not touching.** `[**DRC-4118 **](<url>)` came back as `[DRC-4118 ](<url>)` — the bold inside the link label dropped. Unavoidable, since `save_milestone` resends the whole description; per the workflow rule this is reported and **not** repaired.
+5. **No Linear error was returned**, so no retry question arose.
+
+### Judgment calls the drafts did not settle
+
+- **Demoted-section layout.** The draft gave section titles and labels but no shape. I used the convention cycle 1 set: `### 2026-08-28 — "<title>"`, the drafted label verbatim as an italic line beneath, content blockquoted. Blockquoting also keeps the markdown links inside from converting to mentions.
+- **The old `## History` lead-in** ("Carried forward above, not repeated here…") is gone. The drafted body ends at the `## History` heading and the draft says the demoted sections follow it directly; the paragraph was not on the preserve list and its text was stale.
+- **Milestone edit 3 was internally ambiguous** — "Replace the last two sentences" against "The needs-input sentence after it is accurate and stays." I deleted only the named gate sentence ("That question is filed as a decision issue blocking D6.") and kept the needs-input sentence byte-identical. No new prose was invented, since the only new prose authorized was the appended paragraph.
+- **The appended paragraph** went at the end of the 2026-08-28 update section, before the `---`, on the plain reading of "append".
+
+### Summary
+
+Cycle 2 was Linear writes only, and the worktree is deliberately empty: no branch commit, no test, no pre-PR suite, no PR. Drafted writes 1–3 landed as approved and were verified against an independent read-back rather than against the write calls' return values; the five 2026-08-23 blockquotes are byte-identical by `diff`, and the scores, labels and four relations all survived.
+
+Drafted write 4 was not performed and DRC-4272 is provably unedited since it was filed. That decision is still the captain's, and it costs nothing to leave open — DRC-4272's closing sentence is a conditional that this cancellation simply makes true.
+
+Four serializer or mention effects are reported above. Two are in text this cycle authored and one of those was avoidable in principle, but repairing approved prose is a second unapproved write; the fourth is in pre-existing milestone text where repair is measured not to work. All are the FO's to disposition.
