@@ -804,3 +804,487 @@ Appended rather than merged into the report above, which stands as written at th
 ### Summary
 
 The FO's answer was applied — DRC-4037 sits at `Backlog` with the blocking edge and the body section both intact — and the authorized fourth write landed on DRC-4122 as a single appended dated section that did not touch the ruling's original text. The cycle's most useful result is now a two-sided measurement of the emphasis guard: text authored to keep code spans away from emphasis runs round-trips perfectly, while text already carrying the damaged form loses its marks entirely on the next write, and cannot be repaired into a stable state. That is a stronger claim than the README currently records and is offered for the FO to fold into the rule.
+
+---
+
+## Re-derived at the tip, cycle 2 (2026-08-28, `origin/main` at `701b7f0`)
+
+Nothing below is accepted from E4's live Linear body. Twelve load-bearing claims were re-measured or
+re-read against the tree. Nine reproduce, three do not, and two facts nobody had written down are new.
+
+**The checkout is one commit behind.** `main` here is `ef425b2` (v0.18.0); `origin/main` is `701b7f0`
+(PR #238, merged 2026-08-28T08:52:15Z, one file, +102/−0). Everything below was read through
+`git show origin/main:<path>` rather than by checking out, because this stage may not modify the tree.
+`701b7f0` adds only `docs/plans/git-probe-security-scope.md`, so every runtime line number cited here
+is identical on both.
+
+### Reproduced
+
+1. **Bound 1's two flags, each independently load-bearing.** Re-measured today at git 2.55.0, four
+   fresh repositories, one probe each, from an identical racy-clean state (`git init`, one commit,
+   rewrite the file with identical content, `core.fsmonitor` set to a logging script):
+
+   | flags | fsmonitor script runs | `.git/index` |
+   | --- | --- | --- |
+   | (none) | 1 | written |
+   | `--no-optional-locks` | 1 | not written |
+   | `-c core.fsmonitor=` | 0 | written |
+   | both | 0 | not written |
+
+   Each flag disarms exactly one hazard, neither disarms the other's, the script runs **once** and not
+   twice, and the index write is race resolution. The merged contract's paragraph is exact.
+2. **`changed` counts porcelain entries, not files.** One modified tracked file plus an untracked
+   directory holding three files gives **2 entries for 4 changed files**.
+3. **`--no-spacedock` has six sites, and E4's body is the figure that is right.** Enumerated:
+   `cli.py:115` (argparse), `cli.py:203` (`spacedock_enabled=not args.no_spacedock`), `config.py:46`
+   (dataclass field), `config.py:384` (builder parameter, default `True`), `config.py:424` (builder
+   assignment), `lifecycle.py:554-555` (`spawn_argv` respawn forward). The groundwork cycle's figure
+   of three counted `cli.py` twice and `lifecycle.py` once and missed `config.py`'s three. `--no-usage`
+   occupies the identical six. **Correct the record: the wrong number was the groundwork cycle's.**
+4. **`Event.cwd` is parsed and has no consumer.** Parsed at `events.py:386` under `MAX_PATH_LEN`; the
+   only other `cwd` in the runtime is a docstring at `transcripts.py:104`. The probe is its first
+   consumer, so no new retention is needed and the superseded "small new retention" claim stays refuted.
+5. **The promotion is mechanical.** Every anchor the contract names exists verbatim: `SECURITY.md:67`
+   `## Project reads (Spacedock stage strips)`, `SECURITY.md:122` `## Usage quota reads (the quota
+   fetcher)`, `SECURITY.md:65` the Scope closing sentence containing `writes to harness stores,`, and
+   `SECURITY.md:35` Invariant 2 `Read-only against harness stores.`
+6. **The groundwork shipped.** DRC-4274 is `Done`, PR #238 merged, `blockedBy` on E4 is empty and its
+   Linear status is `Todo`. (The entity frontmatter still reads `linear-status: Backlog`; Linear moved
+   to `Todo` at 09:00:04Z. Frontmatter is not this stage's to edit — flagged for the FO.)
+7. **No git invocation exists in the runtime today.** A grep for `git` across `cargento_runtime/`
+   returns nothing.
+8. **Six harnesses have no event adapter.** Ten collectors ship; `events.IDENTITY_NORMALIZERS`
+   (`events.py:305-310`) holds four — `claude`, `codex`, `antigravity`, `gemini`. That half of the
+   sentence is true.
+9. **Full adversarial is the routed tier.** `AGENTS.md`'s Calibrating Effort row "Security, credential
+   handling, or data loss" reads "Full adversarial — several lenses, a completeness critic, an arbiter."
+
+### Falsified
+
+**F1 — "Six of the ten harnesses have no event adapter, so they can never be probed." The predicate is
+wrong; the count is right for a different question.** Having an adapter is necessary and not
+sufficient: the harness's vocabulary must also contain a session-end event. `CODEX_EVENTS`
+(`event_hook.py:160-166`) registers five names and `SessionEnd` is not among them. Antigravity's
+adapter derives events from `agent_state` and maps only `working`/`idle` (`statusline_hook.py:118-121`),
+with `store_changed` from `agy_hook.py:153`. So Codex and Antigravity have adapters and still cannot
+emit `session_ended`. **Eight of ten rows can never be probed, not six.**
+
+The count was carried across from `finished_at`, where six *is* correct — that field needs any
+overlay-producing event, which Codex and Antigravity both supply. `observation.finished_at`'s own
+docstring (`observation.py:378-386`) says "the six harnesses with no event adapter", and the sentence
+was reused for a narrower predicate. Draft the correction as a property, not a count, for the reason
+the merged contract gives: a number goes stale the first time an adapter gains the event. Droid and
+Goose already emit `SessionEnd` natively (`docs/captures/droid/notification-0.202.0-macos.jsonl`,
+`docs/captures/goose/tool-confirmation-1.47.0-macos.jsonl` both record it in the harness's own
+vocabulary) and are unreachable only because Cargento has no adapter for them — so the eight is a
+statement about Cargento, not about the harnesses, and it will move.
+
+**F2 — "They disclose that through the existing `acquisition` marker and a null surface."** The marker
+cannot carry this. `acquisition` has exactly two values, `event` and `scan-only` (`events.py:109-110`),
+and `aggregate._mark_unreachable_by_events` (`aggregate.py:685-703`) sets `scan-only` for precisely the
+harnesses **absent from `IDENTITY_NORMALIZERS`**. Codex and Antigravity are present, so their rows read
+`acquisition: "event"` and will never be probed anyway. The marker under-discloses by two rows, and it
+says nothing at all about the other five causes of a null: `--no-git`, a directory that is not a
+repository, an event with no `cwd`, git absent from `PATH`, and a probe that timed out. **`null` is the
+whole of the disclosure**, and the body must stop crediting `acquisition` with work it does not do.
+
+**F3 — "measured in the Claude and Droid `SessionEnd` captures."** The Droid capture is a verdict
+record, not a payload capture: it evidences that Droid *fires* `SessionEnd`
+(`events_observed_before_the_gate`) and records no payload keys at all, so it cannot evidence `cwd`.
+The two captures that do list `cwd` among a `SessionEnd` payload's keys are **Claude**
+(`docs/captures/claude/hooks-2.1.222-macos.jsonl`) and **Gemini**
+(`docs/captures/gemini/hooks-0.53.1-macos.jsonl`). Correct the pairing to Claude and Gemini — which is
+also exactly the pair that can reach the probe, so the sentence gets shorter and truer at once.
+
+### New, and both bear on the build
+
+**N1 — the session-end edge runs on the HTTP handler thread, under the coordinator lock, behind a
+two-second client timeout.** `coordinator.submit()` is called at `http_api.py:838` inside the request
+handler of a `ThreadingHTTPServer` (`http_api.py:98`); `submit` calls `_record`, which takes
+`self._lock` at `observation.py:300` and handles `retires_overlays` inside it at `observation.py:302-307`.
+The hook client's HTTP timeout is **2 s** (`notify_hook.py:34`; `event_hook.py` shares its transport
+guards). A probe run synchronously there would (a) hold the coordinator lock for the duration, stalling
+every other event and the collection loop, and (b) hold the harness's own `SessionEnd` hook open past
+its timeout. `git status` on a large tree routinely exceeds 2 s. **The probe must not be synchronous
+inside `_record`.** Neither the merged contract nor E4's body names this, and it is the constraint most
+likely to produce a real defect.
+
+**N2 — `session_ended` mints no overlay, so there is no carrier for the result.** `overlay_for()`
+returns `None` for it (`events.py:430`, falling through at `:478`); `retires_overlays`
+(`events.py:482-491`) pops the ledger rather than producing a claim. The published pair therefore has to
+follow the `finished_at` pattern exactly: a bounded side-channel dict on the coordinator, a `_mark_*`
+writer under the `event_overlay_max_sessions` refusal guard (`observation.py:363-371`), a public reader,
+a new method on the `OverlaySource` Protocol (`aggregate.py:129-136`), and a read in `_apply_overlays`
+(`aggregate.py:719-738`). It also means the two names must be added to `events.PATCHABLE`
+(`events.py:105-107`) **and restated in all three `patch.update` blocks** of `reduce_overlays`
+(`events.py:594`, `:607`, `:620`), or the fields survive a state change they should not.
+
+`events.retires_overlays`'s docstring records one more thing the body should say out loud: Claude fires
+`session_ended` on `/clear` as well as on exit, and a `turn_started` for the same session may follow
+inside one coalescing window. So the probe is one-shot **per session-end event**, not per session — the
+bound still forbids polling, but "one probe per session" is not what will be observed.
+
+## Delivery shape (cycle 2) — recommended: two PRs, split on `web/` and nothing else
+
+**PR 1 — contract, probe, published field. Touches no file under `cargento_runtime/web/`.**
+Promotes the section from `docs/plans/git-probe-security-scope.md` into `SECURITY.md` unchanged, applies
+the two intro amendments the document names, deletes the plan doc, adds the probe module and its
+`session_ended` wiring, adds `--no-git`, publishes `dirty` and `changed` on every row, and updates
+`SKILL.md`, `HOW_TO_USE.md` and `docs/design-runtime-architecture.md`.
+
+**PR 2 — the render.** `web/` and `web/next/` only, plus the two byte-pin oracle sets.
+
+Both PRs belong to E4; the issue is not `Done` until PR 2 lands. No second issue is filed, because the
+render carries no decision content of its own and a second issue would cost a triage cycle to say so.
+
+**Why split here and nowhere else.** `AGENTS.md` names exactly one constraint that genuinely forces a
+split — "exactly one PR may touch `cargento_runtime/web/`" — and that surface is contended right now.
+`gh pr list` shows one open PR (#224) touching no web file, so the *queue* is clear, but two live
+sibling worktrees already carry `web/` diffs against `origin/main`: `docs/sync-next-ui-design-parity`
+(76 files, including `web/calm.js` and four `web/next/*.js`) and `worktree-spacedock-boot-rendering`
+(30 files, `next-activity.js` and `next-session.js`). E4 would be the third writer.
+
+What that costs if the halves ride together: `test_page.py` pins 28 figures and `test_next_page.py`
+pins another 28 — 56 in total, with **no script that emits them**; `AGENTS.md` and
+`docs/design-next-ui.md` both say recompute from the assets, and the only recompute path is by hand
+from the failure output. A textual resolution across three writers ships a number wrong for every side.
+Worse, a recompute forced by a sibling merge lands *after* review, so the full adversarial pass would
+have to re-verify a diff it had already cleared.
+
+**Why the split does not break the promotion constraint.** The promoted section describes running one
+bounded git command and publishing two nullable fields. PR 1 ships both. The section says nothing about
+rendering. So `SECURITY.md` describes only shipped behaviour at PR 1's merge and at every commit after
+it, and the plan doc is deleted in the same commit that promotes it — the precedent's shape, unbroken.
+The intermediate state claims exactly this and nothing more: *the probe runs on session end, `/api/data`
+carries `dirty` and `changed`, `--no-git` turns it off, and the dashboard does not show it yet.* True,
+releasable, and honest against any tag cut in the window.
+
+**What it costs.** One extra CI cycle; a `gh pr update-branch` plus a full re-run on PR 2 once PR 1
+lands, because a ruleset requires branches be up to date; and one extra review at the cheaper tier.
+`AGENTS.md` measures the waiting at roughly fifteen minutes per extra PR. Called against the byte-pin
+exposure above, that is the cheap side.
+
+**Rejected — one PR carrying everything.** One cycle instead of two, no cross-PR sequencing. It cannot
+deliver, because it puts the security-critical diff on the same branch as 56 byte pins with two live
+siblings already in that surface, and it forces the most expensive review tier the repository has onto
+the render as well. `AGENTS.md`'s Calibrating Effort names uniformity, not depth, as what made the
+measured run expensive: 35 agents, 10 blocking findings.
+
+**Rejected — three PRs (promotion, then probe, then render).** Forbidden by the constraint the merged
+contract states outright: the promotion and the deletion ride together, and a promotion PR that ships no
+probe leaves `SECURITY.md` describing behaviour that does not exist. That is the exact failure the
+groundwork shape exists to prevent.
+
+**One consequence worth stating at the gate.** The split lets review depth be set per PR rather than per
+session, which is what `AGENTS.md` asks for. PR 1 is the "Security, credential handling, or data loss"
+row and takes the full adversarial tier. PR 2 is the "Owns a conflict-prone surface (`web/` byte pins,
+`SKILL.md`, `config.py`)" row and takes two lenses plus an arbiter. Neither is an override; both are the
+table read literally.
+
+## Acceptance criteria (cycle 2)
+
+These supersede the cycle-1 set above. AC1-AC8 belong to PR 1, AC9-AC10 to PR 2, AC11 to the issue.
+Every criterion is **offline** except AC11. Each names something outside this entity that decides it,
+and the concrete change that would falsify it.
+
+**AC1 (offline) — exactly one git invocation exists in the runtime, and it carries both flags.**
+The argv is `["git", "-c", "core.fsmonitor=", "--no-optional-locks", "status", "--porcelain"]`, built at
+one site, and no other `git` subprocess exists anywhere under `cargento_runtime/`.
+*Verified by:* a test asserting the built argv against that literal, plus a repository-wide assertion
+that `git` is constructed as a subprocess at exactly one site. Today that grep returns nothing, so the
+"exactly one" baseline is established rather than assumed.
+*Falsified by:* dropping either flag, or adding a second git call path. A `rev-parse` to answer "is this
+a repository?" is the likely one and must be folded into the single invocation — a non-repository is
+already distinguishable from the one command's exit status.
+
+**AC2 (offline) — the probe neither writes nor executes.**
+Against a racy-clean repository the probe leaves `.git/index`'s mtime unchanged; against a repository
+whose `.git/config` sets `core.fsmonitor` to a logging script, the script does not run.
+*Verified by:* a test building both repositories in a tmpdir and asserting the stat and the empty log —
+the four-repository measurement above turned into a test. It must skip cleanly when `git` is absent,
+because `platform-tests` re-runs the suite on Ubuntu, macOS and Windows.
+*Falsified by:* removing `--no-optional-locks` (index mtime advances) or `-c core.fsmonitor=` (the log
+gains one line). Each was measured to fail independently at git 2.55.0 today.
+
+**AC3 (offline) — the probe never runs on the event-ingress thread and never under the coordinator
+lock.**
+`ObservationCoordinator.submit()` returns without having waited on a git subprocess.
+*Verified by:* a test that submits a `session_ended` envelope with a probe runner injected to block on
+an event, and asserts `submit()` returns before that runner is released; plus an assertion that the
+probe call site is not inside the `with self._lock` block of `observation._record`.
+*Falsified by:* calling the probe inline in `observation.py:302-307`. `submit` is reached from
+`http_api.py:838` on a `ThreadingHTTPServer` handler thread, and the hook client's timeout is 2 s
+(`notify_hook.py:34`), so an inline probe both stalls every other event behind the lock and times out
+the harness's own `SessionEnd` hook on any repository large enough to take two seconds.
+
+**AC4 (offline) — the probe fires on the session-end edge and on no other, at most once per edge.**
+A `turn_stopped → turn_started → turn_stopped → session_ended` sequence produces exactly one probe, on
+the `session_ended` arrival. Two `session_ended` events for one session produce at most two probes, one
+each, and never a third.
+*Verified by:* a coordinator test driving that sequence with a counting fake runner.
+*Falsified by:* hanging the probe off `observation._mark_finished` (`observation.py:354`), which pops on
+`OVERLAY_WORKING` (`observation.py:360-362`) and re-arms every turn — that sequence would produce two
+invocations, both at the wrong moment. The second half of the criterion exists because Claude fires
+`session_ended` on `/clear` as well as on exit (`events.py:483-491`), so "once per session" is not
+observable and must not be asserted.
+
+**AC5 (offline) — the row gains exactly two nullable keys, and no pathname reaches the wire.**
+`base_session()` (`sessions.py:263-...`) declares `dirty` and `changed`, both defaulting to `None`;
+`events.PATCHABLE` (`events.py:105-107`) grows by the same two names and no others; and porcelain
+pathnames never appear in `/api/data`.
+*Verified by:* `test_sessions.test_every_session_row_declares_the_same_field_set`
+(`tests/test_sessions.py:337-345`) with `DECLARED_SESSION_FIELDS` (`:303-334`) grown by exactly two
+names, plus a test that feeds porcelain output containing a distinctive filename through the probe and
+asserts that filename is absent from `aggregate.collect_json()`'s bytes.
+*Falsified by:* publishing a `files` list, a sample path or a porcelain line; adding a third key; or
+adding the names to `PATCHABLE` without restating them in all three `patch.update` blocks of
+`reduce_overlays` (`events.py:594`, `:607`, `:620`), which would let a stale pair survive a state change.
+
+**AC6 (offline) — an unprobed row publishes `null`, for every cause, and nothing claims `acquisition`
+discloses it.**
+Each of the seven causes yields `dirty: null, changed: null`: a harness with no event adapter, a harness
+whose adapter has no session-end event, `--no-git`, a directory that is not a repository, an event with
+no `cwd`, git absent from `PATH`, and a probe that timed out.
+*Verified by:* one test per cause. The second cause must be tested with a **Codex or Antigravity** row,
+whose `acquisition` reads `"event"` — `aggregate._mark_unreachable_by_events` (`aggregate.py:685-703`)
+marks `scan-only` only for harnesses absent from `IDENTITY_NORMALIZERS`, so a test that asserts against
+`scan-only` alone would pass while leaving two of the eight unprobeable harnesses unchecked.
+*Falsified by:* defaulting `dirty` to `False` in `base_session` — every unprobed row then reads clean,
+the confident-green-over-absent-evidence failure recorded at DRC-4101 — or by asserting the Codex case
+through the `acquisition` marker, which cannot see it.
+
+**AC7 (offline) — `--no-git` is on by default, disables the probe, and survives a respawn.**
+*Verified by:* a parse assertion in the shape of
+`tests/test_config_diagnostics.py:113 test_build_runtime_freezes_the_parsed_launch_options`;
+`tests/test_lifecycle.py:1303 test_every_opt_out_reaches_the_respawned_daemon` extended to include
+`--no-git`; and a coordinator test asserting zero probe invocations when the flag is set.
+*Falsified by:* omitting the `lifecycle.spawn_argv` branch (`lifecycle.py:554`) — the flag is then
+silently dropped on the respawned daemon, which is the defect that test was written for after
+`--no-usage` was lost on Windows. Note that the seven `argparse.Namespace` fixtures in
+`test_lifecycle.py` (`:247`, `:473`, `:1259`, `:1288`, `:1315`, `:1330`, `:1534`) are
+positional-complete, so a missing attribute raises rather than defaulting — they are part of the
+falsifier, not incidental.
+
+**AC8 (offline) — the promotion is byte-identical, both intro amendments land, and the plan doc is gone
+in the same commit.**
+`SECURITY.md` carries the section between `## Project reads (Spacedock stage strips)` and `## Usage
+quota reads (the quota fetcher)`, byte-identical to the merged text between the two `---` rules in
+`docs/plans/git-probe-security-scope.md`; the Scope closing sentence (`SECURITY.md:65`) has gained its
+clause; Invariant 2 (`:35`) has gained its sentence; and `docs/plans/git-probe-security-scope.md` no
+longer exists.
+*Verified by:* `git show <sha> --stat` on the single commit showing `SECURITY.md` grown and the plan doc
+deleted together — the check `a98bc64` and `3e92d12` are cited for — plus a diff of the promoted span
+against `git show 701b7f0:docs/plans/git-probe-security-scope.md`, plus
+`python3 scripts/validate_plugins.py`, which resolves every relative link and heading anchor across the
+owned docs and would fail on a dangling reference to the deleted file.
+*Falsified by:* editing a word of the section during promotion, splitting the deletion into a follow-up
+commit, or omitting either amendment — the second leaves the section filed under a Scope clause that
+enumerates file reads, harness-store writes and non-loopback hook traffic, none of which is subprocess
+execution.
+
+**AC9 (offline) — the render says entries, and renders an unprobed row as absent.**
+Wherever `changed` appears it is labelled as entries rather than files, and a row whose `dirty` is
+`null` renders no dirty state at all — not "clean", not `0`.
+*Verified by:* a rendering test on both frontends, since they share no JavaScript: the regular UI's
+badge helper beside `spark.js:318 finishedMark()` and the next UI's own reimplementation in
+`next/next-sessions.js:34-44`. `tests/test_documentation.py:94` is the precedent for pinning a JS
+constant against prose and should pin the label.
+*Falsified by:* rendering `changed` as a file count, or falling back to a clean badge when the value is
+`null` — the same false-clean AC6 forbids on the API, one layer up.
+
+**AC10 (offline) — both byte-pin oracle sets are recomputed from the assets.**
+`tests/test_page.py:104 test_load_page_preserves_all_three_byte_oracles` and the mirror in
+`tests/test_next_page.py:577-592` pass, with every figure they assert derived from the shipped bytes.
+*Verified by:* the two tests passing on a branch rebased onto whatever `web/` state is on `main` at the
+time, and `python3 scripts/lint_embedded.py`, whose part-inventory check (`check_stray_scripts`) imports
+`web/page.py` by path so the linter and the loader cannot disagree about which parts exist.
+*Falsified by:* editing a digest to match a failure message rather than recomputing — the failure that
+`AGENTS.md` records as shipping a number wrong for both sides. There is no script that emits these
+figures; the count is 28 in `test_page.py` (12 parts times size and digest, plus `styles.css`, plus the
+assembled page) and 28 again in `test_next_page.py`.
+
+**AC11 (interactive) — it is true of a real session.**
+A person runs the dashboard, ends a real Claude session in a repository with a known dirty state, and
+the row shows dirty with the porcelain entry count.
+*Verified by:* a live drive, with the `SessionEnd` payload captured under `docs/captures/claude/` if its
+shape differs from `hooks-2.1.222-macos.jsonl`.
+*Falsified by:* the published count disagreeing with `git -c core.fsmonitor= --no-optional-locks status
+--porcelain | wc -l` taken at the moment the session ended.
+**No harness is planned to automate this.** The falsifier needs a real harness process to exit; AC3 and
+AC4 cover the wiring offline and AC11 covers only that the wiring meets a real payload. Declared here,
+at the gate, rather than discovered later.
+
+## Expected surface and tolerance (cycle 2)
+
+Supersedes the cycle-1 table. Split across the two PRs.
+
+**PR 1 — contract, probe, published field.**
+
+| Area | Files | Notes |
+| --- | --- | --- |
+| New runtime module | `cargento_runtime/git_status.py` | subprocess, porcelain parse, bounded timeout. Not `gitprobe.py`: `probe.py` already owns "the coarse store probe" and two names one letter apart in one package is a reading hazard. |
+| Probe wiring | `observation.py` | side-channel dict, `_mark_*` writer under the `event_overlay_max_sessions` guard, public reader, off-thread dispatch (AC3) |
+| Overlay plumbing | `events.py` | `PATCHABLE` (`:105-107`) plus all three `patch.update` blocks (`:594`, `:607`, `:620`) |
+| Row surface | `sessions.py` (`base_session`) | two keys, both `None` |
+| Row plumbing | `aggregate.py` | `OverlaySource` Protocol (`:129-136`), read in `_apply_overlays` (`:719-738`) |
+| Off switch | `cli.py` ×2, `config.py` ×3, `lifecycle.py` ×1 | the six `--no-spacedock` sites, enumerated above |
+| Config threshold | `config.py` | `git_probe_timeout_sec`, mirroring `usage_fetch_timeout_sec=10` (`config.py:500`). A named conflict hotspot. |
+| Runtime inventory | `scripts/validate_plugins.py:131` | `CARGENTO_RUNTIME_FILES` gains the new module |
+| Tests | `tests/test_git_status.py` (new), `test_observation.py`, `test_events.py`, `test_sessions.py`, `test_lifecycle.py`, `test_config_diagnostics.py` | plus the seven positional-complete `Namespace` fixtures |
+| Docs | `SECURITY.md` (promotion + two amendments), `SKILL.md` flag table `:294`, `HOW_TO_USE.md` `:343`, `docs/design-runtime-architecture.md` | and delete `docs/plans/git-probe-security-scope.md` |
+
+**Estimate: ~17 files, +420 / −120 lines. Tolerance ±35%.** The −120 is mostly the deleted plan doc.
+
+**PR 2 — the render.**
+
+| Area | Files |
+| --- | --- |
+| Regular UI | `web/spark.js` (the shared badge helper), `web/regular.js`, `web/calm.js`, `web/session.js`, `web/styles.css` |
+| Next UI | `web/next/next-sessions.js`, `web/next/next-session.js`, `web/next/next-workstream.js`, `web/next/styles.css` |
+| Oracles | `tests/test_page.py` (28 figures), `tests/test_next_page.py` (28 figures) |
+| Tests | `tests/test_page_calm.py`, `tests/test_next_sessions.py` |
+
+**Estimate: ~13 files, +170 / −40 lines. Tolerance ±50%** — the variance is the pins, which are counted
+rather than estimated but move with whatever else lands in `web/` first.
+
+**Semantics that may move.** `Event.cwd` gains its first consumer, so any prose repeating "no consumer"
+goes stale. `SECURITY.md`'s read-only invariant gains a subprocess clause. `acquisition` does **not**
+change meaning and must not be extended to cover the probe — see F2. Nothing about `project` or
+`finished_at` changes.
+
+## Review depth (cycle 2)
+
+**Not overriding any row. Reading the table literally gives two different answers, one per PR.**
+
+- **PR 1 — full adversarial: several lenses, a completeness critic, an arbiter.** `AGENTS.md`'s
+  "Security, credential handling, or data loss" row. This PR runs a subprocess inside a directory the
+  user chose, promotes a security contract, and amends an invariant. The captain's earlier reduction to
+  two lenses applied to the documentation-only groundwork issue on the reading that it *described* a
+  future handler; this PR *is* the handler, so that reading does not extend. Lenses worth naming: the
+  subprocess surface (argv construction, environment, timeout, a symlinked or submodule repository, a
+  repository the user lacks permission to read); the null-versus-false surface; the threading and
+  lock-holding constraint in AC3; and whether the promoted text is byte-identical.
+- **PR 2 — two lenses plus an arbiter.** `AGENTS.md`'s "Owns a conflict-prone surface (`web/` byte
+  pins, `SKILL.md`, `config.py`)" row. No new power, no new read, no security surface; its risk is
+  entirely that 56 pinned figures are recomputed rather than edited.
+
+Naming this at the gate rather than assuming it, per the checklist. If the captain would rather run one
+tier across both, that is a decision to make here — but the split exists precisely so it does not have
+to be.
+
+## Drafts for `implementation` to write (cycle 2)
+
+Nothing below has been written to Linear. Three edits, all corrections; the body's structure stands.
+
+### Draft A2 — three corrections to the live DRC-4037 body
+
+**A2.1.** In bound 3, replace *"measured in the Claude and Droid `SessionEnd` captures"* with
+*"measured in the Claude and Gemini `SessionEnd` captures"*. Reason F3: the Droid capture records no
+payload keys, and Claude and Gemini are also exactly the two harnesses that can reach the probe.
+
+**A2.2.** Replace the paragraph *"Six of the ten harnesses have no event adapter, so they can never be
+probed. They disclose that through the existing `acquisition` marker and a null surface, never a false
+clean."* with:
+
+```markdown
+A row can be probed only where an adapter maps a native session-end event onto `session_ended`.
+Today that is Claude Code and Gemini CLI. Codex and Antigravity have adapters whose vocabularies
+carry no session-end event, and the remaining six harnesses have no event adapter at all — so most
+rows are never probed. They disclose that by publishing `null`, and by nothing else: the
+`acquisition` marker separates adapter-less harnesses from the rest and cannot see this gap, nor
+any of the other reasons a probe does not run.
+```
+
+Reasons F1 and F2. Stated as a property rather than a count, following the merged contract, because
+Droid and Goose already emit `SessionEnd` natively and are unreachable only for want of an adapter.
+
+**A2.3.** In bound 4, replace *"at every one of its six sites"* with the enumeration:
+*"at each of its six sites — `cli.py` twice, `config.py` three times, and the `lifecycle.spawn_argv`
+forwarding branch a respawned daemon needs."* The number is right (re-derivation 3); the enumeration is
+what makes it checkable, and it is the half an implementer actually needs.
+
+No history section changes. The two superseded sections stay as written and dated.
+
+### Draft B2 — milestone `Nothing dies quietly`, one correction
+
+The DEC-3 paragraph in the 2026-08-23 update now carries F1's wrong predicate, introduced by the
+previous cycle. Replace the parenthetical *"(`null` meaning not probed, since six of the ten harnesses
+can never emit the event)"* with *"(`null` meaning not probed, since only the harnesses whose adapter
+maps a session-end event can be probed at all — today, two of the ten rows)"*.
+
+Nothing else in the milestone moves. The Draft B annotation from the previous cycle is in place and
+correct.
+
+### Draft C2 — nothing to file
+
+No new issue. The render is PR 2 of this issue, per **Delivery shape** above.
+
+### Reported, not drafted — DRC-4122 carries the same wrong predicate
+
+DRC-4122's `## Amended 2026-08-28` section states *"Six of the ten harnesses have no event adapter and
+can never emit `session_ended`"* — F1 exactly, and it is where E4 inherited it. DRC-4122 is closed, and
+the previous cycle's gate recorded that a dated correction note there **was not authorized** and was
+being put to the captain separately. Reported here rather than drafted; if that separate question is
+still open, this is a second reason to answer it.
+
+## Out of scope (cycle 2)
+
+Unchanged from the cycle-1 list above, with two additions:
+
+- **Giving Codex, Antigravity, Droid or Goose a session-end event.** Droid and Goose emit `SessionEnd`
+  natively and Cargento has no adapter for them; Codex and Antigravity would need a vocabulary change.
+  Each is its own issue per harness, and each would widen the probe's reach without changing its bounds.
+- **Extending `acquisition` to disclose the probe gap.** F2 shows the marker cannot carry it. A third
+  acquisition value is a change to a field three other features read, and it is not needed: `null` is
+  the disclosure.
+
+## Stage Report: triage (cycle 2)
+
+- DONE: The delivery SHAPE decided with reasons: whether the `SECURITY.md` promotion, the runtime probe, the published field and the frontend render are one PR or several.
+  **Two PRs, split on `cargento_runtime/web/` and nothing else** — see **Delivery shape (cycle 2)**. PR 1 carries promotion, probe, published field and docs; PR 2 carries the render and the two byte-pin oracle sets.
+- DONE: Two hard constraints bear on it — the promotion must land in the same PR that deletes `docs/plans/git-probe-security-scope.md`, and exactly one in-flight PR may touch `cargento_runtime/web/`.
+  Constraint 1 is satisfied by PR 1: the promoted section describes running the probe and publishing two nullable fields, both of which PR 1 ships, so `SECURITY.md` is true at every commit. Constraint 2 forced the split: `gh pr list` shows the PR queue clear of `web/`, but `git diff --name-only origin/main..<branch>` shows two live sibling worktrees already in it (`docs/sync-next-ui-design-parity`, 76 files; `worktree-spacedock-boot-rendering`, 30 files).
+- DONE: Recommend one shape.
+  One recommended, with the two rejected alternatives and their reasons: one PR carrying everything (rejected — puts 56 byte pins on the security branch and forces the expensive tier onto the render), and three PRs (rejected — a promotion PR shipping no probe is the failure the groundwork shape prevents).
+- DONE: Acceptance criteria are written only for what THIS issue delivers, each with a `Verified by:` clause naming something outside the entity and the concrete change that would falsify it.
+  Eleven criteria under **Acceptance criteria (cycle 2)**, offline/interactive split declared (AC11 alone is interactive, with the reason no harness will automate it). Every `Verified by:` names a test file and line, a shipped command, or a commit-shape check. Three are new this cycle: AC3 (off-thread, off-lock), AC8 (byte-identical promotion), AC9/AC10 (the render's label and the pins). AC6 was rewritten because its cycle-1 oracle was unsound — see below.
+- DONE: Every load-bearing claim in E4's own body re-derived at the current tip and every falsified one reported and drafted for correction.
+  Twelve claims re-derived against `origin/main` at `701b7f0`; nine reproduce, three are falsified (F1, F2, F3), two new facts recorded (N1, N2). Corrections drafted as A2.1-A2.3 and B2; nothing written to Linear.
+- DONE: the body says "Six of the ten harnesses have no event adapter, so they can never be probed", which is the exact predicate the merged contract replaced.
+  **REFUTED as a predicate, and the count is wrong for this question: eight of ten, not six.** `CODEX_EVENTS` (`event_hook.py:160-166`) registers no `SessionEnd`; Antigravity maps only `working`/`idle` (`statusline_hook.py:118-121`). Root cause found: the sentence was carried over from `observation.finished_at`'s docstring (`observation.py:378-386`), where six *is* right because that field needs any overlay-producing event. Drafted as a property, not a count (A2.2), because Droid and Goose emit `SessionEnd` natively and are unreachable only for want of an adapter.
+- DONE: it says `--no-spacedock` appears at "every one of its six sites" where the groundwork cycle found three.
+  **Six reproduces; the groundwork cycle's three was the wrong figure.** Enumerated: `cli.py:115`, `cli.py:203`, `config.py:46`, `config.py:384`, `config.py:424`, `lifecycle.py:554-555`. The groundwork count missed `config.py`'s three. `--no-usage` occupies the identical six, which is the independent check. Drafted A2.3 to replace the number with the enumeration — the number is right, the enumeration is what an implementer can act on.
+- DONE: Report any figure you cannot reproduce rather than repeating it.
+  One figure is reported unreproduced rather than repeated: none of E4's own. Two figures from DRC-4122's pre-amendment record (script runs twice; unconditional index write) were already corrected upstream and were re-checked today at git 2.55.0 — script runs once, write is race resolution. A third defect is reported without a draft: DRC-4122's `## Amended 2026-08-28` carries F1's wrong predicate, and a correction note there was explicitly not authorized at the previous gate.
+- DONE: Nothing written to Linear and no repository file created or modified this stage.
+  Linear access was read-only (`get_issue` on DRC-4037, DRC-4122, DRC-4274; `get_milestone`). The main checkout was never checked out, pulled or written — `701b7f0` was read through `git show origin/main:<path>`. Measurements ran in `mktemp -d` directories under `/tmp`, since removed. The only files written are this entity and this report, in the state checkout.
+- DONE: Review depth recommended with reasons.
+  **PR 1 full adversarial; PR 2 two lenses plus an arbiter.** No row overridden — see **Review depth (cycle 2)**. Reading `AGENTS.md`'s table literally gives two answers because the split puts each PR in a different row, which is what "pick per PR, not per session" asks for. The captain's earlier reduction to two lenses is explicitly not extended: it applied to a documentation-only issue that *described* a future handler, and PR 1 *is* the handler.
+
+### What changed the build, beyond the two known defects
+
+Two facts nobody had written down, both found by reading the tip rather than the issue:
+
+- **N1 — the session-end edge is on the HTTP handler thread, under the coordinator lock, behind a 2 s client timeout.** `http_api.py:838` → `observation._record`, which takes `self._lock` at `:300` and handles the retire branch at `:302-307`; `notify_hook.py:34` sets the hook client's timeout at 2 s. A synchronous probe stalls every other event *and* times out the harness's own `SessionEnd` hook. Neither the merged contract nor E4's body names this. It became AC3.
+- **N2 — `session_ended` mints no overlay**, so the result has no carrier: `overlay_for()` returns `None` for it (`events.py:430`, falling through at `:478`). The pair must follow `finished_at`'s side-channel pattern and be restated in all three `patch.update` blocks of `reduce_overlays`. It became AC5's falsifier.
+
+And one cycle-1 acceptance criterion was unsound rather than merely incomplete: AC6 proposed proving the null surface by asserting `dirty is None` on a row whose `acquisition` is `"scan-only"`. `aggregate._mark_unreachable_by_events` (`:685-703`) sets `scan-only` only for harnesses absent from `IDENTITY_NORMALIZERS`, so that test passes while leaving Codex and Antigravity — two of the eight unprobeable rows — unchecked. Rewritten to require a Codex or Antigravity row.
+
+One frontmatter discrepancy for the FO, not mine to edit: `linear-status:` reads `Backlog`; DRC-4037 moved to `Todo` at 2026-08-28T09:00:04Z.
+
+### Summary
+
+The contract merged as `701b7f0` and E4 is genuinely unblocked, so this cycle's work was the shape and
+the acceptance criteria rather than the argument. Recommended shape is **two PRs split on
+`cargento_runtime/web/`**: the promotion, probe and published field in one, the render in the other,
+because the frontend is the only surface `AGENTS.md` says forces a split and two live sibling worktrees
+are already writing to it — and because splitting there lets each half take the review tier the table
+actually assigns it instead of one tier for both.
+
+Of the two known defects, one was E4's and one was not: the "six of ten harnesses" predicate is wrong
+(eight, and it should be stated as a property), while "six `--no-spacedock` sites" is right and the
+groundwork cycle's three was the miscount. Both are drafted. Two constraints the merged contract does
+not name were found by reading the tip — the probe cannot run synchronously on the event-ingress thread,
+and `session_ended` produces no overlay to carry the result — and one cycle-1 acceptance criterion
+turned out to prove less than it claimed. Nothing was written to Linear and no repository file was
+touched.
