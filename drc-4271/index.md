@@ -11,7 +11,7 @@ worktree:
 issue:
 pr:
 mod-block:
-linear-status: 'Backlog'
+linear-status: Done
 milestone: 'Spend attention well'
 release: 'r1'
 estimate: ''
