@@ -376,6 +376,37 @@ here so it is visible at the gate rather than discovered afterwards.
 
 ### Feedback Cycles
 
+**No correction round ran.** No reviewer was dispatched and no gate rejection occurred, so there is
+no `Cycle N` line. The entry below is the finding-disposition record `## Review-finding disposition`
+requires to be durable.
+
+- Disposition 2026-08-28, implementation — four discrepancies reported, none acted on.
+  **FO authorization: DECLINE on all four.**
+  - *Item 1 — two unrequested `relatedTo` edges from auto-mention.* **Deferred risk**, same class and
+    same promote-to-material condition as DEC-7's: auto-mention has still never produced a `blocks`
+    or `blockedBy` edge, and the read-back confirming every requested edge landed with no unrequested
+    gate edge is what licenses saying so. Both edges are substantively true.
+  - *Item 2 — `Failed to remove 1 relation(s)`, twice.* Third observation across two cycles, so the
+    behaviour is **reproducible rather than a one-off** and the README rule was upgraded to say so.
+    Read-back checked, no retry, both times. The rule working.
+  - *Item 3 — three emphasis seams in prose the worker authored.* The worker correctly distinguished
+    its own miss from the unavoidable serializer case. **But the guard it missed was mis-written by
+    me:** after the previous cycle I had narrowed it to "applies at `triage`, not `implementation`",
+    which is wrong, because `implementation` authors prose too — an `## Outcome` section composed
+    from a ruling is authored, not copied. The rule now binds **authorship**, and this is its third
+    revision, each after a real miss. Repair declined on the worker's own reasoning, which is right:
+    a second write to a closed decision record is worse than the seam.
+  - *Item 4 — a third stale DEC-3 passage in the milestone's HISTORICAL section.* **Edit declined and
+    the handling endorsed.** Drafted edit 6 authorized two passages; this was a third; the worker
+    declined to widen rather than assuming. Quietly fixing it would have been the more tempting and
+    worse move. The section is dated, the milestone now carries a 2026-08-28 section above it, and
+    `selection` reads Linear state rather than milestone prose — so the risk is low. **Carried into
+    E4's next cycle**, which touches this milestone anyway, rather than spending a write now.
+  - Two practices from this cycle were adopted rather than merely praised: verifying `DEC-8` as the
+    next free ordinal against a live search instead of trusting the FO's scope note, and building the
+    milestone edit by script from a pre-write capture with a diff and an exactly-once assertion per
+    target passage. The second is now the README's default method for milestone edits.
+
 ## Out of scope
 
 - **Drafting the `SECURITY.md` amendment.** Its own cycle, per the issue's "Done when".
