@@ -1279,3 +1279,39 @@ probe, which a reviewer re-runs in ten seconds rather than reasoning about.
   cycle 1. The drafted rewrite replaces that text anyway and is authored so the trigger does not fire.
 - **The `?next=true` frontend.** It renders `elapsed_h` and never `eta_h`, so it never had a home for
   this statistic and now never needs one.
+
+## Stage Report: triage (cycle 2)
+
+- DONE: The re-scope-or-cancel question is answered with a recommendation and the evidence for it: given the ruling that no all-clear may be published, and given all three measured statistics are refused, either name a fourth statistic that carries the narrow claim honestly and is worth its build, or recommend cancellation. Say which, and say what would change the answer.
+  **Recommend cancellation.** The evidence is a new probe, `drc-4029/probe_min_lead.py`, which measures the ceiling on every statistic the ruling permits rather than one candidate at a time: any permitted claim is *nothing you can predict will be ready before X*, sound only if X is no later than the true soonest completion. Over 375 instants with two or more sessions working, a perfect estimator with total coverage had a median lead of 1m16s and reached twenty minutes 0 times. The strongest fourth candidate — the settled minimum plus a suppression rule, publishing only when the window is worth leaving on — was built and measured: 0 of 375 renders at T=20m, and at T=10m it rendered 3 times and reality beat it 3 times. Falsified by the k≥2 oracle ≥20m share rising above ~10%, which is the reopening condition written into the drafted body. Three further candidates are recorded as considered and rejected on what they would say rather than how often.
+- DONE: Two stale passages in DRC-4029's own body are corrected in the drafted rewrite, both left over from before the ruling: the n=1 coverage claim "One live collect at that moment: two working sessions, one carrying an ETA", superseded by DRC-4271's replay of 80% of turns and 64-71% of wall-clock; and the closing sentence "It is filed as a decision issue and this item blocks on it", which the ruling made false. Report any other passage you find that the ruling or DRC-4271's corrections falsified.
+  Both corrected, and **four more found**, listed with quotations under `### Passages in the current body that the ruling or DRC-4271 falsified`: the optimistic-bias mechanism overstated as "the rows without one are the rows running longest" (DRC-4271 corrected the excluded set to include every session on its first turn); "six days after D5 was cancelled" is five, and disagrees with the milestone's own text; a heading that still says "once the decision lands"; and p75/p95 stated to the second when DRC-4271's audit reproduced only the median, p90, ≥10m and ≥20m figures. The drafted body carries the corrections forward and demotes the cycle-1 text to a dated historical section whose label names each failed sentence, so the 2026-08-23 blockquotes stay verbatim.
+- DONE: Nothing is written to Linear. If the recommendation is cancellation, the knock-on to D5 is assessed but not acted on: DRC-4028's weightiest cancellation reason was that D6 exists and the board prefers it, and DRC-4272 already records that D5's reopening condition is met. Say whether those need a filing or an edit, and leave it for the captain.
+  No Linear write tool was called — only `get_issue`, `get_milestone` and `list_comments`, which returned zero comments. **Neither a filing nor a new issue: one sentence on DRC-4272**, whose closing line already anticipates this case as a conditional that cancellation makes true. Drafted as recommendation 4, deliberately not as final prose, and reserved for the captain. The assessment also records what the knock-on is *not*: D5's other two ranked cancellation reasons are untouched, and DEC-7 constrains D5 harder than D6, since D5 is the stated all-clear on thinner coverage. So the reopening case gains one reason and one new constraint at the same time.
+
+### Evidence exercised rather than asserted
+
+- `probe_min_lead.py` — ran it; the ceiling and suppression tables are its stdout. Falsified by the k≥2 oracle `>=20m` column leaving 0.0%.
+- `probe_max_error.py`, DRC-4271's own probe, re-run unchanged — reproduces its published result on today's store (0 of 71 full coverage at k=3–4 against 0 of 82; 87% early at k=3–4, matching). **One figure drifted and is reported rather than repeated:** the k=3–4 median understatement is 6m52s today against the 9m50s the ruling quotes. Same direction and order, different number; the store grows daily.
+- `diff` of the `intervals()` function across both probes returns empty, and both print `sessions=44 turns=541` on the same store — so the minimum and the maximum are measured over one set of moments, not two. Falsified by either output diverging.
+- `turn_progress` with `durations=[60,120,180]` at elapsed 600 returns `eta_h None`; at elapsed 60 it returns `1m`. Falsified by the empty-`cands` branch publishing a figure, which would void the bias reasoning in both cycles.
+- Code claims re-checked at `v0.17.1` after `main` moved: `long_turn_warn_sec=900` at `config.py:444`, and `grep -c 'reports_needs_input=True' aggregate.py` returns 4.
+
+### Summary
+
+The ruling left one question open and it turned out to be answerable by measurement rather than by
+argument. Every statistic DEC-7 permits makes the same shape of promise, and that promise is bounded
+by the true soonest completion — so instead of testing a fourth candidate, this cycle measured the
+bound itself, with an oracle that assumes perfect estimates and total coverage. At the load this item
+exists for the bound is about a minute and a quarter, and it never once reached the twenty-minute
+window D6's own surviving value was scored on. The item also degrades as the rest of the product
+improves, because a minimum over more rows is smaller: B2 landing makes D6 worse, not better.
+
+The strongest genuinely-open candidate was built and measured rather than reasoned about, and it
+failed on both axes at once — never rendering at the useful threshold, and wrong every time it
+rendered at a lower one. **Recommendation is cancellation**, with a reopening condition written into
+the drafted body as a probe a later reader can re-run rather than a judgement they have to trust.
+
+Six falsified passages are corrected in the drafted rewrite, four more than the scope notes named.
+Nothing was written to Linear. The knock-on to D5 needs one sentence on DRC-4272 rather than a
+filing, and that sentence is the captain's to authorize.
