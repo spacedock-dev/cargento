@@ -76,6 +76,11 @@ gates:
                     The rest of the document stands. The three other findings are dispositioned as recorded: the twice-versus-once refutation is conditional on hook exit code and the document is correct under both because it carries no run count, which vindicates the implementation's wording and must not be "fixed"; the race-resolution characterisation is confirmed; and the working-directory retention claim belongs in DRC-4037's design rather than this PR.
 
                     AFTER THE FIX: the reviewer re-verifies the corrected line and the unchanged remainder, then the merge proceeds.
+            - id: gate-attempt:drc-4274-review-2
+              briefing:
+                id: briefing:drc-4274:review:attempt-2:revision-1
+                digest: sha256:c3ee3fcd61dd4143d6100e858a7bab0053971fe5b5dc0279d32a4dc55ccdb0a4
+                room-ref: ./review/review/briefing-2
 review-round:
     id: round:drc-4274:review:1
     stage: review
