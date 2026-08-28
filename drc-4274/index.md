@@ -26,7 +26,7 @@ gates:
               briefing:
                 id: briefing:drc-4274:triage:attempt-1:revision-1
                 digest: sha256:6b78d36f0137009cd97d5df36ef8323c1a865c5f6f1d6a45e311c59a495d865c
-                room-ref: ./drc-4274/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4274](https://linear.app/recce/issue/DRC-4274) — filed 2026-08-28 by this workflow's E4 cycle,
