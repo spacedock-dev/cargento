@@ -65,6 +65,41 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4037:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4037-review-1
+              briefing:
+                id: briefing:drc-4037:review:attempt-1:revision-1
+                digest: sha256:622d1e32b46411a2ccc3e4e04f4a3a41e4760d8f9a3e93c614394c170b30f311
+                room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4037:review:1
+                briefing: briefing:drc-4037:review:attempt-1:revision-1
+                by: person:captain
+                at: "2026-08-28T11:38:49.88709Z"
+                decision: revise
+                reason: |-
+                    REVISE — rejects the delivery, routes the correctable findings back, and HOLDS R1 unchanged.
+
+                    The captain rejected PR #239 on the review's NO-GO verdict and directed the findings back to implementation. The captain did NOT rule on R1, and R1 is therefore held rather than routed: its remedy amends contract text this PR promotes into SECURITY.md, and step 5 of the workflow's review-finding disposition reserves changes to approved scope, accepted value and acceptance criteria to the captain alone. An FO-authorized fix for R1 would be exactly the boundary that rule exists to protect. It stays open as Needs decision.
+
+                    AUTHORIZED FOR FIX in correction round 1, all owned Material within approved scope:
+
+                    R2 — the staleness guard is vacuous when the finished stamp is zero, so a clean reading republishes as false where null belongs, over a session that kept working, and after the ninety-second overlay lapse it is permanent. This is the DRC-4101 shape AC6 exists to prevent.
+
+                    R3 — the guard that would have caught R2 does not exist. Two agents independently deleted all three reducer clears and forced the aggregate forward to none, and the suite stayed green at 253 and 213 tests. The aggregate half of the feature could be dead on arrival with CI green. AC5's own falsifier names exactly this mutation, so the criterion is currently unenforced.
+
+                    R4 — the probe tests error rather than skip when git is absent, violating AC2's explicit clause. Reproduced with a shim path: two errors and five skips where eleven skips were expected.
+
+                    R5 and R6 — test soundness. R6 is the sharpest gap in the review: stripping both flags at the call site leaves the argv test green, because it pins the constant and nothing asserts what the probe function hands the runner, so the two behavioural hazard tests are the sole guard against a call-site regression.
+
+                    R7 — the Windows positive control, authorized by the FO rather than deferred. The reviewer confirmed and widened the builder's own disclosure: the hazard script is written with CRLF so its shebang is broken, and the executable bit is a no-op on that runner, so the test passes vacuously there. Combined with R6 this means the only guard against a call-site flag regression is vacuous on one of three platforms. The earlier reasoning for deferring was that a correction round is dearer than the residual; that round is now happening anyway, so the reason has lapsed. This is test soundness within approved scope, not a scope change.
+
+                    NOT authorized and explicitly out of scope for this round: any change to SECURITY.md's promoted text, to the invariant wording, or to the feature's bounds. Those await the R1 ruling.
+
+                    Evidence quality noted. The expensive tier earned its cost: R1 was found at arbitration rather than by any lens, after six cycles of decisions, a merged contract and twelve green checks had all missed it. Two reproductions initially refuted their own findings and were confirmed only after the harness was rebuilt — R2 by the reviewer and R1 by the FO, whose first attempt declared a filter attribute and never created a matching file. Both are recorded as refuted-then-confirmed so a first negative result is not mistaken for absence. What is clean is clean by measurement: AC3 is over-determined, its falsifier failing thirty out of thirty with four sibling tests deadlocking, and AC8's promotion is byte-identical at 3232 bytes and 55 lines with matching sha256.
 ---
 
 
