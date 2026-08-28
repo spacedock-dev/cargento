@@ -1,7 +1,7 @@
 ---
 id:
 title: 'D6 · Come back at 3:40'
-status: selection
+status: triage
 source: https://linear.app/recce/issue/DRC-4029
 started: 2026-08-28T02:02:06Z
 completed:
