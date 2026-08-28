@@ -9,7 +9,7 @@ verdict:
 score: 0.7
 worktree: .worktrees/spacedock-ensign-drc-4274
 issue:
-pr: "#238"
+pr: pr-merge:238
 mod-block:
 linear-status: 'Backlog'
 milestone: 'Nothing dies quietly'
