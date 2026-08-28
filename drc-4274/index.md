@@ -1,7 +1,7 @@
 ---
 id:
 title: Git probe groundwork · SECURITY.md scope section for the end-of-session git probe
-status: implementation
+status: review
 source: https://linear.app/recce/issue/DRC-4274
 started: 2026-08-28T07:32:51Z
 completed:
