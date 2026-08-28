@@ -76,7 +76,9 @@ function nextProjectGoingOn(context){
 function nextProjectCompletedTasks(sessions){
   const completed = [];
   for(const session of sessions){
-    if(session.harness !== "claude") continue;
+    /* No harness allowlist: see the note in nextSessionTasks. DONE reads the
+       published field, so a project whose only tracked work is a Codex plan
+       stops reporting "No completed tracked tasks" over six finished ones. */
     const tasks = Array.isArray(session.tasks) ? session.tasks : [];
     for(const task of tasks){
       if(task && task.status === "completed") completed.push(task);

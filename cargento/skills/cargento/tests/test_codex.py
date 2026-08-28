@@ -783,3 +783,324 @@ class CodexInstructionRowTest(RuntimeTestCase):
         # `transcripts.clip` appends the ellipsis after cutting to the cap.
         self.assertLessEqual(len(session["title"]), records.PROMPT_TITLE_CAP_CHARS + 1)
         self.assertNotIn("\u202e", session["title"])
+
+
+def _function_call_plan(when: float, steps: list[tuple[str, str]]) -> dict[str, Any]:
+    """The pre-`exec` shape: a `function_call` whose arguments are JSON text."""
+    return {
+        "timestamp": _stamp(when),
+        "type": "response_item",
+        "payload": {
+            "type": "function_call",
+            "name": "update_plan",
+            "call_id": "call_plan",
+            "arguments": json.dumps(
+                {"plan": [{"step": step, "status": status} for step, status in steps]}
+            ),
+        },
+    }
+
+
+def _exec_plan(when: float, script: str) -> dict[str, Any]:
+    """The current shape: a `custom_tool_call` carrying JavaScript source."""
+    return {
+        "timestamp": _stamp(when),
+        "type": "response_item",
+        "payload": {
+            "type": "custom_tool_call",
+            "name": "exec",
+            "call_id": "call_exec",
+            "input": script,
+        },
+    }
+
+
+class CodexPlanReaderTest(RuntimeTestCase):
+    """`update_plan` is the only place Codex records what it is working through.
+
+    Both wire shapes are exercised, and both are live rather than historical: a
+    build writes one or the other, so a reader that knows only one reports an
+    empty plan on whichever build the operator happens to be running.
+    """
+
+    def _plan(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rollout-plan.jsonl"
+            path.write_text(
+                "".join(json.dumps(e) + "\n" for e in entries),
+                encoding="utf-8",
+            )
+            config, state = make_runtime()
+            return runtime_transcripts.codex_plan(config, state, str(path))
+
+    def test_the_json_argument_shape_becomes_a_task_list(self) -> None:
+        tasks = self._plan(
+            [
+                _function_call_plan(
+                    1_700_000_000.0,
+                    [("Trace the contract", "completed"), ("Write the tests", "in_progress")],
+                )
+            ]
+        )
+
+        self.assertEqual(
+            [("Trace the contract", "completed"), ("Write the tests", "in_progress")],
+            [(t["subject"], t["status"]) for t in tasks],
+        )
+
+    def test_the_exec_shape_is_read_out_of_javascript_source(self) -> None:
+        """Bare keys and single quotes are how the model writes the call.
+
+        Strict JSON parsing rejects every one of the 211 local `exec` records,
+        so this is the difference between a plan and an empty panel.
+        """
+        tasks = self._plan(
+            [
+                _exec_plan(
+                    1_700_000_000.0,
+                    "const p = await tools.update_plan({plan:[\n"
+                    "  {step:\"Fetch the issue\", status:'completed'},\n"
+                    '  {step:"Land the fix", status:"in_progress"},\n'
+                    "]});\ntext(JSON.stringify(p));\n",
+                )
+            ]
+        )
+
+        self.assertEqual(
+            [("Fetch the issue", "completed"), ("Land the fix", "in_progress")],
+            [(t["subject"], t["status"]) for t in tasks],
+        )
+
+    def test_a_plan_bound_to_a_variable_before_the_call_is_still_found(self) -> None:
+        """The idiom that anchoring on `update_plan(` misses.
+
+        6 of the 211 local `exec` records write it, and an anchored reader finds
+        `{plan}` \u2014 an object with no array in it \u2014 and publishes nothing.
+        """
+        tasks = self._plan(
+            [
+                _exec_plan(
+                    1_700_000_000.0,
+                    "const plan = [\n"
+                    '  {step: "Capture the baseline", status: "completed"},\n'
+                    '  {step: "Implement the pins", status: "pending"},\n'
+                    "];\nawait tools.update_plan({plan});\n",
+                )
+            ]
+        )
+
+        self.assertEqual(
+            [("Capture the baseline", "completed"), ("Implement the pins", "pending")],
+            [(t["subject"], t["status"]) for t in tasks],
+        )
+
+    def test_step_text_holding_a_colon_or_an_apostrophe_survives_the_rewrite(self) -> None:
+        """The reason the JS rewrite is a string-aware scan and not a regex.
+
+        `Recce Task 7: full verification` is the literal wording this was built
+        against, and a rewrite that quotes every `word:` it sees corrupts it.
+        """
+        tasks = self._plan(
+            [
+                _exec_plan(
+                    1_700_000_000.0,
+                    "await tools.update_plan({plan:[\n"
+                    '  {step:"Recce Task 7: full Recce verification", status:"in_progress"},\n'
+                    "  {step:'the reviewer\\'s second pass', status:\"pending\"},\n"
+                    "]});\n",
+                )
+            ]
+        )
+
+        self.assertEqual(
+            [
+                ("Recce Task 7: full Recce verification", "in_progress"),
+                ("the reviewer's second pass", "pending"),
+            ],
+            [(t["subject"], t["status"]) for t in tasks],
+        )
+
+    def test_the_newest_plan_wins_and_the_walk_stops_there(self) -> None:
+        tasks = self._plan(
+            [
+                _function_call_plan(1_700_000_000.0, [("Old and superseded", "pending")]),
+                _function_call_plan(1_700_000_100.0, [("What it is doing now", "in_progress")]),
+            ]
+        )
+
+        self.assertEqual(["What it is doing now"], [t["subject"] for t in tasks])
+
+    def test_the_plan_is_found_behind_a_tail_flooded_with_reasoning_blobs(self) -> None:
+        """Why the walk is backward from EOF rather than a bounded tail read.
+
+        A session that has done any work since writing its plan has pushed it
+        out of tail range, and those are exactly the sessions worth reading.
+        """
+        now = 1_700_000_000.0
+        entries: list[dict[str, Any]] = [
+            _function_call_plan(now, [("Behind the flood", "in_progress")])
+        ]
+        entries += [_padding(now + 1) for _ in range(500)]
+
+        self.assertEqual(["Behind the flood"], [t["subject"] for t in self._plan(entries)])
+
+    def test_a_plan_older_than_a_compaction_is_still_published(self) -> None:
+        """A compaction disowns an older prompt; it does not retire the plan.
+
+        The CLI keeps rendering the plan across one, so stopping at the boundary
+        would blank the panel for the long sessions this exists to make legible.
+        """
+        now = 1_700_000_000.0
+        tasks = self._plan(
+            [
+                _function_call_plan(now, [("Written before the compaction", "in_progress")]),
+                {
+                    "timestamp": _stamp(now + 1),
+                    "type": "event_msg",
+                    "payload": {"type": "compacted"},
+                },
+            ]
+        )
+
+        self.assertEqual(["Written before the compaction"], [t["subject"] for t in tasks])
+
+    def test_a_malformed_record_reports_no_plan_rather_than_raising(self) -> None:
+        now = 1_700_000_000.0
+        for payload in (
+            {"type": "function_call", "name": "update_plan", "arguments": "{not json"},
+            {"type": "function_call", "name": "update_plan", "arguments": {"plan": "not a list"}},
+            {"type": "custom_tool_call", "name": "exec", "input": "tools.update_plan({plan:[{"},
+            {"type": "custom_tool_call", "name": "exec", "input": "update_plan([1, 2, 3])"},
+        ):
+            with self.subTest(payload=payload["type"]):
+                entries = [{"timestamp": _stamp(now), "type": "response_item", "payload": payload}]
+                self.assertEqual([], self._plan(entries))
+
+    def test_untrusted_step_text_is_bounded_and_scrubbed(self) -> None:
+        hostile = "\u202e" + "z" * 400 + "\x07"
+        tasks = self._plan([_function_call_plan(1_700_000_000.0, [(hostile, "pending")])])
+
+        (task,) = tasks
+        self.assertLessEqual(
+            len(task["subject"]), runtime_transcripts.CODEX_PLAN_STEP_CAP_CHARS + 1
+        )
+        self.assertNotIn("\u202e", task["subject"])
+        self.assertNotIn("\x07", task["subject"])
+
+    def test_the_step_count_is_bounded(self) -> None:
+        over = runtime_transcripts.CODEX_PLAN_MAX_STEPS + 20
+        tasks = self._plan(
+            [_function_call_plan(1_700_000_000.0, [(f"step {i}", "pending") for i in range(over)])]
+        )
+
+        self.assertEqual(runtime_transcripts.CODEX_PLAN_MAX_STEPS, len(tasks))
+
+    def test_an_unknown_status_falls_back_to_pending(self) -> None:
+        """Codex owns this vocabulary, so a value outside it is unread.
+
+        Pending is the safe direction: it counts as neither done nor in flight,
+        so an added status cannot inflate a progress bar or claim the row.
+        """
+        tasks = self._plan([_function_call_plan(1_700_000_000.0, [("Something", "deferred")])])
+
+        self.assertEqual("pending", tasks[0]["status"])
+
+
+class CodexPlanRowTest(RuntimeTestCase):
+    """The plan on the published row: the panel the dashboard was hiding."""
+
+    SID = "55555555-5555-5555-5555-555555555555"
+
+    def _collect(self, entries: list[dict[str, Any]], now: float) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "2026" / "08" / "28" / "rollout-plan-row.jsonl"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                "".join(json.dumps(e) + "\n" for e in entries),
+                encoding="utf-8",
+            )
+            os.utime(path, (now, now))
+            with store_patch(CODEX_SESSIONS_DIR=tmp):
+                config, state = runtime()
+                collected = codex_collector.collect(config, state, now, 24, False)
+        (session,) = collected
+        return session
+
+    def _entries(self, now: float, steps: list[tuple[str, str]]) -> list[dict[str, Any]]:
+        return [
+            {"type": "session_meta", "payload": {"id": self.SID, "cwd": "/tmp/project"}},
+            _task_started(now - 120),
+            {
+                "timestamp": _stamp(now - 119),
+                "type": "event_msg",
+                "payload": {"type": "user_message", "message": "Work the plan"},
+            },
+            _function_call_plan(now - 60, steps),
+        ]
+
+    def test_the_row_publishes_the_plan_and_its_arithmetic(self) -> None:
+        now = time.time()
+        session = self._collect(
+            self._entries(
+                now,
+                [
+                    ("Task 1", "completed"),
+                    ("Task 2", "completed"),
+                    ("Task 3", "in_progress"),
+                    ("Task 4", "pending"),
+                ],
+            ),
+            now,
+        )
+
+        self.assertEqual(
+            ["Task 1", "Task 2", "Task 3", "Task 4"], [t["subject"] for t in session["tasks"]]
+        )
+        self.assertEqual(4, session["total"])
+        self.assertEqual(2, session["done"])
+        self.assertEqual(2, session["open"])
+        self.assertEqual(50, session["progress_pct"])
+
+    def test_the_in_progress_step_says_what_is_happening(self) -> None:
+        """The reported complaint, on the field the card actually prints.
+
+        `running 1 subagent` is true of every fan-out and names no work; the
+        step is the only published field that says which piece is in flight.
+        """
+        now = time.time()
+        session = self._collect(
+            self._entries(
+                now, [("Done already", "completed"), ("Wiring the collector", "in_progress")]
+            ),
+            now,
+        )
+
+        self.assertEqual("working", session["state"])
+        self.assertEqual("Wiring the collector\u2026", session["state_detail"])
+
+    def test_a_session_with_no_plan_keeps_the_generic_line(self) -> None:
+        now = time.time()
+        entries = [
+            {"type": "session_meta", "payload": {"id": self.SID, "cwd": "/tmp/project"}},
+            _task_started(now - 120),
+            {
+                "timestamp": _stamp(now - 119),
+                "type": "event_msg",
+                "payload": {"type": "user_message", "message": "Work with no plan"},
+            },
+        ]
+
+        session = self._collect(entries, now)
+
+        self.assertEqual([], session["tasks"])
+        self.assertEqual(0, session["total"])
+        self.assertEqual("generating\u2026", session["state_detail"])
+
+    def test_an_eta_is_left_unset_rather_than_estimated(self) -> None:
+        """A Codex plan step carries no timestamps, so there is nothing to average."""
+        now = time.time()
+        session = self._collect(
+            self._entries(now, [("Task 1", "completed"), ("Task 2", "pending")]), now
+        )
+
+        self.assertIsNone(session["eta_h"])

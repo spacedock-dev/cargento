@@ -139,8 +139,13 @@ function nextSessionTaskGlyph(status){
 }
 
 function nextSessionTasks(session){
+  /* Gated on the payload, not on the harness name. It was `harness !== "claude"`
+     while Claude was the only collector filling the field, and that spelling
+     then hid a Codex plan the moment one arrived — a harness allowlist reports
+     "no tasks" for a session that published fifteen. An empty list still renders
+     nothing, which is the check that was actually wanted. */
   const tasks = Array.isArray(session.tasks) ? session.tasks : [];
-  if(session.harness !== "claude" || !tasks.length) return "";
+  if(!tasks.length) return "";
   const completed = tasks.filter(task => task && task.status === "completed").length;
   const rows = tasks.map(task => {
     const status = String(task && task.status || "pending");
