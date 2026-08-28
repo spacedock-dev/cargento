@@ -716,6 +716,37 @@ false surface, and the `web/` byte pins.
 
 ### Feedback Cycles
 
+**R1 — captain's ruling, 2026-08-28.** Recorded here on receipt rather than at the next gate, because
+a ruling on a held finding must not live only in a message.
+
+> **Amend the contract, and have triage cost a third bound before assuming none exists.**
+
+Both halves bind. The amendment is authorized in principle; **the costing comes first**, so that the
+wording is chosen against a known answer rather than around an assumed one. If a third bound turns
+out to exist, the contract may need less amending than it looks — and if none does, the amendment has
+to say so on evidence instead of on the FO's inability to think of one.
+
+What the costing owes an answer to, at minimum: whether any invocation exists that compares
+working-tree content to the index **without** running a declared clean filter; whether a
+plumbing-level substitute (`diff-index`, `ls-files -m`, a stat-only comparison against a copied
+index) avoids the filter path or merely relocates it; whether `GIT_INDEX_FILE` pointing at a copy
+changes what is written; and what each candidate costs in fidelity — a probe that cannot see a
+filtered file is a different promise from one that can. The known constraint is that filter driver
+names are unbounded, so no enumerated `-c filter.X.…` generalises, and an in-tree `.gitattributes`
+beats `core.attributesFile`.
+
+**Sequence.** R1 stays out of scope for correction round 1, which is running now and is forbidden
+from touching `SECURITY.md`. The costing is a `triage` pass after that round lands; its product is
+the third-bound answer plus a drafted amendment, and the captain approves the wording at that gate
+before `implementation` writes it.
+
+**Provenance of the finding.** R1 was found at arbitration rather than by any lens, after six cycles
+of decisions, a merged contract and twelve green checks had all missed it. The FO's own first
+reproduction refuted it — the harness declared a filter attribute and never created a matching file —
+and it was confirmed only once rebuilt: a committed `.gitattributes`, a same-size touched file
+forcing a racy stat, the probe as the sole command, and an executable `.git/hooks/pre-push` present
+afterwards with `.git/index` unmoved.
+
 **No correction round ran.** No reviewer was dispatched and no gate rejection occurred, so there is
 no `Cycle N` line. The entry below is the finding-disposition record.
 
