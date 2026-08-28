@@ -1,11 +1,11 @@
 ---
 id: drc-4274
 title: Git probe groundwork · SECURITY.md scope section for the end-of-session git probe
-status: review
+status: done
 source: https://linear.app/recce/issue/DRC-4274
 started: 2026-08-28T07:32:51Z
-completed:
-verdict:
+completed: 2026-08-28T08:52:36Z
+verdict: PASSED
 score: 0.7
 worktree: .worktrees/spacedock-ensign-drc-4274
 issue:
@@ -104,7 +104,7 @@ gates:
                     One observation accepted rather than routed: the PR body states 103 lines where the head is 102. The implementation named it in a PR comment rather than editing a body the gate's do-not-change list protects.
               application:
                 target-stage: done
-                state: pending
+                state: consumed
 review-round:
     id: round:drc-4274:review:1
     stage: review
@@ -113,6 +113,7 @@ review-round:
         id: briefing:drc-4274:review:attempt-1:revision-1
         digest: sha256:630a2c7dfa12240736694da9057e6e83b2427e30930574cce356517b3051147c
         room-ref: ./review/review/round-1
+archived: 2026-08-28T08:52:36Z
 ---
 
 [DRC-4274](https://linear.app/recce/issue/DRC-4274) — filed 2026-08-28 by this workflow's E4 cycle,
