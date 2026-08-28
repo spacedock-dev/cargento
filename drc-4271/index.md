@@ -1,13 +1,13 @@
 ---
 id:
 title: 'DEC-7 · Decision: May a walk-away time read as an all-clear on partial coverage?'
-status: implementation
+status: recorded
 source: https://linear.app/recce/issue/DRC-4271
 started: 2026-08-28T03:48:15Z
 completed:
 verdict:
 score: 0.9
-worktree: .worktrees/spacedock-ensign-drc-4271
+worktree:
 issue:
 pr:
 mod-block:
