@@ -918,3 +918,238 @@ def analyze_droid_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
                     info["last_tool"] = c.get("name")
     info["title"] = _published_title(info["title"])
     return info
+
+
+# ---------------------------------------------------------------------------
+# Codex plan (`update_plan`) -> the task list the operator already sees in the CLI
+
+# Codex caps its own plan well below this, but the record is untrusted input: a
+# malformed one must not put an unbounded list on the wire.
+CODEX_PLAN_MAX_STEPS: Final = 64
+CODEX_PLAN_STEP_CAP_CHARS: Final = 160
+
+_CODEX_PLAN_STATUSES: Final = frozenset({"pending", "in_progress", "completed"})
+_JS_IDENT: Final = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+
+
+def _js_to_json(src: str) -> str:
+    """A JS object/array literal rewritten as JSON text.
+
+    Needed because the newer Codex `exec` tool carries the plan as JavaScript
+    source rather than as a JSON argument, and the model writes it the way it
+    writes JavaScript: bare keys (`step:`), single quotes, trailing commas. The
+    scan is string-aware rather than a set of regex substitutions — a step whose
+    text contains `word:` or an apostrophe is ordinary prose, and a naive rewrite
+    corrupts exactly those steps.
+    """
+    out: list[str] = []
+    i, n = 0, len(src)
+    while i < n:
+        ch = src[i]
+        if ch == '"':
+            j = i + 1
+            while j < n:
+                if src[j] == "\\":
+                    j += 2
+                    continue
+                if src[j] == '"':
+                    break
+                j += 1
+            out.append(src[i : j + 1])
+            i = j + 1
+            continue
+        if ch == "'":
+            j = i + 1
+            body: list[str] = []
+            while j < n:
+                if src[j] == "\\":
+                    body.append(src[j : j + 2])
+                    j += 2
+                    continue
+                if src[j] == "'":
+                    break
+                body.append(src[j])
+                j += 1
+            # `\"` and `\'` are both legal inside a single-quoted JS string and
+            # neither survives into the JSON one; `json.dumps` re-escapes.
+            out.append(json.dumps("".join(body).replace('\\"', '"').replace("\\'", "'")))
+            i = j + 1
+            continue
+        if ch == ",":
+            k = i + 1
+            while k < n and src[k].isspace():
+                k += 1
+            if k < n and src[k] in "}]":
+                i += 1
+                continue
+        match = _JS_IDENT.match(src, i)
+        if match:
+            k = match.end()
+            while k < n and src[k].isspace():
+                k += 1
+            out.append(json.dumps(match.group(0)) if k < n and src[k] == ":" else match.group(0))
+            i = match.end()
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _js_balanced(src: str, start: int, opener: str, closer: str) -> str | None:
+    """The balanced bracket span opening at ``src[start]``, or nothing."""
+    depth, i, n = 0, start, len(src)
+    while i < n:
+        ch = src[i]
+        if ch in "\"'":
+            quote = ch
+            i += 1
+            while i < n:
+                if src[i] == "\\":
+                    i += 2
+                    continue
+                if src[i] == quote:
+                    break
+                i += 1
+        elif ch == opener:
+            depth += 1
+        elif ch == closer:
+            depth -= 1
+            if depth == 0:
+                return src[start : i + 1]
+        i += 1
+    return None
+
+
+def _codex_plan_steps(value: Any) -> list[dict[str, Any]] | None:
+    """A parsed plan array, if it is one: a non-empty list of `{step: str, …}`."""
+    if not isinstance(value, list) or not value:
+        return None
+    if not all(isinstance(s, dict) and isinstance(s.get("step"), str) for s in value):
+        return None
+    return value
+
+
+def _codex_plan_from_script(src: str) -> list[dict[str, Any]] | None:
+    """The plan a Codex `exec` script hands to `update_plan`.
+
+    The array is looked for directly rather than through the call site, because
+    the model writes the call three ways and only two of them keep the literal
+    inside the parentheses: 6 of the 211 local `exec` records bind it first
+    (`const plan = [...]; tools.update_plan({plan})`), and a reader anchored on
+    `update_plan(` finds an object with no array in it and reports no plan at
+    all. The last qualifying array wins — a script that revises its plan before
+    sending sends the later one.
+    """
+    best: list[dict[str, Any]] | None = None
+    i = 0
+    while True:
+        i = src.find("[", i)
+        if i < 0:
+            return best
+        chunk = _js_balanced(src, i, "[", "]")
+        if chunk is None:
+            return best
+        # The cheap substring test first: an exec script holds arrays that are
+        # not plans, and each miss would otherwise pay for a whole rewrite.
+        if "step" in chunk:
+            try:
+                parsed = json.loads(_js_to_json(chunk))
+            except ValueError:
+                parsed = None
+            best = _codex_plan_steps(parsed) or best
+        i += 1
+
+
+def _codex_plan_record(record: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The plan one rollout record carries, across both live Codex shapes.
+
+    Both are read because both are live, not for symmetry: across 487 local
+    rollouts the older `function_call`/`update_plan` shape accounts for 279 plan
+    records and the newer `exec` shape for 211, and a given build writes one or
+    the other. All 490 parse.
+    """
+    payload = records.as_dict(record.get("payload"))
+    kind = payload.get("type")
+    if kind == "function_call" and payload.get("name") == "update_plan":
+        raw = payload.get("arguments")
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+        except ValueError:
+            return None
+        return _codex_plan_steps(records.as_dict(parsed).get("plan"))
+    if kind == "custom_tool_call":
+        src = payload.get("input")
+        if isinstance(src, str) and "update_plan" in src:
+            return _codex_plan_from_script(src)
+    return None
+
+
+def codex_plan(config: RuntimeConfig, state: RuntimeState, path: str) -> list[dict[str, Any]]:
+    """The newest plan a Codex rollout carries, shaped like a task list.
+
+    Backward from EOF, stopping at the first plan found, for the reason
+    `codex_instruction` walks backward: `reasoning` records carry encrypted
+    blobs that flood the tail, so the newest plan sits outside a bounded tail
+    read whenever the session has done any work since writing one.
+
+    No compaction gate, unlike the prompt walk. A compaction boundary means the
+    model no longer holds what is behind it in context, which is what disowns an
+    older prompt — but a plan is state the CLI keeps rendering across a
+    compaction, and the operator is still looking at it. Reading past the
+    boundary reports what is on their screen; stopping at it would blank the
+    panel for exactly the long sessions this exists to make legible.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return []
+    cache_key = (stat.st_mtime_ns, stat.st_size)
+    with state.cache_lock:
+        cached = state.codex_plan_cache.get(path)
+    if cached is not None and cached[:2] == cache_key:
+        return cached[2]
+
+    steps: list[dict[str, Any]] = []
+    for raw in runtime_io.reverse_lines(config, path, contains=b"update_plan"):
+        if not raw.startswith(b"{"):
+            continue
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        found = _codex_plan_record(record)
+        if found:
+            steps = found
+            break
+
+    tasks: list[dict[str, Any]] = []
+    for index, step in enumerate(steps[:CODEX_PLAN_MAX_STEPS]):
+        status = step.get("status")
+        subject = records.safe_text(str(step.get("step") or ""), CODEX_PLAN_STEP_CAP_CHARS).strip()
+        if not subject:
+            continue
+        tasks.append(
+            {
+                # Positional, because a Codex plan step carries no id of its own
+                # and its text is not unique — a revised plan reuses wording. The
+                # page keys rows on this, so it has to be stable within a read.
+                "id": f"plan-{index}",
+                "subject": subject,
+                # Codex writes no gerund form. Empty rather than an echo of the
+                # subject: both views already fall back to `subject` when this is
+                # blank, and an echo would render a step title as though it were
+                # measured phrasing for work in flight.
+                "activeForm": "",
+                "status": status if status in _CODEX_PLAN_STATUSES else "pending",
+            }
+        )
+    with state.cache_lock:
+        runtime_state.bounded_put(
+            state.codex_plan_cache,
+            path,
+            (*cache_key, tasks),
+            limit=config.max_cache_entries,
+        )
+    return tasks

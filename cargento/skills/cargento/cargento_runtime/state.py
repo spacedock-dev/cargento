@@ -72,6 +72,11 @@ class RuntimeState:
     claude_instruction_cache: dict[str, tuple[int, int, dict[str, Any] | None]] = field(
         default_factory=dict
     )
+    # Same key and the same reasoning as `codex_instruction_cache` above, and a
+    # separate entry rather than a key inside it: the plan walk stops at the
+    # newest `update_plan` and the instruction walk at the newest prompt, so one
+    # of them reaching its record says nothing about how far the other must go.
+    codex_plan_cache: dict[str, tuple[int, int, list[dict[str, Any]]]] = field(default_factory=dict)
     # sess_dir -> (directory mtimes, subagent transcript paths). A subagent tree
     # whose directory mtimes have not moved cannot have gained or lost a
     # transcript, so only the glob is memoised; mtimes are restated on every

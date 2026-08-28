@@ -365,7 +365,15 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn('aria-label="completed">✓</span>', done)
         self.assertIn('aria-label="in progress">●</span>', live)
 
-    def test_non_claude_session_does_not_claim_foreign_tasks(self) -> None:
+    def test_a_non_claude_session_renders_the_tasks_it_published(self) -> None:
+        """The panel is gated on the payload, not on a harness allowlist.
+
+        It read `harness !== "claude"` while Claude was the only collector
+        filling the field, which then hid a Codex plan the moment one arrived —
+        fifteen published steps rendering as no section at all. A session with no
+        tasks still renders nothing; that case is pinned separately, on the empty
+        array rather than on the harness name.
+        """
         html = self.render(
             """
 nextData.sessions[0].harness = "codex";
@@ -375,8 +383,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(html, str)
 
-        self.assertNotIn("TASKS ·", html)
-        self.assertNotIn("Prepare payload", html)
+        self.assertIn("TASKS · 1 OF 3 DONE", html)
+        self.assertIn("Prepare payload", html)
 
     def test_subagents_keep_payload_order_and_omit_unmeasured_elapsed_time(self) -> None:
         html = self.render()

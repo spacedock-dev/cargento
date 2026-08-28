@@ -204,6 +204,12 @@ def collect(
             {"name": label, "model": model, "started_at": started_at}
             for label, _, model, started_at in agents
         ]
+        # Behind the same `active` gate as the rest of the reads: a stale
+        # `?all=1` row pays for no walk and reports no plan, which is "not read"
+        # rather than a plan that has since moved on.
+        tasks = transcripts.codex_plan(config, state, fp) if active else []
+        done = sum(1 for t in tasks if t["status"] == "completed")
+
         session_state, state_detail = "idle", "awaiting your message"
         if sessions.is_fresh(
             config,
@@ -212,7 +218,16 @@ def collect(
             config.working_threshold_sec,
         ):
             session_state = "working"
-            state_detail = sessions.working_detail(info, subagents)
+            # The step Codex says it is on outranks the generic line, the same
+            # order the Claude collector uses and for the same reason: "running 1
+            # subagent" is true of every fan-out, and the plan step is the only
+            # published field that says WHICH piece of work is in flight.
+            in_progress = next((t for t in tasks if t["status"] == "in_progress"), None)
+            state_detail = (
+                in_progress["subject"] + "…"
+                if in_progress
+                else sessions.working_detail(info, subagents)
+            )
 
         s = sessions.base_session(
             "codex",
@@ -258,6 +273,16 @@ def collect(
                 # reading "openai" off the harness name would be inference.
                 "model": scan.get("model") if scan else None,
                 "subagents": subagents,
+                "tasks": tasks,
+                "total": len(tasks),
+                "done": done,
+                "open": len(tasks) - done,
+                "progress_pct": round(done * 100 / len(tasks)) if tasks else 0,
+                # `eta_h` stays at its default. Claude derives one from per-task
+                # timestamps; a Codex plan step carries none, and the completion
+                # times are only recoverable by walking every `update_plan` in
+                # the file forward. An estimate renders identically to a measured
+                # one, so no number is the honest reading until that walk exists.
             }
         )
         out.append(s)
