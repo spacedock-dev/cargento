@@ -38,6 +38,11 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+            - id: gate-attempt:drc-4029-triage-2
+              briefing:
+                id: briefing:drc-4029:triage:attempt-2:revision-1
+                digest: sha256:c6c24f78cfab7f53ababcabac4a388b4c133966150d0cb1f6494d5e3a6ed83dd
+                room-ref: ./review/triage/briefing-2
 ---
 
 [DRC-4029](https://linear.app/recce/issue/DRC-4029) — Linear priority Medium, estimate XS.
