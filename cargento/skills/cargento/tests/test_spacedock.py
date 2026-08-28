@@ -13,6 +13,7 @@ from unittest import mock
 from cargento_runtime import spacedock
 
 from .support import (
+    config_patch,
     make_runtime,
     runtime,
     state_of,
@@ -486,6 +487,75 @@ class SpacedockParserTest(unittest.TestCase):
 
         self.assertLess(time.monotonic() - started, 1.0)
 
+    RENDERED_BOOT = (
+        'command: "boot"\n'
+        "mods:\n"
+        "  idle:\n"
+        '    - "pr-merge"\n'
+        'id_style: "slug"\n'
+        "dispatchable:\n"
+        "  -\n"
+        '    id: "drc-4029"\n'
+        '    slug: "drc-4029"\n'
+        '    current: "selection"\n'
+        '    next: "triage"\n'
+        "  -\n"
+        '    slug: "drc-4021"\n'
+        '    current: "selection"\n'
+        'definition_dir: "/w/one"\n'
+        'entity_dir: "/w/one/.spacedock-state"\n'
+        'entity_dir_present: "true"\n'
+    )
+
+    def tool_result(self, text: str) -> bytes:
+        return json.dumps(
+            {"type": "user", "message": {"content": [{"type": "tool_result", "content": text}]}}
+        ).encode()
+
+    def test_boot_records_read_an_envelope_the_session_rendered(self) -> None:
+        """The first officer is told to consume `status --boot --json`, not to
+        echo it verbatim, and every real session measured here piped it through
+        a formatter — so the raw object never reaches the transcript and the
+        JSON branch alone found nothing in 120 transcripts over 21 days.
+        Falsifying edit: drop the `rendered_envelope` call from `boot_records`
+        and this returns []."""
+        config, _runtime = runtime()
+
+        records = spacedock.boot_records(config, self.tool_result(self.RENDERED_BOOT))
+
+        self.assertEqual(1, len(records))
+        self.assertEqual("/w/one", records[0]["definition_dir"])
+        self.assertEqual("/w/one/.spacedock-state", spacedock.boot_entity_dir(records, "/w/one"))
+        self.assertEqual(["/w/one"], spacedock.workflow_dirs(config, records))
+        self.assertEqual(
+            {"drc-4029": "selection", "drc-4021": "selection"},
+            spacedock.boot_entities(records, "/w/one"),
+        )
+
+    def test_a_rendering_without_a_boot_command_nominates_nothing(self) -> None:
+        """This module's own source names every key the renderer prints, and it
+        gets catted into tool results routinely. `command: boot` is what keeps
+        that from nominating a path, exactly as the JSON branch requires."""
+        config, _runtime = runtime()
+        source = 'value = record.get("definition_dir")\nentity_dir: "/w/two"\n'
+
+        self.assertEqual([], spacedock.boot_records(config, self.tool_result(source)))
+
+    def test_a_nested_rendered_key_cannot_nominate_a_path(self) -> None:
+        """Only column-0 keys are read, so a `definition_dir` printed inside a
+        nested block is data the session displayed, not the envelope's own."""
+        config, _runtime = runtime()
+        text = 'command: "boot"\nfindings:\n  definition_dir: "/w/evil"\ndefinition_dir: "/w/ok"\n'
+
+        records = spacedock.boot_records(config, self.tool_result(text))
+
+        self.assertEqual(["/w/ok"], spacedock.workflow_dirs(config, records))
+
+    def test_a_rendered_envelope_needs_a_definition_dir(self) -> None:
+        config, _runtime = runtime()
+
+        self.assertEqual([], spacedock.boot_records(config, self.tool_result('command: "boot"\n')))
+
     def test_workflow_dirs_reject_relative_and_nul_paths(self) -> None:
         config, _runtime = runtime()
         records: list[dict[str, Any]] = [
@@ -522,6 +592,84 @@ class SpacedockReadContractTest(unittest.TestCase):
             state.spacedock_boot_cache.clear()
             state.spacedock_role_cache.clear()
             state.spacedock_entity_cache.clear()
+
+    def test_the_boot_scan_walks_forward_across_refreshes(self) -> None:
+        """A first officer does not necessarily boot at session start. The two
+        real sessions measured here booted at 69% and 73% of their transcripts,
+        past any head-only window, so the window advances instead of sitting:
+        nothing on the first pass, the envelope on a later one, and the file is
+        never rescanned from the top. Falsifying edit: pin the read back to
+        `handle.read(scan_bytes)` from offset 0 and the envelope is never seen."""
+        holder = tempfile.TemporaryDirectory(prefix="cargento-boot-")
+        self.addCleanup(holder.cleanup)
+        path = str(Path(holder.name) / "session.jsonl")
+        filler = json.dumps({"type": "user", "message": {"content": "x" * 900}}) + "\n"
+        envelope = (
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "content": 'command: "boot"\ndefinition_dir: "/w/late"\n',
+                            }
+                        ]
+                    },
+                }
+            )
+            + "\n"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(filler * 4 + envelope)
+
+        with config_patch(spacedock_boot_scan_bytes=1024):
+            config, state = runtime()
+            first = spacedock.transcript_boot(config, state, path)
+            passes = 1
+            while not spacedock.transcript_boot(config, state, path) and passes < 12:
+                passes += 1
+            found = spacedock.transcript_boot(config, state, path)
+
+        self.assertEqual([], first)
+        self.assertEqual(["/w/late"], spacedock.workflow_dirs(config, found))
+        # Progress is remembered, so the walk terminates instead of restarting.
+        self.assertLessEqual(passes, 6)
+        self.assertGreaterEqual(state.spacedock_boot_cache[path][1], os.path.getsize(path))
+
+    def test_a_shorter_transcript_restarts_the_walk(self) -> None:
+        """Progress is recorded against a file, not a path. A path that now
+        holds fewer bytes than the walk already covered is not that file, and
+        resuming mid-way through it would skip whatever it now begins with."""
+        holder = tempfile.TemporaryDirectory(prefix="cargento-boot-")
+        self.addCleanup(holder.cleanup)
+        path = str(Path(holder.name) / "session.jsonl")
+        envelope = (
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "content": 'command: "boot"\ndefinition_dir: "/w/fresh"\n',
+                            }
+                        ]
+                    },
+                }
+            )
+            + "\n"
+        )
+        config, state = runtime()
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"type": "user", "message": {"content": "x" * 4000}}) + "\n")
+        self.assertEqual([], spacedock.transcript_boot(config, state, path))
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(envelope)
+
+        records = spacedock.transcript_boot(config, state, path)
+
+        self.assertEqual(["/w/fresh"], spacedock.workflow_dirs(config, records))
 
     def workflow(self, body: str | None = None) -> Path:
         holder = tempfile.TemporaryDirectory(prefix="cargento-sd-")

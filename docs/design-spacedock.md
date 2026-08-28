@@ -99,8 +99,9 @@ officer, and the same payload carries the paths. Only a first officer runs `spac
 so presence is good evidence, and it needs no new source.
 
 It costs two things, both accepted rather than overlooked. Every Pi session pays a bounded transcript
-head scan on refresh, where Claude pays a cached lookup and stops; the scan is capped at
-`spacedock_boot_scan_bytes` and cached on `(path, size)`, so a settled transcript costs one `stat`.
+scan on refresh, where Claude pays a cached lookup and stops; each pass is capped at
+`spacedock_boot_scan_bytes` and progress is cached per path (S-7), so a settled transcript costs
+one `stat`.
 And classification now depends on tool output rather than a launch-time declaration, which is a
 weaker signal: tool output is whatever a tool printed. The guards that matter sit downstream and are
 unchanged, so a crafted envelope still has to survive path canonicalisation, the symlink and
@@ -154,6 +155,45 @@ rollouts mention a `definition_dir` there and nowhere else. They turn out to be 
 items, which record the shell invocation together with its captured stdout, and 0 of the 4 such
 records carry a boot envelope at all. The mention is the command line, not its output. So the shape
 would add a maintenance surface and no session.
+
+## S-7: Read the envelope as a rendering, and walk the window to find it
+
+S-6 settled *where* the envelope may come from. Two later measurements showed that both remaining
+assumptions, about *what it looks like* and *where in the file it sits*, were wrong. Each was
+independently fatal. The strip published nothing at all while a workflow was plainly running, and
+said so as "A workflow exists, but nothing is fresh enough to show", which reads like a freshness
+problem and is not one.
+
+It arrives rendered, not raw. The reader looked for the literal `{"command"` of a JSON object. The
+first officer's own skill tells it to run `status --boot --identify --json` and to "consume JSON,
+not the human table", but nothing tells it to *echo* that JSON, and both real first-officer sessions
+measured here piped it through a formatter. What reached the transcript was an indented key/value
+rendering, and the object never appeared. Across 120 transcripts over 21 days the JSON branch
+matched exactly one file, and that one was this repository's own test fixtures catted into a tool
+result. The feature had never once fired on a real session.
+
+So the fields are read line by line rather than decoded, which survives any rendering that keeps
+`key: value`. The trust model is unchanged, deliberately. A rendered path is gated on a top-level
+`command: boot` exactly as the JSON branch is gated on `envelope["command"] == "boot"`; only
+column-0 keys are read, so a nested decoy cannot nominate one; and every downstream guard still
+stands between an extracted path and anything published, meaning the `_usable_dir` shape check,
+canonicalisation, the symlink and identity checks, and `commissioned-by: spacedock@`.
+
+It is also not in the head. The scan read the first `spacedock_boot_scan_bytes` on the reasoning
+that boot output is written once at session start, so the read could be amortised on `(path, size)`.
+A first officer greets and discovers before it boots: the two sessions measured booted at 69% and
+73% of the way through their transcripts, at bytes 803,503 and 821,199 of files near 1.1 MB. Claude
+Code writes single records up to 109 KB, so a head window is small in lines even when it is large in
+bytes.
+
+Raising the cap was rejected. It only moves the guess, and it is the expensive direction: the cache
+key is `min(size, cap)`, so a live transcript below the cap misses on every write and re-reads the
+whole file under the collection lock. Instead the window walks. Each pass reads at most
+`spacedock_boot_scan_bytes` of not-yet-scanned bytes and remembers how far it reached, which keeps
+the per-refresh cost the head scan had while covering the file eventually. A pass stops on a line
+boundary, so an envelope straddling the edge is read whole on the next one, and a record longer than
+the whole window is stepped over rather than stalled on. The cost is latency, not coverage: an
+envelope two windows in appears on the second refresh rather than the first.
 
 ## Rejected alternatives worth keeping rejected
 
