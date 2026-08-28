@@ -12,15 +12,20 @@ import time
 import unittest
 from collections import deque
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 
-from cargento_runtime import aggregate, cli, events, http_api, lifecycle, observation
+import event_hook
+from cargento_runtime import aggregate, cli, events, git_status, http_api, lifecycle, observation
 from cargento_runtime import asks as runtime_asks
 from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 
 from . import support
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 NOW = 1_700_000_000.0
 SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
@@ -929,6 +934,10 @@ class WaitDetailTest(unittest.TestCase):
             del harness, sid  # this stub remembers no stop
             return 0.0
 
+        def git_for(self, harness: str, sid: str) -> None:
+            """Never probed: this stub has no repository behind it."""
+            del harness, sid
+
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
 
@@ -1057,6 +1066,10 @@ class StateDisputeTest(unittest.TestCase):
         def finished_at(self, harness: str, sid: str) -> float:
             del harness, sid  # this stub remembers no stop
             return 0.0
+
+        def git_for(self, harness: str, sid: str) -> None:
+            """Never probed: this stub has no repository behind it."""
+            del harness, sid
 
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
@@ -1362,7 +1375,14 @@ class ApplicationOverlayTest(unittest.TestCase):
     def setUp(self) -> None:
         support.reset_runtime()
 
-    def _collect_with(self, overlays: Any) -> dict[str, Any]:
+    @contextlib.contextmanager
+    def _seeded(self, overlays: Any) -> Iterator[aggregate.Application]:
+        """One quiet Claude session on a redirected store, with an overlay source.
+
+        A context manager rather than a collect-and-return helper because
+        `collect_json` has to run inside the store redirect too, and the
+        published bytes are the only place AC5's second half can be observed.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
             project = projects / "-w-proj"
@@ -1384,8 +1404,12 @@ class ApplicationOverlayTest(unittest.TestCase):
                 app = support.build_app()
                 app.overlays = overlays
                 app.clock = lambda: support.SERVER_STARTED
-                collection: dict[str, Any] = app.collect(show_all=False)
-                return collection
+                yield app
+
+    def _collect_with(self, overlays: Any) -> dict[str, Any]:
+        with self._seeded(overlays) as app:
+            collection: dict[str, Any] = app.collect(show_all=False)
+            return collection
 
     def _row(self, collection: dict[str, Any]) -> dict[str, Any]:
         rows = [s for s in collection["sessions"] if s["sid"] == PREFIX]
@@ -1422,6 +1446,10 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid  # this stub remembers no stop
                 return 0.0
 
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 self.noted = keys
 
@@ -1452,6 +1480,10 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid  # this stub remembers no stop
                 return 0.0
 
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
 
@@ -1472,6 +1504,10 @@ class ApplicationOverlayTest(unittest.TestCase):
                 # After the transcript's last write, which is what a session
                 # that stopped and stayed stopped looks like.
                 return support.SERVER_STARTED - 200
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1516,6 +1552,87 @@ class ApplicationOverlayTest(unittest.TestCase):
             "a harness that can earn a stop must not be marked unknowable",
         )
 
+    def test_a_probed_row_reaches_the_published_bytes_carrying_no_pathname(self) -> None:
+        # AC5's named oracle, which did not exist: a distinctive porcelain
+        # pathname fed through the REAL parse, the reading carried by an overlay
+        # source, and the assertion taken on `collect_json()`'s bytes rather than
+        # on a hand-built dict. The test this replaces passed its marker to
+        # nothing and read `json.dumps(session)`, so it was true of any
+        # implementation — including one that published the porcelain whole.
+        #
+        # It is also the only pin on `aggregate._apply_overlays`'s `git=`
+        # forward: that line was measured entirely unpinned, and forcing it to
+        # None left the suite green, so the aggregate half of the feature could
+        # have been dead on arrival with CI green.
+        marker = "a-very-distinctive-filename-8f3c21.txt"
+        # A distinctive DIRECTORY too, not a plausible word like "another": the
+        # assertion is an absence, so a component that could legitimately appear
+        # in the payload for an unrelated reason makes the test flake instead of
+        # catching anything.
+        directory = "a-very-distinctive-dirname-4b7e05"
+        porcelain = f" M {marker}\n?? {directory}/{marker}\n".encode()
+
+        def runner(*_args: object, **_kwargs: object) -> Any:
+            return SimpleNamespace(returncode=0, stdout=porcelain, stderr=b"")
+
+        reading = git_status.probe("/", timeout_sec=1.0, runner=runner)
+        self.assertIsNotNone(reading, "the fixture never reached the parse")
+
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid  # the ledger `session_ended` popped
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                if (harness, sid) != ("claude", PREFIX):
+                    return 0.0
+                return support.SERVER_STARTED - 200
+
+            def git_for(self, harness: str, sid: str) -> Any:
+                if (harness, sid) != ("claude", PREFIX):
+                    return None
+                return reading
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        with self._seeded(Source()) as app:
+            _revision, body = app.collect_json(show_all=False)
+        published = json.loads(body)
+        row = next(s for s in published["sessions"] if s["sid"] == PREFIX)
+        self.assertEqual(True, row["dirty"], "the reading never reached the wire")
+        self.assertEqual(2, row["changed"])
+        self.assertNotIn(marker, body.decode())
+        self.assertNotIn(directory, body.decode())
+
+    def test_an_unprobed_row_publishes_both_keys_as_null_in_the_bytes(self) -> None:
+        # AC6 at the wire, and the half a row-level assertion cannot make: the
+        # keys must be PRESENT and null, because an absent key and a false one
+        # render identically in a consumer that reads `row.dirty || …`.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        with self._seeded(Source()) as app:
+            _revision, body = app.collect_json(show_all=False)
+        row = next(s for s in json.loads(body)["sessions"] if s["sid"] == PREFIX)
+        self.assertIn("dirty", row)
+        self.assertIn("changed", row)
+        self.assertIsNone(row["dirty"])
+        self.assertIsNone(row["changed"])
+
     def test_an_overlay_for_an_unknown_session_creates_no_row(self) -> None:
         class Source:
             def __init__(self) -> None:
@@ -1536,6 +1653,10 @@ class ApplicationOverlayTest(unittest.TestCase):
             def finished_at(self, harness: str, sid: str) -> float:
                 del harness, sid  # this stub remembers no stop
                 return 0.0
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1845,3 +1966,272 @@ class AskPayloadTest(unittest.TestCase):
 
         self.assertEqual([live.id], [entry["id"] for entry in data["asks"]])
         self.assertEqual(("expired", None), stale.outcome)
+
+
+class GitProbeDispatchTest(ObservationTestCase):
+    """AC3 and AC4: where the probe runs, and on which edge it fires.
+
+    The session-end edge arrives on an HTTP handler thread (`http_api` calls
+    `submit` from inside a `ThreadingHTTPServer` request handler) behind the hook
+    client's two-second timeout, and `_record` does its work under the coordinator
+    lock. A probe run inline there would stall every other event behind the lock
+    and hold the harness's own `SessionEnd` hook open past its timeout, on any
+    repository big enough to take two seconds. Neither the ruling nor the merged
+    contract names this; it was found by reading the tip, and these are its tests.
+    """
+
+    def end_envelope(self, **overrides: Any) -> dict[str, Any]:
+        payload = self.envelope(event="session_ended", cwd="/repo/somewhere")
+        payload.update(overrides)
+        return payload
+
+    def test_submit_returns_without_waiting_for_the_probe(self) -> None:
+        # The falsifier: calling the probe inline in `_record`. `submit` would
+        # then block until `release` is set, and this test would deadlock rather
+        # than fail — which is why the wait is bounded and asserted.
+        started = threading.Event()
+        release = threading.Event()
+
+        def blocking(_cwd: str) -> git_status.GitStatus | None:
+            started.set()
+            release.wait(timeout=10.0)
+            return git_status.GitStatus(dirty=True, changed=1)
+
+        coordinator = self.build()
+        coordinator._git_prober = blocking
+        self.assertEqual("accepted", coordinator.submit("claude", self.end_envelope()))
+        self.assertTrue(started.wait(timeout=5.0), "the probe never started")
+        # submit() has already returned while the probe is still inside its call.
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+        release.set()
+
+    def test_the_probe_does_not_run_while_the_coordinator_lock_is_held(self) -> None:
+        # The other half of AC3, and the one a reordering could break silently:
+        # dispatching off-thread but from inside the `with self._lock` block would
+        # still stall every other event for the probe's duration.
+        held: list[bool] = []
+        done = threading.Event()
+
+        def observing(_cwd: str) -> git_status.GitStatus | None:
+            acquired = coordinator._lock.acquire(blocking=False)
+            held.append(not acquired)
+            if acquired:
+                coordinator._lock.release()
+            done.set()
+            return None
+
+        coordinator = self.build()
+        coordinator._git_prober = observing
+        coordinator.submit("claude", self.end_envelope())
+        self.assertTrue(done.wait(timeout=5.0), "the probe never ran")
+        self.assertEqual([False], held, "the probe ran while the lock was held")
+
+    def test_one_probe_per_session_end_and_on_no_other_edge(self) -> None:
+        # Bound 3: one-shot on `session_ended`. The falsifier is hanging the probe
+        # off `_mark_finished`, which pops on every working overlay and so re-arms
+        # every turn — this sequence would produce two invocations there, both at
+        # the wrong moment.
+        calls: list[str] = []
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda cwd: calls.append(cwd) or None  # type: ignore[func-returns-value]
+        for event in ("turn_stopped", "turn_started", "turn_stopped"):
+            coordinator.submit("claude", self.envelope(event=event, cwd="/repo/somewhere"))
+        self.assertEqual([], calls, "a turn edge fired the probe")
+        coordinator.submit("claude", self.end_envelope())
+        self.assertEqual(["/repo/somewhere"], calls)
+
+    def test_two_session_ends_probe_once_each_and_never_a_third(self) -> None:
+        # Claude fires `session_ended` on `/clear` as well as on exit, so "once
+        # per session" is not observable and must not be asserted. Once per edge is.
+        calls: list[str] = []
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda cwd: calls.append(cwd) or None  # type: ignore[func-returns-value]
+        coordinator.submit("claude", self.end_envelope())
+        coordinator.submit("claude", self.end_envelope())
+        self.assertEqual(2, len(calls))
+
+    def test_no_git_stops_the_probe_running_at_all(self) -> None:
+        calls: list[str] = []
+        coordinator = self.build(git_probe_enabled=False)
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda cwd: calls.append(cwd) or None  # type: ignore[func-returns-value]
+        coordinator.submit("claude", self.end_envelope())
+        self.assertEqual([], calls)
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+    def test_an_event_with_no_cwd_is_not_probed(self) -> None:
+        calls: list[str] = []
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda cwd: calls.append(cwd) or None  # type: ignore[func-returns-value]
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.assertEqual([], calls)
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+    def test_a_reading_is_published_and_bounded_by_the_overlay_cap(self) -> None:
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=True, changed=3)
+        coordinator.submit("claude", self.end_envelope())
+        reading = coordinator.git_for("claude", PREFIX)
+        self.assertEqual(git_status.GitStatus(dirty=True, changed=3), reading)
+
+    def test_a_session_that_works_again_discards_its_reading(self) -> None:
+        # R2's second door, which the reducer's own guards do not reach. The
+        # reading describes the tree at one session end; a `turn_started` says
+        # that end is over. `_mark_finished` pops the stop mark on exactly this
+        # edge, and the reading has to go with it — otherwise the NEXT
+        # `turn_stopped` restores a truthy, non-stale `finished_at` and re-pairs
+        # this reading with a stop it was not taken at.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=False, changed=0)
+        coordinator.submit("claude", self.end_envelope())
+        self.assertIsNotNone(coordinator.git_for("claude", PREFIX))
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+    def test_a_session_that_reaches_a_gate_discards_its_reading(self) -> None:
+        # The same edge on the other kind of alive. A person being asked a
+        # question means the session outlived the end that produced the reading.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=True, changed=2)
+        coordinator.submit("claude", self.end_envelope())
+        self.assertIsNotNone(coordinator.git_for("claude", PREFIX))
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+    def test_a_session_end_that_probes_nothing_does_not_keep_the_last_reading(self) -> None:
+        # The resurrection the two retirements above exist to prevent, driven end
+        # to end rather than one edge at a time. `session_ended` pops the overlay
+        # ledger but NOT the stop mark, so after end → start → stop → end the mark
+        # is truthy and non-stale and no overlay is left to null anything. If the
+        # second end takes no reading — no `cwd` on the envelope is the ordinary
+        # way, and a timeout or an absent git are the others — the FIRST end's
+        # reading is the only one there is, and it would publish against a stop it
+        # was not taken at. What keeps this null is the `turn_started` in the
+        # middle discarding it, which is why clearing the reading on every
+        # `session_ended` was tried and dropped: nothing needs it, and two ends
+        # with no turn between them would lose a reading that is still accurate.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=False, changed=0)
+        coordinator.submit("claude", self.end_envelope())
+        for event in ("turn_started", "turn_stopped"):
+            coordinator.submit("claude", self.envelope(event=event))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.assertGreater(
+            coordinator.finished_at("claude", PREFIX), 0.0, "the mark this pairs with is gone"
+        )
+        self.assertEqual([], coordinator.overlays_for("claude", PREFIX))
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+    def test_a_mark_for_a_row_no_collection_produced_is_dropped(self) -> None:
+        # The same bound `_finished` has: a mark for a session no longer collected
+        # and holding no overlay can never render again, so it goes.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=True, changed=1)
+        coordinator.submit("claude", self.end_envelope())
+        self.assertIsNotNone(coordinator.git_for("claude", PREFIX))
+        coordinator.note_rows(set())
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+
+class GitNullSurfaceTest(ObservationTestCase):
+    """AC6: every cause of an unprobed row publishes null, and `acquisition` sees none of them.
+
+    Written at the coordinator's own boundary because that is where all seven
+    causes converge: five of them make the probe return None and two stop it
+    running at all, and the row cannot tell the difference — which is the point.
+    """
+
+    def _reading(self, coordinator: Any) -> Any:
+        return coordinator.git_for("claude", PREFIX)
+
+    def test_a_harness_whose_adapter_carries_no_session_end_event_is_never_probed(self) -> None:
+        # The cause a `scan-only` assertion cannot see. Codex HAS an event adapter,
+        # so `_mark_unreachable_by_events` leaves its `acquisition` reading "event"
+        # — but `CODEX_EVENTS` registers no SessionEnd, so no `session_ended` can
+        # ever arrive for it and the row is never probed. A test asserting against
+        # `scan-only` alone would pass while leaving Codex and Antigravity, two of
+        # the eight unprobeable harnesses, entirely unchecked.
+        self.assertNotIn("session_ended", set(event_hook.CODEX_EVENTS.values()))
+        self.assertIn("codex", events.IDENTITY_NORMALIZERS)
+        calls: list[str] = []
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda cwd: calls.append(cwd) or None  # type: ignore[func-returns-value]
+        # The envelope a Codex adapter could actually send. Its vocabulary has no
+        # session-end name, so this is refused before any probe is considered.
+        coordinator.submit("codex", {"v": 1, "event": "session_ended", "session_id": SESSION})
+        self.assertEqual([], calls)
+
+    def test_a_probe_that_returns_nothing_publishes_nothing(self) -> None:
+        # Covers four causes at once, because the module collapses them
+        # deliberately: not a repository, git absent from PATH, a timeout, and a
+        # git that refused. All five of those are `probe() -> None`.
+        for cause in ("not-a-repo", "git-missing", "timed-out", "refused"):
+            with self.subTest(cause=cause):
+                coordinator = self.build()
+                coordinator._spawn = lambda run: run()
+                coordinator._git_prober = lambda _cwd: None
+                coordinator.submit(
+                    "claude",
+                    self.envelope(event="session_ended", cwd="/repo/somewhere"),
+                )
+                self.assertIsNone(self._reading(coordinator))
+
+    def test_a_reading_is_never_false_when_it_was_simply_not_taken(self) -> None:
+        # The DRC-4101 shape, one field over: absent evidence must not render as a
+        # confident clean. The falsifier is defaulting `dirty` to False anywhere on
+        # the path, which would make this assertion pass for `changed` and fail here.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: None
+        coordinator.submit("claude", self.envelope(event="session_ended", cwd="/repo"))
+        reading = self._reading(coordinator)
+        self.assertIsNone(reading)
+        self.assertIsNot(reading, False)
+
+    def test_an_unprobed_row_carries_both_keys_as_none(self) -> None:
+        row = runtime_sessions.base_session("goose", "goose-1", "proj")
+        self.assertIsNone(row["dirty"])
+        self.assertIsNone(row["changed"])
+
+
+class GitPathnamePrivacyTest(unittest.TestCase):
+    """AC5 at the module's own boundary: the parse cannot carry a pathname out.
+
+    The other half — that no pathname reaches the bytes `/api/data` serves — is
+    `ApplicationOverlayTest.test_a_probed_row_reaches_the_published_bytes_carrying_no_pathname`,
+    which drives a real collection. The version that used to live here passed its
+    marker to nothing and read `json.dumps` of a hand-built row, so it asserted
+    something true of every possible implementation.
+    """
+
+    def test_a_porcelain_pathname_never_survives_the_parse(self) -> None:
+        # The probe counts entries and drops the lines. Feeding it a distinctive
+        # filename and asserting the reading cannot carry it is the whole check:
+        # there is no field on `GitStatus` that could hold one.
+        marker = "a-very-distinctive-filename-8f3c21.txt"
+        # A distinctive DIRECTORY too, not a plausible word like "another": the
+        # assertion is an absence, so a component that could legitimately appear
+        # in the payload for an unrelated reason makes the test flake instead of
+        # catching anything.
+        directory = "a-very-distinctive-dirname-4b7e05"
+        porcelain = f" M {marker}\n?? {directory}/{marker}\n".encode()
+
+        def runner(*_args: object, **_kwargs: object) -> Any:
+            return SimpleNamespace(returncode=0, stdout=porcelain, stderr=b"")
+
+        reading = git_status.probe("/", timeout_sec=1.0, runner=runner)
+        self.assertIsNotNone(reading)
+        assert reading is not None
+        self.assertEqual(2, reading.changed)
+        self.assertTrue(reading.dirty)
+        self.assertNotIn(marker, repr(reading))
+        self.assertEqual({"dirty", "changed"}, set(dataclasses.asdict(reading)))

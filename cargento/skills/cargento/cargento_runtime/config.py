@@ -45,6 +45,10 @@ class RuntimeConfig:
     window_hours: float
     spacedock_enabled: bool
     usage_fetch_enabled: bool
+    # Whether the end-of-session git probe runs at all. `--no-git` is the off
+    # switch DEC-3 made part of its ruling, and off means no git command runs and
+    # both published fields stay `None` — never a confident clean.
+    git_probe_enabled: bool
     # Whether the dismissal store is read and written at all. `--no-dismiss` is
     # the rollback switch, and off means off in both directions: the file is
     # neither consulted during a collection nor created by a request, so a run
@@ -178,6 +182,12 @@ class RuntimeConfig:
     # A pushed status-line receipt. Larger than the notification cap because
     # the payload carries a whole session-state block, not just a message.
     usage_receipt_cap_bytes: int
+    # The end-of-session git probe (SECURITY.md, "Repository git reads"). Ten
+    # seconds, mirroring `usage_fetch_timeout_sec` rather than being chosen
+    # separately: both bound one external call the board can do without, and the
+    # probe already runs off the event thread, so a slow repository costs a late
+    # reading rather than a stalled ingress.
+    git_probe_timeout_sec: float
     # Event overlays. The Working deadline is tied to `working_threshold_sec`
     # rather than chosen separately: that value is already what the collectors
     # mean by Working, so an overlay that outlived it would be claiming Working
@@ -383,6 +393,7 @@ def build_runtime_config(
     window_hours: float = 24.0,
     spacedock_enabled: bool = True,
     usage_fetch_enabled: bool = True,
+    git_probe_enabled: bool = True,
     dismissals_enabled: bool = True,
     ask_enabled: bool = True,
 ) -> RuntimeConfig:
@@ -423,6 +434,7 @@ def build_runtime_config(
         window_hours=window_hours,
         spacedock_enabled=spacedock_enabled,
         usage_fetch_enabled=usage_fetch_enabled,
+        git_probe_enabled=git_probe_enabled,
         dismissals_enabled=dismissals_enabled,
         ask_enabled=ask_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
@@ -498,6 +510,7 @@ def build_runtime_config(
         input_summary_cap_chars=160,
         usage_poll_floor_sec=300,
         usage_fetch_timeout_sec=10,
+        git_probe_timeout_sec=10.0,
         usage_credentials_cap_bytes=65_536,
         usage_response_cap_bytes=262_144,
         usage_receipt_cap_bytes=131_072,

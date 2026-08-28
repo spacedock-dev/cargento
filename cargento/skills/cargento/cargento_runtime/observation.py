@@ -116,6 +116,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import events as runtime_events
+from cargento_runtime import git_status as runtime_git
 from cargento_runtime import io as runtime_io
 from cargento_runtime import probe as runtime_probe
 
@@ -139,6 +140,16 @@ SessionKey = tuple[str, str]
 # synthetic key rides them safely. The asterisk is what keeps it from ever
 # colliding with a harness id.
 ASK_GENERATION = "*ask"
+
+
+def _spawn_thread(run: Callable[[], None]) -> None:
+    """One daemon thread per probe, matching `quota._spawn_thread`.
+
+    A pool would bound the thread count, and it is not worth one here: the probe
+    fires on `session_ended` only, at most once per edge, and the timeout bounds
+    how long each lives.
+    """
+    threading.Thread(target=run, name="cargento-git-probe", daemon=True).start()
 
 
 class Observation:
@@ -192,6 +203,21 @@ class Observation:
         # was the alternative, and it is worse: the event covers `/clear` as well
         # as exit, so a cleared session would read finished forever.
         self._finished: dict[SessionKey, float] = {}
+        # (harness, sid) -> the last end-of-session git reading for it. Outside
+        # `_overlays` for the same reason `_finished` is: `session_ended` pops that
+        # ledger whole, and `session_ended` is the only edge that produces one of
+        # these, so a reading held there would be destroyed by the very event that
+        # earned it. Absent means not probed, which is what the row publishes, and
+        # `_mark_finished` retires an entry alongside the stop mark it belongs to:
+        # a session working or waiting again has a tree the reading no longer
+        # describes, and the reducer's own clears lapse with the overlay that
+        # carries them while a reading does not.
+        self._git: dict[SessionKey, runtime_git.GitStatus] = {}
+        # Injected so the tests can drive the edge without a repository, and so a
+        # probe can be made to block on demand: AC3's oracle is that `submit`
+        # returns while this is still running.
+        self._git_prober: Callable[[str], runtime_git.GitStatus | None] = self._probe_git
+        self._spawn: Callable[[Callable[[], None]], None] = _spawn_thread
         # sid -> (first seen, attempts). An event whose session no collection has
         # produced yet waits here. It never renders and never creates a row.
         self._pending: dict[SessionKey, tuple[float, int]] = {}
@@ -297,6 +323,7 @@ class Observation:
         overlay = runtime_events.overlay_for(event, config=self.config)
         key: SessionKey = (event.harness, event.sid)
         now = self.clock()
+        probe_cwd: str | None = None
         with self._lock:
             self._bump(f"event.{event.event}")
             if runtime_events.retires_overlays(event):
@@ -305,6 +332,9 @@ class Observation:
                 self._overlays.pop(key, None)
                 self._pending.pop(key, None)
                 self._bump("retired")
+                if self.config.git_probe_enabled and event.cwd:
+                    # Noted here and dispatched below, once the lock is released.
+                    probe_cwd = event.cwd
             elif overlay is not None:
                 self._remember(key, overlay)
                 self._mark_finished(key, overlay)
@@ -328,6 +358,17 @@ class Observation:
                 # sustained burst, and the board would stop updating entirely.
                 self._coalesce_until = deadline
             self._wake.notify_all()
+        if probe_cwd is not None:
+            # Off this thread AND outside the lock, and both halves are load-bearing.
+            # `submit` is reached from `http_api`'s request handler on a
+            # ThreadingHTTPServer thread, behind the hook client's 2 s timeout, and
+            # `git status` on a large tree routinely exceeds that. Run inline it would
+            # hold the coordinator lock for the probe's duration, stalling every other
+            # event and the collection loop, and hold the harness's own SessionEnd
+            # hook open past its timeout. Dispatching from inside the `with` block
+            # above would fix only the second of those.
+            cwd = probe_cwd
+            self._spawn(lambda: self._probe_and_mark(key, cwd))
         return "accepted"
 
     def _remember(self, key: SessionKey, overlay: runtime_events.Overlay) -> None:
@@ -360,6 +401,12 @@ class Observation:
         """
         if overlay.kind in {runtime_events.OVERLAY_WORKING, runtime_events.OVERLAY_NEEDS_INPUT}:
             self._finished.pop(key, None)
+            # And the reading taken at that stop, for the same reason: it
+            # describes a tree this session has since resumed over. The reducer
+            # nulls the pair while such an overlay is live, but the overlay
+            # lapses and the reading would outlive it — so the retirement has to
+            # happen where the mark's does rather than only at render time.
+            self._git.pop(key, None)
             return
         if overlay.kind != runtime_events.OVERLAY_IDLE:
             return
@@ -374,6 +421,56 @@ class Observation:
         # max, not assignment: delivery is at-least-once and possibly reordered,
         # so a redelivered older stop must not pull the mark backwards.
         self._finished[key] = max(self._finished.get(key, 0.0), overlay.at)
+
+    def _probe_git(self, cwd: str) -> runtime_git.GitStatus | None:
+        """The real probe, bound to this run's timeout. Replaced wholesale in tests."""
+        return runtime_git.probe(cwd, timeout_sec=self.config.git_probe_timeout_sec)
+
+    def _probe_and_mark(self, key: SessionKey, cwd: str) -> None:
+        """Run one probe off-thread, then take the lock only to record two scalars.
+
+        The catch is blind for the reason `quota` gives at its own boundary: this
+        runs on a thread nobody joins, so an escaping exception would be printed by
+        the interpreter and lost. No reading is worth a diagnostic either, because
+        anything git raises here can carry a path in its text.
+        """
+        try:
+            result = self._git_prober(cwd)
+        except Exception:  # noqa: BLE001 — a raising probe must not kill its own thread
+            with self._lock:
+                self._bump("git.failed")
+            return
+        if result is None:
+            return
+        with self._lock:
+            self._mark_git(key, result)
+
+    def _mark_git(self, key: SessionKey, result: runtime_git.GitStatus) -> None:
+        """Record a reading, refusing rather than evicting at the same cap.
+
+        Bounded by `event_overlay_max_sessions` for the reason `_remember` gives:
+        evicting somebody else's reading to make room would drop whichever happened
+        to be oldest, and a reading does not get to cost an alert.
+        """
+        if key not in self._git and len(self._git) >= self.config.event_overlay_max_sessions:
+            self._bump("git.refused")
+            return
+        self._git[key] = result
+
+    def git_for(self, harness: str, sid: str) -> runtime_git.GitStatus | None:
+        """This row's end-of-session git reading, or None if it was never probed.
+
+        None is the whole of the disclosure and it covers every cause: a harness
+        whose adapter maps no session-end event, `--no-git`, a directory that is not
+        a repository, an event with no `cwd`, git absent from PATH, a probe that
+        timed out, and a session observed working or waiting since the end that
+        produced the reading — `_mark_finished` retires the reading there, with the
+        stop mark it belongs to. `acquisition` cannot see any of them — it separates
+        adapter-less harnesses from the rest, and Codex and Antigravity have adapters
+        and still never reach this.
+        """
+        with self._lock:
+            return self._git.get((harness, sid))
 
     def finished_at(self, harness: str, sid: str) -> float:
         """When this row's turn last stopped, or 0.0 if no stop was ever seen.
@@ -495,6 +592,8 @@ class Observation:
         with self._lock:
             for key in [k for k in self._finished if k not in keys and k not in self._overlays]:
                 del self._finished[key]
+            for key in [k for k in self._git if k not in keys and k not in self._overlays]:
+                del self._git[key]
             for key in list(self._overlays):
                 if key in keys:
                     self._pending.pop(key, None)

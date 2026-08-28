@@ -127,6 +127,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-git",
+        action="store_true",
+        help=(
+            "do not run the end-of-session git probe in any session's working "
+            "repository (the dirty and changed fields then stay empty)"
+        ),
+    )
+    parser.add_argument(
         "--no-dismiss",
         action="store_true",
         help=(
@@ -202,6 +210,7 @@ def build_runtime(
         window_hours=args.window_hours,
         spacedock_enabled=not args.no_spacedock,
         usage_fetch_enabled=not args.no_usage,
+        git_probe_enabled=not args.no_git,
         dismissals_enabled=not args.no_dismiss,
         ask_enabled=not args.no_ask,
     )

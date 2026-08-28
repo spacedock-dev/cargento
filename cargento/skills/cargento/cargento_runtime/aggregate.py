@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from .config import RuntimeConfig
     from .events import Overlay
+    from .git_status import GitStatus
     from .sessions import Session
     from .state import RuntimeState
 
@@ -134,6 +135,8 @@ class OverlaySource(Protocol):
     def overlays_for(self, harness: str, sid: str) -> list[Overlay]: ...
 
     def finished_at(self, harness: str, sid: str) -> float: ...
+
+    def git_for(self, harness: str, sid: str) -> GitStatus | None: ...
 
     def note_rows(self, keys: set[tuple[str, str]]) -> None: ...
 
@@ -717,7 +720,8 @@ class Application:
             harness, sid = str(session["harness"]), str(session["sid"])
             overlays = source.overlays_for(harness, sid)
             finished_at = source.finished_at(harness, sid)
-            if overlays or finished_at:
+            git = source.git_for(harness, sid)
+            if overlays or finished_at or git is not None:
                 patch = runtime_events.reduce_overlays(
                     overlays,
                     now=now,
@@ -736,6 +740,10 @@ class Application:
                     # mark passes the same activity guard the idle overlay does
                     # even though it outlives the ledger that overlay lives in.
                     finished_at=finished_at,
+                    # Reduced rather than written onto the row for the reason the
+                    # mark above is: a reading taken at a session end must still
+                    # lose to any overlay saying the session is alive again.
+                    git=None if git is None else (git.dirty, git.changed),
                 )
                 self._note_dispute(session, patch, overlays, now=now)
                 runtime_events.apply_patch(session, _keep_wait_detail(session, patch))

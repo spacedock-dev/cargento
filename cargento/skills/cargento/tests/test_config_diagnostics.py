@@ -115,12 +115,16 @@ class CargentoServerTest(RuntimeTestCase):
         # from defaults anywhere downstream would discard the port, window and
         # Spacedock choices the user actually asked for.
         args = cli.build_parser().parse_args(
-            ["--port", "6789", "--window-hours", "7.5", "--no-spacedock"]
+            ["--port", "6789", "--window-hours", "7.5", "--no-spacedock", "--no-git"]
         )
         config, state = cli.build_runtime(args, started=1234.5, launcher_path=SERVER_PATH)
 
         self.assertEqual((6789, 7.5, False), (config.port, config.window_hours, False))
         self.assertFalse(config.spacedock_enabled)
+        # `--no-git` is the DEC-3 off switch. Dropping the build_runtime line makes
+        # this fail (git_probe_enabled stays True) while every other assertion here
+        # still passes, which is the point of asserting it separately.
+        self.assertFalse(config.git_probe_enabled)
         self.assertIs(config, state.config)
         self.assertEqual(1234.5, state.server_started)
 

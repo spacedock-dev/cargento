@@ -294,6 +294,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
+| `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty — which is what they already read for a session that was never probed. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board and the page offers no control to clear one. The rollback switch for the one file Cargento writes on your behalf. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `http://127.0.0.1:4553/?next=true` | Open the opt-in next UI: project overview, ordered sessions, activity streams, delegation state, and local-only controls. The regular URL still serves the existing dashboard. |

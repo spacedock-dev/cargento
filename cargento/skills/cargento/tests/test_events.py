@@ -461,6 +461,10 @@ class _StubOverlays:
         del harness, sid  # this stub remembers no stop
         return 0.0
 
+    def git_for(self, harness: str, sid: str) -> None:
+        """Never probed: this stub has no repository behind it."""
+        del harness, sid
+
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         del keys  # the real coordinator ages unmatched overlays here; a stub has none
 
@@ -740,6 +744,114 @@ class ReduceTest(unittest.TestCase):
         self.assertEqual("needs_input", events.reduce_overlays(ledger, now=NOW)["state"])
 
 
+class GitReadingReduceTest(unittest.TestCase):
+    """The end-of-session reading at the reducer: what publishes it, and what nulls it.
+
+    Every line these tests cover was measured entirely unpinned before they
+    existed. Two agents independently mutated the three overlay branches — one
+    deleting all six `dirty`/`changed` lines, one forcing `aggregate`'s `git=`
+    argument to None — and the suite stayed green (253 and 213 tests OK), because
+    the only `git=` call in the whole tree passed `overlays=[]` so no overlay
+    branch ever ran with a reading present. AC5's own `Falsified by:` names that
+    mutation, which made the criterion unenforced.
+    """
+
+    def overlay(self, kind: str, *, seq: int = 1, at: float = NOW, **kwargs: Any) -> events.Overlay:
+        return events.Overlay(
+            harness="claude", sid=PREFIX, arrival_seq=seq, kind=kind, at=at, **kwargs
+        )
+
+    def test_a_reading_publishes_alongside_the_stop_it_was_taken_at(self) -> None:
+        # The happy path, and the control for everything below: `session_ended`
+        # pops the overlay ledger whole, so what reaches the reducer at a real
+        # session end is no overlays plus the two side-channel values.
+        patch = events.reduce_overlays([], now=NOW, finished_at=NOW - 600, git=(True, 4))
+        self.assertEqual(True, patch["dirty"])
+        self.assertEqual(4, patch["changed"])
+
+    def test_a_reading_with_no_stop_behind_it_is_not_published(self) -> None:
+        # R2. `_mark_finished` pops the stop on a working or waiting overlay, so
+        # `session_ended` then `turn_started` leaves a recorded reading with
+        # `finished_at == 0.0`. The guard was `bool(finished_at) and …`, which is
+        # False there, so the reading applied unguarded — and no later branch
+        # nulls it once the working overlay lapses. A clean tree then republishes
+        # as `dirty: false` over a session that kept working, permanently: null's
+        # job done by false, the DRC-4101 shape AC6 exists to prevent.
+        patch = events.reduce_overlays([], now=NOW, finished_at=0.0, git=(False, 0))
+        self.assertNotIn("dirty", patch)
+        self.assertNotIn("changed", patch)
+
+    def test_a_lapsed_working_overlay_leaves_the_reading_unpublished(self) -> None:
+        # R2 as reproduced: the same state one `overlay_working_ttl_sec` later.
+        # The expired overlay patches nothing, so the reducer's clears cannot be
+        # what saves this — only the side-channel guard can.
+        lapsed = [self.overlay(events.OVERLAY_WORKING, expires_at=NOW + 90)]
+        patch = events.reduce_overlays(lapsed, now=NOW + 91, finished_at=0.0, git=(False, 0))
+        self.assertEqual({}, patch)
+
+    def test_a_reading_older_than_the_sessions_last_write_is_not_published(self) -> None:
+        # The guard that did work: a session that wrote after the stop was
+        # observed has a tree the reading no longer describes.
+        patch = events.reduce_overlays(
+            [],
+            now=NOW,
+            finished_at=NOW - 600,
+            session_activity=NOW - 5,
+            activity_grace_sec=10.0,
+            git=(True, 4),
+        )
+        self.assertEqual({}, patch)
+
+    def test_a_live_working_overlay_nulls_the_reading(self) -> None:
+        # R3, first of three. Working again means the tree has moved on from
+        # whatever the probe saw, and a stale count is worse than none.
+        patch = events.reduce_overlays(
+            [self.overlay(events.OVERLAY_WORKING, expires_at=NOW + 90)],
+            now=NOW,
+            finished_at=NOW - 600,
+            git=(True, 4),
+        )
+        self.assertEqual("working", patch["state"], "the branch under test did not run")
+        self.assertIsNone(patch["dirty"])
+        self.assertIsNone(patch["changed"])
+
+    def test_a_live_gate_overlay_nulls_the_reading(self) -> None:
+        # R3, second. Waiting on a person means the session is alive past the end
+        # that produced the reading.
+        patch = events.reduce_overlays(
+            [self.overlay(events.OVERLAY_NEEDS_INPUT, at=NOW - 5)],
+            now=NOW,
+            finished_at=NOW - 600,
+            git=(True, 4),
+        )
+        self.assertEqual("needs_input", patch["state"], "the branch under test did not run")
+        self.assertIsNone(patch["dirty"])
+        self.assertIsNone(patch["changed"])
+
+    def test_a_live_idle_overlay_nulls_the_reading(self) -> None:
+        # R3, third, and the least obvious: a turn stop is not a session end and
+        # only a session end probes, so a LIVE idle overlay means a turn ran after
+        # the reading was taken.
+        patch = events.reduce_overlays(
+            [self.overlay(events.OVERLAY_IDLE, seq=2, at=NOW - 5)],
+            now=NOW,
+            finished_at=NOW - 600,
+            git=(True, 4),
+        )
+        self.assertEqual("idle", patch["state"], "the branch under test did not run")
+        self.assertIsNone(patch["dirty"])
+        self.assertIsNone(patch["changed"])
+
+    def test_no_reading_at_all_patches_neither_key(self) -> None:
+        # `git=None` is "not probed", and it must not become a null WRITE either:
+        # the row already declares both keys as None, and a patch that carried
+        # them would make `PATCHABLE` filtering the only thing standing between
+        # an absent reading and an overwritten one.
+        patch = events.reduce_overlays([], now=NOW, finished_at=NOW - 600, git=None)
+        self.assertNotIn("dirty", patch)
+        self.assertNotIn("changed", patch)
+
+
 class NeedsInputSupersedingTest(unittest.TestCase):
     """A turn that starts after a permission wait ends that wait, permanently.
 
@@ -883,9 +995,20 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual("real title", session["title"])
         self.assertEqual(1234, session["tokens"])
 
-    def test_the_patchable_set_is_exactly_the_documented_six(self) -> None:
+    def test_the_patchable_set_is_exactly_the_documented_eight(self) -> None:
+        # Grew by two for the end-of-session git reading. Written out rather than
+        # derived, so adding a key to the module has to be a deliberate edit here.
         self.assertEqual(
-            {"state", "state_detail", "active", "blocked_since", "acquisition", "finished_at"},
+            {
+                "state",
+                "state_detail",
+                "active",
+                "blocked_since",
+                "acquisition",
+                "finished_at",
+                "dirty",
+                "changed",
+            },
             set(events.PATCHABLE),
         )
 
