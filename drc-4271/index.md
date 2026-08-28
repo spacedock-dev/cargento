@@ -26,7 +26,7 @@ gates:
               briefing:
                 id: briefing:drc-4271:triage:attempt-1:revision-1
                 digest: sha256:4f6a45bae71cbb68387a48cf39223c54f2df00cd07f3fb567124391fcc4354be
-                room-ref: ./drc-4271/review/triage/briefing-1
+                room-ref: ./review/triage/briefing-1
 ---
 
 [DRC-4271](https://linear.app/recce/issue/DRC-4271) — Linear priority Medium, no estimate. Filed
