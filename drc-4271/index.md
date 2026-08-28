@@ -440,3 +440,50 @@ instants at that load, which refutes the "only at full coverage" answer outright
 
 Recommendation is **No**, narrower than "cancel D6". The captain should also see the second-order
 cost: D5's weightiest cancellation reason was that D6 exists and the board prefers it.
+
+## Stage Report: implementation
+
+- DONE: The captain's ruling of NO written into DRC-4271 and the issue closed: the body records the ruling, its three ranked reasons, and that answer 3 was refuted by measurement rather than declined; the prior body is demoted to a dated historical section rather than deleted. Use the drafts under `## Linear edits made` verbatim.
+  DRC-4271 is `Done` (`completedAt` 2026-08-28T04:34:13Z). Body opens on the ruling, carries the three ranked reasons, a dedicated "Answer 3 was refuted by measurement, not declined" section citing 0 of 82 instants at k=3–4, and `## History` → `### 2026-08-28 — as filed, before the evidence was re-derived` holding the captured original verbatim.
+- DONE: — the six drafted corrections, each applied
+  Needs-input axis re-posed; "nine of ten" → six of ten at `aggregate.py:252, 266, 302, 322` with DRC-4184/4201/4202; "1 of 2" → 80% of turns / 64–71% of wall-clock, marked as superseding an n=1 observation; the maximum's bias measured (uncovered turns 4–5× longer, early 74% of the time); answer 3 refuted; the D5 section rewritten around DRC-4028's ranked reasons and its "that is honest" sentence.
+- DONE: DRC-4029 released per `burndown` reconcile steps 4 and 5: moved out of `Blocked` to `Todo`, and its `blockedBy` edge to DRC-4271 REPLACED with `relatedTo` — a closed issue must not keep a live gate on open work, and the closed evidence must stay reachable. Its body records the ruling and explicitly does NOT decide re-scope versus cancellation, which belongs to its own cycle.
+  Read-back: `status: Todo`, `blockedBy: []`, `relatedTo` contains DRC-4271 alongside the pre-existing DRC-4172 and DRC-4028 (both untouched). DRC-4271's own `blocks` is now empty. New body section "The decision landed 2026-08-28, and the answer is No" states "Whether D6 is re-scoped or cancelled is not decided here"; labels, scores and estimate untouched.
+- DONE: The drafted milestone correction applied to "Spend attention well", and the D5-reopening-condition issue filed with the identifier Linear mints reported back.
+  Milestone: only the two drafted paragraphs of the 2026-08-28 update changed; the three other updates and the 2026-08-09 audit are byte-identical on read-back. New issue is **DRC-4272**, `Backlog`, project + "Spend attention well" milestone, `relatedTo` DRC-4028 and DRC-4014, no labels (no decision-series label exists — DRC-4271 carries none either, and this is an observation rather than a decision, so it takes no `DEC-N` number).
+- DONE: Perform a read-back of every record you wrote and REPORT every discrepancy you find — discrepancies are the FO's to disposition, not yours to pass or fail on.
+  All four records re-fetched after writing. Nine discrepancies found, listed below. None changed any text content.
+- SKIPPED: The full `### implementation` build — deep-dive, failing test, pre-PR suite, `sync-docs`, surface measurement, PR.
+  Per the dispatch scope notes this is a Linear-writes-only cycle. The worktree at `.worktrees/spacedock-ensign-drc-4271` is unmodified and carries no commit, which is the expected outcome rather than an error.
+
+### Discrepancies for FO disposition
+
+**Serializer boundary moves — pre-existing text, not repaired** (the README's measured milestone-edit rule; text content unchanged in every case):
+1. Milestone, 2026-08-23 update: `**D6 inherits the whole outcome… did not. **[DRC-4029]` lost its bold entirely.
+2. Milestone, 2026-08-21 update: `[**DRC-4118**](…) **is Done**` → `[**DRC-4118 **](…)**is Done**`.
+3. Milestone, 2026-08-09 audit: `**Open non-board work. **[DRC-4118]` lost its bold entirely.
+4. DRC-4029, "Two corrections": `**The** ` + `` `ask_operator` `` boundary absorbed the space; the second bullet's `**"Arithmetic over data already on screen" understates the build. **` lost its bold. Note this happened through a `patch` call, so `save_issue` re-serializes the whole document even for a targeted edit — the milestone rule applies to issues too.
+
+**Auto-mention side effects of writing links into a body** (Linear converted issue references into mentions and created relations I did not request):
+5. DRC-4271 gained `relatedTo` DRC-4184, DRC-4201, DRC-4202 from the citation in its corrections list.
+6. DRC-4272 gained `relatedTo` DRC-4271, DRC-4029, DRC-4184, DRC-4201, DRC-4202 beyond the two requested. The two required edges (DRC-4028, DRC-4014) are present.
+7. DRC-4271, "Filed separately": the bold on the opening sentence was dropped when the adjacent bare `DRC-4028` became a mention. In text I authored, so avoidable — the guard needs to cover bare identifiers, not just code spans and links.
+8. DRC-4271, D5-precedent reason 1: a bare `DRC-4029` inside an italic quotation became a mention and split the italic run in two.
+
+**Tool error that did not reflect state:**
+9. The DRC-4029 save returned `Error: Failed to remove 1 relation(s)`, but read-back shows every part of that call landed — body patch, `Todo`, `blockedBy` cleared, `relatedTo` added. Adding `relatedTo` appears to convert the existing blocking relation, leaving `removeBlockedBy` nothing to remove. Verify before retrying such a call; a retry on the error alone would have been a second write.
+
+**Self-inflicted, corrected:** I put spaces before punctuation after three code spans in DRC-4271 while over-applying the adjacency guard; fixed in a follow-up `patch` before the issue was closed.
+
+### Summary
+
+Four Linear writes, all landed and all read back: DRC-4271 rewritten to the captain's NO and closed
+`Done`; DRC-4029 moved `Blocked` → `Todo` with the closed issue's gate replaced by a `relatedTo`
+edge; the "Spend attention well" milestone's two falsified paragraphs replaced; and DRC-4272 filed
+for D5's met reopening condition. No code was written and the worktree is untouched, as the scope
+notes directed.
+
+The notable finding is that the milestone serializer rule generalises further than it was written.
+It fired on an issue `patch` call, and Linear's auto-mention of bare identifiers is a second,
+distinct mechanism that both drops bold runs and silently creates relations. Both are worth adding
+to the workflow rule; neither is repairable after the fact.
