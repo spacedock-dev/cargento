@@ -207,7 +207,11 @@ class Observation:
         # `_overlays` for the same reason `_finished` is: `session_ended` pops that
         # ledger whole, and `session_ended` is the only edge that produces one of
         # these, so a reading held there would be destroyed by the very event that
-        # earned it. Absent means not probed, which is what the row publishes.
+        # earned it. Absent means not probed, which is what the row publishes, and
+        # `_mark_finished` retires an entry alongside the stop mark it belongs to:
+        # a session working or waiting again has a tree the reading no longer
+        # describes, and the reducer's own clears lapse with the overlay that
+        # carries them while a reading does not.
         self._git: dict[SessionKey, runtime_git.GitStatus] = {}
         # Injected so the tests can drive the edge without a repository, and so a
         # probe can be made to block on demand: AC3's oracle is that `submit`
@@ -397,6 +401,12 @@ class Observation:
         """
         if overlay.kind in {runtime_events.OVERLAY_WORKING, runtime_events.OVERLAY_NEEDS_INPUT}:
             self._finished.pop(key, None)
+            # And the reading taken at that stop, for the same reason: it
+            # describes a tree this session has since resumed over. The reducer
+            # nulls the pair while such an overlay is live, but the overlay
+            # lapses and the reading would outlive it — so the retirement has to
+            # happen where the mark's does rather than only at render time.
+            self._git.pop(key, None)
             return
         if overlay.kind != runtime_events.OVERLAY_IDLE:
             return
@@ -452,10 +462,12 @@ class Observation:
 
         None is the whole of the disclosure and it covers every cause: a harness
         whose adapter maps no session-end event, `--no-git`, a directory that is not
-        a repository, an event with no `cwd`, git absent from PATH, and a probe that
-        timed out. `acquisition` cannot see any of them — it separates adapter-less
-        harnesses from the rest, and Codex and Antigravity have adapters and still
-        never reach this.
+        a repository, an event with no `cwd`, git absent from PATH, a probe that
+        timed out, and a session observed working or waiting since the end that
+        produced the reading — `_mark_finished` retires the reading there, with the
+        stop mark it belongs to. `acquisition` cannot see any of them — it separates
+        adapter-less harnesses from the rest, and Codex and Antigravity have adapters
+        and still never reach this.
         """
         with self._lock:
             return self._git.get((harness, sid))

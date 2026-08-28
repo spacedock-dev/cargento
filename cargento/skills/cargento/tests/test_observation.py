@@ -13,7 +13,7 @@ import unittest
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 import event_hook
@@ -23,6 +23,9 @@ from cargento_runtime import io as runtime_io
 from cargento_runtime import sessions as runtime_sessions
 
 from . import support
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 NOW = 1_700_000_000.0
 SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
@@ -1372,7 +1375,14 @@ class ApplicationOverlayTest(unittest.TestCase):
     def setUp(self) -> None:
         support.reset_runtime()
 
-    def _collect_with(self, overlays: Any) -> dict[str, Any]:
+    @contextlib.contextmanager
+    def _seeded(self, overlays: Any) -> Iterator[aggregate.Application]:
+        """One quiet Claude session on a redirected store, with an overlay source.
+
+        A context manager rather than a collect-and-return helper because
+        `collect_json` has to run inside the store redirect too, and the
+        published bytes are the only place AC5's second half can be observed.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             projects = Path(tmp) / "projects"
             project = projects / "-w-proj"
@@ -1394,8 +1404,12 @@ class ApplicationOverlayTest(unittest.TestCase):
                 app = support.build_app()
                 app.overlays = overlays
                 app.clock = lambda: support.SERVER_STARTED
-                collection: dict[str, Any] = app.collect(show_all=False)
-                return collection
+                yield app
+
+    def _collect_with(self, overlays: Any) -> dict[str, Any]:
+        with self._seeded(overlays) as app:
+            collection: dict[str, Any] = app.collect(show_all=False)
+            return collection
 
     def _row(self, collection: dict[str, Any]) -> dict[str, Any]:
         rows = [s for s in collection["sessions"] if s["sid"] == PREFIX]
@@ -1537,6 +1551,82 @@ class ApplicationOverlayTest(unittest.TestCase):
             rows["claude"],
             "a harness that can earn a stop must not be marked unknowable",
         )
+
+    def test_a_probed_row_reaches_the_published_bytes_carrying_no_pathname(self) -> None:
+        # AC5's named oracle, which did not exist: a distinctive porcelain
+        # pathname fed through the REAL parse, the reading carried by an overlay
+        # source, and the assertion taken on `collect_json()`'s bytes rather than
+        # on a hand-built dict. The test this replaces passed its marker to
+        # nothing and read `json.dumps(session)`, so it was true of any
+        # implementation — including one that published the porcelain whole.
+        #
+        # It is also the only pin on `aggregate._apply_overlays`'s `git=`
+        # forward: that line was measured entirely unpinned, and forcing it to
+        # None left the suite green, so the aggregate half of the feature could
+        # have been dead on arrival with CI green.
+        marker = "a-very-distinctive-filename-8f3c21.txt"
+        porcelain = f" M {marker}\n?? another/{marker}\n".encode()
+
+        def runner(*_args: object, **_kwargs: object) -> Any:
+            return SimpleNamespace(returncode=0, stdout=porcelain, stderr=b"")
+
+        reading = git_status.probe("/", timeout_sec=1.0, runner=runner)
+        self.assertIsNotNone(reading, "the fixture never reached the parse")
+
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid  # the ledger `session_ended` popped
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                if (harness, sid) != ("claude", PREFIX):
+                    return 0.0
+                return support.SERVER_STARTED - 200
+
+            def git_for(self, harness: str, sid: str) -> Any:
+                if (harness, sid) != ("claude", PREFIX):
+                    return None
+                return reading
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        with self._seeded(Source()) as app:
+            _revision, body = app.collect_json(show_all=False)
+        published = json.loads(body)
+        row = next(s for s in published["sessions"] if s["sid"] == PREFIX)
+        self.assertEqual(True, row["dirty"], "the reading never reached the wire")
+        self.assertEqual(2, row["changed"])
+        self.assertNotIn(marker, body.decode())
+        self.assertNotIn(b"another", body)
+
+    def test_an_unprobed_row_publishes_both_keys_as_null_in_the_bytes(self) -> None:
+        # AC6 at the wire, and the half a row-level assertion cannot make: the
+        # keys must be PRESENT and null, because an absent key and a false one
+        # render identically in a consumer that reads `row.dirty || …`.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        with self._seeded(Source()) as app:
+            _revision, body = app.collect_json(show_all=False)
+        row = next(s for s in json.loads(body)["sessions"] if s["sid"] == PREFIX)
+        self.assertIn("dirty", row)
+        self.assertIn("changed", row)
+        self.assertIsNone(row["dirty"])
+        self.assertIsNone(row["changed"])
 
     def test_an_overlay_for_an_unknown_session_creates_no_row(self) -> None:
         class Source:
@@ -1983,6 +2073,57 @@ class GitProbeDispatchTest(ObservationTestCase):
         reading = coordinator.git_for("claude", PREFIX)
         self.assertEqual(git_status.GitStatus(dirty=True, changed=3), reading)
 
+    def test_a_session_that_works_again_discards_its_reading(self) -> None:
+        # R2's second door, which the reducer's own guards do not reach. The
+        # reading describes the tree at one session end; a `turn_started` says
+        # that end is over. `_mark_finished` pops the stop mark on exactly this
+        # edge, and the reading has to go with it — otherwise the NEXT
+        # `turn_stopped` restores a truthy, non-stale `finished_at` and re-pairs
+        # this reading with a stop it was not taken at.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=False, changed=0)
+        coordinator.submit("claude", self.end_envelope())
+        self.assertIsNotNone(coordinator.git_for("claude", PREFIX))
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+    def test_a_session_that_reaches_a_gate_discards_its_reading(self) -> None:
+        # The same edge on the other kind of alive. A person being asked a
+        # question means the session outlived the end that produced the reading.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=True, changed=2)
+        coordinator.submit("claude", self.end_envelope())
+        self.assertIsNotNone(coordinator.git_for("claude", PREFIX))
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
+    def test_a_session_end_that_probes_nothing_does_not_keep_the_last_reading(self) -> None:
+        # The resurrection the two retirements above exist to prevent, driven end
+        # to end rather than one edge at a time. `session_ended` pops the overlay
+        # ledger but NOT the stop mark, so after end → start → stop → end the mark
+        # is truthy and non-stale and no overlay is left to null anything. If the
+        # second end takes no reading — no `cwd` on the envelope is the ordinary
+        # way, and a timeout or an absent git are the others — the FIRST end's
+        # reading is the only one there is, and it would publish against a stop it
+        # was not taken at. What keeps this null is the `turn_started` in the
+        # middle discarding it, which is why clearing the reading on every
+        # `session_ended` was tried and dropped: nothing needs it, and two ends
+        # with no turn between them would lose a reading that is still accurate.
+        coordinator = self.build()
+        coordinator._spawn = lambda run: run()
+        coordinator._git_prober = lambda _cwd: git_status.GitStatus(dirty=False, changed=0)
+        coordinator.submit("claude", self.end_envelope())
+        for event in ("turn_started", "turn_stopped"):
+            coordinator.submit("claude", self.envelope(event=event))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.assertGreater(
+            coordinator.finished_at("claude", PREFIX), 0.0, "the mark this pairs with is gone"
+        )
+        self.assertEqual([], coordinator.overlays_for("claude", PREFIX))
+        self.assertIsNone(coordinator.git_for("claude", PREFIX))
+
     def test_a_mark_for_a_row_no_collection_produced_is_dropped(self) -> None:
         # The same bound `_finished` has: a mark for a session no longer collected
         # and holding no overlay can never render again, so it goes.
@@ -2058,7 +2199,14 @@ class GitNullSurfaceTest(ObservationTestCase):
 
 
 class GitPathnamePrivacyTest(unittest.TestCase):
-    """AC5: porcelain names paths, and no pathname reaches the published bytes."""
+    """AC5 at the module's own boundary: the parse cannot carry a pathname out.
+
+    The other half — that no pathname reaches the bytes `/api/data` serves — is
+    `ApplicationOverlayTest.test_a_probed_row_reaches_the_published_bytes_carrying_no_pathname`,
+    which drives a real collection. The version that used to live here passed its
+    marker to nothing and read `json.dumps` of a hand-built row, so it asserted
+    something true of every possible implementation.
+    """
 
     def test_a_porcelain_pathname_never_survives_the_parse(self) -> None:
         # The probe counts entries and drops the lines. Feeding it a distinctive
@@ -2077,16 +2225,3 @@ class GitPathnamePrivacyTest(unittest.TestCase):
         self.assertTrue(reading.dirty)
         self.assertNotIn(marker, repr(reading))
         self.assertEqual({"dirty", "changed"}, set(dataclasses.asdict(reading)))
-
-    def test_a_probed_row_publishes_two_scalars_and_no_path(self) -> None:
-        # One layer up: the same distinctive filename must be absent from the
-        # bytes `/api/data` actually serves.
-        marker = "a-very-distinctive-filename-8f3c21.txt"
-        session = runtime_sessions.base_session("claude", PREFIX, "proj")
-        events.apply_patch(
-            session,
-            events.reduce_overlays([], now=NOW, git=(True, 2)),
-        )
-        self.assertEqual(True, session["dirty"])
-        self.assertEqual(2, session["changed"])
-        self.assertNotIn(marker, json.dumps(session))

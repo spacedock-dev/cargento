@@ -533,12 +533,25 @@ def _side_channel_patch(
     The git reading rides `finished_at`'s guard because the two answer about the
     same moment — a session that wrote after its stop was observed has a tree the
     probe's reading no longer describes.
+
+    It rides the mark's PRESENCE too, and that half is the correction: `not
+    stale` alone is vacuously true whenever `finished_at` is 0.0, which is
+    precisely the state `observation._mark_finished` produces when it pops the
+    mark on a working or waiting overlay. `session_ended` (reading recorded) then
+    `turn_started` left the pair unguarded, and once the working overlay lapsed
+    at `overlay_working_ttl_sec` nothing nulled it, so a clean tree republished
+    as `dirty: false` over a session that kept working — permanently, because
+    `note_rows` keeps the reading while the row is still collected. That is
+    null's job done by false, the DRC-4101 shape AC6 exists to prevent.
     """
     stale = bool(finished_at) and session_activity > finished_at + activity_grace_sec
+    # One condition for both, because both describe the same observed stop and
+    # neither is answerable without it.
+    fresh = bool(finished_at) and not stale
     patch: dict[str, Any] = {}
-    if finished_at and not stale:
+    if fresh:
         patch["finished_at"] = finished_at
-    if git is not None and not stale:
+    if git is not None and fresh:
         patch["dirty"], patch["changed"] = git
     return patch
 
