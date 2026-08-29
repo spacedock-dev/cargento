@@ -177,6 +177,7 @@ jobs:
             scripts.tests.test_lint_embedded \
             scripts.tests.test_bench_collect \
             scripts.tests.test_capture_hook \
+            scripts.tests.test_bench_event_latency \
             scripts.tests.test_derive_prompt_shapes
           coverage report
 
@@ -211,6 +212,7 @@ jobs:
             scripts.tests.test_lint_embedded \
             scripts.tests.test_bench_collect \
             scripts.tests.test_capture_hook \
+            scripts.tests.test_bench_event_latency \
             scripts.tests.test_derive_prompt_shapes
           coverage report
 

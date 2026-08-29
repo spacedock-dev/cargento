@@ -641,19 +641,6 @@ def write_sidecar(
     return path
 
 
-def read_sidecar(config: RuntimeConfig, harness: str, sid: str) -> dict[str, Any] | None:
-    """Read the observer sidecar, or None if absent, unnamed or malformed."""
-    path = sidecar_path(config, harness, sid)
-    if path is None:
-        return None
-    try:
-        with open(path, encoding="utf-8") as handle:
-            value = json.loads(handle.read(config.state_read_cap_bytes))
-    except (OSError, ValueError, json.JSONDecodeError):
-        return None
-    return value if isinstance(value, dict) else None
-
-
 def _mtime(path: str) -> float:
     """One file's mtime, or 0 when it went away between the glob and the stat."""
     try:

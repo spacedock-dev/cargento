@@ -19,6 +19,12 @@ docs/visibility-2x2/items.json.tmp
 # Spacedock worktrees: per-entity checkouts, never source
 .worktrees/
 
+# Agent worktrees: CLAUDE.md sends `isolation: "worktree"` checkouts here. Ignored
+# in the committed file and not only in .git/info/exclude, because that exclude is
+# per-clone: without this, a fresh clone greps its own worktrees and every
+# repo-wide search returns each hit once per checkout.
+.claude/worktrees/
+
 # Spacedock roadmap-burndown state: a linked worktree of the spacedock-state/roadmap-burndown orphan branch
 docs/roadmap-burndown/.spacedock-state/
 
