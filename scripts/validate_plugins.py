@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -1197,6 +1198,40 @@ def validate_marketplaces(
         )
 
 
+def _git_ignored(paths: list[Path]) -> set[Path]:
+    """The subset of `paths` that git is told to ignore.
+
+    `docs/` holds more than source: vendored Spacedock mods, the linked worktree
+    of the entity-state orphan branch, and a person's local deep-dive notes. All
+    three are gitignored, and 56 of the 78 Markdown files under `docs/` were of
+    that kind when this was measured. Walking them made the canonical pre-PR
+    validator fail on a vendored file's unexpanded `{state-owner}` placeholders
+    for anyone with the mods installed, while CI stayed green because that
+    directory is never checked in — a red that belonged to no change.
+
+    `check-ignore` rather than `ls-files`, so a doc that is merely new still gets
+    validated before it is staged. Fails open: any git error validates
+    everything, which is the behaviour this replaces and can only over-check.
+    """
+    if not paths:
+        return set()
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--stdin"],  # noqa: S607
+            cwd=ROOT,
+            input="\n".join(str(path) for path in paths),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return set()
+    # 0 = at least one ignored, 1 = none ignored; anything else is a real error.
+    if result.returncode not in (0, 1):
+        return set()
+    return {Path(line) for line in result.stdout.splitlines() if line}
+
+
 def validate_repo_docs(validation: Validation) -> None:
     """Resolve Markdown inline links and anchors in the repository's prose docs.
 
@@ -1207,7 +1242,8 @@ def validate_repo_docs(validation: Validation) -> None:
     not checked here.
     """
     paths = [ROOT / name for name in ROOT_DOCS]
-    paths.extend(sorted((ROOT / "docs").rglob("*.md")))
+    walked = sorted((ROOT / "docs").rglob("*.md"))
+    paths.extend(path for path in walked if path not in _git_ignored(walked))
     # Repository development skills. Not shipped, so the portability markers
     # they document are legal there — but their links still have to resolve.
     paths.extend(sorted(ROOT.glob(".claude/skills/*/SKILL.md")))
