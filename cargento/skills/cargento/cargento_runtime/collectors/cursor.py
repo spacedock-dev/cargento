@@ -728,11 +728,15 @@ def collect(
         sid = os.path.basename(os.path.dirname(db))
         try:
             mtime = os.path.getmtime(db)
-            wal = db + "-wal"
-            if os.path.exists(wal):
-                mtime = max(mtime, os.path.getmtime(wal))
         except OSError:
             continue
+        # One stat rather than two: `getmtime` already answers "is there a WAL".
+        # Suppressed separately from the db's own stat, because sharing the
+        # handler meant a WAL that vanished between the `exists` and the
+        # `getmtime` dropped the whole chat row instead of leaving the db's mtime
+        # standing - and a WAL is exactly the file most likely to go while read.
+        with contextlib.suppress(OSError):
+            mtime = max(mtime, os.path.getmtime(db + "-wal"))
         if not (sessions.is_fresh(config, now, mtime, window_hours * 3600) or show_all):
             continue
         title, cwd, model, parent_id, type_name, pending_since = _meta(config, state, db, mtime)

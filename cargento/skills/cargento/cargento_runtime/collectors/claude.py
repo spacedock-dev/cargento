@@ -394,7 +394,7 @@ def collect(
 ) -> list[Session]:
     tasks_by_session = load_tasks(config)
     team_members = load_team_members(config)
-    transcripts: dict[str, str] = {}  # prefix -> newest transcript path
+    transcripts: dict[str, tuple[str, float]] = {}  # prefix -> (newest path, its mtime)
     agent_children: dict[str, list[dict[str, Any]]] = {}  # parent prefix -> children
     for fp in runtime_io.glob_stores(config, "claude.projects", "*", "*.jsonl"):
         base = os.path.basename(fp)
@@ -424,23 +424,22 @@ def collect(
                     )
                 continue
         prefix = base[:8]
-        try:
-            if prefix not in transcripts or mtime > os.path.getmtime(transcripts[prefix]):
-                transcripts[prefix] = fp
-        except OSError:
-            continue  # transcript rotated/deleted between glob and stat
+        # `mtime` is this file's, measured a few lines up in this same pass. The
+        # newest-wins test used to re-stat the incumbent for a number the loop
+        # had already taken and dropped, and the per-prefix loop below stat'd the
+        # winner a third time. Carrying the pair costs nothing and removes both.
+        if prefix not in transcripts or mtime > transcripts[prefix][1]:
+            transcripts[prefix] = (fp, mtime)
 
     out: list[Session] = []
     for prefix in set(transcripts) | set(tasks_by_session):
-        transcript = transcripts.get(prefix)
+        newest = transcripts.get(prefix)
+        transcript = newest[0] if newest else None
+        transcript_mtime = newest[1] if newest else 0
         tasks = sorted(
             tasks_by_session.get(prefix, []),
             key=lambda t: int(t["id"]) if str(t["id"]).isdigit() else 0,
         )
-        try:
-            transcript_mtime = os.path.getmtime(transcript) if transcript else 0
-        except OSError:
-            transcript_mtime = 0
         latest_task_mtime = max((t["updated"] for t in tasks), default=0)
         agent_files = agent_transcripts(transcript, config=config, state=state)
         children = agent_children.get(prefix, [])
@@ -475,6 +474,27 @@ def collect(
                 config, now, c["mtime"], config.working_threshold_sec
             )  # fresh = running
         ]
+        latest_agent_mtime = max(
+            (a["mtime"] for a in subagents),
+            default=0,
+        )
+        latest_child_mtime = max((c["mtime"] for c in children), default=0)
+        # Every subagent write, not just the ones fresh enough to read as
+        # running: a workflow that has been going for hours parks its parent
+        # transcript, and without this the session ages out of the window.
+        latest_agent_file_mtime = max((m for _, m in agent_files), default=0)
+        activity_sources = (
+            latest_task_mtime,
+            transcript_mtime,
+            latest_agent_mtime,
+            latest_agent_file_mtime,
+            latest_child_mtime,
+        )
+        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
+        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
+        if not (active or show_all):
+            continue
+
         # Registered, joined long enough ago that a healthy agent would have
         # written its first record, and still holding no transcript anywhere.
         # Sandwiched between two windows that already exist rather than a
@@ -496,26 +516,6 @@ def collect(
             and runtime_sessions.is_fresh(config, now, m["joined"], window_hours * 3600)
         ]
         pending_members.sort(key=lambda m: m["joined"])
-        latest_agent_mtime = max(
-            (a["mtime"] for a in subagents),
-            default=0,
-        )
-        latest_child_mtime = max((c["mtime"] for c in children), default=0)
-        # Every subagent write, not just the ones fresh enough to read as
-        # running: a workflow that has been going for hours parks its parent
-        # transcript, and without this the session ages out of the window.
-        latest_agent_file_mtime = max((m for _, m in agent_files), default=0)
-        activity_sources = (
-            latest_task_mtime,
-            transcript_mtime,
-            latest_agent_mtime,
-            latest_agent_file_mtime,
-            latest_child_mtime,
-        )
-        last_activity = runtime_sessions.newest_plausible(config, now, activity_sources)
-        active = runtime_sessions.is_fresh(config, now, last_activity, window_hours * 3600)
-        if not (active or show_all):
-            continue
 
         project = (
             (
