@@ -2012,7 +2012,7 @@ capture for every harness with an adapter, Claude last.
 
 ### Phase 1: materialized snapshot and SSE
 
-Split into 1a and 1b. 1a is shipped: see [`event-driven-phase-1a.md`](event-driven-phase-1a.md).
+Split into 1a and 1b. Both are shipped; what each delivered is recorded below.
 
 - **Shipped in 1a.** A versioned snapshot, revision pair, and publish protocol, in a new
   `snapshot.py` that imports no runtime module. It is owned by `RuntimeState` rather than by the

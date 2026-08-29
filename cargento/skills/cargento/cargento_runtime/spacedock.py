@@ -172,11 +172,6 @@ def stage_entries(config: RuntimeConfig, lines: list[str]) -> list[dict[str, Any
     return entries
 
 
-def stage_names(config: RuntimeConfig, lines: list[str]) -> list[str]:
-    """The ordered stage names, or [] if the states block is unrecognised."""
-    return [entry["name"] for entry in stage_entries(config, lines)]
-
-
 def _codex_tool_output(record: dict[str, Any]) -> list[str] | None:
     """A Codex rollout's tool-output text, or None when the record is not one.
 

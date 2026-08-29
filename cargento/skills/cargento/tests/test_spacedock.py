@@ -78,7 +78,7 @@ class SpacedockParserTest(unittest.TestCase):
         self.assertEqual("spacedock@0.22.0", spacedock.scalar(lines, "commissioned-by"))
         self.assertEqual(
             ["intake", "review", "fix-and-harden", "escalated", "posted"],
-            spacedock.stage_names(config, lines),
+            [entry["name"] for entry in spacedock.stage_entries(config, lines)],
         )
         # The initial and terminal flags belong to the item they are nested
         # under, and `gate:`/`worktree:`/the decision options are not flags.
@@ -138,7 +138,7 @@ class SpacedockParserTest(unittest.TestCase):
         for label, block in cases.items():
             with self.subTest(case=label):
                 lines = ("---\n" + block + "---\n").split("\n")[1:-2]
-                self.assertEqual([], spacedock.stage_names(config, lines))
+                self.assertEqual([], spacedock.stage_entries(config, lines))
 
     def test_workers_are_attributed_to_a_known_slug(self) -> None:
         """Cycle markers appear on either side of the stage, and a slug may end
