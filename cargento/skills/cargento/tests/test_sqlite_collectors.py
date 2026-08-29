@@ -434,6 +434,37 @@ class SqliteCollectorTest(RuntimeTestCase):
 
         self.assertEqual("vega", sessions[0]["model"])
 
+    def test_cursor_keeps_a_chat_whose_wal_disappears_between_the_two_stats(self) -> None:
+        # The WAL is stat'd to fold its mtime into the chat's, and it is the file
+        # most likely to be checkpointed away while the collector is mid-read.
+        # Sharing the db's own OSError handler meant losing that race withdrew
+        # the whole row rather than falling back to the db's mtime: the chat
+        # vanished from the board because a sibling file did.
+        if not runtime_io.sqlite_available():
+            self.skipTest("sqlite3 unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            root_id, blobs = self._cursor_chat([self._cursor_message("vega")])
+            self._cursor_store(
+                root, "sess-wal", [{"name": "chat", "latestRootBlobId": root_id}], blobs
+            )
+            (root / "chats" / "hash1" / "sess-wal" / "store.db-wal").write_bytes(b"")
+            real_getmtime = os.path.getmtime
+
+            def vanishing_wal(path: Any) -> float:
+                # Present to the glob and to any earlier check, gone by the time
+                # its mtime is asked for. Only the WAL races; everything else
+                # answers honestly.
+                if str(path).endswith("-wal"):
+                    raise OSError(2, "No such file or directory")
+                return real_getmtime(path)
+
+            with mock.patch("os.path.getmtime", side_effect=vanishing_wal):
+                sessions = self._collect_cursor(root)
+
+        self.assertEqual(1, len(sessions))
+        self.assertEqual("chat", sessions[0]["title"])
+
     def test_cursor_keeps_its_title_when_the_store_has_no_blobs_table(self) -> None:
         # The failure that costs the most: a store on a schema without `blobs`
         # raises `no such table`, and routing that through the store-error path
