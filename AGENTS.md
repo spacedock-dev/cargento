@@ -31,6 +31,9 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── SKILL.md                # shared skill body (all harnesses)
         ├── server.py               # the stable launcher: calls cargento_runtime.cli.main
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
+        ├── event_hook.py           # posts Claude and Codex command-hook lifecycle events
+        ├── agy_hook.py             # posts Antigravity's hook events
+        ├── statusline_hook.py      # posts Antigravity's status-line state
         ├── mcp_server.py           # stdio MCP server: the one tool a session calls to ask the reader
         ├── cargento_runtime/       # importable dashboard runtime package
         │   ├── aggregate.py        # harness registry, failure boundary, and the application

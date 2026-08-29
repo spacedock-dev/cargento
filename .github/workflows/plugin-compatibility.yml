@@ -28,6 +28,13 @@ on:
       - 'CODE_OF_CONDUCT.md'
       - 'docs/**'
       - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      # A workflow file cannot change the package LAYOUT this canary measures,
+      # and editing one used to install four upstream CLIs over the network to
+      # prove it. The trade is that a change to THIS file no longer runs on its
+      # own PR; the push-to-main and Monday schedule runs cover it, and it is
+      # not a required check, so nothing is gated on the gap.
+      - '.github/workflows/**'
   push:
     branches:
       - main

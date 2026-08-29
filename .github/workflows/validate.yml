@@ -22,10 +22,18 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    # The only job in the repository that had no timeout, so it inherited
+    # GitHub's 360-minute default. Its longest step is the same `unittest
+    # discover` that AGENTS.md records hanging on subprocess and socket waits
+    # under load, and this is a required check — a hang would hold the PR
+    # pending for six hours rather than failing in ten minutes.
+    timeout-minutes: 10
     steps:
       # actions/checkout@v7.0.1 — pinned to immutable SHA (this is the
       # required check; mutable major tags don't belong here).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       # actions/setup-python@v7.0.0 — pinned to immutable SHA.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:

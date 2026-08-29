@@ -140,9 +140,16 @@ mypy_path = ["cargento/skills/cargento", "scripts"]
 explicit_package_bases = true
 files = [
   "cargento/skills/cargento/cargento_runtime",
+  # The hook adapters the shipped manifests register. They were already checked,
+  # but only because tests/test_events_ingress.py imports all three and `tests`
+  # is on this list — a guarantee that lasts exactly as long as those imports do,
+  # and that nothing stated. Listed so it is stated.
+  "cargento/skills/cargento/agy_hook.py",
+  "cargento/skills/cargento/event_hook.py",
   "cargento/skills/cargento/mcp_server.py",
   "cargento/skills/cargento/notify_hook.py",
   "cargento/skills/cargento/server.py",
+  "cargento/skills/cargento/statusline_hook.py",
   "cargento/skills/cargento/tests",
   "scripts",
 ]
