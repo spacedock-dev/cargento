@@ -160,22 +160,29 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.11"
-          # The only setup-python in this workflow that was missing its cache,
-          # while installing the heaviest requirements file of the five jobs.
           cache: pip
-          cache-dependency-path: requirements-dev.txt
-      - name: Install toolchain
-        run: python -m pip install -r requirements-dev.txt -r requirements-validation.txt
+          # Validation requirements only. This job stopped running the suite
+          # under `coverage`, and the rest of requirements-dev.txt is ruff and
+          # mypy, which run on 3.12 in their own jobs. PyYAML is still needed:
+          # scripts.tests.test_validate_plugins imports the validator.
+          cache-dependency-path: requirements-validation.txt
+      - name: Install validation requirements
+        run: python -m pip install -r requirements-validation.txt
       - name: Direct-launch smoke on the supported floor
         run: |
           cd "${RUNNER_TEMP}"
           python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --help
           python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --diagnose --json
-      - name: Run full unittest suite under coverage
+      # Plain unittest, not `coverage run`. The threshold is owned by the `test`
+      # job below and is enforced there once; a second `coverage report` on a
+      # second interpreter measured nothing new, because nothing in the product
+      # branches on `sys.version_info`, and it pre-empted that job's
+      # `coverage-exception` bypass. What this job is for is the floor itself:
+      # does the shipped code import, launch and pass on 3.11.
+      - name: Run the full suite on the floor
         run: |
-          coverage erase
-          coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
-          coverage run -a -m unittest \
+          python -m unittest discover -s cargento/skills/cargento/tests -t .
+          python -m unittest \
             scripts.tests.test_validate_plugins \
             scripts.tests.test_bump_version \
             scripts.tests.test_lint_embedded \
@@ -183,7 +190,6 @@ jobs:
             scripts.tests.test_capture_hook \
             scripts.tests.test_bench_event_latency \
             scripts.tests.test_derive_prompt_shapes
-          coverage report
 
   test:
     name: Tests + coverage threshold
@@ -218,8 +224,12 @@ jobs:
             scripts.tests.test_capture_hook \
             scripts.tests.test_bench_event_latency \
             scripts.tests.test_derive_prompt_shapes
-          coverage report
 
+      # No `coverage report` here. It reads `fail_under` from pyproject and
+      # exits non-zero, and it ran BEFORE the label check below, so a PR
+      # carrying `coverage-exception` failed at this line and never reached the
+      # bypass. The threshold is enforced once, in the exception-aware step.
+      #
       # The threshold lives in pyproject.toml ([tool.coverage.report]
       # fail_under) so local runs enforce the same gate. A PR labeled
       # `coverage-exception` may merge below threshold — label use is
