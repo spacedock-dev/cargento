@@ -133,6 +133,22 @@ def glob_stores(config: RuntimeConfig, key: str, *pattern: str) -> list[str]:
     return [path for root in config.store_roots.get(key, ()) for path in glob_under(root, *pattern)]
 
 
+def any_glob_under(root: str, *pattern: str) -> bool:
+    """Whether anything under ``root`` matches, without building the list.
+
+    A predicate's answer is one bit, and `glob_under` pays for a full match list
+    and a sort to produce it. `iglob` stops at the first hit. Same escaping
+    contract as `glob_under`: the root is a real path and is escaped, the
+    pattern is a pattern and is not.
+    """
+    return next(glob.iglob(os.path.join(glob.escape(root), *pattern)), None) is not None
+
+
+def any_glob_stores(config: RuntimeConfig, key: str, *pattern: str) -> bool:
+    """`glob_stores` as a predicate: the first root that matches ends the walk."""
+    return any(any_glob_under(root, *pattern) for root in config.store_roots.get(key, ()))
+
+
 def any_store_dir(config: RuntimeConfig, key: str, *parts: str) -> bool:
     return any(
         os.path.isdir(os.path.join(root, *parts)) for root in config.store_roots.get(key, ())

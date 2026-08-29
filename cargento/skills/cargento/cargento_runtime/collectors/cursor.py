@@ -27,8 +27,8 @@ _STORE_GLOB = ("*", "*", "store.db")
 
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether a readable Cursor chat store is present."""
-    return runtime_io.sqlite_available() and bool(
-        runtime_io.glob_stores(config, "cursor.chats", *_STORE_GLOB)
+    return runtime_io.sqlite_available() and runtime_io.any_glob_stores(
+        config, "cursor.chats", *_STORE_GLOB
     )
 
 

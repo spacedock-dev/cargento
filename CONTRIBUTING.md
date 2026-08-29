@@ -300,7 +300,7 @@ Format: `<type>(<scope>): <description>`, where type is one of `feat`, `fix`, `d
 
 This is the contribution we most want. Each harness is one registry entry: a key, a display label, a cheap discovery predicate, and a collector function. The runtime contract is `HarnessSpec` in `cargento_runtime/aggregate.py`, whose discovery takes `(config, state)` and whose collector takes `(config, state, now, window_hours, show_all)`. The registry itself is `aggregate.default_harnesses()`, and every row is a module under `cargento_runtime/collectors/`: add yours there, then add a row. Follow `collectors/codex.py` for the shape, and study `collectors/droid.py` (JSONL-based) or `collectors/goose.py` (SQLite-based) as templates. Requirements:
 
-- Discovery must be cheap (an `isdir` or a `glob_under()` call), and the collector must degrade gracefully on schema drift.
+- Discovery must be cheap (an `isdir`, or one of the existence probes: `any_store_dir()`, `any_glob_under()`, `any_glob_stores()`). It answers one bit, so it must not build a match list it will not read, and `collect()` walks the same tree moments later anyway. The collector must degrade gracefully on schema drift.
 - Resolve store roots through the candidate-set resolver rather than a single hardcoded path, and honor the harness's documented relocation variable if it has one.
 - Document the data source and its caveats in `SKILL.md`'s data-sources list. The documentation-matches-code test asserts it.
 - Add tests with a synthetic store fixture, including a hostile-path case.

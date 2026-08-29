@@ -22,8 +22,8 @@ def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     False without sqlite3: reporting the harness as discovered when it can
     never be opened would show it as present but permanently empty.
     """
-    return runtime_io.sqlite_available() and bool(
-        runtime_io.glob_stores(config, "opencode.data", *_DB_GLOB)
+    return runtime_io.sqlite_available() and runtime_io.any_glob_stores(
+        config, "opencode.data", *_DB_GLOB
     )
 
 

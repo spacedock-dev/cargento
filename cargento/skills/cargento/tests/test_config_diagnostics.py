@@ -1259,3 +1259,55 @@ class GlobUnderTest(unittest.TestCase):
                 (Path(tmp) / name).write_text("{}\n")
             found = [Path(p).name for p in runtime_io.glob_under(str(tmp), "*.jsonl")]
         self.assertEqual(["a.jsonl", "b.jsonl", "c.jsonl"], found)
+
+
+class AnyGlobUnderTest(unittest.TestCase):
+    """The existence probes, beside the sorting readers they are not."""
+
+    HOSTILE = "A [Contractor]"
+
+    def test_the_probe_stops_at_the_first_match(self) -> None:
+        # The whole point: a predicate must not pay for matches it will never
+        # read. `bool(glob_under(...))` consumes and sorts every match, so a
+        # naive "drop the sorted()" fix still counts three here.
+        #
+        # `real_iglob` is captured before the patch because `glob.iglob` is what
+        # the wrapper itself calls -- resolving it through the module inside the
+        # wrapper is infinite recursion, and the test would stay red against a
+        # correct implementation.
+        real_iglob = glob.iglob
+        consumed = 0
+
+        def counting(pattern: str, **kwargs: Any) -> Any:
+            nonlocal consumed
+            for match in real_iglob(pattern, **kwargs):
+                consumed += 1
+                yield match
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("a.db", "b.db", "c.db"):
+                (Path(tmp) / name).write_text("")
+            with mock.patch.object(glob, "iglob", counting):
+                found = runtime_io.any_glob_under(str(tmp), "*.db")
+
+        self.assertTrue(found)
+        self.assertEqual(1, consumed)
+
+    def test_metacharacters_in_the_root_are_treated_literally(self) -> None:
+        # Same contract as `glob_under` above: a bracket in a real directory
+        # name is a character class to `glob`, so the root is escaped and the
+        # pattern is not.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / self.HOSTILE
+            root.mkdir()
+            self.assertFalse(runtime_io.any_glob_under(str(root), "*.jsonl"))
+            (root / "a.jsonl").write_text("{}\n")
+            self.assertTrue(runtime_io.any_glob_under(str(root), "*.jsonl"))
+
+    def test_the_multi_root_probe_answers_across_every_store_root(self) -> None:
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            (Path(second) / "found.jsonl").write_text("{}\n")
+            with mock.patch.dict(STORE_OVERRIDES, {"claude.projects": (first, second)}):
+                config, _ = runtime()
+                self.assertTrue(runtime_io.any_glob_stores(config, "claude.projects", "*.jsonl"))
+                self.assertFalse(runtime_io.any_glob_stores(config, "claude.projects", "*.absent"))

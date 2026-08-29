@@ -18,7 +18,7 @@ _TRANSCRIPT_GLOB = ("*", "*.jsonl")
 
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether any Droid project holds a transcript."""
-    return bool(runtime_io.glob_stores(config, "droid.projects", *_TRANSCRIPT_GLOB))
+    return runtime_io.any_glob_stores(config, "droid.projects", *_TRANSCRIPT_GLOB)
 
 
 def collect(

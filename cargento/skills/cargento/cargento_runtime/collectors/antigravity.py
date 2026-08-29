@@ -706,7 +706,7 @@ def collect(
 
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether Antigravity has written at least one conversation store."""
-    return bool(runtime_io.glob_under(_conversations_dir(config), "*.db"))
+    return runtime_io.any_glob_under(_conversations_dir(config), "*.db")
 
 
 def usage(

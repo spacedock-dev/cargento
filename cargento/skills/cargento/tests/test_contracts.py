@@ -2007,3 +2007,48 @@ class HostilePathContractTest(unittest.TestCase):
                             data = collect(24, show_all=True)
                     found = [s for s in data["sessions"] if s["harness"] == key]
                     self.assertEqual(1, len(found), f"{key} lost its session under {component!r}")
+
+
+class DiscoveryCostContractTest(unittest.TestCase):
+    """A `discover()` answers one bit and must not pay for a list to do it.
+
+    `glob_under` and `glob_stores` materialise every match and sort it. Four
+    collectors used one as a truthiness test and then `collect()` repeated the
+    identical glob in the same pass, so the store was walked twice to publish
+    one row. The probes exist now; this is what stops the idiom coming back in
+    the next collector.
+    """
+
+    SORTING = ("glob_under", "glob_stores")
+
+    def test_no_discover_builds_a_sorted_match_list(self) -> None:
+        collectors = Path(runtime_io.__file__).parent / "collectors"
+        modules = sorted(p for p in collectors.glob("*.py") if p.name != "__init__.py")
+        self.assertTrue(modules, "no collector modules found")
+        for path in modules:
+            with self.subTest(collector=path.name):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                discover = next(
+                    (
+                        node
+                        for node in tree.body
+                        if isinstance(node, ast.FunctionDef) and node.name == "discover"
+                    ),
+                    None,
+                )
+                if discover is None:
+                    # Not every collector declares one; the registry treats a
+                    # missing `discover` as "always look".
+                    continue
+                used = sorted(
+                    {
+                        node.attr
+                        for node in ast.walk(discover)
+                        if isinstance(node, ast.Attribute) and node.attr in self.SORTING
+                    }
+                )
+                self.assertEqual(
+                    [],
+                    used,
+                    f"{path.name} discover() calls {used}; use any_glob_under/any_glob_stores",
+                )

@@ -141,4 +141,4 @@ def collect(
 
 def discover(config: RuntimeConfig, _state: RuntimeState) -> bool:
     """Whether a Gemini CLI chat store is present."""
-    return bool(runtime_io.glob_stores(config, "gemini.tmp", "*", "chats", "session-*.jsonl"))
+    return runtime_io.any_glob_stores(config, "gemini.tmp", "*", "chats", "session-*.jsonl")
