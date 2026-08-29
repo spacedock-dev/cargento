@@ -612,6 +612,42 @@ def analyze_codex_transcript(config: RuntimeConfig, path: str) -> dict[str, Any]
     return info
 
 
+def codex_analysis(config: RuntimeConfig, state: RuntimeState, path: str) -> dict[str, Any]:
+    """`analyze_codex_transcript`, read through a per-file cache.
+
+    A cached sibling rather than a `state` parameter on the analyzer itself:
+    the analyzer is called as a `functools.partial` over its config in
+    tests/test_transcripts.py and positionally in tests/test_codex.py, so
+    widening its signature would be a contract change for a caching detail.
+
+    Callers treat the result as read-only. It is now one dict shared by every
+    reader in a cycle, so a consumer that mutated it would poison the entry
+    rather than its own copy.
+    """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        # Gone between the glob and here. Let the analyzer return its own empty
+        # shape rather than restating it, and cache nothing, so a rollout still
+        # being written is read again next cycle instead of being remembered
+        # as absent.
+        return analyze_codex_transcript(config, path)
+    cache_key = (stat.st_mtime_ns, stat.st_size)
+    with state.cache_lock:
+        cached = state.codex_analysis_cache.get(path)
+    if cached is not None and cached[:2] == cache_key:
+        return cached[2]
+    info = analyze_codex_transcript(config, path)
+    with state.cache_lock:
+        runtime_state.bounded_put(
+            state.codex_analysis_cache,
+            path,
+            (*cache_key, info),
+            limit=config.max_cache_entries,
+        )
+    return info
+
+
 def _published_title(title: Any) -> str | None:
     """One analyzer's newest prompt line, redacted and then bounded.
 

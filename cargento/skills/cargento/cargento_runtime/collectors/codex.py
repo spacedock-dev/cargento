@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import os
 from typing import TYPE_CHECKING, Any
 
@@ -61,7 +62,6 @@ def usage(
     One entry for the whole store — the CLI reports account quota, not
     per-session quota.
     """
-    del state
     files: list[tuple[float, str]] = []
     for fp in runtime_io.glob_stores(
         config,
@@ -76,8 +76,8 @@ def usage(
         except OSError:
             continue
     best: tuple[float, dict[str, Any]] | None = None
-    for _, fp in sorted(files, reverse=True)[:_USAGE_FILE_CAP]:
-        snap = transcripts.analyze_codex_transcript(config, fp)["rate_limits"]
+    for _, fp in heapq.nlargest(_USAGE_FILE_CAP, files):
+        snap = transcripts.codex_analysis(config, state, fp)["rate_limits"]
         if snap and (best is None or snap[0] > best[0]):
             best = snap
     # A snapshot older than the dashboard's own activity window describes
@@ -98,6 +98,7 @@ def usage(
 
 def _subagent_rate(
     config: RuntimeConfig,
+    state: RuntimeState,
     path: str,
     now: float,
     scan: dict[str, Any] | None,
@@ -110,7 +111,7 @@ def _subagent_rate(
     start = scan.get("last_start") if scan else None
     if not start:
         return 0
-    info = transcripts.analyze_codex_transcript(config, path)
+    info = transcripts.codex_analysis(config, state, path)
     recent: float = sum(
         tokens
         for epoch, tokens in info["usage_events"]
@@ -158,7 +159,7 @@ def collect(
             rendered = sessions.is_fresh(config, now, mtime, config.working_threshold_sec)
             scan = turns.scan_turns(config, state, fp, "codex") if charged or rendered else None
             if charged:
-                data["rate"] += _subagent_rate(config, fp, now, scan)
+                data["rate"] += _subagent_rate(config, state, fp, now, scan)
             if rendered:
                 # The child's own rollout declares its own model; the page, not
                 # the collector, decides whether it differs from the parent's.
@@ -183,7 +184,7 @@ def collect(
         active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
         if not (active or show_all):
             continue
-        info = transcripts.analyze_codex_transcript(config, fp) if active else None
+        info = transcripts.codex_analysis(config, state, fp) if active else None
         # The prompt and the instruction line come from a backward walk rather
         # than from `info`, whose tail read misses the newest prompt on 62% of
         # the rollouts that have one (DRC-4264). Behind the same `active` gate as

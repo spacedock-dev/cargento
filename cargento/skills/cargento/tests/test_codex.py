@@ -7,7 +7,9 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
+from cargento_runtime import io as runtime_io
 from cargento_runtime import records
 from cargento_runtime import records as runtime_records
 from cargento_runtime import transcripts as runtime_transcripts
@@ -320,6 +322,53 @@ class CodexUsageTest(RuntimeTestCase):
             with store_patch(CODEX_SESSIONS_DIR=tmp):
                 config, state = runtime()
                 self.assertEqual([], codex_collector.usage(config, state, now, 24))
+
+
+class CodexReadBudgetTest(RuntimeTestCase):
+    """One rollout, tail-read once per cycle rather than once per reader."""
+
+    def test_a_rollout_both_readers_want_is_tail_read_once(self) -> None:
+        # `Application.collect` runs `spec.collect` and then `spec.usage` back
+        # to back, and both reach the analyzer. They overlap on any rollout that
+        # is both active and among the newest the quota reader samples, which is
+        # the ordinary case for whichever session is running right now.
+        now = time.time()
+        sid = "44444444-4444-4444-4444-444444444444"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "2026" / "08" / "04" / "rollout-shared.jsonl"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                "".join(
+                    json.dumps(record) + "\n"
+                    for record in (
+                        {"type": "session_meta", "payload": {"id": sid, "cwd": "/tmp/project"}},
+                        _task_started(now - 60),
+                        _token_count(now - 5, _limits((10080, 62.0, now + 900))),
+                    )
+                )
+            )
+            os.utime(path, (now, now))
+
+            reads: list[str] = []
+            real_read_tail = runtime_io.read_tail
+
+            def counting(config: Any, target: str) -> list[str]:
+                reads.append(target)
+                return real_read_tail(config, target)
+
+            with (
+                store_patch(CODEX_SESSIONS_DIR=tmp),
+                mock.patch.object(runtime_io, "read_tail", counting),
+            ):
+                config, state = runtime()
+                collected = codex_collector.collect(config, state, now, 24, False)
+                entries = codex_collector.usage(config, state, now, 24)
+
+        # The count means nothing unless both readers really wanted this file:
+        # one active row from `collect`, one quota entry from `usage`.
+        self.assertEqual(1, len(collected))
+        self.assertEqual(62, entries[0]["week"]["pct"])
+        self.assertEqual([str(path)], reads)
 
 
 def _stamp(when: float) -> str:

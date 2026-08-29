@@ -77,6 +77,13 @@ class RuntimeState:
     # newest `update_plan` and the instruction walk at the newest prompt, so one
     # of them reaching its record says nothing about how far the other must go.
     codex_plan_cache: dict[str, tuple[int, int, list[dict[str, Any]]]] = field(default_factory=dict)
+    # Same key and lock as the two caches above, for a read duplicated WITHIN
+    # one cycle rather than across cycles: `Application.collect` calls
+    # `spec.collect` and then `spec.usage` back to back, and Codex's two readers
+    # overlap on any rollout that is both active and among the eight newest.
+    # Only those files are ever analyzed, so the live entry count is the active
+    # sessions plus at most eight and never approaches `max_cache_entries`.
+    codex_analysis_cache: dict[str, tuple[int, int, dict[str, Any]]] = field(default_factory=dict)
     # sess_dir -> (directory mtimes, subagent transcript paths). A subagent tree
     # whose directory mtimes have not moved cannot have gained or lost a
     # transcript, so only the glob is memoised; mtimes are restated on every
