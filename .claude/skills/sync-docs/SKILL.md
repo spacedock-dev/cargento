@@ -398,8 +398,12 @@ minutes, a Python version. Stale counts are this repository's most common drift.
 
    # e. Tone: no em/en dashes or curly quotes in the human-facing prose docs. Nothing in CI
    #    enforces this, so it is the one anti-drift check that only exists here.
-   #    `ls` builds the list because step 4 deletes plan docs: a bare `docs/plans/*.md` that
-   #    matches nothing stays literal and makes grep exit 2 on a "No such file" error.
+   #    `git ls-files` builds the list, for two reasons. Step 4 deletes plan docs, and a bare
+   #    `docs/plans/*.md` that matches nothing stays literal and makes grep exit 2 on a
+   #    "No such file" error. And `docs/plans/` is where per-issue deep-dive notes are kept
+   #    locally, excluded per file in .git/info/exclude: those are somebody's scratch, not
+   #    this repository's prose, and globbing them made the check red for text no reviewer
+   #    will ever read. Tracked files are exactly the ones the standard governs.
    #    The explicit if/else is here because a bare `grep && echo` exits 1 when the docs are
    #    CLEAN, which reads as failure to anyone (or anything) checking the status.
    #    NOTE: the carve-out is for INLINE spans only, not fenced blocks. A dash inside a
@@ -411,8 +415,8 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    #    ends with someone mangling a documented literal to quiet it.
    #    The per-file loop keeps the filename in the output; piping every doc through one sed
    #    would report a line number with nothing to open.
-   if for f in $(ls README.md HOW_TO_USE.md CONTRIBUTING.md COMPATIBILITY.md SECURITY.md \
-        docs/design-*.md docs/plans/*.md 2>/dev/null); do
+   if for f in $(git ls-files -- README.md HOW_TO_USE.md CONTRIBUTING.md COMPATIBILITY.md \
+        SECURITY.md 'docs/design-*.md' 'docs/plans/*.md'); do
         sed 's/`[^`]*`//g' "$f" | grep -n '—\|–\|[“”‘’]' | sed "s|^|$f:|"
       done | grep .; then
      echo "TONE DRIFT: reapply Voice and tone to the files listed above"
