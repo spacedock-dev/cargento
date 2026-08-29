@@ -67,6 +67,27 @@ STATE_HOME = _STATE_HOME.name
 atexit.register(_STATE_HOME.cleanup)
 os.environ[CARGENTO_HOME_ENV] = STATE_HOME
 
+# The same leak one level up. CARGENTO_HOME redirects only the dashboard's own
+# state; every harness store root is resolved from the user's home instead
+# (config.py:403 reads USERPROFILE on Windows and HOME everywhere else), so any
+# test that collects without patching a store reads the developer's real
+# ~/.claude, ~/.codex, ~/.cursor and the rest. Measured here: 24,981 files under
+# ~/.claude/projects alone, and redirecting HOME took test_quota from 4.63s to
+# 1.69s, test_lifecycle from 8.04s to 4.97s and test_http_api from 11.34s to
+# 8.96s. Speed is the smaller half — otherwise the suite's verdict depends on
+# what the developer's own agents happened to be writing while it ran.
+#
+# A second directory rather than STATE_HOME, because the two answer different
+# questions: a test that points CARGENTO_HOME at a directory of its own must
+# still see an empty harness home, not the state it just redirected. USERPROFILE
+# is seeded too — unset on this platform, but config.py prefers it on Windows,
+# and the suite runs natively there in platform-tests.
+_USER_HOME = tempfile.TemporaryDirectory(prefix="cargento-test-user-")
+USER_HOME = _USER_HOME.name
+atexit.register(_USER_HOME.cleanup)
+os.environ["HOME"] = USER_HOME
+os.environ["USERPROFILE"] = USER_HOME
+
 # Store key -> path. Patch with mock.patch.dict; runtime() folds it into config.
 STORE_OVERRIDES: dict[str, Any] = {}  # str, or a tuple/list of candidates
 # RuntimeConfig field -> value, applied by runtime() after the build: how a test
