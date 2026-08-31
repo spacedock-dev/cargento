@@ -885,9 +885,15 @@ SHA-256 `10941400c09a4a990b32b6657235fc57f8f14911291a150d16d188c8ab2339de`.
   Three findings are fully addressed, dynamic-control implementation is addressed with browser
   proof not addressed, and the independent recommendation is ACCEPT with that parked concern.
 - DONE: AC-1 through AC-5 cross-check, including the parked 320px browser-measurement gap for source-absent Retry/gate/answer/disclosure controls and its exact owner/evidence boundary.
-  AC-1 through AC-5 pass at `1cb112e`; the next browser acceptance pass owns the absent-state
-  geometry proof across the four named renderer/style owners, and supporting evidence is not
-  misrepresented as the missing measurement.
+  AC-1: Default Attention leads with observed counts and coverage; exact asks own the first response lane.
+  AC-2: Three-harness drill-downs expose source-bound activity, assignment, execution, next action,
+  and responsibility; absent-state Retry/gate/answer/disclosure geometry remains parked at 320px.
+  AC-3: Attention, Projects, Sessions, and detail headings, breadcrumbs, identities, and exact-owner
+  tests keep scope and provenance distinct.
+  AC-4: Material findings were reproduced, fixed at `1cb112e`, and scoped-re-reviewed; three are
+  fully addressed, while one browser-proof gap is parked rather than misclaimed.
+  AC-5: Local and remote `feat/future-ui` resolve to `1cb112e`, the stable byte oracle is unchanged,
+  and no PR, merge, or `main` target exists.
 
 ### Summary
 
