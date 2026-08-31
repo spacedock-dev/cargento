@@ -1,5 +1,4 @@
 let nextData = null;
-let nextOverviewTab = "projects";
 let nextRefreshFailures = 0;
 let nextRefreshInFlight = false;
 let nextLastRefreshSuccessAt = null;
@@ -9,20 +8,36 @@ function nextRouteToken(route){
 }
 
 function nextBreadcrumb(){
-  const overview = nextRoute.view === "overview"
-    ? "<span>Cargento | overview</span>"
-    : '<button type="button" class="next-crumb" data-next-route="overview">Cargento | overview</button>';
-  if(nextRoute.view === "overview") return overview;
+  if(NEXT_TOP_LEVEL_VIEWS.has(nextRoute.view)) return "";
+  const attention = '<a class="next-crumb" href="#n=attention">Attention</a>';
+  const projects = '<a class="next-crumb" href="#n=projects">Projects</a>';
   const project = esc(nextRoute.project);
-  if(nextRoute.view === "project") return `${overview}<span aria-hidden="true"> &gt; </span><span>${project}</span>`;
-  const projectRoute = esc(nextRouteToken({view: "project", project: nextRoute.project}));
-  return `${overview}<span aria-hidden="true"> &gt; </span>` +
-    `<button type="button" class="next-crumb" data-next-route="${projectRoute}">${project}</button>` +
+  if(nextRoute.view === "project"){
+    return `${attention}<span aria-hidden="true"> &gt; </span>${projects}` +
+      `<span aria-hidden="true"> &gt; </span><span>${project}</span>`;
+  }
+  const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
+  return `${attention}<span aria-hidden="true"> &gt; </span>${projects}` +
+    `<span aria-hidden="true"> &gt; </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
     `<span aria-hidden="true"> &gt; </span><span>${esc(nextRoute.session)}</span>`;
 }
 
+function nextPrimaryNavigation(){
+  const links = [
+    ["attention", "Attention"],
+    ["projects", "Projects"],
+    ["sessions", "Sessions"],
+  ].map(([view, label]) => {
+    const current = nextRoute.view === view ? ' aria-current="page"' : "";
+    return `<a href="#n=${view}"${current}>${label}</a>`;
+  });
+  return `<nav aria-label="Primary">${links.join("")}</nav>`;
+}
+
 function nextDocumentTitle(){
-  if(nextRoute.view === "overview") return "Cargento — Overview";
+  if(nextRoute.view === "attention") return "Cargento — Attention";
+  if(nextRoute.view === "projects") return "Cargento — Projects";
+  if(nextRoute.view === "sessions") return "Cargento — Sessions";
   if(nextRoute.view === "project") return `${nextRoute.project} — Cargento`;
   const session = nextSessionFind(nextRoute.project, nextRoute.session);
   const title = session
@@ -38,50 +53,15 @@ function nextRows(){
 function nextCounts(){
   const rows = nextRows();
   const summary = nextData && nextData.summary ? nextData.summary : {};
-  const projects = new Set(rows.map(row => String(row.project || ""))).size;
   const subagents = rows.reduce(
     (total, row) => total + (Array.isArray(row.subagents) ? row.subagents.length : 0),
     0,
   );
   return {
     gates: Number(summary.needs_input) || 0,
-    projects,
     running: Number(summary.working) || 0,
-    sessions: rows.length,
     subagents,
   };
-}
-
-function nextWindowLabel(){
-  if(!nextData || nextData.window_hours == null) return "in this payload window";
-  return `in this ${esc(nextData.window_hours)}h window`;
-}
-
-function nextOverviewShell(counts){
-  const projectsSelected = nextOverviewTab === "projects";
-  return '<section class="next-overview" aria-label="Overview">' +
-    '<h1>Cargento command overview</h1>' +
-    '<div class="next-tabs-row"><div class="next-tabs" role="tablist">' +
-    `<button type="button" role="tab" id="next-tab-projects" aria-controls="next-panel-projects" ` +
-    `data-next-tab="projects" aria-selected="${projectsSelected}">projects</button>` +
-    `<button type="button" role="tab" id="next-tab-sessions" aria-controls="next-panel-sessions" ` +
-    `data-next-tab="sessions" aria-selected="${!projectsSelected}">sessions</button>` +
-    "</div>" +
-    `<div class="next-population">${counts.projects} projects · ${counts.sessions} sessions ` +
-    `<span>${nextWindowLabel()}</span></div></div>` +
-    `<section role="tabpanel" id="next-panel-projects" aria-labelledby="next-tab-projects" ` +
-    `data-next-body="projects"${projectsSelected ? "" : " hidden"}>` +
-    `${projectsSelected ? nextOverviewBody("projects") : ""}</section>` +
-    `<section role="tabpanel" id="next-panel-sessions" aria-labelledby="next-tab-sessions" ` +
-    `data-next-body="sessions"${projectsSelected ? " hidden" : ""}>` +
-    `${projectsSelected ? "" : nextOverviewBody("sessions")}</section>` +
-    "</section>";
-}
-
-function nextViewBody(counts){
-  if(nextRoute.view === "overview") return nextOverviewShell(counts);
-  return `<section data-next-view-body="${esc(nextRoute.view)}">` +
-    `${nextDetailBody(nextRoute)}</section>`;
 }
 
 function nextRefreshNotice(){
@@ -114,15 +94,17 @@ function renderNext(){
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} need you</button>`
     : "";
   const stalled = nextRefreshNotice();
+  const breadcrumb = nextBreadcrumb();
   app.innerHTML = '<header class="next-header">' +
-    `<nav class="next-breadcrumb" aria-label="Breadcrumb">${nextBreadcrumb()}</nav>` +
+    '<div class="next-header-left">' +
+    nextPrimaryNavigation() +
+    (breadcrumb ? `<nav class="next-breadcrumb" aria-label="Breadcrumb">${breadcrumb}</nav>` : "") +
+    "</div>" +
     '<div class="next-header-right">' +
     `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} subagents</span>` +
     gate +
     '<details class="next-menu"><summary aria-label="More">···</summary>' +
     '<div class="next-menu-items">' +
-    '<button type="button" data-next-action="projects">projects overview <kbd>p</kbd></button>' +
-    '<button type="button" data-next-action="sessions">flat session list <kbd>s</kbd></button>' +
     '<button type="button" data-next-action="dashboard">dashboard mode <kbd>d</kbd></button>' +
     "</div></details></div></header>" +
     stalled + nextViewBody(counts);
@@ -135,16 +117,6 @@ function navigateNext(route){
   renderNext();
 }
 
-function nextSelectProjects(){
-  nextOverviewTab = "projects";
-  navigateNext({view: "overview", project: null, session: null});
-}
-
-function nextSelectSessions(){
-  nextOverviewTab = "sessions";
-  navigateNext({view: "overview", project: null, session: null});
-}
-
 document.addEventListener("click", event => {
   const routeTarget = event.target && event.target.closest
     ? event.target.closest("[data-next-route]")
@@ -152,14 +124,6 @@ document.addEventListener("click", event => {
   if(routeTarget && routeTarget.dataset.nextRoute){
     event.preventDefault();
     navigateNext(nextRouteFromFragment(`#n=${routeTarget.dataset.nextRoute}`));
-    return;
-  }
-  const tabTarget = event.target && event.target.closest
-    ? event.target.closest("[data-next-tab]")
-    : null;
-  if(tabTarget && ["projects", "sessions"].includes(tabTarget.dataset.nextTab)){
-    nextOverviewTab = tabTarget.dataset.nextTab;
-    renderNext();
     return;
   }
   const actionTarget = event.target && event.target.closest
@@ -171,8 +135,9 @@ document.addEventListener("click", event => {
     void refreshNext(true);
     return;
   }
-  if(actionTarget.dataset.nextAction === "projects") nextSelectProjects();
-  if(["sessions", "needs-input"].includes(actionTarget.dataset.nextAction)) nextSelectSessions();
+  if(actionTarget.dataset.nextAction === "needs-input"){
+    navigateNext({view: "attention", project: null, session: null});
+  }
   if(actionTarget.dataset.nextAction === "dashboard") location.assign("/");
 });
 
@@ -203,16 +168,19 @@ document.addEventListener("keydown", event => {
       navigateNext({view: "project", project: nextRoute.project, session: null});
     }else if(nextRoute.view === "project"){
       event.preventDefault();
-      navigateNext({view: "overview", project: null, session: null});
+      navigateNext({view: "attention", project: null, session: null});
     }
     return;
   }
-  if(String(event.key).toLowerCase() === "p"){
+  if(String(event.key).toLowerCase() === "a"){
     event.preventDefault();
-    nextSelectProjects();
+    navigateNext({view: "attention", project: null, session: null});
+  }else if(String(event.key).toLowerCase() === "p"){
+    event.preventDefault();
+    navigateNext({view: "projects", project: null, session: null});
   }else if(String(event.key).toLowerCase() === "s"){
     event.preventDefault();
-    nextSelectSessions();
+    navigateNext({view: "sessions", project: null, session: null});
   }else if(String(event.key).toLowerCase() === "d"){
     event.preventDefault();
     location.assign("/");

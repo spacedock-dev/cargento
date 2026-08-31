@@ -1,13 +1,22 @@
-function nextOverviewBody(tab){
-  if(tab === "sessions") return nextSessionsView();
-  if(tab === "projects") return nextProjectsView();
-  return "";
+function nextAttentionView(){
+  return '<section class="next-attention"><h1>Attention</h1></section>';
 }
 
 function nextDetailBody(route){
   if(route.view === "project") return nextProjectView(route.project);
   if(route.view === "session") return nextSessionView(route.project, route.session);
   return "";
+}
+
+function nextViewBody(){
+  if(nextRoute.view === "attention") return nextAttentionView();
+  if(nextRoute.view === "projects"){
+    return `<section class="next-projects" data-next-view-body="projects"><h1>Projects</h1>${nextProjectsView()}</section>`;
+  }
+  if(nextRoute.view === "sessions"){
+    return `<section class="next-sessions" data-next-view-body="sessions"><h1>Sessions</h1>${nextSessionsView()}</section>`;
+  }
+  return `<section data-next-view-body="${esc(nextRoute.view)}">${nextDetailBody(nextRoute)}</section>`;
 }
 
 function nextDataUrl(){

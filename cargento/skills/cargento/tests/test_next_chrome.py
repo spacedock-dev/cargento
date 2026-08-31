@@ -8,44 +8,53 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextChromeBehaviorTest(NextPageJsHarness):
-    def test_routes_set_distinct_titles_and_overview_exposes_related_tabs(self) -> None:
+    def test_attention_is_default_and_old_overview_normalizes_to_it(self) -> None:
         out = self._run_page_js(
             """
-nextData = {
-  summary: {working: 0, needs_input: 0},
-  sessions: [{
-    sid: "session-one", session: "session-", harness: "codex",
-    project: "alpha/repo", title: "Resolve the gate", state: "idle", subagents: []
-  }],
-  asks: []
-};
-navigateNext({view: "overview", project: null, session: null});
-const overview = {title: document.title, html: __els.app.innerHTML};
-navigateNext({view: "project", project: "alpha/repo", session: null});
-const project = {title: document.title, html: __els.app.innerHTML};
-navigateNext({view: "session", project: "alpha/repo", session: "session-one"});
-const session = {title: document.title, html: __els.app.innerHTML};
-console.log(JSON.stringify({overview, project, session}));
+const fragments = ["", "#n=overview", "#n=unknown"];
+const routes = fragments.map(nextRouteFromFragment);
+const repaired = routes.map(nextFragmentForRoute);
+console.log(JSON.stringify({routes, repaired}));
 """,
             '__els.app = {innerHTML: ""};\n',
         )
         assert isinstance(out, dict)
 
-        self.assertEqual("Cargento — Overview", out["overview"]["title"])
-        self.assertEqual("alpha/repo — Cargento", out["project"]["title"])
-        self.assertEqual("Resolve the gate — alpha/repo — Cargento", out["session"]["title"])
-        overview = out["overview"]["html"]
-        self.assertIn("<h1>Cargento command overview</h1>", overview)
-        self.assertIn('id="next-tab-projects" aria-controls="next-panel-projects"', overview)
-        self.assertIn('id="next-tab-sessions" aria-controls="next-panel-sessions"', overview)
-        self.assertIn(
-            'role="tabpanel" id="next-panel-projects" aria-labelledby="next-tab-projects"',
-            overview,
+        for route, repaired in zip(out["routes"], out["repaired"], strict=True):
+            self.assertEqual("attention", route["view"])
+            self.assertEqual("#n=attention", repaired)
+
+    def test_primary_routes_are_native_links_with_current_page(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = {summary: {working: 0, needs_input: 0}, sessions: [], asks: []};
+const views = ["attention", "projects", "sessions"];
+const rendered = views.map(view => {
+  navigateNext({view, project: null, session: null});
+  return {view, title: document.title, html: __els.app.innerHTML};
+});
+console.log(JSON.stringify(rendered));
+""",
+            '__els.app = {innerHTML: ""};\n',
         )
-        self.assertIn(
-            'role="tabpanel" id="next-panel-sessions" aria-labelledby="next-tab-sessions"',
-            overview,
-        )
+        assert isinstance(out, list)
+
+        for rendered, title in zip(
+            out,
+            ["Cargento — Attention", "Cargento — Projects", "Cargento — Sessions"],
+            strict=True,
+        ):
+            html = rendered["html"]
+            self.assertEqual(title, rendered["title"])
+            self.assertIn('<nav aria-label="Primary"', html)
+            self.assertIn('href="#n=attention"', html)
+            self.assertIn('href="#n=projects"', html)
+            self.assertIn('href="#n=sessions"', html)
+            self.assertEqual(3, html.count('<a href="#n='))
+            self.assertEqual(1, html.count('aria-current="page"'))
+            self.assertEqual(1, html.count("<h1>"))
+            self.assertLess(html.index('href="#n=attention"'), html.index('href="#n=projects"'))
+            self.assertLess(html.index('href="#n=projects"'), html.index('href="#n=sessions"'))
 
     def test_route_survives_load_and_browser_history(self) -> None:
         out = self._run_page_js(
@@ -56,7 +65,7 @@ __fire("window:hashchange", {});
 const project = {...nextRoute};
 location.hash = "#n=overview";
 __fire("window:hashchange", {});
-console.log(JSON.stringify({initial, project, overview: nextRoute, html: __els.app.innerHTML}));
+console.log(JSON.stringify({initial, project, attention: nextRoute, html: __els.app.innerHTML}));
             """,
             'location.hash = "#n=session:recce%20cloud:019a%2Fabc";\n'
             '__els.app = {innerHTML: ""};\n',
@@ -71,52 +80,48 @@ console.log(JSON.stringify({initial, project, overview: nextRoute, html: __els.a
             out["project"],
         )
         self.assertEqual(
-            {"view": "overview", "project": None, "session": None},
-            out["overview"],
+            {"view": "attention", "project": None, "session": None},
+            out["attention"],
         )
-        self.assertIn("Cargento | overview", out["html"])
+        self.assertIn("<h1>Attention</h1>", out["html"])
 
     def test_breadcrumb_segments_are_clickable_and_escape_walks_up(self) -> None:
         out = self._run_page_js(
             """
 const sessionHtml = __els.app.innerHTML;
-__fire("click", {
-  target: {closest(){ return {dataset: {nextRoute: "project:recce"}}; }},
-  preventDefault(){}
-});
-const clicked = {...nextRoute};
 navigateNext({view: "session", project: "recce", session: "019a"});
 __fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
 const project = {...nextRoute};
 __fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
-const overview = {...nextRoute};
+const attention = {...nextRoute};
 __fire("keydown", {key: "Escape", target: {tagName: "BODY"}, preventDefault(){}});
-console.log(JSON.stringify({sessionHtml, clicked, project, overview, stayed: nextRoute}));
+console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute}));
 """,
             'location.hash = "#n=session:recce:019a";\n__els.app = {innerHTML: ""};\n',
         )
 
-        self.assertIn("Cargento | overview", out["sessionHtml"])
+        self.assertIn('<a href="#n=attention">Attention</a>', out["sessionHtml"])
+        self.assertIn('<a href="#n=projects">Projects</a>', out["sessionHtml"])
+        self.assertIn('<a class="next-crumb" href="#n=project:recce">recce</a>', out["sessionHtml"])
         self.assertIn("recce", out["sessionHtml"])
         self.assertIn("019a", out["sessionHtml"])
-        self.assertIn('data-next-route="overview"', out["sessionHtml"])
-        self.assertIn('data-next-route="project:recce"', out["sessionHtml"])
         self.assertEqual(
             {"view": "project", "project": "recce", "session": None},
-            out["clicked"],
+            out["project"],
         )
-        self.assertEqual(out["clicked"], out["project"])
         self.assertEqual(
-            {"view": "overview", "project": None, "session": None},
-            out["overview"],
+            {"view": "attention", "project": None, "session": None},
+            out["attention"],
         )
-        self.assertEqual(out["overview"], out["stayed"])
+        self.assertEqual(out["attention"], out["stayed"])
 
     def test_the_next_fragment_never_contains_the_old_session_token(self) -> None:
         out = self._run_page_js(
             """
 const routes = [
-  {view: "overview", project: null, session: null},
+  {view: "attention", project: null, session: null},
+  {view: "projects", project: null, session: null},
+  {view: "sessions", project: null, session: null},
   {view: "project", project: "recce:cloud", session: null},
   {view: "session", project: "recce:cloud", session: "session=one/two"}
 ];
@@ -128,11 +133,13 @@ console.log(JSON.stringify({fragments, repaired: location.hash}));
         )
 
         self.assertTrue(all("session=" not in fragment for fragment in out["fragments"]))
-        self.assertEqual("#n=overview", out["fragments"][0])
-        self.assertEqual("#n=project:recce%3Acloud", out["fragments"][1])
-        self.assertEqual("#n=overview", out["repaired"])
+        self.assertEqual("#n=attention", out["fragments"][0])
+        self.assertEqual("#n=projects", out["fragments"][1])
+        self.assertEqual("#n=sessions", out["fragments"][2])
+        self.assertEqual("#n=project:recce%3Acloud", out["fragments"][3])
+        self.assertEqual("#n=attention", out["repaired"])
 
-    def test_shortcuts_reciprocally_select_overview_tabs_and_leave_for_dashboard(self) -> None:
+    def test_shortcuts_select_matching_top_level_routes_and_leave_for_dashboard(self) -> None:
         out = self._run_page_js(
             """
 __fire("keydown", {key: "s", target: {tagName: "BODY"}, preventDefault(){}});
@@ -140,10 +147,13 @@ const sessions = {route: {...nextRoute}, hash: location.hash, html: __els.app.in
 navigateNext({view: "session", project: "recce", session: "one"});
 __fire("keydown", {key: "P", target: {tagName: "BODY"}, preventDefault(){}});
 const projects = {route: {...nextRoute}, hash: location.hash, html: __els.app.innerHTML};
+__fire("keydown", {key: "a", target: {tagName: "BODY"}, preventDefault(){}});
+const attention = {route: {...nextRoute}, hash: location.hash, html: __els.app.innerHTML};
 __fire("keydown", {key: "d", target: {tagName: "BODY"}, preventDefault(){}});
 console.log(JSON.stringify({
   sessions,
   projects,
+  attention,
   assigned: __assignedLocations,
   search: location.search,
   keydownListeners: (__listeners.keydown || []).length
@@ -153,13 +163,15 @@ console.log(JSON.stringify({
             '__els.app = {innerHTML: ""};\n',
         )
 
-        overview = {"view": "overview", "project": None, "session": None}
-        self.assertEqual(overview, out["sessions"]["route"])
-        self.assertEqual("#n=overview", out["sessions"]["hash"])
-        self.assertIn('data-next-tab="sessions" aria-selected="true"', out["sessions"]["html"])
-        self.assertEqual(overview, out["projects"]["route"])
-        self.assertEqual("#n=overview", out["projects"]["hash"])
-        self.assertIn('data-next-tab="projects" aria-selected="true"', out["projects"]["html"])
+        self.assertEqual({"view": "sessions", "project": None, "session": None}, out["sessions"]["route"])
+        self.assertEqual("#n=sessions", out["sessions"]["hash"])
+        self.assertIn('<h1>Sessions</h1>', out["sessions"]["html"])
+        self.assertEqual({"view": "projects", "project": None, "session": None}, out["projects"]["route"])
+        self.assertEqual("#n=projects", out["projects"]["hash"])
+        self.assertIn('<h1>Projects</h1>', out["projects"]["html"])
+        self.assertEqual({"view": "attention", "project": None, "session": None}, out["attention"]["route"])
+        self.assertEqual("#n=attention", out["attention"]["hash"])
+        self.assertIn('<h1>Attention</h1>', out["attention"]["html"])
         self.assertEqual(["/"], out["assigned"])
         self.assertEqual("?next=true", out["search"])
         self.assertEqual(1, out["keydownListeners"])
@@ -174,11 +186,13 @@ function attempt(name, event){
   __fire("keydown", {...event, key: "p", preventDefault(){ prevented = true; }});
   cases[name] = {route: {...nextRoute}, hash: location.hash, prevented};
 }
-for(const tag of ["INPUT", "SELECT", "TEXTAREA"]){
-  attempt(tag.toLowerCase(), {target: {tagName: tag}});
-}
-for(const modifier of ["metaKey", "ctrlKey", "altKey"]){
-  attempt(modifier, {target: {tagName: "BODY"}, [modifier]: true});
+for(const key of ["a", "p", "s"]){
+  for(const tag of ["INPUT", "SELECT", "TEXTAREA"]){
+    attempt(`${key}-${tag.toLowerCase()}`, {key, target: {tagName: tag}});
+  }
+  for(const modifier of ["metaKey", "ctrlKey", "altKey"]){
+    attempt(`${key}-${modifier}`, {key, target: {tagName: "BODY"}, [modifier]: true});
+  }
 }
 console.log(JSON.stringify(cases));
 """,
@@ -191,32 +205,6 @@ console.log(JSON.stringify(cases));
                 self.assertEqual(expected_route, case["route"])
                 self.assertEqual("#n=session:recce:one", case["hash"])
                 self.assertFalse(case["prevented"])
-
-    def test_projects_menu_action_opens_the_projects_overview(self) -> None:
-        out = self._run_page_js(
-            """
-const initial = __els.app.innerHTML;
-__fire("click", {
-  target: {closest(selector){
-    return selector === "[data-next-action]"
-      ? {dataset: {nextAction: "projects"}}
-      : null;
-  }}
-});
-console.log(JSON.stringify({initial, route: nextRoute, hash: location.hash,
-  html: __els.app.innerHTML}));
-""",
-            'location.hash = "#n=session:recce:one";\n__els.app = {innerHTML: ""};\n',
-        )
-
-        self.assertIn(
-            '<button type="button" data-next-action="projects">projects overview '
-            "<kbd>p</kbd></button>",
-            out["initial"],
-        )
-        self.assertEqual({"view": "overview", "project": None, "session": None}, out["route"])
-        self.assertEqual("#n=overview", out["hash"])
-        self.assertIn('data-next-tab="projects" aria-selected="true"', out["html"])
 
     def test_the_running_count_excludes_blocked_sessions(self) -> None:
         out = self._run_page_js(
@@ -251,8 +239,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             out,
         )
         self.assertNotIn("4 running", out)
-        self.assertIn("2 projects · 4 sessions", out)
-        self.assertIn("in this 24h window", out)
+        self.assertIn('<h1>Attention</h1>', out)
 
     def test_the_need_you_pill_opens_the_session_queue(self) -> None:
         out = self._run_page_js(
@@ -278,13 +265,9 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 """,
         )
 
-        self.assertEqual(
-            {"view": "overview", "project": None, "session": None},
-            out["route"],
-        )
-        self.assertEqual("#n=overview", out["hash"])
-        self.assertIn('data-next-tab="sessions" aria-selected="true"', out["html"])
-        self.assertIn('data-next-body="sessions">', out["html"])
+        self.assertEqual({"view": "attention", "project": None, "session": None}, out["route"])
+        self.assertEqual("#n=attention", out["hash"])
+        self.assertIn('<h1>Attention</h1>', out["html"])
 
     def test_a_payload_with_no_gates_renders_no_pill(self) -> None:
         out = self._run_page_js(
@@ -311,12 +294,11 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("need you", out)
         self.assertNotIn('class="next-gate"', out)
         self.assertNotIn('data-next-action="needs-input"', out)
-        self.assertIn('data-next-tab="projects"', out)
-        self.assertIn('data-next-tab="sessions"', out)
-        self.assertIn('data-next-body="projects"', out)
-        self.assertIn('data-next-body="sessions"', out)
-        self.assertEqual(1, out.count("projects overview"))
-        self.assertEqual(1, out.count("flat session list"))
+        self.assertIn('<nav aria-label="Primary"', out)
+        self.assertIn('href="#n=attention"', out)
+        self.assertIn('href="#n=projects"', out)
+        self.assertIn('href="#n=sessions"', out)
+        self.assertIn('<h1>Attention</h1>', out)
         self.assertEqual(1, out.count("dashboard mode"))
 
     def test_poll_forwards_only_the_all_flag(self) -> None:

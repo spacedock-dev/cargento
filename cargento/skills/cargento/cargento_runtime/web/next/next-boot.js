@@ -1,6 +1,7 @@
 const nextQuery = new URLSearchParams(location.search);
 const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same directory: the label is the" +
   " last two segments of each session's path, so sibling worktrees read alike.";
+const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions"]);
 
 const qs = name => nextQuery.get(name);
 const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g,
@@ -17,7 +18,10 @@ function nextDecodeRoutePart(value){
 function nextRouteFromFragment(fragment){
   const token = String(fragment || "").startsWith("#n=")
     ? String(fragment).slice(3)
-    : "overview";
+    : "";
+  if(NEXT_TOP_LEVEL_VIEWS.has(token)){
+    return {view: token, project: null, session: null};
+  }
   const parts = token.split(":");
   if(parts.length === 2 && parts[0] === "project"){
     const project = nextDecodeRoutePart(parts[1]);
@@ -28,7 +32,7 @@ function nextRouteFromFragment(fragment){
     const session = nextDecodeRoutePart(parts[2]);
     if(project && session) return {view: "session", project, session};
   }
-  return {view: "overview", project: null, session: null};
+  return {view: "attention", project: null, session: null};
 }
 
 function nextFragmentForRoute(route){
@@ -38,7 +42,8 @@ function nextFragmentForRoute(route){
   if(route && route.view === "project" && route.project){
     return `#n=project:${encodeURIComponent(route.project)}`;
   }
-  return "#n=overview";
+  if(route && NEXT_TOP_LEVEL_VIEWS.has(route.view)) return `#n=${route.view}`;
+  return "#n=attention";
 }
 
 function nextNumber(value){
