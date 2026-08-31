@@ -85,8 +85,12 @@ function nextProjectHasSpacedock(sessions){
   });
 }
 
-function nextProjectRequestLabel(group){
-  return nextProjectHasSpacedock(group.sessions) ? "Captain" : "Needs you";
+function nextProjectRequestLabel(group, ask){
+  const sid = String(ask && ask.session_id || "");
+  const owner = sid
+    ? group.sessions.find(session => String(session && session.sid || "") === sid)
+    : null;
+  return owner && nextProjectHasSpacedock([owner]) ? "Captain" : "Needs you";
 }
 
 function nextProjectCell(group){
@@ -150,7 +154,7 @@ function nextProjectRow(group){
     situation = "No active session observed";
   }
   const response = question
-    ? `<div><span>RESPONSE</span><strong>${nextProjectRequestLabel(group)} · ${esc(question)}</strong></div>`
+    ? `<div><span>RESPONSE</span><strong>${nextProjectRequestLabel(group, ask)} · ${esc(question)}</strong></div>`
     : "";
   const commandClass = question
     ? "next-project-command"
@@ -176,7 +180,7 @@ function nextProjectsView(){
   const question = String(request && request.ask && request.ask.question || "").trim();
   const lede = question
     ? '<section class="next-command-brief" aria-label="Request command brief">' +
-      `<strong>${nextProjectRequestLabel(request.group).toUpperCase()} — ${esc(question)}</strong></section>`
+      `<strong>${nextProjectRequestLabel(request.group, request.ask).toUpperCase()} — ${esc(question)}</strong></section>`
     : "";
   return lede +
     `<div class="next-projects-brief">${groups.map(item => nextProjectRow(item.group)).join("")}</div>`;

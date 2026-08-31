@@ -62,8 +62,16 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         return match.group(0)
 
     def test_exact_ask_leads_the_command_brief_ahead_of_first_seen_projects(self) -> None:
-        html = self.render()
-        assert isinstance(html, str)
+        out = self.render(
+            """
+const overview = __els.app.innerHTML;
+nextRoute = {view: "session", project: "alpha/repo", session: "alpha-gate"};
+renderNext();
+console.log(JSON.stringify({overview, session: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        html = out["overview"]
 
         self.assertEqual(3, html.count("data-next-project-row"))
         self.assertLess(
@@ -87,25 +95,37 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn(
             "Latest session context · Approve the release", self.project_row(html, "alpha/repo")
         )
+        self.assertIn("CAPTAIN</h2>", out["session"])
+        self.assertNotIn("NEEDS YOU</h2>", out["session"])
 
     def test_plain_exact_ask_keeps_attention_without_claiming_captain_authority(self) -> None:
-        html = self.render(
+        out = self.render(
             """
+nextData.sessions.push({
+  sid: "beta-spacedock-sibling", project: "beta/app", state: "idle", active: false,
+  last_activity: 9000, title: "Sibling session", total: 0, done: 0,
+  spacedock: {role: "first-officer", workflows: []}, subagents: []
+});
 nextData.asks = [{
   id: "ask-beta", session_id: "beta-work", project: "beta/app",
   question: "Plain approval", options: ["Approve"]
 }];
 renderNext();
-console.log(JSON.stringify(__els.app.innerHTML));
+const overview = __els.app.innerHTML;
+nextRoute = {view: "session", project: "beta/app", session: "beta-work"};
+renderNext();
+console.log(JSON.stringify({overview, session: __els.app.innerHTML}));
 """
         )
-        assert isinstance(html, str)
+        assert isinstance(out, dict)
 
-        self.assertIn("NEEDS YOU — Plain approval", html)
-        self.assertNotIn("CAPTAIN — Plain approval", html)
-        beta = self.project_row(html, "beta/app")
+        self.assertIn("NEEDS YOU — Plain approval", out["overview"])
+        self.assertNotIn("CAPTAIN — Plain approval", out["overview"])
+        beta = self.project_row(out["overview"], "beta/app")
         self.assertIn("Needs you · Plain approval", beta)
         self.assertNotIn("Captain · Plain approval", beta)
+        self.assertIn("NEEDS YOU</h2>", out["session"])
+        self.assertNotIn("CAPTAIN</h2>", out["session"])
 
     def test_the_cell_prefers_the_filtered_asked_line_over_the_raw_prompt(self) -> None:
         # `last_prompt` is the raw newest record on every harness but Codex, so
