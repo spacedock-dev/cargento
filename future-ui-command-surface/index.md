@@ -21,6 +21,17 @@ gates:
                 id: briefing:future-ui-command-surface:framing:attempt-1:revision-1
                 digest: sha256:b54e1f3645d96a20d0552028105924257bcea0210a18525175fb534fe5e25818
                 room-ref: ./review/framing/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:future-ui-command-surface:framing:1
+                briefing: briefing:future-ui-command-surface:framing:attempt-1:revision-1
+                by: person:captain
+                at: "2026-08-31T01:40:53.077749Z"
+                decision: approve
+                reason: Captain approved the bold, falsifiable command-surface direction and authorized three-harness reconnaissance.
+              application:
+                target-stage: reconnaissance
+                state: pending
 ---
 
 ## Design bet
