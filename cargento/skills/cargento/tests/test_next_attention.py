@@ -676,6 +676,35 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertIn("COVERAGE", empty_html)
         self.assertNotIn("no agents exist", empty_html.lower())
 
+    def test_compressed_remainder_heading_says_only_no_published_exception(self) -> None:
+        html = self.render(
+            {
+                "harnesses": [
+                    {
+                        "key": "antigravity",
+                        "label": "AGY",
+                        "discovered": True,
+                        "reports_needs_input": False,
+                        "reports_rate": False,
+                        "error": None,
+                    }
+                ],
+                "sessions": [
+                    {
+                        "harness": "antigravity",
+                        "sid": "quiet-owner",
+                        "project": "alpha/quiet",
+                        "state": "idle",
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("NO PUBLISHED EXCEPTION (1)</h2>", html)
+        self.assertNotIn("HEALTHY FLEET", html)
+        self.assertIn("No published exception; coverage applies", html)
+        self.assertIn('href="#n=projects"', html)
+
     def test_attention_uses_semantic_lists_and_the_five_part_item_grammar(self) -> None:
         payload = {
             "generated": 10_000,
@@ -921,6 +950,54 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         for outcome in (assignment, one_goal, conflicting, context_only):
             self.assertNotIn("Title is context only", outcome)
             self.assertNotIn("Prompt is context only", outcome)
+
+    def test_malformed_instruction_and_goal_values_fall_back_to_identity(self) -> None:
+        malformed_values: tuple[object, ...] = ({"nested": "value"}, ["value"], 7)
+
+        def outcome_html(session: dict[str, object]) -> str:
+            html = self.render(
+                {
+                    "sessions": [
+                        {
+                            "harness": "claude",
+                            "sid": "malformed-owner",
+                            "project": "alpha/outcome",
+                            "state": "needs_input",
+                            **session,
+                        }
+                    ],
+                    "asks": [
+                        {
+                            "id": "malformed-ask",
+                            "session_id": "malformed-owner",
+                            "project": "alpha/outcome",
+                            "question": "What next?",
+                        }
+                    ],
+                }
+            )
+            return html.split('data-next-attention-part="outcome"', 1)[1].split("</p>", 1)[0]
+
+        outcomes = [
+            outcome_html({"instruction": {"label": "asked", "text": value}})
+            for value in malformed_values
+        ]
+        outcomes.extend(
+            outcome_html(
+                {
+                    "spacedock": {
+                        "workflows": [{"workflow": "launch", "goal": value}]
+                    }
+                }
+            )
+            for value in malformed_values
+        )
+
+        for outcome in outcomes:
+            self.assertIn(">IDENTITY<", outcome)
+            self.assertIn("alpha/outcome", outcome)
+            self.assertNotIn(">OUTCOME<", outcome)
+            self.assertNotIn("[object Object]", outcome)
 
     def test_unrepresentable_reset_drops_checkpoint_without_taking_down_view(self) -> None:
         html = self.render(

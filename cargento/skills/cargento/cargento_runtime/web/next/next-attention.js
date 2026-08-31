@@ -538,8 +538,8 @@ function nextAttentionHarnessLabel(model, harness){
 function nextAttentionAskedAssignment(session){
   const instruction = session && session.instruction;
   if(!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
-    instruction.label !== "asked") return "";
-  return String(instruction.text == null ? "" : instruction.text).trim();
+    instruction.label !== "asked" || typeof instruction.text !== "string") return "";
+  return instruction.text.trim();
 }
 
 function nextAttentionWorkflowGoal(session){
@@ -548,7 +548,7 @@ function nextAttentionWorkflowGoal(session){
     Array.isArray(spacedock.workflows) ? spacedock.workflows : [];
   const goals = [];
   for(const workflow of workflows){
-    const goal = String(workflow && workflow.goal != null ? workflow.goal : "").trim();
+    const goal = workflow && typeof workflow.goal === "string" ? workflow.goal.trim() : "";
     if(goal && !goals.includes(goal)) goals.push(goal);
   }
   return goals.length === 1 ? goals[0] : "";
@@ -789,7 +789,7 @@ function nextAttentionHealthyHtml(model){
   if(healthy.unknown) states.push(`${healthy.unknown} unknown state`);
   return '<section class="next-attention-section next-attention-healthy" ' +
     'data-next-attention-section="healthy">' +
-    `<h2 tabindex="-1">HEALTHY FLEET (${count})</h2>` +
+    `<h2 tabindex="-1">NO PUBLISHED EXCEPTION (${count})</h2>` +
     `<p><strong>${count} session${count === 1 ? "" : "s"} with no published exception</strong>` +
     `${states.length ? `<span>${esc(states.join(" · "))}</span>` : ""}</p>` +
     '<p>No published exception; coverage applies</p>' +
