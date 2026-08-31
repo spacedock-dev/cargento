@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import unittest
 
-from .next_harness import NextPageJsHarness
+from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -19,6 +20,19 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
                 )
             )
         )
+
+    def render(self, payload: object) -> str:
+        encoded = json.dumps(payload)
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    f"nextData = JSON.parse({json.dumps(encoded)});",
+                    "console.log(JSON.stringify(nextAttentionView(nextAttentionModel(nextData))));",
+                )
+            )
+        )
+        assert isinstance(rendered, str)
+        return rendered
 
     def test_exact_spacedock_ask_is_captain_and_publishes_one_checkpoint(self) -> None:
         model = self.model(
@@ -580,3 +594,452 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual(1, model["healthy"]["moving"])
         self.assertEqual(1, model["healthy"]["quiet"])
         self.assertEqual(1, model["healthy"]["unknown"])
+
+    def test_discovered_harness_capabilities_bound_coverage_and_failures(self) -> None:
+        agy_payload = {
+            "harnesses": [
+                {
+                    "key": "antigravity",
+                    "label": "AGY",
+                    "discovered": True,
+                    "reports_needs_input": False,
+                    "reports_rate": False,
+                    "error": None,
+                }
+            ],
+            "sessions": [
+                {
+                    "harness": "antigravity",
+                    "sid": "agy-idle",
+                    "project": "agy/project",
+                    "state": "idle",
+                }
+            ],
+            "asks": [],
+        }
+        failure_payload = {
+            "ask": True,
+            "harnesses": [
+                {
+                    "key": "claude",
+                    "label": "Claude Code",
+                    "discovered": True,
+                    "reports_needs_input": True,
+                    "reports_rate": True,
+                    "error": "PermissionError: /Users/private/transcript.jsonl",
+                },
+                {
+                    "key": "ghost",
+                    "label": "Not discovered",
+                    "discovered": False,
+                    "reports_needs_input": True,
+                    "reports_rate": True,
+                    "error": None,
+                },
+            ],
+            "sessions": [],
+            "asks": [],
+        }
+        agy_model = self.model(agy_payload)
+        failure_model = self.model(failure_payload)
+        assert isinstance(agy_model, dict)
+        assert isinstance(failure_model, dict)
+
+        gate_counts = {
+            key: agy_model["coverage"]["gates"][key]
+            for key in ("discovered", "reporting", "unknown", "failed")
+        }
+        self.assertEqual(
+            {"discovered": 1, "reporting": 0, "unknown": 1, "failed": 0},
+            gate_counts,
+        )
+        self.assertEqual(1, failure_model["coverage"]["gates"]["failed"])
+        self.assertEqual([], failure_model["needs"])
+        agy_html = self.render(agy_payload)
+        failure_html = self.render(failure_payload)
+        self.assertIn("1 session with no published exception", agy_html)
+        self.assertNotIn("AGY is clear", agy_html)
+        self.assertIn("1 failed", failure_html)
+        self.assertNotIn("PermissionError", failure_html)
+        self.assertNotIn("/Users/private/transcript.jsonl", failure_html)
+
+    def test_exact_request_and_empty_copy_respect_capability_and_payload_window(self) -> None:
+        ask_disabled_html = self.render({"sessions": [], "asks": []})
+        ask_enabled_html = self.render({"ask": True, "sessions": [], "asks": []})
+        empty_html = self.render(
+            {"window_hours": 24, "sessions": [], "harnesses": [], "asks": []}
+        )
+
+        self.assertNotIn("No exact requests published", ask_disabled_html)
+        self.assertIn("No exact requests published", ask_enabled_html)
+        self.assertIn("No sessions in this 24h payload", empty_html)
+        self.assertIn("COVERAGE", empty_html)
+        self.assertNotIn("no agents exist", empty_html.lower())
+
+    def test_attention_uses_semantic_lists_and_the_five_part_item_grammar(self) -> None:
+        payload = {
+            "generated": 10_000,
+            "harnesses": [
+                {
+                    "key": "claude",
+                    "label": "Claude Code",
+                    "discovered": True,
+                    "reports_needs_input": True,
+                    "reports_rate": True,
+                    "error": None,
+                }
+            ],
+            "sessions": [
+                {
+                    "harness": "claude",
+                    "sid": "ask-owner",
+                    "project": "alpha/ask",
+                    "state": "needs_input",
+                    "tasks": [{"subject": "Run checks", "status": "pending"}],
+                },
+                {
+                    "harness": "claude",
+                    "sid": "risk-owner",
+                    "project": "beta/risk",
+                    "state": "working",
+                    "loop": {"errors": 4, "tool": "Bash"},
+                },
+                {
+                    "harness": "claude",
+                    "sid": "stop-owner",
+                    "project": "gamma/stop",
+                    "state": "idle",
+                    "finished_at": 9_000,
+                    "dirty": None,
+                },
+                {
+                    "harness": "claude",
+                    "sid": "task-owner",
+                    "project": "delta/task",
+                    "state": "working",
+                    "tasks": [{"subject": "Publish docs", "status": "in_progress"}],
+                },
+                {
+                    "harness": "claude",
+                    "sid": "healthy-owner",
+                    "project": "epsilon/quiet",
+                    "state": "idle",
+                },
+            ],
+            "asks": [
+                {
+                    "id": "ask-one",
+                    "session_id": "ask-owner",
+                    "project": "alpha/ask",
+                    "question": "Approve deploy",
+                    "age_sec": 480,
+                }
+            ],
+        }
+        html = self.render(payload)
+
+        self.assertEqual(1, html.count("<h1 "))
+        self.assertEqual(5, html.count("<h2"))
+        self.assertEqual(4, html.count("<ol>"))
+        self.assertEqual(4, html.count("<li><article"))
+        self.assertEqual(4, html.count('data-next-attention-part="why"><a '))
+        self.assertEqual(1, html.count('<details class="next-attention-coverage-details">'))
+        self.assertNotIn('<details class="next-attention-coverage-details" open', html)
+        ask_item = html.split('data-next-attention-subject="session:[&quot;claude&quot;,' , 1)[1]
+        ask_item = ask_item.split("</article>", 1)[0]
+        grammar = [
+            'data-next-attention-part="why"',
+            'data-next-attention-part="outcome"',
+            'data-next-attention-part="now"',
+            'data-next-attention-part="next"',
+            'data-next-attention-part="source"',
+        ]
+        self.assertEqual(sorted(html.index(label) for label in grammar), [html.index(label) for label in grammar])
+        self.assertTrue(all(label in ask_item for label in grammar))
+        risk_item = html.split('data-next-attention-kind="loop"', 1)[1].split("</article>", 1)[0]
+        self.assertNotIn('data-next-attention-part="next"', risk_item)
+        healthy = html.split('data-next-attention-section="healthy"', 1)[1]
+        self.assertNotIn("<article", healthy)
+        self.assertIn('href="#n=projects"', healthy)
+
+    def test_all_model_subject_kinds_render_bounded_source_claims(self) -> None:
+        html = self.render(
+            {
+                "generated": 10_000,
+                "harnesses": [
+                    {
+                        "key": "claude",
+                        "label": "Claude Code",
+                        "discovered": True,
+                        "reports_needs_input": True,
+                        "reports_rate": True,
+                        "error": None,
+                    }
+                ],
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "bare",
+                        "project": "bare/input",
+                        "state": "needs_input",
+                        "state_detail": "Choose a bounded option",
+                        "blocked_since": 9_400,
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "loop",
+                        "project": "risk/loop",
+                        "state": "working",
+                        "loop": {"errors": 4, "tool": "Bash"},
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "long",
+                        "project": "risk/long",
+                        "state": "working",
+                        "turn": {"long": True, "elapsed_h": "3h", "eta_h": "soon"},
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "dirty",
+                        "project": "stop/dirty",
+                        "state": "idle",
+                        "finished_at": 8_000,
+                        "dirty": True,
+                        "changed": 3,
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "clean",
+                        "project": "stop/clean",
+                        "state": "idle",
+                        "finished_at": 8_100,
+                        "dirty": False,
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "unknown",
+                        "project": "stop/unknown",
+                        "state": "idle",
+                        "finished_at": 8_200,
+                        "dirty": None,
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "task",
+                        "project": "next/task",
+                        "state": "working",
+                        "tasks": [{"subject": "Ship docs", "status": "in_progress"}],
+                    },
+                ],
+                "usage": [
+                    {
+                        "harness": "claude",
+                        "state": "ok",
+                        "fiveH": {"pct": 92, "resetAt": 12_000},
+                    }
+                ],
+            }
+        )
+
+        for claim in (
+            "Input signal observed",
+            "Repeated tool failures",
+            "Bash failed 4 times",
+            "Long-running turn",
+            "Quota pressure",
+            "92% reported",
+            "Stop observed with uncommitted work",
+            "3 changed entries",
+            "Stop observed; git state clean",
+            "Stop observed; git state not measured",
+            "Published task",
+            "Ship docs",
+        ):
+            self.assertIn(claim, html)
+        self.assertNotIn("soon", html)
+        self.assertNotIn("exhaust", html.lower())
+
+    def test_outcome_uses_exact_assignment_or_one_distinct_workflow_goal(self) -> None:
+        def outcome_html(session: dict[str, object]) -> str:
+            payload = {
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "outcome-owner",
+                        "project": "alpha/outcome",
+                        "state": "needs_input",
+                        "title": "Title is context only",
+                        "last_prompt": "Prompt is context only",
+                        **session,
+                    }
+                ],
+                "asks": [
+                    {
+                        "id": "outcome-ask",
+                        "session_id": "outcome-owner",
+                        "project": "alpha/outcome",
+                        "question": "What next?",
+                    }
+                ],
+            }
+            html = self.render(payload)
+            self.assertIn('data-next-attention-part="outcome"', html)
+            return html.split('data-next-attention-part="outcome"', 1)[1].split("</p>", 1)[0]
+
+        assignment = outcome_html(
+            {"instruction": {"label": "asked", "text": "Ship the exact assignment"}}
+        )
+        one_goal = outcome_html(
+            {
+                "spacedock": {
+                    "workflows": [
+                        None,
+                        {"workflow": "launch", "goal": "Ship the next page"},
+                        {"workflow": "review", "goal": "Ship the next page"},
+                    ]
+                }
+            }
+        )
+        conflicting = outcome_html(
+            {
+                "spacedock": {
+                    "workflows": [
+                        {"workflow": "launch", "goal": "Ship the next page"},
+                        {"workflow": "review", "goal": "Check the release"},
+                    ]
+                }
+            }
+        )
+        context_only = outcome_html({})
+
+        self.assertIn("Ship the exact assignment", assignment)
+        self.assertIn("Ship the next page", one_goal)
+        self.assertIn("alpha/outcome", conflicting)
+        self.assertNotIn("Ship the next page", conflicting)
+        self.assertNotIn("Check the release", conflicting)
+        for outcome in (assignment, one_goal, conflicting, context_only):
+            self.assertNotIn("Title is context only", outcome)
+            self.assertNotIn("Prompt is context only", outcome)
+
+    def test_unrepresentable_reset_drops_checkpoint_without_taking_down_view(self) -> None:
+        html = self.render(
+            {
+                "usage": [
+                    {
+                        "harness": "claude",
+                        "state": "ok",
+                        "fiveH": {"pct": 92, "resetAt": 1e300},
+                    }
+                ]
+            }
+        )
+
+        self.assertIn("Quota pressure", html)
+        self.assertNotIn('data-next-attention-part="next"', html)
+
+    def test_hostile_payload_text_stays_text_and_does_not_change_subject_order(self) -> None:
+        marker = '<img src=x onerror=alert(1)><script>alert(2)</script>'
+
+        def payload(suffix: str) -> dict[str, object]:
+            return {
+                "generated": 10_000,
+                "harnesses": [
+                    {
+                        "key": "claude",
+                        "label": f"Claude {suffix}",
+                        "discovered": True,
+                        "reports_needs_input": True,
+                        "reports_rate": True,
+                        "error": "PermissionError: /tmp/transcript.jsonl",
+                    },
+                    {
+                        "key": "codex",
+                        "label": f"Codex {suffix}",
+                        "discovered": True,
+                        "reports_needs_input": True,
+                        "reports_rate": True,
+                        "error": None,
+                    },
+                ],
+                "sessions": [
+                    {
+                        "harness": "codex",
+                        "sid": f"ask/id:{suffix}",
+                        "project": f"alpha/project:{suffix}",
+                        "state": "needs_input",
+                        "title": suffix,
+                        "last_prompt": suffix,
+                        "instruction": {"label": "asked", "text": f"Assignment {suffix}"},
+                        "spacedock": {
+                            "workflows": [{"workflow": suffix, "goal": f"Goal {suffix}"}]
+                        },
+                        "tasks": [{"subject": f"Task {suffix}", "status": "pending"}],
+                        "path": f"/tmp/{suffix}",
+                        "transcript_path": f"/tmp/transcript-{suffix}",
+                    },
+                    {
+                        "harness": "codex",
+                        "sid": "risk-owner",
+                        "project": "beta/risk",
+                        "state": "working",
+                        "loop": {"errors": 4, "tool": f"Tool {suffix}"},
+                    },
+                    {
+                        "harness": "codex",
+                        "sid": "input-owner",
+                        "project": "gamma/input",
+                        "state": "needs_input",
+                        "state_detail": f"Detail {suffix}",
+                    },
+                ],
+                "asks": [
+                    {
+                        "id": "hostile-ask",
+                        "session_id": f"ask/id:{suffix}",
+                        "project": f"alpha/project:{suffix}",
+                        "question": f"Question {suffix}",
+                        "options": [f"Option {suffix}"],
+                    }
+                ],
+                "usage": [
+                    {
+                        "harness": "codex",
+                        "state": "ok",
+                        "models": [{"label": f"Model {suffix}", "pct": 91}],
+                    }
+                ],
+            }
+
+        benign_model = self.model(payload("plain"))
+        hostile_model = self.model(payload(marker))
+        hostile_html = self.render(payload(marker))
+        assert isinstance(benign_model, dict)
+        assert isinstance(hostile_model, dict)
+
+        self.assertEqual(
+            [subject["primaryKind"] for subject in benign_model["needs"]],
+            [subject["primaryKind"] for subject in hostile_model["needs"]],
+        )
+        self.assertEqual(
+            [subject["primaryKind"] for subject in benign_model["risk"]],
+            [subject["primaryKind"] for subject in hostile_model["risk"]],
+        )
+        self.assertIn("&lt;img", hostile_html)
+        self.assertNotIn("<img", hostile_html)
+        self.assertNotIn("<script", hostile_html)
+        self.assertNotIn("onerror=", hostile_html)
+        self.assertNotIn("PermissionError", hostile_html)
+        self.assertNotIn("/tmp/transcript", hostile_html)
+        self.assertIn("alpha%2Fproject%3A%3Cimg", hostile_html)
+        self.assertIn("ask%2Fid%3A%3Cimg", hostile_html)
+
+    def test_attention_styles_cover_wide_narrow_focus_hit_targets_and_motion(self) -> None:
+        self.assertIn("@media(min-width:900px)", NEXT_STYLES)
+        self.assertIn("@media(max-width:899px)", NEXT_STYLES)
+        self.assertIn("min-block-size:44px", NEXT_STYLES)
+        self.assertIn("min-inline-size:44px", NEXT_STYLES)
+        self.assertIn("overflow-wrap:anywhere", NEXT_STYLES)
+        self.assertIn(".next-attention a:focus-visible", NEXT_STYLES)
+        self.assertIn("prefers-reduced-motion:reduce", NEXT_STYLES)
+        self.assertIsNone(re.search(r"(?:^|[;{])order:", NEXT_STYLES))

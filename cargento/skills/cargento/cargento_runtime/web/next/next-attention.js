@@ -205,16 +205,39 @@ function nextAttentionStopSignal(session, sourceIndex){
   }};
 }
 
-function nextAttentionRateCoverage(_discoveredHarnesses){
-  return {reported: 0, notReported: 0, failed: 0, rows: []};
+function nextAttentionRateCoverage(discovered){
+  const failed = discovered.filter(row => row.error != null);
+  const reported = discovered.filter(row => row.error == null && row.reports_rate === true);
+  const notReported = discovered.filter(row => row.error == null && row.reports_rate === false);
+  return {
+    reported: reported.length, notReported: notReported.length, failed: failed.length,
+    rows: discovered,
+  };
 }
 
 function nextAttentionCoverage(payload){
+  const rows = payload && typeof payload === "object" && !Array.isArray(payload) &&
+    Array.isArray(payload.harnesses) ? payload.harnesses : [];
+  const discovered = rows.filter(row => row && row.discovered === true);
+  const failed = discovered.filter(row => row.error != null);
+  const reporting = discovered.filter(row =>
+    row.error == null && row.reports_needs_input === true
+  );
+  const unknown = discovered.filter(row =>
+    row.error == null && row.reports_needs_input !== true
+  );
   return {
-    gates: {discovered: 0, reporting: 0, unknown: 0, failed: 0, rows: []},
+    gates: {
+      discovered: discovered.length, reporting: reporting.length,
+      unknown: unknown.length, failed: failed.length, rows: discovered,
+    },
     exactRequestsReported: !!(payload && payload.ask === true),
-    rates: nextAttentionRateCoverage([]),
-    observedStops: 0,
+    exactRequestCount: nextPayloadAsks(payload).length,
+    rates: nextAttentionRateCoverage(discovered),
+    observedStops: nextPayloadSessions(payload).filter(session =>
+      typeof session.finished_at === "number" && Number.isFinite(session.finished_at) &&
+        session.finished_at > 0
+    ).length,
     ends: "fleet coverage not reported",
   };
 }
@@ -471,51 +494,325 @@ function nextAttentionModel(payload){
     representedSessionKeys: [...represented],
     generated: nextNumber(payload && payload.generated),
     windowHours: nextNumber(payload && payload.window_hours),
+    sessionCount: sessions.length,
   };
   return model;
 }
 
 function nextAttentionSubjectRoute(subject){
-  if(!subject || !subject.session) return "";
-  const project = String(subject.session.project == null ? "" : subject.session.project);
-  const sid = String(subject.session.sid == null ? "" : subject.session.sid);
-  return project && sid ? nextRouteToken({view: "session", project, session: sid}) : "";
+  const identity = nextAttentionSubjectIdentity(subject);
+  const project = String(identity && identity.project != null ? identity.project : "");
+  const sid = String(identity && identity.sid != null ? identity.sid : "");
+  return project && sid
+    ? nextRouteToken({view: "session", project, session: sid})
+    : nextRouteToken({view: "sessions"});
+}
+
+const NEXT_ATTENTION_KIND_LABELS = new Map([
+  ["ask", "Question waiting"],
+  ["input", "Input signal observed"],
+  ["attribution", "Attribution conflict"],
+  ["loop", "Repeated tool failures"],
+  ["quota", "Quota pressure"],
+  ["long-turn", "Long-running turn"],
+  ["collision", "Identity collision"],
+  ["stop-dirty", "Stop observed with uncommitted work"],
+  ["stop-clean", "Stop observed; git state clean"],
+  ["stop-unknown", "Stop observed; git state not measured"],
+  ["task", "Published task"],
+]);
+
+function nextAttentionEsc(value){
+  return esc(value).replace(/=/g, "&#61;");
+}
+
+function nextAttentionHarnessLabel(model, harness){
+  const key = String(harness == null ? "" : harness);
+  const rows = model && model.coverage && model.coverage.gates &&
+    Array.isArray(model.coverage.gates.rows) ? model.coverage.gates.rows : [];
+  const row = rows.find(item => String(item && item.key || "") === key);
+  const label = String(row && row.label != null ? row.label : "").trim();
+  return label || key || "Source not identified";
+}
+
+function nextAttentionAskedAssignment(session){
+  const instruction = session && session.instruction;
+  if(!instruction || typeof instruction !== "object" || Array.isArray(instruction) ||
+    instruction.label !== "asked") return "";
+  return String(instruction.text == null ? "" : instruction.text).trim();
+}
+
+function nextAttentionWorkflowGoal(session){
+  const spacedock = session && session.spacedock;
+  const workflows = spacedock && typeof spacedock === "object" && !Array.isArray(spacedock) &&
+    Array.isArray(spacedock.workflows) ? spacedock.workflows : [];
+  const goals = [];
+  for(const workflow of workflows){
+    const goal = String(workflow && workflow.goal != null ? workflow.goal : "").trim();
+    if(goal && !goals.includes(goal)) goals.push(goal);
+  }
+  return goals.length === 1 ? goals[0] : "";
+}
+
+function nextAttentionSubjectIdentityText(subject, model){
+  if(subject && subject.kind === "quota"){
+    const identity = nextAttentionSubjectIdentity(subject);
+    return `${nextAttentionHarnessLabel(model, identity && identity.harness)} · ` +
+      `${String(identity && identity.project || "Quota window")}`;
+  }
+  if(subject && subject.kind === "collision"){
+    const signal = subject.signals && subject.signals[0];
+    const detail = signal && signal.detail || {};
+    return `${String(detail.label || "Unlabelled display")} display label · ` +
+      `${Number(detail.memberCount) || 0} exact sessions`;
+  }
+  const identity = nextAttentionSubjectIdentity(subject);
+  if(identity){
+    const project = String(identity.project == null ? "" : identity.project) || "Unlabelled display";
+    const harness = nextAttentionHarnessLabel(model, identity.harness);
+    const sid = String(identity.sid == null ? "" : identity.sid) || "identity not reported";
+    return `${project} · ${harness} · ${sid}`;
+  }
+  const ask = subject && Array.isArray(subject.asks) ? subject.asks[0] : null;
+  const project = String(ask && ask.project == null ? "" : ask && ask.project) ||
+    "Unlabelled display";
+  const harness = nextAttentionHarnessLabel(model, ask && ask.harness);
+  const sid = String(ask && ask.session_id == null ? "" : ask && ask.session_id) ||
+    "identity not reported";
+  return `${project} · ${harness} · ${sid}`;
+}
+
+function nextAttentionOutcome(subject, model){
+  const session = subject && subject.session;
+  const assignment = nextAttentionAskedAssignment(session);
+  if(assignment) return {label: "OUTCOME", text: assignment};
+  const goal = nextAttentionWorkflowGoal(session);
+  if(goal) return {label: "OUTCOME", text: goal};
+  return {label: "IDENTITY", text: nextAttentionSubjectIdentityText(subject, model)};
+}
+
+function nextAttentionAttributionNow(detail){
+  if(detail && detail.ask && detail.owner){
+    const askProject = String(detail.ask.project == null ? "" : detail.ask.project);
+    const ownerProject = String(detail.owner.project == null ? "" : detail.owner.project);
+    return `Sources disagree · request display label: ${askProject} · ` +
+      `session display label: ${ownerProject}`;
+  }
+  const readings = [];
+  if(detail && detail.state) readings.push(`state: ${detail.state}`);
+  if(detail && detail.active === true) readings.push("active: true");
+  if(detail && detail.finishedAt != null) readings.push(`stop observed: ${detail.finishedAt}`);
+  if(detail && detail.dirty != null) readings.push(`dirty: ${detail.dirty}`);
+  if(detail && detail.changed != null) readings.push(`changed entries: ${detail.changed}`);
+  return readings.length ? `Sources disagree · ${readings.join(" · ")}` : "Sources disagree";
+}
+
+function nextAttentionSubjectNow(subject){
+  const signal = subject && Array.isArray(subject.signals) ? subject.signals[0] : null;
+  const detail = signal && signal.detail || {};
+  if(subject.primaryKind === "ask"){
+    const asks = Array.isArray(subject.asks) ? subject.asks : [];
+    const rows = asks.map(ask => {
+      const question = String(ask && ask.question == null ? "" : ask && ask.question).trim();
+      const options = Array.isArray(ask && ask.options) ? ask.options.length : 0;
+      return {text: question, note: options ? `${options} published options` : ""};
+    }).filter(row => row.text);
+    for(const secondary of subject.signals.filter(item => item.kind === "attribution")){
+      rows.push({text: nextAttentionAttributionNow(secondary.detail), note: ""});
+    }
+    return rows;
+  }
+  if(subject.primaryKind === "input"){
+    const text = String(subject.session && subject.session.state_detail || "").trim();
+    return [{text: text || "Needs-input state reported", note: ""}];
+  }
+  if(subject.primaryKind === "attribution"){
+    return [{text: nextAttentionAttributionNow(detail), note: ""}];
+  }
+  if(subject.primaryKind === "loop"){
+    const tool = String(detail.tool == null ? "" : detail.tool).trim();
+    const text = tool
+      ? `${tool} failed ${detail.errors} times`
+      : `Tool failures reported ${detail.errors} times`;
+    return [{text, note: ""}];
+  }
+  if(subject.primaryKind === "quota") return [{text: `${detail.pct}% reported`, note: ""}];
+  if(subject.primaryKind === "long-turn"){
+    const session = subject.session || detail.session || {};
+    const state = String(session.state_detail || "Working").trim() || "Working";
+    const elapsed = session.turn && typeof session.turn.elapsed_h === "string"
+      ? session.turn.elapsed_h.trim()
+      : "";
+    return [{text: elapsed ? `${state} · ${elapsed} elapsed` : state, note: ""}];
+  }
+  if(subject.primaryKind === "collision"){
+    return [{
+      text: `${detail.memberCount} exact sessions share ${String(detail.label || "")} display label`,
+      note: "Identity scope only; shared location is not established",
+    }];
+  }
+  if(subject.primaryKind === "stop-dirty"){
+    const changed = Number.isInteger(detail.changedEntries)
+      ? `${detail.changedEntries} changed entries`
+      : "Uncommitted work observed";
+    return [{text: changed, note: ""}];
+  }
+  if(subject.primaryKind === "stop-clean") return [{text: "Git state reported clean", note: ""}];
+  if(subject.primaryKind === "stop-unknown"){
+    return [{text: "Git state was not measured", note: ""}];
+  }
+  if(subject.primaryKind === "task"){
+    const status = subject.checkpoint && subject.checkpoint.status;
+    return [{text: status === "in_progress" ? "In progress" : "Pending", note: ""}];
+  }
+  return [{text: "Source signal observed", note: ""}];
+}
+
+function nextAttentionCheckpointText(subject){
+  const checkpoint = subject && subject.checkpoint;
+  if(!checkpoint) return "";
+  const task = String(checkpoint.activeForm || checkpoint.subject || "").trim();
+  if(task) return task;
+  if(typeof checkpoint.resetAt === "number" && Number.isFinite(checkpoint.resetAt)){
+    const instant = new Date(checkpoint.resetAt * 1000);
+    return Number.isNaN(instant.getTime()) ? "" : `Reset at ${instant.toISOString()}`;
+  }
+  return "";
+}
+
+function nextAttentionSubjectAge(subject, model){
+  if(subject.primaryKind === "ask"){
+    const ages = subject.asks.map(nextAttentionAskAge).filter(age => age != null);
+    return ages.length ? Math.max(...ages) : null;
+  }
+  if(subject.primaryKind === "input"){
+    return nextPayloadAgeSeconds({generated: model.generated}, subject.session &&
+      subject.session.blocked_since);
+  }
+  if(subject.section === "close"){
+    const signal = subject.signals && subject.signals[0];
+    return nextPayloadAgeSeconds({generated: model.generated}, signal && signal.detail.finishedAt);
+  }
+  return null;
+}
+
+function nextAttentionSubjectSource(subject, model){
+  const identity = nextAttentionSubjectIdentity(subject);
+  const ask = subject && Array.isArray(subject.asks) ? subject.asks[0] : null;
+  const harness = identity && identity.harness || ask && ask.harness || "";
+  const parts = [];
+  if(subject.responsibility) parts.push(subject.responsibility);
+  parts.push(nextAttentionHarnessLabel(model, harness));
+  const age = nextAttentionSubjectAge(subject, model);
+  if(age != null) parts.push(nextFormatDuration(age));
+  return parts.join(" · ");
 }
 
 function nextAttentionSubjectHtml(subject, model){
   const route = nextAttentionSubjectRoute(subject);
-  const title = subject.primaryKind === "ask" ? "Question waiting" : "Input signal observed";
-  const heading = route
-    ? `<a href="#n=${esc(route)}" data-next-route="${esc(route)}">${esc(title)}</a>`
-    : esc(title);
-  const questions = subject.asks.map(ask => {
-    const question = esc(String(ask.question || "").trim());
-    return `<p>${subject.responsibility ? `${esc(subject.responsibility)} — ` : ""}${question}</p>`;
+  const title = NEXT_ATTENTION_KIND_LABELS.get(subject.primaryKind) || "Source signal observed";
+  const secondary = subject.signals.length > 1
+    ? ` · ${subject.signals.length - 1} additional source signal${subject.signals.length === 2 ? "" : "s"}`
+    : "";
+  const outcome = nextAttentionOutcome(subject, model);
+  const nowRows = nextAttentionSubjectNow(subject).map(row =>
+    `<span class="next-attention-now-value">${nextAttentionEsc(row.text)}` +
+      `${row.note ? `<small>${nextAttentionEsc(row.note)}</small>` : ""}</span>`
+  ).join("");
+  const checkpoint = nextAttentionCheckpointText(subject);
+  const next = checkpoint
+    ? '<p class="next-attention-part" data-next-attention-part="next">' +
+      `<span class="next-attention-label">NEXT</span><span>${nextAttentionEsc(checkpoint)}</span></p>`
+    : "";
+  return '<li><article class="next-attention-item" ' +
+    `data-next-attention-subject="${nextAttentionEsc(subject.key)}" ` +
+    `data-next-attention-kind="${nextAttentionEsc(subject.primaryKind)}">` +
+    '<h3 class="next-attention-why" data-next-attention-part="why">' +
+    `<a href="#n=${esc(route)}" data-next-route="${esc(route)}">${esc(title)}${esc(secondary)}</a>` +
+    "</h3>" +
+    '<p class="next-attention-part" data-next-attention-part="outcome">' +
+    `<span class="next-attention-label">${outcome.label}</span>` +
+    `<span>${nextAttentionEsc(outcome.text)}</span></p>` +
+    '<div class="next-attention-part" data-next-attention-part="now">' +
+    `<span class="next-attention-label">NOW</span><span>${nowRows}</span></div>` + next +
+    '<p class="next-attention-part" data-next-attention-part="source">' +
+    `<span class="next-attention-label">SOURCE</span>` +
+    `<span>${nextAttentionEsc(nextAttentionSubjectSource(subject, model))}</span></p></article></li>`;
+}
+
+function nextAttentionCoverageHtml(model){
+  const coverage = model.coverage;
+  const gates = coverage.gates;
+  const failed = gates.failed ? ` · ${gates.failed} failed` : "";
+  const visible = `Gates: ${gates.reporting}/${gates.discovered} reporting · ` +
+    `${gates.unknown} unknown${failed} · Ends: ${coverage.ends}`;
+  const rows = gates.rows.map(row => {
+    const name = String(row.label == null ? "" : row.label).trim() || String(row.key || "Harness");
+    const gate = row.error != null
+      ? "needs-input reporting failed"
+      : row.reports_needs_input === true ? "needs-input reporting" : "needs-input reporting unknown";
+    const rate = row.error != null
+      ? "token-rate reporting failed"
+      : row.reports_rate === true
+        ? "token-rate reporting"
+        : row.reports_rate === false ? "token-rate not reported" : "token-rate reporting unknown";
+    return `<li><strong>${nextAttentionEsc(name)}</strong> · ${gate} · ${rate}</li>`;
   }).join("");
-  const blockedAge = subject.primaryKind === "input" && subject.session
-    ? nextPayloadAgeSeconds({generated: model.generated}, subject.session.blocked_since)
-    : null;
-  const detailText = subject.primaryKind === "input" && subject.session && subject.session.state_detail
-    ? esc(subject.session.state_detail)
+  const exact = coverage.exactRequestsReported && coverage.exactRequestCount === 0
+    ? "<p>No exact requests published.</p>"
     : "";
-  const detail = detailText || blockedAge != null
-    ? `<p>${detailText}${detailText && blockedAge != null ? " · " : ""}` +
-      `${blockedAge != null ? esc(nextFormatDuration(blockedAge)) : ""}</p>`
+  const stops = coverage.observedStops > 0
+    ? `<p>Stops observed on ${coverage.observedStops} ` +
+      `session${coverage.observedStops === 1 ? "" : "s"}; fleet coverage not reported.</p>`
     : "";
-  const checkpoint = subject.checkpoint && (subject.checkpoint.activeForm || subject.checkpoint.subject);
-  const next = checkpoint ? `<p><span>NEXT</span> ${esc(checkpoint)}</p>` : "";
-  const attribution = subject.signals.some(signal => signal.kind === "attribution")
-    ? "<p>Sources disagree</p>"
-    : "";
-  return `<li><article data-next-attention-subject="${esc(subject.key)}"><h3>${heading}</h3>` +
-    `${questions}${detail}${attribution}${next}</article></li>`;
+  return '<div class="next-attention-coverage">' +
+    `<p><span class="next-attention-brief-label">COVERAGE</span>${esc(visible)}</p>` +
+    '<details class="next-attention-coverage-details"><summary>Coverage details</summary>' +
+    `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}` +
+    '<p>Termination cause not reported.</p></details></div>';
+}
+
+function nextAttentionSectionHtml(key, title, subjects, model){
+  if(!subjects.length) return "";
+  return `<section class="next-attention-section" data-next-attention-section="${key}">` +
+    `<h2 tabindex="-1">${title} (${subjects.length})</h2>` +
+    `<ol>${subjects.map(subject => nextAttentionSubjectHtml(subject, model)).join("")}</ol></section>`;
+}
+
+function nextAttentionHealthyHtml(model){
+  const healthy = model.healthy;
+  const count = healthy.sessions.length;
+  if(!count) return "";
+  const states = [];
+  if(healthy.moving) states.push(`${healthy.moving} moving`);
+  if(healthy.quiet) states.push(`${healthy.quiet} quiet`);
+  if(healthy.unknown) states.push(`${healthy.unknown} unknown state`);
+  return '<section class="next-attention-section next-attention-healthy" ' +
+    'data-next-attention-section="healthy">' +
+    `<h2 tabindex="-1">HEALTHY FLEET (${count})</h2>` +
+    `<p><strong>${count} session${count === 1 ? "" : "s"} with no published exception</strong>` +
+    `${states.length ? `<span>${esc(states.join(" · "))}</span>` : ""}</p>` +
+    '<p>No published exception; coverage applies</p>' +
+    '<a href="#n=projects" data-next-route="projects">View all projects</a></section>';
 }
 
 function nextAttentionView(model){
-  const needs = model && Array.isArray(model.needs) ? model.needs : [];
-  const section = needs.length
-    ? `<section data-next-attention-section="needs"><h2>NEEDS YOU NOW (${needs.length})</h2>` +
-      `<ol>${needs.map(subject => nextAttentionSubjectHtml(subject, model)).join("")}</ol></section>`
+  const counts = model.counts;
+  const observed = [
+    `${counts.needs} need you`, `${counts.risk} at risk`, `${counts.close} close the loop`,
+    `${counts.next} coming next`, `${counts.moving} moving`, `${counts.quiet} quiet`,
+  ].join(" · ");
+  const empty = model.sessionCount === 0
+    ? `<p class="next-attention-empty">No sessions in this ` +
+      `${model.windowHours == null ? "payload" : `${esc(model.windowHours)}h payload`}</p>`
     : "";
-  return `<section class="next-attention" data-next-view-body="attention"><h1>Attention</h1>${section}</section>`;
+  return '<section class="next-attention" data-next-view-body="attention"><h1 tabindex="-1">' +
+    "Attention</h1><div class=\"next-attention-brief\">" +
+    `<p><span class="next-attention-brief-label">OBSERVED NOW</span>${observed}</p>` +
+    `${nextAttentionCoverageHtml(model)}</div>${empty}` +
+    nextAttentionSectionHtml("needs", "NEEDS YOU NOW", model.needs, model) +
+    nextAttentionSectionHtml("risk", "AT RISK", model.risk, model) +
+    nextAttentionSectionHtml("close", "CLOSE THE LOOP", model.close, model) +
+    nextAttentionSectionHtml("next", "COMING NEXT", model.next, model) +
+    `${nextAttentionHealthyHtml(model)}</section>`;
 }

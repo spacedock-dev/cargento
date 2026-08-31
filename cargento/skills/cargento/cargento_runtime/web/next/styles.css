@@ -261,9 +261,48 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-subagent-elapsed{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-xs)}
 .next-session-footer{padding:20px 0;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-xs);text-align:right}
 .next-session-detail-empty{margin-top:34px;padding:24px;border:1px solid var(--line);color:var(--ink2);font-size:var(--fs-sm)}
+.next-attention{min-width:0;padding-top:34px;overflow-wrap:anywhere}
+.next-attention>h1{margin:0 0 18px;font-size:var(--fs-xl);font-weight:500}
+.next-attention-brief{display:grid;gap:8px;padding:16px 18px;border-left:3px solid var(--accent);background:var(--panel)}
+.next-attention-brief p{margin:0;color:var(--ink2);font-size:var(--fs-sm);line-height:1.5}
+.next-attention-brief-label,.next-attention-label{display:block;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);text-transform:uppercase}
+.next-attention-coverage-details{margin-top:8px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-attention-coverage-details summary{width:max-content;max-width:100%;cursor:pointer}
+.next-attention-coverage-details ul{display:grid;gap:5px;margin:9px 0 0;padding-left:20px}
+.next-attention-coverage-details strong{font-weight:500}
+.next-attention-empty{margin:24px 0 0;padding:16px 18px;border:1px solid var(--line);color:var(--ink2);font-size:var(--fs-sm)}
+.next-attention-section{min-width:0;margin-top:30px}
+.next-attention-section>h2{margin:0;padding:0 0 10px;border-bottom:1px solid var(--line2);color:var(--ink3);font-family:var(--mono);font-size:var(--fs-xs);font-weight:400}
+.next-attention-section>ol{margin:0;padding:0;list-style-position:inside}
+.next-attention-section>ol>li{border-bottom:1px solid var(--line)}
+.next-attention-item{display:grid;min-width:0;padding:16px 10px}
+.next-attention-item>h3,.next-attention-item>p,.next-attention-item>div{min-width:0;margin:0}
+.next-attention-why{font-size:var(--fs-sm);font-weight:500}
+.next-attention-why a{display:flex;align-items:center;color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:4px}
+.next-attention-part{display:grid;gap:4px;margin-top:12px!important;color:var(--ink2);font-size:var(--fs-sm);line-height:1.45}
+.next-attention-now-value{display:block}
+.next-attention-now-value+span{margin-top:6px}
+.next-attention-now-value small{display:block;margin-top:3px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-attention-healthy>p{margin:12px 0 0;color:var(--ink2);font-size:var(--fs-sm)}
+.next-attention-healthy>p strong,.next-attention-healthy>p span{display:block}
+.next-attention-healthy>p span{margin-top:5px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-xs)}
+.next-attention a,.next-attention summary{min-block-size:44px;min-inline-size:44px}
+.next-attention-healthy>a{display:inline-flex;align-items:center;margin-top:12px}
+.next-attention a:focus-visible,.next-attention summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(min-width:900px){
+  .next-attention-brief-label{display:inline-block;min-width:116px;margin-right:12px}
+  .next-attention-item{grid-template-columns:minmax(150px,.8fr) minmax(180px,1fr) minmax(180px,1.2fr) minmax(140px,.8fr) minmax(130px,.7fr);gap:18px;align-items:start}
+  .next-attention-part{margin-top:0!important}
+}
+@media(max-width:899px){
+  .next-attention-item{grid-template-columns:minmax(0,1fr)}
+  .next-attention-part{grid-template-columns:minmax(52px,auto) minmax(0,1fr);gap:10px}
+}
 @keyframes next-live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .next-live .next-status-dot{color:var(--accent-ink);animation:next-live-pulse 1.6s ease-in-out infinite}
-@media(prefers-reduced-motion:reduce){.next-live .next-status-dot{animation:none}}
+@media(prefers-reduced-motion:reduce){
+  .next-live .next-status-dot,.next-attention *{animation:none!important;transition:none!important}
+}
 @media(max-width:760px){
   #app{padding:24px 18px 48px}
   .next-header,.next-header-right,.next-tabs-row{align-items:flex-start;flex-direction:column}
