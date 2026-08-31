@@ -36,6 +36,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-header,.next-header-right,.next-tabs-row,.next-tabs{display:flex;align-items:center}
 .next-header{justify-content:space-between;gap:24px;padding-bottom:28px;border-bottom:1px solid var(--line)}
 .next-header-right{gap:14px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
+.next-header nav[aria-label="Primary"]{display:flex;align-items:center;gap:20px;font-family:var(--mono);font-size:var(--fs-sm)}
+.next-header nav[aria-label="Primary"] a{display:inline-flex;align-items:center;min-block-size:44px;min-inline-size:44px;border-bottom:2px solid transparent;color:var(--ink3);text-decoration:none}
+.next-header nav[aria-label="Primary"] a[aria-current="page"]{border-bottom-color:var(--accent);color:var(--ink)}
 .next-breadcrumb{font-family:var(--mono);font-size:var(--fs-sm);color:var(--ink2)}
 .next-crumb,.next-tabs button,.next-menu button{border:0;background:none;color:inherit;font:inherit;cursor:pointer}
 .next-crumb{padding:0;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px}
@@ -43,10 +46,11 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-gate{appearance:none;padding:5px 9px;border:1px solid var(--warn);border-radius:999px;background:none;color:var(--warnink);font:inherit;cursor:pointer}
 .next-gate:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .next-menu{position:relative}
-.next-menu summary{list-style:none;cursor:pointer;font-size:var(--fs-lg)}
+.next-menu summary{display:flex;align-items:center;justify-content:center;min-block-size:44px;min-inline-size:44px;list-style:none;cursor:pointer;font-size:var(--fs-lg)}
 .next-menu summary::-webkit-details-marker{display:none}
 .next-menu-items{position:absolute;z-index:1;right:0;top:26px;min-width:210px;padding:8px;border:1px solid var(--line2);background:var(--panel)}
-.next-menu button{display:flex;justify-content:space-between;width:100%;padding:8px;text-align:left}
+.next-menu button{min-block-size:44px;display:flex;justify-content:space-between;width:100%;padding:8px;text-align:left}
+.next-header nav[aria-label="Primary"] a:focus-visible,.next-menu summary:focus-visible,.next-menu button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .next-menu kbd{font-family:var(--mono);color:var(--ink3)}
 .next-stalled{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:18px;padding:10px 12px;border-left:3px solid var(--alert);background:var(--panel);color:var(--ink2);font-size:var(--fs-xs);line-height:1.45}
 .next-stalled strong{color:var(--alert);font-weight:500}

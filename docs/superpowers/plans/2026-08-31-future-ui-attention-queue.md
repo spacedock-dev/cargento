@@ -267,8 +267,9 @@ self.assertEqual([], spacedock_model["next"])
 self.assertEqual("NEEDS YOU", sibling_model["needs"][0]["responsibility"])
 self.assertEqual("input", bare_gate_model["needs"][0]["primaryKind"])
 self.assertNotIn("responsibility", bare_gate_model["needs"][0])
-self.assertEqual(["ask", "attribution"],
-                 [signal["kind"] for signal in conflict_model["needs"][0]["signals"]])
+self.assertEqual(
+    ["ask", "attribution"], [signal["kind"] for signal in conflict_model["needs"][0]["signals"]]
+)
 self.assertEqual([], conflict_model["risk"])
 ```
 
@@ -355,8 +356,7 @@ Add exact fixtures and assertions:
 
 ```python
 self.assertEqual("loop", loop_model["risk"][0]["primaryKind"])
-self.assertEqual({"errors": 4, "tool": "Bash"},
-                 loop_model["risk"][0]["signals"][0]["detail"])
+self.assertEqual({"errors": 4, "tool": "Bash"}, loop_model["risk"][0]["signals"][0]["detail"])
 self.assertEqual([], model_without_loop["risk"])
 self.assertEqual("long-turn", long_model["risk"][0]["primaryKind"])
 self.assertNotIn("checkpoint", long_model["risk"][0])

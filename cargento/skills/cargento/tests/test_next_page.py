@@ -585,16 +585,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(30_818, len(styles))
+        self.assertEqual(31_542, len(styles))
         self.assertEqual(
-            "6d79f70388caee0ab4744d0ae9b9e595313542b59b4bd4ebfafa9f3f5e17efad",
+            "050d4477dcfadfa031dc58dfc291b8d4f6efa43304c4e044b4598ca571fa0351",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(291_516, len(assembled))
+        self.assertEqual(292_240, len(assembled))
         self.assertEqual(
-            "c5f97456a861feabe8b9c6b600f46da4a0a2ea24f713274e0973d82a82d24697",
+            "cecf169985e19065f26bba443e26aff7219d3821b6bf4d4d6083e5138107f510",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -659,7 +659,7 @@ console.log(JSON.stringify({
 
         self.assertIn(
             '<nav aria-label="Primary"><a href="#n=attention" aria-current="page">'
-            "Attention</a><a href=\"#n=projects\">Projects</a>"
+            'Attention</a><a href="#n=projects">Projects</a>'
             '<a href="#n=sessions">Sessions</a></nav>',
             out,
         )

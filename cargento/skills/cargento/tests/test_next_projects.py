@@ -114,9 +114,7 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         self.assertNotIn("exact request", quiet)
 
         self.assertIn("SITUATION", alpha)
-        self.assertIn(
-            "Waiting for your response: Approve the release", alpha
-        )
+        self.assertIn("Waiting for your response: Approve the release", alpha)
         self.assertIn("RESPONSE", alpha)
         self.assertIn("Captain · Approve the release", alpha)
         self.assertIn("3 of 5 done", alpha)
@@ -193,7 +191,9 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
         assert isinstance(out, dict)
 
         self.assertIn("CAPTAIN · Source not identified", out["attention"])
-        self.assertIn("Captain · Approve the release", self.project_row(out["projects"], "alpha/repo"))
+        self.assertIn(
+            "Captain · Approve the release", self.project_row(out["projects"], "alpha/repo")
+        )
         self.assertIn("CAPTAIN</h2>", out["session"])
         for html in out.values():
             self.assertNotIn("NEEDS YOU</h2>", html)

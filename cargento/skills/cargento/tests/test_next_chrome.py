@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 import unittest
 
-from .next_harness import NextPageJsHarness
+from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -55,6 +55,19 @@ console.log(JSON.stringify(rendered));
             self.assertEqual(1, html.count("<h1"))
             self.assertLess(html.index('href="#n=attention"'), html.index('href="#n=projects"'))
             self.assertLess(html.index('href="#n=projects"'), html.index('href="#n=sessions"'))
+
+    def test_primary_navigation_and_menu_controls_keep_44_pixel_targets(self) -> None:
+        self.assertIn(
+            '.next-header nav[aria-label="Primary"] a{display:inline-flex;align-items:center;'
+            "min-block-size:44px;min-inline-size:44px",
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            ".next-menu summary{display:flex;align-items:center;justify-content:center;"
+            "min-block-size:44px;min-inline-size:44px",
+            NEXT_STYLES,
+        )
+        self.assertIn(".next-menu button{min-block-size:44px", NEXT_STYLES)
 
     def test_route_survives_load_and_browser_history(self) -> None:
         out = self._run_page_js(
@@ -163,13 +176,19 @@ console.log(JSON.stringify({
             '__els.app = {innerHTML: ""};\n',
         )
 
-        self.assertEqual({"view": "sessions", "project": None, "session": None}, out["sessions"]["route"])
+        self.assertEqual(
+            {"view": "sessions", "project": None, "session": None}, out["sessions"]["route"]
+        )
         self.assertEqual("#n=sessions", out["sessions"]["hash"])
-        self.assertIn('<h1>Sessions</h1>', out["sessions"]["html"])
-        self.assertEqual({"view": "projects", "project": None, "session": None}, out["projects"]["route"])
+        self.assertIn("<h1>Sessions</h1>", out["sessions"]["html"])
+        self.assertEqual(
+            {"view": "projects", "project": None, "session": None}, out["projects"]["route"]
+        )
         self.assertEqual("#n=projects", out["projects"]["hash"])
-        self.assertIn('<h1>Projects</h1>', out["projects"]["html"])
-        self.assertEqual({"view": "attention", "project": None, "session": None}, out["attention"]["route"])
+        self.assertIn("<h1>Projects</h1>", out["projects"]["html"])
+        self.assertEqual(
+            {"view": "attention", "project": None, "session": None}, out["attention"]["route"]
+        )
         self.assertEqual("#n=attention", out["attention"]["hash"])
         self.assertIn('<h1 tabindex="-1">Attention</h1>', out["attention"]["html"])
         self.assertEqual(["/"], out["assigned"])

@@ -318,9 +318,7 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             }
         )
         quota_69_model = self.model(
-            {
-                "usage": [{"harness": "claude", "state": "ok", "fiveH": {"pct": 69}}]
-            }
+            {"usage": [{"harness": "claude", "state": "ok", "fiveH": {"pct": 69}}]}
         )
         assert isinstance(quota_model, dict)
         assert isinstance(quota_69_model, dict)
@@ -334,20 +332,39 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertNotIn("checkpoint", quota_model["risk"][1])
 
     def test_equal_long_turns_follow_harness_order_when_input_reverses(self) -> None:
+        sessions = [
+            {
+                "harness": "claude",
+                "sid": "same",
+                "project": "claude/label",
+                "state": "working",
+                "turn": {"long": True},
+            },
+            {
+                "harness": "codex",
+                "sid": "same",
+                "project": "codex/label",
+                "state": "working",
+                "turn": {"long": True},
+            },
+            {
+                "harness": "antigravity",
+                "sid": "same",
+                "project": "agy/label",
+                "state": "working",
+                "turn": {"long": True},
+            },
+        ]
         payload = {
             "harnesses": [
                 {"key": "claude"},
                 {"key": "codex"},
                 {"key": "antigravity"},
             ],
-            "sessions": [
-                {"harness": "claude", "sid": "same", "project": "claude/label", "state": "working", "turn": {"long": True}},
-                {"harness": "codex", "sid": "same", "project": "codex/label", "state": "working", "turn": {"long": True}},
-                {"harness": "antigravity", "sid": "same", "project": "agy/label", "state": "working", "turn": {"long": True}},
-            ],
+            "sessions": sessions,
         }
         first_model = self.model(payload)
-        reversed_model = self.model({**payload, "sessions": list(reversed(payload["sessions"]))})
+        reversed_model = self.model({**payload, "sessions": list(reversed(sessions))})
         assert isinstance(first_model, dict)
         assert isinstance(reversed_model, dict)
 
@@ -363,16 +380,49 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         )
         self.assertEqual(first_keys, reversed_input_keys)
 
-    def test_collision_represents_members_once_and_malformed_signals_do_not_move_valid_risk(self) -> None:
+    def test_collision_represents_members_once_and_malformed_signals_do_not_move_valid_risk(
+        self,
+    ) -> None:
         model = self.model(
             {
                 "sessions": [
-                    {"harness": "claude", "sid": "loop-valid", "project": "alpha/repo", "state": "working", "loop": {"errors": 2, "tool": "Bash"}},
+                    {
+                        "harness": "claude",
+                        "sid": "loop-valid",
+                        "project": "alpha/repo",
+                        "state": "working",
+                        "loop": {"errors": 2, "tool": "Bash"},
+                    },
                     {"harness": "codex", "sid": "one", "project": "beta/app", "state": "idle"},
-                    {"harness": "antigravity", "sid": "two", "project": "beta/app", "state": "idle"},
-                    {"harness": "claude", "sid": "bad-loop", "project": "bad/loop", "state": "working", "loop": {"errors": 0}},
-                    {"harness": "codex", "sid": "bad-turn", "project": "bad/turn", "state": "working", "turn": {"long": "true"}},
-                    {"harness": "antigravity", "sid": "bad-stop", "project": "bad/stop", "state": "idle", "finished_at": "yesterday", "dirty": "yes", "changed": "3"},
+                    {
+                        "harness": "antigravity",
+                        "sid": "two",
+                        "project": "beta/app",
+                        "state": "idle",
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "bad-loop",
+                        "project": "bad/loop",
+                        "state": "working",
+                        "loop": {"errors": 0},
+                    },
+                    {
+                        "harness": "codex",
+                        "sid": "bad-turn",
+                        "project": "bad/turn",
+                        "state": "working",
+                        "turn": {"long": "true"},
+                    },
+                    {
+                        "harness": "antigravity",
+                        "sid": "bad-stop",
+                        "project": "bad/stop",
+                        "state": "idle",
+                        "finished_at": "yesterday",
+                        "dirty": "yes",
+                        "changed": "3",
+                    },
                 ],
                 "asks": [{"id": "bad-ask", "question": "   ", "session_id": "loop-valid"}],
                 "usage": [{"harness": "claude", "state": "ok", "fiveH": {"pct": "92"}}],
@@ -380,10 +430,15 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         )
         assert isinstance(model, dict)
 
-        self.assertEqual(["loop", "collision"], [subject["primaryKind"] for subject in model["risk"]])
+        self.assertEqual(
+            ["loop", "collision"], [subject["primaryKind"] for subject in model["risk"]]
+        )
         collision = model["risk"][1]
         self.assertEqual(2, len(collision["memberKeys"]))
-        healthy_keys = {f'session:{json.dumps([row["harness"], row["sid"]], separators=(",", ":"))}' for row in model["healthy"]["sessions"]}
+        healthy_keys = {
+            f"session:{json.dumps([row['harness'], row['sid']], separators=(',', ':'))}"
+            for row in model["healthy"]["sessions"]
+        }
         self.assertFalse(set(collision["memberKeys"]) & healthy_keys)
         rendered = self._run_page_js(
             "\n".join(
@@ -403,8 +458,18 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         model = self.model(
             {
                 "sessions": [
-                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
-                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
+                    {
+                        "harness": "claude",
+                        "sid": "duplicate",
+                        "project": "beta/app",
+                        "state": "idle",
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "duplicate",
+                        "project": "beta/app",
+                        "state": "idle",
+                    },
                     {"harness": "codex", "sid": "distinct", "project": "beta/app", "state": "idle"},
                 ]
             }
@@ -412,8 +477,18 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         one_exact_member = self.model(
             {
                 "sessions": [
-                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
-                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
+                    {
+                        "harness": "claude",
+                        "sid": "duplicate",
+                        "project": "beta/app",
+                        "state": "idle",
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "duplicate",
+                        "project": "beta/app",
+                        "state": "idle",
+                    },
                 ]
             }
         )
@@ -460,20 +535,37 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
                 "generated": 10_000,
                 "sessions": [
                     {
-                        "harness": "claude", "sid": "dirty-stop", "project": "alpha/dirty",
-                        "state": "idle", "finished_at": 7_000, "dirty": True, "changed": 3,
+                        "harness": "claude",
+                        "sid": "dirty-stop",
+                        "project": "alpha/dirty",
+                        "state": "idle",
+                        "finished_at": 7_000,
+                        "dirty": True,
+                        "changed": 3,
                     },
                     {
-                        "harness": "codex", "sid": "unknown-stop", "project": "beta/unknown",
-                        "state": "idle", "finished_at": 6_000, "dirty": None,
+                        "harness": "codex",
+                        "sid": "unknown-stop",
+                        "project": "beta/unknown",
+                        "state": "idle",
+                        "finished_at": 6_000,
+                        "dirty": None,
                     },
                     {
-                        "harness": "antigravity", "sid": "clean-stop", "project": "gamma/clean",
-                        "state": "idle", "finished_at": 5_000, "dirty": False,
+                        "harness": "antigravity",
+                        "sid": "clean-stop",
+                        "project": "gamma/clean",
+                        "state": "idle",
+                        "finished_at": 5_000,
+                        "dirty": False,
                     },
                     {
-                        "harness": "antigravity", "sid": "scan-only", "project": "delta/scan",
-                        "state": "idle", "dirty": True, "changed": 3,
+                        "harness": "antigravity",
+                        "sid": "scan-only",
+                        "project": "delta/scan",
+                        "state": "idle",
+                        "dirty": True,
+                        "changed": 3,
                     },
                 ],
             }
@@ -487,8 +579,12 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             {
                 "sessions": [
                     {
-                        "harness": "antigravity", "sid": "scan-only", "project": "delta/scan",
-                        "state": "idle", "dirty": True, "changed": 3,
+                        "harness": "antigravity",
+                        "sid": "scan-only",
+                        "project": "delta/scan",
+                        "state": "idle",
+                        "dirty": True,
+                        "changed": 3,
                     }
                 ]
             }
@@ -517,12 +613,22 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             {
                 "sessions": [
                     {
-                        "harness": "claude", "sid": "duplicate-stop", "project": "alpha/first",
-                        "state": "idle", "finished_at": 7_000, "dirty": True, "changed": 3,
+                        "harness": "claude",
+                        "sid": "duplicate-stop",
+                        "project": "alpha/first",
+                        "state": "idle",
+                        "finished_at": 7_000,
+                        "dirty": True,
+                        "changed": 3,
                     },
                     {
-                        "harness": "claude", "sid": "duplicate-stop", "project": "beta/later",
-                        "state": "idle", "finished_at": 6_000, "dirty": False, "changed": 0,
+                        "harness": "claude",
+                        "sid": "duplicate-stop",
+                        "project": "beta/later",
+                        "state": "idle",
+                        "finished_at": 6_000,
+                        "dirty": False,
+                        "changed": 0,
                     },
                 ]
             }
@@ -541,38 +647,70 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             {
                 "sessions": [
                     {
-                        "harness": "claude", "sid": "progress-first", "project": "alpha/progress",
-                        "state": "working", "tasks": [
+                        "harness": "claude",
+                        "sid": "progress-first",
+                        "project": "alpha/progress",
+                        "state": "working",
+                        "tasks": [
                             {"subject": "Pending first", "status": "pending"},
                             {"subject": "In progress second", "status": "in_progress"},
                         ],
                     },
                     {
-                        "harness": "codex", "sid": "pending-working", "project": "beta/pending",
-                        "state": "working", "tasks": [{"subject": "Pending working", "status": "pending"}],
+                        "harness": "codex",
+                        "sid": "pending-working",
+                        "project": "beta/pending",
+                        "state": "working",
+                        "tasks": [{"subject": "Pending working", "status": "pending"}],
                     },
                     {
-                        "harness": "antigravity", "sid": "pending-idle", "project": "gamma/pending",
-                        "state": "idle", "tasks": [{"subject": "Pending idle", "status": "pending"}],
+                        "harness": "antigravity",
+                        "sid": "pending-idle",
+                        "project": "gamma/pending",
+                        "state": "idle",
+                        "tasks": [{"subject": "Pending idle", "status": "pending"}],
                     },
                     {
-                        "harness": "claude", "sid": "risk-owner", "project": "delta/risk",
-                        "state": "working", "loop": {"errors": 2},
+                        "harness": "claude",
+                        "sid": "risk-owner",
+                        "project": "delta/risk",
+                        "state": "working",
+                        "loop": {"errors": 2},
                         "tasks": [{"subject": "Keep on risk", "status": "in_progress"}],
                     },
-                    {"harness": "claude", "sid": "moving", "project": "delta/moving", "state": "working"},
-                    {"harness": "codex", "sid": "quiet", "project": "epsilon/quiet", "state": "idle"},
-                    {"harness": "antigravity", "sid": "unknown", "project": "zeta/unknown", "state": "other"},
+                    {
+                        "harness": "claude",
+                        "sid": "moving",
+                        "project": "delta/moving",
+                        "state": "working",
+                    },
+                    {
+                        "harness": "codex",
+                        "sid": "quiet",
+                        "project": "epsilon/quiet",
+                        "state": "idle",
+                    },
+                    {
+                        "harness": "antigravity",
+                        "sid": "unknown",
+                        "project": "zeta/unknown",
+                        "state": "other",
+                    },
                 ],
             }
         )
         eta_only_model = self.model(
             {
                 "eta_h": 2,
-                "sessions": [{
-                    "harness": "claude", "sid": "eta-only", "project": "eta/only",
-                    "state": "working", "turn": {"eta_h": 1},
-                }],
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "eta-only",
+                        "project": "eta/only",
+                        "state": "working",
+                        "turn": {"eta_h": 1},
+                    }
+                ],
             }
         )
         assert isinstance(model, dict)
@@ -666,9 +804,7 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
     def test_exact_request_and_empty_copy_respect_capability_and_payload_window(self) -> None:
         ask_disabled_html = self.render({"sessions": [], "asks": []})
         ask_enabled_html = self.render({"ask": True, "sessions": [], "asks": []})
-        empty_html = self.render(
-            {"window_hours": 24, "sessions": [], "harnesses": [], "asks": []}
-        )
+        empty_html = self.render({"window_hours": 24, "sessions": [], "harnesses": [], "asks": []})
 
         self.assertNotIn("No exact requests published", ask_disabled_html)
         self.assertIn("No exact requests published", ask_enabled_html)
@@ -774,7 +910,7 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual(4, html.count('data-next-attention-part="why"><a '))
         self.assertEqual(1, html.count('<details class="next-attention-coverage-details">'))
         self.assertNotIn('<details class="next-attention-coverage-details" open', html)
-        ask_item = html.split('data-next-attention-subject="session:[&quot;claude&quot;,' , 1)[1]
+        ask_item = html.split('data-next-attention-subject="session:[&quot;claude&quot;,', 1)[1]
         ask_item = ask_item.split("</article>", 1)[0]
         grammar = [
             'data-next-attention-part="why"',
@@ -783,7 +919,9 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             'data-next-attention-part="next"',
             'data-next-attention-part="source"',
         ]
-        self.assertEqual(sorted(html.index(label) for label in grammar), [html.index(label) for label in grammar])
+        self.assertEqual(
+            sorted(html.index(label) for label in grammar), [html.index(label) for label in grammar]
+        )
         self.assertTrue(all(label in ask_item for label in grammar))
         risk_item = html.split('data-next-attention-kind="loop"', 1)[1].split("</article>", 1)[0]
         self.assertNotIn('data-next-attention-part="next"', risk_item)
@@ -983,13 +1121,7 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             for value in malformed_values
         ]
         outcomes.extend(
-            outcome_html(
-                {
-                    "spacedock": {
-                        "workflows": [{"workflow": "launch", "goal": value}]
-                    }
-                }
-            )
+            outcome_html({"spacedock": {"workflows": [{"workflow": "launch", "goal": value}]}})
             for value in malformed_values
         )
 
@@ -1016,7 +1148,7 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertNotIn('data-next-attention-part="next"', html)
 
     def test_hostile_payload_text_stays_text_and_does_not_change_subject_order(self) -> None:
-        marker = '<img src=x onerror=alert(1)><script>alert(2)</script>'
+        marker = "<img src=x onerror=alert(1)><script>alert(2)</script>"
 
         def payload(suffix: str) -> dict[str, object]:
             return {

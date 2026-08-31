@@ -70,7 +70,9 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
     def render(self, checks: str = "console.log(JSON.stringify(__els.app.innerHTML));") -> object:
         return self._run_page_js(
-            "await __settle();\nnavigateNext({view: \"sessions\", project: null, session: null});\n" + checks, self.FIXTURE
+            'await __settle();\nnavigateNext({view: "sessions", project: null, session: null});\n'
+            + checks,
+            self.FIXTURE,
         )
 
     @staticmethod
@@ -244,7 +246,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
     def test_all_ten_harnesses_use_the_payload_registry_label(self) -> None:
         html = self._run_page_js(
-            "await __settle();\nnavigateNext({view: \"sessions\", project: null, session: null});\n"
+            'await __settle();\nnavigateNext({view: "sessions", project: null, session: null});\n'
             "console.log(JSON.stringify(__els.app.innerHTML));",
             """
 location.search = "?next=true";

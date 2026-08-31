@@ -118,9 +118,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn('data-next-session-command-fact="next"', html)
         self.assertNotIn('data-next-session-command-fact="request"', html)
         self.assertIn("SOURCE COVERAGE", html)
-        self.assertIn(
-            "Claude transcript did not publish an assignment or next action", html
-        )
+        self.assertIn("Claude transcript did not publish an assignment or next action", html)
         self.assertNotIn('<details class="next-session-source-coverage" open', html)
 
     def test_plain_exact_ask_is_one_needs_you_fact_and_not_a_next_action(self) -> None:
@@ -185,9 +183,7 @@ console.log(JSON.stringify(variants));
         )
         assert isinstance(out, dict)
 
-        self.assertIn(
-            "Codex transcript did not publish an assignment or next action", out["codex"]
-        )
+        self.assertIn("Codex transcript did not publish an assignment or next action", out["codex"])
         self.assertIn(
             "AGY CLI log did not publish an assignment or next action", out["antigravity"]
         )
