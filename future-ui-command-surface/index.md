@@ -276,3 +276,48 @@ The route-semantic, single-main, and turn-noun assertions first failed against r
 ### Summary
 
 Cycle 2 repairs route identification, structural navigation, landmark uniqueness, and the misleading turn-time noun without changing the approved command hierarchy. The exact corrected checkpoint and live evidence are ready for Halley's required fresh re-review.
+
+## Crucible review cycle 2 — recommendation: accept
+
+**ACCEPT.** Corrected checkpoint `578d77a` closes both round-1 material findings in live Chrome and independent fixtures without regressing the project-first command model. No new material command, comprehension, scope, or accessibility risk survived reproduction, so another correction cycle would optimize beyond the experiment's lede-first stop criterion.
+
+### Round-1 correction proof
+
+| Rejected finding | Fresh proof at `578d77a` | Disposition |
+|---|---|---|
+| Route/title/heading/tab/landmark semantics | Overview title is `Cargento — Overview`, its visible h1 is `Cargento command overview`, reciprocal tab/panel IDs and selection switch together, and overview/project/session each expose exactly one main landmark. Project and all three session routes have distinct titles and h1 context. | Closed. The live DOM counts, keyboard activation, source diff, and `test_routes_set_distinct_titles_and_overview_exposes_related_tabs` would fail if the correction disappeared. |
+| Working elapsed time lacked its source noun | The same Codex identity renders `turn started 11m ago`; its API independently publishes `turn.elapsed_h`, while the idle Claude fixture and route continue to say `session started`. | Closed. Live text and minute/multi-hour/idle fixtures distinguish turn time from session time. |
+
+### Full acceptance cross-check
+
+| Criterion | Current evidence | Verdict |
+|---|---|---|
+| AC-1: overall situation and response lead | The fresh overview says `1 session executing` and `CAPTAIN — No request observed · Current payload only` before the three project rows. | Pass. |
+| AC-2: assignment, execution, next, captain | Claude shows the complete published assignment; Codex and AGY explicitly name unavailable assignment/next owners; all three show execution state and bounded captain responsibility. | Pass. |
+| AC-3: scope and provenance | Distinct overview, project, Codex, Claude, and AGY permalinks retain exact breadcrumbs, API identities, route titles, and the same-label caveat. | Pass. |
+| AC-4: corrections receive fresh review | This cycle independently reproduces both rejected findings as fixed after correction commit `578d77a`, then re-runs live, fixture, semantic, keyboard, and reflow checks. | Pass. |
+| AC-5: isolated direction | Branch is `feat/future-ui` at pushed `578d77a`; the assembled candidate is 241,166 bytes at SHA-256 `9330654d53cccdb5ce52f2baa72d9963bd896a39660f272bcb782c77f54fb239`. | Pass. |
+
+One non-material accessibility refinement remains: the tab list has no group label, both tabs remain sequential Tab stops, and Left Arrow does not move focus. The [WAI-ARIA tabs pattern](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/) describes a labelled, roving tab list with Left/Right Arrow focus movement. This does not block this gate because both controls are visibly focusable, Tab reaches each, Enter switches `aria-selected` and the correct panel, narrow reflow remains intact, and the observation changes neither command truth nor access to either view; retain it as follow-up rather than restarting the command-surface experiment. The repetitive AGY document title is likewise descriptive and route-distinct, so it is polish rather than a material scope failure.
+
+### Current evidence and checks
+
+- [Overview](crucible-cycle-2/overview-live.jpg), [project](crucible-cycle-2/project-live.jpg), [Codex](crucible-cycle-2/session-codex-live.jpg), [Claude](crucible-cycle-2/session-claude-live.jpg), and [AGY](crucible-cycle-2/session-agy-live.jpg) are fresh 1844×1067 captures from exact checkpoint `578d77a`.
+- [Tab keyboard probe](crucible-cycle-2/overview-tab-keyboard-gap.jpg) preserves the non-material follow-up evidence; [320 px overview](crucible-cycle-2/overview-320px.jpg) shows the new h1 and command hierarchy with `scrollWidth == clientWidth == 320`.
+- `/api/data` at `2026-08-31T03:07:29Z` contained one working Codex session, no asks, the exact three prior identities, full Claude `asked` content, and unavailable Codex/AGY command facts. The live renderer matched each source boundary.
+- All 94 focused tests across `test_next_chrome`, `test_next_projects`, `test_next_session`, `test_next_project`, `test_next_workstream`, and `test_next_page` passed, as did `scripts/lint_embedded.py`, `scripts/validate_plugins.py`, and `git diff --check`. Those tests fail on route/title/relation drift, source-owner or ask/task priority regressions, turn/session noun collapse, workflow overclaim, keyboard routing, or byte-pin changes.
+
+Captain gate: choose **accept** for the future direction at `578d77a`. Acceptance records the exploration outcome on `feat/future-ui`; it does not authorize a merge to `main`.
+
+## Stage Report: crucible (cycle 2)
+
+- DONE: Re-test corrected checkpoint `578d77a` against both recorded round-1 findings and prove route/title/heading/tab/landmark semantics plus the turn-start noun in live and fixture evidence.
+  Fresh DOM, screenshots, source, and fixtures close both findings: five distinct routes, one main per route, reciprocal tab/panel selection, and separate `turn started`/`session started` claims.
+- DONE: Re-run the full crucible acceptance cross-check across Codex, Claude Code, and AGY, looking for regressions or new material command/comprehension risks rather than trusting the implementer report.
+  The exact three identities and current API pass AC-1 through AC-5; 94 focused tests and manual semantic/keyboard/reflow probes found only the explicitly deferred tab-pattern refinement.
+- DONE: Publish one source-bound verdict—revise, reframe, or accept—with fresh screenshots and a complete `Stage Report: crucible` suitable for the replacement captain gate.
+  ACCEPT is the sole verdict; seven fresh captures, API timestamp, commit and byte hashes, current source, and falsifiable checks bind the replacement gate.
+
+### Summary
+
+The corrected checkpoint preserves the lede-first command hierarchy and now passes both rejected semantic claims across live overview, project, and three-harness drill-downs. No material finding remains; accept the isolated future direction at `578d77a`, with conventional roving-tab behavior retained as a non-blocking follow-up.
