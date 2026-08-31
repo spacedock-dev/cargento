@@ -469,3 +469,132 @@ Workflow and authority now require positive Spacedock evidence, exact asks retai
 without borrowing captain semantics, sessions lead with observed activity and reveal command facts
 only when published, and live-refresh failure is recoverable rather than fatal-looking. The pushed
 checkpoint and tied evidence are ready for a fresh independent crucible judgment.
+
+## Crucible cycle 3 — independent progressive-disclosure and recovery attack
+
+This review attacked exact pushed checkpoint
+`25401e1f4eb9d35b784b5a5c9728a894537e8d24` without changing the candidate. It did not inherit the
+prototyping report's conclusions: the live renderer, source predicates, exact harness identities,
+real network failure, and adversarial fixtures were checked independently.
+
+### Verdict: revise one authority predicate
+
+The progressive-disclosure direction and refresh recovery survive the attack, but the overview's
+project-level authority predicate does not. A plain asking session can borrow `CAPTAIN` from a
+different same-label session even though the product explicitly warns that a shared label is not
+proof of the same directory. The overview and exact session then disagree about human
+responsibility for the same ask. This is material command truth, so the candidate should be revised,
+not accepted or reframed.
+
+### Fresh disposition of the captain's four findings
+
+| Captain finding | Independent proof at `25401e1` | Disposition |
+|---|---|---|
+| Generic workflow absence was empty and looked broken. | The live `recce/cargento` project proceeds from its scope directly to `GOING ON`; no workflow wrapper or absence message exists because none of the selected sessions publishes Spacedock evidence. `nextProjectPlanBlock` returns an empty string on that predicate. | Closed. The absence concept is omitted rather than decorated. |
+| Refresh failure looked fatal and did not explain recovery. | The already-rendered overview was held open while the exact server was stopped. After two real `/api/data` failures, a `role=status` notice said refresh failed twice, warned the displayed data may be stale, gave a 35-second last-success age and 20-second cadence, and exposed `Retry now`; all 3 projects and `1 session executing` remained. Restarting the server cleared the notice automatically and retained the same view. | Closed. The real production failure and recovery boundary matches the claimed model. |
+| Absence-led captain language and unconditional authority overclaimed. | With no asks, the live overview has no request banner and no response region. A single-session plain-ask fixture produces `NEEDS YOU`. However, adding a second same-label session with `spacedock: {role: "first-officer", workflows: []}` changes that plain ask to `CAPTAIN` in the overview, while the exact asking-session route remains `NEEDS YOU`. | **Reopened, material.** `nextProjectHasSpacedock(group.sessions)` authorizes from any grouped session instead of the exact ask owner or verified project identity. |
+| Four equal session cells buried current activity and elevated missing facts. | Codex, Claude, and AGY all lead with `CURRENT ACTIVITY`. Only Claude's published assignment appears in the primary fact stack. Codex and AGY omit assignment/next from the main hierarchy; the native closed `SOURCE COVERAGE` summary is focusable (`tabIndex == 0`) and opens to the harness-specific source explanation. | Closed. Current activity owns the lede and missing facts are subordinate, operable disclosure rather than primary cards. |
+
+### Material finding and reproduction
+
+**Owner:** `cargento_runtime/web/next/next-projects.js`, specifically
+`nextProjectHasSpacedock` / `nextProjectRequestLabel`, plus a mixed-session regression fixture in
+`test_next_projects.py`.
+
+The existing plain-ask test contains only the exact plain session, and the existing Spacedock-ask
+test puts Spacedock on the asking session. The missing cross-product is decisive:
+
+1. Assign `Plain approval` to plain session `beta-work` in project-label group `beta/app`.
+2. Add `beta-spacedock-sibling` with the same project label and a non-null Spacedock object.
+3. Render the overview: `CAPTAIN_PLAIN=True`, `NEEDS_YOU_PLAIN=False`, and the row says
+   `RESPONSE / Captain · Plain approval`.
+4. Render the exact `beta-work` session with that sibling present: `SESSION_NEEDS_YOU=True` and
+   `SESSION_CAPTAIN=False`.
+
+This is not merely copy polish. The overview assigns captain authority using group-level evidence,
+while the drill-down assigns it using session-level evidence. The same project row also displays the
+measured caveat `Same label is not proof of the same directory`, so the grouping mechanism cannot
+serve as verified owning-project evidence. The correction should derive authority from the exact
+ask owner's session (or a separately verified project identity), then pin the overview/session
+agreement in a mixed plain-plus-Spacedock fixture.
+
+### Five-second scan and progressive-disclosure judgment
+
+- [Overview](crucible-cycle-3/overview-live.jpg) exposes the overall situation in one scan: 3
+  projects, 9 sessions, and `1 session executing`; no empty request or response concept competes
+  with it.
+- [Project](crucible-cycle-3/project-live.jpg) preserves scope (`recce/cargento`, latest session
+  context, seven-session collision caveat) and leads with the single live activity under `GOING ON`.
+- [Codex](crucible-cycle-3/session-codex-live.jpg), exact SID
+  `01a0555c-2da3-7c23-bd26-4ea2e275d18a`, says `working · running 1 subagent` first and does not
+  invent assignment or next action.
+- [Claude](crucible-cycle-3/session-claude-live.jpg), exact API identity `8b3e5aa1`, says idle first
+  and then exposes the complete published `asked` assignment.
+- [AGY](crucible-cycle-3/session-agy-live.jpg), exact SID
+  `49fad07a-21aa-4b2e-9c14-ecfcbcf67ab8`, says idle first and leaves unpublished assignment/next
+  facts in the closed source-coverage disclosure.
+
+The progressive-disclosure mechanism therefore passes on current activity, supported assignment,
+supported next action, and omission of empty concepts. It fails only at human-responsibility
+provenance when project grouping mixes authority sources; that defect is invisible in the no-ask
+live payload and required the adversarial mixed fixture.
+
+### Real refresh recovery evidence
+
+- [Two-failure retained state](crucible-cycle-3/refresh-failed-retained.jpg) is a fresh 1844×1123
+  production capture after stopping only the server started by this review. The notice is visible,
+  all three project rows remain, and `1 session executing` is unchanged.
+- [Recovered state](crucible-cycle-3/refresh-recovered.jpg) is a fresh 1844×1123 capture after the
+  exact server restarted. The stream's successful refresh clears the notice without a page reload;
+  the same three rows and situation remain.
+- The stopped server PID `30510` and restarted PID `31652` were each stopped through the launcher;
+  port 4553 was verified closed after the review.
+
+The screenshots are byte-preserved JPEG artifacts. Their SHA-256 values are, respectively:
+overview `9a2b51b9ba9f8d1192f9aa9289601816bd11d78d97fdf4212e98279ef3dc0cd4`, project
+`f2b2d4487827d46b021da1f4628b465b6b88c0a295b2422752c63a55628170f5`, Codex
+`49b366ed0aebbc9316e053b1b51617c239e3d18b42e1ee209ab711a70b1d87f2`, Claude
+`5fd7756b32078f5165cd540b26ecc47314e3f7450278128d12c58b4df5977318`, AGY
+`b88325365568eab8c2eb9daea9074eda63c97d47ce90eb2519e737589c6c999d`, failed refresh
+`621fb3b7bda523f4f8eea7cf5a56b3bddc097f4436bbcc1496eabd6086bf2515`, and recovered refresh
+`8ae48b1ebb1a2ec7b3e04ac0cc2e4816c82b54ad361d435190c7665f9cb24fb4`.
+
+### Checks and source boundary
+
+- The assembled candidate remains 244,679 bytes with SHA-256
+  `6eedb2be9a89d3ac53c7acf235b81e10bbd921c6b52218aa7c727b35207402db`, matching the committed
+  byte oracle.
+- 115 focused tests passed across `test_next_page`, `test_next_projects`, `test_next_project`,
+  `test_next_session`, `test_next_sessions`, `test_next_chrome`, and `test_next_live`.
+- `scripts/lint_embedded.py`, `scripts/validate_plugins.py`, and
+  `scripts/bump_version.py --current` passed. The repository checkout remained at exact commit
+  `25401e1f4eb9d35b784b5a5c9728a894537e8d24` with no candidate modification.
+- Passing current tests do not close the material finding because none combines a plain ask owner
+  with a different same-label Spacedock session. The inline harness reproduction above supplies
+  that missing adversarial evidence.
+
+## Stage Report: crucible (cycle 3)
+
+- DONE: Attack exact checkpoint `25401e1` at the live renderer, source, and adversarial-fixture
+  layers and independently disposition all four captain findings.
+  Three corrections close under fresh proof; the fourth reopens as a material overview/session
+  authority contradiction in the mixed plain-plus-Spacedock fixture.
+- DONE: Exercise the same Codex, Claude Code, and AGY identities and judge the five-second scan for
+  overall situation, project scope, current activity, supported assignment/next action, and human
+  responsibility without empty concepts or buried ledes.
+  Situation, scope, activity, assignment, next-action omission, and source coverage pass. Human
+  responsibility fails only when unrelated same-label Spacedock evidence promotes a plain ask to
+  captain authority in the overview.
+- DONE: Prove real refresh failure/recovery, run focused frontend checks, preserve fresh captures,
+  and publish one source-bound verdict without modifying the candidate.
+  A two-failure production outage retained the full view and exposed actionable status; automatic
+  recovery cleared it. Seven fresh captures, 115 passing focused tests, source inspection, and the
+  mixed fixture support **REVISE**.
+
+### Summary
+
+The candidate's lede-first progressive disclosure and live recovery are credible and should be
+retained. One material predicate still breaks command truth: the project overview borrows captain
+authority from any same-label session, while the exact asking session correctly stays neutral.
+Revise authority derivation to follow the exact ask owner or a verified project identity, add the
+mixed-session regression, and return the corrected checkpoint for a fresh crucible.
