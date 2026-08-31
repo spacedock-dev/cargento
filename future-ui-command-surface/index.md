@@ -243,3 +243,28 @@ Captain gate: choose **revise** and return these two accepted findings to protot
 ### Summary
 
 The project-first command model is substantially stronger and remains honest across Codex, Claude Code, and AGY, so a reframe is not warranted. Two material but bounded corrections block acceptance: repair route/landmark/tab semantics and qualify working elapsed time as turn time, then run a fresh crucible review.
+
+## Prototyping correction cycle 2
+
+Halley's two accepted findings were corrected without changing the command-surface model. The exact corrected bytes are pushed on `feat/future-ui` at `578d77a`: 241,166 assembled bytes, SHA-256 `9330654d53cccdb5ce52f2baa72d9963bd896a39660f272bcb782c77f54fb239`.
+
+### Correction evidence
+
+- [Overview route semantics](prototyping-cycle-2/overview-route-semantics.jpg) — live title `Cargento — Overview`, visible `Cargento command overview` h1, one main landmark, and reciprocal `next-tab-*`/`next-panel-*` `aria-controls`/`aria-labelledby` pairs. SHA-256 `dfc0f7a4468b8aa2b49d597abdbe04fae2d2b3d3ff1dcfcb08174aba56240ef5`.
+- [Project single-main route](prototyping-cycle-2/project-single-main.jpg) — live title `recce/cargento — Cargento`, project h1, and one main landmark after replacing the nested project main element. SHA-256 `11e09ec1d7c520222f1a3841325e4e3cf9ee007920846856422736dbc52be5a5`.
+- [Codex turn label](prototyping-cycle-2/session-codex-turn-label.jpg) — same identity `01a0555c-2da3-7c23-bd26-4ea2e275d18a`, route title `I approve, continue — recce/cargento — Cargento`, and `turn started 58s ago` in the capture. SHA-256 `2dcfc1b9be890c949f9fe85b062d2ff50e8824674e4004a472564c7a954b41c3`.
+
+The route-semantic, single-main, and turn-noun assertions first failed against rejected snapshot `05332a4`, then passed after the bounded correction. The final focused batch passed 73 tests across `test_next_chrome`, `test_next_project`, `test_next_session`, and `test_next_page`; Ruff check/format, `scripts/lint_embedded.py`, `scripts/validate_plugins.py`, and `git diff --check` also passed.
+
+## Stage Report: prototyping (cycle 2)
+
+- DONE: Fix the accepted route/title/heading/tab/landmark semantic finding with failing-first behavior tests and exactly one main landmark.
+  `test_routes_set_distinct_titles_and_overview_exposes_related_tabs` fails if any route title or reciprocal tab/panel relation disappears; the project renderer test fails if it contributes a nested main, and live Chrome measured one main on overview and project.
+- DONE: Fix the accepted turn-elapsed label so current activity cannot be mistaken for session start, with a failing-first behavior test.
+  Minute and multi-hour working fixtures now require `turn started` while the idle fixture independently requires `session started`; reverting the noun fails all three assertions, and the same Codex identity reproduces it live.
+- DONE: Commit only these corrections on feat/future-ui, update byte pins, run focused checks and validators, and append source-bound correction evidence plus a complete prototyping report.
+  Pushed `578d77a` changes only the two accepted semantic corrections and their tests/pins; the 241,166-byte oracle, 73 focused tests, validators, and three committed-byte Chrome captures bind this report.
+
+### Summary
+
+Cycle 2 repairs route identification, structural navigation, landmark uniqueness, and the misleading turn-time noun without changing the approved command hierarchy. The exact corrected checkpoint and live evidence are ready for Halley's required fresh re-review.
