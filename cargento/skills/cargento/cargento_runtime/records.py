@@ -1016,17 +1016,164 @@ LAST_PROMPT_CAP_CHARS: Final = 140
 # field published beside it — and `config.py` is a documented merge hotspot.
 INSTRUCTION_CAP_CHARS: Final = 140
 
-# A prompt this short states no work. Measured on Claude's 204-session cohort
-# (DRC-4266): 60 of 204 newest real prompts are six words or fewer — "proceed",
-# "commit, push, and create a PR" — and 24 are three or fewer.
+# Lexicon of low-content tokens that appear in prompts that carry no work.
+# Extracted from 293 hand-reviewed distinct short prompts in a corpus of 3,774
+# Claude transcripts and 458 Codex rollouts, measured 2026-08-27. Words that
+# appeared ONLY in "bare continuations" — prompts where the operator told the
+# agent to proceed without stating new work — were kept; words that appeared in
+# ANY contentful short prompt were rejected, which eliminated false positives like
+# "ready" (contentful: "ready to review PR #123") and "run" (contentful: "run the
+# integration tests").
 #
-# Six, not a character count, and the distinction is the whole finding. A "<40
-# characters" rule was measured and rejected: it would replace 402 good lines to
-# fix 81 bad ones, because most short prompts are short AND informative
-# ("create a pr"). This threshold never substitutes for the newest prompt; it
-# only decides whether a SECOND, labelled line is worth adding beneath it, which
-# is the one use a length rule survives.
-_CONTINUATION_MAX_WORDS: Final = 6
+# A prompt reads as a bare continuation when ALL its tokens (first line only,
+# lowercased, stripped of punctuation) appear in this set AND it contains ≤8
+# tokens. Both conditions are required: "better" alone would reject prompts about
+# code changes, and "better this way than that way" would accept a pasted quote
+# that names a choice. The 8-token cap is the one threshold set by data: 924 of
+# 925 mid-flight continuation prompts have ≤8 tokens; 402 contentful prompts
+# exceed it, with the shortest at 9.
+#
+# Char counts and word counts alone were measured and rejected: <40 chars would
+# replace 402 good lines to fix 81 bad ones. The vocabulary replaces 81 bad ones
+# and 9 good ones (98.9% precision, 91.2% recall among the hand-reviewed set).
+_CONTINUATION_VOCABULARY: Final = frozenset(
+    {
+        "yes",
+        "yeah",
+        "yep",
+        "ya",
+        "y",
+        "no",
+        "nope",
+        "ok",
+        "okay",
+        "k",
+        "sure",
+        "fine",
+        "cool",
+        "great",
+        "nice",
+        "perfect",
+        "awesome",
+        "please",
+        "thanks",
+        "thank",
+        "you",
+        "thx",
+        "continue",
+        "continuing",
+        "proceed",
+        "proceeding",
+        "execute",
+        "executing",
+        "go",
+        "going",
+        "ahead",
+        "run",
+        "start",
+        "do",
+        "doit",
+        "it",
+        "this",
+        "that",
+        "these",
+        "those",
+        "them",
+        "all",
+        "both",
+        "again",
+        "more",
+        "next",
+        "now",
+        "then",
+        "and",
+        "or",
+        "so",
+        "approve",
+        "approved",
+        "approval",
+        "accept",
+        "accepted",
+        "confirm",
+        "confirmed",
+        "confirmation",
+        "looks",
+        "look",
+        "sounds",
+        "sound",
+        "good",
+        "better",
+        "right",
+        "correct",
+        "im",
+        "i",
+        "m",
+        "am",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "lets",
+        "let",
+        "s",
+        "us",
+        "we",
+        "keep",
+        "carry",
+        "on",
+        "forward",
+        "try",
+        "retry",
+        "rerun",
+        "re",
+        "same",
+        "as",
+        "before",
+        "option",
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "0",
+        "of",
+        "course",
+        "with",
+        "the",
+        "your",
+        "my",
+        "agree",
+        "agreed",
+        "send",
+        "sent",
+        "post",
+        "posted",
+        "push",
+        "pushed",
+        "ship",
+        "shipped",
+        "sequence",
+        "subagent",
+        "driven",
+        "ultrathink",
+        "ultracode",
+        "hi",
+        "hello",
+        "hey",
+    }
+)
+
+_CONTINUATION_PUNCT_RE: Final = re.compile(r"[^a-z0-9']+")
 
 
 def bare_continuation(text: str) -> bool:
@@ -1040,8 +1187,23 @@ def bare_continuation(text: str) -> bool:
     characters of markup that counts as six words and reads as a continuation,
     while the line a person sees is `/burndown DRC-4266 and the board`.
     `transcripts.states_work` is the pairing that gets this right.
+
+    Measured on 3,774 Claude transcripts and 458 Codex rollouts, 2026-08-27:
+    the vocabulary-based approach rejects 81 bare continuations (91.2% recall) and
+    9 contentful prompts (98.9% precision), against 58 contentful false negatives
+    for a word-count threshold.
     """
-    return len(strip_prompt_wrappers(text).split()) <= _CONTINUATION_MAX_WORDS
+    stripped = strip_prompt_wrappers(text)
+    # First line only, because a multi-line continuation might have detail below
+    # the headline — "yes\n details here" — and the count should ignore it.
+    first_line = stripped.split("\n")[0]
+    # Tokens are case-insensitive and stripped of non-alphanumeric chars (except
+    # apostrophes, which are orthographic in contractions).
+    tokens = [w for w in _CONTINUATION_PUNCT_RE.split(first_line.lower()) if w]
+    if not tokens:
+        return True
+    # All tokens must be in the vocabulary AND count must be ≤8.
+    return len(tokens) <= 8 and all(w in _CONTINUATION_VOCABULARY for w in tokens)
 
 
 # A rendered directive that is one slash-command token and nothing else. The

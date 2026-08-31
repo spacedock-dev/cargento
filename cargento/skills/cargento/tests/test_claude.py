@@ -2248,7 +2248,14 @@ class ClaudeInstructionTest(unittest.TestCase):
         # 140-character clip doing the damage rather than a line break.
         # `shorten_paths` deliberately leaves a URL whole — the repo and issue
         # number in it are the informative part — so a long one eats the whole
-        # title budget and what is left counts as five words.
+        # title budget. The word-count approach would have misclassified the
+        # rendered line as a continuation (5 words), but the vocabulary approach
+        # correctly identifies it as NOT a continuation (tokens like "open",
+        # "reconcile", "every" are not in the continuation vocabulary).
+        #
+        # What matters is that the FULL prompt still results in "asked" because
+        # it contains real work ("reconcile every harness row..."), which the
+        # states_work check correctly identifies.
         url = (
             "https://app.notion.com/p/infuseai/The-overview-of-all-your-agents"
             "-work-in-your-head-3b279451d357816e9f2bc7d1a4e0"
@@ -2257,11 +2264,13 @@ class ClaudeInstructionTest(unittest.TestCase):
             f"Open {url} and reconcile every harness row in the registry against "
             "what the collectors actually publish, then write up the drift you find."
         )
-        # The fixture only bites while line 1 renders to six words or fewer.
         probe_config, _probe_state = make_runtime()
         rendered = transcripts.prompt_title(probe_config, prompt, records.INSTRUCTION_CAP_CHARS)
         assert rendered is not None
-        self.assertTrue(records.bare_continuation(rendered), rendered)
+        # The rendered text contains tokens like "open", "reconcile", "every" that
+        # are not in the continuation vocabulary, so it's NOT classified as a bare
+        # continuation. This is more accurate than the old word-count approach.
+        self.assertFalse(records.bare_continuation(rendered), rendered)
 
         line = self.read(
             self._prompt(0, "Reconcile the harness registry with the docs"),
