@@ -439,3 +439,120 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual("quota:claude:model:Opus:0", quota["key"])
         self.assertEqual([92, 91], [signal["detail"]["pct"] for signal in quota["signals"]])
         self.assertEqual({"resetAt": 16_000}, quota["checkpoint"])
+
+    def test_idle_stops_require_a_valid_stop_and_keep_git_readings_bounded(self) -> None:
+        model = self.model(
+            {
+                "generated": 10_000,
+                "sessions": [
+                    {
+                        "harness": "claude", "sid": "dirty-stop", "project": "alpha/dirty",
+                        "state": "idle", "finished_at": 7_000, "dirty": True, "changed": 3,
+                    },
+                    {
+                        "harness": "codex", "sid": "unknown-stop", "project": "beta/unknown",
+                        "state": "idle", "finished_at": 6_000, "dirty": None,
+                    },
+                    {
+                        "harness": "antigravity", "sid": "clean-stop", "project": "gamma/clean",
+                        "state": "idle", "finished_at": 5_000, "dirty": False,
+                    },
+                    {
+                        "harness": "antigravity", "sid": "scan-only", "project": "delta/scan",
+                        "state": "idle", "dirty": True, "changed": 3,
+                    },
+                ],
+            }
+        )
+        assert isinstance(model, dict)
+
+        dirty_model = {**model, "close": [model["close"][0]]}
+        unknown_model = {**model, "close": [model["close"][1]]}
+        clean_model = {**model, "close": [model["close"][2]]}
+        scan_only_model = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "antigravity", "sid": "scan-only", "project": "delta/scan",
+                        "state": "idle", "dirty": True, "changed": 3,
+                    }
+                ]
+            }
+        )
+        assert isinstance(scan_only_model, dict)
+
+        self.assertEqual("stop-dirty", dirty_model["close"][0]["primaryKind"])
+        self.assertEqual(3, dirty_model["close"][0]["signals"][0]["detail"]["changedEntries"])
+        self.assertEqual("stop-unknown", unknown_model["close"][0]["primaryKind"])
+        self.assertEqual("stop-clean", clean_model["close"][0]["primaryKind"])
+        self.assertEqual([], scan_only_model["close"])
+        dirty_html = self._run_page_js(
+            "\n".join(
+                (
+                    f"const subject = JSON.parse({json.dumps(json.dumps(dirty_model['close'][0]))});",
+                    "console.log(JSON.stringify(nextAttentionSubjectHtml(subject, {generated: 10000})));",
+                )
+            )
+        )
+        assert isinstance(dirty_html, str)
+        for forbidden in ("files", "failed", "unread", "unfinished", "successful", "died"):
+            self.assertNotIn(forbidden, dirty_html.lower())
+
+    def test_published_tasks_and_healthy_remainder_exclude_higher_section_subjects(self) -> None:
+        model = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "claude", "sid": "progress-first", "project": "alpha/progress",
+                        "state": "working", "tasks": [
+                            {"subject": "Pending first", "status": "pending"},
+                            {"subject": "In progress second", "status": "in_progress"},
+                        ],
+                    },
+                    {
+                        "harness": "codex", "sid": "pending-working", "project": "beta/pending",
+                        "state": "working", "tasks": [{"subject": "Pending working", "status": "pending"}],
+                    },
+                    {
+                        "harness": "antigravity", "sid": "pending-idle", "project": "gamma/pending",
+                        "state": "idle", "tasks": [{"subject": "Pending idle", "status": "pending"}],
+                    },
+                    {
+                        "harness": "claude", "sid": "risk-owner", "project": "delta/risk",
+                        "state": "working", "loop": {"errors": 2},
+                        "tasks": [{"subject": "Keep on risk", "status": "in_progress"}],
+                    },
+                    {"harness": "claude", "sid": "moving", "project": "delta/moving", "state": "working"},
+                    {"harness": "codex", "sid": "quiet", "project": "epsilon/quiet", "state": "idle"},
+                    {"harness": "antigravity", "sid": "unknown", "project": "zeta/unknown", "state": "other"},
+                ],
+            }
+        )
+        eta_only_model = self.model(
+            {
+                "eta_h": 2,
+                "sessions": [{
+                    "harness": "claude", "sid": "eta-only", "project": "eta/only",
+                    "state": "working", "turn": {"eta_h": 1},
+                }],
+            }
+        )
+        assert isinstance(model, dict)
+        assert isinstance(eta_only_model, dict)
+
+        self.assertEqual(
+            [
+                'session:["claude","progress-first"]',
+                'session:["codex","pending-working"]',
+                'session:["antigravity","pending-idle"]',
+            ],
+            [subject["key"] for subject in model["next"]],
+        )
+        self.assertEqual("In progress second", model["next"][0]["checkpoint"]["subject"])
+        self.assertEqual([], eta_only_model["next"])
+        self.assertEqual([], eta_only_model["needs"])
+        self.assertEqual([], eta_only_model["risk"])
+        self.assertEqual([], eta_only_model["close"])
+        self.assertEqual(1, model["healthy"]["moving"])
+        self.assertEqual(1, model["healthy"]["quiet"])
+        self.assertEqual(1, model["healthy"]["unknown"])

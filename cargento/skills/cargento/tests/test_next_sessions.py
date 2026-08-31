@@ -70,7 +70,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
     def render(self, checks: str = "console.log(JSON.stringify(__els.app.innerHTML));") -> object:
         return self._run_page_js(
-            "await __settle();\nnextSelectSessions();\n" + checks, self.FIXTURE
+            "await __settle();\nnavigateNext({view: \"sessions\", project: null, session: null});\n" + checks, self.FIXTURE
         )
 
     @staticmethod
@@ -216,16 +216,18 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("null", row)
         self.assertNotIn(" wait", row)
 
-    def test_idle_age_and_done_use_the_payload_clock(self) -> None:
+    def test_idle_stop_without_state_detail_has_no_derived_activity_or_outcome(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         newest = self.session_row(html, "idle-new")
         middle = self.session_row(html, "idle-mid")
 
         self.assertIn("9m idle", newest)
-        self.assertNotIn(">done<", newest)
         self.assertIn("20m idle", middle)
-        self.assertIn(">done<", middle)
+        self.assertIn('<td class="next-session-activity"></td>', newest)
+        self.assertIn('<td class="next-session-activity"></td>', middle)
+        for forbidden in ("done", "finished", "unread", "died"):
+            self.assertNotIn(forbidden, middle.lower())
 
     def test_every_row_on_a_shared_project_label_gets_the_collision_caveat(self) -> None:
         html = self.render()
@@ -240,7 +242,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
     def test_all_ten_harnesses_use_the_payload_registry_label(self) -> None:
         html = self._run_page_js(
-            "await __settle();\nnextSelectSessions();\n"
+            "await __settle();\nnavigateNext({view: \"sessions\", project: null, session: null});\n"
             "console.log(JSON.stringify(__els.app.innerHTML));",
             """
 location.search = "?next=true";

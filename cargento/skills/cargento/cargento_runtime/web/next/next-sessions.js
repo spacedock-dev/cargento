@@ -1,5 +1,3 @@
-const NEXT_SESSION_FINISHED_UNREAD_SEC = 1200;
-
 function nextSessionCollisionCounts(){
   const counts = new Map();
   for(const session of nextRows()){
@@ -32,14 +30,6 @@ function nextSessionBlocks(){
 }
 
 function nextSessionActivity(session){
-  if(session.state === "idle"){
-    const generated = nextNumber(nextData && nextData.generated);
-    const finished = nextNumber(session.finished_at);
-    if(generated != null && finished != null && finished > 0 &&
-       Math.max(0, generated - finished) >= NEXT_SESSION_FINISHED_UNREAD_SEC){
-      return '<span class="next-session-done">done</span>';
-    }
-  }
   return esc(session.state_detail || "");
 }
 

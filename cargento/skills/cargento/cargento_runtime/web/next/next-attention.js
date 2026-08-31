@@ -21,6 +21,9 @@ function nextAttentionHarnessOrder(payload){
 const NEXT_RISK_KIND_ORDER = new Map([
   ["attribution", 0], ["loop", 1], ["quota", 2], ["long-turn", 3], ["collision", 4],
 ]);
+const NEXT_STOP_KIND_ORDER = new Map([
+  ["stop-dirty", 0], ["stop-unknown", 1], ["stop-clean", 2],
+]);
 
 function nextAttentionRiskKind(signal){
   return NEXT_RISK_KIND_ORDER.has(signal && signal.kind) ? signal.kind : "collision";
@@ -75,6 +78,27 @@ function nextAttentionCompareSubjects(left, right, model){
     if(leftAge != null && rightAge == null) return -1;
     if(leftAge == null && rightAge != null) return 1;
     if(leftAge != null && rightAge != null && leftAge !== rightAge) return rightAge - leftAge;
+  }
+  if(left.section === "close" && right.section === "close"){
+    const leftKind = NEXT_STOP_KIND_ORDER.get(left.primaryKind);
+    const rightKind = NEXT_STOP_KIND_ORDER.get(right.primaryKind);
+    if(leftKind !== rightKind) return leftKind - rightKind;
+    const leftFinishedAt = left.signals[0].detail.finishedAt;
+    const rightFinishedAt = right.signals[0].detail.finishedAt;
+    if(leftFinishedAt !== rightFinishedAt) return leftFinishedAt - rightFinishedAt;
+  }
+  if(left.section === "next" && right.section === "next"){
+    const leftStatus = left.checkpoint && left.checkpoint.status;
+    const rightStatus = right.checkpoint && right.checkpoint.status;
+    const leftStatusOrder = leftStatus === "in_progress" ? 0 : 1;
+    const rightStatusOrder = rightStatus === "in_progress" ? 0 : 1;
+    if(leftStatusOrder !== rightStatusOrder) return leftStatusOrder - rightStatusOrder;
+    const leftWorking = left.session && left.session.state === "working";
+    const rightWorking = right.session && right.session.state === "working";
+    const leftIdle = left.session && left.session.state === "idle";
+    const rightIdle = right.session && right.session.state === "idle";
+    if(leftWorking && rightIdle) return -1;
+    if(leftIdle && rightWorking) return 1;
   }
   if(left.section === "risk" && right.section === "risk"){
     const leftKind = nextAttentionRiskKind(left.signals[0]);
@@ -166,6 +190,19 @@ function nextAttentionAttributionSignal(session, sourceIndex){
     }};
   }
   return null;
+}
+
+function nextAttentionStopSignal(session, sourceIndex){
+  const finished = typeof session.finished_at === "number" &&
+    Number.isFinite(session.finished_at) && session.finished_at > 0;
+  if(!finished || session.state !== "idle") return null;
+  let kind = "stop-unknown";
+  if(session.dirty === true) kind = "stop-dirty";
+  if(session.dirty === false) kind = "stop-clean";
+  return {kind, section: "close", sourceIndex, detail: {
+    finishedAt: session.finished_at,
+    changedEntries: Number.isInteger(session.changed) && session.changed >= 0 ? session.changed : null,
+  }};
 }
 
 function nextAttentionRateCoverage(_discoveredHarnesses){
@@ -363,25 +400,73 @@ function nextAttentionModel(payload){
     });
   }
 
+  const riskRepresented = new Set();
+  for(const subject of riskSubjects.values()){
+    for(const memberKey of subject.memberKeys || subject.sessions.map(nextSessionKey)){
+      riskRepresented.add(memberKey);
+    }
+  }
+  const closeSubjects = new Map();
+  for(const [sourceIndex, session] of sessions.entries()){
+    const key = nextSessionKey(session);
+    const signal = nextAttentionStopSignal(session, sourceIndex);
+    if(!signal || subjects.has(key) || riskRepresented.has(key)) continue;
+    closeSubjects.set(key, {
+      key, stableId: key, kind: "session", section: "close", primaryKind: signal.kind,
+      signals: [signal], session, sessions: [session], asks: [], sourceIndex,
+    });
+  }
+
+  const comparatorModel = {
+    generated: nextNumber(payload && payload.generated), harnessOrder: nextAttentionHarnessOrder(payload),
+  };
   const needs = [...subjects.values()].sort((left, right) => nextAttentionCompareSubjects(
-    left, right, {generated: nextNumber(payload && payload.generated), harnessOrder: nextAttentionHarnessOrder(payload)},
+    left, right, comparatorModel,
   ));
   const risk = [...riskSubjects.values()].sort((left, right) => nextAttentionCompareSubjects(
-    left, right, {generated: nextNumber(payload && payload.generated), harnessOrder: nextAttentionHarnessOrder(payload)},
+    left, right, comparatorModel,
+  ));
+  const close = [...closeSubjects.values()].sort((left, right) => nextAttentionCompareSubjects(
+    left, right, comparatorModel,
   ));
   const represented = new Set(needs.flatMap(subject => subject.sessions.map(nextSessionKey)));
   for(const subject of risk){
     for(const memberKey of subject.memberKeys || subject.sessions.map(nextSessionKey)) represented.add(memberKey);
   }
-  const healthySessions = sessions.filter(session => !represented.has(nextSessionKey(session)));
+  for(const subject of close){
+    for(const session of subject.sessions) represented.add(nextSessionKey(session));
+  }
+  const nextSubjects = new Map();
+  for(const [sourceIndex, session] of sessions.entries()){
+    const key = nextSessionKey(session);
+    const checkpoint = nextPublishedTask(session);
+    if(!checkpoint || represented.has(key) || nextSubjects.has(key)) continue;
+    nextSubjects.set(key, {
+      key, stableId: key, kind: "session", section: "next", primaryKind: "task",
+      signals: [{kind: "task", section: "next", detail: {task: checkpoint}, sourceIndex}],
+      session, sessions: [session], asks: [], sourceIndex, checkpoint,
+    });
+  }
+  const next = [...nextSubjects.values()].sort((left, right) => nextAttentionCompareSubjects(
+    left, right, comparatorModel,
+  ));
+  for(const subject of next){
+    for(const session of subject.sessions) represented.add(nextSessionKey(session));
+  }
+  const healthyByKey = new Map();
+  for(const session of sessions){
+    const key = nextSessionKey(session);
+    if(!represented.has(key) && !healthyByKey.has(key)) healthyByKey.set(key, session);
+  }
+  const healthySessions = [...healthyByKey.values()];
   const moving = healthySessions.filter(session => session.state === "working").length;
   const quiet = healthySessions.filter(session => session.state === "idle").length;
   const unknown = healthySessions.length - moving - quiet;
   const model = {
-    needs, risk, close: [], next: [],
+    needs, risk, close, next,
     healthy: {sessions: healthySessions, moving, quiet, unknown},
     coverage: nextAttentionCoverage(payload),
-    counts: {needs: needs.length, risk: risk.length, close: 0, next: 0, moving, quiet, unknown},
+    counts: {needs: needs.length, risk: risk.length, close: close.length, next: next.length, moving, quiet, unknown},
     harnessOrder: nextAttentionHarnessOrder(payload),
     representedSessionKeys: [...represented],
     generated: nextNumber(payload && payload.generated),
