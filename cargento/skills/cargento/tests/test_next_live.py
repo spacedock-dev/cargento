@@ -331,6 +331,62 @@ console.log(JSON.stringify({
         self.assertEqual(1, out["failures"])
         self.assertNotIn("Live refresh failed", out["html"])
 
+    def test_older_automatic_refresh_cannot_overwrite_newer_manual_recovery(self) -> None:
+        out = self._boot(
+            """
+await refreshNext();
+let releaseAutomatic = null;
+let releaseManual = null;
+let request = 0;
+__fetchImpl = async () => new Promise(resolve => {
+  request += 1;
+  if(request === 1) releaseAutomatic = resolve;
+  else releaseManual = resolve;
+});
+const automatic = refreshNext();
+const manual = refreshNext(true);
+releaseManual({ok: true, json: async () => ({
+  generated: 3000,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 1},
+  harnesses: [],
+  asks: [{id: "newer", question: "Keep newer", session_id: "newer"}],
+  sessions: [{harness: "codex", sid: "newer", project: "newer", state: "needs_input"}]
+})});
+await manual;
+const afterManual = {
+  generated: nextData.generated,
+  keys: nextAttention.needs.map(subject => subject.key),
+  html: __els.app.innerHTML,
+  failures: nextRefreshFailures
+};
+releaseAutomatic({ok: true, json: async () => ({
+  generated: 2000,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 1},
+  harnesses: [],
+  asks: [{id: "older", question: "Do not restore older", session_id: "older"}],
+  sessions: [{harness: "claude", sid: "older", project: "older", state: "needs_input"}]
+})});
+await automatic;
+console.log(JSON.stringify({
+  afterManual,
+  final: {
+    generated: nextData.generated,
+    keys: nextAttention.needs.map(subject => subject.key),
+    html: __els.app.innerHTML,
+    failures: nextRefreshFailures
+  }
+}));
+"""
+        )
+
+        self.assertEqual(3000, out["afterManual"]["generated"])
+        self.assertEqual(out["afterManual"], out["final"])
+        self.assertIn("Keep newer", out["final"]["html"])
+        self.assertNotIn("Do not restore older", out["final"]["html"])
+        self.assertEqual(0, out["final"]["failures"])
+
     def test_private_browsing_still_streams(self) -> None:
         out = self._boot(
             """

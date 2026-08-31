@@ -2,8 +2,8 @@ let nextData = null;
 let nextAttention = nextAttentionModel({});
 let nextRefreshFailures = 0;
 let nextRefreshInFlight = false;
+let nextRefreshRequest = 0;
 let nextLastRefreshSuccessAt = null;
-let nextAttentionAnnouncementText = "";
 let nextAttentionStatusElement = null;
 
 function nextCaptureFocus(){
@@ -74,6 +74,12 @@ function nextAttentionStatus(app){
   app.insertAdjacentElement("afterend", status);
   nextAttentionStatusElement = status;
   return status;
+}
+
+function nextAnnounceAttention(message){
+  if(!message) return;
+  const status = nextAttentionStatus(document.getElementById("app"));
+  if(status) status.textContent = message;
 }
 
 function nextRouteToken(route){
@@ -181,8 +187,7 @@ function renderNext(focus = nextCaptureFocus()){
     '<button type="button" data-next-action="dashboard">dashboard mode <kbd>d</kbd></button>' +
     "</div></details></div></header>" +
     stalled + nextViewBody(counts);
-  const status = nextAttentionStatus(app);
-  if(status) status.textContent = nextAttentionAnnouncementText;
+  nextAttentionStatus(app);
   nextRestoreFocus(focus, nextAttention);
 }
 

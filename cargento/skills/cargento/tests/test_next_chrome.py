@@ -325,28 +325,74 @@ console.log(JSON.stringify({
         self.assertNotIn("because", out["changed"].lower())
         self.assertEqual("", out["reordered"])
 
-    def test_attention_uses_one_persistent_polite_status_node(self) -> None:
+    def test_attention_status_does_not_replay_on_failure_navigation_or_reorder(self) -> None:
         out = self._run_page_js(
             """
-renderNext();
+await __settle();
 const first = __statusNodes[0];
-nextAttentionAnnouncementText = "Attention updated: 2 need you, 1 at risk";
+__payload = {
+  generated: 2000,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 1},
+  harnesses: [],
+  asks: [{id: "first", question: "First", session_id: "first"}],
+  sessions: [{harness: "claude", sid: "first", project: "first", state: "needs_input"}]
+};
+await refreshNext();
+const afterSuccess = {writes: [...__statusWrites], text: first.textContent};
+__fail = true;
+await refreshNext();
+navigateNext({view: "projects", project: null, session: null});
+__fail = false;
+__payload = {
+  generated: 3000,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 1},
+  harnesses: [],
+  asks: [{id: "second", question: "Second", session_id: "second"}],
+  sessions: [{harness: "codex", sid: "second", project: "second", state: "needs_input"}]
+};
+await refreshNext();
 renderNext();
 console.log(JSON.stringify({
   nodes: __statusNodes.length,
   same: first === __statusNodes[0],
   role: first.role,
   ariaLive: first.ariaLive,
+  afterSuccess,
+  finalWrites: __statusWrites,
   text: first.textContent
 }));
 """,
             """
 let __statusNodes = [];
+let __statusWrites = [];
+let __statusText = "";
+document.createElement = () => ({
+  style: {},
+  appendChild(){},
+  setAttribute(){},
+  set textContent(value){ __statusText = String(value); __statusWrites.push(__statusText); },
+  get textContent(){ return __statusText; }
+});
 __els.app = {
   innerHTML: "",
   querySelectorAll(){ return []; },
   querySelector(){ return null; },
   insertAdjacentElement(_position, node){ __statusNodes.push(node); }
+};
+let __fail = false;
+let __payload = {
+  generated: 1000,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 0},
+  harnesses: [],
+  asks: [],
+  sessions: []
+};
+__fetchImpl = async () => {
+  if(__fail) throw new Error("offline");
+  return {ok: true, json: async () => __payload};
 };
 """,
         )
@@ -355,7 +401,10 @@ __els.app = {
         self.assertTrue(out["same"])
         self.assertEqual("status", out["role"])
         self.assertEqual("polite", out["ariaLive"])
-        self.assertEqual("Attention updated: 2 need you, 1 at risk", out["text"])
+        self.assertEqual("Attention updated: 1 need you", out["afterSuccess"]["text"])
+        self.assertEqual(1, out["afterSuccess"]["writes"].count("Attention updated: 1 need you"))
+        self.assertEqual(out["afterSuccess"]["writes"], out["finalWrites"])
+        self.assertEqual("Attention updated: 1 need you", out["text"])
 
     def test_the_running_count_excludes_blocked_sessions(self) -> None:
         out = self._run_page_js(

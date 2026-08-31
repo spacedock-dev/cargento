@@ -30,7 +30,9 @@ function nextRefreshRetryMs(){
 
 async function refreshNext(manual = false){
   if(manual && nextRefreshInFlight) return;
+  const request = ++nextRefreshRequest;
   let focus;
+  let announcement = "";
   if(manual){
     nextRefreshInFlight = true;
     renderNext();
@@ -39,19 +41,22 @@ async function refreshNext(manual = false){
     const response = await fetch(nextDataUrl());
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const fresh = await response.json();
+    if(request !== nextRefreshRequest) return;
     const freshAttention = nextAttentionModel(fresh);
     nextObserveWorkstream(fresh);
     focus = nextCaptureFocus();
     const previousAttention = nextData == null ? null : nextAttention;
     nextData = fresh;
     nextAttention = freshAttention;
-    nextAttentionAnnouncementText = nextAttentionAnnouncement(previousAttention, freshAttention);
+    announcement = nextAttentionAnnouncement(previousAttention, freshAttention);
     nextRefreshFailures = 0;
     nextLastRefreshSuccessAt = Date.now();
   }catch(_error){
-    nextRefreshFailures += 1;
+    if(request === nextRefreshRequest) nextRefreshFailures += 1;
   }finally{
     if(manual) nextRefreshInFlight = false;
+    if(request !== nextRefreshRequest) return;
     renderNext(focus);
+    nextAnnounceAttention(announcement);
   }
 }
