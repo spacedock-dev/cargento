@@ -88,6 +88,11 @@ function nextSessionsView(){
   const collisions = nextSessionCollisionCounts();
   const rows = [...blocks.gates, ...blocks.working, ...blocks.idle]
     .map(session => nextSessionRow(session, labels, collisions)).join("");
+  if(!rows){
+    const windowHours = nextNumber(nextData && nextData.window_hours);
+    const window = windowHours == null ? "current payload" : `${esc(windowHours)}h payload`;
+    return `<p class="next-sessions-empty">No session rows in this ${window}.</p>`;
+  }
   return '<div class="next-sessions-table-wrap"><table class="next-sessions-table">' +
     '<thead><tr><th scope="col">SESSION</th><th scope="col">ACTIVITY</th>' +
     `<th scope="col">METRIC</th></tr></thead><tbody>${rows}</tbody></table></div>`;

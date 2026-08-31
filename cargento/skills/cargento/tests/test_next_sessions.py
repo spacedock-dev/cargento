@@ -112,7 +112,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn("next-session-group", html)
         self.assertNotIn('scope="rowgroup"', html)
 
-    def test_empty_flat_list_keeps_headers_and_one_empty_body(self) -> None:
+    def test_zero_session_inventory_keeps_its_route_and_bounded_empty_sentence(self) -> None:
         html = self.render(
             """
 nextData.sessions = [];
@@ -122,11 +122,13 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(html, str)
 
-        for heading in ("SESSION", "ACTIVITY", "METRIC"):
-            self.assertIn(f">{heading}</th>", html)
-        self.assertEqual(1, html.count("<tbody></tbody>"))
-        self.assertNotIn("data-next-session-block", html)
-        self.assertNotIn("next-session-group", html)
+        self.assertIn('<section class="next-sessions" data-next-view-body="sessions">', html)
+        self.assertIn("<h1>Sessions</h1>", html)
+        self.assertIn("No session rows in this 24h payload.", html)
+        self.assertIn('<nav aria-label="Primary">', html)
+        self.assertIn('<a href="#n=sessions" aria-current="page">Sessions</a>', html)
+        self.assertIn('<a href="#n=attention">Attention</a>', html)
+        self.assertNotIn('data-next-view-body="attention"', html)
 
     def test_rows_render_measured_metrics_registry_labels_and_activity(self) -> None:
         html = self.render()

@@ -163,7 +163,8 @@ function nextProjectDetailHeader(context){
 function nextProjectView(project){
   const group = nextProjectGroups().find(candidate => candidate.label === project);
   if(!group){
-    return `<div class="next-project-detail-empty">Project ${esc(project)} is outside this payload window.</div>`;
+    return '<div class="next-project-detail-empty"><p>Not present in the current payload.</p>' +
+      '<a href="#n=projects" data-next-route="projects">View all projects</a></div>';
   }
   const context = {group, plans: nextProjectPlans(group.sessions), harnesses: nextHarnessLabels()};
   const plan = nextProjectPlanBlock(context);

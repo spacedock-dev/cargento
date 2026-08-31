@@ -243,14 +243,17 @@ function nextAttentionCoverage(payload){
 }
 
 function nextAttentionProjectSummary(model, sessions){
-  const memberKeys = new Set(nextPayloadSessions({sessions}).map(nextSessionKey));
-  const needs = (model && Array.isArray(model.needs) ? model.needs : []).filter(subject =>
-    subject.session && memberKeys.has(nextSessionKey(subject.session)));
+  const all = model.needs.concat(model.risk, model.close, model.next);
   const rows = nextPayloadSessions({sessions});
+  const keys = new Set(rows.map(nextSessionKey));
+  const sessionSubjects = all.filter(item =>
+    item.session && keys.has(nextSessionKey(item.session)));
+  const collisionSubjects = model.risk.filter(item => item.kind === "collision" &&
+    item.sessions.some(session => keys.has(nextSessionKey(session))));
   return {
-    exactRequests: needs.reduce((total, subject) => total + subject.asks.length, 0),
-    risk: 0,
-    close: 0,
+    exactRequests: sessionSubjects.reduce((total, item) => total + item.asks.length, 0),
+    risk: sessionSubjects.filter(item => item.section === "risk").length + collisionSubjects.length,
+    close: sessionSubjects.filter(item => item.section === "close").length,
     working: rows.filter(session => session.state === "working").length,
     quiet: rows.filter(session => session.state === "idle").length,
   };

@@ -269,6 +269,21 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             self.assertNotRegex(html, r"\bsteps?\b")
             self.assertNotIn("next-project-detail-divider", html)
 
+    def test_missing_project_is_bounded_and_links_to_the_complete_project_map(self) -> None:
+        html = self.render(
+            """
+nextRoute = {view: "project", project: "missing/repo", session: null};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("Not present in the current payload", html)
+        self.assertIn('href="#n=projects"', html)
+        self.assertNotIn("deleted", html.lower())
+        self.assertNotIn("completed", html.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

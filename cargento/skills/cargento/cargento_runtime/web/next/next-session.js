@@ -103,10 +103,8 @@ function nextSessionCommandSurface(session, asks){
   if(asks.length){
     const question = String(asks[0] && asks[0].question || "").trim();
     if(question){
-      const spacedock = session && session.spacedock;
-      const authority = spacedock && typeof spacedock === "object" && !Array.isArray(spacedock);
       facts.push(nextSessionCommandFact(
-        "request", authority ? "CAPTAIN" : "NEEDS YOU", `<strong>${esc(question)}</strong>`,
+        "request", nextAskResponsibility(nextData, asks[0]), `<strong>${esc(question)}</strong>`,
       ));
     }
   }
@@ -289,7 +287,8 @@ function nextSessionView(project, sid){
   const session = nextSessionFind(project, sid);
   if(!session){
     return '<section class="next-session-detail-empty" ' +
-      'data-next-session-state="outside-payload">This session is outside the current payload.</section>';
+      'data-next-session-state="outside-payload"><p>Not present in the current payload.</p>' +
+      '<a href="#n=sessions" data-next-route="sessions">View all sessions</a></section>';
   }
   nextPruneSessionAnswerNotes();
   const asks = nextSessionAsks(session);

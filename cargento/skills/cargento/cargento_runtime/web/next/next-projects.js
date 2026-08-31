@@ -41,20 +41,11 @@ function nextProjectInstruction(sessions){
 }
 
 function nextProjectAsks(group){
-  const asks = nextData && Array.isArray(nextData.asks) ? nextData.asks : [];
-  const sids = new Set(group.sessions.map(session => String(session.sid || "")));
-  return asks.filter(ask => {
-    const sid = String(ask && ask.session_id || "");
-    const project = String(ask && ask.project || "");
-    return (sid && sids.has(sid)) || (!sid && project === group.label);
+  const keys = new Set(group.sessions.map(nextSessionKey));
+  return nextPayloadAsks(nextData).filter(ask => {
+    const owner = nextExactAskOwner(nextData, ask);
+    return owner && keys.has(nextSessionKey(owner));
   });
-}
-
-function nextProjectPriority(group){
-  if(nextProjectAsks(group).length) return 0;
-  if(group.sessions.some(session => session.state === "working" && session.active)) return 1;
-  if(group.sessions.some(session => session.state === "needs_input")) return 2;
-  return 3;
 }
 
 function nextProjectWorkflows(sessions){
@@ -85,12 +76,8 @@ function nextProjectHasSpacedock(sessions){
   });
 }
 
-function nextProjectRequestLabel(group, ask){
-  const sid = String(ask && ask.session_id || "");
-  const owner = sid
-    ? group.sessions.find(session => String(session && session.sid || "") === sid)
-    : null;
-  return owner && nextProjectHasSpacedock([owner]) ? "Captain" : "Needs you";
+function nextProjectRequestLabel(ask){
+  return nextAskResponsibility(nextData, ask) === "CAPTAIN" ? "Captain" : "Needs you";
 }
 
 function nextProjectCell(group){
@@ -139,7 +126,19 @@ function nextProjectNow(sessions){
     : "";
 }
 
-function nextProjectRow(group){
+function nextProjectSummaryHtml(summary, sessionCount){
+  const values = [`${sessionCount} ${sessionCount === 1 ? "session" : "sessions"}`];
+  if(summary.exactRequests){
+    values.push(`${summary.exactRequests} exact request${summary.exactRequests === 1 ? "" : "s"}`);
+  }
+  if(summary.risk) values.push(`${summary.risk} at risk`);
+  if(summary.close) values.push(`${summary.close} close the loop`);
+  if(summary.working) values.push(`${summary.working} working`);
+  if(summary.quiet) values.push(`${summary.quiet} quiet`);
+  return `<div class="next-project-summary">${values.map(value => `<span>${esc(value)}</span>`).join("")}</div>`;
+}
+
+function nextProjectRow(group, summary){
   const asks = nextProjectAsks(group);
   const ask = asks.length ? asks[0] : null;
   const question = String(ask && ask.question || "").trim();
@@ -154,34 +153,37 @@ function nextProjectRow(group){
     situation = "No active session observed";
   }
   const response = question
-    ? `<div><span>RESPONSE</span><strong>${nextProjectRequestLabel(group, ask)} · ${esc(question)}</strong></div>`
+    ? `<div><span>RESPONSE</span><strong>${nextProjectRequestLabel(ask)} · ${esc(question)}</strong></div>`
     : "";
   const commandClass = question
     ? "next-project-command"
     : "next-project-command next-project-command--situation-only";
   const route = nextRouteToken({view: "project", project: group.label, session: null});
+  const progress = nextProjectProgress(group.sessions);
+  const progressBlock = progress ? `<div class="next-project-progress">${progress}</div>` : "";
   return `<article class="next-project-row${blocked ? " next-project-row--blocked" : ""}" ` +
     `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
     'role="link" tabindex="0">' +
     `<div class="next-project-project">${nextProjectCell(group)}` +
-    `<div class="next-project-progress">${nextProjectProgress(group.sessions)}</div></div>` +
+    `${nextProjectSummaryHtml(summary, group.sessions.length)}${progressBlock}</div>` +
     `<div class="${commandClass}"><div><span>SITUATION</span>` +
     `<strong>${esc(situation)}</strong></div>${response}</div></article>`;
 }
 
-function nextProjectsView(){
-  const groups = nextProjectGroups().map((group, index) => ({group, index}));
-  groups.sort((left, right) => nextProjectPriority(left.group) - nextProjectPriority(right.group) ||
+function nextProjectsView(model){
+  const groups = nextProjectGroups().map((group, index) => ({
+    group, index, summary: nextAttentionProjectSummary(model, group.sessions),
+  }));
+  if(!groups.length){
+    const window = model.windowHours == null ? "current payload" : `${esc(model.windowHours)}h payload`;
+    return `<p class="next-projects-empty">No project display labels in this ${window}.</p>`;
+  }
+  groups.sort((left, right) => right.summary.exactRequests - left.summary.exactRequests ||
+    right.summary.risk - left.summary.risk ||
+    right.summary.close - left.summary.close ||
+    right.summary.working - left.summary.working ||
+    right.summary.quiet - left.summary.quiet ||
     left.index - right.index);
-  const request = groups.map(item => {
-    const ask = nextProjectAsks(item.group)[0];
-    return ask ? {ask, group: item.group} : null;
-  }).find(Boolean);
-  const question = String(request && request.ask && request.ask.question || "").trim();
-  const lede = question
-    ? '<section class="next-command-brief" aria-label="Request command brief">' +
-      `<strong>${nextProjectRequestLabel(request.group, request.ask).toUpperCase()} — ${esc(question)}</strong></section>`
-    : "";
-  return lede +
-    `<div class="next-projects-brief">${groups.map(item => nextProjectRow(item.group)).join("")}</div>`;
+  return `<div class="next-projects-brief">${groups.map(item =>
+    nextProjectRow(item.group, item.summary)).join("")}</div>`;
 }
