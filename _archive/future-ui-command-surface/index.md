@@ -1,11 +1,11 @@
 ---
 id: future-ui-command-surface
 title: Future UI command surface
-status: crucible
+status: accepted
 source: Captain commission on 2026-08-31 and the 2026-08-27 project-cockpit debrief
 started: 2026-08-31T01:41:26Z
-completed:
-verdict:
+completed: 2026-08-31T23:26:44Z
+verdict: PASSED
 score: 1.0
 worktree:
 issue:
@@ -81,7 +81,7 @@ gates:
                 reason: Captain approved the exception-first Future UI checkpoint at 1cb112e with the documented source-absent 320px browser-proof gap carried forward.
               application:
                 target-stage: accepted
-                state: pending
+                state: consumed
 review-round:
     id: round:future-ui-command-surface:crucible:3
     stage: crucible
@@ -90,6 +90,7 @@ review-round:
         id: briefing:future-ui-command-surface:crucible:round-3
         digest: sha256:ac5870356eedc67fecbc0215fa1619f7f88e2eb6ae63a1a712814cbc99156623
         room-ref: ./review/crucible/round-3
+archived: 2026-08-31T23:26:44Z
 ---
 
 ## Design bet
