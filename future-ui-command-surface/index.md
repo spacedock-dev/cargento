@@ -799,3 +799,91 @@ The approved source contract now has a zero-placeholder, task-complete TDD execu
 authoritative interface vocabulary and serialized proof. The plan and report are pushed, product
 bytes are unchanged, and work stops for captain selection between subagent-driven and inline
 execution.
+
+## Crucible implementation review — checkpoint `1cb112e`
+
+**Recommendation: ACCEPT the experimental checkpoint, with one parked browser-proof concern.**
+This is a recommendation to the captain, not gate approval. The implementation findings are
+corrected and source-bound at pushed `feat/future-ui` checkpoint
+`1cb112ea0843c88609e94705e2db0e865e77e577`; the missing 320px measurement for source-absent
+dynamic controls remains explicitly **NOT ADDRESSED**.
+
+### Independent review across the Crucible lenses
+
+- **Visual hierarchy and information architecture:** Attention is the default, lede-first route.
+  `OBSERVED NOW` and reporting coverage precede fixed-order exception sections; each section shows
+  at most three subjects before a count-bearing disclosure. Projects remains the complete project
+  map and Sessions the flat inventory, with native Primary links and exact detail breadcrumbs.
+- **Command and source truth:** exact ask ownership determines `CAPTAIN` versus neutral
+  responsibility; same-label siblings cannot lend authority. A winning Attention subject now
+  retains and renders lower-ranked loop, stop, and published-task facts without duplicating the
+  subject in a lower section. Collision-member tasks retain exact session attribution, and the
+  remainder says `NO PUBLISHED EXCEPTION` rather than claiming health or outcome.
+- **Cross-harness comprehension and drill-down:** the recorded live set contains Claude, Codex,
+  and Antigravity identities. Project and session captures keep scope distinct; session detail
+  leads with `CURRENT ACTIVITY`, shows published assignment/next facts only when present, and keeps
+  missing-source explanation subordinate. The final fix does not change the session renderer, and
+  its live 320px retry remeasured Attention, the project route, and the exact Codex route.
+- **Accessibility:** Attention uses one h1, semantic lists, native links/buttons/details,
+  `aria-current`, count-bearing `aria-expanded`/`aria-controls`, polite atomic status, retained
+  expansion, and focus restoration across refresh. The universal Next action-control rule sets a
+  44×44 CSS-pixel minimum; live source-present Attention/project/session controls measured without
+  horizontal overflow or undersized targets at 320px.
+- **Adversarial states:** current behavior tests exercise exact and unmatched asks, ask-plus-loop,
+  risk-plus-stop, risk/close-plus-task, collision-member attribution, malformed signals, empty and
+  partial coverage, four-subject collapse/expand, stale refresh retention, announcement bounds,
+  hostile text, missing facts, and exact-owner authority. A fresh current-tree run completed all
+  209 `test_next*.py` cases; embedded lint, plugin validation, and `git diff --check` also passed.
+
+### Final-review finding dispositions
+
+| Final-review finding | Disposition at `1cb112e` |
+|---|---|
+| **Critical — winning subjects discarded lower-ranked source facts.** | **ADDRESSED.** The model attaches source-backed loop, stop, and task signals to the winning subject; rendering exposes them with exact attribution, and ask/risk/close/collision regressions fail if facts disappear or duplicate into lower sections. |
+| **Important — bounded disclosure was absent.** | **ADDRESSED.** Sections initially expose three subjects, preserve stable order and identity, render a truthful `Show N more` / `Show fewer` control, and retain expansion plus disclosure focus across refresh. |
+| **Important — the 44×44 contract missed dynamic/detail controls.** | **IMPLEMENTATION ADDRESSED; REQUIRED BROWSER PROOF NOT ADDRESSED.** Universal actionable-control CSS and behavior tests cover links, buttons, summaries, and link-role controls; live source-present controls pass at 320px. The payload lacked stale Retry, needs-input gate, answer options, and four-subject disclosure, and two bounded CDP fixture attempts hung, so those four dynamic states have no 320px browser boxes. |
+| **Minor — obsolete group-wide authority helper remained.** | **ADDRESSED.** `nextProjectHasSpacedock` is removed; exact-owner authority behavior remains covered across Attention, Projects, and session detail. |
+
+The parked gap's owner is the next browser acceptance pass for the opt-in Next surface, spanning
+`styles.css` (shared target geometry), `next-chrome.js` (Retry and gate), `next-session.js` (answer
+options), and `next-attention.js` (expand/collapse). Its exact evidence boundary is geometry and
+overflow at a 320 CSS-pixel viewport for those source-absent runtime states. The universal CSS
+selector, 209 passing behavior tests, and live source-present Attention/project/session
+measurements support the implementation but do not substitute for the missing browser measurement;
+the gap is a parked verification uncertainty, not evidence that those controls fail.
+
+### Acceptance-criteria cross-check
+
+| Criterion | Current checkpoint judgment |
+|---|---|
+| **AC-1** | **PASS.** Attention leads with overall observed counts and coverage before ranked items; exact asks own the first response lane in adversarial fixtures, while the recorded zero-ask live payload invents no request. |
+| **AC-2** | **PASS with the parked accessibility evidence boundary.** Three-harness drill-downs keep activity, assignment, execution, next action, and responsibility source-bound; absent facts are not promoted to captain work. Dynamic Retry/gate/answer/disclosure geometry remains unmeasured at 320px as stated above. |
+| **AC-3** | **PASS.** Attention, Projects, Sessions, project detail, and exact session identities retain distinct headings, navigation, breadcrumbs, and ownership; exact-owner tests reject same-label authority borrowing. |
+| **AC-4** | **PASS for semantic and hierarchy correction, with the proof gap retained.** Every implementation finding was reproduced, corrected, and scoped-re-reviewed; three final findings are fully addressed and the fourth's implementation is corrected while its absent-state browser measurement is explicitly parked rather than claimed. |
+| **AC-5** | **PASS.** Local and remote `feat/future-ui` both resolve to `1cb112e`; the stable byte oracle remains unchanged, no PR or merge was opened, and `main` was not targeted. |
+
+The implementation range `015eab9..1cb112e` is DCO-signed and isolated. Final reported proof is
+209/209 Next tests, paired stable/Next byte oracles, 2,064 product tests plus 192 script tests,
+90.3% coverage, clean static/type/plugin/version checks, and assembled Next bytes of 297,482 at
+SHA-256 `10941400c09a4a990b32b6657235fc57f8f14911291a150d16d188c8ab2339de`.
+
+## Stage Report: crucible
+
+- DONE: Fresh independent review across visual hierarchy, information architecture, command/source truth, cross-harness comprehension, session drill-down, accessibility, and adversarial states, with every material finding reproduced or bounded by evidence.
+  Current source, final-fix diff, seven recorded route captures, SDD proof, and a fresh 209-test run
+  support the lenses; the only open evidence is the explicitly bounded dynamic-control 320px gap.
+- DONE: A disposition for every final-review finding and a lede-first recommendation to revise, reframe, or accept the experimental checkpoint.
+  Three findings are fully addressed, dynamic-control implementation is addressed with browser
+  proof not addressed, and the independent recommendation is ACCEPT with that parked concern.
+- DONE: AC-1 through AC-5 cross-check, including the parked 320px browser-measurement gap for source-absent Retry/gate/answer/disclosure controls and its exact owner/evidence boundary.
+  AC-1 through AC-5 pass at `1cb112e`; the next browser acceptance pass owns the absent-state
+  geometry proof across the four named renderer/style owners, and supporting evidence is not
+  misrepresented as the missing measurement.
+
+### Summary
+
+Checkpoint `1cb112e` implements the exception-first Attention direction without weakening project
+or session scope, and the final-review corrections preserve source facts, bound disclosure, and
+exact-owner authority. Recommend ACCEPT for captain judgment while carrying one explicit concern:
+the source-absent Retry, gate, answer, and disclosure controls still lack direct 320px browser
+measurement after two bounded CDP hangs.
