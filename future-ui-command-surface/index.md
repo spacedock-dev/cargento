@@ -137,3 +137,55 @@ Prior source context remains a hypothesis, not live proof: clkao wanted the debr
 ### Summary
 
 Three real, marked harness sessions established that the current Next UI cannot yet answer assignment, next action, or captain responsibility consistently. The strongest failures are a false no-workflow assertion, an overview led by empty inventory metrics, suppression of Claude data the API already has, and silent fallbacks where AGY/Codex sources are absent.
+
+## Prototyping iteration 1 — command truth before inventory
+
+The captain approved approach A: a project command brief and four-part session frame, with the explicit bounded captain state `CAPTAIN — No request observed` plus `Current payload only`. The design and implementation plan were checkpointed at `a986c6f`; the exact candidate bytes were checkpointed and pushed on `feat/future-ui` at `05332a4` before any after-capture.
+
+### Before evidence
+
+- [Overview inventory baseline](reconnaissance/overview-three-harnesses.jpg)
+- [False project workflow conclusion](reconnaissance/project-recce-cargento.jpg)
+- [Codex transcript-led baseline](reconnaissance/session-codex-01a0555c.jpg)
+- [Claude clipped-assignment baseline](reconnaissance/session-claude-8b3e5aa1.jpg)
+- [AGY project-name fallback baseline](reconnaissance/session-agy-49fad07a.jpg)
+
+### Antagonistic findings and dispositions
+
+| Reproduced finding | Evidence-bound disposition in `05332a4` |
+|---|---|
+| Missing `spacedock` records became the certain claim `This project declares no workflow`. | Replaced with `Workflow source unavailable for these sessions`; the positive first-officer and ensign empty states remain source-gated. |
+| Empty Progress/Estimate/Delegation inventory displaced situation, response, and owner on the overview. | Replaced the five-column table with a captain lede and priority-sorted project briefs led by `SITUATION` and `RESPONSE`; asks outrank executing and idle projects. |
+| Claude's full published `asked` instruction was suppressed when its shorter ellipsized title echoed it. | The session `ASSIGNMENT` frame renders the full published instruction independently of title deduplication and labels `Claude transcript` as its source. |
+| AGY's absent prompt silently became the project name. | The identity heading may still fall back for navigation, but the command frame states `Assignment unavailable` and `Not published`, each owned by `AGY CLI log`. |
+| Codex exposed transient approval/narration without a durable assignment, next action, or captain contract. | The frame labels the narration as execution context, states assignment/next are unavailable from `Codex transcript`, and bounds captain state to `No request observed · Current payload only`. |
+| `C`/`A became idle` looked like a semantic timeline without explaining work or consequence. | Renamed the region `OBSERVED STATE CHANGES`, uses full harness registry labels, and states only tab-local observed transitions. It does not claim semantic or causal coverage. |
+
+### Candidate byte proof and focused checks
+
+- Branch/checkpoint: `feat/future-ui` at pushed commit `05332a4`.
+- Assembled `?next=true` response: 240,258 bytes; SHA-256 `f3b472ceac42279b52556b8d170630c1eea13e5b3861a990a14c0a3f8b9974be`.
+- Red proof: the new overview/session/project/workstream assertions failed against the pre-candidate renderers; the keyboard activation assertion separately failed before focus/Enter support was added.
+- Green proof: 81 focused behavior and byte-contract tests passed across `test_next_projects`, `test_next_session`, `test_next_project`, `test_next_workstream`, and `test_next_page`.
+- Static proof: changed Python tests passed Ruff check and format; `scripts/lint_embedded.py`, `scripts/validate_plugins.py`, and `git diff --check` passed.
+
+### After evidence from the committed candidate
+
+- [Overview command brief](prototyping/overview-command-brief.jpg) — `CAPTAIN — No request observed` is immediately qualified by `Current payload only`; project briefs answer situation and response without empty estimate/delegation columns. SHA-256 `b28008226414bf9f2c85b2162ce7be0931d06911e8708ed275c96f0e7e3834a3`.
+- [Project source boundary](prototyping/project-recce-cargento.jpg) — says `Workflow source unavailable for these sessions` and `OBSERVED STATE CHANGES`. SHA-256 `b3a809b2b317645462bbaf5c783b3d908197d37cec63f3a50ae932a4d4851f0c`.
+- [Codex command frame, same identity `01a0555c-2da3-7c23-bd26-4ea2e275d18a`](prototyping/session-codex-01a0555c.jpg) — assignment and next facts name `Codex transcript` as their unavailable owner; execution retains the bounded agent narration. SHA-256 `82e5faa89c99626353a1ba24e0e91918d872db9c2d00ca40d50290bfabf8fbc9`.
+- [Claude command frame, same API identity `8b3e5aa1`](prototyping/session-claude-8b3e5aa1.jpg) — the full marked assignment renders despite the clipped title. SHA-256 `ba052fc64fcd6d3959e15798ac092406f83cfb1d3b6e4bef3798e6ee3b7d5fe1`.
+- [AGY command frame, same identity `49fad07a-21aa-4b2e-9c14-ecfcbcf67ab8`](prototyping/session-agy-49fad07a.jpg) — missing assignment and next action are explicitly owned by `AGY CLI log`. SHA-256 `984822d31b7366f2a100f6191852a06cc38a0d5d63e03e97b7fba11a79dd4d42`.
+
+## Stage Report: prototyping
+
+- DONE: Implement a coherent, lede-first overview and session drill-down that materially resolves the six reproduced reconnaissance risks instead of adding more inventory regions.
+  Commit `05332a4` replaces the overview inventory with one command brief, adds one four-part session frame, bounds the project/workstream claims, and the five tied captures reproduce each correction.
+- DONE: Keep every semantic claim source-bound: remove the false workflow certainty, expose available Claude assignment data, and label unavailable Codex or AGY command facts with their bounded owner.
+  The same-identity after-captures show workflow uncertainty, Claude's complete published assignment, and exact `Codex transcript`/`AGY CLI log` ownership without invented next or captain actions.
+- DONE: Commit exact candidate bytes on feat/future-ui, recompute frontend byte pins, run focused tests, and capture tied before/after evidence for the next fresh crucible review.
+  Pushed `05332a4` pins the 240,258-byte assembled response at SHA-256 `f3b472ceac42279b52556b8d170630c1eea13e5b3861a990a14c0a3f8b9974be`; 81 focused tests and both static validators passed before the five Chrome captures.
+
+### Summary
+
+The first prototype now puts captain state and project situation ahead of inventory, gives every session an assignment/execution/next/captain frame, and names source gaps without turning them into instructions for the captain. The candidate is ready for a fresh crucible review; no crucible judgment is recorded here.
