@@ -15,9 +15,7 @@ stages:
       gate: true
     - name: reconnaissance
     - name: prototyping
-      worktree: true
     - name: crucible
-      worktree: true
       fresh: true
       gate: true
       feedback-to: prototyping
