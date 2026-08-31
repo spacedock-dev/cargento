@@ -62,6 +62,10 @@ gates:
                 id: briefing:future-ui-command-surface:crucible:attempt-3:revision-1
                 digest: sha256:cfca69cfaa142042d5296abc41b0b2c4e5322b632d0c19d21183d67cd62272f1
                 room-ref: ./review/crucible/briefing-3
+              withdrawal:
+                by: agent:first-officer
+                at: "2026-08-31T23:23:02.112952Z"
+                reason: Structured Crucible AC scan marks AC-2, AC-3, and AC-4 unevidenced; repair the stage report with explicit current-checkpoint citations before captain presentation.
 review-round:
     id: round:future-ui-command-surface:crucible:3
     stage: crucible
