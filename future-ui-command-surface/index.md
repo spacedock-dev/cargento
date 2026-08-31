@@ -66,6 +66,11 @@ gates:
                 by: agent:first-officer
                 at: "2026-08-31T23:23:02.112952Z"
                 reason: Structured Crucible AC scan marks AC-2, AC-3, and AC-4 unevidenced; repair the stage report with explicit current-checkpoint citations before captain presentation.
+            - id: gate-attempt:future-ui-command-surface-crucible-4
+              briefing:
+                id: briefing:future-ui-command-surface:crucible:attempt-4:revision-1
+                digest: sha256:e2e5a3dfb9f076e35ebca05acd598971a0a5a55971a5132ea08775fd55dc45f5
+                room-ref: ./review/crucible/briefing-4
 review-round:
     id: round:future-ui-command-surface:crucible:3
     stage: crucible

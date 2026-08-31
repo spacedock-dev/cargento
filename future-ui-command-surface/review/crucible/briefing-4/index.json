@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:future-ui-command-surface:crucible:attempt-4:revision-1",
+  "question": "Accept checkpoint 1cb112e as the next Future UI direction while carrying the documented source-absent 320px browser-proof gap, or revise/reframe it?",
+  "artifacts": [
+    {
+      "id": "artifact:future-ui-command-surface:crucible:attempt-4:revision-1:item-1",
+      "uri": "git-root://state/e026771e9d4e745040da17ae2fbe502c2f55a5b0/future-ui-command-surface/index.md",
+      "rev": "sha256:85db02039b0e9c91f503752f07ec8d84f85ac09ba02adb5b1b984ca3f0874484",
+      "mediaType": "text/markdown",
+      "summary": "Recommend ACCEPT for the experimental feat/future-ui checkpoint: exception-first Attention, exact source authority, bounded disclosure, and session drill-down passed fresh adversarial review; one browser-geometry proof gap remains explicit for source-absent dynamic controls."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:future-ui-command-surface:crucible:attempt-4:revision-1:item-2",
+      "uri": "git-root://main/1cb112ea0843c88609e94705e2db0e865e77e577/docs/future-ui-exploration/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:fc45c6f5221aca88756cfc5a017081d0bebc9ea9dbf2802672d369280ff14329"
+    }
+  ]
+}
