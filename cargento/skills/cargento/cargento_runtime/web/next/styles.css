@@ -50,6 +50,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-menu kbd{font-family:var(--mono);color:var(--ink3)}
 .next-stalled{margin-top:18px;padding:10px 12px;border-left:3px solid var(--alert);background:var(--panel);color:var(--alert)}
 .next-overview{padding-top:34px}
+.next-overview>h1{margin:0 0 18px;font-size:var(--fs-xl);font-weight:500}
 .next-tabs-row{justify-content:space-between;gap:20px}
 .next-tabs{gap:20px;font-family:var(--mono);font-size:var(--fs-sm)}
 .next-tabs button{padding:0 0 7px;color:var(--ink3)}

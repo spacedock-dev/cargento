@@ -113,7 +113,7 @@ function nextSessionMeta(session){
     const turn = session.turn;
     const elapsed = turn && typeof turn === "object" && !Array.isArray(turn) &&
       typeof turn.elapsed_h === "string" ? turn.elapsed_h.trim() : "";
-    if(elapsed) parts.push(`started ${elapsed} ago`);
+    if(elapsed) parts.push(`turn started ${elapsed} ago`);
   }else if(session.state === "idle"){
     const started = nextDurationSince(session.started_at);
     if(started != null) parts.push(`session started ${started} ago`);

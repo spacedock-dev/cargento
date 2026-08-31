@@ -104,8 +104,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn(f'data-next-session-detail="{self.SID}"', html)
         self.assertIn(">Compile the release</h1>", html)
-        self.assertIn("Claude Code · session- · running tests · started 5m ago", html)
-        self.assertNotIn("started 30m ago", html)
+        self.assertIn("Claude Code · session- · running tests · turn started 5m ago", html)
+        self.assertNotIn("session started 30m ago", html)
         self.assertNotIn("blocked ", html)
         self.assertNotIn("AGENT IS ASKING", html)
         self.assertNotIn("TASKS ·", html)
@@ -233,11 +233,11 @@ console.log(JSON.stringify(variants));
         )
         assert isinstance(out, dict)
 
-        self.assertIn("started 5m ago", out["working"])
-        self.assertNotIn("started 30m ago", out["working"])
+        self.assertIn("turn started 5m ago", out["working"])
+        self.assertNotIn("session started 30m ago", out["working"])
         for variant in ("noTurn", "missingElapsed", "emptyElapsed", "malformedElapsed"):
             with self.subTest(variant=variant):
-                self.assertNotIn("started ", out[variant])
+                self.assertNotIn("turn started ", out[variant])
         self.assertIn("session started 30m ago", out["idle"])
         self.assertNotIn("session started", out["idleWithoutStart"])
         self.assertIn("blocked 10m", out["waiting"])
@@ -265,7 +265,7 @@ console.log(JSON.stringify(variants));
         )
         assert isinstance(out, dict)
 
-        self.assertIn("started 5h 40m ago", out["working"])
+        self.assertIn("turn started 5h 40m ago", out["working"])
         self.assertIn("2h 9m", self.subagent_row(out["working"], 0))
         self.assertIn("session started 2h 9m ago", out["idle"])
         self.assertIn("blocked 2h 9m", out["waiting"])

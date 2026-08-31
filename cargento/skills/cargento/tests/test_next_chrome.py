@@ -8,6 +8,45 @@ from .next_harness import NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextChromeBehaviorTest(NextPageJsHarness):
+    def test_routes_set_distinct_titles_and_overview_exposes_related_tabs(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = {
+  summary: {working: 0, needs_input: 0},
+  sessions: [{
+    sid: "session-one", session: "session-", harness: "codex",
+    project: "alpha/repo", title: "Resolve the gate", state: "idle", subagents: []
+  }],
+  asks: []
+};
+navigateNext({view: "overview", project: null, session: null});
+const overview = {title: document.title, html: __els.app.innerHTML};
+navigateNext({view: "project", project: "alpha/repo", session: null});
+const project = {title: document.title, html: __els.app.innerHTML};
+navigateNext({view: "session", project: "alpha/repo", session: "session-one"});
+const session = {title: document.title, html: __els.app.innerHTML};
+console.log(JSON.stringify({overview, project, session}));
+""",
+            '__els.app = {innerHTML: ""};\n',
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual("Cargento — Overview", out["overview"]["title"])
+        self.assertEqual("alpha/repo — Cargento", out["project"]["title"])
+        self.assertEqual("Resolve the gate — alpha/repo — Cargento", out["session"]["title"])
+        overview = out["overview"]["html"]
+        self.assertIn("<h1>Cargento command overview</h1>", overview)
+        self.assertIn('id="next-tab-projects" aria-controls="next-panel-projects"', overview)
+        self.assertIn('id="next-tab-sessions" aria-controls="next-panel-sessions"', overview)
+        self.assertIn(
+            'role="tabpanel" id="next-panel-projects" aria-labelledby="next-tab-projects"',
+            overview,
+        )
+        self.assertIn(
+            'role="tabpanel" id="next-panel-sessions" aria-labelledby="next-tab-sessions"',
+            overview,
+        )
+
     def test_route_survives_load_and_browser_history(self) -> None:
         out = self._run_page_js(
             """

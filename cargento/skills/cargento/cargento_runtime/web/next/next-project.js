@@ -167,11 +167,11 @@ function nextProjectView(project){
   return `<article class="next-project-detail" data-next-project-detail="${esc(group.label)}">` +
     nextProjectDetailHeader(context) +
     '<div class="next-project-detail-layout">' +
-    '<main class="next-project-detail-main" data-next-project-main>' +
+    '<div class="next-project-detail-main" data-next-project-main>' +
     `<div data-next-project-section="plan">${nextProjectPlanBlock(context)}</div>` +
     `<div data-next-project-section="going-on">${nextProjectGoingOn(context)}</div>` +
     `<div data-next-project-section="done">${nextProjectDone(context)}</div>` +
-    `<div data-next-project-section="workstream">${nextProjectWorkstream(context)}</div></main>` +
+    `<div data-next-project-section="workstream">${nextProjectWorkstream(context)}</div></div>` +
     '<aside class="next-project-detail-rail" data-next-project-rail>' +
     `${nextProjectDelegation(context)}${nextProjectControls(context)}</aside>` +
     '</div></article>';

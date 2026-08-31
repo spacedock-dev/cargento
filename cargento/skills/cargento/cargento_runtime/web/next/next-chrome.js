@@ -19,6 +19,16 @@ function nextBreadcrumb(){
     `<span aria-hidden="true"> &gt; </span><span>${esc(nextRoute.session)}</span>`;
 }
 
+function nextDocumentTitle(){
+  if(nextRoute.view === "overview") return "Cargento — Overview";
+  if(nextRoute.view === "project") return `${nextRoute.project} — Cargento`;
+  const session = nextSessionFind(nextRoute.project, nextRoute.session);
+  const title = session
+    ? nextSessionTitle(session, nextSessionAsks(session))
+    : String(nextRoute.session || "Session");
+  return `${title} — ${nextRoute.project} — Cargento`;
+}
+
 function nextRows(){
   return nextData && Array.isArray(nextData.sessions) ? nextData.sessions : [];
 }
@@ -48,15 +58,20 @@ function nextWindowLabel(){
 function nextOverviewShell(counts){
   const projectsSelected = nextOverviewTab === "projects";
   return '<section class="next-overview" aria-label="Overview">' +
+    '<h1>Cargento command overview</h1>' +
     '<div class="next-tabs-row"><div class="next-tabs" role="tablist">' +
-    `<button type="button" role="tab" data-next-tab="projects" aria-selected="${projectsSelected}">projects</button>` +
-    `<button type="button" role="tab" data-next-tab="sessions" aria-selected="${!projectsSelected}">sessions</button>` +
+    `<button type="button" role="tab" id="next-tab-projects" aria-controls="next-panel-projects" ` +
+    `data-next-tab="projects" aria-selected="${projectsSelected}">projects</button>` +
+    `<button type="button" role="tab" id="next-tab-sessions" aria-controls="next-panel-sessions" ` +
+    `data-next-tab="sessions" aria-selected="${!projectsSelected}">sessions</button>` +
     "</div>" +
     `<div class="next-population">${counts.projects} projects · ${counts.sessions} sessions ` +
     `<span>${nextWindowLabel()}</span></div></div>` +
-    `<section data-next-body="projects"${projectsSelected ? "" : " hidden"}>` +
+    `<section role="tabpanel" id="next-panel-projects" aria-labelledby="next-tab-projects" ` +
+    `data-next-body="projects"${projectsSelected ? "" : " hidden"}>` +
     `${projectsSelected ? nextOverviewBody("projects") : ""}</section>` +
-    `<section data-next-body="sessions"${projectsSelected ? " hidden" : ""}>` +
+    `<section role="tabpanel" id="next-panel-sessions" aria-labelledby="next-tab-sessions" ` +
+    `data-next-body="sessions"${projectsSelected ? " hidden" : ""}>` +
     `${projectsSelected ? "" : nextOverviewBody("sessions")}</section>` +
     "</section>";
 }
@@ -71,6 +86,7 @@ function renderNext(){
   const app = document.getElementById("app");
   if(!app) return;
   const counts = nextCounts();
+  document.title = nextDocumentTitle();
   const gate = counts.gates > 0
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} need you</button>`
     : "";
