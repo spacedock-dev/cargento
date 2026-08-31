@@ -453,8 +453,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
         live_rule = re.search(r"\.next-live \.next-status-dot\{([^}]*)\}", styles)
         reduced = re.search(
-            r"@media\(prefers-reduced-motion:reduce\)\{"
-            r"\.next-live \.next-status-dot\{([^}]*)\}\}",
+            r"@media\(prefers-reduced-motion:reduce\)\{\s*"
+            r"([^{}]+)\{([^}]*)\}",
             styles,
         )
 
@@ -462,7 +462,8 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIsNotNone(reduced)
         self.assertIn("color:var(--accent-ink)", live_rule.group(1) if live_rule else "")
         self.assertIn("animation:next-live-pulse", live_rule.group(1) if live_rule else "")
-        self.assertIn("animation:none", reduced.group(1) if reduced else "")
+        self.assertIn(".next-live .next-status-dot", reduced.group(1) if reduced else "")
+        self.assertIn("animation:none", reduced.group(2) if reduced else "")
 
     def test_activity_subagent_names_can_shrink_inside_the_card(self) -> None:
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
@@ -650,17 +651,20 @@ console.log(JSON.stringify({
         )
         self.assertEqual([None, None, "0s", "5m"], out["since"])
 
-    def test_the_next_bundle_mounts_the_overview_breadcrumb(self) -> None:
+    def test_the_default_bundle_mounts_primary_attention_navigation(self) -> None:
         out = self._run_page_js(
             "console.log(JSON.stringify(__els.app.innerHTML));",
             '__els.app = {innerHTML: ""};\n',
         )
 
         self.assertIn(
-            '<nav class="next-breadcrumb" aria-label="Breadcrumb">'
-            "<span>Cargento | overview</span></nav>",
+            '<nav aria-label="Primary"><a href="#n=attention" aria-current="page">'
+            "Attention</a><a href=\"#n=projects\">Projects</a>"
+            '<a href="#n=sessions">Sessions</a></nav>',
             out,
         )
+        self.assertNotIn('class="next-breadcrumb" aria-label="Breadcrumb"', out)
+        self.assertNotIn("overview", out)
 
 
 if __name__ == "__main__":

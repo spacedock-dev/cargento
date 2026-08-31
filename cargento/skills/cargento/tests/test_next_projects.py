@@ -142,6 +142,7 @@ nextData.asks = [{
   id: "ask-beta", session_id: "beta-work", project: "beta/app",
   question: "Plain approval", options: ["Approve"]
 }];
+nextAttention = nextAttentionModel(nextData);
 renderNext();
 const projects = __els.app.innerHTML;
 nextRoute = {view: "attention", project: null, session: null};
@@ -155,7 +156,22 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
         assert isinstance(out, dict)
 
         self.assertIn("NEEDS YOU · Source not identified", out["attention"])
-        self.assertNotIn("CAPTAIN · Source not identified", out["attention"])
+        beta_attention = re.search(
+            r'<article class="next-attention-item"[^>]*'
+            r'data-next-subject-key="session:\[&quot;&quot;,&quot;beta-work&quot;\]"[^>]*>'
+            r"(.*?)</article>",
+            out["attention"],
+            re.DOTALL,
+        )
+        self.assertIsNotNone(beta_attention)
+        self.assertIn(
+            "NEEDS YOU · Source not identified",
+            beta_attention.group(1) if beta_attention else "",
+        )
+        self.assertNotIn(
+            "CAPTAIN · Source not identified",
+            beta_attention.group(1) if beta_attention else "",
+        )
         beta = self.project_row(out["projects"], "beta/app")
         self.assertIn("Needs you · Plain approval", beta)
         self.assertNotIn("Captain · Plain approval", beta)
