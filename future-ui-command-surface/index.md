@@ -71,6 +71,17 @@ gates:
                 id: briefing:future-ui-command-surface:crucible:attempt-4:revision-1
                 digest: sha256:e2e5a3dfb9f076e35ebca05acd598971a0a5a55971a5132ea08775fd55dc45f5
                 room-ref: ./review/crucible/briefing-4
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:future-ui-command-surface:crucible:4
+                briefing: briefing:future-ui-command-surface:crucible:attempt-4:revision-1
+                by: person:captain
+                at: "2026-08-31T23:26:23.372424Z"
+                decision: approve
+                reason: Captain approved the exception-first Future UI checkpoint at 1cb112e with the documented source-absent 320px browser-proof gap carried forward.
+              application:
+                target-stage: accepted
+                state: pending
 review-round:
     id: round:future-ui-command-surface:crucible:3
     stage: crucible
