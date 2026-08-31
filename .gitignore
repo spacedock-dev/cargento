@@ -27,6 +27,7 @@ docs/visibility-2x2/items.json.tmp
 
 # Spacedock roadmap-burndown state: a linked worktree of the spacedock-state/roadmap-burndown orphan branch
 docs/roadmap-burndown/.spacedock-state/
+docs/future-ui-exploration/.spacedock-state/
 
 # Spacedock mods: vendored from the plugin at install time, not source.
 # Restoring: see docs/roadmap-burndown/README.md, "Workflow State".
