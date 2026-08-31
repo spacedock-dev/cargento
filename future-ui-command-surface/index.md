@@ -189,3 +189,49 @@ The captain approved approach A: a project command brief and four-part session f
 ### Summary
 
 The first prototype now puts captain state and project situation ahead of inventory, gives every session an assignment/execution/next/captain frame, and names source gaps without turning them into instructions for the captain. The candidate is ready for a fresh crucible review; no crucible judgment is recorded here.
+
+## Crucible review — recommendation: revise
+
+**REVISE.** The command-surface direction survives: the live overview makes the one executing session and bounded captain state visible, and each exact harness drill-down now separates assignment, execution, next action, and captain responsibility without inventing unavailable facts. Acceptance is blocked by two reproduced corrections within this interaction model, so the evidence supports neither a reframe nor acceptance yet.
+
+### Acceptance and cross-harness disposition
+
+| Question | Live answer at `05332a4` | Disposition |
+|---|---|---|
+| Overall situation | Overview says `1 session executing`; its captain lede says `No request observed` and immediately qualifies that with `Current payload only`. | AC-1 passes. The command brief leads before the three project rows and no lower-risk row has greater semantic weight. |
+| Assignment | Claude renders the complete published `asked` instruction. Codex and AGY render `Assignment unavailable` and name `Codex transcript` or `AGY CLI log`. | AC-2 passes this fact; no project-name or transient narration is promoted to assignment. |
+| Execution and current activity | All three frames render state/detail; Codex alone adds its published `agent` narration and live subagent as bounded context. | AC-2 passes the source boundary, subject to the elapsed-label correction below. |
+| Next action | All three live records truthfully say `Not published` with their source owner. The ask and in-progress-task fixtures select the exact ask first and the first published in-progress task second. | AC-2 passes; missing data is not assigned to the captain. |
+| Captain responsibility | All three say `No request observed · Current payload only`; the exact-ask fixture instead says `Respond` with the escaped question. | AC-1/2 pass; the current payload has `asks: []`. |
+| Scope and provenance | Overview, `recce/cargento`, and all three session permalinks retain distinct breadcrumbs and exact API identities; the same-label caveat remains visible. | AC-3 and AC-5 pass. Branch is `feat/future-ui` at `05332a4`; no product mutation reached `main`. |
+
+All six reconnaissance findings remain closed in the live candidate: workflow absence is uncertain rather than declarative; the overview is lede-first; Claude assignment suppression is gone; AGY project fallback no longer stands in for assignment; Codex gaps name their source owner; and state changes use full harness labels with tab-local scope.
+
+### Material findings and required correction
+
+1. **Accepted — accessibility semantics block acceptance.** The overview has zero headings, the two `role=tab` controls have no `aria-controls` or `tabpanel`, every route keeps the generic document title `Cargento`, and the project route nests an unlabeled `<main>` inside `#app`'s `<main>` (`next-chrome.js:48-60`, `index.html:6,11`, `next-project.js:167-174`). This impairs structural navigation and route identification even though visible hierarchy is strong. Revise with a route-specific title, a real overview heading, a correctly related tab/tabpanel pattern, and one main landmark.
+2. **Accepted — working elapsed time needs a truthful noun.** The Codex header rendered `started 5m ago` while the API distinguished the much older `started_at` from `turn.elapsed_h`; `next-session.js:113-116` deliberately reads the turn field but omits `turn` from the label. Revise to `turn started … ago` (or equivalent) so the current-activity cue cannot be read as session start.
+
+Keyboard Enter navigation and a visible focus ring passed on the overview brief; the 320 px overview and session frames reflowed with `scrollWidth == clientWidth`; sampled dark-theme text contrast ranged from 6.49:1 to 14.88:1; reduced-motion behavior remains pinned by the focused asset test. Those results dispose of keyboard reachability, reflow, core contrast, and motion as material blockers in this round, but do not cancel the semantic failures above.
+
+### Current evidence and checks
+
+- [Overview command brief](crucible/overview-live.jpg), [project drill-down](crucible/project-live.jpg), [Codex](crucible/session-codex-live.jpg), [Claude](crucible/session-claude-live.jpg), and [AGY](crucible/session-agy-live.jpg) are fresh 1844×1067 captures from server PID 74085 and exact candidate `05332a4`.
+- [Keyboard focus](crucible/overview-keyboard-focus.jpg) shows the live focus indicator; [320 px reflow](crucible/overview-320px.jpg) records the narrow hierarchy without horizontal overflow.
+- `/api/data` at `2026-08-31T02:35:14Z` reproduced the exact three identities, one working Codex session, no asks, full Claude `asked` instruction, and unavailable Codex/AGY assignments; renderer source and fixtures supplied the adversarial ask, task, missing-source, scope, and elapsed cases.
+- The assembled candidate remains 240,258 bytes at SHA-256 `f3b472ceac42279b52556b8d170630c1eea13e5b3861a990a14c0a3f8b9974be`. All 81 focused behavior/byte tests, `scripts/lint_embedded.py`, `scripts/validate_plugins.py`, and `git diff --check` passed; the focused tests would fail if ask priority, full Claude assignment, source owners, keyboard routing, bounded workflow/state labels, responsive byte pins, or reduced motion regressed.
+
+Captain gate: choose **revise** and return these two accepted findings to prototyping. A fresh crucible review after both corrections is required by AC-4 before acceptance.
+
+## Stage Report: crucible
+
+- DONE: Independently test the committed live candidate with fresh Codex, Claude Code, and AGY evidence across visual hierarchy, information architecture, command truth, session drill-down, accessibility, and adversarial states.
+  Commit `05332a4`, current API data, seven fresh browser captures, source inspection, semantic/keyboard/reflow checks, and 81 focused fixture tests exercise each requested lens; changing any cited route, identity, semantic count, source owner, or fixture outcome breaks the evidence.
+- DONE: Reproduce and disposition every material finding against the acceptance criteria, especially whether overview and drill-down expose overall situation, assignment, execution, current activity, next action, and captain responsibility without invented certainty.
+  The acceptance table closes all six prior risks and holds AC-2/AC-4 on two reproduced defects: missing route semantics and an unqualified turn-elapsed label.
+- DONE: Recommend exactly one route—revise, reframe, or accept—with source-bound evidence, focused check results, and current screenshots sufficient for the captain gate.
+  REVISE is the sole recommendation; the seven linked captures, API timestamp, source lines, byte hash, and falsifiable check summary bind the gate.
+
+### Summary
+
+The project-first command model is substantially stronger and remains honest across Codex, Claude Code, and AGY, so a reframe is not warranted. Two material but bounded corrections block acceptance: repair route/landmark/tab semantics and qualify working elapsed time as turn time, then run a fresh crucible review.
