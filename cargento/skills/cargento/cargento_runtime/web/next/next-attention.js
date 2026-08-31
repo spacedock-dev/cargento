@@ -410,7 +410,7 @@ function nextAttentionModel(payload){
   for(const [sourceIndex, session] of sessions.entries()){
     const key = nextSessionKey(session);
     const signal = nextAttentionStopSignal(session, sourceIndex);
-    if(!signal || subjects.has(key) || riskRepresented.has(key)) continue;
+    if(!signal || subjects.has(key) || riskRepresented.has(key) || closeSubjects.has(key)) continue;
     closeSubjects.set(key, {
       key, stableId: key, kind: "session", section: "close", primaryKind: signal.kind,
       signals: [signal], session, sessions: [session], asks: [], sourceIndex,

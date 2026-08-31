@@ -498,6 +498,30 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         for forbidden in ("files", "failed", "unread", "unfinished", "successful", "died"):
             self.assertNotIn(forbidden, dirty_html.lower())
 
+    def test_duplicate_exact_stops_keep_the_first_source_owner_and_reading(self) -> None:
+        model = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "claude", "sid": "duplicate-stop", "project": "alpha/first",
+                        "state": "idle", "finished_at": 7_000, "dirty": True, "changed": 3,
+                    },
+                    {
+                        "harness": "claude", "sid": "duplicate-stop", "project": "beta/later",
+                        "state": "idle", "finished_at": 6_000, "dirty": False, "changed": 0,
+                    },
+                ]
+            }
+        )
+        assert isinstance(model, dict)
+
+        self.assertEqual(1, len(model["close"]))
+        close = model["close"][0]
+        self.assertEqual("stop-dirty", close["primaryKind"])
+        self.assertEqual({"finishedAt": 7_000, "changedEntries": 3}, close["signals"][0]["detail"])
+        self.assertEqual("alpha/first", close["session"]["project"])
+        self.assertEqual(0, close["sourceIndex"])
+
     def test_published_tasks_and_healthy_remainder_exclude_higher_section_subjects(self) -> None:
         model = self.model(
             {
