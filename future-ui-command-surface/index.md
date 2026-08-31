@@ -1,7 +1,7 @@
 ---
 id:
 title: Future UI command surface
-status: reconnaissance
+status: prototyping
 source: Captain commission on 2026-08-31 and the 2026-08-27 project-cockpit debrief
 started: 2026-08-31T01:41:26Z
 completed:
