@@ -338,3 +338,134 @@ Captain gate: choose **accept** for the future direction at `578d77a`. Acceptanc
 ### Summary
 
 The corrected checkpoint preserves the lede-first command hierarchy and now passes both rejected semantic claims across live overview, project, and three-harness drill-downs. No material finding remains; accept the isolated future direction at `578d77a`, with conventional roving-tab behavior retained as a non-blocking follow-up.
+
+## Prototyping correction cycle 3 — evidence-shaped progressive disclosure
+
+The captain retained the project-first direction but rejected four mechanisms in accepted snapshot
+`578d77a`: a generic workflow-absence panel, a context-free refresh error, an absence-led captain
+banner, and four equally weighted session cells. The correction is committed and pushed on
+`feat/future-ui` at exact checkpoint `25401e1f4eb9d35b784b5a5c9728a894537e8d24`.
+
+### Captain and failure-boundary rulings
+
+The captain and first officer ruled that an exact ask from any harness remains operationally
+important and may lead neutrally as `NEEDS YOU — <question>`. `CAPTAIN` wording requires both an
+exact ask and positive Spacedock evidence on its owning session or project. With no exact ask, no
+request lede or empty project response region is rendered.
+
+The `data-next-state="stalled"` threshold means two consecutive `/api/data` refresh attempts failed.
+The caught boundary includes a fetch rejection, non-2xx response, JSON parsing error, or local
+workstream-observation error; it does not prove the event stream stopped. The corrected notice
+therefore retains the last successful payload, says that live refresh attempts failed in a row,
+warns that displayed data may be stale, reports last-success age when available, states the active
+20-second streaming or 5-second legacy retry cadence, and offers a manually serialized `Retry now`.
+The first failure remains quiet and any successful refresh clears the notice.
+
+### Rejected mechanisms and correction
+
+| Captain finding | Evidence-bound correction at `25401e1` |
+|---|---|
+| `Workflow source unavailable for these sessions` read as broken and added no value. | A project with no non-null `spacedock` record emits no workflow wrapper at all. Concrete plans and the existing positive first-officer/ensign context remain available only when the record supplies that evidence. |
+| `Refresh stalled` looked fatal and unexplained. | The notice names failed live refreshes rather than a stopped stream, preserves the last view, reports stale risk/age and exact retry cadence, and provides a safe manual retry. |
+| `CAPTAIN — No request observed / Current payload only` elevated absence and appeared outside authority context. | No ask means no banner. A plain exact ask is `NEEDS YOU`; only an ask whose project/session also has Spacedock evidence is `CAPTAIN`. Project rows omit and reflow the entire `RESPONSE` region when no exact request exists. |
+| Empty Assignment, Next, and Captain cells competed with what the agent was doing. | Every session leads with `CURRENT ACTIVITY`. Assignment, next task, and needs-you/captain facts are rendered only when present. Missing assignment/next facts move into a closed `SOURCE COVERAGE` details element that names `Codex transcript`, `Claude transcript`, or `AGY CLI log` in plain language. An ask is one response fact, not duplicated as Next and Captain. |
+
+### Failing-first and regression evidence
+
+- Against the rejected renderer, the new overview/project tests produced 3 failures in 21 tests:
+  plain asks incorrectly claimed captain authority, no-ask views retained the banner/response cells,
+  and plain projects retained the workflow-absence wrapper.
+- The new session assertions produced 6 failures in 32 tests: the fixed four-cell frame remained,
+  request authority was unconditional, asks were duplicated as Next and Captain, and missing facts
+  still occupied primary cards.
+- The refresh correction produced 3 initial failures in 29 tests: the copy remained `Refresh
+  stalled`, cadence/age/recovery were absent, and the unimplemented Retry action could not release
+  its deferred request. An initial attempt to serialize every refresh then caused three existing
+  revision/fallback tests to fail; narrowing serialization to repeated manual retries preserved SSE
+  revision and safety-poll refreshes while making `Retry now` idempotent.
+- Final focused proof: 102 tests passed across `test_next_page`, `test_next_projects`,
+  `test_next_project`, `test_next_session`, `test_next_chrome`, and `test_next_live`.
+- Full dashboard proof after the exact commit: 2,022 tests passed in 37.286 seconds with 1 skip.
+  `scripts/lint_embedded.py`, `scripts/validate_plugins.py`, focused Ruff, and `git diff --check`
+  also passed.
+
+### Candidate byte proof
+
+- Assembled `?next=true` response: 244,679 bytes; SHA-256
+  `6eedb2be9a89d3ac53c7acf235b81e10bbd921c6b52218aa7c727b35207402db`.
+- Changed part pins:
+  - `next-chrome.js`: 9,324 bytes; `0bf4ca2ad32480e65069d6b1e116ca920a924adb3a45a6204ae96f4871482f2e`
+  - `next-projects.js`: 8,454 bytes; `d3c80921cb169a22eeb2d5c1714864b5866143c8b8dc00b326cf1ffd405b4118`
+  - `next-project.js`: 8,273 bytes; `710f05567474b071912107200e1f0c02b829c0113d75c02a65adc2291cb46e21`
+  - `next-session.js`: 15,565 bytes; `a6ee15b2f05e0e8ed42953e816a016f1f949ec0cc4af056a3fa59145559eccaf`
+  - `next-render.js`: 1,139 bytes; `e44cd6c2ec387032de04564eee1b05ea08bb8fc9ef8611d67370a9b19dcb0cc3`
+  - `styles.css`: 27,641 bytes; `6567b05f746c02af9ad18be96790fe485b4c411f42d44bea6594d3e25365019d`
+
+### Tied before/after live evidence
+
+The pushed checkpoint ran at `http://127.0.0.1:4553/?next=true` under recorded PID `17013`; only
+that PID was stopped, and port 4553 was verified closed. The live payload generated at
+`1788148339.242155` retained the same three prior identities, `asks: []`, one working Codex session,
+the full Claude `asked` instruction, and no Spacedock record on these selected sessions.
+
+- Overview before: [absence-led captain banner](prototyping-cycle-2/overview-route-semantics.jpg).
+  After: [progressive overview](prototyping-cycle-3/overview-progressive-disclosure.jpg) omits the
+  absent request lede and every empty response region while keeping the one executing situation
+  first. 1844×1067; SHA-256
+  `2f20e373653ec8f503f67d4a974eb05d327255733c12c05fd77898f40b5db70a`.
+- Project before: [generic workflow-source panel](prototyping-cycle-2/project-single-main.jpg).
+  After: [workflow region omitted](prototyping-cycle-3/project-workflow-omitted.jpg) moves directly
+  from project context to `GOING ON` because no selected session supplied Spacedock evidence.
+  1844×1067; SHA-256
+  `4fd9f7311f97fc20dae6e3b8bff408587aec8e3442d40a1e5eabbe73da0b3fda`.
+- Codex before: [four equal command cells](prototyping-cycle-2/session-codex-turn-label.jpg).
+  After: [same identity `01a0555c-2da3-7c23-bd26-4ea2e275d18a`](prototyping-cycle-3/session-codex-current-activity.jpg)
+  leads with its working state and live subagent; assignment/next absence is only the collapsed
+  source-coverage disclosure. 1844×1067; SHA-256
+  `e87d9cae99219d9497f97931507e24b3952e9851c99dd1c6609a0c487ae043c5`.
+- Claude before: [assignment beside three empty concepts](prototyping/session-claude-8b3e5aa1.jpg).
+  After: [same API identity `8b3e5aa1`](prototyping-cycle-3/session-claude-assignment.jpg) leads with
+  idle current activity and progressively discloses the complete published assignment below it.
+  1844×1067; SHA-256
+  `d4929fc4a1ce2b957630751e8cb12c3fbe3829e33a37b9dd92b28241d29bf0f4`.
+- AGY before: [unavailable facts as primary cells](prototyping/session-agy-49fad07a.jpg). After:
+  [same identity `49fad07a-21aa-4b2e-9c14-ecfcbcf67ab8`](prototyping-cycle-3/session-agy-current-activity.jpg)
+  shows only its source-backed idle activity, with missing command facts collapsed beneath it.
+  1844×1067; SHA-256
+  `4029a544447c7dcacf80f1f0c232e25b7095ea55eaa62a17c29923513c2cf60a`.
+- Live recovery: after the exact server was stopped, the page retained all 3 projects, 9 sessions,
+  and the last `1 session executing` view while showing
+  [the real recovery notice](prototyping-cycle-3/live-refresh-recovery.jpg): `Live refresh failed 3
+  times in a row`, `Displayed data may be stale`, `Last updated 56s ago`, automatic 20-second retry,
+  and `Retry now`. The production threshold is still two consecutive failures; a closed stream plus
+  scheduled polls had produced three attempts by capture time. 1844×1067; SHA-256
+  `dc2f273580b657f5828b1e06829bfe7869255b557d40277b52cc66cdcde994f6`.
+
+## Stage Report: prototyping (cycle 3)
+
+- DONE: The project and session views progressively disclose workflow, assignment, next-action,
+  and captain concepts only when the source provides meaningful evidence, while current activity
+  remains the session lede.
+  The live project has no workflow wrapper without Spacedock evidence; all three same-identity
+  sessions put `CURRENT ACTIVITY` first; only Claude's published assignment appears as a fact; and
+  the focused plain-ask/Spacedock-ask/task fixtures fail if optional concepts reappear without their
+  source predicate.
+- DONE: The live-update failure state explains what stopped, whether displayed data may be stale,
+  and what recovery is happening or available without presenting a context-free error.
+  The real stopped-server capture preserves the last view and names failed live refresh attempts,
+  stale risk, age, 20-second automatic retry, and `Retry now`; the 5-second legacy, first-failure
+  quiet, retained-data, manual serialization, and success-clear paths are independently pinned by
+  behavior tests.
+- DONE: The corrected candidate is committed and pushed on feat/future-ui with focused behavior
+  tests, refreshed byte pins, and before/after live captures covering Codex, Claude Code, and AGY.
+  Exact pushed checkpoint `25401e1f4eb9d35b784b5a5c9728a894537e8d24` owns the 244,679-byte
+  oracle, 102 focused and 2,022 full-suite passing tests, and the six linked exact-byte captures;
+  the branch remains isolated and unmerged.
+
+### Summary
+
+Cycle 3 keeps the accepted project-first direction but removes absence as a command concept.
+Workflow and authority now require positive Spacedock evidence, exact asks retain neutral attention
+without borrowing captain semantics, sessions lead with observed activity and reveal command facts
+only when published, and live-refresh failure is recoverable rather than fatal-looking. The pushed
+checkpoint and tied evidence are ready for a fresh independent crucible judgment.
