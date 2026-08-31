@@ -1,5 +1,5 @@
 ---
-id:
+id: future-ui-command-surface
 title: Future UI command surface
 status: crucible
 source: Captain commission on 2026-08-31 and the 2026-08-27 project-cockpit debrief
@@ -40,6 +40,14 @@ gates:
                 id: briefing:future-ui-command-surface:crucible:attempt-1:revision-1
                 digest: sha256:ecc7de4a47b63f39adfd78dda3829d3871b08fc42cfdbb7f6040263c2907966a
                 room-ref: ./review/crucible/briefing-1
+review-round:
+    id: round:future-ui-command-surface:crucible:1
+    stage: crucible
+    cycle: 1
+    briefing:
+        id: briefing:future-ui-command-surface:crucible:round-1
+        digest: sha256:56664c28c45e2f97825e4ef87beb1145d4b84fca76875f27947cbf4610df097a
+        room-ref: ./review/crucible/round-1
 ---
 
 ## Design bet
