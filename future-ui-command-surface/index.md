@@ -695,3 +695,55 @@ Human-responsibility wording now follows the exact ask owner, same-label sibling
 captain semantics, neutral asks remain visible, and Spacedock-owned asks retain their authoritative
 lede. The pushed checkpoint and complete source-bound proof are ready for Halley's fresh crucible
 review.
+
+## Prototyping cycle 5 — attention queue design contract
+
+The design-only strategic iteration is committed and pushed on `feat/future-ui` at exact checkpoint
+`cc2f3237565b932d74199ba8faa237087998ef1b`. It adds only
+`docs/plans/future-ui-attention-queue-design.md`; production code, tests, byte pins, and both UI
+assemblies are unchanged from accepted baseline `94f19d3`.
+
+The specification makes Attention the default opt-in route, with Projects as the adjacent complete
+map and Sessions as the adjacent flat inventory. Its fixed order is Needs you now, At risk, Close
+the loop, Coming next, and Healthy fleet; stable predicates and comparator chains replace severity
+scores.
+
+The source contract deliberately refuses three requested outcomes the payload cannot prove:
+same-label sessions do not establish one repository, a stop is not a finished-but-unread result,
+and no current field distinguishes a quiet death. Cargento-derived ETAs are also excluded from the
+source-published checkpoint lane. Capability coverage makes those limits visible without turning
+silence into an all-clear.
+
+Self-review removed empty `NEXT` placeholders from the wide wireframe, prohibited Healthy fleet
+from becoming a duplicate Sessions panel, bound captain authority to the exact ask owner, and made
+git-conflict predicates distinguish boolean/integer evidence from present null fields. Placeholder
+and ambiguity scans found no unfinished marker or conditional panel, and all 22 acceptance cases
+state falsifiable behavior across Claude Code, Codex, and AGY.
+
+### Checks and unchanged-byte proof
+
+- `python3 scripts/validate_plugins.py` passed.
+- `git diff --check` passed for the new document.
+- The stable page byte oracle passed at 321,790 bytes, SHA-256
+  `fe221aa43b27f17859e350cee10296745faa0a560217026d26fab6cafc346a50`.
+- The opt-in page byte oracle passed at 244,870 bytes, SHA-256
+  `e4951167c0b803bf15593d89fdf294aa07f22dd243d7cf4d07096f644176fb06`.
+- Local and remote `feat/future-ui` both resolve to `cc2f3237565b932d74199ba8faa237087998ef1b`.
+
+## Stage Report: prototyping (cycle 5)
+
+- DONE: Write and commit a complete attention-queue design spec on feat/future-ui that makes Attention the default route and Projects and Sessions adjacent top-level views, without changing production UI bytes.
+  Exact checkpoint `cc2f323` changes one design document; both stable and opt-in assembled-byte
+  oracles retain their accepted sizes and SHA-256 values.
+- DONE: Define the queue taxonomy, deterministic ranking, item grammar, source/coverage truth rules, full-project-map access, responsive and accessible behavior, and empty, stale, partial, and conflicting-signal states with no unsupported all-clear or prediction claims.
+  The contract maps each visible claim to a predicate, exposes unknown capability coverage, and
+  excludes repository, unread-result, termination-cause, authority, and derived-ETA inference.
+- DONE: Self-review the spec for placeholders, contradictions, ambiguous source ownership, excess panels, and untestable requirements; include falsifiable behavior scenarios across Codex, Claude Code, and AGY, then stop for captain review before implementation planning.
+  The audit corrected four ambiguities and leaves 22 exact cross-harness behavior scenarios; no
+  implementation plan, production edit, test edit, byte-pin edit, or browser prototype follows.
+
+### Summary
+
+The captain now has a complete written contract for an exception-first Attention route whose fleet
+brief remains honest under partial reporting. The checkpoint is pushed, UI bytes are unchanged,
+and work stops here for written-spec review before any implementation planning.
