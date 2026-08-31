@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:future-ui-command-surface:crucible:attempt-1:revision-1",
+  "question": "Accept the candidate, revise the two material blockers, or reframe the direction?",
+  "artifacts": [
+    {
+      "id": "artifact:future-ui-command-surface:crucible:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/4e1519ad7c77286bad660fca0a933019bdbdd35e/future-ui-command-surface/index.md",
+      "rev": "sha256:321ab3452f2bbeebec67f8e9456952a8a4170523c1af559d532300e690372df4",
+      "mediaType": "text/markdown",
+      "summary": "Crucible recommends revise: preserve the stronger command-surface direction, repair route and landmark semantics, and label turn elapsed time truthfully before fresh re-review."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:future-ui-command-surface:crucible:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/05332a48997c78604fc9a02cb6631729dd6e3f18/docs/future-ui-exploration/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:fc45c6f5221aca88756cfc5a017081d0bebc9ea9dbf2802672d369280ff14329"
+    }
+  ]
+}

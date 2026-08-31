@@ -32,6 +32,14 @@ gates:
               application:
                 target-stage: reconnaissance
                 state: consumed
+        - id: gate:future-ui-command-surface:crucible
+          stage: crucible
+          attempts:
+            - id: gate-attempt:future-ui-command-surface-crucible-1
+              briefing:
+                id: briefing:future-ui-command-surface:crucible:attempt-1:revision-1
+                digest: sha256:ecc7de4a47b63f39adfd78dda3829d3871b08fc42cfdbb7f6040263c2907966a
+                room-ref: ./review/crucible/briefing-1
 ---
 
 ## Design bet
