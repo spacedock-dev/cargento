@@ -49,6 +49,9 @@ function nextAttentionCompareSubjects(left, right, model){
     const leftAge = Math.max(...left.asks.map(nextAttentionAskAge).filter(age => age != null), -1);
     const rightAge = Math.max(...right.asks.map(nextAttentionAskAge).filter(age => age != null), -1);
     if(leftAge !== rightAge) return rightAge - leftAge;
+    if(leftAge >= 0 && left.sourceIndex !== right.sourceIndex){
+      return left.sourceIndex - right.sourceIndex;
+    }
   }
   if(left.primaryKind === "input" && right.primaryKind === "input"){
     const leftAge = nextPayloadAgeSeconds({generated: model.generated}, left.session && left.session.blocked_since);

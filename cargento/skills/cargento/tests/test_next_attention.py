@@ -187,3 +187,39 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         )
         self.assertEqual("ask:unmatched", model["needs"][1]["key"])
 
+    def test_equal_age_asks_keep_payload_order_before_stable_identity(self) -> None:
+        model = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "zeta-owner",
+                        "project": "zeta/repo",
+                        "state": "needs_input",
+                        "spacedock": None,
+                    }
+                ],
+                "asks": [
+                    {
+                        "id": "earlier-exact",
+                        "session_id": "zeta-owner",
+                        "project": "zeta/repo",
+                        "question": "Earlier exact question",
+                        "age_sec": 300,
+                    },
+                    {
+                        "id": "later-unmatched",
+                        "session_id": "missing-owner",
+                        "project": "alpha/repo",
+                        "question": "Later unmatched question",
+                        "age_sec": 300,
+                    },
+                ],
+            }
+        )
+        assert isinstance(model, dict)
+
+        self.assertEqual(
+            ['session:["claude","zeta-owner"]', "ask:later-unmatched"],
+            [subject["key"] for subject in model["needs"]],
+        )
