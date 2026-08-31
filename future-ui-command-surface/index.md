@@ -57,6 +57,11 @@ gates:
                 at: "2026-08-31T03:30:27.854026Z"
                 decision: revise
                 reason: 'Captain accepts the project-first direction and requires another iteration: omit workflow absence UI when no Spacedock evidence exists; replace opaque Refresh stalled with a clear live-update state, impact, and recovery; show Captain state only for Spacedock and only when it carries an evidence-backed request; progressively disclose Assignment and Next instead of rendering unexplained empty cards, while keeping current activity as the session lede.'
+            - id: gate-attempt:future-ui-command-surface-crucible-3
+              briefing:
+                id: briefing:future-ui-command-surface:crucible:attempt-3:revision-1
+                digest: sha256:cfca69cfaa142042d5296abc41b0b2c4e5322b632d0c19d21183d67cd62272f1
+                room-ref: ./review/crucible/briefing-3
 review-round:
     id: round:future-ui-command-surface:crucible:3
     stage: crucible
