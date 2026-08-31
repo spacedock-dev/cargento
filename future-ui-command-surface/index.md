@@ -747,3 +747,55 @@ state falsifiable behavior across Claude Code, Codex, and AGY.
 The captain now has a complete written contract for an exception-first Attention route whose fleet
 brief remains honest under partial reporting. The checkpoint is pushed, UI bytes are unchanged,
 and work stops here for written-spec review before any implementation planning.
+
+## Prototyping cycle 6 — implementation plan
+
+The captain-approved design at `cc2f323` is now decomposed into a test-first execution plan at
+`docs/superpowers/plans/2026-08-31-future-ui-attention-queue.md`. The plan-only checkpoint is
+`015eab909fe73f00aa424aac0c00477be3e7eec5`, pushed on `feat/future-ui`; no production source,
+test, byte pin, or approved-spec byte changed in this stage.
+
+Nine serialized tasks own one web conflict surface: route migration; exact-owner Needs subjects;
+At-risk predicates/order; stop/checkpoint/remainder semantics; coverage/rendering/escaping; project
+map reuse; atomic refresh/focus; one mechanical byte-pin regeneration; and final live/validation
+proof. Each implementation checkpoint states exact files, interfaces, red command and expected
+failure, minimal behavior, green command, and signed-off commit.
+
+The plan defines the `NextAttentionModel`, subject/signal/coverage shapes, stable key forms, fixed
+signal names, helper signatures, and exact concatenation seam for `next-attention.js`. Its coverage
+matrix maps all 22 approved acceptance scenarios to named tests across Claude Code, Codex, and AGY.
+
+Self-review added non-numbered spec obligations for multiple asks, malformed values, exact outcome
+fallback, route-specific empty maps, bare-input and risk comparator details, quota reset
+de-duplication, and project collision counts. It removed empty interface bodies, aligned model
+fields with renderer needs, and made rate capability distinguish known non-reporting from failure.
+
+### Checks and unchanged-byte proof
+
+- Required header, 9 tasks, 47 checkbox steps, and all 22 numbered scenarios were structurally
+  verified; placeholder-pattern scan found no unfinished marker or empty interface body.
+- `python3 scripts/validate_plugins.py` and document `git diff --check` passed.
+- Stable and opt-in page byte-oracle tests passed unchanged: stable 321,790 bytes at
+  `fe221aa43b27f17859e350cee10296745faa0a560217026d26fab6cafc346a50`; opt-in 244,870 bytes at
+  `e4951167c0b803bf15593d89fdf294aa07f22dd243d7cf4d07096f644176fb06`.
+- Local and remote `feat/future-ui` both resolve to
+  `015eab909fe73f00aa424aac0c00477be3e7eec5`.
+
+## Stage Report: prototyping (cycle 6)
+
+- DONE: Write and commit a complete test-first implementation plan at docs/superpowers/plans/2026-08-31-future-ui-attention-queue.md that implements the approved attention-queue spec without changing production code, tests, or byte pins.
+  Exact checkpoint `015eab9` adds one plan file; both UI byte oracles retain the design checkpoint's
+  exact sizes and digests.
+- DONE: Decompose work by clear frontend responsibility and independently testable behavior, with exact files, interfaces, code sketches, failing-test commands and expected failures, minimal implementation steps, passing checks, and signed-off commit checkpoints.
+  Nine ordered tasks isolate classification, rendering, maps, refresh, mechanical pins, and live
+  proof while keeping every implementation checkpoint red/green and DCO signed.
+- DONE: Self-review every approved spec requirement and all 22 acceptance scenarios for task coverage, remove placeholders and inconsistent names, include serialized frontend byte-pin and validation steps, then stop for execution-mode selection.
+  The matrix covers scenarios 1–22 and the source-contract edge cases; byte regeneration and the
+  full suite occur once, after all web edits, and no execution task has begun.
+
+### Summary
+
+The approved source contract now has a zero-placeholder, task-complete TDD execution plan with one
+authoritative interface vocabulary and serialized proof. The plan and report are pushed, product
+bytes are unchanged, and work stops for captain selection between subagent-driven and inline
+execution.
