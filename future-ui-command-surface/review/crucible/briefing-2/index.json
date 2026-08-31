@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:future-ui-command-surface:crucible:attempt-2:revision-1",
+  "question": "Accept corrected checkpoint 578d77a as a strong future UI direction?",
+  "artifacts": [
+    {
+      "id": "artifact:future-ui-command-surface:crucible:attempt-2:revision-1:item-1",
+      "uri": "git-root://state/a850039a98e26e10f820dfd0329ba3828003b983/future-ui-command-surface/index.md",
+      "rev": "sha256:b8ce2813220ec33405f090fd9714259f017d7d27c0cd2713d08e9ee68d7f73b4",
+      "mediaType": "text/markdown",
+      "summary": "Fresh crucible re-review accepts: all five ACs pass across live Codex, Claude Code, and AGY evidence; both material round-1 findings are closed; no workflow change targets main."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:future-ui-command-surface:crucible:attempt-2:revision-1:item-2",
+      "uri": "git-root://main/578d77a22556cc9f930e92d38fdf833e34b7e9bb/docs/future-ui-exploration/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:fc45c6f5221aca88756cfc5a017081d0bebc9ea9dbf2802672d369280ff14329"
+    }
+  ]
+}

@@ -44,6 +44,11 @@ gates:
                 by: agent:first-officer
                 at: "2026-08-31T03:19:13.882442Z"
                 reason: Correction cycle 1 produced checkpoint 578d77a and a fresh ACCEPT re-review; the open attempt bound to rejected snapshot 05332a4 is stale.
+            - id: gate-attempt:future-ui-command-surface-crucible-2
+              briefing:
+                id: briefing:future-ui-command-surface:crucible:attempt-2:revision-1
+                digest: sha256:0ea5f7614ac270ec7de85c6b0cac7678a57dc1e188b1fc4e0bd6fc37b0a79698
+                room-ref: ./review/crucible/briefing-2
 review-round:
     id: round:future-ui-command-surface:crucible:1
     stage: crucible
