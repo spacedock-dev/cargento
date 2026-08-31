@@ -40,6 +40,10 @@ gates:
                 id: briefing:future-ui-command-surface:crucible:attempt-1:revision-1
                 digest: sha256:ecc7de4a47b63f39adfd78dda3829d3871b08fc42cfdbb7f6040263c2907966a
                 room-ref: ./review/crucible/briefing-1
+              withdrawal:
+                by: agent:first-officer
+                at: "2026-08-31T03:19:13.882442Z"
+                reason: Correction cycle 1 produced checkpoint 578d77a and a fresh ACCEPT re-review; the open attempt bound to rejected snapshot 05332a4 is stale.
 review-round:
     id: round:future-ui-command-surface:crucible:1
     stage: crucible
