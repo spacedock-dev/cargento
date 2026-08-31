@@ -38,7 +38,7 @@ This iteration will not:
 - merge or target `main`;
 - add a sidecar model, generated summary, forecast, or numerical severity score;
 - infer a repository from the last two path segments in `session.project`;
-- call an observed stop “finished,” “unread,” “successful,” “failed,” or “died” without a source
+- call an observed stop "finished," "unread," "successful," "failed," or "died" without a source
   that publishes that distinction;
 - infer progress from token rate, activity from task progress, or health from silence;
 - use Cargento-derived `eta_h` or `turn.eta_h` as a source-published prediction;
@@ -79,9 +79,9 @@ stronger interpretation. Fixed UI copy may explain the smaller fact that remains
 
 The top-level routes are:
 
-- `#n=attention` — default;
-- `#n=projects` — complete project map;
-- `#n=sessions` — flat session inventory.
+- `#n=attention`: default;
+- `#n=projects`: complete project map;
+- `#n=sessions`: flat session inventory.
 
 Existing detail routes remain `#n=project:<encoded-project>` and
 `#n=session:<encoded-project>:<encoded-session>`. A bare fragment, an invalid fragment, and the old
@@ -245,7 +245,7 @@ oldest valid `blocked_since`; rows without a valid stamp follow stamped rows.
 |---|---|---|---|
 | `Attribution conflict` | An ask's `session_id` resolves, but its non-empty `project` differs from that session's `project`; or boolean `dirty`/integer `changed` is published without a valid `finished_at`; or `finished_at` coexists with a working/active row. | The two bounded readings, labelled by source. | Which reading is correct. |
 | `Repeated tool failures` | Session `loop` is an object and `loop.errors` is a positive integer. | Error count and escaped `loop.tool` when present. | Intent, productivity, root cause, or future failure. |
-| `Quota pressure` | A parent usage entry has `state == "ok"`, and one nested window/model row has integer `pct >= 70`. | Exact percent and valid `resetAt`; 90+ is critical copy/color, 70–89 is warning copy/color. | Exhaustion time or future consumption rate. |
+| `Quota pressure` | A parent usage entry has `state == "ok"`, and one nested window/model row has integer `pct >= 70`. | Exact percent and valid `resetAt`; 90+ is critical copy/color, 70-89 is warning copy/color. | Exhaustion time or future consumption rate. |
 | `Long-running turn` | `state == "working"` and `turn.long === true`. | Source-published current activity and `turn.elapsed_h` as the bounded runtime reading. | That the session is stuck, or that `turn.eta_h` will prove completion. |
 | `Identity collision` | At least two current sessions share the same non-empty `project` display label. | Count, exact session identities, and the existing collision caveat. | Same directory, repository, branch, or causal interference. |
 
@@ -323,13 +323,13 @@ strings such as `turn.elapsed_h`, token-rate labels, or formatted reset text bac
 
 Every expanded item follows the same reading order:
 
-1. **Why it matters** — one fixed signal label and optional secondary signal count.
-2. **Outcome or identity** — a source-backed assignment/workflow goal when exactly attributable;
+1. **Why it matters:** one fixed signal label and optional secondary signal count.
+2. **Outcome or identity:** a source-backed assignment/workflow goal when exactly attributable;
    otherwise project display label, harness, and exact session identity.
-3. **Now** — exact question, state detail, loop count, quota percent, stop reading, or task state.
-4. **Next known checkpoint** — only a published task or reset instant; omit the entire line when
+3. **Now:** exact question, state detail, loop count, quota percent, stop reading, or task state.
+4. **Next known checkpoint:** only a published task or reset instant; omit the entire line when
    absent.
-5. **Source, responsibility, or age** — harness/source and valid age; `CAPTAIN` or `NEEDS YOU` only
+5. **Source, responsibility, or age:** harness/source and valid age; `CAPTAIN` or `NEEDS YOU` only
    under the exact ask rules.
 
 An exact subject's `asked` instruction supplies its assignment. One distinct non-empty Spacedock

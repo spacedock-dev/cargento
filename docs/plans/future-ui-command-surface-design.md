@@ -6,7 +6,7 @@
 
 The `?next=true` surface must answer a command question before it presents inventory, but it must
 not manufacture a command frame when the payload has no command fact. The overview answers,
-“Where does my attention belong?” A project shows workflow only when Spacedock supplies it. A
+"Where does my attention belong?" A project shows workflow only when Spacedock supplies it. A
 session leads with what the agent is doing now, then progressively discloses assignment, next
 action, and human response only when their owning sources publish them.
 
@@ -50,7 +50,7 @@ An unmatched needs-input signal may describe its bounded situation but cannot in
 
 A project has workflow evidence only when one of its sessions carries a non-null Spacedock record.
 With no such record, the entire workflow region and its wrapper are omitted. This is not an error
-state and does not warrant “source unavailable” copy.
+state and does not warrant "source unavailable" copy.
 
 When Spacedock evidence exists, the project renders the concrete workflow strips and plans in that
 record. If the record has no renderable plan, the existing first-officer or ensign role may support

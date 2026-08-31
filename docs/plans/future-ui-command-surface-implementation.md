@@ -51,10 +51,10 @@ SHA-256 byte-pin contract, live Chrome evidence.
   Extend the fixture with a plain-project exact ask and assert these literal behaviors:
 
   ```python
-  self.assertIn("NEEDS YOU — Plain approval", plain_html)
-  self.assertNotIn("CAPTAIN — Plain approval", plain_html)
-  self.assertIn("CAPTAIN — Approve the release", spacedock_html)
-  self.assertNotIn("CAPTAIN — No request observed", no_ask_html)
+  self.assertIn("NEEDS YOU \u2014 Plain approval", plain_html)
+  self.assertNotIn("CAPTAIN \u2014 Plain approval", plain_html)
+  self.assertIn("CAPTAIN \u2014 Approve the release", spacedock_html)
+  self.assertNotIn("CAPTAIN \u2014 No request observed", no_ask_html)
   self.assertNotIn("Current payload only", no_ask_html)
   self.assertNotIn("RESPONSE", self.project_row(no_ask_html, "gamma/tool"))
   self.assertIn("next-project-command--situation-only", self.project_row(no_ask_html, "gamma/tool"))
@@ -285,7 +285,7 @@ SHA-256 byte-pin contract, live Chrome evidence.
 
 **Files:**
 - Modify: `cargento/skills/cargento/tests/test_next_page.py`
-- Verify: every file changed in Tasks 1–3
+- Verify: every file changed in Tasks 1-3
 
 **Interfaces:**
 - Consumes: final next-page asset bytes and `cargento_runtime.web.page.next_page()`.
