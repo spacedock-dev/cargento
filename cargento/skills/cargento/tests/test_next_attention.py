@@ -223,3 +223,164 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             ['session:["claude","zeta-owner"]', "ask:later-unmatched"],
             [subject["key"] for subject in model["needs"]],
         )
+
+    def test_loop_signal_uses_positive_integer_errors_only(self) -> None:
+        loop_model = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "loop-owner",
+                        "project": "alpha/repo",
+                        "state": "working",
+                        "loop": {"errors": 4, "tool": "Bash"},
+                    }
+                ]
+            }
+        )
+        model_without_loop = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "loop-owner",
+                        "project": "alpha/repo",
+                        "state": "working",
+                        "loop": {"errors": "4", "tool": "Bash"},
+                    }
+                ]
+            }
+        )
+        assert isinstance(loop_model, dict)
+        assert isinstance(model_without_loop, dict)
+
+        self.assertEqual("loop", loop_model["risk"][0]["primaryKind"])
+        self.assertEqual(
+            {"errors": 4, "tool": "Bash"},
+            loop_model["risk"][0]["signals"][0]["detail"],
+        )
+        self.assertEqual([], model_without_loop["risk"])
+
+    def test_long_turn_requires_working_state_and_has_no_checkpoint(self) -> None:
+        long_model = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "codex",
+                        "sid": "long-owner",
+                        "project": "beta/repo",
+                        "state": "working",
+                        "turn": {"long": True, "eta_h": "2h"},
+                        "tasks": [{"subject": "Do not become a checkpoint", "status": "pending"}],
+                    },
+                    {
+                        "harness": "codex",
+                        "sid": "invalid-long",
+                        "project": "gamma/repo",
+                        "state": "idle",
+                        "turn": {"long": True},
+                    },
+                ]
+            }
+        )
+        assert isinstance(long_model, dict)
+
+        self.assertEqual("long-turn", long_model["risk"][0]["primaryKind"])
+        self.assertNotIn("checkpoint", long_model["risk"][0])
+        self.assertEqual(1, len(long_model["risk"]))
+
+    def test_quota_pressure_uses_published_percent_and_valid_reset_only(self) -> None:
+        quota_model = self.model(
+            {
+                "usage": [
+                    {
+                        "harness": "claude",
+                        "state": "ok",
+                        "fiveH": {"pct": 92, "resetAt": 12_000},
+                        "week": {"pct": 69, "resetAt": 11_000},
+                        "models": [{"label": "Opus", "pct": 91, "resetAt": "soon"}],
+                    }
+                ]
+            }
+        )
+        quota_69_model = self.model(
+            {
+                "usage": [{"harness": "claude", "state": "ok", "fiveH": {"pct": 69}}]
+            }
+        )
+        assert isinstance(quota_model, dict)
+        assert isinstance(quota_69_model, dict)
+
+        self.assertEqual("quota", quota_model["risk"][0]["primaryKind"])
+        self.assertEqual(92, quota_model["risk"][0]["signals"][0]["detail"]["pct"])
+        self.assertEqual("critical", quota_model["risk"][0]["signals"][0]["detail"]["tone"])
+        self.assertEqual([], quota_69_model["risk"])
+        self.assertEqual({"resetAt": 12_000}, quota_model["risk"][0]["checkpoint"])
+        self.assertEqual([], quota_model["next"])
+        self.assertNotIn("checkpoint", quota_model["risk"][1])
+
+    def test_equal_long_turns_follow_harness_order_when_input_reverses(self) -> None:
+        payload = {
+            "harnesses": [
+                {"key": "claude"},
+                {"key": "codex"},
+                {"key": "antigravity"},
+            ],
+            "sessions": [
+                {"harness": "claude", "sid": "same", "project": "claude/label", "state": "working", "turn": {"long": True}},
+                {"harness": "codex", "sid": "same", "project": "codex/label", "state": "working", "turn": {"long": True}},
+                {"harness": "antigravity", "sid": "same", "project": "agy/label", "state": "working", "turn": {"long": True}},
+            ],
+        }
+        first_model = self.model(payload)
+        reversed_model = self.model({**payload, "sessions": list(reversed(payload["sessions"]))})
+        assert isinstance(first_model, dict)
+        assert isinstance(reversed_model, dict)
+
+        first_keys = [subject["key"] for subject in first_model["risk"]]
+        reversed_input_keys = [subject["key"] for subject in reversed_model["risk"]]
+        self.assertEqual(
+            [
+                'session:["claude","same"]',
+                'session:["codex","same"]',
+                'session:["antigravity","same"]',
+            ],
+            first_keys,
+        )
+        self.assertEqual(first_keys, reversed_input_keys)
+
+    def test_collision_represents_members_once_and_malformed_signals_do_not_move_valid_risk(self) -> None:
+        model = self.model(
+            {
+                "sessions": [
+                    {"harness": "claude", "sid": "loop-valid", "project": "alpha/repo", "state": "working", "loop": {"errors": 2, "tool": "Bash"}},
+                    {"harness": "codex", "sid": "one", "project": "beta/app", "state": "idle"},
+                    {"harness": "antigravity", "sid": "two", "project": "beta/app", "state": "idle"},
+                    {"harness": "claude", "sid": "bad-loop", "project": "bad/loop", "state": "working", "loop": {"errors": 0}},
+                    {"harness": "codex", "sid": "bad-turn", "project": "bad/turn", "state": "working", "turn": {"long": "true"}},
+                    {"harness": "antigravity", "sid": "bad-stop", "project": "bad/stop", "state": "idle", "finished_at": "yesterday", "dirty": "yes", "changed": "3"},
+                ],
+                "asks": [{"id": "bad-ask", "question": "   ", "session_id": "loop-valid"}],
+                "usage": [{"harness": "claude", "state": "ok", "fiveH": {"pct": "92"}}],
+            }
+        )
+        assert isinstance(model, dict)
+
+        self.assertEqual(["loop", "collision"], [subject["primaryKind"] for subject in model["risk"]])
+        collision = model["risk"][1]
+        self.assertEqual(2, len(collision["memberKeys"]))
+        healthy_keys = {f'session:{json.dumps([row["harness"], row["sid"]], separators=(",", ":"))}' for row in model["healthy"]["sessions"]}
+        self.assertFalse(set(collision["memberKeys"]) & healthy_keys)
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    f"nextData = JSON.parse({json.dumps(json.dumps({'sessions': []}))});",
+                    f"const subject = JSON.parse({json.dumps(json.dumps(collision))});",
+                    "console.log(JSON.stringify(nextAttentionSubjectHtml(subject, {generated: null})));",
+                )
+            )
+        )
+        self.assertNotIn("repository", rendered)
+        self.assertNotIn("directory", rendered)
+        self.assertNotIn("branch", rendered)
+        self.assertNotIn("worktree", rendered)
