@@ -426,6 +426,14 @@ function nextAttentionModel(payload){
     });
   }
 
+  const collisionByMemberKey = new Map();
+  for(const subject of riskSubjects.values()){
+    if(subject.kind !== "collision") continue;
+    for(const memberKey of subject.memberKeys || []){
+      if(!collisionByMemberKey.has(memberKey)) collisionByMemberKey.set(memberKey, subject);
+    }
+  }
+
   const riskRepresented = new Set();
   for(const subject of riskSubjects.values()){
     for(const memberKey of subject.memberKeys || subject.sessions.map(nextSessionKey)){
@@ -433,14 +441,26 @@ function nextAttentionModel(payload){
     }
   }
   const closeSubjects = new Map();
+  const attachedStopKeys = new Set();
   for(const [sourceIndex, session] of sessions.entries()){
     const key = nextSessionKey(session);
     const signal = nextAttentionStopSignal(session, sourceIndex);
-    if(!signal || subjects.has(key) || riskRepresented.has(key) || closeSubjects.has(key)) continue;
+    if(!signal || attachedStopKeys.has(key)) continue;
+    const winningSubject = subjects.get(key) || riskSubjects.get(key) || collisionByMemberKey.get(key);
+    if(winningSubject){
+      const attached = winningSubject.kind === "collision"
+        ? {...signal, detail: {...signal.detail, session}}
+        : signal;
+      winningSubject.signals.push(attached);
+      attachedStopKeys.add(key);
+      continue;
+    }
+    if(riskRepresented.has(key) || closeSubjects.has(key)) continue;
     closeSubjects.set(key, {
       key, stableId: key, kind: "session", section: "close", primaryKind: signal.kind,
       signals: [signal], session, sessions: [session], asks: [], sourceIndex,
     });
+    attachedStopKeys.add(key);
   }
 
   const comparatorModel = {
@@ -463,15 +483,28 @@ function nextAttentionModel(payload){
     for(const session of subject.sessions) represented.add(nextSessionKey(session));
   }
   const nextSubjects = new Map();
+  const attachedTaskKeys = new Set();
   for(const [sourceIndex, session] of sessions.entries()){
     const key = nextSessionKey(session);
     const checkpoint = nextPublishedTask(session);
-    if(!checkpoint || represented.has(key) || nextSubjects.has(key)) continue;
+    if(!checkpoint || attachedTaskKeys.has(key)) continue;
+    const winningSubject = subjects.get(key) || riskSubjects.get(key) || closeSubjects.get(key) ||
+      collisionByMemberKey.get(key);
+    if(winningSubject){
+      winningSubject.signals.push({
+        kind: "task", section: "next", detail: {task: checkpoint, session}, sourceIndex,
+      });
+      if(!winningSubject.checkpoint) winningSubject.checkpoint = checkpoint;
+      attachedTaskKeys.add(key);
+      continue;
+    }
+    if(represented.has(key) || nextSubjects.has(key)) continue;
     nextSubjects.set(key, {
       key, stableId: key, kind: "session", section: "next", primaryKind: "task",
-      signals: [{kind: "task", section: "next", detail: {task: checkpoint}, sourceIndex}],
+      signals: [{kind: "task", section: "next", detail: {task: checkpoint, session}, sourceIndex}],
       session, sessions: [session], asks: [], sourceIndex, checkpoint,
     });
+    attachedTaskKeys.add(key);
   }
   const next = [...nextSubjects.values()].sort((left, right) => nextAttentionCompareSubjects(
     left, right, comparatorModel,
@@ -610,65 +643,80 @@ function nextAttentionAttributionNow(detail){
   return readings.length ? `Sources disagree · ${readings.join(" · ")}` : "Sources disagree";
 }
 
-function nextAttentionSubjectNow(subject){
-  const signal = subject && Array.isArray(subject.signals) ? subject.signals[0] : null;
+function nextAttentionSignalNow(signal, subject){
   const detail = signal && signal.detail || {};
-  if(subject.primaryKind === "ask"){
-    const asks = Array.isArray(subject.asks) ? subject.asks : [];
-    const rows = asks.map(ask => {
-      const question = String(ask && ask.question == null ? "" : ask && ask.question).trim();
-      const options = Array.isArray(ask && ask.options) ? ask.options.length : 0;
-      return {text: question, note: options ? `${options} published options` : ""};
-    }).filter(row => row.text);
-    for(const secondary of subject.signals.filter(item => item.kind === "attribution")){
-      rows.push({text: nextAttentionAttributionNow(secondary.detail), note: ""});
-    }
-    return rows;
+  if(signal.kind === "ask"){
+    const ask = detail.ask;
+    const question = String(ask && ask.question == null ? "" : ask && ask.question).trim();
+    const options = Array.isArray(ask && ask.options) ? ask.options.length : 0;
+    return {text: question, note: options ? `${options} published options` : ""};
   }
-  if(subject.primaryKind === "input"){
+  if(signal.kind === "input"){
     const text = String(subject.session && subject.session.state_detail || "").trim();
-    return [{text: text || "Needs-input state reported", note: ""}];
+    return {text: text || "Needs-input state reported", note: ""};
   }
-  if(subject.primaryKind === "attribution"){
-    return [{text: nextAttentionAttributionNow(detail), note: ""}];
+  if(signal.kind === "attribution"){
+    return {text: nextAttentionAttributionNow(detail), note: ""};
   }
-  if(subject.primaryKind === "loop"){
+  if(signal.kind === "loop"){
     const tool = String(detail.tool == null ? "" : detail.tool).trim();
     const text = tool
       ? `${tool} failed ${detail.errors} times`
       : `Tool failures reported ${detail.errors} times`;
-    return [{text, note: ""}];
+    return {text, note: ""};
   }
-  if(subject.primaryKind === "quota") return [{text: `${detail.pct}% reported`, note: ""}];
-  if(subject.primaryKind === "long-turn"){
+  if(signal.kind === "quota") return {text: `${detail.pct}% reported`, note: ""};
+  if(signal.kind === "long-turn"){
     const session = subject.session || detail.session || {};
     const state = String(session.state_detail || "Working").trim() || "Working";
     const elapsed = session.turn && typeof session.turn.elapsed_h === "string"
       ? session.turn.elapsed_h.trim()
       : "";
-    return [{text: elapsed ? `${state} · ${elapsed} elapsed` : state, note: ""}];
+    return {text: elapsed ? `${state} · ${elapsed} elapsed` : state, note: ""};
   }
-  if(subject.primaryKind === "collision"){
-    return [{
+  if(signal.kind === "collision"){
+    return {
       text: `${detail.memberCount} exact sessions share ${String(detail.label || "")} display label`,
       note: "Identity scope only; shared location is not established",
-    }];
+    };
   }
-  if(subject.primaryKind === "stop-dirty"){
+  if(signal.kind === "stop-dirty"){
     const changed = Number.isInteger(detail.changedEntries)
       ? `${detail.changedEntries} changed entries`
       : "Uncommitted work observed";
-    return [{text: changed, note: ""}];
+    return {text: changed, note: ""};
   }
-  if(subject.primaryKind === "stop-clean") return [{text: "Git state reported clean", note: ""}];
-  if(subject.primaryKind === "stop-unknown"){
-    return [{text: "Git state was not measured", note: ""}];
+  if(signal.kind === "stop-clean") return {text: "Git state reported clean", note: ""};
+  if(signal.kind === "stop-unknown"){
+    return {text: "Git state was not measured", note: ""};
   }
-  if(subject.primaryKind === "task"){
+  if(signal.kind === "task"){
     const status = subject.checkpoint && subject.checkpoint.status;
-    return [{text: status === "in_progress" ? "In progress" : "Pending", note: ""}];
+    return {text: status === "in_progress" ? "In progress" : "Pending", note: ""};
   }
-  return [{text: "Source signal observed", note: ""}];
+  return {text: "Source signal observed", note: ""};
+}
+
+function nextAttentionSignalAttribution(signal, model){
+  const session = signal && signal.detail && signal.detail.session;
+  if(!session) return "";
+  return nextAttentionSubjectIdentityText({session}, model);
+}
+
+function nextAttentionSubjectNow(subject, model){
+  const signals = subject && Array.isArray(subject.signals) ? subject.signals : [];
+  const rows = [];
+  for(const [index, signal] of signals.entries()){
+    if(signal.kind === "task" && subject.primaryKind !== "task") continue;
+    const row = nextAttentionSignalNow(signal, subject);
+    if(!row.text) continue;
+    const secondary = index > 0;
+    const label = NEXT_ATTENTION_KIND_LABELS.get(signal.kind) || "Source signal observed";
+    const attribution = nextAttentionSignalAttribution(signal, model);
+    const prefix = [attribution, secondary ? label : ""].filter(Boolean).join(" · ");
+    rows.push({...row, text: prefix ? `${prefix}: ${row.text}` : row.text});
+  }
+  return rows;
 }
 
 function nextAttentionCheckpointText(subject){
@@ -681,6 +729,22 @@ function nextAttentionCheckpointText(subject){
     return Number.isNaN(instant.getTime()) ? "" : `Reset at ${instant.toISOString()}`;
   }
   return "";
+}
+
+function nextAttentionCheckpointRows(subject, model){
+  const rows = [];
+  const signals = subject && Array.isArray(subject.signals) ? subject.signals : [];
+  for(const signal of signals){
+    if(signal.kind !== "task") continue;
+    const task = signal.detail && signal.detail.task;
+    const text = String(task && (task.activeForm || task.subject) || "").trim();
+    if(!text) continue;
+    const attribution = nextAttentionSignalAttribution(signal, model);
+    rows.push(attribution ? `${attribution}: ${text}` : text);
+  }
+  if(rows.length) return rows;
+  const checkpoint = nextAttentionCheckpointText(subject);
+  return checkpoint ? [checkpoint] : [];
 }
 
 function nextAttentionSubjectAge(subject, model){
@@ -711,23 +775,26 @@ function nextAttentionSubjectSource(subject, model){
   return parts.join(" · ");
 }
 
-function nextAttentionSubjectHtml(subject, model){
+function nextAttentionSubjectHtml(subject, model, hidden = false){
   const route = nextAttentionSubjectRoute(subject);
   const title = NEXT_ATTENTION_KIND_LABELS.get(subject.primaryKind) || "Source signal observed";
   const secondary = subject.signals.length > 1
     ? ` · ${subject.signals.length - 1} additional source signal${subject.signals.length === 2 ? "" : "s"}`
     : "";
   const outcome = nextAttentionOutcome(subject, model);
-  const nowRows = nextAttentionSubjectNow(subject).map(row =>
+  const nowRows = nextAttentionSubjectNow(subject, model).map(row =>
     `<span class="next-attention-now-value">${nextAttentionEsc(row.text)}` +
       `${row.note ? `<small>${nextAttentionEsc(row.note)}</small>` : ""}</span>`
   ).join("");
-  const checkpoint = nextAttentionCheckpointText(subject);
-  const next = checkpoint
+  const checkpoints = nextAttentionCheckpointRows(subject, model);
+  const checkpointRows = checkpoints.map(checkpoint =>
+    `<span class="next-attention-now-value">${nextAttentionEsc(checkpoint)}</span>`
+  ).join("");
+  const next = checkpoints.length
     ? '<p class="next-attention-part" data-next-attention-part="next">' +
-      `<span class="next-attention-label">NEXT</span><span>${nextAttentionEsc(checkpoint)}</span></p>`
+      `<span class="next-attention-label">NEXT</span><span>${checkpointRows}</span></p>`
     : "";
-  return '<li><article class="next-attention-item" ' +
+  return `<li${hidden ? " hidden" : ""}><article class="next-attention-item" ` +
     `data-next-attention-subject="${nextAttentionEsc(subject.key)}" ` +
     `data-next-attention-kind="${nextAttentionEsc(subject.primaryKind)}">` +
     '<h3 class="next-attention-why" data-next-attention-part="why">' +
@@ -775,11 +842,26 @@ function nextAttentionCoverageHtml(model){
     '<p>Termination cause not reported.</p></details></div>';
 }
 
-function nextAttentionSectionHtml(key, title, subjects, model){
+const NEXT_ATTENTION_INITIAL_SECTION_SIZE = 3;
+
+function nextAttentionSectionHtml(key, title, subjects, model, expandedSections){
   if(!subjects.length) return "";
+  const expanded = !!(expandedSections && typeof expandedSections.has === "function" &&
+    expandedSections.has(key));
+  const remainder = Math.max(0, subjects.length - NEXT_ATTENTION_INITIAL_SECTION_SIZE);
+  const listId = `next-attention-${key}-list`;
+  const items = subjects.map((subject, index) => nextAttentionSubjectHtml(
+    subject, model, !expanded && index >= NEXT_ATTENTION_INITIAL_SECTION_SIZE,
+  )).join("");
+  const disclosure = remainder
+    ? '<button type="button" class="next-attention-disclosure" ' +
+      `data-next-attention-toggle="${key}" aria-expanded="${expanded}" ` +
+      `aria-controls="${listId}">` +
+      `${expanded ? `Show fewer (hide ${remainder})` : `Show ${remainder} more`}</button>`
+    : "";
   return `<section class="next-attention-section" data-next-attention-section="${key}">` +
     `<h2 tabindex="-1">${title} (${subjects.length})</h2>` +
-    `<ol>${subjects.map(subject => nextAttentionSubjectHtml(subject, model)).join("")}</ol></section>`;
+    `<ol id="${listId}">${items}</ol>${disclosure}</section>`;
 }
 
 function nextAttentionHealthyHtml(model){
@@ -799,7 +881,7 @@ function nextAttentionHealthyHtml(model){
     '<a href="#n=projects" data-next-route="projects">View all projects</a></section>';
 }
 
-function nextAttentionView(model){
+function nextAttentionView(model, expandedSections = new Set()){
   const counts = model.counts;
   const observed = [
     `${counts.needs} need you`, `${counts.risk} at risk`, `${counts.close} close the loop`,
@@ -813,9 +895,9 @@ function nextAttentionView(model){
     "Attention</h1><div class=\"next-attention-brief\">" +
     `<p><span class="next-attention-brief-label">OBSERVED NOW</span>${observed}</p>` +
     `${nextAttentionCoverageHtml(model)}</div>${empty}` +
-    nextAttentionSectionHtml("needs", "NEEDS YOU NOW", model.needs, model) +
-    nextAttentionSectionHtml("risk", "AT RISK", model.risk, model) +
-    nextAttentionSectionHtml("close", "CLOSE THE LOOP", model.close, model) +
-    nextAttentionSectionHtml("next", "COMING NEXT", model.next, model) +
+    nextAttentionSectionHtml("needs", "NEEDS YOU NOW", model.needs, model, expandedSections) +
+    nextAttentionSectionHtml("risk", "AT RISK", model.risk, model, expandedSections) +
+    nextAttentionSectionHtml("close", "CLOSE THE LOOP", model.close, model, expandedSections) +
+    nextAttentionSectionHtml("next", "COMING NEXT", model.next, model, expandedSections) +
     `${nextAttentionHealthyHtml(model)}</section>`;
 }

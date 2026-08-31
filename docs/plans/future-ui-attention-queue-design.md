@@ -13,6 +13,11 @@ source-backed exceptions, show published upcoming checkpoints, and compress ever
 will never translate missing evidence into an all-clear, a prediction, a repository identity, a
 completion cause, or a human-authority claim.
 
+Each ranked section initially shows at most three subjects. A count-bearing button exposes the
+remaining subjects without changing their order or ownership, and its expanded state and focus
+survive successful refreshes. The expanded label states how many subjects will be hidden when the
+section collapses.
+
 This document specifies behavior. It does not authorize implementation.
 
 ## Purpose
@@ -215,6 +220,11 @@ under Needs you now and mentions the failure once; it does not become a second A
 Multiple asks on one exact session remain separate question lines inside that subject so no required
 response disappears.
 
+The winning item retains every valid lower-ranked risk, stop, and selected published-task fact for
+its exact session. A collision subject does the same for represented members, and each attached
+member fact names its exact display label, harness, and full session ID. These facts never create a
+second Close-the-loop or Coming-next item.
+
 When a display-label conflict subject enters At risk, it represents its member sessions for
 top-level de-duplication. Those sessions do not also inflate Healthy fleet, although Projects and
 Sessions still show every exact row. A session subject with several asks ranks by its oldest ask
@@ -223,6 +233,13 @@ and uses the first matching ask's payload position as its final ask tie-break.
 Coming next excludes sessions already present in Needs you now, At risk, or Close the loop. Their
 published next task appears on their existing item. This rule keeps one subject in one place without
 discarding its checkpoint.
+
+Each of those four ranked sections initially renders its first three subjects and keeps every
+remaining subject in the same ordered list, hidden from presentation. When a remainder exists, the
+section adds one native button whose collapsed label says `Show N more` and whose expanded label
+says `Show fewer (hide N)`. The control publishes `aria-expanded` and names the list it controls.
+Expanding or collapsing changes only visibility: it never reclassifies, reorders, duplicates, or
+discards a subject, and the heading count remains the total section count.
 
 ## Signal taxonomy and source predicates
 
@@ -423,6 +440,11 @@ receives `tabindex="-1"`; if the section also disappears, focus moves to the Att
 same mechanism. A polite status region announces count changes only,
 such as `Attention updated: 2 need you, 1 at risk`.
 
+Expanded section keys are view state around the pure model, not payload facts or a stored
+preference. They survive refresh publication in the current page. If an expansion button held
+focus before refresh and its remainder still exists, the replacement button receives focus. If the
+remainder disappears, focus follows the same section-heading and h1 fallback used for subjects.
+
 The accepted refresh boundary remains:
 
 - first `/api/data` failure stays quiet;
@@ -445,6 +467,9 @@ While stale, source-derived item ages and ordering remain frozen to the retained
 - Fixed labels accompany values; color, animation, and position never carry a signal alone.
 - Coverage uncertainty is visible text. Its closed-by-default details control uses native
   summary/details semantics.
+- A ranked section with more than three subjects has one native count-bearing expansion button.
+  Its label explains both expansion and collapse, and its focus survives refresh while the
+  remainder exists.
 - Refresh status uses a polite status region. It does not repeatedly announce the whole queue.
 - Enter follows item and navigation links. Escape on detail routes follows the existing breadcrumb
   behavior without trapping focus.
@@ -587,7 +612,10 @@ The implementation must encode these as behavior tests before production changes
     because the route refreshed.
 20. **Responsive and accessible routes:** Attention, Projects, Sessions, project detail, and
     session detail each expose one main and distinct h1/title. Primary links have `aria-current`;
-    the 320-pixel layout has no page-level horizontal overflow; DOM order matches the item grammar.
+    each ranked section initially exposes at most three subjects and truthfully expands the rest;
+    expanded state and control focus survive refresh; every actionable target is at least 44 by 44
+    CSS pixels; the 320-pixel layout has no page-level horizontal overflow; DOM order matches the
+    item grammar.
 21. **Cross-harness stable ordering:** equal-age Claude, Codex, and AGY fixtures sort by published
     harness order, then project label and full sid. Reordering input sessions without changing
     these keys does not change the result.

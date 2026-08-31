@@ -6,7 +6,7 @@ function nextDetailBody(route){
 
 function nextViewBody(){
   if(nextRoute.view === "attention"){
-    return nextAttentionView(nextAttention).replace(
+    return nextAttentionView(nextAttention, nextAttentionExpandedSections).replace(
       /data-next-attention-subject="([^"]*)"/g,
       'data-next-attention-subject="$1" data-next-subject-key="$1"',
     );

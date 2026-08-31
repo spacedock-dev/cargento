@@ -275,7 +275,38 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         )
         self.assertEqual([], model_without_loop["risk"])
 
-    def test_long_turn_requires_working_state_and_has_no_checkpoint(self) -> None:
+    def test_exact_ask_renders_its_lower_ranked_loop_fact_without_a_risk_duplicate(self) -> None:
+        payload = {
+            "sessions": [
+                {
+                    "harness": "claude",
+                    "sid": "ask-loop-owner",
+                    "project": "alpha/repo",
+                    "state": "needs_input",
+                    "loop": {"errors": 4, "tool": "Bash"},
+                }
+            ],
+            "asks": [
+                {
+                    "id": "ask-loop",
+                    "session_id": "ask-loop-owner",
+                    "project": "alpha/repo",
+                    "question": "Approve deploy",
+                }
+            ],
+        }
+        model = self.model(payload)
+        assert isinstance(model, dict)
+
+        self.assertEqual(
+            ["ask", "loop"], [signal["kind"] for signal in model["needs"][0]["signals"]]
+        )
+        self.assertEqual([], model["risk"])
+        html = self.render(payload)
+        self.assertIn("Approve deploy", html)
+        self.assertIn("Bash failed 4 times", html)
+
+    def test_long_turn_without_source_task_has_no_checkpoint(self) -> None:
         long_model = self.model(
             {
                 "sessions": [
@@ -285,7 +316,6 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
                         "project": "beta/repo",
                         "state": "working",
                         "turn": {"long": True, "eta_h": "2h"},
-                        "tasks": [{"subject": "Do not become a checkpoint", "status": "pending"}],
                     },
                     {
                         "harness": "codex",
@@ -302,6 +332,28 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual("long-turn", long_model["risk"][0]["primaryKind"])
         self.assertNotIn("checkpoint", long_model["risk"][0])
         self.assertEqual(1, len(long_model["risk"]))
+
+    def test_risk_subject_keeps_published_task_without_coming_next_duplicate(self) -> None:
+        payload = {
+            "sessions": [
+                {
+                    "harness": "codex",
+                    "sid": "risk-task-owner",
+                    "project": "beta/repo",
+                    "state": "working",
+                    "turn": {"long": True, "eta_h": "2h"},
+                    "tasks": [{"subject": "Publish the report", "status": "pending"}],
+                }
+            ]
+        }
+        model = self.model(payload)
+        assert isinstance(model, dict)
+
+        risk = model["risk"][0]
+        self.assertEqual(["long-turn", "task"], [signal["kind"] for signal in risk["signals"]])
+        self.assertEqual("Publish the report", risk["checkpoint"]["subject"])
+        self.assertEqual([], model["next"])
+        self.assertIn("Publish the report", self.render(payload))
 
     def test_quota_pressure_uses_published_percent_and_valid_reset_only(self) -> None:
         quota_model = self.model(
@@ -504,6 +556,47 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual(collision["memberKeys"], model["representedSessionKeys"])
         self.assertEqual([], one_exact_member["risk"])
 
+    def test_collision_renders_each_member_task_with_exact_attribution(self) -> None:
+        payload = {
+            "harnesses": [
+                {"key": "claude", "label": "Claude Code", "discovered": True},
+                {"key": "codex", "label": "Codex", "discovered": True},
+            ],
+            "sessions": [
+                {
+                    "harness": "claude",
+                    "sid": "collision-claude",
+                    "project": "beta/app",
+                    "state": "working",
+                    "tasks": [{"subject": "Run Claude checks", "status": "in_progress"}],
+                },
+                {
+                    "harness": "codex",
+                    "sid": "collision-codex",
+                    "project": "beta/app",
+                    "state": "idle",
+                    "tasks": [{"subject": "Publish Codex notes", "status": "pending"}],
+                },
+            ],
+        }
+        model = self.model(payload)
+        assert isinstance(model, dict)
+
+        collision = model["risk"][0]
+        self.assertEqual(
+            ["collision", "task", "task"],
+            [signal["kind"] for signal in collision["signals"]],
+        )
+        self.assertEqual([], model["next"])
+        html = self.render(payload)
+        for expected in (
+            "Run Claude checks",
+            "Publish Codex notes",
+            "Claude Code · collision-claude",
+            "Codex · collision-codex",
+        ):
+            self.assertIn(expected, html)
+
     def test_same_harness_and_model_scope_coalesces_valid_quota_signals(self) -> None:
         model = self.model(
             {
@@ -641,6 +734,54 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual({"finishedAt": 7_000, "changedEntries": 3}, close["signals"][0]["detail"])
         self.assertEqual("alpha/first", close["session"]["project"])
         self.assertEqual(0, close["sourceIndex"])
+
+    def test_risk_subject_renders_its_lower_ranked_stop_without_close_duplicate(self) -> None:
+        payload = {
+            "sessions": [
+                {
+                    "harness": "claude",
+                    "sid": "risk-stop-owner",
+                    "project": "alpha/risk-stop",
+                    "state": "idle",
+                    "loop": {"errors": 3, "tool": "Bash"},
+                    "finished_at": 7_000,
+                    "dirty": True,
+                    "changed": 2,
+                }
+            ]
+        }
+        model = self.model(payload)
+        assert isinstance(model, dict)
+
+        risk = model["risk"][0]
+        self.assertEqual(["loop", "stop-dirty"], [signal["kind"] for signal in risk["signals"]])
+        self.assertEqual([], model["close"])
+        html = self.render(payload)
+        self.assertIn("Bash failed 3 times", html)
+        self.assertIn("2 changed entries", html)
+
+    def test_close_subject_keeps_published_task_without_coming_next_duplicate(self) -> None:
+        payload = {
+            "sessions": [
+                {
+                    "harness": "codex",
+                    "sid": "close-task-owner",
+                    "project": "beta/close-task",
+                    "state": "idle",
+                    "finished_at": 8_000,
+                    "dirty": None,
+                    "tasks": [{"subject": "Archive the result", "status": "pending"}],
+                }
+            ]
+        }
+        model = self.model(payload)
+        assert isinstance(model, dict)
+
+        close = model["close"][0]
+        self.assertEqual(["stop-unknown", "task"], [signal["kind"] for signal in close["signals"]])
+        self.assertEqual("Archive the result", close["checkpoint"]["subject"])
+        self.assertEqual([], model["next"])
+        self.assertIn("Archive the result", self.render(payload))
 
     def test_published_tasks_and_healthy_remainder_exclude_higher_section_subjects(self) -> None:
         model = self.model(
@@ -905,7 +1046,7 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
 
         self.assertEqual(1, html.count("<h1 "))
         self.assertEqual(5, html.count("<h2"))
-        self.assertEqual(4, html.count("<ol>"))
+        self.assertEqual(4, html.count('<ol id="next-attention-'))
         self.assertEqual(4, html.count("<li><article"))
         self.assertEqual(4, html.count('data-next-attention-part="why"><a '))
         self.assertEqual(1, html.count('<details class="next-attention-coverage-details">'))
@@ -1242,6 +1383,56 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertNotIn("/tmp/transcript", hostile_html)
         self.assertIn("alpha%2Fproject%3A%3Cimg", hostile_html)
         self.assertIn("ask%2Fid%3A%3Cimg", hostile_html)
+
+    def test_sections_show_three_initial_subjects_then_expand_without_reordering(self) -> None:
+        payload = {
+            "sessions": [
+                {
+                    "harness": "claude",
+                    "sid": f"owner-{index}",
+                    "project": f"project-{index}",
+                    "state": "needs_input",
+                }
+                for index in range(4)
+            ],
+            "asks": [
+                {
+                    "id": f"ask-{index}",
+                    "session_id": f"owner-{index}",
+                    "project": f"project-{index}",
+                    "question": f"Question {index}",
+                    "age_sec": 400 - index,
+                }
+                for index in range(4)
+            ],
+        }
+        encoded = json.dumps(payload)
+        out = self._run_page_js(
+            "\n".join(
+                (
+                    f"nextData = JSON.parse({json.dumps(encoded)});",
+                    "const model = nextAttentionModel(nextData);",
+                    "console.log(JSON.stringify({",
+                    "  keys: model.needs.map(subject => subject.key),",
+                    "  collapsed: nextAttentionView(model, new Set()),",
+                    '  expanded: nextAttentionView(model, new Set(["needs"]))',
+                    "}));",
+                )
+            )
+        )
+
+        self.assertEqual(4, len(out["keys"]))
+        self.assertEqual(1, out["collapsed"].count("<li hidden>"))
+        self.assertIn('aria-expanded="false"', out["collapsed"])
+        self.assertIn("Show 1 more", out["collapsed"])
+        self.assertNotIn("<li hidden>", out["expanded"])
+        self.assertIn('aria-expanded="true"', out["expanded"])
+        self.assertIn("Show fewer (hide 1)", out["expanded"])
+        for html in (out["collapsed"], out["expanded"]):
+            positions = [html.index(key.replace('"', "&quot;")) for key in out["keys"]]
+            self.assertEqual(sorted(positions), positions)
+            for key in out["keys"]:
+                self.assertEqual(1, html.count(key.replace('"', "&quot;")))
 
     def test_attention_styles_cover_wide_narrow_focus_hit_targets_and_motion(self) -> None:
         self.assertIn("@media(min-width:900px)", NEXT_STYLES)

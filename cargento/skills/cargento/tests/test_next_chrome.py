@@ -56,7 +56,16 @@ console.log(JSON.stringify(rendered));
             self.assertLess(html.index('href="#n=attention"'), html.index('href="#n=projects"'))
             self.assertLess(html.index('href="#n=projects"'), html.index('href="#n=sessions"'))
 
-    def test_primary_navigation_and_menu_controls_keep_44_pixel_targets(self) -> None:
+    def test_every_next_actionable_control_shares_the_44_pixel_target_contract(self) -> None:
+        self.assertIn(
+            '#app a,#app button,#app summary,#app [role="link"]{min-block-size:44px;'
+            "min-inline-size:44px",
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            "#app a{display:inline-flex;align-items:center;max-inline-size:100%",
+            NEXT_STYLES,
+        )
         self.assertIn(
             '.next-header nav[aria-label="Primary"] a{display:inline-flex;align-items:center;'
             "min-block-size:44px;min-inline-size:44px",
@@ -316,12 +325,64 @@ __els.app = {
                 selector
                 in {
                     "[data-next-subject-key]",
+                    "[data-next-attention-toggle]",
                     "[data-next-attention-section]",
                     ".next-attention h1",
                 }
                 for selector in out["selectors"]
             )
         )
+
+    def test_attention_expansion_and_its_focused_control_survive_refresh(self) -> None:
+        out = self._run_page_js(
+            """
+const payload = generated => ({
+  generated,
+  sessions: [0, 1, 2, 3].map(index => ({
+    harness: "claude", sid: `owner-${index}`, project: `project-${index}`,
+    state: "needs_input"
+  })),
+  asks: [0, 1, 2, 3].map(index => ({
+    id: `ask-${index}`, session_id: `owner-${index}`, project: `project-${index}`,
+    question: `Question ${index}`, age_sec: 400 - index
+  }))
+});
+nextData = payload(1000);
+nextAttention = nextAttentionModel(nextData);
+nextAttentionExpandedSections.add("needs");
+document.activeElement = {disclosureSection: "needs"};
+__fetchImpl = async () => ({ok: true, json: async () => payload(2000)});
+await refreshNext();
+console.log(JSON.stringify({
+  expanded: nextAttentionExpandedSections.has("needs"),
+  html: __els.app.innerHTML,
+  focusCalls: __focusCalls
+}));
+""",
+            """
+let __focusCalls = [];
+const __toggle = {
+  dataset: {nextAttentionToggle: "needs"},
+  contains(active){ return active && active.disclosureSection === "needs"; },
+  focus(){ __focusCalls.push("toggle:needs"); document.activeElement = this; }
+};
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    if(selector === "[data-next-subject-key]") return [];
+    if(selector === "[data-next-attention-toggle]") return [__toggle];
+    if(selector === "[data-next-attention-section]") return [];
+    return [];
+  },
+  querySelector(){ return null; }
+};
+""",
+        )
+
+        self.assertTrue(out["expanded"])
+        self.assertIn('aria-expanded="true"', out["html"])
+        self.assertIn("Show fewer (hide 1)", out["html"])
+        self.assertEqual(["toggle:needs"], out["focusCalls"])
 
     def test_attention_announces_successful_count_changes_only(self) -> None:
         out = self._run_page_js(

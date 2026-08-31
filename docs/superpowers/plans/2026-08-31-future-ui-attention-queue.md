@@ -37,6 +37,9 @@ scope, HTML/CSS, the repository's Node-backed `NextPageJsHarness`, and live Chro
   in the retained-view refresh notice.
 - Keep missing primary facts absent. Never render empty `NEXT`, response, estimate, workflow,
   progress, or delegation fields.
+- Show at most three ranked subjects per section initially. A truthful native expansion button
+  reveals the ordered remainder without duplication or loss, and expansion plus control focus
+  survive refresh.
 - Escape every payload-derived string before HTML interpolation and encode route segments with
   `encodeURIComponent`.
 - Preserve the existing two-failure refresh boundary, serialized `Retry now`, last successful view,
@@ -53,8 +56,8 @@ scope, HTML/CSS, the repository's Node-backed `NextPageJsHarness`, and live Chro
 | File | Responsibility |
 |---|---|
 | `cargento/skills/cargento/cargento_runtime/web/next/next-boot.js` | Route tokens, payload guards, exact ask ownership, stable keys, source task selection, and payload-clock helpers. |
-| `cargento/skills/cargento/cargento_runtime/web/next/next-attention.js` | New pure subject builder, predicates, de-duplication, comparators, coverage, project summaries, and escaped Attention markup. |
-| `cargento/skills/cargento/cargento_runtime/web/next/next-chrome.js` | Native primary navigation, titles, breadcrumbs, observed brief counts, shortcuts, live announcements, and focus restoration. |
+| `cargento/skills/cargento/cargento_runtime/web/next/next-attention.js` | New pure subject builder, predicates, de-duplication, comparators, coverage, project summaries, bounded section disclosure, and escaped Attention markup. |
+| `cargento/skills/cargento/cargento_runtime/web/next/next-chrome.js` | Native primary navigation, titles, breadcrumbs, observed brief counts, shortcuts, disclosure state, live announcements, and focus restoration. |
 | `cargento/skills/cargento/cargento_runtime/web/next/next-render.js` | Top-level dispatch and atomic `{payload, attentionModel}` refresh. |
 | `cargento/skills/cargento/cargento_runtime/web/next/next-projects.js` | Complete project map, supported aggregates, and shared-model consumption without authority re-derivation. |
 | `cargento/skills/cargento/cargento_runtime/web/next/next-project.js` | Missing-project wording/link and accepted project drill-down preservation. |
@@ -120,7 +123,7 @@ The exact signatures and return contracts are:
 | `nextAttentionRateCoverage(discoveredHarnesses: Array<object>)` | Exact reported/notReported/failed counts and rows. |
 | `nextAttentionCompareSubjects(left, right, model)` | Negative, zero, or positive comparator result. |
 | `nextAttentionProjectSummary(model, sessions)` | `NextAttentionProjectSummary`. |
-| `nextAttentionView(model)` | Escaped Attention HTML string. |
+| `nextAttentionView(model, expandedSections)` | Escaped Attention HTML string with at most three initially visible subjects per ranked section. |
 | `nextAttentionSectionForKey(model, key)` | Section token or `null`. |
 
 `nextAttentionModel(payload)` is pure: it reads no DOM, browser clock, local storage, network state,
@@ -161,7 +164,7 @@ Signal kinds are fixed as `ask`, `input`, `attribution`, `loop`, `quota`, `long-
 | 17. No published exceptions | Tasks 4/5 — `test_no_exception_sections_are_omitted_and_healthy_is_qualified` |
 | 18. Empty payload | Task 5 — `test_empty_payload_is_window_bounded_and_keeps_coverage` |
 | 19. Stale refresh | Task 7 — `test_stale_refresh_retains_keys_order_focus_and_recovers` |
-| 20. Responsive and accessible routes | Tasks 1/5/7/9 — route, DOM-order, focus, and viewport checks |
+| 20. Responsive and accessible routes | Tasks 1/5/7/9 - route, bounded disclosure, DOM-order, focus, target-size, and viewport checks |
 | 21. Cross-harness stable ordering | Task 3 — `test_equal_signal_order_uses_harness_project_sid_not_input_order` |
 | 22. Escaping | Task 5 — `test_every_attention_text_and_route_field_is_escaped` |
 
@@ -462,6 +465,10 @@ Healthy counts. In `test_next_sessions.py`, replace the old elapsed-stop `done` 
 row with finished_at but no state_detail has an empty ACTIVITY cell and no done/finished/unread/died
 word.
 
+Add ask-plus-loop, risk-plus-stop, risk-plus-task, close-plus-task, and collision-member task
+fixtures. Require one winning subject, all lower-ranked facts rendered once, no Close or Coming-next
+duplicate, and exact display label, harness, and full session ID on collision-member facts.
+
 - [ ] **Step 2: Run focused tests and observe missing sections plus old `done` copy**
 
 Run:
@@ -481,7 +488,9 @@ Require finite positive finished_at, idle state, and exact dirty tri-state. Sort
 clean; then oldest stop and stable identity. Boolean dirty or integer changed without valid stop is
 an attribution risk. A stop coexisting with working or active state is also attribution risk.
 
-Add task subjects only for sessions absent from Needs/Risk/Close. Use `nextPublishedTask()` and
+Attach every valid lower-ranked stop and selected task to the existing winning Needs, Risk, Close,
+or collision subject. Collision-member attachments carry the exact member session for attribution.
+Only sessions absent from those sections become task subjects. Use `nextPublishedTask()` and
 preserve source order. Healthy contains every remaining session exactly once and counts only
 working, idle, and unknown state. Delete `NEXT_SESSION_FINISHED_UNREAD_SEC`; make
 `nextSessionActivity()` return only escaped state_detail.
@@ -550,6 +559,11 @@ Add a semantic DOM test requiring one Attention h1, one h2 per non-empty section
 `<ol><li><article>`, one heading route link per item, DOM labels in why/identity/NOW/NEXT/source
 order, no NEXT line when absent, one closed native coverage details, and no Healthy identity panel.
 
+Add four ranked subjects to one section. Require exactly three initially visible items, one hidden
+ordered remainder item, a `Show 1 more` button with `aria-expanded="false"`, and an expanded render
+with all four items in the same order plus `Show fewer (hide 1)`. Every subject key appears once in
+both renders.
+
 Add outcome/identity fixtures: one exact session with an `asked` instruction uses that assignment;
 one distinct non-empty Spacedock workflow goal uses that goal; two distinct goals fall back to
 identity; last_prompt/title remain context and never become an outcome.
@@ -596,6 +610,11 @@ Render only non-empty queue sections. Each item is one list item/article with on
 link; its DOM order is why, identity/outcome, now, optional next, source/responsibility/age. Healthy
 is count plus Projects link only. Pass payload text through `esc()` and routes through the existing
 route encoder.
+
+For each ranked section, render no more than the first three subjects initially. Keep the ordered
+remainder in the same list with `hidden`, then add one native button with truthful remainder count,
+`aria-expanded`, and `aria-controls`. Rendering receives an expanded-section set but does not
+change the pure model.
 
 Append Attention CSS: wide grid at 900px; stacked labels below 900px; 44px minimum block/inline
 interactive size; overflow-wrap anywhere; visible focus; no CSS order; reduced-motion rule removing
@@ -762,7 +781,8 @@ git commit -s -m "refactor(ui): share attention truth with project maps"
 
 **Interfaces:**
 - Consumes: final model, stable keys, sections, and existing refresh state.
-- Produces: global `nextAttention`; `nextCaptureFocus()` returning `{key,section}|null`;
+- Produces: global `nextAttention`; in-page `nextAttentionExpandedSections`;
+  `nextCaptureFocus()` returning a subject or disclosure snapshot;
   `nextRestoreFocus(snapshot, model)`; `nextAttentionAnnouncement(previous,current)`.
 
 - [ ] **Step 1: Write failing retained-focus and announcement tests**
@@ -774,6 +794,11 @@ focused subject moves focus to needs h2; later removal of the section moves focu
 Require count change copy exactly `Attention updated: 2 need you, 1 at risk`, with no moved/because
 explanation. Strengthen Retry-now: two rapid clicks create one fetch, retained HTML remains, and
 recovery clears notice/failure count.
+
+Add four Needs subjects, expand the section, focus its expansion button, and publish a successful
+refresh with the same remainder. Require expanded markup, the truthful collapse label, and focus on
+the replacement expansion button. If a later refresh removes the remainder, require the normal
+section-heading fallback.
 
 ```python
 self.assertEqual(first_keys, once_keys)
@@ -817,6 +842,11 @@ it disappears and old section survives, focus section h2 with tabindex -1; other
 Find subjects by iterating `[data-next-subject-key]` and comparing dataset values, never by putting
 untrusted keys into a selector. Do nothing when no queue subject held focus. Keep one persistent
 polite status node; announce only successful count changes, never initial load/reorder/failure.
+
+Keep expanded section keys in an in-page Set outside the pure model and pass it to the renderer.
+Expansion clicks toggle that set and re-render without changing subject order. Capture a focused
+expansion button by its bounded section token, then restore the corresponding replacement button
+after refresh. If the button no longer exists, use the same bounded section/h1 fallback.
 
 ```javascript
 function nextAttentionSectionForKey(model, key){
@@ -1031,6 +1061,14 @@ Require width <= viewport, one route h1, one current top-level link, no small ta
 matching grammar, visible uncertainty, and no all-clear/prediction/repository/unread/death/borrowed
 authority copy. If live data lacks ask/risk/stop, tie those branches to executed fixtures rather
 than inventing state.
+
+Use source-present routes for normal Attention and detail evidence. When live data lacks the gate,
+stale retry, answer, or disclosure states, render one deterministic browser-only representative
+payload and retained refresh state. At 320 CSS pixels, measure project/session breadcrumbs, the
+needs-input gate, Retry now, answer buttons, coverage summary, and expansion/collapse control.
+Require every actionable link, button, summary, and link-role control to measure at least 44 by 44,
+with no horizontal overflow, one h1, and the correct current Primary link. Record which evidence was
+live and which was fixture-driven.
 
 - [ ] **Step 5: Stop only the server from Step 3**
 

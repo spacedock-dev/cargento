@@ -115,7 +115,11 @@ function nextProjectEmptyState(sessions){
 }
 
 function nextProjectPlanBlock(context){
-  if(!nextProjectHasSpacedock(context.group.sessions)) return "";
+  const hasSpacedock = context.group.sessions.some(session => {
+    const spacedock = session && session.spacedock;
+    return spacedock && typeof spacedock === "object" && !Array.isArray(spacedock);
+  });
+  if(!hasSpacedock) return "";
   if(!context.plans.length){
     const empty = nextProjectEmptyState(context.group.sessions);
     return empty ? `<div class="next-project-detail-empty">${esc(empty)}</div>` : "";

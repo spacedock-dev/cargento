@@ -69,13 +69,6 @@ function nextProjectWorkflows(sessions){
   return found;
 }
 
-function nextProjectHasSpacedock(sessions){
-  return sessions.some(session => {
-    const spacedock = session && session.spacedock;
-    return spacedock && typeof spacedock === "object" && !Array.isArray(spacedock);
-  });
-}
-
 function nextProjectRequestLabel(ask){
   return nextAskResponsibility(nextData, ask) === "CAPTAIN" ? "Captain" : "Needs you";
 }
