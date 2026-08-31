@@ -5,9 +5,14 @@ function nextDetailBody(route){
 }
 
 function nextViewBody(){
-  if(nextRoute.view === "attention") return nextAttentionView(nextAttentionModel(nextData || {}));
+  if(nextRoute.view === "attention"){
+    return nextAttentionView(nextAttention).replace(
+      /data-next-attention-subject="([^"]*)"/g,
+      'data-next-attention-subject="$1" data-next-subject-key="$1"',
+    );
+  }
   if(nextRoute.view === "projects"){
-    return `<section class="next-projects" data-next-view-body="projects"><h1>Projects</h1>${nextProjectsView(nextAttentionModel(nextData || {}))}</section>`;
+    return `<section class="next-projects" data-next-view-body="projects"><h1>Projects</h1>${nextProjectsView(nextAttention)}</section>`;
   }
   if(nextRoute.view === "sessions"){
     return `<section class="next-sessions" data-next-view-body="sessions"><h1>Sessions</h1>${nextSessionsView()}</section>`;
@@ -25,6 +30,7 @@ function nextRefreshRetryMs(){
 
 async function refreshNext(manual = false){
   if(manual && nextRefreshInFlight) return;
+  let focus;
   if(manual){
     nextRefreshInFlight = true;
     renderNext();
@@ -33,14 +39,19 @@ async function refreshNext(manual = false){
     const response = await fetch(nextDataUrl());
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const fresh = await response.json();
+    const freshAttention = nextAttentionModel(fresh);
     nextObserveWorkstream(fresh);
+    focus = nextCaptureFocus();
+    const previousAttention = nextData == null ? null : nextAttention;
     nextData = fresh;
+    nextAttention = freshAttention;
+    nextAttentionAnnouncementText = nextAttentionAnnouncement(previousAttention, freshAttention);
     nextRefreshFailures = 0;
     nextLastRefreshSuccessAt = Date.now();
   }catch(_error){
     nextRefreshFailures += 1;
   }finally{
     if(manual) nextRefreshInFlight = false;
-    renderNext();
+    renderNext(focus);
   }
 }

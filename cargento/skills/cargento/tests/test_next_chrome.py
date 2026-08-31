@@ -52,7 +52,7 @@ console.log(JSON.stringify(rendered));
             self.assertIn('href="#n=sessions"', html)
             self.assertEqual(3, html.count('<a href="#n='))
             self.assertEqual(1, html.count('aria-current="page"'))
-            self.assertEqual(1, html.count("<h1>"))
+            self.assertEqual(1, html.count("<h1"))
             self.assertLess(html.index('href="#n=attention"'), html.index('href="#n=projects"'))
             self.assertLess(html.index('href="#n=projects"'), html.index('href="#n=sessions"'))
 
@@ -83,7 +83,7 @@ console.log(JSON.stringify({initial, project, attention: nextRoute, html: __els.
             {"view": "attention", "project": None, "session": None},
             out["attention"],
         )
-        self.assertIn("<h1>Attention</h1>", out["html"])
+        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["html"])
 
     def test_breadcrumb_segments_are_clickable_and_escape_walks_up(self) -> None:
         out = self._run_page_js(
@@ -171,7 +171,7 @@ console.log(JSON.stringify({
         self.assertIn('<h1>Projects</h1>', out["projects"]["html"])
         self.assertEqual({"view": "attention", "project": None, "session": None}, out["attention"]["route"])
         self.assertEqual("#n=attention", out["attention"]["hash"])
-        self.assertIn('<h1>Attention</h1>', out["attention"]["html"])
+        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["attention"]["html"])
         self.assertEqual(["/"], out["assigned"])
         self.assertEqual("?next=true", out["search"])
         self.assertEqual(1, out["keydownListeners"])
@@ -183,7 +183,7 @@ const cases = {};
 function attempt(name, event){
   navigateNext({view: "session", project: "recce", session: "one"});
   let prevented = false;
-  __fire("keydown", {...event, key: "p", preventDefault(){ prevented = true; }});
+  __fire("keydown", {...event, preventDefault(){ prevented = true; }});
   cases[name] = {route: {...nextRoute}, hash: location.hash, prevented};
 }
 for(const key of ["a", "p", "s"]){
@@ -205,6 +205,157 @@ console.log(JSON.stringify(cases));
                 self.assertEqual(expected_route, case["route"])
                 self.assertEqual("#n=session:recce:one", case["hash"])
                 self.assertFalse(case["prevented"])
+
+    def test_attention_focus_restoration_uses_stable_keys_and_bounded_fallbacks(self) -> None:
+        out = self._run_page_js(
+            """
+const hostileKey = 'session:["claude","bad\\\"] [data-next-route] "]';
+const retainedKey = 'session:["claude","retained"]';
+const oldModel = {
+  needs: [{key: retainedKey}, {key: hostileKey}], risk: [], close: [], next: []
+};
+const reorderedModel = {
+  needs: [{key: hostileKey}, {key: retainedKey}], risk: [], close: [], next: []
+};
+const sectionModel = {
+  needs: [{key: retainedKey}], risk: [], close: [], next: []
+};
+const emptyModel = {needs: [], risk: [], close: [], next: []};
+nextAttention = oldModel;
+document.activeElement = {subjectKey: hostileKey};
+const snapshot = nextCaptureFocus();
+nextAttention = reorderedModel;
+nextRestoreFocus(snapshot, reorderedModel);
+const survivorCall = __focusCalls.pop();
+nextAttention = sectionModel;
+nextRestoreFocus(snapshot, sectionModel);
+nextAttention = emptyModel;
+nextRestoreFocus(snapshot, emptyModel);
+const calls = [...__focusCalls];
+document.activeElement = {subjectKey: "outside-the-queue"};
+const absent = nextCaptureFocus();
+nextRestoreFocus(absent, emptyModel);
+console.log(JSON.stringify({snapshot, survivorCall, calls, absent, selectors: __selectors}));
+""",
+            """
+let __focusCalls = [];
+let __selectors = [];
+const __focusTarget = (name, subjectKey = null) => ({
+  subjectKey,
+  focus(){ __focusCalls.push(name); document.activeElement = this; }
+});
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    __selectors.push(selector);
+    if(selector === "[data-next-subject-key]"){
+      return ["needs", "risk", "close", "next"].flatMap(section =>
+        nextAttention[section].map(subject => ({
+          dataset: {nextSubjectKey: subject.key},
+          contains(active){ return active && active.subjectKey === subject.key; },
+          querySelector(inner){
+            return inner === "h3 a" ? __focusTarget(`subject:${subject.key}`, subject.key) : null;
+          }
+        }))
+      );
+    }
+    if(selector === "[data-next-attention-section]"){
+      return ["needs", "risk", "close", "next"].filter(section =>
+        nextAttention[section].length > 0
+      ).map(section => ({
+        dataset: {nextAttentionSection: section},
+        querySelector(inner){
+          return inner === "h2" ? __focusTarget(`next-attention-${section}`) : null;
+        }
+      }));
+    }
+    return [];
+  },
+  querySelector(selector){
+    __selectors.push(selector);
+    return selector === ".next-attention h1"
+      ? __focusTarget("next-attention-title")
+      : null;
+  }
+};
+""",
+        )
+
+        self.assertEqual(
+            {"key": 'session:["claude","bad"] [data-next-route] "]', "section": "needs"},
+            out["snapshot"],
+        )
+        self.assertEqual(
+            'subject:session:["claude","bad"] [data-next-route] "]',
+            out["survivorCall"],
+        )
+        self.assertEqual(["next-attention-needs", "next-attention-title"], out["calls"])
+        self.assertIsNone(out["absent"])
+        self.assertNotIn(out["snapshot"]["key"], out["selectors"])
+        self.assertTrue(
+            all(
+                selector
+                in {
+                    "[data-next-subject-key]",
+                    "[data-next-attention-section]",
+                    ".next-attention h1",
+                }
+                for selector in out["selectors"]
+            )
+        )
+
+    def test_attention_announces_successful_count_changes_only(self) -> None:
+        out = self._run_page_js(
+            """
+const previous = {counts: {needs: 1, risk: 1, close: 0, next: 0}};
+const current = {counts: {needs: 2, risk: 1, close: 0, next: 0}};
+const reordered = {counts: {needs: 2, risk: 1, close: 0, next: 0}};
+console.log(JSON.stringify({
+  initial: nextAttentionAnnouncement(null, current),
+  changed: nextAttentionAnnouncement(previous, current),
+  reordered: nextAttentionAnnouncement(current, reordered)
+}));
+""",
+            '__els.app = {innerHTML: ""};\n',
+        )
+
+        self.assertEqual("", out["initial"])
+        self.assertEqual("Attention updated: 2 need you, 1 at risk", out["changed"])
+        self.assertNotIn("moved", out["changed"].lower())
+        self.assertNotIn("because", out["changed"].lower())
+        self.assertEqual("", out["reordered"])
+
+    def test_attention_uses_one_persistent_polite_status_node(self) -> None:
+        out = self._run_page_js(
+            """
+renderNext();
+const first = __statusNodes[0];
+nextAttentionAnnouncementText = "Attention updated: 2 need you, 1 at risk";
+renderNext();
+console.log(JSON.stringify({
+  nodes: __statusNodes.length,
+  same: first === __statusNodes[0],
+  role: first.role,
+  ariaLive: first.ariaLive,
+  text: first.textContent
+}));
+""",
+            """
+let __statusNodes = [];
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(){ return []; },
+  querySelector(){ return null; },
+  insertAdjacentElement(_position, node){ __statusNodes.push(node); }
+};
+""",
+        )
+
+        self.assertEqual(1, out["nodes"])
+        self.assertTrue(out["same"])
+        self.assertEqual("status", out["role"])
+        self.assertEqual("polite", out["ariaLive"])
+        self.assertEqual("Attention updated: 2 need you, 1 at risk", out["text"])
 
     def test_the_running_count_excludes_blocked_sessions(self) -> None:
         out = self._run_page_js(
@@ -239,7 +390,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             out,
         )
         self.assertNotIn("4 running", out)
-        self.assertIn('<h1>Attention</h1>', out)
+        self.assertIn('<h1 tabindex="-1">Attention</h1>', out)
 
     def test_the_need_you_pill_opens_the_session_queue(self) -> None:
         out = self._run_page_js(
@@ -267,7 +418,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
         self.assertEqual({"view": "attention", "project": None, "session": None}, out["route"])
         self.assertEqual("#n=attention", out["hash"])
-        self.assertIn('<h1>Attention</h1>', out["html"])
+        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["html"])
 
     def test_a_payload_with_no_gates_renders_no_pill(self) -> None:
         out = self._run_page_js(
@@ -291,14 +442,13 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             "0 running · 0 subagents</span>",
             out,
         )
-        self.assertNotIn("need you", out)
         self.assertNotIn('class="next-gate"', out)
         self.assertNotIn('data-next-action="needs-input"', out)
         self.assertIn('<nav aria-label="Primary"', out)
         self.assertIn('href="#n=attention"', out)
         self.assertIn('href="#n=projects"', out)
         self.assertIn('href="#n=sessions"', out)
-        self.assertIn('<h1>Attention</h1>', out)
+        self.assertIn('<h1 tabindex="-1">Attention</h1>', out)
         self.assertEqual(1, out.count("dashboard mode"))
 
     def test_poll_forwards_only_the_all_flag(self) -> None:
@@ -340,44 +490,117 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
         self.assertEqual(["/api/data"], out)
 
-    def test_repeated_refresh_failures_explain_the_retained_legacy_poll_view(self) -> None:
+    def test_repeated_refresh_failures_retain_the_attention_queue(self) -> None:
         out = self._run_page_js(
             """
 await __settle();
 const good = __els.app.innerHTML;
+const firstKeys = nextAttention.needs.map(subject => subject.key);
+document.activeElement = {subjectKey: firstKeys[1]};
 __setNow(1040);
 __nextShouldFail = true;
 __runInterval(5000);
 await __settle();
 const once = __els.app.innerHTML;
+const onceKeys = nextAttention.needs.map(subject => subject.key);
 __runInterval(5000);
 await __settle();
-console.log(JSON.stringify({good, once, twice: __els.app.innerHTML}));
+const twice = __els.app.innerHTML;
+const twiceKeys = nextAttention.needs.map(subject => subject.key);
+const focusAfterFailures = document.activeElement.subjectKey;
+__nextShouldFail = false;
+__payload = {
+  generated: 1040,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 1},
+  asks: [{id: "first", question: "Approve deploy", session_id: "one", age_sec: 20}],
+  sessions: [
+    {harness: "claude", sid: "one", project: "recce", state: "needs_input", subagents: []}
+  ]
+};
+await refreshNext();
+console.log(JSON.stringify({
+  good, once, twice, firstKeys, onceKeys, twiceKeys, focusAfterFailures,
+  recovered: __els.app.innerHTML,
+  recoveredKeys: nextAttention.needs.map(subject => subject.key),
+  focusCalls: __focusCalls,
+  failures: nextRefreshFailures
+}));
 """,
             """
-__els.app = {innerHTML: ""};
+let __focusCalls = [];
+const __focusTarget = (name, subjectKey = null) => ({
+  subjectKey,
+  focus(){ __focusCalls.push(name); document.activeElement = this; }
+});
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    if(selector === "[data-next-subject-key]"){
+      return ["needs", "risk", "close", "next"].flatMap(section =>
+        nextAttention[section].map(subject => ({
+          dataset: {nextSubjectKey: subject.key},
+          contains(active){ return active && active.subjectKey === subject.key; },
+          querySelector(inner){
+            return inner === "h3 a" ? __focusTarget(`subject:${subject.key}`, subject.key) : null;
+          }
+        }))
+      );
+    }
+    if(selector === "[data-next-attention-section]"){
+      return ["needs", "risk", "close", "next"].filter(section =>
+        nextAttention[section].length > 0
+      ).map(section => ({
+        dataset: {nextAttentionSection: section},
+        querySelector(inner){
+          return inner === "h2" ? __focusTarget(`next-attention-${section}`) : null;
+        }
+      }));
+    }
+    return [];
+  },
+  querySelector(selector){
+    return selector === ".next-attention h1" ? __focusTarget("next-attention-title") : null;
+  }
+};
 let __nextShouldFail = false;
+let __payload = {
+  generated: 1000,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 2},
+  asks: [
+    {id: "first", question: "Approve deploy", session_id: "one", age_sec: 20},
+    {id: "second", question: "Choose target", session_id: "two", age_sec: 10}
+  ],
+  sessions: [
+    {harness: "claude", sid: "one", project: "recce", state: "needs_input", subagents: []},
+    {harness: "codex", sid: "two", project: "cargento", state: "needs_input", subagents: []}
+  ]
+};
 __fetchImpl = async () => {
   if(__nextShouldFail) throw new Error("offline");
-  return {ok: true, json: async () => ({
-    window_hours: 24,
-    summary: {working: 1, needs_input: 0},
-    sessions: [{project: "recce", subagents: []}]
-  })};
+  return {ok: true, json: async () => __payload};
 };
 """,
         )
 
-        self.assertIn('aria-label="live">●</span> 1 running', out["good"])
-        self.assertNotIn('data-next-state="stalled"', out["once"])
+        self.assertEqual(out["firstKeys"], out["onceKeys"])
+        self.assertEqual(out["firstKeys"], out["twiceKeys"])
+        self.assertNotIn("Live refresh failed", out["once"])
         self.assertIn("Live refresh failed twice in a row", out["twice"])
         self.assertIn("Displayed data may be stale", out["twice"])
         self.assertIn("Last updated 40s ago", out["twice"])
         self.assertIn("Retrying automatically every 5s", out["twice"])
         self.assertIn("Retry now", out["twice"])
         self.assertNotIn("stream stopped", out["twice"].lower())
-        self.assertIn('aria-label="live">●</span> 1 running', out["twice"])
+        self.assertIn("Approve deploy", out["good"])
+        self.assertIn("Approve deploy", out["twice"])
         self.assertIn('data-next-state="stalled"', out["twice"])
+        self.assertEqual(out["firstKeys"][1], out["focusAfterFailures"])
+        self.assertEqual([out["firstKeys"][0]], out["recoveredKeys"])
+        self.assertEqual("next-attention-needs", out["focusCalls"][-1])
+        self.assertNotIn('data-next-state="stalled"', out["recovered"])
+        self.assertEqual(0, out["failures"])
 
     def test_retry_now_serializes_attempts_and_success_clears_the_notice(self) -> None:
         out = self._run_page_js(
@@ -395,15 +618,26 @@ const retry = {dataset: {nextAction: "retry-refresh"}, closest(selector){
 }};
 __fire("click", {target: retry, preventDefault(){}});
 __fire("click", {target: retry, preventDefault(){}});
-const during = {calls: __fetchCalls.length - before, html: __els.app.innerHTML};
+const during = {
+  calls: __fetchCalls.length - before,
+  html: __els.app.innerHTML,
+  failures: nextRefreshFailures,
+  generated: nextData.generated
+};
 __releaseRetry({ok: true, json: async () => ({
+  generated: 2000,
   window_hours: 24,
   summary: {working: 2, needs_input: 0},
   sessions: [{project: "recce", subagents: []}, {project: "cargento", subagents: []}]
 })});
 await __settle();
 await __settle();
-console.log(JSON.stringify({during, recovered: __els.app.innerHTML}));
+console.log(JSON.stringify({
+  during,
+  recovered: __els.app.innerHTML,
+  recoveredFailures: nextRefreshFailures,
+  recoveredGenerated: nextData.generated
+}));
 """,
             """
 __els.app = {innerHTML: ""};
@@ -413,6 +647,7 @@ __fetchImpl = async () => {
   if(__mode === "fail") throw new Error("offline");
   if(__mode === "deferred") return new Promise(resolve => { __releaseRetry = resolve; });
   return {ok: true, json: async () => ({
+    generated: 1000,
     window_hours: 24,
     summary: {working: 1, needs_input: 0},
     sessions: [{project: "recce", subagents: []}]
@@ -422,9 +657,14 @@ __fetchImpl = async () => {
         )
 
         self.assertEqual(1, out["during"]["calls"])
+        self.assertEqual(2, out["during"]["failures"])
+        self.assertEqual(1000, out["during"]["generated"])
         self.assertIn('data-next-action="retry-refresh" disabled', out["during"]["html"])
+        self.assertIn('aria-label="live">●</span> 1 running', out["during"]["html"])
         self.assertNotIn('data-next-state="stalled"', out["recovered"])
         self.assertIn('aria-label="live">●</span> 2 running', out["recovered"])
+        self.assertEqual(0, out["recoveredFailures"])
+        self.assertEqual(2000, out["recoveredGenerated"])
 
 
 if __name__ == "__main__":

@@ -290,6 +290,47 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("Retrying automatically every 20s", html)
         self.assertNotIn("stream stopped", html.lower())
 
+    def test_refresh_classifies_before_publishing_and_retains_the_last_success(self) -> None:
+        out = self._boot(
+            """
+await refreshNext();
+const retainedData = nextData;
+const retainedAttention = nextAttention;
+const firstKeys = nextAttention.needs.map(subject => subject.key);
+const retainedHtml = __els.app.innerHTML;
+const classify = nextAttentionModel;
+nextAttentionModel = payload => {
+  if(payload.generated === 2000) throw new Error("classifier rejected payload");
+  return classify(payload);
+};
+__fetchImpl = async () => ({ok: true, json: async () => ({
+  generated: 2000,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 0},
+  harnesses: [],
+  asks: [{id: "new", question: "Replace retained state", session_id: "new"}],
+  sessions: [{harness: "codex", sid: "new", project: "new", state: "needs_input"}]
+})});
+await refreshNext();
+console.log(JSON.stringify({
+  sameData: nextData === retainedData,
+  sameAttention: nextAttention === retainedAttention,
+  firstKeys,
+  retainedKeys: nextAttention.needs.map(subject => subject.key),
+  retainedHtml,
+  html: __els.app.innerHTML,
+  failures: nextRefreshFailures
+}));
+"""
+        )
+
+        self.assertTrue(out["sameData"])
+        self.assertTrue(out["sameAttention"])
+        self.assertEqual(out["firstKeys"], out["retainedKeys"])
+        self.assertEqual(out["retainedHtml"], out["html"])
+        self.assertEqual(1, out["failures"])
+        self.assertNotIn("Live refresh failed", out["html"])
+
     def test_private_browsing_still_streams(self) -> None:
         out = self._boot(
             """

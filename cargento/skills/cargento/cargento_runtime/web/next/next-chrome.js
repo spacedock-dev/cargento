@@ -1,7 +1,80 @@
 let nextData = null;
+let nextAttention = nextAttentionModel({});
 let nextRefreshFailures = 0;
 let nextRefreshInFlight = false;
 let nextLastRefreshSuccessAt = null;
+let nextAttentionAnnouncementText = "";
+let nextAttentionStatusElement = null;
+
+function nextCaptureFocus(){
+  const app = document.getElementById("app");
+  const active = document.activeElement;
+  if(!app || !active || typeof app.querySelectorAll !== "function") return null;
+  for(const subject of app.querySelectorAll("[data-next-subject-key]")){
+    if(typeof subject.contains !== "function" || !subject.contains(active)) continue;
+    const key = String(subject.dataset && subject.dataset.nextSubjectKey || "");
+    const section = nextAttentionSectionForKey(nextAttention, key);
+    if(key && section) return {key, section};
+  }
+  return null;
+}
+
+function nextRestoreFocus(snapshot, model){
+  if(!snapshot || !snapshot.key || !snapshot.section) return;
+  const app = document.getElementById("app");
+  if(!app || typeof app.querySelectorAll !== "function") return;
+  for(const subject of app.querySelectorAll("[data-next-subject-key]")){
+    if(String(subject.dataset && subject.dataset.nextSubjectKey || "") !== snapshot.key) continue;
+    const link = typeof subject.querySelector === "function" ? subject.querySelector("h3 a") : null;
+    if(link && typeof link.focus === "function") link.focus();
+    return;
+  }
+  if(Array.isArray(model && model[snapshot.section]) && model[snapshot.section].length > 0){
+    for(const section of app.querySelectorAll("[data-next-attention-section]")){
+      if(String(section.dataset && section.dataset.nextAttentionSection || "") !== snapshot.section){
+        continue;
+      }
+      const heading = typeof section.querySelector === "function" ? section.querySelector("h2") : null;
+      if(heading && typeof heading.focus === "function") heading.focus();
+      return;
+    }
+  }
+  const title = typeof app.querySelector === "function" ? app.querySelector(".next-attention h1") : null;
+  if(title && typeof title.focus === "function") title.focus();
+}
+
+function nextAttentionAnnouncement(previous, current){
+  if(!previous || !current || !previous.counts || !current.counts) return "";
+  const keys = ["needs", "risk", "close", "next"];
+  if(keys.every(key => previous.counts[key] === current.counts[key])) return "";
+  const counts = current.counts;
+  const parts = [];
+  if(counts.needs) parts.push(`${counts.needs} need you`);
+  if(counts.risk) parts.push(`${counts.risk} at risk`);
+  if(counts.close) parts.push(`${counts.close} close the loop`);
+  if(counts.next) parts.push(`${counts.next} coming next`);
+  if(!parts.length) parts.push("0 need you", "0 at risk");
+  return `Attention updated: ${parts.join(", ")}`;
+}
+
+function nextAttentionStatus(app){
+  if(nextAttentionStatusElement) return nextAttentionStatusElement;
+  if(!app || typeof app.insertAdjacentElement !== "function") return null;
+  const status = document.createElement("p");
+  status.id = "next-attention-status";
+  status.className = "next-visually-hidden";
+  status.role = "status";
+  status.ariaLive = "polite";
+  status.ariaAtomic = "true";
+  if(typeof status.setAttribute === "function"){
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("aria-atomic", "true");
+  }
+  app.insertAdjacentElement("afterend", status);
+  nextAttentionStatusElement = status;
+  return status;
+}
 
 function nextRouteToken(route){
   return nextFragmentForRoute(route).slice(3);
@@ -85,7 +158,7 @@ function nextRefreshNotice(){
     `<button type="button" data-next-action="retry-refresh"${disabled}>Retry now</button></div>`;
 }
 
-function renderNext(){
+function renderNext(focus = nextCaptureFocus()){
   const app = document.getElementById("app");
   if(!app) return;
   const counts = nextCounts();
@@ -108,6 +181,9 @@ function renderNext(){
     '<button type="button" data-next-action="dashboard">dashboard mode <kbd>d</kbd></button>' +
     "</div></details></div></header>" +
     stalled + nextViewBody(counts);
+  const status = nextAttentionStatus(app);
+  if(status) status.textContent = nextAttentionAnnouncementText;
+  nextRestoreFocus(focus, nextAttention);
 }
 
 function navigateNext(route){
