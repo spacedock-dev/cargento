@@ -1,7 +1,3 @@
-function nextAttentionView(){
-  return '<section class="next-attention"><h1>Attention</h1></section>';
-}
-
 function nextDetailBody(route){
   if(route.view === "project") return nextProjectView(route.project);
   if(route.view === "session") return nextSessionView(route.project, route.session);
@@ -9,9 +5,9 @@ function nextDetailBody(route){
 }
 
 function nextViewBody(){
-  if(nextRoute.view === "attention") return nextAttentionView();
+  if(nextRoute.view === "attention") return nextAttentionView(nextAttentionModel(nextData || {}));
   if(nextRoute.view === "projects"){
-    return `<section class="next-projects" data-next-view-body="projects"><h1>Projects</h1>${nextProjectsView()}</section>`;
+    return `<section class="next-projects" data-next-view-body="projects"><h1>Projects</h1>${nextProjectsView(nextAttentionModel(nextData || {}))}</section>`;
   }
   if(nextRoute.view === "sessions"){
     return `<section class="next-sessions" data-next-view-body="sessions"><h1>Sessions</h1>${nextSessionsView()}</section>`;

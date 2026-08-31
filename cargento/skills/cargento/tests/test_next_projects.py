@@ -101,6 +101,8 @@ console.log(JSON.stringify({overview, session: __els.app.innerHTML}));
     def test_plain_exact_ask_keeps_attention_without_claiming_captain_authority(self) -> None:
         out = self.render(
             """
+location.hash = "#n=projects";
+nextRoute = nextRouteFromFragment(location.hash);
 nextData.sessions.push({
   sid: "beta-spacedock-sibling", project: "beta/app", state: "idle", active: false,
   last_activity: 9000, title: "Sibling session", total: 0, done: 0,

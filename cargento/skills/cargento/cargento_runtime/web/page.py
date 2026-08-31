@@ -28,6 +28,7 @@ APP_PARTS: tuple[str, ...] = (
 # than a convention every later frontend change has to remember.
 NEXT_PARTS: tuple[str, ...] = (
     "next-boot.js",
+    "next-attention.js",
     "next-chrome.js",
     "next-sessions.js",
     "next-projects.js",

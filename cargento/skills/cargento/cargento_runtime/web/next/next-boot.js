@@ -55,6 +55,51 @@ function nextFiniteNumber(value){
   return Number.isFinite(number) ? number : 0;
 }
 
+function nextPayloadSessions(payload){
+  if(!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
+  if(!Array.isArray(payload.sessions)) return [];
+  return payload.sessions.filter(session =>
+    session && typeof session === "object" && !Array.isArray(session));
+}
+
+function nextPayloadAsks(payload){
+  if(!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
+  if(!Array.isArray(payload.asks)) return [];
+  return payload.asks.filter(ask => ask && typeof ask === "object" && !Array.isArray(ask));
+}
+
+function nextSessionKey(session){
+  return `session:${JSON.stringify([String(session && session.harness || ""), String(session && session.sid || "")])}`;
+}
+
+function nextExactAskOwner(payload, ask){
+  const sid = String(ask && ask.session_id || "");
+  if(!sid) return null;
+  return nextPayloadSessions(payload).find(session => String(session.sid || "") === sid) || null;
+}
+
+function nextAskResponsibility(payload, ask){
+  const owner = nextExactAskOwner(payload, ask);
+  const spacedock = owner && owner.spacedock;
+  return spacedock && typeof spacedock === "object" && !Array.isArray(spacedock)
+    ? "CAPTAIN"
+    : "NEEDS YOU";
+}
+
+function nextPublishedTask(session){
+  const tasks = session && Array.isArray(session.tasks) ? session.tasks : [];
+  const valid = tasks.filter(task => task && typeof task === "object" && !Array.isArray(task));
+  return valid.find(task => task.status === "in_progress") ||
+    valid.find(task => task.status === "pending") || null;
+}
+
+function nextPayloadAgeSeconds(payload, stamp){
+  const generated = nextNumber(payload && payload.generated);
+  const at = nextNumber(stamp);
+  if(generated == null || at == null || at <= 0) return null;
+  return Math.max(0, generated - at);
+}
+
 function nextAgeSeconds(stamp){
   const generated = nextNumber(nextData && nextData.generated);
   const at = nextNumber(stamp);
