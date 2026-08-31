@@ -65,30 +65,58 @@ function nextSessionNextFact(session, asks){
   return null;
 }
 
-function nextSessionCommandFrame(session, asks){
+function nextSessionSourceCoverage(owner, assignment, next, asks){
+  const missing = [];
+  if(!assignment) missing.push("assignment");
+  if(!asks.length && !next) missing.push("next action");
+  if(!missing.length) return "";
+  let facts = "an assignment";
+  if(missing.length === 2) facts = "an assignment or next action";
+  else if(missing[0] === "next action") facts = "a next action";
+  return '<details class="next-session-source-coverage">' +
+    '<summary>SOURCE COVERAGE</summary>' +
+    `<p>${esc(owner)} did not publish ${facts}.</p></details>`;
+}
+
+function nextSessionCommandFact(kind, label, body){
+  return `<section data-next-session-command-fact="${kind}"><h2>${label}</h2>${body}</section>`;
+}
+
+function nextSessionCommandSurface(session, asks){
   const owner = nextSessionSourceOwner(session);
   const assignment = nextSessionInstruction(session, "asked");
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
-  const assignmentBody = assignment
-    ? nextInstructionLine(session, "", "next-session-command-context") +
-      `<small>${esc(owner)}</small>`
-    : `<strong>Assignment unavailable</strong><small>${esc(owner)} did not publish it</small>`;
   const state = nextSessionDetailState(session.state);
   const executionText = [state && state.label, String(session.state_detail || "").trim()]
-    .filter(Boolean).join(" · ") || "State unavailable";
+    .filter(Boolean).join(" · ") || "Activity unavailable";
   const contextLine = context ? nextInstructionLine(session, "", "next-session-command-context") : "";
-  const next = nextSessionNextFact(session, asks);
-  const nextBody = next
-    ? `<strong>Next · ${esc(next.text)}</strong>`
-    : `<strong>Not published</strong><small>${esc(owner)} did not publish it</small>`;
-  const captainBody = next && next.kind === "ask"
-    ? `<strong>Respond · ${esc(next.text)}</strong>`
-    : '<strong>No request observed</strong><small>Current payload only</small>';
-  return '<section class="next-session-command-frame" aria-label="Session command frame">' +
-    `<section><h2>ASSIGNMENT</h2>${assignmentBody}</section>` +
-    `<section><h2>EXECUTION</h2><strong>${esc(executionText)}</strong>${contextLine}</section>` +
-    `<section><h2>NEXT</h2>${nextBody}</section>` +
-    `<section><h2>CAPTAIN</h2>${captainBody}</section></section>`;
+  const next = asks.length ? null : nextSessionNextFact(session, []);
+  const facts = [];
+  if(assignment){
+    facts.push(nextSessionCommandFact(
+      "assignment", "ASSIGNMENT", nextInstructionLine(session, "", "next-session-command-context"),
+    ));
+  }
+  if(next){
+    facts.push(nextSessionCommandFact("next", "NEXT", `<strong>${esc(next.text)}</strong>`));
+  }
+  if(asks.length){
+    const question = String(asks[0] && asks[0].question || "").trim();
+    if(question){
+      const spacedock = session && session.spacedock;
+      const authority = spacedock && typeof spacedock === "object" && !Array.isArray(spacedock);
+      facts.push(nextSessionCommandFact(
+        "request", authority ? "CAPTAIN" : "NEEDS YOU", `<strong>${esc(question)}</strong>`,
+      ));
+    }
+  }
+  const factBlock = facts.length
+    ? `<div class="next-session-command-facts">${facts.join("")}</div>`
+    : "";
+  return '<div class="next-session-command-surface" aria-label="Session command surface">' +
+    '<section class="next-session-activity" data-next-session-command="activity">' +
+    `<h2>CURRENT ACTIVITY</h2><strong>${esc(executionText)}</strong>${contextLine}</section>` +
+    factBlock + nextSessionSourceCoverage(owner, assignment, next, asks) + "</div>";
 }
 
 function nextSessionTitle(session, asks){
@@ -278,7 +306,7 @@ function nextSessionView(project, sid){
     `<header class="next-session-detail-header">${stateLabel}` +
     '<span class="next-session-detail-label">SESSION</span>' +
     `<h1>${esc(title)}</h1>${metaLine}</header>` +
-    nextSessionCommandFrame(session, asks) + nextSessionHealth(session) +
+    nextSessionCommandSurface(session, asks) + nextSessionHealth(session) +
     nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
     nextSessionSubagents(session) + nextSessionFooter(session) + "</article>";
 }

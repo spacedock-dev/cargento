@@ -358,11 +358,12 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
         self.assertEqual(["/api/data"], out)
 
-    def test_repeated_refresh_failures_surface_a_stalled_state(self) -> None:
+    def test_repeated_refresh_failures_explain_the_retained_legacy_poll_view(self) -> None:
         out = self._run_page_js(
             """
 await __settle();
 const good = __els.app.innerHTML;
+__setNow(1040);
 __nextShouldFail = true;
 __runInterval(5000);
 await __settle();
@@ -386,10 +387,62 @@ __fetchImpl = async () => {
         )
 
         self.assertIn('aria-label="live">●</span> 1 running', out["good"])
-        self.assertNotIn("Refresh stalled", out["once"])
-        self.assertIn("Refresh stalled", out["twice"])
+        self.assertNotIn('data-next-state="stalled"', out["once"])
+        self.assertIn("Live refresh failed twice in a row", out["twice"])
+        self.assertIn("Displayed data may be stale", out["twice"])
+        self.assertIn("Last updated 40s ago", out["twice"])
+        self.assertIn("Retrying automatically every 5s", out["twice"])
+        self.assertIn("Retry now", out["twice"])
+        self.assertNotIn("stream stopped", out["twice"].lower())
         self.assertIn('aria-label="live">●</span> 1 running', out["twice"])
         self.assertIn('data-next-state="stalled"', out["twice"])
+
+    def test_retry_now_serializes_attempts_and_success_clears_the_notice(self) -> None:
+        out = self._run_page_js(
+            """
+await __settle();
+__mode = "fail";
+__runInterval(5000);
+await __settle();
+__runInterval(5000);
+await __settle();
+__mode = "deferred";
+const before = __fetchCalls.length;
+const retry = {dataset: {nextAction: "retry-refresh"}, closest(selector){
+  return selector === "[data-next-action]" ? this : null;
+}};
+__fire("click", {target: retry, preventDefault(){}});
+__fire("click", {target: retry, preventDefault(){}});
+const during = {calls: __fetchCalls.length - before, html: __els.app.innerHTML};
+__releaseRetry({ok: true, json: async () => ({
+  window_hours: 24,
+  summary: {working: 2, needs_input: 0},
+  sessions: [{project: "recce", subagents: []}, {project: "cargento", subagents: []}]
+})});
+await __settle();
+await __settle();
+console.log(JSON.stringify({during, recovered: __els.app.innerHTML}));
+""",
+            """
+__els.app = {innerHTML: ""};
+let __mode = "good";
+let __releaseRetry = null;
+__fetchImpl = async () => {
+  if(__mode === "fail") throw new Error("offline");
+  if(__mode === "deferred") return new Promise(resolve => { __releaseRetry = resolve; });
+  return {ok: true, json: async () => ({
+    window_hours: 24,
+    summary: {working: 1, needs_input: 0},
+    sessions: [{project: "recce", subagents: []}]
+  })};
+};
+""",
+        )
+
+        self.assertEqual(1, out["during"]["calls"])
+        self.assertIn('data-next-action="retry-refresh" disabled', out["during"]["html"])
+        self.assertNotIn('data-next-state="stalled"', out["recovered"])
+        self.assertIn('aria-label="live">●</span> 2 running', out["recovered"])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 let nextData = null;
 let nextOverviewTab = "projects";
 let nextRefreshFailures = 0;
+let nextRefreshInFlight = false;
+let nextLastRefreshSuccessAt = null;
 
 function nextRouteToken(route){
   return nextFragmentForRoute(route).slice(3);
@@ -82,6 +84,27 @@ function nextViewBody(counts){
     `${nextDetailBody(nextRoute)}</section>`;
 }
 
+function nextRefreshNotice(){
+  if(nextRefreshFailures < 2) return "";
+  const failures = nextRefreshFailures === 2
+    ? "twice"
+    : `${nextRefreshFailures} times`;
+  let state = "No data has been received in this tab.";
+  if(nextData){
+    const elapsed = nextLastRefreshSuccessAt == null
+      ? null
+      : nextFormatDuration(Math.max(0, (Date.now() - nextLastRefreshSuccessAt) / 1000));
+    const age = elapsed == null ? "" : ` Last updated ${elapsed} ago.`;
+    state = `Displayed data may be stale.${age}`;
+  }
+  const retrySeconds = Math.max(1, Math.round(nextRefreshRetryMs() / 1000));
+  const disabled = nextRefreshInFlight ? " disabled" : "";
+  return '<div class="next-stalled" data-next-state="stalled" role="status">' +
+    `<strong>Live refresh failed ${failures} in a row.</strong>` +
+    `<span>${state} Retrying automatically every ${retrySeconds}s.</span>` +
+    `<button type="button" data-next-action="retry-refresh"${disabled}>Retry now</button></div>`;
+}
+
 function renderNext(){
   const app = document.getElementById("app");
   if(!app) return;
@@ -90,9 +113,7 @@ function renderNext(){
   const gate = counts.gates > 0
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} need you</button>`
     : "";
-  const stalled = nextRefreshFailures >= 2
-    ? '<div class="next-stalled" data-next-state="stalled" role="status">Refresh stalled</div>'
-    : "";
+  const stalled = nextRefreshNotice();
   app.innerHTML = '<header class="next-header">' +
     `<nav class="next-breadcrumb" aria-label="Breadcrumb">${nextBreadcrumb()}</nav>` +
     '<div class="next-header-right">' +
@@ -145,6 +166,11 @@ document.addEventListener("click", event => {
     ? event.target.closest("[data-next-action]")
     : null;
   if(!actionTarget) return;
+  if(actionTarget.dataset.nextAction === "retry-refresh"){
+    event.preventDefault();
+    void refreshNext(true);
+    return;
+  }
   if(actionTarget.dataset.nextAction === "projects") nextSelectProjects();
   if(["sessions", "needs-input"].includes(actionTarget.dataset.nextAction)) nextSelectSessions();
   if(actionTarget.dataset.nextAction === "dashboard") location.assign("/");

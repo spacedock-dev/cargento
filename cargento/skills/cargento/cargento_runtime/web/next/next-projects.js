@@ -78,6 +78,17 @@ function nextProjectWorkflows(sessions){
   return found;
 }
 
+function nextProjectHasSpacedock(sessions){
+  return sessions.some(session => {
+    const spacedock = session && session.spacedock;
+    return spacedock && typeof spacedock === "object" && !Array.isArray(spacedock);
+  });
+}
+
+function nextProjectRequestLabel(group){
+  return nextProjectHasSpacedock(group.sessions) ? "Captain" : "Needs you";
+}
+
 function nextProjectCell(group){
   const workflows = nextProjectWorkflows(group.sessions);
   const instruction = nextProjectInstruction(group.sessions);
@@ -139,27 +150,34 @@ function nextProjectRow(group){
     situation = "No active session observed";
   }
   const response = question
-    ? `<strong>Captain · ${esc(question)}</strong>`
-    : '<strong>No request observed</strong><small>Current payload only</small>';
+    ? `<div><span>RESPONSE</span><strong>${nextProjectRequestLabel(group)} · ${esc(question)}</strong></div>`
+    : "";
+  const commandClass = question
+    ? "next-project-command"
+    : "next-project-command next-project-command--situation-only";
   const route = nextRouteToken({view: "project", project: group.label, session: null});
   return `<article class="next-project-row${blocked ? " next-project-row--blocked" : ""}" ` +
     `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
     'role="link" tabindex="0">' +
     `<div class="next-project-project">${nextProjectCell(group)}` +
     `<div class="next-project-progress">${nextProjectProgress(group.sessions)}</div></div>` +
-    '<div class="next-project-command"><div><span>SITUATION</span>' +
-    `<strong>${esc(situation)}</strong></div><div><span>RESPONSE</span>${response}</div></div></article>`;
+    `<div class="${commandClass}"><div><span>SITUATION</span>` +
+    `<strong>${esc(situation)}</strong></div>${response}</div></article>`;
 }
 
 function nextProjectsView(){
   const groups = nextProjectGroups().map((group, index) => ({group, index}));
   groups.sort((left, right) => nextProjectPriority(left.group) - nextProjectPriority(right.group) ||
     left.index - right.index);
-  const firstAsk = groups.map(item => nextProjectAsks(item.group)[0]).find(Boolean);
-  const question = String(firstAsk && firstAsk.question || "").trim();
-  const captain = question
-    ? `<strong>CAPTAIN — ${esc(question)}</strong>`
-    : '<strong>CAPTAIN — No request observed</strong><small>Current payload only</small>';
-  return `<section class="next-command-brief" aria-label="Captain command brief">${captain}</section>` +
+  const request = groups.map(item => {
+    const ask = nextProjectAsks(item.group)[0];
+    return ask ? {ask, group: item.group} : null;
+  }).find(Boolean);
+  const question = String(request && request.ask && request.ask.question || "").trim();
+  const lede = question
+    ? '<section class="next-command-brief" aria-label="Request command brief">' +
+      `<strong>${nextProjectRequestLabel(request.group).toUpperCase()} — ${esc(question)}</strong></section>`
+    : "";
+  return lede +
     `<div class="next-projects-brief">${groups.map(item => nextProjectRow(item.group)).join("")}</div>`;
 }

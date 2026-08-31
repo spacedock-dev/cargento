@@ -269,7 +269,7 @@ console.log(JSON.stringify({
         self.assertTrue(out["fallbackFetched"])
         self.assertEqual(2, out["sources"])
 
-    def test_failed_fallback_polls_keep_the_existing_stalled_surface(self) -> None:
+    def test_failed_fallback_polls_explain_the_streaming_retry_cadence(self) -> None:
         html = self._boot(
             """
 await __settle();
@@ -285,7 +285,10 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
 
         self.assertIn('data-next-state="stalled"', html)
-        self.assertIn("Refresh stalled", html)
+        self.assertIn("Live refresh failed twice in a row", html)
+        self.assertIn("No data has been received in this tab", html)
+        self.assertIn("Retrying automatically every 20s", html)
+        self.assertNotIn("stream stopped", html.lower())
 
     def test_private_browsing_still_streams(self) -> None:
         out = self._boot(

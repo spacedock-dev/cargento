@@ -88,6 +88,25 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             "Latest session context · Approve the release", self.project_row(html, "alpha/repo")
         )
 
+    def test_plain_exact_ask_keeps_attention_without_claiming_captain_authority(self) -> None:
+        html = self.render(
+            """
+nextData.asks = [{
+  id: "ask-beta", session_id: "beta-work", project: "beta/app",
+  question: "Plain approval", options: ["Approve"]
+}];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("NEEDS YOU — Plain approval", html)
+        self.assertNotIn("CAPTAIN — Plain approval", html)
+        beta = self.project_row(html, "beta/app")
+        self.assertIn("Needs you · Plain approval", beta)
+        self.assertNotIn("Captain · Plain approval", beta)
+
     def test_the_cell_prefers_the_filtered_asked_line_over_the_raw_prompt(self) -> None:
         # `last_prompt` is the raw newest record on every harness but Codex, so
         # a Claude row can carry a harness-injected string there while the
@@ -125,7 +144,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("no estimate", html)
         self.assertNotIn("not measured", html)
 
-    def test_no_exact_ask_is_bounded_to_the_current_payload(self) -> None:
+    def test_no_exact_ask_omits_the_request_lede_and_response_region(self) -> None:
         html = self.render(
             """
 nextData.asks = [];
@@ -135,9 +154,14 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(html, str)
 
-        self.assertIn("CAPTAIN — No request observed", html)
-        self.assertIn("Current payload only", html)
-        self.assertNotIn("CAPTAIN — Clear", html)
+        self.assertNotIn("CAPTAIN —", html)
+        self.assertNotIn("NEEDS YOU —", html)
+        self.assertNotIn("next-command-brief", html)
+        self.assertNotIn("No request observed", html)
+        self.assertNotIn("Current payload only", html)
+        gamma = self.project_row(html, "gamma/tool")
+        self.assertNotIn("RESPONSE", gamma)
+        self.assertIn("next-project-command--situation-only", gamma)
 
     def test_a_project_with_no_task_counts_renders_no_progress(self) -> None:
         html = self.render()

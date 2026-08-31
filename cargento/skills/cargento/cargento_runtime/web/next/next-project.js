@@ -111,12 +111,14 @@ function nextProjectEmptyState(sessions){
   if(spacedock.some(value => value.role === "ensign")){
     return "This worker's plan lives with its first officer.";
   }
-  return "Workflow source unavailable for these sessions.";
+  return "";
 }
 
 function nextProjectPlanBlock(context){
+  if(!nextProjectHasSpacedock(context.group.sessions)) return "";
   if(!context.plans.length){
-    return `<div class="next-project-detail-empty">${esc(nextProjectEmptyState(context.group.sessions))}</div>`;
+    const empty = nextProjectEmptyState(context.group.sessions);
+    return empty ? `<div class="next-project-detail-empty">${esc(empty)}</div>` : "";
   }
   return context.plans.map(plan => nextProjectPlan(plan, context.harnesses)).join("");
 }
@@ -164,11 +166,13 @@ function nextProjectView(project){
     return `<div class="next-project-detail-empty">Project ${esc(project)} is outside this payload window.</div>`;
   }
   const context = {group, plans: nextProjectPlans(group.sessions), harnesses: nextHarnessLabels()};
+  const plan = nextProjectPlanBlock(context);
+  const planSection = plan ? `<div data-next-project-section="plan">${plan}</div>` : "";
   return `<article class="next-project-detail" data-next-project-detail="${esc(group.label)}">` +
     nextProjectDetailHeader(context) +
     '<div class="next-project-detail-layout">' +
     '<div class="next-project-detail-main" data-next-project-main>' +
-    `<div data-next-project-section="plan">${nextProjectPlanBlock(context)}</div>` +
+    planSection +
     `<div data-next-project-section="going-on">${nextProjectGoingOn(context)}</div>` +
     `<div data-next-project-section="done">${nextProjectDone(context)}</div>` +
     `<div data-next-project-section="workstream">${nextProjectWorkstream(context)}</div></div>` +

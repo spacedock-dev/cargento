@@ -227,7 +227,7 @@ console.log(JSON.stringify({fresh, stale, older, floor: NEXT_PROJECT_STALLED_SEC
         self.assertNotIn("in review", plans)
         self.assertNotIn("failed", plans)
 
-    def test_the_three_spacedock_empty_states_are_distinct(self) -> None:
+    def test_workflow_region_requires_positive_spacedock_evidence(self) -> None:
         checks = """
 await __settle();
 const cases = {};
@@ -257,8 +257,10 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         )
         assert isinstance(out, dict)
 
-        self.assertIn("Workflow source unavailable for these sessions", out["plain/repo"])
-        self.assertNotIn("declares no workflow", out["plain/repo"])
+        self.assertNotIn('data-next-project-section="plan"', out["plain/repo"])
+        self.assertNotIn("Workflow source unavailable", out["plain/repo"])
+        self.assertIn('data-next-project-section="plan"', out["empty/fo"])
+        self.assertIn('data-next-project-section="plan"', out["worker/repo"])
         self.assertIn("nothing is fresh enough to show", out["empty/fo"])
         self.assertIn("plan lives with its first officer", out["worker/repo"])
         for html in out.values():

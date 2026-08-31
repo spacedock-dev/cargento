@@ -111,25 +111,62 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("TASKS ·", html)
         self.assertNotIn("SUBAGENTS", html)
         self.assertNotIn("output tokens", html)
-        self.assertIn("ASSIGNMENT", html)
-        self.assertIn("Assignment unavailable", html)
-        self.assertIn("Claude transcript", html)
-        self.assertIn("EXECUTION", html)
+        self.assertIn('data-next-session-command="activity"', html)
+        self.assertIn("CURRENT ACTIVITY", html)
         self.assertIn("working · running tests", html)
-        self.assertIn("NEXT", html)
-        self.assertIn("Not published", html)
-        self.assertIn("CAPTAIN", html)
-        self.assertIn("No request observed", html)
-        self.assertIn("Current payload only", html)
+        self.assertNotIn('data-next-session-command-fact="assignment"', html)
+        self.assertNotIn('data-next-session-command-fact="next"', html)
+        self.assertNotIn('data-next-session-command-fact="request"', html)
+        self.assertIn("SOURCE COVERAGE", html)
+        self.assertIn(
+            "Claude transcript did not publish an assignment or next action", html
+        )
+        self.assertNotIn('<details class="next-session-source-coverage" open', html)
 
-    def test_exact_ask_drives_next_and_captain_without_hiding_assignment_source(self) -> None:
+    def test_plain_exact_ask_is_one_needs_you_fact_and_not_a_next_action(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
-        self.assertIn("Assignment unavailable", html)
-        self.assertIn("Claude transcript", html)
-        self.assertIn("Next · Choose &lt;img src=x onerror=&#39;1&#39;&gt;", html)
-        self.assertIn("Respond · Choose &lt;img src=x onerror=&#39;1&#39;&gt;", html)
+        self.assertIn('data-next-session-command-fact="request"', html)
+        self.assertIn("NEEDS YOU", html)
+        self.assertNotIn("CAPTAIN</h2>", html)
+        self.assertNotIn('data-next-session-command-fact="next"', html)
+        self.assertIn("Choose &lt;img src=x onerror=&#39;1&#39;&gt;", html)
+
+    def test_spacedock_evidence_changes_only_the_exact_request_authority_label(self) -> None:
+        html = self.render(
+            """
+nextData.sessions[0].spacedock = {role: "first-officer", workflows: []};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn('data-next-session-command-fact="request"', html)
+        self.assertIn("CAPTAIN</h2>", html)
+        self.assertNotIn("NEEDS YOU</h2>", html)
+
+    def test_published_assignment_is_progressively_disclosed_and_escaped(self) -> None:
+        html = self.render(
+            """
+nextData.sessions[0].instruction = {
+  label: "asked", text: "Ship <script>the full instruction</script>", at: 9900
+};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn('data-next-session-command-fact="assignment"', html)
+        self.assertIn("ASSIGNMENT", html)
+        self.assertLess(
+            html.index('data-next-session-command="activity"'),
+            html.index('data-next-session-command-fact="assignment"'),
+        )
+        self.assertIn("Ship &lt;script&gt;the full instruction&lt;/script&gt;", html)
+        self.assertNotIn("Ship <script>", html)
 
     def test_missing_codex_and_agy_command_facts_name_their_exact_sources(self) -> None:
         out = self.render(
@@ -148,11 +185,16 @@ console.log(JSON.stringify(variants));
         )
         assert isinstance(out, dict)
 
-        for field in ("Assignment unavailable", "Not published"):
-            self.assertIn(field, out["codex"])
-            self.assertIn(field, out["antigravity"])
-        self.assertIn("Codex transcript", out["codex"])
-        self.assertIn("AGY CLI log", out["antigravity"])
+        self.assertIn(
+            "Codex transcript did not publish an assignment or next action", out["codex"]
+        )
+        self.assertIn(
+            "AGY CLI log did not publish an assignment or next action", out["antigravity"]
+        )
+        for html in out.values():
+            self.assertNotIn("Assignment unavailable", html)
+            self.assertNotIn("Not published", html)
+            self.assertNotRegex(html, r"(?i)source coverage[^<]*(?:field|schema|instruction)")
 
     def test_published_task_is_the_next_action_when_no_ask_exists(self) -> None:
         html = self.render(
@@ -164,8 +206,14 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(html, str)
 
-        self.assertIn("Next · Review response", html)
-        self.assertNotIn("Next · Prepare payload", html)
+        self.assertIn('data-next-session-command-fact="next"', html)
+        next_fact = re.search(
+            r'<section data-next-session-command-fact="next">[\s\S]*?</section>', html
+        )
+        self.assertIsNotNone(next_fact)
+        fact_html = next_fact.group(0) if next_fact else ""
+        self.assertIn("Review response", fact_html)
+        self.assertNotIn("Prepare payload", fact_html)
 
     def test_header_rail_names_only_known_states_and_keeps_the_blocked_alert(self) -> None:
         out = self.render(
