@@ -10,6 +10,17 @@ score: 1.0
 worktree:
 issue:
 pr:
+gates:
+    version: 1
+    records:
+        - id: gate:future-ui-command-surface:framing
+          stage: framing
+          attempts:
+            - id: gate-attempt:future-ui-command-surface-framing-1
+              briefing:
+                id: briefing:future-ui-command-surface:framing:attempt-1:revision-1
+                digest: sha256:b54e1f3645d96a20d0552028105924257bcea0210a18525175fb534fe5e25818
+                room-ref: ./review/framing/briefing-1
 ---
 
 ## Design bet

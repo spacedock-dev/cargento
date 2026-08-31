@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:future-ui-command-surface:framing:attempt-1:revision-1",
+  "question": "Approve the framing and begin three-harness reconnaissance?",
+  "artifacts": [
+    {
+      "id": "artifact:future-ui-command-surface:framing:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/79319ece0ec6d66ad299ad1fc6fa1cd76a2a310d/future-ui-command-surface/index.md",
+      "rev": "sha256:413e67f0371b7de1003dca965b1936950aa61d60401f5b2ce387be99e6e0b6db",
+      "mediaType": "text/markdown",
+      "summary": "Bold project-first command-surface bet; preserve truthful scope, expose assignment/execution/next/captain state, and falsify it with live Codex, Claude Code, and AGY evidence before prototyping."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:future-ui-command-surface:framing:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/b29c34b7c28d01f66dcc67baebf7a663ab279ed7/docs/future-ui-exploration/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:ed3456e130fa27888092a5b6b130984fea23d54e508ce55f606d744bb946b658"
+    }
+  ]
+}
