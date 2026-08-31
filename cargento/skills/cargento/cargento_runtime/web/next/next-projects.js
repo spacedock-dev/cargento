@@ -7,30 +7,54 @@
    "asked" line, 15 of those differ from `last_prompt`, and 2 have no
    `last_prompt` at all.
 
-   Only that label. This cell renders "last instruction · …" with nowhere to put
-   a label, and the other two labels are exactly the readings that need one:
+   Only that label. This cell renders one latest-command claim with nowhere to put
+   a source qualifier, and the other two labels are exactly the readings that need one:
    "agent" is an agent quoting itself and "earlier" says this is not the newest
    thing asked. Published bare they would be the claim
    `transcripts.instruction_from` refuses to make. */
-function nextProjectInstructionText(session){
+function nextProjectInstructionRecord(session){
   const instruction = session && session.instruction;
   const labelled = instruction && typeof instruction === "object" &&
     !Array.isArray(instruction) && String(instruction.label || "") === "asked";
   const filtered = labelled
     ? String(instruction.text == null ? "" : instruction.text).trim()
     : "";
-  return filtered || String(session.last_prompt || session.title || "").trim();
+  if(filtered) return {kind: "assignment", text: filtered};
+  const context = String(session.last_prompt || session.title || "").trim();
+  return context ? {kind: "context", text: context} : null;
+}
+
+function nextProjectInstructionText(session){
+  const record = nextProjectInstructionRecord(session);
+  return record ? record.text : "";
 }
 
 function nextProjectInstruction(sessions){
   let chosen = null;
   for(const session of sessions){
-    const text = nextProjectInstructionText(session);
-    if(!text) continue;
+    const record = nextProjectInstructionRecord(session);
+    if(!record) continue;
     const at = nextFiniteNumber(session.last_activity);
-    if(!chosen || at > chosen.at) chosen = {at, text};
+    if(!chosen || at > chosen.at) chosen = {at, ...record};
   }
-  return chosen ? chosen.text : "";
+  return chosen;
+}
+
+function nextProjectAsks(group){
+  const asks = nextData && Array.isArray(nextData.asks) ? nextData.asks : [];
+  const sids = new Set(group.sessions.map(session => String(session.sid || "")));
+  return asks.filter(ask => {
+    const sid = String(ask && ask.session_id || "");
+    const project = String(ask && ask.project || "");
+    return (sid && sids.has(sid)) || (!sid && project === group.label);
+  });
+}
+
+function nextProjectPriority(group){
+  if(nextProjectAsks(group).length) return 0;
+  if(group.sessions.some(session => session.state === "working" && session.active)) return 1;
+  if(group.sessions.some(session => session.state === "needs_input")) return 2;
+  return 3;
 }
 
 function nextProjectWorkflows(sessions){
@@ -62,7 +86,8 @@ function nextProjectCell(group){
       `${esc(workflow.workflow)}</span>`,
   ).join("");
   const last = instruction
-    ? `<div class="next-project-instruction">last instruction · ${esc(instruction)}</div>`
+    ? `<div class="next-project-instruction">${instruction.kind === "assignment" ?
+      "Latest assignment" : "Latest session context"} · ${esc(instruction.text)}</div>`
     : "";
   /* The old collision signal is live-only because it warns about concurrent
      writes. This table makes a grouping claim, so even two idle rows need the
@@ -100,21 +125,41 @@ function nextProjectNow(sessions){
 }
 
 function nextProjectRow(group){
-  const blocked = group.sessions.some(session => session.state === "needs_input");
+  const asks = nextProjectAsks(group);
+  const ask = asks.length ? asks[0] : null;
+  const question = String(ask && ask.question || "").trim();
+  const blocked = Boolean(ask);
+  const running = group.sessions.filter(session => session.state === "working" && session.active).length;
+  let situation = "State unavailable in the current payload";
+  if(question) situation = `Waiting for your response: ${question}`;
+  else if(running) situation = `${running} ${running === 1 ? "session" : "sessions"} executing`;
+  else if(group.sessions.some(session => session.state === "needs_input")){
+    situation = "Input signal observed; request unavailable in the current payload";
+  }else if(group.sessions.every(session => session.state === "idle")){
+    situation = "No active session observed";
+  }
+  const response = question
+    ? `<strong>Captain · ${esc(question)}</strong>`
+    : '<strong>No request observed</strong><small>Current payload only</small>';
   const route = nextRouteToken({view: "project", project: group.label, session: null});
-  return `<tr class="next-project-row${blocked ? " next-project-row--blocked" : ""}" ` +
-    `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}">` +
-    `<td class="next-project-project">${nextProjectCell(group)}</td>` +
-    `<td class="next-project-progress">${nextProjectProgress(group.sessions)}</td>` +
-    `<td class="next-project-estimate" data-next-withheld>${nextWithheld("no estimate", "no confidence")}</td>` +
-    `<td class="next-project-delegation" data-next-withheld>${nextWithheld("not measured")}</td>` +
-    `<td class="next-project-current">${nextProjectNow(group.sessions)}</td></tr>`;
+  return `<article class="next-project-row${blocked ? " next-project-row--blocked" : ""}" ` +
+    `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
+    'role="link" tabindex="0">' +
+    `<div class="next-project-project">${nextProjectCell(group)}` +
+    `<div class="next-project-progress">${nextProjectProgress(group.sessions)}</div></div>` +
+    '<div class="next-project-command"><div><span>SITUATION</span>' +
+    `<strong>${esc(situation)}</strong></div><div><span>RESPONSE</span>${response}</div></div></article>`;
 }
 
 function nextProjectsView(){
-  const rows = nextProjectGroups().map(nextProjectRow).join("");
-  return '<div class="next-projects-table-wrap"><table class="next-projects-table">' +
-    '<thead><tr><th scope="col">PROJECT</th><th scope="col">PROGRESS</th>' +
-    '<th scope="col">ESTIMATE</th><th scope="col">DELEGATION</th><th scope="col">NOW</th>' +
-    `</tr></thead><tbody>${rows}</tbody></table></div>`;
+  const groups = nextProjectGroups().map((group, index) => ({group, index}));
+  groups.sort((left, right) => nextProjectPriority(left.group) - nextProjectPriority(right.group) ||
+    left.index - right.index);
+  const firstAsk = groups.map(item => nextProjectAsks(item.group)[0]).find(Boolean);
+  const question = String(firstAsk && firstAsk.question || "").trim();
+  const captain = question
+    ? `<strong>CAPTAIN — ${esc(question)}</strong>`
+    : '<strong>CAPTAIN — No request observed</strong><small>Current payload only</small>';
+  return `<section class="next-command-brief" aria-label="Captain command brief">${captain}</section>` +
+    `<div class="next-projects-brief">${groups.map(item => nextProjectRow(item.group)).join("")}</div>`;
 }

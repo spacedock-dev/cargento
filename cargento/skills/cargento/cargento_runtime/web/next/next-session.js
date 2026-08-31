@@ -36,6 +36,61 @@ function nextSessionAskingTitle(session){
   return `${nextSessionRegistryLabel(session) || "An agent"} is asking you`;
 }
 
+function nextSessionSourceOwner(session){
+  const harness = String(session && session.harness || "");
+  if(harness === "codex") return "Codex transcript";
+  if(harness === "claude") return "Claude transcript";
+  if(harness === "antigravity") return "AGY CLI log";
+  const label = nextSessionRegistryLabel(session);
+  return label ? `${label} session source` : "Session source";
+}
+
+function nextSessionInstruction(session, label){
+  const instruction = session && session.instruction;
+  if(!instruction || typeof instruction !== "object" || Array.isArray(instruction)) return null;
+  if(String(instruction.label || "") !== label) return null;
+  return String(instruction.text == null ? "" : instruction.text).trim() ? instruction : null;
+}
+
+function nextSessionNextFact(session, asks){
+  if(asks.length){
+    const question = String(asks[0] && asks[0].question || "").trim();
+    if(question) return {kind: "ask", text: question};
+  }
+  const tasks = Array.isArray(session.tasks) ? session.tasks : [];
+  for(const status of ["in_progress", "pending"]){
+    const task = tasks.find(item => item && item.status === status && String(item.subject || "").trim());
+    if(task) return {kind: "task", text: String(task.subject).trim()};
+  }
+  return null;
+}
+
+function nextSessionCommandFrame(session, asks){
+  const owner = nextSessionSourceOwner(session);
+  const assignment = nextSessionInstruction(session, "asked");
+  const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
+  const assignmentBody = assignment
+    ? nextInstructionLine(session, "", "next-session-command-context") +
+      `<small>${esc(owner)}</small>`
+    : `<strong>Assignment unavailable</strong><small>${esc(owner)} did not publish it</small>`;
+  const state = nextSessionDetailState(session.state);
+  const executionText = [state && state.label, String(session.state_detail || "").trim()]
+    .filter(Boolean).join(" · ") || "State unavailable";
+  const contextLine = context ? nextInstructionLine(session, "", "next-session-command-context") : "";
+  const next = nextSessionNextFact(session, asks);
+  const nextBody = next
+    ? `<strong>Next · ${esc(next.text)}</strong>`
+    : `<strong>Not published</strong><small>${esc(owner)} did not publish it</small>`;
+  const captainBody = next && next.kind === "ask"
+    ? `<strong>Respond · ${esc(next.text)}</strong>`
+    : '<strong>No request observed</strong><small>Current payload only</small>';
+  return '<section class="next-session-command-frame" aria-label="Session command frame">' +
+    `<section><h2>ASSIGNMENT</h2>${assignmentBody}</section>` +
+    `<section><h2>EXECUTION</h2><strong>${esc(executionText)}</strong>${contextLine}</section>` +
+    `<section><h2>NEXT</h2>${nextBody}</section>` +
+    `<section><h2>CAPTAIN</h2>${captainBody}</section></section>`;
+}
+
 function nextSessionTitle(session, asks){
   const firstAsk = asks.length ? asks[0] : null;
   return String(
@@ -218,13 +273,13 @@ function nextSessionView(project, sid){
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const title = nextSessionTitle(session, asks);
-  const instruction = nextInstructionLine(session, title, "next-session-detail-instruction");
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr}>` +
     `<header class="next-session-detail-header">${stateLabel}` +
     '<span class="next-session-detail-label">SESSION</span>' +
-    `<h1>${esc(title)}</h1>${instruction}${metaLine}</header>` +
-    nextSessionHealth(session) + nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
+    `<h1>${esc(title)}</h1>${metaLine}</header>` +
+    nextSessionCommandFrame(session, asks) + nextSessionHealth(session) +
+    nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
     nextSessionSubagents(session) + nextSessionFooter(session) + "</article>";
 }
 

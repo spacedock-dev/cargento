@@ -111,6 +111,61 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("TASKS ·", html)
         self.assertNotIn("SUBAGENTS", html)
         self.assertNotIn("output tokens", html)
+        self.assertIn("ASSIGNMENT", html)
+        self.assertIn("Assignment unavailable", html)
+        self.assertIn("Claude transcript", html)
+        self.assertIn("EXECUTION", html)
+        self.assertIn("working · running tests", html)
+        self.assertIn("NEXT", html)
+        self.assertIn("Not published", html)
+        self.assertIn("CAPTAIN", html)
+        self.assertIn("No request observed", html)
+        self.assertIn("Current payload only", html)
+
+    def test_exact_ask_drives_next_and_captain_without_hiding_assignment_source(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+
+        self.assertIn("Assignment unavailable", html)
+        self.assertIn("Claude transcript", html)
+        self.assertIn("Next · Choose &lt;img src=x onerror=&#39;1&#39;&gt;", html)
+        self.assertIn("Respond · Choose &lt;img src=x onerror=&#39;1&#39;&gt;", html)
+
+    def test_missing_codex_and_agy_command_facts_name_their_exact_sources(self) -> None:
+        out = self.render(
+            """
+nextData.asks = [];
+const session = nextData.sessions[0];
+session.tasks = [];
+const variants = {};
+for(const harness of ["codex", "antigravity"]){
+  session.harness = harness;
+  renderNext();
+  variants[harness] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        for field in ("Assignment unavailable", "Not published"):
+            self.assertIn(field, out["codex"])
+            self.assertIn(field, out["antigravity"])
+        self.assertIn("Codex transcript", out["codex"])
+        self.assertIn("AGY CLI log", out["antigravity"])
+
+    def test_published_task_is_the_next_action_when_no_ask_exists(self) -> None:
+        html = self.render(
+            """
+nextData.asks = [];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("Next · Review response", html)
+        self.assertNotIn("Next · Prepare payload", html)
 
     def test_header_rail_names_only_known_states_and_keeps_the_blocked_alert(self) -> None:
         out = self.render(
@@ -713,17 +768,20 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
                 self.assertIn("Resolve the gate", html)
                 self.assertNotIn("next-instruction-label", html)
 
-    def test_the_line_is_dropped_when_it_would_only_repeat_the_title(self) -> None:
+    def test_detail_assignment_survives_a_title_echo_while_the_table_stays_compact(self) -> None:
         # `calm.js` already computes both fields and would show the same string
         # twice on a session whose first prompt is still its newest.
         same = '{label: "asked", text: "Resolve the gate", at: 9400}'
-        self.assertNotIn("next-instruction-label", self.detail(same))
+        self.assertNotIn("next-instruction-label", self.rows(same))
+        self.assertIn("Resolve the gate", self.detail(same))
+        self.assertIn("ASSIGNMENT", self.detail(same))
         # And once more across the two caps: line 1 clips at 80 and line 2 at
         # 140, so one prompt reaches them as two strings, the shorter ellipsed.
         clipped = '{label: "asked", text: "Resolve the gate and ship it", at: 9400}'
-        self.assertNotIn(
-            "next-instruction-label", self.detail(clipped, title='"Resolve the gate…"')
-        )
+        self.assertNotIn("next-instruction-label", self.rows(clipped, title='"Resolve the gate…"'))
+        detail = self.detail(clipped, title='"Resolve the gate…"')
+        self.assertIn("Resolve the gate and ship it", detail)
+        self.assertIn("ASSIGNMENT", detail)
 
     def test_a_title_that_merely_opens_a_longer_instruction_is_not_a_duplicate(self) -> None:
         # The reason the rule is not a plain prefix test. A generated title is a

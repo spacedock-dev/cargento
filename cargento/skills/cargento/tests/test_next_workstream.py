@@ -142,9 +142,9 @@ console.log(JSON.stringify({
 
         self.assertEqual(
             [
-                {"at": 1030, "kind": "turn", "right": "CC"},
+                {"at": 1030, "kind": "turn", "right": "Claude Code"},
                 {"at": 1045, "kind": "ask", "right": "asked you"},
-                {"at": 1060, "kind": "state", "right": "CC"},
+                {"at": 1060, "kind": "state", "right": "Claude Code"},
             ],
             out["events"],
         )
@@ -152,6 +152,24 @@ console.log(JSON.stringify({
         self.assertNotIn("Choose <img", out["html"])
         self.assertNotIn("you steered", out["html"])
         self.assertNotIn("failed", out["html"])
+
+    def test_renderer_names_bounded_state_observations_and_full_harness(self) -> None:
+        out = self.run_fixture(
+            """
+__workstreamPayload = {
+  ...__workstreamPayload, generated: 1060,
+  sessions: [{...__workstreamPayload.sessions[0], state: "working"}]
+};
+await refreshNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(out, str)
+
+        self.assertIn("OBSERVED STATE CHANGES", out)
+        self.assertIn("Claude Code", out)
+        self.assertNotIn(">CC<", out)
+        self.assertNotIn(">WORKSTREAM<", out)
 
     def test_the_buffer_is_bounded_and_keeps_the_newest_entries(self) -> None:
         out = self._run_page_js(
@@ -306,10 +324,10 @@ const localStorage = {
         )
         assert isinstance(out, str)
 
-        self.assertIn("WORKSTREAM", out)
+        self.assertIn("OBSERVED STATE CHANGES", out)
         self.assertIn("0 of 0 unattended", out)
         self.assertIn("since this tab opened", out)
-        self.assertIn("No workstream events since this tab opened.", out)
+        self.assertIn("No state changes observed since this tab opened.", out)
         self.assertNotIn("data-next-workstream-collapsed", out)
 
 

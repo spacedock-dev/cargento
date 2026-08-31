@@ -57,24 +57,27 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-population{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink2)}
 .next-population span{color:var(--ink3)}
 [data-next-body],[data-next-view-body]{min-height:360px}
-.next-projects-table-wrap{margin-top:28px;overflow-x:auto}
+.next-command-brief{display:flex;align-items:baseline;gap:12px;margin-top:28px;padding:18px 20px;border-left:3px solid var(--accent);background:var(--panel)}
+.next-command-brief strong{font-size:var(--fs-lg);font-weight:500}
+.next-command-brief small{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-projects-brief{margin-top:18px;border-top:1px solid var(--line2)}
 .next-projects-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 .next-projects-table th{padding:10px 14px;border-bottom:1px solid var(--line2);color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400;text-align:left}
 .next-projects-table td{padding:18px 14px;border-bottom:1px solid var(--line);vertical-align:top}
-.next-project-row{cursor:pointer}
+.next-project-row{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(360px,1.2fr);cursor:pointer;border-bottom:1px solid var(--line)}
 .next-project-row:hover{background:var(--panel)}
-.next-project-row--blocked td:first-child,
+.next-project-row--blocked,
 .next-session-row--blocked td:first-child,
 .next-project-plan-row--unhealthy,
 .next-activity-card--blocked,
 .next-session-detail--blocked{box-shadow:inset 3px 0 var(--warn)}
-.next-project-project{min-width:290px}
+.next-project-project{min-width:0;padding:18px 20px}
 .next-project-name{display:block;font-family:var(--mono);font-size:var(--fs-sm)}
 .next-project-workflow{display:inline-block;margin-top:8px;padding:2px 6px;border:1px solid var(--line2);border-radius:999px;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-2xs)}
 .next-project-instruction,.next-project-collision{margin-top:8px;color:var(--ink3);font-size:var(--fs-xs)}
 .next-project-instruction{max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .next-project-collision{max-width:340px;color:var(--warnink)}
-.next-project-progress{min-width:150px}
+.next-project-progress{margin-top:12px;min-width:150px}
 .next-project-progress-bar{display:block;width:120px;height:4px;margin:5px 0 9px;accent-color:var(--accent)}
 .next-project-progress span,.next-project-estimate span,.next-project-delegation span{display:block;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-xs)}
 .next-project-estimate small{display:block;margin-top:4px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
@@ -83,6 +86,11 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-project-now--blocked{color:var(--warnink)}
 .next-project-now--running{color:var(--accent-ink)}
 .next-project-now--idle{color:var(--ink3)}
+.next-project-command{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:18px 20px;border-left:1px solid var(--line)}
+.next-project-command>div{min-width:0}
+.next-project-command span{display:block;margin-bottom:7px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-project-command strong{display:block;font-size:var(--fs-sm);font-weight:500;line-height:1.45;overflow-wrap:anywhere}
+.next-project-command small{display:block;margin-top:5px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
 .next-sessions-table-wrap{margin-top:28px;overflow-x:auto}
 .next-sessions-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 .next-sessions-table thead th{padding:10px 14px;border-bottom:1px solid var(--line2);color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400;text-align:left;text-transform:uppercase}
@@ -217,6 +225,13 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-detail-instruction{margin:0 0 10px;overflow-wrap:anywhere;color:var(--ink2);font-size:var(--fs-sm);line-height:1.5}
 .next-instruction-label{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);text-transform:uppercase}
 .next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--mono);font-size:var(--fs-xs)}
+.next-session-command-frame{display:grid;grid-template-columns:1fr 1fr;margin-top:24px;border:1px solid var(--line2)}
+.next-session-command-frame>section{min-width:0;padding:20px;border-bottom:1px solid var(--line)}
+.next-session-command-frame>section:nth-child(odd){border-right:1px solid var(--line)}
+.next-session-command-frame>section:nth-child(n+3){border-bottom:0}
+.next-session-command-frame h2{margin:0 0 10px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:400}
+.next-session-command-frame strong,.next-session-command-context{display:block;margin:0;font-size:var(--fs-sm);font-weight:500;line-height:1.5;overflow-wrap:anywhere}
+.next-session-command-frame small{display:block;margin-top:7px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);line-height:1.45}
 .next-session-health{margin:20px 0 0;padding:14px 16px;border-left:3px solid var(--warn);background:var(--panel);color:var(--ink2);font-size:var(--fs-sm);line-height:1.5}
 .next-session-health strong{color:var(--warnink);font-family:var(--mono);font-size:var(--fs-2xs);font-weight:500}
 .next-session-health-separator{color:var(--ink3)}
@@ -252,6 +267,12 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
   .next-project-plan-row{grid-template-columns:20px minmax(150px,1fr)}
   .next-project-plan-owner,.next-project-plan-state{grid-column:2;text-align:left}
   .next-session-detail{padding:0}
+  .next-command-brief{align-items:flex-start;flex-direction:column}
+  .next-project-row,.next-project-command,.next-session-command-frame{grid-template-columns:1fr}
+  .next-project-command{border-top:1px solid var(--line);border-left:0}
+  .next-session-command-frame>section:nth-child(odd){border-right:0}
+  .next-session-command-frame>section:nth-child(n+3){border-bottom:1px solid var(--line)}
+  .next-session-command-frame>section:last-child{border-bottom:0}
   .next-session-task,.next-session-subagent{grid-template-columns:20px minmax(0,1fr)}
   .next-session-subagent-elapsed{grid-column:2}
 }

@@ -14,8 +14,19 @@ __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
   generated: 10000,
   window_hours: 24,
+  ask: true,
   summary: {working: 1, needs_input: 1},
   sessions: [
+    {
+      sid: "beta-work", project: "beta/app", state: "working", active: true,
+      last_activity: 9950, title: "Build the app", total: 0, done: 0,
+      spacedock: null, subagents: []
+    },
+    {
+      sid: "gamma-idle", project: "gamma/tool", state: "idle", active: false,
+      last_activity: 9000, title: "Read the logs", total: 0, done: 0,
+      spacedock: null, subagents: []
+    },
     {
       sid: "alpha-idle", project: "alpha/repo", state: "idle", active: false,
       last_activity: 9700, title: "Older instruction", total: 3, done: 1,
@@ -29,18 +40,12 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
       spacedock: {role: "first-officer", workflows: [
         {workflow: "review", goal: "Check the release", stages: [], entities: []}
       ]}, subagents: []
-    },
-    {
-      sid: "beta-work", project: "beta/app", state: "working", active: true,
-      last_activity: 9950, title: "Build the app", total: 0, done: 0,
-      spacedock: null, subagents: []
-    },
-    {
-      sid: "gamma-idle", project: "gamma/tool", state: "idle", active: false,
-      last_activity: 9000, title: "Read the logs", total: 0, done: 0,
-      spacedock: null, subagents: []
     }
-  ]
+  ],
+  asks: [{
+    id: "ask-alpha", session_id: "alpha-gate", project: "alpha/repo",
+    question: "Approve the release", options: ["Approve", "Hold"]
+  }]
 })});
 """
 
@@ -49,12 +54,14 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 
     @staticmethod
     def project_row(html: str, project: str) -> str:
-        match = re.search(rf'<tr[^>]*data-next-project="{re.escape(project)}"[\s\S]*?</tr>', html)
+        match = re.search(
+            rf'<article[^>]*data-next-project="{re.escape(project)}"[\s\S]*?</article>', html
+        )
         if match is None:
             raise AssertionError(f"no row for {project!r} in {html}")
         return match.group(0)
 
-    def test_payload_groups_into_first_seen_rows_with_five_columns(self) -> None:
+    def test_exact_ask_leads_the_command_brief_ahead_of_first_seen_projects(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
@@ -65,15 +72,20 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertLess(
             html.index('data-next-project="beta/app"'), html.index('data-next-project="gamma/tool"')
         )
-        for heading in ("PROJECT", "PROGRESS", "ESTIMATE", "DELEGATION", "NOW"):
-            self.assertIn(f">{heading}</th>", html)
+        self.assertIn("CAPTAIN — Approve the release", html)
+        self.assertIn("SITUATION", self.project_row(html, "alpha/repo"))
+        self.assertIn(
+            "Waiting for your response: Approve the release", self.project_row(html, "alpha/repo")
+        )
+        self.assertIn("RESPONSE", self.project_row(html, "alpha/repo"))
+        self.assertIn("Captain · Approve the release", self.project_row(html, "alpha/repo"))
         self.assertIn("3 of 5 done", self.project_row(html, "alpha/repo"))
         self.assertIn("launch", self.project_row(html, "alpha/repo"))
         self.assertIn("review", self.project_row(html, "alpha/repo"))
         self.assertIn("Ship the next page", self.project_row(html, "alpha/repo"))
         self.assertIn("Check the release", self.project_row(html, "alpha/repo"))
         self.assertIn(
-            "last instruction · Approve the release", self.project_row(html, "alpha/repo")
+            "Latest session context · Approve the release", self.project_row(html, "alpha/repo")
         )
 
     def test_the_cell_prefers_the_filtered_asked_line_over_the_raw_prompt(self) -> None:
@@ -94,32 +106,38 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
 
         alpha = self.project_row(html, "alpha/repo")
-        self.assertIn("last instruction · Cut the release branch", alpha)
-        self.assertNotIn("Approve the release", alpha)
+        self.assertIn("Latest assignment · Cut the release branch", alpha)
+        instruction = re.search(r'<div class="next-project-instruction">[\s\S]*?</div>', alpha)
+        self.assertIsNotNone(instruction)
+        self.assertNotIn("Approve the release", instruction.group(0) if instruction else "")
         # The other two labels stay out. This cell has nowhere to put a label,
         # and "agent" and "earlier" are the readings that need one: published
         # bare they claim to be the newest instruction when they are not.
         beta_row = self.project_row(html, "beta/app")
-        self.assertIn("last instruction · proceed", beta_row)
+        self.assertIn("Latest session context · proceed", beta_row)
         self.assertNotIn("Not the newest thing asked", beta_row)
 
-    def test_the_estimate_and_delegation_columns_are_withheld(self) -> None:
+    def test_absent_inventory_facts_do_not_displace_the_command_answer(self) -> None:
         html = self.render()
         assert isinstance(html, str)
-        row = self.project_row(html, "alpha/repo")
-        estimate = re.search(r'<td class="next-project-estimate"[\s\S]*?</td>', row)
-        delegation = re.search(r'<td class="next-project-delegation"[\s\S]*?</td>', row)
+        self.assertNotIn("ESTIMATE", html)
+        self.assertNotIn("DELEGATION", html)
+        self.assertNotIn("no estimate", html)
+        self.assertNotIn("not measured", html)
 
-        self.assertIsNotNone(estimate)
-        self.assertIsNotNone(delegation)
-        estimate_html = estimate.group(0) if estimate else ""
-        delegation_html = delegation.group(0) if delegation else ""
-        self.assertIn("no estimate", estimate_html)
-        self.assertIn("no confidence", estimate_html)
-        self.assertNotRegex(estimate_html, r"\d")
-        self.assertIn("not measured", delegation_html)
-        self.assertNotIn("0%", delegation_html)
-        self.assertNotIn("progress", delegation_html)
+    def test_no_exact_ask_is_bounded_to_the_current_payload(self) -> None:
+        html = self.render(
+            """
+nextData.asks = [];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("CAPTAIN — No request observed", html)
+        self.assertIn("Current payload only", html)
+        self.assertNotIn("CAPTAIN — Clear", html)
 
     def test_a_project_with_no_task_counts_renders_no_progress(self) -> None:
         html = self.render()
@@ -137,14 +155,13 @@ console.log(JSON.stringify(__els.app.innerHTML));
         gamma = self.project_row(html, "gamma/tool")
 
         self.assertIn("next-project-row--blocked", alpha)
-        self.assertIn(">● blocked<", alpha)
+        self.assertIn("Waiting for your response", alpha)
         self.assertNotIn("running", alpha)
-        self.assertIn(">● 1 running<", beta)
+        self.assertIn("1 session executing", beta)
         self.assertNotIn("blocked", beta)
         self.assertNotIn("running", gamma)
         self.assertNotIn("blocked", gamma)
-        self.assertIn('class="next-project-now next-project-now--idle"', gamma)
-        self.assertIn(">idle<", gamma)
+        self.assertIn("No active session observed", gamma)
 
     def test_two_idle_sessions_still_get_the_collision_caveat(self) -> None:
         html = self._run_page_js(
@@ -198,6 +215,27 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
         assert isinstance(out, dict)
 
         self.assertIn('data-next-route="project:alpha%2Frepo"', out["html"])
+        self.assertEqual(
+            {"view": "project", "project": "alpha/repo", "session": None}, out["route"]
+        )
+        self.assertEqual("#n=project:alpha%2Frepo", out["hash"])
+
+    def test_project_briefs_are_focusable_and_enter_activates_the_route(self) -> None:
+        out = self.render(
+            """
+const html = __els.app.innerHTML;
+const target = {dataset: {nextRoute: "project:alpha%2Frepo"}, closest(selector){
+  return selector === "[data-next-route]" ? this : null;
+}, getAttribute(name){ return name === "role" ? "link" : null; }};
+__fire("keydown", {target, key: "Enter", preventDefault(){}});
+console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        row = self.project_row(out["html"], "alpha/repo")
+        self.assertIn('role="link"', row)
+        self.assertIn('tabindex="0"', row)
         self.assertEqual(
             {"view": "project", "project": "alpha/repo", "session": None}, out["route"]
         )

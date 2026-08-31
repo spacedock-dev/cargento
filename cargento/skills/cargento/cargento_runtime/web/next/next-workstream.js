@@ -45,11 +45,9 @@ function nextWorkstreamSession(session){
   };
 }
 
-function nextWorkstreamHarnessInitialism(harness, labels){
+function nextWorkstreamHarnessLabel(harness, labels){
   const fallback = String(harness || "agent");
-  const label = String(labels.get(fallback) || fallback).trim();
-  const initials = label.split(/\s+/).filter(Boolean).map(word => word[0]).join("");
-  return String(initials || label.slice(0, 2) || "A").slice(0, 3).toUpperCase();
+  return String(labels.get(fallback) || fallback).trim() || "Agent";
 }
 
 function nextWorkstreamStateLabel(state){
@@ -157,7 +155,7 @@ function nextObserveWorkstream(payload){
   for(const [key, session] of current){
     const previous = nextWorkstreamPreviousSessions.get(key);
     if(!previous) continue;
-    const right = nextWorkstreamHarnessInitialism(session.harness, labels);
+    const right = nextWorkstreamHarnessLabel(session.harness, labels);
     if(previous.state !== session.state){
       const transition = nextWorkstreamTransition(previous.state, session.state);
       events.push({
@@ -270,13 +268,13 @@ function nextProjectWorkstream(context){
   const collapsed = nextWorkstreamCollapsed ? " data-next-workstream-collapsed" : "";
   const header = '<header class="next-workstream-header">' +
     `<button type="button" data-next-workstream-toggle aria-expanded="${!nextWorkstreamCollapsed}">` +
-    `<span>${glyph} WORKSTREAM</span><small>${esc(detail)}</small></button></header>`;
+    `<span>${glyph} OBSERVED STATE CHANGES</span><small>${esc(detail)}</small></button></header>`;
   if(nextWorkstreamCollapsed){
     return `<section class="next-workstream"${collapsed}>${header}</section>`;
   }
   if(events.length === 0){
     return '<section class="next-workstream">' + header +
-      '<p class="next-workstream-empty">No workstream events since this tab opened.</p></section>';
+      '<p class="next-workstream-empty">No state changes observed since this tab opened.</p></section>';
   }
   const rows = events.map(event => {
     const human = event.filled ? "" : " next-workstream-event--human";

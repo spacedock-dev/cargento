@@ -97,7 +97,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn('class="next-project-detail-name">alpha/repo</', html)
         self.assertIn("launch", html)
         self.assertIn("audit", html)
-        self.assertIn("last instruction · Finish the project page", html)
+        self.assertIn("latest session context · Finish the project page", html)
         self.assertIn("2 sessions share this label", html)
         self.assertIn("Same label is not proof of the same directory", html)
         self.assertNotIn("Do not fold this project", html)
@@ -255,7 +255,8 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         )
         assert isinstance(out, dict)
 
-        self.assertIn("declares no workflow", out["plain/repo"])
+        self.assertIn("Workflow source unavailable for these sessions", out["plain/repo"])
+        self.assertNotIn("declares no workflow", out["plain/repo"])
         self.assertIn("nothing is fresh enough to show", out["empty/fo"])
         self.assertIn("plan lives with its first officer", out["worker/repo"])
         for html in out.values():

@@ -111,7 +111,7 @@ function nextProjectEmptyState(sessions){
   if(spacedock.some(value => value.role === "ensign")){
     return "This worker's plan lives with its first officer.";
   }
-  return "This project declares no workflow.";
+  return "Workflow source unavailable for these sessions.";
 }
 
 function nextProjectPlanBlock(context){
@@ -134,7 +134,8 @@ function nextProjectDetailHeader(context){
   ).join("");
   const instruction = nextProjectInstruction(context.group.sessions);
   const last = instruction
-    ? `<p class="next-project-detail-instruction">last instruction · ${esc(instruction)}</p>`
+    ? `<p class="next-project-detail-instruction">${instruction.kind === "assignment" ?
+      "latest assignment" : "latest session context"} · ${esc(instruction.text)}</p>`
     : "";
   const collision = context.group.sessions.length >= 2
     ? `<p class="next-project-detail-collision" title="${esc(NEXT_DUPLICATE_LABEL_LIMIT)}">` +

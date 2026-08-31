@@ -137,6 +137,17 @@ document.addEventListener("click", event => {
 document.addEventListener("keydown", event => {
   const tag = event.target && String(event.target.tagName || "").toLowerCase();
   if(event.metaKey || event.ctrlKey || event.altKey) return;
+  const routeTarget = event.target && event.target.closest
+    ? event.target.closest("[data-next-route]")
+    : null;
+  const routeRole = routeTarget && routeTarget.getAttribute
+    ? routeTarget.getAttribute("role")
+    : "";
+  if(routeRole === "link" && ["Enter", " ", "Spacebar"].includes(event.key)){
+    event.preventDefault();
+    navigateNext(nextRouteFromFragment(`#n=${routeTarget.dataset.nextRoute}`));
+    return;
+  }
   if(nextControlsHandleKeydown(event)) return;
   if(nextWorkstreamToggleTarget(event) && ["Enter", " ", "Spacebar"].includes(event.key)){
     event.preventDefault();
