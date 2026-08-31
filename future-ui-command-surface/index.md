@@ -598,3 +598,100 @@ retained. One material predicate still breaks command truth: the project overvie
 authority from any same-label session, while the exact asking session correctly stays neutral.
 Revise authority derivation to follow the exact ask owner or a verified project identity, add the
 mixed-session regression, and return the corrected checkpoint for a fresh crucible.
+
+## Prototyping correction cycle 4 — exact ask-owner authority
+
+The single material crucible-cycle-3 finding is corrected and pushed on `feat/future-ui` at exact
+checkpoint `94f19d3002aca84602cbfba7ea7714ae96c92b94`. The accepted progressive-disclosure and
+live-refresh mechanisms are otherwise unchanged.
+
+### Root cause and bounded correction
+
+`nextProjectRequestLabel(group)` discarded the ask's `session_id` and authorized `CAPTAIN` whenever
+any session in the shared-label group had a non-null Spacedock record. That predicate contradicted
+the adjacent warning that a shared label is not proof of the same directory and let an unrelated
+same-label sibling lend authority to the exact plain ask owner.
+
+The corrected predicate receives both the group and ask, resolves only the session whose `sid`
+equals `ask.session_id`, and checks Spacedock evidence on that owner alone. An ask without a
+resolvable exact session remains the neutral `NEEDS YOU`; the current payload supplies no separately
+verified owning-project identity from which broader authority could be proven. Both the overview
+lede and project-row response call the same exact-owner predicate, while the session drill-down
+continues to derive its wording from that exact session.
+
+Only `next-projects.js`, its behavior fixture, and the mechanically derived byte pins changed.
+Workflow progressive disclosure, the four-part session command frame, source coverage, and refresh
+failure/recovery code did not change.
+
+### Failing-first authority proof
+
+- At rejected checkpoint `25401e1`, the new mixed fixture adds
+  `beta-spacedock-sibling` beside plain ask owner `beta-work`, both under display label `beta/app`.
+  The focused test failed exactly because the overview rendered `CAPTAIN — Plain approval` and the
+  row rendered `Captain · Plain approval`; the exact `beta-work` session already rendered
+  `NEEDS YOU`. This reproduces the crucible contradiction rather than a synthetic adjacent failure.
+- After the exact-owner correction, the same mixed fixture requires and receives
+  `NEEDS YOU — Plain approval`, `Needs you · Plain approval`, and `NEEDS YOU` on the exact session,
+  with every `CAPTAIN` form absent.
+- The positive Spacedock-owner path is independently pinned end to end: ask owner `alpha-gate`
+  retains `CAPTAIN — Approve the release`, `Captain · Approve the release`, and `CAPTAIN` on its
+  exact session. The complete `test_next_projects` module passes all 11 tests.
+
+### Candidate bytes and focused preservation checks
+
+- `next-projects.js`: 8,645 bytes; SHA-256
+  `66cb8b5f037ee4ed8806bb06c865c7149e1da69173c51c3bad12ccbd58c1b4ba`.
+- Assembled `?next=true` response: 244,870 bytes; SHA-256
+  `e4951167c0b803bf15593d89fdf294aa07f22dd243d7cf4d07096f644176fb06`.
+- Fresh post-commit proof passed 115 tests across `test_next_page`, `test_next_projects`,
+  `test_next_project`, `test_next_session`, `test_next_sessions`, `test_next_chrome`, and
+  `test_next_live` in 7.372 seconds. This batch retains the accepted workflow omission, optional
+  command facts, collapsed source coverage, two-failure stale notice, last-view retention, safe
+  manual retry, successful recovery, route semantics, and byte oracles.
+- Focused Ruff check and format, `scripts/lint_embedded.py`, `scripts/validate_plugins.py`,
+  `scripts/bump_version.py --current`, and `git diff --check` all passed. The local and remote
+  `feat/future-ui` heads both resolved to exact checkpoint `94f19d3`, with a clean product worktree.
+
+### Tied adversarial and live Chrome evidence
+
+The critical ask-authority branch is source-bound by the mixed behavior fixture because the live
+payload contained no ask. Fresh Chrome observation of the exact committed server at
+`http://127.0.0.1:4553/?next=true` separately checked that the surrounding accepted candidate did
+not regress:
+
+- The overview exposed 3 projects, 9 sessions, and `1 session executing`, with no absent-request
+  lede and no empty response region. Its viewport capture was 47,429 PNG bytes with SHA-256
+  `6e9859c2fba31eb527d5c6fbc89d59e0653cd974070dcf767496f31a25cbdc61`.
+- The `recce/cargento` drill-down moved from project context directly to `GOING ON`; no generic
+  workflow-absence panel reappeared.
+- Exact Codex session `01a0555c-2da3-7c23-bd26-4ea2e275d18a` led with `CURRENT ACTIVITY`, rendered
+  `working · running 1 subagent`, and kept `SOURCE COVERAGE` collapsed. Its viewport capture was
+  44,609 PNG bytes with SHA-256
+  `b0cbd654f154e432cf7732abc18f4f13b8902bde591b0bd98a3779f87eb39c87`.
+- The server was the process started for this proof, PID `41207`; it was stopped through the
+  launcher and port 4553 was verified closed.
+
+## Stage Report: prototyping (cycle 4)
+
+- DONE: Authority wording on overview and project rows follows the exact ask-owning session, never
+  an unrelated same-label session; mixed plain-plus-Spacedock fixtures keep overview and session
+  drill-down consistent.
+  The failing-first `beta/app` cross-product now stays neutral across all three surfaces, while the
+  exact Spacedock-owned `alpha-gate` ask stays captain-authorized across the same surfaces.
+- DONE: The bounded fix preserves the accepted progressive-disclosure and refresh-recovery behavior,
+  updates byte pins mechanically, and passes the focused frontend checks.
+  No workflow, session-frame, source-coverage, or live-recovery implementation changed; the fresh
+  115-test batch, validators, live no-ask overview, project, and exact-session observations all pass.
+- DONE: The corrected candidate is committed and pushed only on feat/future-ui with tied
+  live/adversarial evidence and a complete prototyping report ready for fresh crucible review.
+  Exact local and remote checkpoint `94f19d3002aca84602cbfba7ea7714ae96c92b94` owns the
+  244,870-byte oracle, the mixed authority fixture, and the source-bound evidence above; it remains
+  isolated and unmerged.
+
+### Summary
+
+Cycle 4 removes the one authority leak without changing the accepted command-surface direction.
+Human-responsibility wording now follows the exact ask owner, same-label siblings cannot lend
+captain semantics, neutral asks remain visible, and Spacedock-owned asks retain their authoritative
+lede. The pushed checkpoint and complete source-bound proof are ready for Halley's fresh crucible
+review.
