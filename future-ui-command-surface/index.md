@@ -1,7 +1,7 @@
 ---
 id:
 title: Future UI command surface
-status: framing
+status: reconnaissance
 source: Captain commission on 2026-08-31 and the 2026-08-27 project-cockpit debrief
 started:
 completed:
@@ -31,7 +31,7 @@ gates:
                 reason: Captain approved the bold, falsifiable command-surface direction and authorized three-harness reconnaissance.
               application:
                 target-stage: reconnaissance
-                state: pending
+                state: consumed
 ---
 
 ## Design bet
