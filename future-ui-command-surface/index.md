@@ -58,13 +58,13 @@ gates:
                 decision: revise
                 reason: 'Captain accepts the project-first direction and requires another iteration: omit workflow absence UI when no Spacedock evidence exists; replace opaque Refresh stalled with a clear live-update state, impact, and recovery; show Captain state only for Spacedock and only when it carries an evidence-backed request; progressively disclose Assignment and Next instead of rendering unexplained empty cards, while keeping current activity as the session lede.'
 review-round:
-    id: round:future-ui-command-surface:crucible:1
+    id: round:future-ui-command-surface:crucible:2
     stage: crucible
-    cycle: 1
+    cycle: 2
     briefing:
-        id: briefing:future-ui-command-surface:crucible:round-1
-        digest: sha256:56664c28c45e2f97825e4ef87beb1145d4b84fca76875f27947cbf4610df097a
-        room-ref: ./review/crucible/round-1
+        id: briefing:future-ui-command-surface:crucible:round-2
+        digest: sha256:e6d7fee381f12d492b307ee2dd8eaeb37c8a09380e926d7ed07c995c1d4e8231
+        room-ref: ./review/crucible/round-2
 ---
 
 ## Design bet
