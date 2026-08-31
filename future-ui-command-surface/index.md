@@ -49,6 +49,14 @@ gates:
                 id: briefing:future-ui-command-surface:crucible:attempt-2:revision-1
                 digest: sha256:0ea5f7614ac270ec7de85c6b0cac7678a57dc1e188b1fc4e0bd6fc37b0a79698
                 room-ref: ./review/crucible/briefing-2
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:future-ui-command-surface:crucible:2
+                briefing: briefing:future-ui-command-surface:crucible:attempt-2:revision-1
+                by: person:captain
+                at: "2026-08-31T03:30:27.854026Z"
+                decision: revise
+                reason: 'Captain accepts the project-first direction and requires another iteration: omit workflow absence UI when no Spacedock evidence exists; replace opaque Refresh stalled with a clear live-update state, impact, and recovery; show Captain state only for Spacedock and only when it carries an evidence-backed request; progressively disclose Assignment and Next instead of rendering unexplained empty cards, while keeping current activity as the session lede.'
 review-round:
     id: round:future-ui-command-surface:crucible:1
     stage: crucible
