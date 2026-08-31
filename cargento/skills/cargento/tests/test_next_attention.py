@@ -384,3 +384,58 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertNotIn("directory", rendered)
         self.assertNotIn("branch", rendered)
         self.assertNotIn("worktree", rendered)
+
+    def test_collision_deduplicates_exact_members_before_counting_or_representing(self) -> None:
+        model = self.model(
+            {
+                "sessions": [
+                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
+                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
+                    {"harness": "codex", "sid": "distinct", "project": "beta/app", "state": "idle"},
+                ]
+            }
+        )
+        one_exact_member = self.model(
+            {
+                "sessions": [
+                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
+                    {"harness": "claude", "sid": "duplicate", "project": "beta/app", "state": "idle"},
+                ]
+            }
+        )
+        assert isinstance(model, dict)
+        assert isinstance(one_exact_member, dict)
+
+        collision = model["risk"][0]
+        self.assertEqual("collision", collision["primaryKind"])
+        self.assertEqual(
+            ['session:["claude","duplicate"]', 'session:["codex","distinct"]'],
+            collision["memberKeys"],
+        )
+        self.assertEqual(collision["memberKeys"], model["representedSessionKeys"])
+        self.assertEqual([], one_exact_member["risk"])
+
+    def test_same_harness_and_model_scope_coalesces_valid_quota_signals(self) -> None:
+        model = self.model(
+            {
+                "usage": [
+                    {
+                        "harness": "claude",
+                        "state": "ok",
+                        "models": [{"label": "Opus", "pct": 91, "resetAt": 15_000}],
+                    },
+                    {
+                        "harness": "claude",
+                        "state": "ok",
+                        "models": [{"label": "Opus", "pct": 92, "resetAt": 16_000}],
+                    },
+                ]
+            }
+        )
+        assert isinstance(model, dict)
+
+        self.assertEqual(1, len(model["risk"]))
+        quota = model["risk"][0]
+        self.assertEqual("quota:claude:model:Opus:0", quota["key"])
+        self.assertEqual([92, 91], [signal["detail"]["pct"] for signal in quota["signals"]])
+        self.assertEqual({"resetAt": 16_000}, quota["checkpoint"])

@@ -137,6 +137,20 @@ function nextAttentionQuotaSignal(entry, scope, row, sourceIndex){
       resetAt, tone: row.pct >= 90 ? "critical" : "warning"}};
 }
 
+function nextAttentionQuotaSignalCompare(left, right){
+  const leftDetail = left.detail;
+  const rightDetail = right.detail;
+  if(leftDetail.pct !== rightDetail.pct) return rightDetail.pct - leftDetail.pct;
+  const leftReset = leftDetail.resetAt;
+  const rightReset = rightDetail.resetAt;
+  if(leftReset != null && rightReset == null) return -1;
+  if(leftReset == null && rightReset != null) return 1;
+  if(leftReset != null && rightReset != null && leftReset !== rightReset){
+    return leftReset - rightReset;
+  }
+  return left.sourceIndex - right.sourceIndex;
+}
+
 function nextAttentionAttributionSignal(session, sourceIndex){
   const finishedAt = nextNumber(session && session.finished_at);
   const validFinishedAt = finishedAt != null && finishedAt > 0;
@@ -284,13 +298,23 @@ function nextAttentionModel(payload){
       const signal = nextAttentionQuotaSignal(entry, scope, row, sourceIndex);
       if(!signal) return;
       const key = `quota:${harness}:${scope}`;
-      const subject = {
-        key, stableId: scope, kind: "quota", section: "risk", primaryKind: "quota",
-        signals: [signal], session: null, sessions: [], asks: [], sourceIndex,
-        identity: {harness, project: scope, sid: ""},
-      };
-      if(signal.detail.resetAt != null) subject.checkpoint = {resetAt: signal.detail.resetAt};
-      riskSubjects.set(key, subject);
+      let subject = riskSubjects.get(key);
+      if(!subject){
+        subject = {
+          key, stableId: scope, kind: "quota", section: "risk", primaryKind: "quota",
+          signals: [], session: null, sessions: [], asks: [], sourceIndex,
+          identity: {harness, project: scope, sid: ""},
+        };
+        riskSubjects.set(key, subject);
+      }
+      subject.signals.push(signal);
+      subject.signals.sort(nextAttentionQuotaSignalCompare);
+      subject.sourceIndex = subject.signals[0].sourceIndex;
+      if(subject.signals[0].detail.resetAt != null){
+        subject.checkpoint = {resetAt: subject.signals[0].detail.resetAt};
+      }else{
+        delete subject.checkpoint;
+      }
     };
     for(const scope of ["fiveH", "week", "month"]){
       addQuota(scope, entry[scope], usageIndex);
@@ -306,19 +330,22 @@ function nextAttentionModel(payload){
   for(const [sourceIndex, session] of sessions.entries()){
     const label = typeof session.project === "string" && session.project.trim() ? session.project : "";
     if(!label) continue;
-    if(!labels.has(label)) labels.set(label, []);
-    labels.get(label).push({session, sourceIndex});
+    if(!labels.has(label)) labels.set(label, new Map());
+    const members = labels.get(label);
+    const key = nextSessionKey(session);
+    if(!members.has(key)) members.set(key, {session, sourceIndex});
   }
   const harnessOrder = nextAttentionHarnessOrder(payload);
   const harnessRank = harness => {
     const index = harnessOrder.indexOf(String(harness || ""));
     return index < 0 ? Number.MAX_SAFE_INTEGER : index;
   };
-  for(const [label, memberRows] of labels){
+  for(const [label, members] of labels){
+    const memberRows = [...members.values()];
     if(memberRows.length < 2) continue;
-    const members = memberRows.map(row => row.session);
-    const memberKeys = members.map(nextSessionKey);
-    const identity = [...members].sort((left, right) => {
+    const memberSessions = memberRows.map(row => row.session);
+    const memberKeys = memberSessions.map(nextSessionKey);
+    const identity = [...memberSessions].sort((left, right) => {
       const harness = harnessRank(left.harness) - harnessRank(right.harness);
       if(harness) return harness;
       const sid = String(left.sid || "").localeCompare(String(right.sid || ""), "en");
@@ -330,8 +357,8 @@ function nextAttentionModel(payload){
       signals: [{kind: "collision", section: "risk", sourceIndex: Math.min(
         ...memberRows.map(row => row.sourceIndex),
       ),
-        detail: {label, memberCount: members.length}}],
-      session: null, sessions: members, asks: [], memberKeys,
+        detail: {label, memberCount: memberSessions.length}}],
+      session: null, sessions: memberSessions, asks: [], memberKeys,
       sourceIndex: Math.min(...memberRows.map(row => row.sourceIndex)), identity,
     });
   }
