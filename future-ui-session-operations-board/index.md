@@ -9,7 +9,7 @@ verdict:
 score: 1.0
 worktree:
 issue:
-pr: https://github.com/spacedock-dev/cargento/pull/244
+pr: https://github.com/spacedock-dev/cargento/pull/245
 gates:
     version: 1
     records:
