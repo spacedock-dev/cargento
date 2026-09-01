@@ -223,3 +223,92 @@ residual limitation of this stage's browser backend.
 ### Summary
 
 The prototype replaces the rejected attention ranking with a truthful exact-session operations board. It preserves every observed session, makes source gaps explicit, fixes the false activity rail, and checkpoints reproducible code, tests, byte pins, and wide live evidence on `feat/future-ui`; only the browser-backend-dependent 320-pixel visual capture remains skipped.
+
+## Crucible recommendation
+
+**REVISE.** Commit `569c8ca` establishes the right exact-session information
+architecture, but it is not ready for a captain gate. The live renderer defeats
+its own grid at every viewport, a legal request/state skew makes the fleet block
+count contradict its row, and the board does not expose either current-assignment
+absence or captain responsibility. Fix those four command failures, then repeat
+the live wide, 320-pixel, request-skew, and three-harness review.
+
+### Command-question result
+
+| Question | Result from the live candidate |
+|---|---|
+| Overall situation | **Partial.** The live board truthfully showed 7 observed, 1 working, 0 exact requests, 0 reported blocks, and 6/7 block reporters, but the adversarial request/state case makes the last two facts disagree. |
+| Current assignment | **No, fleet-wide.** The working Codex row shows its title/last prompt, `I approve the direction, continue the work`, while the payload has `instruction: null`; only the collapsed drill-down disclosure says the assignment was not published. Antigravity says only `Title not published`. |
+| Execution state | **Yes at the source boundary.** Every live row visibly says Working or Idle and the one working row alone owns the live glyph and rail. |
+| Current activity | **Yes at the source boundary.** Codex says `running 1 subagent`; Claude and Antigravity say `awaiting your message`. What the subagent itself is doing remains unpublished. |
+| Next action | **Yes at the source boundary.** Every live row says `No pending step published`; no completed task or active subagent is promoted into NEXT. |
+| Captain responsibility | **No on the board.** A Spacedock-owned fixture request renders only `BLOCKED / Reported / Approve release?`; the exact same session renders `CAPTAIN` after drill-down. |
+
+### Reproduced material findings
+
+1. **BLOCKER — the comparable board is not a grid.** In the live 1531-pixel
+   page every `.next-operation-row` computed to `display: inline-flex`, because
+   `#app a` outranks `.next-operation-row`. Across the first four rows the WHERE
+   x-coordinate was 408, 374, 363, and 673 pixels; NOW was 630, 596, 585, and
+   895. The columns therefore do not compare despite their headers. At an actual
+   320×900 override, `innerWidth` and `scrollWidth` both measured 320, but the
+   five cells stayed side by side at widths 76/59/47/56/46 pixels and heights
+   411/355/262/194/331 pixels, wrapping labels and values to one or two
+   characters per line. This is a visual-hierarchy, information-architecture,
+   responsive, and accessibility failure owned by the candidate CSS.
+2. **HIGH — fleet and row disagree about a live exact request.** The ask
+   registry and collector state are independent. With both fixture gate states
+   changed to Idle while retaining `ask-live`, the rendered fleet facts were
+   7 observed, 2 working, 1 exact request, and **0 reported blocks**, while the
+   matching row still said **BLOCKED / Reported / Approve release?**. The row
+   counts an ask or `needs_input`; the fleet count uses only `needs_input`.
+   Ownership is the board aggregation, not the source contract.
+3. **HIGH — current assignment is not answerable or explicitly absent on the
+   board.** Session identity uses `title || last_prompt`, which is not the
+   assignment contract. The live Codex drill-down correctly admits the missing
+   assignment only inside SOURCE COVERAGE. Ownership is mixed: collectors own
+   publication, while the board owns exposing `not published` instead of a
+   potentially misleading title substitute.
+4. **HIGH — captain responsibility disappears at fleet level.** Adding
+   Spacedock metadata to the exact asking fixture produced no `CAPTAIN` marker
+   in its BLOCKED fact, while its drill-down rendered `<h2>CAPTAIN</h2>`. The
+   default command surface therefore requires navigation to answer who must
+   act. Ownership is the board renderer.
+
+### Prior-round dispositions and surviving uncertainty
+
+| Prior finding | Disposition |
+|---|---|
+| Fleet context and four comparable facts | **Partial:** seven live payload sessions remain seven visible rows, but finding 1 reopens comparability. |
+| BLOCKED truth for Antigravity | **Partial:** live Antigravity correctly says Unknown and 6/7 coverage is explicit, but finding 2 reopens fleet truth. |
+| NEXT hidden in drill-down | **Resolved:** NEXT is visible and refuses completed/in-progress inference. |
+| WHERE overstates a lossy label | **Resolved at the available boundary:** each row says Project label and Exact location not published. Exact path/branch/worktree remains a collector/runtime uncertainty. |
+| Exact identity hidden | **Resolved at the available boundary:** each row exposes the collector identity. Claude's eight-character identity remains collector-owned. |
+| False active rail on idle rows | **Resolved:** one live working row owns the glyph and rail; idle rows do not. |
+
+The remaining source-owned uncertainties are exact path/branch/worktree for all
+three harnesses, Codex/Antigravity assignment coverage, the activity of the live
+Codex subagent, and block state for Antigravity. Candidate-owned uncertainties
+are the four reproduced findings above. The semantic tree otherwise exposes a
+Primary navigation, one H1, a Fleet facts region, native session links, and
+repeated per-fact labels; four keyboard Tabs reached the first exact-session link
+with a computed 2-pixel visible outline. The focused 83-test suite stayed green,
+which demonstrates that its source-token contracts do not exercise the computed
+CSS cascade or the request/state disagreement.
+
+## Stage Report: crucible
+
+- DONE: recommend revise, reframe, or accept, explicitly testing whether users can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility while naming every material uncertainty and its owner.
+  **REVISE:** the command-question table records three yes, one partial, and two no results; the recommendation names the candidate, collector, and runtime owners that must converge before another gate.
+- DONE: independently exercise the live candidate at the layer where it can fail across visual hierarchy, information architecture, command truth, cross-harness comprehension, session drill-down, accessibility, and adversarial states.
+  Live 1531- and 320-pixel rendering, computed layout geometry, keyboard focus, semantic structure, the exact Codex drill-down, all three harness rows, and request/collision/source-gap fixtures were exercised; changing the cascade, route, harness boundary, or request predicate changes the recorded evidence.
+- DONE: reproduce every material finding, resolve disagreements with direct evidence, and record a disposition for every finding without treating green tests as convergence.
+  Four findings were reproduced from computed browser state or renderer output, all six prior findings have explicit dispositions, and the 83 passing focused tests are recorded as evidence of the oracle gap rather than acceptance.
+
+### Summary
+
+The exact-session model is the right reframe and four prior command gaps are
+resolved, but the candidate fails its core promise at the rendered layer and in
+two legal source states. Revise the CSS cascade, fleet block predicate,
+assignment absence, and fleet-level responsibility label, then return the same
+candidate to crucible with fresh wide and 320-pixel proof.
