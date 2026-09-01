@@ -113,10 +113,12 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         self.assertNotIn("Unresolved label-only request", quiet)
         self.assertNotIn("exact request", quiet)
 
-        self.assertIn("SITUATION", alpha)
-        self.assertIn("Waiting for your response: Approve the release", alpha)
-        self.assertIn("RESPONSE", alpha)
-        self.assertIn("Captain · Approve the release", alpha)
+        self.assertIn("NOW · NEEDS INPUT", alpha)
+        self.assertIn("Activity not published", alpha)
+        self.assertIn("NEXT", alpha)
+        self.assertIn("No pending step published", alpha)
+        self.assertIn("BLOCKED · CAPTAIN", alpha)
+        self.assertIn("Approve the release", alpha)
         self.assertIn("3 of 5 done", alpha)
         self.assertIn("launch", alpha)
         self.assertIn("review", alpha)
@@ -173,6 +175,50 @@ console.log(JSON.stringify(__els.app.innerHTML));
         ):
             self.assertNotIn(missing, history_html)
 
+    def test_active_project_preserves_each_exact_sessions_command_facts(self) -> None:
+        html = self.render(
+            """
+nextData.harnesses = [
+  {key: "codex", label: "Codex", reports_needs_input: true},
+  {key: "antigravity", label: "Antigravity", reports_needs_input: false}
+];
+const codex = nextData.sessions.find(session => session.sid === "beta-work");
+codex.harness = "codex";
+codex.tasks = [
+  {status: "in_progress", subject: "Compile exact release"},
+  {status: "pending", subject: "Publish checkpoint"}
+];
+nextData.sessions.push({
+  sid: "beta-work", harness: "antigravity", project: "beta/app",
+  state: "working", active: true, state_detail: "Synchronizing capture",
+  last_activity: 9940, title: "Capture the proof", total: 0, done: 0,
+  spacedock: null, tasks: [], subagents: []
+});
+nextAttention = nextAttentionModel(nextData);
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        row = self.project_row(html, "beta/app")
+
+        self.assertEqual(2, row.count("data-next-project-session"))
+        self.assertIn('data-next-harness="codex" data-next-session="beta-work"', row)
+        self.assertIn('data-next-harness="antigravity" data-next-session="beta-work"', row)
+        self.assertIn("Codex", row)
+        self.assertIn("Build the app", row)
+        self.assertIn("Antigravity", row)
+        self.assertIn("Capture the proof", row)
+        self.assertIn("Compile exact release", row)
+        self.assertIn("Publish checkpoint", row)
+        self.assertIn("No reported block", row)
+        self.assertIn("Synchronizing capture", row)
+        self.assertIn("No pending step published", row)
+        self.assertIn("Harness does not report blocks", row)
+        self.assertNotIn("2 sessions executing", row)
+        self.assertNotIn("Assignment unavailable", row)
+        self.assertNotIn("ASSIGNMENT · Not published", row)
+
     def test_plain_exact_ask_keeps_attention_without_claiming_captain_authority(self) -> None:
         out = self.render(
             """
@@ -218,8 +264,9 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
             beta_attention.group(1) if beta_attention else "",
         )
         beta = self.project_row(out["projects"], "beta/app")
-        self.assertIn("Needs you · Plain approval", beta)
-        self.assertNotIn("Captain · Plain approval", beta)
+        self.assertIn("BLOCKED · NEEDS YOU", beta)
+        self.assertIn("Plain approval", beta)
+        self.assertNotIn("BLOCKED · CAPTAIN", beta)
         self.assertIn("NEEDS YOU</h2>", out["session"])
         self.assertNotIn("CAPTAIN</h2>", out["session"])
 
@@ -238,9 +285,9 @@ console.log(JSON.stringify({attention, projects, session: __els.app.innerHTML}))
         assert isinstance(out, dict)
 
         self.assertIn("CAPTAIN · Source not identified", out["attention"])
-        self.assertIn(
-            "Captain · Approve the release", self.project_row(out["projects"], "alpha/repo")
-        )
+        project = self.project_row(out["projects"], "alpha/repo")
+        self.assertIn("BLOCKED · CAPTAIN", project)
+        self.assertIn("Approve the release", project)
         self.assertIn("CAPTAIN</h2>", out["session"])
         for html in out.values():
             self.assertNotIn("NEEDS YOU</h2>", html)
@@ -323,10 +370,12 @@ console.log(JSON.stringify(__els.app.innerHTML));
         gamma = self.project_row(html, "gamma/tool")
 
         self.assertIn("next-project-row--blocked", alpha)
-        self.assertIn("Waiting for your response", alpha)
-        self.assertNotIn("running", alpha)
-        self.assertIn("1 session executing", beta)
-        self.assertNotIn("blocked", beta)
+        self.assertIn("BLOCKED · CAPTAIN", alpha)
+        self.assertIn("Approve the release", alpha)
+        self.assertIn("NOW · WORKING", beta)
+        self.assertIn("Activity not published", beta)
+        self.assertIn("No pending step published", beta)
+        self.assertNotIn("1 session executing", beta)
         self.assertNotIn("running", gamma)
         self.assertNotIn("blocked", gamma)
         self.assertNotIn("No active session observed", gamma)

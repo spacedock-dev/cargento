@@ -76,17 +76,11 @@ function nextSessionNowFact(session){
   return task ? String(task.subject).trim() : "";
 }
 
-function nextSessionSourceCoverage(owner, assignment, next, asks){
-  const missing = [];
-  if(!assignment) missing.push("assignment");
-  if(!asks.length && !next) missing.push("next action");
-  if(!missing.length) return "";
-  let facts = "an assignment";
-  if(missing.length === 2) facts = "an assignment or next action";
-  else if(missing[0] === "next action") facts = "a next action";
+function nextSessionSourceCoverage(owner, next, asks){
+  if(asks.length || next) return "";
   return '<details class="next-session-source-coverage">' +
     '<summary>SOURCE COVERAGE</summary>' +
-    `<p>${esc(owner)} did not publish ${facts}.</p></details>`;
+    `<p>${esc(owner)} did not publish a next action.</p></details>`;
 }
 
 function nextSessionCommandFact(kind, label, body){
@@ -128,7 +122,7 @@ function nextSessionCommandSurface(session, asks, identity){
     '<span class="next-session-current-label">CURRENT ACTIVITY</span>' +
     `<strong>${esc(executionText)}</strong>${contextLine}` +
     nextSessionSubagents(session) + `</section>${identity}` + factBlock +
-    nextSessionSourceCoverage(owner, assignment, next, asks) + "</div>";
+    nextSessionSourceCoverage(owner, next, asks) + "</div>";
 }
 
 function nextSessionTitle(session, asks){

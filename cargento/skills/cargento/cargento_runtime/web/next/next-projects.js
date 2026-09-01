@@ -67,10 +67,6 @@ function nextProjectWorkflows(sessions){
   return found;
 }
 
-function nextProjectRequestLabel(ask){
-  return nextAskResponsibility(nextData, ask) === "CAPTAIN" ? "Captain" : "Needs you";
-}
-
 function nextProjectCell(group, operationalSessions){
   const workflows = nextProjectWorkflows(operationalSessions);
   const instruction = nextProjectInstruction(operationalSessions);
@@ -128,34 +124,38 @@ function nextProjectSummaryHtml(summary, sessionCount){
   return `<div class="next-project-summary">${values.map(value => `<span>${esc(value)}</span>`).join("")}</div>`;
 }
 
+function nextProjectSessionLine(session, asks, harnesses, labels){
+  const harness = String(session.harness || "");
+  const sid = String(session.sid || "");
+  const harnessLabel = labels.get(harness) || harness || "Harness not published";
+  const title = String(session.title || session.last_prompt || "").trim() || "Title not published";
+  return '<div class="next-project-session" role="group" data-next-project-session ' +
+    `data-next-harness="${esc(harness)}" data-next-session="${esc(sid)}" ` +
+    `aria-label="${esc(harnessLabel)} session ${esc(title)}">` +
+    '<span class="next-project-session-identity">' +
+    `<small>SESSION</small><span>${esc(harnessLabel)}</span><strong>${esc(title)}</strong></span>` +
+    nextOperationsNow(session) + nextOperationsNext(session) +
+    nextOperationsBlocked(session, asks, harnesses) + "</div>";
+}
+
+function nextProjectSessionCommands(sessions, asks){
+  const harnesses = nextOperationsHarnesses();
+  const labels = nextHarnessLabels();
+  return '<div class="next-project-sessions" aria-label="Active exact sessions">' +
+    sessions.map(session => nextProjectSessionLine(session, asks, harnesses, labels)).join("") +
+    "</div>";
+}
+
 function nextProjectRow(group, operationalSessions, summary, history = false){
   const operational = {...group, sessions: operationalSessions};
   const asks = nextProjectAsks(operational);
-  const ask = asks.length ? asks[0] : null;
-  const question = String(ask && ask.question || "").trim();
-  const blocked = Boolean(ask);
-  const running = operationalSessions.filter(session =>
-    session.state === "working" && session.active).length;
-  let situation = "State unavailable in the current payload";
-  if(question) situation = `Waiting for your response: ${question}`;
-  else if(running) situation = `${running} ${running === 1 ? "session" : "sessions"} executing`;
-  else if(operationalSessions.some(session => session.state === "needs_input")){
-    situation = "Input signal observed; request unavailable in the current payload";
-  }
-  const response = question
-    ? `<div><span>RESPONSE</span><strong>${nextProjectRequestLabel(ask)} · ${esc(question)}</strong></div>`
-    : "";
-  const commandClass = question
-    ? "next-project-command"
-    : "next-project-command next-project-command--situation-only";
+  const blocked = operationalSessions.some(session => nextOperationsIsBlocked(session, asks));
   const route = nextRouteToken({view: "project", project: group.label, session: null});
   const progress = nextProjectProgress(operationalSessions);
   const progressBlock = progress ? `<div class="next-project-progress">${progress}</div>` : "";
   const historyClass = history ? " next-project-row--history" : "";
   const historyAttr = history ? ' data-next-project-history="true"' : "";
-  const command = history ? "" :
-    `<div class="${commandClass}"><div><span>SITUATION</span>` +
-    `<strong>${esc(situation)}</strong></div>${response}</div>`;
+  const command = history ? "" : nextProjectSessionCommands(operationalSessions, asks);
   return `<article class="next-project-row${blocked ? " next-project-row--blocked" : ""}${historyClass}" ` +
     `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
     `role="link" tabindex="0"${historyAttr}>` +

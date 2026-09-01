@@ -118,7 +118,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn('data-next-session-command-fact="next"', html)
         self.assertNotIn('data-next-session-command-fact="request"', html)
         self.assertIn("SOURCE COVERAGE", html)
-        self.assertIn("Claude transcript did not publish an assignment or next action", html)
+        self.assertIn("Claude transcript did not publish a next action", html)
+        self.assertNotIn("did not publish an assignment", html)
         self.assertNotIn('<details class="next-session-source-coverage" open', html)
 
     def test_current_activity_leads_identity_without_a_redundant_session_label(self) -> None:
@@ -190,7 +191,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("Ship &lt;script&gt;the full instruction&lt;/script&gt;", html)
         self.assertNotIn("Ship <script>", html)
 
-    def test_missing_codex_and_agy_command_facts_name_their_exact_sources(self) -> None:
+    def test_missing_next_action_names_its_source_without_assignment_placeholder(self) -> None:
         out = self.render(
             """
 nextData.asks = [];
@@ -207,12 +208,11 @@ console.log(JSON.stringify(variants));
         )
         assert isinstance(out, dict)
 
-        self.assertIn("Codex transcript did not publish an assignment or next action", out["codex"])
-        self.assertIn(
-            "AGY CLI log did not publish an assignment or next action", out["antigravity"]
-        )
+        self.assertIn("Codex transcript did not publish a next action", out["codex"])
+        self.assertIn("AGY CLI log did not publish a next action", out["antigravity"])
         for html in out.values():
             self.assertNotIn("Assignment unavailable", html)
+            self.assertNotIn("did not publish an assignment", html)
             self.assertNotIn("Not published", html)
             self.assertNotRegex(html, r"(?i)source coverage[^<]*(?:field|schema|instruction)")
 

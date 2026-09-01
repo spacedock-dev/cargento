@@ -245,7 +245,7 @@ function nextSessionsView(){
     nextOperationsFleet(rows, asks, harnesses) +
     nextOperationsGroup(
       "active", "Active now",
-      "Source-backed by working, needs-input, or exact-request evidence.",
+      "Working, needs-input, or exact request.",
       active, renderActive, "No exact session has active evidence right now.",
     ) + nextOperationsGroup(
       "history", "Recent history",

@@ -141,7 +141,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         history = self.operation_group(html, "history")
 
         self.assertIn("Active now", active)
-        self.assertIn("working, needs-input, or exact-request evidence", active)
+        self.assertIn("Working, needs-input, or exact request.", active)
         for sid in ("gate-z", "gate-a", "work-a", "work-z"):
             self.assertIn(f'data-next-session="{sid}"', active)
             self.assertNotIn(f'data-next-session="{sid}"', history)
@@ -433,6 +433,38 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("#app{padding:18px 8px 40px}", NEXT_STYLES)
         self.assertIn("border:1px solid var(--line2)", NEXT_STYLES)
         self.assertIn("overflow-wrap:anywhere", NEXT_STYLES)
+
+    def test_320_fleet_keeps_the_four_facts_in_two_columns(self) -> None:
+        self.assertIn(
+            ".next-operations-fleet{grid-template-columns:repeat(2,minmax(0,1fr))}",
+            NEXT_STYLES,
+        )
+        self.assertNotIn(
+            ".next-operations-fleet{grid-template-columns:minmax(0,1fr)}",
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            ".next-operations-fleet>section{display:grid;"
+            "grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;"
+            "align-items:baseline;padding:6px 8px}",
+            NEXT_STYLES,
+        )
+
+    def test_320_active_card_keeps_command_facts_in_two_columns(self) -> None:
+        self.assertIn("@media(max-width:360px)", NEXT_STYLES)
+        self.assertIn(
+            "#app .next-operation-row{grid-template-columns:repeat(2,minmax(0,1fr))}",
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            ".next-operation-fact{display:block;padding:6px 10px;",
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            '.next-operation-row[data-next-operation-history="true"] '
+            '.next-operation-fact[data-next-operation-fact="where"]{grid-column:1/-1}',
+            NEXT_STYLES,
+        )
 
     def test_desktop_uses_shared_headers_and_mobile_keeps_only_card_labels(self) -> None:
         self.assertIn(
