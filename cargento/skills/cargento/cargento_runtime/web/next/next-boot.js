@@ -27,6 +27,12 @@ function nextRouteFromFragment(fragment){
     const project = nextDecodeRoutePart(parts[1]);
     if(project) return {view: "project", project, session: null};
   }
+  if(parts.length === 4 && parts[0] === "session"){
+    const project = nextDecodeRoutePart(parts[1]);
+    const harness = nextDecodeRoutePart(parts[2]);
+    const session = nextDecodeRoutePart(parts[3]);
+    if(project && harness && session) return {view: "session", project, harness, session};
+  }
   if(parts.length === 3 && parts[0] === "session"){
     const project = nextDecodeRoutePart(parts[1]);
     const session = nextDecodeRoutePart(parts[2]);
@@ -37,7 +43,11 @@ function nextRouteFromFragment(fragment){
 
 function nextFragmentForRoute(route){
   if(route && route.view === "session" && route.project && route.session){
-    return `#n=session:${encodeURIComponent(route.project)}:${encodeURIComponent(route.session)}`;
+    const harness = String(route.harness || "");
+    const prefix = `#n=session:${encodeURIComponent(route.project)}:`;
+    return harness
+      ? `${prefix}${encodeURIComponent(harness)}:${encodeURIComponent(route.session)}`
+      : `${prefix}${encodeURIComponent(route.session)}`;
   }
   if(route && route.view === "project" && route.project){
     return `#n=project:${encodeURIComponent(route.project)}`;
@@ -75,7 +85,19 @@ function nextSessionKey(session){
 function nextExactAskOwner(payload, ask){
   const sid = String(ask && ask.session_id || "");
   if(!sid) return null;
-  return nextPayloadSessions(payload).find(session => String(session.sid || "") === sid) || null;
+  const harness = String(ask && ask.harness || "");
+  const matches = nextPayloadSessions(payload).filter(session =>
+    String(session.sid || "") === sid &&
+    (!harness || String(session.harness || "") === harness));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function nextSessionCopyControl(session){
+  const sid = String(session && session.sid || "").trim();
+  if(!sid) return "";
+  return `<button type="button" class="next-session-copy" data-next-copy-session="${esc(sid)}" ` +
+    `aria-label="Copy session ID ${esc(sid)}" title="${esc(sid)}">` +
+    '<span aria-hidden="true">COPY ID</span></button>';
 }
 
 function nextAskResponsibility(payload, ask){

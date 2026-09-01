@@ -19,9 +19,7 @@ function nextProjectInstructionRecord(session){
   const filtered = labelled
     ? String(instruction.text == null ? "" : instruction.text).trim()
     : "";
-  if(filtered) return {kind: "assignment", text: filtered};
-  const context = String(session.last_prompt || session.title || "").trim();
-  return context ? {kind: "context", text: context} : null;
+  return filtered ? {kind: "assignment", text: filtered} : null;
 }
 
 function nextProjectInstructionText(session){
@@ -73,16 +71,15 @@ function nextProjectRequestLabel(ask){
   return nextAskResponsibility(nextData, ask) === "CAPTAIN" ? "Captain" : "Needs you";
 }
 
-function nextProjectCell(group){
-  const workflows = nextProjectWorkflows(group.sessions);
-  const instruction = nextProjectInstruction(group.sessions);
+function nextProjectCell(group, operationalSessions){
+  const workflows = nextProjectWorkflows(operationalSessions);
+  const instruction = nextProjectInstruction(operationalSessions);
   const chips = workflows.map(workflow =>
     `<span class="next-project-workflow" title="${esc(workflow.goal)}">` +
       `${esc(workflow.workflow)}</span>`,
   ).join("");
   const last = instruction
-    ? `<div class="next-project-instruction">${instruction.kind === "assignment" ?
-      "Latest assignment" : "Latest session context"} · ${esc(instruction.text)}</div>`
+    ? `<div class="next-project-instruction">Latest assignment · ${esc(instruction.text)}</div>`
     : "";
   /* The old collision signal is live-only because it warns about concurrent
      writes. This table makes a grouping claim, so even two idle rows need the
@@ -131,19 +128,19 @@ function nextProjectSummaryHtml(summary, sessionCount){
   return `<div class="next-project-summary">${values.map(value => `<span>${esc(value)}</span>`).join("")}</div>`;
 }
 
-function nextProjectRow(group, summary){
-  const asks = nextProjectAsks(group);
+function nextProjectRow(group, operationalSessions, summary, history = false){
+  const operational = {...group, sessions: operationalSessions};
+  const asks = nextProjectAsks(operational);
   const ask = asks.length ? asks[0] : null;
   const question = String(ask && ask.question || "").trim();
   const blocked = Boolean(ask);
-  const running = group.sessions.filter(session => session.state === "working" && session.active).length;
+  const running = operationalSessions.filter(session =>
+    session.state === "working" && session.active).length;
   let situation = "State unavailable in the current payload";
   if(question) situation = `Waiting for your response: ${question}`;
   else if(running) situation = `${running} ${running === 1 ? "session" : "sessions"} executing`;
-  else if(group.sessions.some(session => session.state === "needs_input")){
+  else if(operationalSessions.some(session => session.state === "needs_input")){
     situation = "Input signal observed; request unavailable in the current payload";
-  }else if(group.sessions.every(session => session.state === "idle")){
-    situation = "No active session observed";
   }
   const response = question
     ? `<div><span>RESPONSE</span><strong>${nextProjectRequestLabel(ask)} · ${esc(question)}</strong></div>`
@@ -152,31 +149,65 @@ function nextProjectRow(group, summary){
     ? "next-project-command"
     : "next-project-command next-project-command--situation-only";
   const route = nextRouteToken({view: "project", project: group.label, session: null});
-  const progress = nextProjectProgress(group.sessions);
+  const progress = nextProjectProgress(operationalSessions);
   const progressBlock = progress ? `<div class="next-project-progress">${progress}</div>` : "";
-  return `<article class="next-project-row${blocked ? " next-project-row--blocked" : ""}" ` +
-    `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
-    'role="link" tabindex="0">' +
-    `<div class="next-project-project">${nextProjectCell(group)}` +
-    `${nextProjectSummaryHtml(summary, group.sessions.length)}${progressBlock}</div>` +
+  const historyClass = history ? " next-project-row--history" : "";
+  const historyAttr = history ? ' data-next-project-history="true"' : "";
+  const command = history ? "" :
     `<div class="${commandClass}"><div><span>SITUATION</span>` +
-    `<strong>${esc(situation)}</strong></div>${response}</div></article>`;
+    `<strong>${esc(situation)}</strong></div>${response}</div>`;
+  return `<article class="next-project-row${blocked ? " next-project-row--blocked" : ""}${historyClass}" ` +
+    `data-next-project-row data-next-project="${esc(group.label)}" data-next-route="${esc(route)}" ` +
+    `role="link" tabindex="0"${historyAttr}>` +
+    `<div class="next-project-project">${nextProjectCell(group, operationalSessions)}` +
+    `${nextProjectSummaryHtml(summary, group.sessions.length)}${progressBlock}</div>` +
+    `${command}</article>`;
+}
+
+function nextProjectGroup(kind, title, description, items, renderer, empty){
+  const rows = items.map(renderer).join("");
+  return `<section class="next-project-group next-project-group--${kind}" ` +
+    `data-next-project-group="${kind}"><header><h2>${title}</h2>` +
+    `<p>${description}</p></header><div class="next-projects-brief">` +
+    `${rows || `<p class="next-projects-empty">${esc(empty)}</p>`}</div></section>`;
 }
 
 function nextProjectsView(model){
-  const groups = nextProjectGroups().map((group, index) => ({
-    group, index, summary: nextAttentionProjectSummary(model, group.sessions),
-  }));
+  const asks = nextPayloadAsks(nextData);
+  const groups = nextProjectGroups().map((group, index) => {
+    const activeSessions = group.sessions.filter(session =>
+      nextOperationsIsActive(session, asks));
+    const latest = Math.max(...group.sessions.map(session =>
+      nextFiniteNumber(session.last_activity)), 0);
+    return {
+      group,
+      index,
+      activeSessions,
+      latest,
+      summary: nextAttentionProjectSummary(model, activeSessions),
+    };
+  });
   if(!groups.length){
     const window = model.windowHours == null ? "current payload" : `${esc(model.windowHours)}h payload`;
     return `<p class="next-projects-empty">No project display labels in this ${window}.</p>`;
   }
-  groups.sort((left, right) => right.summary.exactRequests - left.summary.exactRequests ||
+  const active = groups.filter(item => item.activeSessions.length);
+  const history = groups.filter(item => !item.activeSessions.length);
+  active.sort((left, right) => right.summary.exactRequests - left.summary.exactRequests ||
     right.summary.risk - left.summary.risk ||
     right.summary.close - left.summary.close ||
     right.summary.working - left.summary.working ||
     right.summary.quiet - left.summary.quiet ||
     left.index - right.index);
-  return `<div class="next-projects-brief">${groups.map(item =>
-    nextProjectRow(item.group, item.summary)).join("")}</div>`;
+  history.sort((left, right) => right.latest - left.latest || left.index - right.index);
+  return nextProjectGroup(
+    "active", "Active projects", "Only source-backed active sessions contribute operational claims.",
+    active, item => nextProjectRow(item.group, item.activeSessions, item.summary),
+    "No project has active session evidence right now.",
+  ) + nextProjectGroup(
+    "history", "Recently observed projects",
+    "Project identity and scope remain available without stale operational claims.",
+    history, item => nextProjectRow(item.group, [], item.summary, true),
+    "No recently observed project history in this payload.",
+  );
 }

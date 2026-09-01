@@ -104,7 +104,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn(f'data-next-session-detail="{self.SID}"', html)
         self.assertIn(">Compile the release</h1>", html)
-        self.assertIn("Claude Code · session- · running tests · turn started 5m ago", html)
+        self.assertIn("Claude Code · running tests · turn started 5m ago", html)
         self.assertNotIn("session started 30m ago", html)
         self.assertNotIn("blocked ", html)
         self.assertNotIn("AGENT IS ASKING", html)
@@ -446,9 +446,7 @@ console.log(JSON.stringify(variants));
         assert isinstance(html, str)
 
         self.assertIn("next-session-detail--blocked", html)
-        self.assertIn(
-            "Claude Code · session- · open question · AskUserQuestion · blocked 10m", html
-        )
+        self.assertIn("Claude Code · open question · AskUserQuestion · blocked 10m", html)
         self.assertIn(asking_title("Claude Code"), html)
         self.assertEqual(1, html.count("AGENT IS ASKING"))
         self.assertEqual(2, html.count("data-next-session-ask="))
@@ -678,6 +676,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         html = self.render(
             """
 nextData.sessions[0].harness = "unregistered";
+for(const ask of nextData.asks) ask.harness = "unregistered";
 renderNext();
 console.log(JSON.stringify(__els.app.innerHTML));
 """
@@ -806,7 +805,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
 
         alone = self.rows("null")
         self.assertIn("Resolve the gate", alone)
-        self.assertIn("ASSIGNMENT · Not published", alone)
+        self.assertNotIn("ASSIGNMENT", alone)
         self.assertNotIn("next-instruction-label", alone)
 
     def test_the_title_label_never_names_something_that_is_not_the_title(self) -> None:

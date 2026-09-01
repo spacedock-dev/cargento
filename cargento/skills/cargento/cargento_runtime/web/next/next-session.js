@@ -5,19 +5,25 @@ const NEXT_SESSION_MCP_TOOL = /\bmcp__([A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*?)__([A-Z
 const NEXT_SESSION_MCP_HOST_PREFIX = /^(?:claude_ai_|claude_code_|plugin_)/;
 const nextSessionAnswerNotes = new Map();
 
-function nextSessionFind(project, sid){
+function nextSessionFind(project, harness, sid){
   const projectKey = String(project == null ? "" : project);
+  const harnessKey = String(harness == null ? "" : harness);
   const sessionKey = String(sid == null ? "" : sid);
-  return nextRows().find(session =>
+  const matches = nextRows().filter(session =>
     String(session.project == null ? "" : session.project) === projectKey &&
-    String(session.sid == null ? "" : session.sid) === sessionKey
-  ) || null;
+    String(session.sid == null ? "" : session.sid) === sessionKey &&
+    (!harnessKey || String(session.harness == null ? "" : session.harness) === harnessKey)
+  );
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function nextSessionAsks(session){
   if(!nextData || nextData.ask !== true || !Array.isArray(nextData.asks)) return [];
-  const sid = String(session.sid == null ? "" : session.sid);
-  return nextData.asks.filter(ask => String(ask && ask.session_id || "") === sid);
+  const key = nextSessionKey(session);
+  return nextData.asks.filter(ask => {
+    const owner = nextExactAskOwner(nextData, ask);
+    return owner && nextSessionKey(owner) === key;
+  });
 }
 
 function nextPruneSessionAnswerNotes(){
@@ -137,8 +143,6 @@ function nextSessionMeta(session){
   const parts = [];
   const harness = nextSessionRegistryLabel(session);
   if(harness) parts.push(harness);
-  const shortSid = String(session.session || session.sid || "").slice(0, 8);
-  if(shortSid) parts.push(shortSid);
   if(session.state_detail) parts.push(String(session.state_detail));
   if(session.state === "needs_input"){
     const blocked = nextDurationSince(session.blocked_since);
@@ -292,8 +296,8 @@ function nextSessionDetailState(state){
   return null;
 }
 
-function nextSessionView(project, sid){
-  const session = nextSessionFind(project, sid);
+function nextSessionView(project, harness, sid){
+  const session = nextSessionFind(project, harness, sid);
   if(!session){
     return '<section class="next-session-detail-empty" ' +
       'data-next-session-state="outside-payload"><p>Not present in the current payload.</p>' +
@@ -310,7 +314,7 @@ function nextSessionView(project, sid){
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const title = nextSessionTitle(session, asks);
   const identity = `<header class="next-session-detail-header">${stateLabel}` +
-    `<h1>${esc(title)}</h1>${metaLine}</header>`;
+    `<h1>${esc(title)}</h1>${nextSessionCopyControl(session)}${metaLine}</header>`;
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr}>` +
     nextSessionCommandSurface(session, asks, identity) + nextSessionHealth(session) +

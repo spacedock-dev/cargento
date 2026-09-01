@@ -40,9 +40,11 @@ function nextSessionCollision(session, counts){
 
 function nextOperationsAsks(rows){
   if(!nextData || nextData.ask !== true) return [];
-  const identities = new Set(rows.map(session => String(session && session.sid || "")));
-  return nextPayloadAsks(nextData).filter(ask =>
-    identities.has(String(ask && ask.session_id || "")));
+  const identities = new Set(rows.map(nextSessionKey));
+  return nextPayloadAsks(nextData).filter(ask => {
+    const owner = nextExactAskOwner(nextData, ask);
+    return owner && identities.has(nextSessionKey(owner));
+  });
 }
 
 function nextOperationsHarnesses(){
@@ -57,8 +59,11 @@ function nextOperationsReportsBlocks(session, harnesses){
 }
 
 function nextOperationsAskFor(session, asks){
-  const sid = String(session && session.sid || "");
-  return asks.find(ask => String(ask && ask.session_id || "") === sid) || null;
+  const key = nextSessionKey(session);
+  return asks.find(ask => {
+    const owner = nextExactAskOwner(nextData, ask);
+    return owner && nextSessionKey(owner) === key;
+  }) || null;
 }
 
 function nextOperationsIsBlocked(session, asks){
@@ -159,36 +164,44 @@ function nextOperationsBlocked(session, asks, harnesses){
 function nextOperationsAssignment(session){
   const assignment = nextSessionInstruction(session, "asked");
   const text = assignment ? String(assignment.text || "").trim() : "";
-  return `<span class="next-operation-assignment">ASSIGNMENT · ${esc(text || "Not published")}</span>`;
+  const title = String(session.title || session.last_prompt || "").trim();
+  return text && text !== title
+    ? `<span class="next-operation-assignment">ASSIGNMENT · ${esc(text)}</span>`
+    : "";
 }
 
 function nextOperationsIdentity(session, labels, collisions){
   const harness = String(session.harness == null ? "" : session.harness);
   const harnessLabel = labels.get(harness) || harness || "Harness not published";
   const title = String(session.title || session.last_prompt || "").trim() || "Title not published";
-  const sid = String(session.sid || "").trim() || "Identity not published";
   const live = session.active === true && session.state === "working";
   const dot = live ? nextStatusDot("working", "next-operation-live-glyph") : "";
   return '<span class="next-operation-identity">' +
-    `<small>SESSION · ${esc(harnessLabel)}</small><strong>${dot}${esc(title)}</strong>` +
-    `<span class="next-operation-sid">${esc(sid)}</span>` +
+    `<small class="next-operation-local-label">SESSION</small>` +
+    `<span class="next-operation-harness">${esc(harnessLabel)}</span>` +
+    `<strong>${dot}${esc(title)}</strong>${nextSessionCopyControl(session)}` +
     nextOperationsAssignment(session) + nextSessionCollision(session, collisions) + "</span>";
 }
 
-function nextOperationsRow(session, labels, collisions, asks, harnesses){
+function nextOperationsRow(session, labels, collisions, asks, harnesses, history = false){
   const project = String(session.project == null ? "" : session.project);
+  const harness = String(session.harness || "");
   const sid = String(session.sid || "");
-  const route = nextRouteToken({view: "session", project, session: sid});
+  const route = nextRouteToken({view: "session", project, harness, session: sid});
   const state = String(session.state || "unknown");
   const live = session.active === true && state === "working" ? " next-live" : "";
-  return `<a class="next-operation-row next-operation-row--${esc(state)}${live}" ` +
-    `href="#n=${esc(route)}" data-next-session="${esc(sid)}" data-next-route="${esc(route)}">` +
+  const historyAttr = history ? ' data-next-operation-history="true"' : "";
+  const now = history ? nextOperationsFact("now", "NOW", "—") : nextOperationsNow(session);
+  const next = history ? nextOperationsFact("next", "NEXT", "—") : nextOperationsNext(session);
+  const blocked = history
+    ? nextOperationsFact("blocked", "BLOCKED", "—")
+    : nextOperationsBlocked(session, asks, harnesses);
+  return `<article class="next-operation-row next-operation-row--${esc(state)}${live}" ` +
+    `data-next-harness="${esc(harness)}" data-next-session="${esc(sid)}" ` +
+    `data-next-route="${esc(route)}" role="link" tabindex="0"${historyAttr}>` +
     nextOperationsIdentity(session, labels, collisions) +
     nextOperationsWhere(session) +
-    nextOperationsNow(session) +
-    nextOperationsNext(session) +
-    nextOperationsBlocked(session, asks, harnesses) +
-    "</a>";
+    now + next + blocked + "</article>";
 }
 
 function nextOperationsColumns(){
@@ -216,7 +229,10 @@ function nextSessionsView(){
   const ordered = [...blocks.gates, ...blocks.working, ...blocks.idle, ...blocks.other];
   const active = ordered.filter(session => nextOperationsIsActive(session, asks));
   const history = ordered.filter(session => !nextOperationsIsActive(session, asks));
-  const render = session => nextOperationsRow(session, labels, collisions, asks, harnesses);
+  const renderActive = session =>
+    nextOperationsRow(session, labels, collisions, asks, harnesses, false);
+  const renderHistory = session =>
+    nextOperationsRow(session, labels, collisions, asks, harnesses, true);
   const windowHours = nextNumber(nextData && nextData.window_hours);
   const window = windowHours == null ? "current payload" : `${windowHours}h payload`;
   return '<section class="next-operations" data-next-view-body="sessions">' +
@@ -227,10 +243,10 @@ function nextSessionsView(){
     nextOperationsGroup(
       "active", "Active now",
       "Source-backed by working, needs-input, or exact-request evidence.",
-      active, render, "No exact session has active evidence right now.",
+      active, renderActive, "No exact session has active evidence right now.",
     ) + nextOperationsGroup(
       "history", "Recent history",
       "Recently observed is not proof the harness process is still open or closed.",
-      history, render, `No recent-history rows in this ${window}.`,
+      history, renderHistory, `No recent-history rows in this ${window}.`,
     ) + "</section>";
 }

@@ -1,6 +1,6 @@
 function nextDetailBody(route){
   if(route.view === "project") return nextProjectView(route.project);
-  if(route.view === "session") return nextSessionView(route.project, route.session);
+  if(route.view === "session") return nextSessionView(route.project, route.harness, route.session);
   return "";
 }
 

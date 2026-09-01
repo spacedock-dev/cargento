@@ -84,7 +84,7 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         assert isinstance(out, dict)
         html = out["projects"]
 
-        expected = ["alpha/repo", "delta/risk", "epsilon/close", "beta/app", "gamma/tool"]
+        expected = ["alpha/repo", "beta/app", "delta/risk", "gamma/tool", "epsilon/close"]
         positions = [html.index(f'data-next-project="{project}"') for project in expected]
         self.assertEqual(sorted(positions), positions)
         self.assertEqual(5, html.count("data-next-project-row"))
@@ -97,10 +97,10 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         working = self.project_row(html, "beta/app")
         quiet = self.project_row(html, "gamma/tool")
         self.assertIn("1 exact request", alpha)
-        self.assertIn("1 at risk", risk)
-        self.assertIn("1 close the loop", close)
+        self.assertNotIn("at risk", risk)
+        self.assertNotIn("close the loop", close)
         self.assertIn("1 working", working)
-        self.assertIn("1 quiet", quiet)
+        self.assertNotIn("quiet", quiet)
         self.assertNotIn("0 exact requests", html)
         self.assertNotIn("0 at risk", html)
         self.assertNotIn("0 close the loop", html)
@@ -122,9 +122,56 @@ console.log(JSON.stringify({projects, session: __els.app.innerHTML}));
         self.assertIn("review", alpha)
         self.assertIn("Ship the next page", alpha)
         self.assertIn("Check the release", alpha)
-        self.assertIn("Latest session context · Approve the release", alpha)
+        self.assertNotIn("Latest session context", alpha)
         self.assertIn("CAPTAIN</h2>", out["session"])
         self.assertNotIn("NEEDS YOU</h2>", out["session"])
+
+    def test_active_projects_lead_and_history_omits_operational_placeholders(self) -> None:
+        html = self.render(
+            """
+nextData.sessions.find(session => session.sid === "beta-work").instruction = {
+  label: "asked", text: "Build the source-backed release", at: 9950
+};
+nextData.sessions.find(session => session.sid === "gamma-idle").instruction = {
+  label: "asked", text: "Old historical assignment", at: 9000
+};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        active = re.search(r'<section[^>]*data-next-project-group="active"[\s\S]*?</section>', html)
+        history = re.search(
+            r'<section[^>]*data-next-project-group="history"[\s\S]*?</section>', html
+        )
+        self.assertIsNotNone(active)
+        self.assertIsNotNone(history)
+        active_html = active.group(0) if active else ""
+        history_html = history.group(0) if history else ""
+        self.assertLess(
+            html.index('data-next-project-group="active"'),
+            html.index('data-next-project-group="history"'),
+        )
+        for project in ("alpha/repo", "beta/app"):
+            self.assertIn(f'data-next-project="{project}"', active_html)
+            self.assertNotIn(f'data-next-project="{project}"', history_html)
+        for project in ("gamma/tool", "delta/risk", "epsilon/close"):
+            self.assertIn(f'data-next-project="{project}"', history_html)
+            self.assertNotIn(f'data-next-project="{project}"', active_html)
+        self.assertIn("Latest assignment · Build the source-backed release", active_html)
+        self.assertNotIn("Old historical assignment", history_html)
+        for missing in (
+            "No active session observed",
+            "State unavailable",
+            "Latest session context",
+            "at risk",
+            "close the loop",
+            "quiet",
+            "SITUATION",
+            "RESPONSE",
+        ):
+            self.assertNotIn(missing, history_html)
 
     def test_plain_exact_ask_keeps_attention_without_claiming_captain_authority(self) -> None:
         out = self.render(
@@ -224,7 +271,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         # and "agent" and "earlier" are the readings that need one: published
         # bare they claim to be the newest instruction when they are not.
         beta_row = self.project_row(html, "beta/app")
-        self.assertIn("Latest session context · proceed", beta_row)
+        self.assertNotIn("Latest session context", beta_row)
         self.assertNotIn("Not the newest thing asked", beta_row)
 
     def test_absent_inventory_facts_do_not_displace_the_command_answer(self) -> None:
@@ -252,7 +299,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("Current payload only", html)
         gamma = self.project_row(html, "gamma/tool")
         self.assertNotIn("RESPONSE", gamma)
-        self.assertIn("next-project-command--situation-only", gamma)
+        self.assertNotIn("next-project-command", gamma)
 
     def test_a_project_with_no_task_counts_renders_no_progress(self) -> None:
         html = self.render()
@@ -276,7 +323,8 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("blocked", beta)
         self.assertNotIn("running", gamma)
         self.assertNotIn("blocked", gamma)
-        self.assertIn("No active session observed", gamma)
+        self.assertNotIn("No active session observed", gamma)
+        self.assertIn('data-next-project-history="true"', gamma)
 
     def test_two_idle_sessions_still_get_the_collision_caveat(self) -> None:
         html = self._run_page_js(

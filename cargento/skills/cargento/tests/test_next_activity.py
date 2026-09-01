@@ -261,14 +261,19 @@ console.log(JSON.stringify({html, route: nextRoute, hash: location.hash}));
         assert isinstance(out, dict)
 
         self.assertIn(
-            'data-next-going-on="gate-z" data-next-route="session:alpha%2Frepo:gate-z"',
+            'data-next-going-on="gate-z" data-next-route="session:alpha%2Frepo:claude:gate-z"',
             out["html"],
         )
         self.assertEqual(
-            {"view": "session", "project": "alpha/repo", "session": "gate-z"},
+            {
+                "view": "session",
+                "project": "alpha/repo",
+                "harness": "claude",
+                "session": "gate-z",
+            },
             out["route"],
         )
-        self.assertEqual("#n=session:alpha%2Frepo:gate-z", out["hash"])
+        self.assertEqual("#n=session:alpha%2Frepo:claude:gate-z", out["hash"])
 
     def test_done_lists_only_completed_tasks_in_payload_order_without_deduplication(self) -> None:
         html = self.render()

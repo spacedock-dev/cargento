@@ -81,7 +81,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
     @staticmethod
     def session_row(html: str, sid: str) -> str:
         match = re.search(
-            rf'<a[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</a>',
+            rf'<(?P<tag>a|article)[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</(?P=tag)>',
             html,
         )
         if match is None:
@@ -181,6 +181,48 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("BLOCKED · CAPTAIN", blocked)
         self.assertIn("Choose the release lane", blocked)
 
+    def test_cross_harness_sid_collision_keeps_routes_and_asks_on_exact_owners(self) -> None:
+        out = self.render(
+            """
+const cursor = nextData.sessions.find(session => session.sid === "idle-mid");
+cursor.harness = "cursor";
+cursor.spacedock = null;
+nextData.sessions.push({
+  ...cursor, harness: "antigravity", title: "Shadow AGY",
+  spacedock: {role: "first-officer", workflows: []}
+});
+nextData.asks.push({
+  id: "agy-collision", harness: "antigravity", session_id: "idle-mid",
+  question: "Choose the release lane"
+});
+renderNext();
+const board = __els.app.innerHTML;
+const routes = [...board.matchAll(/data-next-harness="([^"]+)"[^>]*data-next-session="idle-mid"[^>]*data-next-route="([^"]+)"/g)]
+  .map(match => [match[1], match[2]]);
+const details = {};
+for(const [harness, route] of routes){
+  navigateNext(nextRouteFromFragment(`#n=${route}`));
+  details[harness] = __els.app.innerHTML;
+}
+console.log(JSON.stringify({board, routes, details}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(
+            [
+                ["antigravity", "session:idle%2Fmid:antigravity:idle-mid"],
+                ["cursor", "session:idle%2Fmid:cursor:idle-mid"],
+            ],
+            out["routes"],
+        )
+        self.assertIn("Middle idle", out["details"]["cursor"])
+        self.assertNotIn("Choose the release lane", out["details"]["cursor"])
+        self.assertIn("Shadow AGY", out["details"]["antigravity"])
+        self.assertIn("Choose the release lane", out["details"]["antigravity"])
+        self.assertIn("CAPTAIN</h2>", out["details"]["antigravity"])
+        self.assertEqual(1, out["board"].count("Choose the release lane"))
+
     def test_exact_request_itself_covers_block_state_for_an_incapable_harness(self) -> None:
         html = self.render(
             """
@@ -212,7 +254,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         assert isinstance(html, str)
 
         self.assertIn("ASSIGNMENT · Audit the fleet", self.session_row(html, "work-a"))
-        self.assertIn("ASSIGNMENT · Not published", self.session_row(html, "idle-old"))
+        self.assertNotIn("ASSIGNMENT", self.session_row(html, "idle-old"))
 
     def test_one_row_per_exact_session_survives_exception_sorting(self) -> None:
         html = self.render()
@@ -238,14 +280,16 @@ console.log(JSON.stringify(__els.app.innerHTML));
             html.index('data-next-session="idle-mid"'), html.index('data-next-session="idle-old"')
         )
 
-    def test_each_row_exposes_visible_exact_identity_and_four_command_facts(self) -> None:
+    def test_each_row_exposes_copyable_exact_identity_and_four_command_facts(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
         for sid in ("gate-z", "gate-a", "work-a", "work-z", "idle-old", "idle-new", "idle-mid"):
             with self.subTest(sid=sid):
                 row = self.session_row(html, sid)
-                self.assertIn(f'<span class="next-operation-sid">{sid}</span>', row)
+                self.assertIn(f'aria-label="Copy session ID {sid}"', row)
+                self.assertIn(f'title="{sid}"', row)
+                self.assertNotIn(f'<span class="next-operation-sid">{sid}</span>', row)
                 for fact in ("where", "now", "next", "blocked"):
                     self.fact(row, fact)
 
@@ -275,7 +319,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
     def test_missing_now_and_next_are_explicit_not_empty_or_inferred(self) -> None:
         html = self.render()
         assert isinstance(html, str)
-        row = self.session_row(html, "idle-mid")
+        row = self.session_row(html, "gate-a")
 
         self.assertIn("Activity not published", self.fact(row, "now"))
         self.assertIn("No pending step published", self.fact(row, "next"))
@@ -283,11 +327,19 @@ console.log(JSON.stringify(__els.app.innerHTML));
             self.assertNotIn(forbidden, row.lower())
 
     def test_blocked_fact_separates_exact_request_no_report_and_unknown(self) -> None:
-        html = self.render()
+        html = self.render(
+            """
+const agy = nextData.sessions.find(session => session.sid === "idle-old");
+agy.state = "working";
+agy.active = true;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
         assert isinstance(html, str)
 
         reported = self.fact(self.session_row(html, "gate-z"), "blocked")
-        no_report = self.fact(self.session_row(html, "idle-new"), "blocked")
+        no_report = self.fact(self.session_row(html, "work-a"), "blocked")
         unknown = self.fact(self.session_row(html, "idle-old"), "blocked")
 
         self.assertIn("Reported", reported)
@@ -309,13 +361,30 @@ console.log(JSON.stringify(__els.app.innerHTML));
             self.assertIn("sibling worktrees read alike", row)
         self.assertEqual(2, html.count("2 sessions share this label"))
 
-    def test_rows_are_native_links_to_the_exact_session_route(self) -> None:
+    def test_rows_are_keyboard_links_to_the_exact_session_route(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         row = self.session_row(html, "gate-z")
 
-        self.assertIn('href="#n=session:repo%2Fmain:gate-z"', row)
-        self.assertIn('data-next-route="session:repo%2Fmain:gate-z"', row)
+        self.assertIn('role="link"', row)
+        self.assertIn('tabindex="0"', row)
+        self.assertIn('data-next-harness="claude"', row)
+        self.assertIn('data-next-route="session:repo%2Fmain:claude:gate-z"', row)
+        self.assertNotIn("<a ", row)
+
+    def test_history_keeps_identity_and_scope_but_not_empty_operational_copy(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        row = self.session_row(html, "idle-mid")
+
+        self.assertIn('data-next-operation-history="true"', row)
+        self.assertIn("Middle idle", row)
+        self.assertIn("idle/mid", row)
+        for fact in ("now", "next", "blocked"):
+            fact_html = self.fact(row, fact)
+            self.assertIn("<strong>—</strong>", fact_html)
+            self.assertNotIn("Not published", fact_html)
+            self.assertNotIn("Unknown", fact_html)
 
     def test_zero_session_inventory_keeps_the_board_and_bounded_empty_sentence(self) -> None:
         html = self.render(
@@ -350,6 +419,20 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("#app{padding:18px 8px 40px}", NEXT_STYLES)
         self.assertIn("border:1px solid var(--line2)", NEXT_STYLES)
         self.assertIn("overflow-wrap:anywhere", NEXT_STYLES)
+
+    def test_desktop_uses_shared_headers_and_mobile_keeps_only_card_labels(self) -> None:
+        self.assertIn(
+            ".next-operation-local-label,.next-operation-fact>small{display:none}", NEXT_STYLES
+        )
+        self.assertIn(
+            ".next-operation-local-label,.next-operation-fact>small{display:block}",
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            '.next-operation-row[data-next-operation-history="true"] '
+            '.next-operation-fact[data-next-operation-fact="now"]{display:none}',
+            NEXT_STYLES,
+        )
 
     def test_detail_current_work_does_not_share_the_old_activity_rail_selector(self) -> None:
         self.assertIn(".next-session-current>strong", NEXT_STYLES)

@@ -105,6 +105,79 @@ console.log(JSON.stringify({initial, project, attention: nextRoute, html: __els.
         )
         self.assertIn("<h1>Session operations</h1>", out["html"])
 
+    def test_canonical_session_route_round_trips_harness_and_sid(self) -> None:
+        out = self._run_page_js(
+            """
+const route = {
+  view: "session", project: "recce:cloud", harness: "antigravity", session: "same/sid"
+};
+const fragment = nextFragmentForRoute(route);
+console.log(JSON.stringify({fragment, parsed: nextRouteFromFragment(fragment)}));
+"""
+        )
+
+        self.assertEqual("#n=session:recce%3Acloud:antigravity:same%2Fsid", out["fragment"])
+        self.assertEqual(
+            {
+                "view": "session",
+                "project": "recce:cloud",
+                "harness": "antigravity",
+                "session": "same/sid",
+            },
+            out["parsed"],
+        )
+
+    def test_copy_session_id_uses_clipboard_announces_success_and_does_not_navigate(self) -> None:
+        out = self._run_page_js(
+            """
+nextData = {
+  generated: 1000, ask: true,
+  harnesses: [{key: "claude", label: "Claude Code", reports_needs_input: true}],
+  asks: [], sessions: [{
+    harness: "claude", sid: "shared-id", project: "alpha/repo",
+    state: "working", active: true, title: "Build it", tasks: [], subagents: []
+  }]
+};
+navigateNext({view: "sessions", project: null, session: null});
+const before = {...nextRoute};
+const target = {
+  dataset: {nextCopySession: "shared-id"},
+  closest(selector){
+    if(selector === "[data-next-copy-session]") return this;
+    if(selector === "[data-next-route]") return {dataset: {nextRoute: "wrong"}};
+    return null;
+  },
+  setAttribute(name, value){ this[name] = value; }
+};
+__fire("click", {target, preventDefault(){}, stopPropagation(){}});
+await __settle();
+console.log(JSON.stringify({
+  before, after: nextRoute, copied: __copied, status: __copyStatus.textContent,
+  state: target.dataset.nextCopyState
+}));
+""",
+            """
+let __copied = [];
+const navigator = {clipboard: {writeText(value){ __copied.push(value); return Promise.resolve(); }}};
+let __copyStatusText = "";
+const __copyStatus = {
+  setAttribute(){},
+  set textContent(value){ __copyStatusText = String(value); },
+  get textContent(){ return __copyStatusText; }
+};
+document.createElement = () => __copyStatus;
+__els.app = {
+  innerHTML: "", querySelectorAll(){ return []; }, querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+""",
+        )
+
+        self.assertEqual(["shared-id"], out["copied"])
+        self.assertEqual("Copied session ID shared-id", out["status"])
+        self.assertEqual("copied", out["state"])
+        self.assertEqual(out["before"], out["after"])
+
     def test_breadcrumb_segments_are_clickable_and_escape_walks_up(self) -> None:
         out = self._run_page_js(
             """
@@ -124,7 +197,8 @@ console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute})
         self.assertIn('<a href="#n=projects">Projects</a>', out["sessionHtml"])
         self.assertIn('<a class="next-crumb" href="#n=project:recce">recce</a>', out["sessionHtml"])
         self.assertIn("recce", out["sessionHtml"])
-        self.assertIn("019a", out["sessionHtml"])
+        self.assertIn("<span>Session</span>", out["sessionHtml"])
+        self.assertNotIn("<span>019a</span>", out["sessionHtml"])
         self.assertEqual(
             {"view": "project", "project": "recce", "session": None},
             out["project"],

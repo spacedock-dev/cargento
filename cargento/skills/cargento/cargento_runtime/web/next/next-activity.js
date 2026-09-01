@@ -40,7 +40,7 @@ function nextProjectActivityCard(session, harnesses, project){
   const activity = String(session.state_detail || "");
   const detail = activity ? `${harnessLabel} · ${activity}` : harnessLabel;
   const title = String(session.title || session.last_prompt || project);
-  const route = nextRouteToken({view: "session", project, session: sid});
+  const route = nextRouteToken({view: "session", project, harness, session: sid});
   const gate = session.state === "needs_input";
   const blocked = gate ? " next-activity-card--blocked" : "";
   const live = gate ? "" : " next-live";

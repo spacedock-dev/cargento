@@ -538,9 +538,10 @@ function nextAttentionModel(payload){
 function nextAttentionSubjectRoute(subject){
   const identity = nextAttentionSubjectIdentity(subject);
   const project = String(identity && identity.project != null ? identity.project : "");
+  const harness = String(identity && identity.harness != null ? identity.harness : "");
   const sid = String(identity && identity.sid != null ? identity.sid : "");
   return project && sid
-    ? nextRouteToken({view: "session", project, session: sid})
+    ? nextRouteToken({view: "session", project, harness, session: sid})
     : nextRouteToken({view: "sessions"});
 }
 

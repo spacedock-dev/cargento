@@ -5,6 +5,7 @@ let nextRefreshInFlight = false;
 let nextRefreshRequest = 0;
 let nextLastRefreshSuccessAt = null;
 let nextAttentionStatusElement = null;
+let nextSessionCopyStatusElement = null;
 const nextAttentionExpandedSections = new Set();
 
 function nextCaptureFocus(){
@@ -14,7 +15,8 @@ function nextCaptureFocus(){
   for(const session of app.querySelectorAll("[data-next-session]")){
     if(typeof session.contains !== "function" || !session.contains(active)) continue;
     const sid = String(session.dataset && session.dataset.nextSession || "");
-    if(sid) return {session: sid};
+      const harness = String(session.dataset && session.dataset.nextHarness || "");
+      if(sid) return {session: sid, harness};
   }
   for(const subject of app.querySelectorAll("[data-next-subject-key]")){
     if(typeof subject.contains !== "function" || !subject.contains(active)) continue;
@@ -36,7 +38,8 @@ function nextRestoreFocus(snapshot, model){
   if(!app || typeof app.querySelectorAll !== "function") return;
   if(snapshot.session){
     for(const session of app.querySelectorAll("[data-next-session]")){
-      if(String(session.dataset && session.dataset.nextSession || "") !== snapshot.session){
+      if(String(session.dataset && session.dataset.nextSession || "") !== snapshot.session ||
+        String(session.dataset && session.dataset.nextHarness || "") !== snapshot.harness){
         continue;
       }
       if(typeof session.focus === "function") session.focus();
@@ -115,6 +118,37 @@ function nextAnnounceAttention(message){
   if(status) status.textContent = message;
 }
 
+function nextSessionCopyStatus(app){
+  if(nextSessionCopyStatusElement) return nextSessionCopyStatusElement;
+  if(!app || typeof app.insertAdjacentElement !== "function") return null;
+  const status = document.createElement("p");
+  status.id = "next-session-copy-status";
+  status.className = "next-visually-hidden";
+  if(typeof status.setAttribute === "function"){
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("aria-atomic", "true");
+  }
+  app.insertAdjacentElement("afterend", status);
+  nextSessionCopyStatusElement = status;
+  return status;
+}
+
+async function nextCopySessionId(target){
+  const sid = String(target && target.dataset && target.dataset.nextCopySession || "");
+  const status = nextSessionCopyStatus(document.getElementById("app"));
+  try{
+    if(!sid || typeof navigator === "undefined" || !navigator.clipboard ||
+      typeof navigator.clipboard.writeText !== "function") throw new Error("clipboard unavailable");
+    await navigator.clipboard.writeText(sid);
+    target.dataset.nextCopyState = "copied";
+    if(status) status.textContent = `Copied session ID ${sid}`;
+  }catch(_error){
+    target.dataset.nextCopyState = "failed";
+    if(status) status.textContent = "Session ID could not be copied";
+  }
+}
+
 function nextRouteToken(route){
   return nextFragmentForRoute(route).slice(3);
 }
@@ -129,9 +163,13 @@ function nextBreadcrumb(){
       `<span aria-hidden="true"> &gt; </span><span>${project}</span>`;
   }
   const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
+  const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
+  const sessionLabel = session
+    ? nextSessionTitle(session, nextSessionAsks(session))
+    : "Session";
   return `${sessions}<span aria-hidden="true"> &gt; </span>${projects}` +
     `<span aria-hidden="true"> &gt; </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
-    `<span aria-hidden="true"> &gt; </span><span>${esc(nextRoute.session)}</span>`;
+    `<span aria-hidden="true"> &gt; </span><span>${esc(sessionLabel)}</span>`;
 }
 
 function nextPrimaryNavigation(){
@@ -150,7 +188,7 @@ function nextDocumentTitle(){
   if(nextRoute.view === "projects") return "Cargento — Projects";
   if(nextRoute.view === "sessions") return "Cargento — Sessions";
   if(nextRoute.view === "project") return `${nextRoute.project} — Cargento`;
-  const session = nextSessionFind(nextRoute.project, nextRoute.session);
+  const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
   const title = session
     ? nextSessionTitle(session, nextSessionAsks(session))
     : String(nextRoute.session || "Session");
@@ -232,6 +270,15 @@ function navigateNext(route){
 }
 
 document.addEventListener("click", event => {
+  const copyTarget = event.target && event.target.closest
+    ? event.target.closest("[data-next-copy-session]")
+    : null;
+  if(copyTarget){
+    event.preventDefault();
+    if(typeof event.stopPropagation === "function") event.stopPropagation();
+    void nextCopySessionId(copyTarget);
+    return;
+  }
   const routeTarget = event.target && event.target.closest
     ? event.target.closest("[data-next-route]")
     : null;
