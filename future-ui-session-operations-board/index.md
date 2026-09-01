@@ -579,3 +579,42 @@ records truthful, but it does not yet converge on the captain-question gate.
 Revise assignment absence and mobile priority, and either give Projects the
 command facts it claims to summarize or reframe Projects explicitly as
 inventory before another focused crucible pass.
+
+## Stage Report: prototyping (cycle 4)
+
+- DONE: At 320px, compact fleet facts into a truthful 2-by-2 summary and place the first active session identity and command facts within the initial viewport without horizontal overflow.
+  Checkpoint `819a1a8` measures `152px 152px` fleet columns at a real
+  320×900 viewport; the first 304px-wide active card spans y=547–891, with
+  WHERE/NOW at y=702–812 and NEXT/BLOCKED at y=812–890, while
+  `scrollWidth === innerWidth === 320`. Reintroducing the 620px one-column
+  fleet rule or the 360px single-column fact rule fails the responsive tests.
+- DONE: Active Projects expose each active session's source-backed Now, Next, and Blocked facts instead of collapsing them to an executing count; recently observed projects remain identity-and-scope history only.
+  A two-harness same-SID fixture renders two canonical
+  `data-next-harness`/`data-next-session` entries with distinct task-derived
+  NOW/NEXT and reporter-derived BLOCKED truth; deleting either exact-session
+  renderer entry, restoring `N sessions executing`, or emitting commands for
+  history fails the Projects tests. Wide Chrome measures four stable columns
+  per active exact session and zero history command rows.
+- DONE: Absent optional assignments remain omitted across board and detail surfaces, with focused tests, recomputed Next byte pins, and fresh wide/mobile Sessions and Projects captures on feat/future-ui only.
+  Board, Projects, and detail fixtures reject negative assignment placeholders
+  while retaining genuine `asked` assignments; detail source coverage now
+  reports only a missing next action. The 225-test Next suite, focused Ruff
+  checks, embedded-source linter, and diff check pass at pushed checkpoint
+  `819a1a8`; the assembled page is 316,939 bytes with SHA-256
+  `da859c807b7c0e5d15201e1e8ee5afce081c38e1aee19b52a568b51e847df8c6`.
+
+### Exact captures
+
+- [Wide Sessions, 1531×1103](prototyping/correction-3/wide-sessions-819a1a8.jpg) — SHA-256 `52eec57468eb966da5f24c43e9d95b34974af82e91aaa7ad8258c07eb3c33f0d`.
+- [Mobile Sessions first viewport, 320×900](prototyping/correction-3/mobile-320-sessions-first-viewport-819a1a8.jpg) — SHA-256 `6580cb8006021439778956a806826541b51d98fc113d19293c3cbd52927791ae`.
+- [Wide Projects, 1531×1103](prototyping/correction-3/wide-projects-819a1a8.jpg) — SHA-256 `08b25d2c3fd868cff4a3e6576c4bc7233269543c93803f9cb75f2c35f4029353`.
+- [Mobile Projects, 320×1017](prototyping/correction-3/mobile-320-projects-819a1a8.jpg) — SHA-256 `d2e676e1cb23277e2e78b88692da4b3741ff8959e14070d706a1fbe0be12bcd1`.
+
+### Summary
+
+Correction round 3 makes Projects a true exact-session command surface and
+makes the 320px Sessions lede answerable without an initial scroll. It keeps
+canonical identity, active/history separation, source uncertainty, accessible
+copy controls, and the captain-directed omission of absent assignments intact;
+the pushed product checkpoint and all four captures remain on
+`feat/future-ui`, with no merge or target change to `main`.
