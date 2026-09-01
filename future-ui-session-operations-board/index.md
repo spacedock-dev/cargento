@@ -618,3 +618,69 @@ canonical identity, active/history separation, source uncertainty, accessible
 copy controls, and the captain-directed omission of absent assignments intact;
 the pushed product checkpoint and all four captures remain on
 `feat/future-ui`, with no merge or target change to `main`.
+
+## Crucible re-review — correction round 3
+
+**ACCEPT.** Checkpoint `819a1a8` closes the last candidate-owned blocker and
+high findings. The approved wide and 320-pixel captures make the active exact
+session, WHERE, NOW, NEXT, and BLOCKED simultaneously legible; Projects now
+preserves those facts per exact active session; and no material regression was
+reproduced in identity, source truth, history, or accessibility.
+
+| Captain question | Fresh result |
+|---|---|
+| Overall situation | **Pass.** The Sessions capture exposes 1 active, 1 working, 0 exact requests, 0 reported blocks, and 2-of-2 block-report coverage from one exact-row population. |
+| Current assignment | **Source-limited, truthfully omitted.** This Codex source publishes no assignment; its prompt-derived title remains labelled as session identity rather than being promoted into an assignment claim. Published `asked` assignments still render. |
+| Execution state and current activity | **Pass.** The active Codex session is visibly Working and says `running 1 subagent`; recent history is separated and makes no current-process claim. |
+| Next action | **Pass.** Sessions and Projects both say `No pending step published`; no completed task, title, or subagent is promoted into NEXT. |
+| Blockage and captain responsibility | **Pass at the source boundary.** The capture says `No reported block / Reporter available`; exact asks remain row-owned and carry CAPTAIN only for the exact Spacedock owner, while Antigravity remains Unknown without one. |
+
+### Acceptance-criteria disposition
+
+- **AC-1 — pass.** The fleet facts derive from exact rows and exact asks; the
+  wide and mobile capture agree on all four values and block-report coverage.
+- **AC-2 — pass under the captain-approved active/history boundary.** At
+  320x900 the first active identity and all four command facts fit in the first
+  viewport without horizontal overflow. History remains reachable but does not
+  pretend stale observations are current command facts.
+- **AC-3 — pass.** Working, needs-input, and exact-request evidence changes
+  membership and emphasis without merging exact rows; same-SID cross-harness
+  fixtures retain two canonical entries and exactly one owned ask.
+- **AC-4 — pass at published-source limits.** Codex in-progress work wins NOW,
+  pending work alone wins NEXT, Claude's published assignment remains distinct,
+  and Antigravity's non-reporting block contract remains Unknown.
+- **AC-5 — pass.** The approved 1531-pixel and 320-pixel captures preserve
+  stable columns/cards, readable source qualifiers, active emphasis, and no
+  horizontal overflow. The already-green focus/copy semantics remain outside
+  the correction's changed claim and were not re-run.
+
+### Material findings and surviving uncertainty
+
+No new material finding was reproduced. The prior Projects command-fact
+blocker, unpublished-assignment regression, and mobile first-view hierarchy
+finding are **resolved** by the exact-session Projects rows, intentional
+omission of absent optional assignments, and the 2-by-2 compact fleet summary.
+
+Source-owned uncertainty survives for exact path/branch/worktree, absent Codex
+and Antigravity assignments, the task behind a running subagent, Antigravity
+block state without an exact ask, and whether recent-history processes remain
+open. The newest live captures contain Codex and Claude Code; the unchanged
+three-harness source contract is carried by the previously accepted live AGY
+evidence and canonical collision/block fixtures, so already-green checks were
+not repeated. None of these limits is presented as a positive command fact.
+
+## Stage Report: crucible (cycle 4)
+
+- DONE: Try to falsify the five-second fleet scan and exact WHERE, NOW, NEXT, and BLOCKED facts using the approved wide and 320px captures.
+  Direct inspection of all four digest-matched captures found the first active 320px card and its WHERE/NOW/NEXT/BLOCKED facts inside the initial 900px viewport; changing the fleet layout, card width, or fact order would invalidate the recorded geometry.
+- DONE: Verify active versus history separation, exact-session identity, and source-bound truth across Codex, Claude Code, and Antigravity without re-running checks already green.
+  The captures separate one active row from observational history; canonical harness-plus-session fixtures preserve identity and ask ownership, while prior live three-harness evidence keeps Claude publication and AGY unknown-block limits explicit without repeating the 225-test suite.
+- DONE: Disposition every material finding and recommend accept, revise, or reframe against AC-1 through AC-5.
+  **ACCEPT:** AC-1 through AC-5 pass at their stated source boundary; all three correction-round findings are resolved, no new material finding was reproduced, and remaining uncertainties are source-owned and named above.
+
+### Summary
+
+Correction round 3 converges on the approved exact-session direction. The
+candidate now supports an immediate active-session scan at wide and 320-pixel
+widths, preserves exact command truth on Projects, and keeps history and sparse
+harness evidence honest; accept checkpoint `819a1a8` for the captain gate.
