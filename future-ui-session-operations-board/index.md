@@ -135,3 +135,91 @@ does not report `needs_input`.
 ### Summary
 
 Three real harness sessions show that the current UI reports NOW honestly at drill-down but cannot yet operate as an exact-session board. The default aggregation erases fleet context, WHERE is lossy, NEXT is buried as missing coverage, and BLOCKED is unsafe for Antigravity; the five committed live captures preserve those boundaries for prototyping.
+
+## Prototype checkpoint
+
+The approved Session Operations Board is checkpointed and pushed only on
+`feat/future-ui` at commit `569c8ca`. The default and legacy overview fragments
+now normalize to Sessions, Projects remains the secondary inventory, and the
+board renders one native-link row for every exact payload session. The four
+fleet facts and the header counts derive from that same row population rather
+than `summary` aggregates.
+
+Every row visibly preserves harness identity and the collector-provided session
+ID, followed by comparable WHERE, NOW, NEXT, and BLOCKED facts. WHERE explicitly
+calls the project value a label and says exact location is not published. NOW
+prefers a published `in_progress` task and otherwise uses only `state_detail`.
+NEXT uses only a published `pending` task. BLOCKED distinguishes a reported
+request, no reported block from a capable harness, and unknown from a harness
+that cannot report blocks. Exceptions sort first and receive status emphasis,
+but never replace or merge rows.
+
+The prototype also separates `.next-session-current` from the removed
+`.next-session-activity` table selector. In the live capture exactly one of
+seven rows owns the working rail and glyph; the six idle rows no longer receive
+false active styling.
+
+### Exact-byte before and after evidence
+
+The before capture is the reconnaissance flat inventory served from commit
+`1cb112e`:
+
+- [Before — flat session inventory](reconnaissance/overview-sessions.jpg) —
+  1531×1047 JPEG,
+  `sha256:fddd18cc24258c08e7bc68f478f72bc859d6b306a3bd3cee842fcb0d1298b3eb`.
+
+The after captures were served from the pushed candidate commit `569c8ca` on
+`http://127.0.0.1:4554/?next=true#n=sessions`. The top and scrolled tail together
+show all seven exact rows in the live payload:
+
+- [After — board header and leading rows](prototyping/after-wide-569c8ca.jpg) —
+  1531×1103 JPEG,
+  `sha256:dd6563eeb2ff34bfce5f9453555175d7e73da55b8d9d0e0056edf0e34d01b670`.
+- [After — board tail with the seventh exact row](prototyping/after-wide-tail-569c8ca.jpg) —
+  1531×1047 JPEG,
+  `sha256:9c8e1484f287cb43648c2eb1e3c6b524c7a2f4448bab42dfdf549d23e94ac885`.
+
+The live DOM and the visible board agreed on seven rows, one working row, zero
+exact requests, zero reported blocks, and block-state reporting for six of seven
+sessions. `document.documentElement.scrollWidth` equalled the 1531-pixel
+viewport; no operation row retained browser-default link color, and exactly one
+row contained a live activity glyph.
+
+### Responsive proof and residual limitation
+
+Focused CSS contracts exercise the 980-pixel transition to two comparable fact
+columns, the 620-pixel transition to one `minmax(0,1fr)` column, unbreakable-text
+wrapping, and the absence of the old shared activity selector. The assembled
+Next page and its source assets also pass the HTML/CSS/JS source linter.
+
+An exact 320-pixel visual capture is deliberately **SKIPPED**. The connected
+Chrome backend advertised a viewport override and accepted `{width: 320,
+height: 900}`, but both an existing tab and a fresh tab continued to report
+`innerWidth: 1531`, `scrollWidth: 1531`, and the five-column computed grid. The
+temporary override was reset, the falsely named capture was deleted, and no
+data-URL, raw-CDP, or alternate-browser workaround was used. The responsive CSS
+is mechanically verified; visual verification at exactly 320 pixels remains a
+residual limitation of this stage's browser backend.
+
+### Verification
+
+- `python3 -m unittest cargento.skills.cargento.tests.test_next_page cargento.skills.cargento.tests.test_next_chrome cargento.skills.cargento.tests.test_next_session cargento.skills.cargento.tests.test_next_sessions` — 83 tests passed.
+- Focused `ruff check` passed and `ruff format --check` reported all four touched test modules formatted.
+- `python3 scripts/lint_embedded.py` reported clean JavaScript syntax, CSS structure, DOM references, and part inventory.
+- Mechanically recomputed assembled Next page: 304,686 bytes,
+  `sha256:0e83371a77e737a16afa995ea1ec727c01fd35c07b61cbf9d1da10ab713d176a`.
+
+## Stage Report: prototyping
+
+- DONE: implement one coherent candidate that makes exact sessions the default command surface and exposes fleet facts plus truthful WHERE, NOW, NEXT, and BLOCKED values without aggregating exceptions away.
+  The live seven-session payload rendered seven visible native-link rows; changing any exact ID, state, request, pending task, harness capability, or project label changes the corresponding board fact rather than a detached summary.
+- DONE: preserve source limits and scope with focused behavior tests, mechanically recomputed Next byte pins, and responsive source contracts.
+  Eighty-three focused tests passed across the assembled page, chrome, session detail, and operations board; the 304,686-byte assembled digest and every changed part digest are pinned from current assets, and the 980/620 layouts plus unbreakable-text behavior are exercised without changing stable UI.
+- DONE: checkpoint the accepted candidate only on `feat/future-ui` and capture exact-byte before/after desktop evidence.
+  Pushed commit `569c8ca` is the sole product checkpoint, the prior `1cb112e` capture and two candidate captures carry exact SHA-256 digests, and neither the candidate nor the state report was merged to `main`.
+- SKIPPED: capture an exact 320-pixel visual from the connected Chrome backend.
+  The supported viewport control accepted 320×900 twice but both existing and fresh tabs remained 1531 pixels wide; the invalid artifact was deleted and the mechanically green responsive proof is retained with this explicit visual-verification limitation.
+
+### Summary
+
+The prototype replaces the rejected attention ranking with a truthful exact-session operations board. It preserves every observed session, makes source gaps explicit, fixes the false activity rail, and checkpoints reproducible code, tests, byte pins, and wide live evidence on `feat/future-ui`; only the browser-backend-dependent 320-pixel visual capture remains skipped.
