@@ -1,7 +1,7 @@
 ---
 id:
 title: Session Operations Board
-status: prototyping
+status: crucible
 source: Captain rejection of future-ui-command-surface on 2026-09-01
 started: 2026-09-01T00:07:26Z
 completed:
