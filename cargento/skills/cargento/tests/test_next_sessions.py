@@ -377,13 +377,23 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn('role="link"', row)
 
     def test_history_keeps_identity_and_scope_but_not_empty_operational_copy(self) -> None:
-        html = self.render()
+        html = self.render(
+            """
+nextData.sessions.find(session => session.sid === "idle-mid").instruction = {
+  label: "asked", text: "Historical assignment", at: 9900
+};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
         assert isinstance(html, str)
         row = self.session_row(html, "idle-mid")
 
         self.assertIn('data-next-operation-history="true"', row)
         self.assertIn("Middle idle", row)
         self.assertIn("idle/mid", row)
+        self.assertNotIn("Historical assignment", row)
+        self.assertNotIn("next-operation-assignment", row)
         for fact in ("now", "next", "blocked"):
             fact_html = self.fact(row, fact)
             self.assertIn("<strong>—</strong>", fact_html)
