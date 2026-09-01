@@ -1,7 +1,7 @@
 const nextQuery = new URLSearchParams(location.search);
 const NEXT_DUPLICATE_LABEL_LIMIT = "Same label is not proof of the same directory: the label is the" +
   " last two segments of each session's path, so sibling worktrees read alike.";
-const NEXT_TOP_LEVEL_VIEWS = new Set(["attention", "projects", "sessions"]);
+const NEXT_TOP_LEVEL_VIEWS = new Set(["projects", "sessions"]);
 
 const qs = name => nextQuery.get(name);
 const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g,
@@ -32,7 +32,7 @@ function nextRouteFromFragment(fragment){
     const session = nextDecodeRoutePart(parts[2]);
     if(project && session) return {view: "session", project, session};
   }
-  return {view: "attention", project: null, session: null};
+  return {view: "sessions", project: null, session: null};
 }
 
 function nextFragmentForRoute(route){
@@ -43,7 +43,7 @@ function nextFragmentForRoute(route){
     return `#n=project:${encodeURIComponent(route.project)}`;
   }
   if(route && NEXT_TOP_LEVEL_VIEWS.has(route.view)) return `#n=${route.view}`;
-  return "#n=attention";
+  return "#n=sessions";
 }
 
 function nextNumber(value){

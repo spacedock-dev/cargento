@@ -477,7 +477,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIn("min-width:0", name.group(1) if name else "")
         self.assertIn("overflow-wrap:anywhere", name.group(1) if name else "")
 
-    def test_instruction_lines_break_an_unbreakable_token(self) -> None:
+    def test_operator_text_breaks_an_unbreakable_token(self) -> None:
         # The instruction line quotes what the operator typed, and 50 of 1,789
         # published lines carry a single token over 80 characters (longest 113) —
         # pasted URLs, which `shorten_paths` leaves whole on purpose because the
@@ -487,7 +487,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         # in this stylesheet already guards it.
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
         for selector in (
-            r"\.next-session-row-instruction",
+            r"\.next-operation-identity,\.next-operation-fact",
             r"\.next-session-detail-instruction",
         ):
             with self.subTest(selector=selector):
@@ -525,20 +525,20 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                9_741,
-                "91950f44d900500036eca7fc4939f10a051aeccfcadb0dcacf45c89a293a2ba9",
+                9_726,
+                "7be809892df0046ac143b34b4a3a83daa60c9e6ed7767edb55595681a1f2a2f2",
             ),
             "next-attention.js": (
                 41_954,
                 "56bc4ce7bb65fb19f5d8f1bf35902b4bb219c35663d17bcf2d35759f67eb193f",
             ),
             "next-chrome.js": (
-                12_485,
-                "5d04a78cd8ab7e8dc3d35c8ae395453180650d0411d3ed1aca6d3734558f849c",
+                13_016,
+                "c1731eaf40c4241ebc5053b5edef1d07fa61565b66ab7632e4d03a0cf15abc61",
             ),
             "next-sessions.js": (
-                5_198,
-                "e7b27b8c1ec5c320351a1622211fb49a8d9fc3734da83798c273ae6f43c74bb1",
+                8_728,
+                "9c0441fcfe44860991cfc7c495b1b7823627529d7306b278c95048c49eade7d0",
             ),
             "next-projects.js": (
                 8_626,
@@ -553,8 +553,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "73e9a1cb6f02f818a0bd51ef5832a7766c092d88da564f6ebede654ef430da7b",
             ),
             "next-session.js": (
-                15_498,
-                "1d62bbacc00eb26742eeba3fd1efadef7ce922da97ecc68a8062f2386b836dad",
+                15_766,
+                "6520d5cced3cc1539e76918177e420303db51d468f06db77a33f4680358a8006",
             ),
             "next-workstream.js": (
                 11_703,
@@ -569,8 +569,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "4da6527bbf6401db716ab5807748ac01a64aecce996e993ff9e0b42c22fdc811",
             ),
             "next-render.js": (
-                2_242,
-                "99c73e7d589e854a7c3f2c6ff7c046808389bc1490b0c5db715f3b43bf83d03c",
+                2_148,
+                "4fe72e026e982ddd55492fdfdc83ff2278336ca4247fabbab111d87feefb0176",
             ),
             "next-live.js": (
                 3_470,
@@ -585,16 +585,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(32_016, len(styles))
+        self.assertEqual(35_000, len(styles))
         self.assertEqual(
-            "82ac877a3883a1b6cfb77023ce05d1a29327fa3076f14bb5ca8d20c752846b33",
+            "5e821fb9c3b25193e701f3af56930e1c80ca2d3b82bd5a433289ec91844e2f77",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(297_482, len(assembled))
+        self.assertEqual(304_686, len(assembled))
         self.assertEqual(
-            "10941400c09a4a990b32b6657235fc57f8f14911291a150d16d188c8ab2339de",
+            "0e83371a77e737a16afa995ea1ec727c01fd35c07b61cbf9d1da10ab713d176a",
             hashlib.sha256(assembled).hexdigest(),
         )
 
@@ -651,16 +651,15 @@ console.log(JSON.stringify({
         )
         self.assertEqual([None, None, "0s", "5m"], out["since"])
 
-    def test_the_default_bundle_mounts_primary_attention_navigation(self) -> None:
+    def test_the_default_bundle_mounts_primary_session_navigation(self) -> None:
         out = self._run_page_js(
             "console.log(JSON.stringify(__els.app.innerHTML));",
             '__els.app = {innerHTML: ""};\n',
         )
 
         self.assertIn(
-            '<nav aria-label="Primary"><a href="#n=attention" aria-current="page">'
-            'Attention</a><a href="#n=projects">Projects</a>'
-            '<a href="#n=sessions">Sessions</a></nav>',
+            '<nav aria-label="Primary"><a href="#n=projects">Projects</a>'
+            '<a href="#n=sessions" aria-current="page">Sessions</a></nav>',
             out,
         )
         self.assertNotIn('class="next-breadcrumb" aria-label="Breadcrumb"', out)

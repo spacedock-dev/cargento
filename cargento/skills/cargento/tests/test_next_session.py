@@ -192,7 +192,7 @@ console.log(JSON.stringify(variants));
             self.assertNotIn("Not published", html)
             self.assertNotRegex(html, r"(?i)source coverage[^<]*(?:field|schema|instruction)")
 
-    def test_published_task_is_the_next_action_when_no_ask_exists(self) -> None:
+    def test_in_progress_task_is_now_and_only_pending_task_is_next(self) -> None:
         html = self.render(
             """
 nextData.asks = [];
@@ -202,14 +202,19 @@ console.log(JSON.stringify(__els.app.innerHTML));
         )
         assert isinstance(html, str)
 
+        current = re.search(r'<section class="next-session-current"[^>]*>[\s\S]*?</section>', html)
+        self.assertIsNotNone(current)
+        current_html = current.group(0) if current else ""
+        self.assertIn("Review response", current_html)
+        self.assertNotIn("Prepare payload", current_html)
         self.assertIn('data-next-session-command-fact="next"', html)
         next_fact = re.search(
             r'<section data-next-session-command-fact="next">[\s\S]*?</section>', html
         )
         self.assertIsNotNone(next_fact)
         fact_html = next_fact.group(0) if next_fact else ""
-        self.assertIn("Review response", fact_html)
-        self.assertNotIn("Prepare payload", fact_html)
+        self.assertIn("Prepare payload", fact_html)
+        self.assertNotIn("Review response", fact_html)
 
     def test_header_rail_names_only_known_states_and_keeps_the_blocked_alert(self) -> None:
         out = self.render(
@@ -740,7 +745,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
         # recency the payload does not make, and an age without a label reads as
         # the newest instruction when it is not.
         line = '{label: "earlier", text: "Reconcile the registry", at: 9400}'
-        for html in (self.rows(line), self.detail(line)):
+        for html in (self.detail(line),):
             self.assertIn('<span class="next-instruction-label">earlier</span>, 10m:', html)
             self.assertIn("Reconcile the registry", html)
             self.assertIn('data-next-instruction="earlier"', html)
@@ -750,7 +755,7 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
         # inside it rendered "ASKED, 4M:" — the unit of a duration as a capital
         # letter, which reads as an initialism and folds the age into the label.
         line = '{label: "asked", text: "Reconcile the registry", at: 9400}'
-        for html in (self.rows(line), self.detail(line)):
+        for html in (self.detail(line),):
             self.assertIn('<span class="next-instruction-label">asked</span>', html)
             self.assertNotIn('class="next-instruction-label">asked, 10m', html)
 
@@ -766,13 +771,15 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
                 html = self.detail(f'{{label: "{label}", text: "Real work", at: 9400}}')
                 self.assertNotIn("Real work", html)
 
-    def test_the_table_labels_line_one_only_where_line_two_stands_under_it(self) -> None:
-        # An unlabelled line 1 above a labelled line 2 reads as though the label
-        # captions the row. On a row with nothing beneath it there is nothing to
-        # tell apart, and the column heading already says SESSION.
+    def test_the_board_identity_uses_title_without_repeating_assignment(self) -> None:
+        # The operations row reserves its four comparable cells for command
+        # facts. Assignment remains in the drill-down; repeating it under the
+        # title would make one verbose harness dominate the fleet scan.
         labelled = self.rows('{label: "asked", text: "Reconcile the registry", at: 9400}')
-        self.assertIn('<span class="next-instruction-label">title</span>: ', labelled)
         self.assertIn("Resolve the gate", labelled)
+        self.assertIn(self.SID, labelled)
+        self.assertNotIn("Reconcile the registry", labelled)
+        self.assertNotIn("next-instruction-label", labelled)
 
         alone = self.rows("null")
         self.assertIn("Resolve the gate", alone)
@@ -792,14 +799,14 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
         # called one.
         fallback = self.rows(asked, title="null", last_prompt='"Deploy the staging store"')
         self.assertIn("Deploy the staging store", fallback)
-        self.assertIn("Reconcile the registry", fallback)
+        self.assertNotIn("Reconcile the registry", fallback)
         self.assertNotIn('<span class="next-instruction-label">title</span>', fallback)
 
-        # Neither field is there. The caption has nothing to caption, and line 2
-        # still has to render: `nextInstructionEchoes` returns false on an empty
-        # head, so nothing else suppresses it.
+        # Neither identity field is there. The board says the title was not
+        # published; the drill-down remains the place for the assignment.
         empty = self.rows(asked, title="null", last_prompt='""')
-        self.assertIn("Reconcile the registry", empty)
+        self.assertIn("Title not published", empty)
+        self.assertNotIn("Reconcile the registry", empty)
         self.assertNotIn('<span class="next-instruction-label">title</span>', empty)
         # The dangling-colon signature specifically: a caption whose subject was
         # cut off. `<strong></strong>` would pass here for free, because the live

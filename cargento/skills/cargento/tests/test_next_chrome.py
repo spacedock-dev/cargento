@@ -8,10 +8,10 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextChromeBehaviorTest(NextPageJsHarness):
-    def test_attention_is_default_and_old_overview_normalizes_to_it(self) -> None:
+    def test_sessions_is_default_and_legacy_overviews_normalize_to_it(self) -> None:
         out = self._run_page_js(
             """
-const fragments = ["", "#n=overview", "#n=unknown"];
+const fragments = ["", "#n=overview", "#n=attention", "#n=unknown"];
 const routes = fragments.map(nextRouteFromFragment);
 const repaired = routes.map(nextFragmentForRoute);
 console.log(JSON.stringify({routes, repaired}));
@@ -21,14 +21,14 @@ console.log(JSON.stringify({routes, repaired}));
         assert isinstance(out, dict)
 
         for route, repaired in zip(out["routes"], out["repaired"], strict=True):
-            self.assertEqual("attention", route["view"])
-            self.assertEqual("#n=attention", repaired)
+            self.assertEqual("sessions", route["view"])
+            self.assertEqual("#n=sessions", repaired)
 
     def test_primary_routes_are_native_links_with_current_page(self) -> None:
         out = self._run_page_js(
             """
 nextData = {summary: {working: 0, needs_input: 0}, sessions: [], asks: []};
-const views = ["attention", "projects", "sessions"];
+        const views = ["projects", "sessions"];
 const rendered = views.map(view => {
   navigateNext({view, project: null, session: null});
   return {view, title: document.title, html: __els.app.innerHTML};
@@ -41,19 +41,17 @@ console.log(JSON.stringify(rendered));
 
         for rendered, title in zip(
             out,
-            ["Cargento — Attention", "Cargento — Projects", "Cargento — Sessions"],
+            ["Cargento — Projects", "Cargento — Sessions"],
             strict=True,
         ):
             html = rendered["html"]
             self.assertEqual(title, rendered["title"])
             self.assertIn('<nav aria-label="Primary"', html)
-            self.assertIn('href="#n=attention"', html)
             self.assertIn('href="#n=projects"', html)
             self.assertIn('href="#n=sessions"', html)
-            self.assertEqual(3, html.count('<a href="#n='))
+            self.assertEqual(2, html.count('<a href="#n='))
             self.assertEqual(1, html.count('aria-current="page"'))
             self.assertEqual(1, html.count("<h1"))
-            self.assertLess(html.index('href="#n=attention"'), html.index('href="#n=projects"'))
             self.assertLess(html.index('href="#n=projects"'), html.index('href="#n=sessions"'))
 
     def test_every_next_actionable_control_shares_the_44_pixel_target_contract(self) -> None:
@@ -102,10 +100,10 @@ console.log(JSON.stringify({initial, project, attention: nextRoute, html: __els.
             out["project"],
         )
         self.assertEqual(
-            {"view": "attention", "project": None, "session": None},
+            {"view": "sessions", "project": None, "session": None},
             out["attention"],
         )
-        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["html"])
+        self.assertIn("<h1>Session operations</h1>", out["html"])
 
     def test_breadcrumb_segments_are_clickable_and_escape_walks_up(self) -> None:
         out = self._run_page_js(
@@ -122,7 +120,7 @@ console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute})
             'location.hash = "#n=session:recce:019a";\n__els.app = {innerHTML: ""};\n',
         )
 
-        self.assertIn('<a href="#n=attention">Attention</a>', out["sessionHtml"])
+        self.assertIn('<a href="#n=sessions">Sessions</a>', out["sessionHtml"])
         self.assertIn('<a href="#n=projects">Projects</a>', out["sessionHtml"])
         self.assertIn('<a class="next-crumb" href="#n=project:recce">recce</a>', out["sessionHtml"])
         self.assertIn("recce", out["sessionHtml"])
@@ -132,7 +130,7 @@ console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute})
             out["project"],
         )
         self.assertEqual(
-            {"view": "attention", "project": None, "session": None},
+            {"view": "sessions", "project": None, "session": None},
             out["attention"],
         )
         self.assertEqual(out["attention"], out["stayed"])
@@ -155,11 +153,11 @@ console.log(JSON.stringify({fragments, repaired: location.hash}));
         )
 
         self.assertTrue(all("session=" not in fragment for fragment in out["fragments"]))
-        self.assertEqual("#n=attention", out["fragments"][0])
+        self.assertEqual("#n=sessions", out["fragments"][0])
         self.assertEqual("#n=projects", out["fragments"][1])
         self.assertEqual("#n=sessions", out["fragments"][2])
         self.assertEqual("#n=project:recce%3Acloud", out["fragments"][3])
-        self.assertEqual("#n=attention", out["repaired"])
+        self.assertEqual("#n=sessions", out["repaired"])
 
     def test_shortcuts_select_matching_top_level_routes_and_leave_for_dashboard(self) -> None:
         out = self._run_page_js(
@@ -189,17 +187,17 @@ console.log(JSON.stringify({
             {"view": "sessions", "project": None, "session": None}, out["sessions"]["route"]
         )
         self.assertEqual("#n=sessions", out["sessions"]["hash"])
-        self.assertIn("<h1>Sessions</h1>", out["sessions"]["html"])
+        self.assertIn("<h1>Session operations</h1>", out["sessions"]["html"])
         self.assertEqual(
             {"view": "projects", "project": None, "session": None}, out["projects"]["route"]
         )
         self.assertEqual("#n=projects", out["projects"]["hash"])
         self.assertIn("<h1>Projects</h1>", out["projects"]["html"])
         self.assertEqual(
-            {"view": "attention", "project": None, "session": None}, out["attention"]["route"]
+            {"view": "sessions", "project": None, "session": None}, out["attention"]["route"]
         )
-        self.assertEqual("#n=attention", out["attention"]["hash"])
-        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["attention"]["html"])
+        self.assertEqual("#n=sessions", out["attention"]["hash"])
+        self.assertIn("<h1>Session operations</h1>", out["attention"]["html"])
         self.assertEqual(["/"], out["assigned"])
         self.assertEqual("?next=true", out["search"])
         self.assertEqual(1, out["keydownListeners"])
@@ -324,6 +322,7 @@ __els.app = {
             all(
                 selector
                 in {
+                    "[data-next-session]",
                     "[data-next-subject-key]",
                     "[data-next-attention-toggle]",
                     "[data-next-attention-section]",
@@ -333,7 +332,7 @@ __els.app = {
             )
         )
 
-    def test_attention_expansion_and_its_focused_control_survive_refresh(self) -> None:
+    def test_focused_session_row_survives_refresh(self) -> None:
         out = self._run_page_js(
             """
 const payload = generated => ({
@@ -349,28 +348,26 @@ const payload = generated => ({
 });
 nextData = payload(1000);
 nextAttention = nextAttentionModel(nextData);
-nextAttentionExpandedSections.add("needs");
-document.activeElement = {disclosureSection: "needs"};
+document.activeElement = {sessionId: "owner-2"};
 __fetchImpl = async () => ({ok: true, json: async () => payload(2000)});
 await refreshNext();
 console.log(JSON.stringify({
-  expanded: nextAttentionExpandedSections.has("needs"),
   html: __els.app.innerHTML,
   focusCalls: __focusCalls
 }));
 """,
             """
 let __focusCalls = [];
-const __toggle = {
-  dataset: {nextAttentionToggle: "needs"},
-  contains(active){ return active && active.disclosureSection === "needs"; },
-  focus(){ __focusCalls.push("toggle:needs"); document.activeElement = this; }
-};
 __els.app = {
   innerHTML: "",
   querySelectorAll(selector){
+    if(selector === "[data-next-session]") return [0, 1, 2, 3].map(index => ({
+      dataset: {nextSession: `owner-${index}`},
+      contains(active){ return active && active.sessionId === `owner-${index}`; },
+      focus(){ __focusCalls.push(`session:owner-${index}`); document.activeElement = this; }
+    }));
     if(selector === "[data-next-subject-key]") return [];
-    if(selector === "[data-next-attention-toggle]") return [__toggle];
+    if(selector === "[data-next-attention-toggle]") return [];
     if(selector === "[data-next-attention-section]") return [];
     return [];
   },
@@ -379,10 +376,8 @@ __els.app = {
 """,
         )
 
-        self.assertTrue(out["expanded"])
-        self.assertIn('aria-expanded="true"', out["html"])
-        self.assertIn("Show fewer (hide 1)", out["html"])
-        self.assertEqual(["toggle:needs"], out["focusCalls"])
+        self.assertIn('data-next-session="owner-2"', out["html"])
+        self.assertEqual(["session:owner-2"], out["focusCalls"])
 
     def test_attention_announces_successful_count_changes_only(self) -> None:
         out = self._run_page_js(
@@ -519,7 +514,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             out,
         )
         self.assertNotIn("4 running", out)
-        self.assertIn('<h1 tabindex="-1">Attention</h1>', out)
+        self.assertIn("<h1>Session operations</h1>", out)
 
     def test_the_need_you_pill_opens_the_session_queue(self) -> None:
         out = self._run_page_js(
@@ -545,9 +540,9 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 """,
         )
 
-        self.assertEqual({"view": "attention", "project": None, "session": None}, out["route"])
-        self.assertEqual("#n=attention", out["hash"])
-        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["html"])
+        self.assertEqual({"view": "sessions", "project": None, "session": None}, out["route"])
+        self.assertEqual("#n=sessions", out["hash"])
+        self.assertIn("<h1>Session operations</h1>", out["html"])
 
     def test_a_payload_with_no_gates_renders_no_pill(self) -> None:
         out = self._run_page_js(
@@ -574,10 +569,9 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertNotIn('class="next-gate"', out)
         self.assertNotIn('data-next-action="needs-input"', out)
         self.assertIn('<nav aria-label="Primary"', out)
-        self.assertIn('href="#n=attention"', out)
         self.assertIn('href="#n=projects"', out)
         self.assertIn('href="#n=sessions"', out)
-        self.assertIn('<h1 tabindex="-1">Attention</h1>', out)
+        self.assertIn("<h1>Session operations</h1>", out)
         self.assertEqual(1, out.count("dashboard mode"))
 
     def test_poll_forwards_only_the_all_flag(self) -> None:
@@ -641,6 +635,7 @@ __nextShouldFail = false;
 __payload = {
   generated: 1040,
   window_hours: 24,
+  ask: true,
   summary: {working: 0, needs_input: 1},
   asks: [{id: "first", question: "Approve deploy", session_id: "one", age_sec: 20}],
   sessions: [
@@ -696,6 +691,7 @@ let __nextShouldFail = false;
 let __payload = {
   generated: 1000,
   window_hours: 24,
+  ask: true,
   summary: {working: 0, needs_input: 2},
   asks: [
     {id: "first", question: "Approve deploy", session_id: "one", age_sec: 20},
@@ -757,7 +753,10 @@ __releaseRetry({ok: true, json: async () => ({
   generated: 2000,
   window_hours: 24,
   summary: {working: 2, needs_input: 0},
-  sessions: [{project: "recce", subagents: []}, {project: "cargento", subagents: []}]
+  sessions: [
+    {project: "recce", sid: "one", state: "working", subagents: []},
+    {project: "cargento", sid: "two", state: "working", subagents: []}
+  ]
 })});
 await __settle();
 await __settle();
@@ -779,7 +778,7 @@ __fetchImpl = async () => {
     generated: 1000,
     window_hours: 24,
     summary: {working: 1, needs_input: 0},
-    sessions: [{project: "recce", subagents: []}]
+    sessions: [{project: "recce", sid: "one", state: "working", subagents: []}]
   })};
 };
 """,

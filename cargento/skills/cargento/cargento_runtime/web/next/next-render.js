@@ -15,7 +15,7 @@ function nextViewBody(){
     return `<section class="next-projects" data-next-view-body="projects"><h1>Projects</h1>${nextProjectsView(nextAttention)}</section>`;
   }
   if(nextRoute.view === "sessions"){
-    return `<section class="next-sessions" data-next-view-body="sessions"><h1>Sessions</h1>${nextSessionsView()}</section>`;
+    return nextSessionsView();
   }
   return `<section data-next-view-body="${esc(nextRoute.view)}">${nextDetailBody(nextRoute)}</section>`;
 }

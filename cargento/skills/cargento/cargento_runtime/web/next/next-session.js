@@ -58,11 +58,16 @@ function nextSessionNextFact(session, asks){
     if(question) return {kind: "ask", text: question};
   }
   const tasks = Array.isArray(session.tasks) ? session.tasks : [];
-  for(const status of ["in_progress", "pending"]){
-    const task = tasks.find(item => item && item.status === status && String(item.subject || "").trim());
-    if(task) return {kind: "task", text: String(task.subject).trim()};
-  }
-  return null;
+  const task = tasks.find(item =>
+    item && item.status === "pending" && String(item.subject || "").trim());
+  return task ? {kind: "task", text: String(task.subject).trim()} : null;
+}
+
+function nextSessionNowFact(session){
+  const tasks = Array.isArray(session.tasks) ? session.tasks : [];
+  const task = tasks.find(item =>
+    item && item.status === "in_progress" && String(item.subject || "").trim());
+  return task ? String(task.subject).trim() : "";
 }
 
 function nextSessionSourceCoverage(owner, assignment, next, asks){
@@ -87,7 +92,8 @@ function nextSessionCommandSurface(session, asks){
   const assignment = nextSessionInstruction(session, "asked");
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
   const state = nextSessionDetailState(session.state);
-  const executionText = [state && state.label, String(session.state_detail || "").trim()]
+  const current = nextSessionNowFact(session) || String(session.state_detail || "").trim();
+  const executionText = [state && state.label, current]
     .filter(Boolean).join(" · ") || "Activity unavailable";
   const contextLine = context ? nextInstructionLine(session, "", "next-session-command-context") : "";
   const next = asks.length ? null : nextSessionNextFact(session, []);
@@ -112,7 +118,7 @@ function nextSessionCommandSurface(session, asks){
     ? `<div class="next-session-command-facts">${facts.join("")}</div>`
     : "";
   return '<div class="next-session-command-surface" aria-label="Session command surface">' +
-    '<section class="next-session-activity" data-next-session-command="activity">' +
+    '<section class="next-session-current" data-next-session-command="activity">' +
     `<h2>CURRENT ACTIVITY</h2><strong>${esc(executionText)}</strong>${contextLine}</section>` +
     factBlock + nextSessionSourceCoverage(owner, assignment, next, asks) + "</div>";
 }

@@ -11,6 +11,11 @@ function nextCaptureFocus(){
   const app = document.getElementById("app");
   const active = document.activeElement;
   if(!app || !active || typeof app.querySelectorAll !== "function") return null;
+  for(const session of app.querySelectorAll("[data-next-session]")){
+    if(typeof session.contains !== "function" || !session.contains(active)) continue;
+    const sid = String(session.dataset && session.dataset.nextSession || "");
+    if(sid) return {session: sid};
+  }
   for(const subject of app.querySelectorAll("[data-next-subject-key]")){
     if(typeof subject.contains !== "function" || !subject.contains(active)) continue;
     const key = String(subject.dataset && subject.dataset.nextSubjectKey || "");
@@ -26,9 +31,20 @@ function nextCaptureFocus(){
 }
 
 function nextRestoreFocus(snapshot, model){
-  if(!snapshot || !snapshot.section) return;
+  if(!snapshot) return;
   const app = document.getElementById("app");
   if(!app || typeof app.querySelectorAll !== "function") return;
+  if(snapshot.session){
+    for(const session of app.querySelectorAll("[data-next-session]")){
+      if(String(session.dataset && session.dataset.nextSession || "") !== snapshot.session){
+        continue;
+      }
+      if(typeof session.focus === "function") session.focus();
+      return;
+    }
+    return;
+  }
+  if(!snapshot.section) return;
   if(snapshot.disclosure === true){
     for(const toggle of app.querySelectorAll("[data-next-attention-toggle]")){
       if(String(toggle.dataset && toggle.dataset.nextAttentionToggle || "") !== snapshot.section){
@@ -105,22 +121,21 @@ function nextRouteToken(route){
 
 function nextBreadcrumb(){
   if(NEXT_TOP_LEVEL_VIEWS.has(nextRoute.view)) return "";
-  const attention = '<a class="next-crumb" href="#n=attention">Attention</a>';
+  const sessions = '<a class="next-crumb" href="#n=sessions">Sessions</a>';
   const projects = '<a class="next-crumb" href="#n=projects">Projects</a>';
   const project = esc(nextRoute.project);
   if(nextRoute.view === "project"){
-    return `${attention}<span aria-hidden="true"> &gt; </span>${projects}` +
+    return `${sessions}<span aria-hidden="true"> &gt; </span>${projects}` +
       `<span aria-hidden="true"> &gt; </span><span>${project}</span>`;
   }
   const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
-  return `${attention}<span aria-hidden="true"> &gt; </span>${projects}` +
+  return `${sessions}<span aria-hidden="true"> &gt; </span>${projects}` +
     `<span aria-hidden="true"> &gt; </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
     `<span aria-hidden="true"> &gt; </span><span>${esc(nextRoute.session)}</span>`;
 }
 
 function nextPrimaryNavigation(){
   const links = [
-    ["attention", "Attention"],
     ["projects", "Projects"],
     ["sessions", "Sessions"],
   ].map(([view, label]) => {
@@ -148,14 +163,13 @@ function nextRows(){
 
 function nextCounts(){
   const rows = nextRows();
-  const summary = nextData && nextData.summary ? nextData.summary : {};
   const subagents = rows.reduce(
     (total, row) => total + (Array.isArray(row.subagents) ? row.subagents.length : 0),
     0,
   );
   return {
-    gates: Number(summary.needs_input) || 0,
-    running: Number(summary.working) || 0,
+    gates: rows.filter(row => row.state === "needs_input").length,
+    running: rows.filter(row => row.state === "working").length,
     subagents,
   };
 }
