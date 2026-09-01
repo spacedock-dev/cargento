@@ -722,12 +722,9 @@ class LauncherContractTest(unittest.TestCase):
             "    assert mod.__file__, name\n"
             "    resolved = Path(mod.__file__).resolve()\n"
             "    assert resolved.is_relative_to(root), (name, str(resolved))\n"
-            "for asset in ('index.html', 'styles.css', *page.APP_PARTS):\n"
+            "for asset in ('index.html', 'styles.css', *page.APP_PARTS,\n"
+            "              *(name for name, _slot in page.FONT_ASSETS)):\n"
             "    found = page.asset_path(asset).resolve()\n"
-            "    assert found.is_relative_to(root), (asset, str(found))\n"
-            "for asset in ('index.html', 'styles.css', *page.NEXT_PARTS,\n"
-            "              *(name for name, _slot in page.NEXT_FONT_ASSETS)):\n"
-            "    found = page.next_asset_path(asset).resolve()\n"
             "    assert found.is_relative_to(root), (asset, str(found))\n"
             "print('OK', len(names))\n"
         )
@@ -894,8 +891,8 @@ class PublishedTextSweepTest(unittest.TestCase):
         # The measured leak: an in-progress task's `activeForm` is copied into
         # `state_detail` by the collector BEFORE the sweep runs, so redacting
         # the task and not the line published the key twice over — once on the
-        # card and once in the browser notification body, which is the one
-        # published string that leaves the page.
+        # card and once in notification text, which can leave the page through
+        # the native notifier.
         row: Any = {
             "state_detail": f"{self.FAKE}…",
             "tasks": [{"subject": self.FAKE, "activeForm": self.FAKE, "status": "in_progress"}],

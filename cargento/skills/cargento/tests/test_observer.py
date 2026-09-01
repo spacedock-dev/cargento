@@ -1,12 +1,4 @@
-"""Observer analyzer and panel tests.
-
-Five tests covering the acceptance criteria:
-1. No-goal session yields "no goal derived" sentinel (AC2).
-2. Positive case derives goal + stage + block (AC1).
-3. Read-only invariant: the observer never mutates the target tree (AC3).
-4. Model failure degrades to the deterministic fallback.
-5. Observer panel renders the user-facing output from the sidecar (AC4).
-"""
+"""Observer analyzer, transcript resolution, and HTTP route tests."""
 
 from __future__ import annotations
 
@@ -14,7 +6,6 @@ import dataclasses
 import http.client
 import json
 import os
-import shutil
 import tempfile
 import threading
 import unittest
@@ -25,8 +16,6 @@ from unittest import mock
 from cargento_runtime import io as runtime_io
 from cargento_runtime import observer, records
 
-from . import test_page_calm
-from .page_harness import PageJsHarness
 from .support import (
     RuntimeTestCase,
     make_config,
@@ -1297,151 +1286,3 @@ class ObserverRouteTest(RuntimeTestCase):
         self.assertEqual("I am blocked on a missing token.", payload["block"])
         self.assertEqual("", payload["stage"])  # no workflow booted
         self.assertTrue(wrote_sidecar)
-
-
-class ObserverReachabilityTest(PageJsHarness):
-    """That a reader can actually get to the panel, and what happens when they do.
-
-    The gap this closes: `renderObserverPanel` and `observeSession` existed and
-    nothing in the page called either, so the whole surface was unreachable
-    while four tests calling the render function directly stayed green. These
-    drive the control, not the function.
-
-    The calm board fixture is borrowed rather than inherited, and reached
-    through its module rather than imported by name: subclassing `CalmModeTest`
-    re-runs all sixty of its tests under a second name, and so does importing
-    the class into this namespace, because that is where discovery looks.
-    """
-
-    def run_calm(self, checks: str) -> Any:
-        calm = test_page_calm.CalmModeTest
-        return self._run_page_js(calm.FIXTURE + checks, prelude=calm.prelude("calm"))
-
-    @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_the_drawer_offers_observe_and_the_control_fetches_and_paints(self) -> None:
-        checks = """
-const out = {};
-__fetchImpl = () => Promise.resolve({ok: true, json: () => Promise.resolve(
-  {goal: "ship the observer route", stage: "implementation", block: "blocked on node"})});
-render(board());
-
-// Closed: no control and no panel.
-out.closedHasControl = __els.app.innerHTML.includes('data-calm="observe"');
-
-calmAction("open", K("claude", "aaa1"));
-out.openHasControl = __els.app.innerHTML.includes('data-calm="observe" data-arg="claude:aaa1"');
-out.openHasPanelBeforeAsking = __els.app.innerHTML.includes("observer-panel");
-
-// The control, through the same channel a click takes.
-calmAction("observe", K("claude", "aaa1"));
-out.loading = __els.app.innerHTML.includes("observer-loading");
-out.asked = __fetchCalls.map(c => c[0]).filter(u => String(u).includes("/api/observe"));
-await __settle();
-await __settle();
-out.painted = __els.app.innerHTML.includes("ship the observer route");
-out.stage = __els.app.innerHTML.includes("implementation");
-out.block = __els.app.innerHTML.includes("blocked on node");
-
-// It survives the 5s re-render, which is what killed a container-only write.
-render(board());
-out.survivesRerender = __els.app.innerHTML.includes("ship the observer route");
-console.log(JSON.stringify(out));
-"""
-        out = self.run_calm(checks)
-        self.assertFalse(out["closedHasControl"])
-        self.assertTrue(out["openHasControl"])
-        # Nothing is derived until asked: the route reads a transcript and two
-        # project files, which a thirty-row board must not do on a poll.
-        self.assertFalse(out["openHasPanelBeforeAsking"])
-        self.assertEqual(
-            ["/api/observe?harness=claude&sid=aaa1"],
-            out["asked"],
-        )
-        self.assertTrue(out["painted"])
-        self.assertTrue(out["stage"])
-        self.assertTrue(out["block"])
-        self.assertTrue(out["survivesRerender"])
-
-    @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_a_failed_observe_says_so_and_an_unobservable_harness_has_no_control(self) -> None:
-        checks = """
-const out = {};
-__fetchImpl = () => Promise.resolve({ok: false, json: () => Promise.resolve({})});
-render(board());
-calmAction("open", K("claude", "aaa1"));
-calmAction("observe", K("claude", "aaa1"));
-await __settle();
-await __settle();
-out.error = __els.app.innerHTML.includes("observer-error");
-
-// `bbb2` is the Codex row in the shared fixture, and `resolve_transcript` grew
-// a Codex branch: the control follows the resolver rather than lagging it.
-calmAction("open", K("codex", "bbb2"));
-out.codexHasControl = __els.app.innerHTML.includes('data-calm="observe" data-arg="codex:bbb2"');
-
-// A harness the resolver has no branch for still gets none, which is the half
-// of the gate that keeps a control off a row that could only 404.
-render(payload([blocked, busy, quiet,
-  mk({sid: "ddd4", session: "ddd4", harness: "cursor", title: "Cursor row"})]));
-calmAction("open", K("cursor", "ddd4"));
-out.cursorHasControl = __els.app.innerHTML.includes('data-calm="observe" data-arg="cursor:ddd4"');
-console.log(JSON.stringify(out));
-"""
-        out = self.run_calm(checks)
-        self.assertTrue(out["error"])
-        self.assertTrue(out["codexHasControl"])
-        self.assertFalse(out["cursorHasControl"])
-
-
-class ObserverPanelTest(PageJsHarness):
-    """AC4: the observer panel renders the operator-visible output from the
-    sidecar."""
-
-    def test_panel_renders_goal_stage_and_block(self) -> None:
-        """The panel renders the goal text, the stage badge, and the block text
-        from a fixture sidecar."""
-        rendered = self._run_page_js(
-            "const html = renderObserverPanel({"
-            "goal: 'managing the dev workflow', stage: 'implementation', "
-            "block: 'blocked on a missing dependency'});"
-            "console.log(JSON.stringify(html));"
-        )
-        self.assertIn("managing the dev workflow", rendered)
-        self.assertIn("implementation", rendered)
-        self.assertIn("blocked on a missing dependency", rendered)
-
-    def test_panel_renders_no_goal_sentinel_not_fabricated_goal(self) -> None:
-        """A no-goal sidecar renders the sentinel text, not a fabricated goal."""
-        rendered = self._run_page_js(
-            "const html = renderObserverPanel({"
-            "goal: 'no goal derived', stage: '', block: ''});"
-            "console.log(JSON.stringify(html));"
-        )
-        self.assertIn("no goal derived", rendered)
-        # The sentinel has its own class, distinct from a real goal.
-        self.assertIn("observer-sentinel", rendered)
-
-    def test_panel_updates_when_sidecar_changes(self) -> None:
-        """Falsification: editing the sidecar's goal changes the rendered output."""
-        rendered_a = self._run_page_js(
-            "console.log(JSON.stringify(renderObserverPanel({"
-            "goal: 'first goal', stage: 'backlog', block: ''})));"
-        )
-        rendered_b = self._run_page_js(
-            "console.log(JSON.stringify(renderObserverPanel({"
-            "goal: 'second goal', stage: 'backlog', block: ''})));"
-        )
-        self.assertIn("first goal", rendered_a)
-        self.assertIn("second goal", rendered_b)
-        self.assertNotIn("second goal", rendered_a)
-
-    def test_panel_no_hardcoded_fallback_goal(self) -> None:
-        """A no-goal sidecar must not produce a hardcoded fallback goal."""
-        rendered = self._run_page_js(
-            "const html = renderObserverPanel({"
-            "goal: 'no goal derived', stage: '', block: ''});"
-            "console.log(JSON.stringify(html));"
-        )
-        # The only goal text is the sentinel; no fallback string appears.
-        self.assertNotIn("unknown session", rendered)
-        self.assertNotIn("session in progress", rendered)

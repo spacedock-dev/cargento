@@ -266,17 +266,15 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             launcher = copied_plugin / "skills" / "cargento" / "server.py"
             copied_skill = launcher.parent.resolve()
             copied_web = copied_skill / "cargento_runtime" / "web"
-            for name in ("index.html", "styles.css", "page.py", *frontend_page.APP_PARTS):
-                with self.subTest(shipped_file=name):
-                    self.assertTrue((copied_web / name).is_file())
             for name in (
                 "index.html",
                 "styles.css",
-                *frontend_page.NEXT_PARTS,
-                *(name for name, _slot in frontend_page.NEXT_FONT_ASSETS),
+                "page.py",
+                *frontend_page.APP_PARTS,
+                *(name for name, _slot in frontend_page.FONT_ASSETS),
             ):
-                with self.subTest(shipped_next_file=name):
-                    self.assertTrue((copied_web / "next" / name).is_file())
+                with self.subTest(shipped_file=name):
+                    self.assertTrue((copied_web / name).is_file())
             cwd = root / "unrelated"
             cwd.mkdir()
             cargento_home = root / "state"
@@ -311,21 +309,16 @@ modules.extend(
 for module in modules:
     origins[module.__name__] = str(Path(module.__file__).resolve())
 assets = {{
-    "old/" + name: str(page.asset_path(name).resolve())
-    for name in ("index.html", "styles.css", *page.APP_PARTS)
-}}
-assets.update({{
-    "next/" + name: str(page.next_asset_path(name).resolve())
+    name: str(page.asset_path(name).resolve())
     for name in (
-        "index.html", "styles.css", *page.NEXT_PARTS,
-        *(name for name, _slot in page.NEXT_FONT_ASSETS),
+        "index.html", "styles.css", *page.APP_PARTS,
+        *(name for name, _slot in page.FONT_ASSETS),
     )
-}})
+}}
 print(json.dumps({{
     "origins": origins,
     "assets": assets,
     "page_size": len(page.load_page()),
-    "next_page_size": len(page.load_next_page()),
 }}))
 """
             origin_probe = subprocess.run(
@@ -343,14 +336,10 @@ print(json.dumps({{
             for origin in [*discovered["origins"].values(), *discovered["assets"].values()]:
                 self.assertTrue(Path(origin).is_relative_to(copied_skill), origin)
             # The repository's own page, not a pinned figure. This subject is whether the
-            # copy assembles from its own files; the exact byte count is test_page.py's
+            # copy assembles from its own files; the exact byte count is test_next_page.py's
             # oracle. A second pin here reds this module on any frontend edit, which
             # reads as a lifecycle break and sends the reader to the wrong file.
             self.assertEqual(len(frontend_page.load_page()), discovered["page_size"])
-            self.assertEqual(
-                len(frontend_page.load_next_page()),
-                discovered["next_page_size"],
-            )
             state_path = cargento_home / f"cargento-{port}.json"
             proc = subprocess.Popen(
                 [sys.executable, str(launcher), "--port", str(port)],
@@ -370,7 +359,7 @@ print(json.dumps({{
                 code, headers, body = self._response(port, "GET", "/?next=true")
                 self.assertEqual(200, code)
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
-                self.assertEqual(frontend_page.load_next_page(), body)
+                self.assertEqual(frontend_page.load_page(), body)
             finally:
                 stop: subprocess.CompletedProcess[bytes] | None = None
                 # A live owned process has exclusive possession of its port,
@@ -402,63 +391,29 @@ print(json.dumps({{
                     self.assertTrue(lifecycle.await_release(cfg(), port, timeout=5))
                     self.assertEqual([], list(cargento_home.iterdir()))
 
-    def test_copied_plugin_starts_when_one_next_font_is_missing(self) -> None:
+    def test_copied_plugin_refuses_to_start_when_a_canonical_font_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             copied_plugin = root / "copied-plugin" / "cargento"
             shutil.copytree(SERVER_PATH.parents[2], copied_plugin)
             launcher = copied_plugin / "skills" / "cargento" / "server.py"
-            missing = (
-                launcher.parent
-                / "cargento_runtime"
-                / "web"
-                / "next"
-                / frontend_page.NEXT_FONT_ASSETS[0][0]
-            )
+            missing = launcher.parent / "cargento_runtime" / "web" / frontend_page.FONT_ASSETS[0][0]
             missing.unlink()
             port = self._candidate_port()
             env = self._clean_env(root / "state")
-            stop: subprocess.CompletedProcess[str] | None = None
-            try:
-                launch = subprocess.run(
-                    [
-                        sys.executable,
-                        str(launcher),
-                        "--daemon",
-                        "--port",
-                        str(port),
-                    ],
-                    cwd=root,
-                    env=env,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    # A loaded macOS runner took just over 30 seconds to reach the
-                    # existing daemon readiness boundary twice; the same copied
-                    # launch took under a second alone. Match this class's installed-
-                    # process budget without weakening any readiness assertion.
-                    timeout=self.OWNED_INSTANCE_READY_TIMEOUT_SEC,
-                    check=False,
-                )
-                self.assertEqual(0, launch.returncode, launch.stderr)
-                self.assertIn("cannot load next frontend assets", launch.stderr)
-                code, _, body = self._response(port, "GET", "/")
-                self.assertEqual(200, code)
-                self.assertEqual(frontend_page.load_page(), body)
-                code, _, _ = self._response(port, "GET", "/?next=true")
-                self.assertEqual(503, code)
-            finally:
-                stop = subprocess.run(
-                    [sys.executable, str(launcher), "--port", str(port), "--stop"],
-                    cwd=root,
-                    env=env,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    timeout=15,
-                    check=False,
-                )
-            self.assertEqual(0, stop.returncode, stop.stderr)
+            launch = subprocess.run(
+                [sys.executable, str(launcher), "--daemon", "--port", str(port)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=self.OWNED_INSTANCE_READY_TIMEOUT_SEC,
+                check=False,
+            )
+
+            self.assertEqual(1, launch.returncode)
+            self.assertIn("cannot load frontend assets", launch.stderr)
 
     def test_windows_detached_argv_preserves_an_absolute_launcher_path(self) -> None:
         # The respawn target is config.launcher_path, so a Windows path survives

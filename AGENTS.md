@@ -62,8 +62,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │   ├── stream.py           # connected SSE clients, one-slot mailboxes, connection budget
         │   ├── transcripts.py      # shared metadata, prompt titles, the Codex plan, non-Claude analyzers
         │   ├── turns.py            # generic incremental turn scanning and turn display
-        │   └── web/                # HTML, CSS, JS, and byte-preserving page loaders
-        │       └── next/           # independently assembled ?next=true frontend
+        │   └── web/                # canonical HTML, CSS, JS, fonts, and page loader
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
 ```
@@ -202,7 +201,7 @@ Run the full suite **once**, and confirm any failure in those modules by running
 before believing it. Report both results rather than the convenient one. A load average above about
 10 makes this near-certain.
 
-**Frontend byte pins are the conflict you will get.** `tests/test_page.py` holds per-part sizes and
+**Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes and
 digests plus the assembled page. Two branches that both change a web asset produce a conflict where
 **each side is correct for a tree that no longer exists**, so a textual resolution ships a number
 wrong for both. Recompute from the assets. If only one side changed the page the existing figures

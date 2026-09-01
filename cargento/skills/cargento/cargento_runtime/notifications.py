@@ -107,12 +107,9 @@ def native_notifier(platform_name: str) -> str:
     checks them all, rather than treating the non-host branch as unreachable
     (design decision D-4 in docs/design-cross-platform.md).
 
-    The page reads this through ``/api/data`` to decide whether to raise its
-    own browser notification. Exactly one layer notifies for a given
-    transition: the server when it has a backend here, the browser when it does
-    not. Linux and Windows have no backend yet (tracked in
-    docs/plans/native-notifications.md) — so today the
-    browser covers them and macOS behavior is unchanged.
+    ``/api/data`` publishes the name for diagnostics. Linux and Windows have no
+    backend yet (tracked in ``docs/plans/native-notifications.md``), so native
+    notifications are currently macOS-only.
     """
     return "osascript" if platform_name == "darwin" else ""
 

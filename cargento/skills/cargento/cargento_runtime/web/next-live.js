@@ -1,13 +1,12 @@
-/* The next bundle needs its own lease. localStorage belongs to the origin, so
-   sharing the default bundle's keys would let a preview tab demote the default
-   page to its slow fallback poll. Two streams when both bundles are open cost
-   one browser connection more, but keep either UI from starving the other. */
+/* Keep the released bundle's namespaced keys. Browsers may still hold the old
+   dashboard's unnamespaced lease, and adopting that key would let stale
+   state demote this page to its slow fallback poll. */
 const NEXT_LEADER_KEY = "cargento.next.leader";
 const NEXT_REVISION_KEY = "cargento.next.revision";
 const NEXT_LEASE_RENEW_MS = 2000;
 const NEXT_LEASE_STALE_MS = 6000;
 const NEXT_FALLBACK_POLL_MS = 20000;
-const NEXT_LEGACY_POLL_MS = 5000;
+const NEXT_UNCOORDINATED_POLL_MS = 5000;
 const NEXT_LIVE_SUPPORTED = typeof EventSource !== "undefined";
 const NEXT_TAB_ID = Math.random().toString(36).slice(2) + "-" + Date.now();
 
@@ -100,7 +99,7 @@ function nextStartLive(){
   }
   setInterval(
     refreshNext,
-    NEXT_LIVE_SUPPORTED ? NEXT_FALLBACK_POLL_MS : NEXT_LEGACY_POLL_MS,
+    NEXT_LIVE_SUPPORTED ? NEXT_FALLBACK_POLL_MS : NEXT_UNCOORDINATED_POLL_MS,
   );
 }
 

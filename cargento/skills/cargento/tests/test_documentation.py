@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from cargento_runtime import cli, git_status
 from cargento_runtime import config as runtime_config
-from cargento_runtime.web import page as frontend_page
 
 from .support import (
     SERVER_PATH,
@@ -87,14 +86,6 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
         pyproject = (SERVER_PATH.parents[3] / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('python_version = "3.11"', pyproject)
         self.assertIn('target-version = "py311"', pyproject)
-
-    def test_the_documented_unread_threshold_is_the_one_the_page_applies(self) -> None:
-        # The gloss this replaced described a threshold nothing read any more.
-        # SKILL.md states this one in minutes, so the two can only agree by
-        # accident unless something compares them.
-        match = re.search(r"const FINISHED_UNREAD_SEC = (\d+);", frontend_page.load_script())
-        assert match is not None, "the unread threshold moved or was renamed"
-        self.assertIn(f"for {int(match.group(1)) // 60} minutes", self.SKILL)
 
     def test_documented_urls_use_the_address_the_server_binds(self) -> None:
         # The listener is IPv4-only, so "localhost" can resolve to ::1 and fail.

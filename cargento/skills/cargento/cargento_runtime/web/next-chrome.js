@@ -256,11 +256,7 @@ function renderNext(focus = nextCaptureFocus()){
     "</div>" +
     '<div class="next-header-right">' +
     `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} subagents</span>` +
-    gate +
-    '<details class="next-menu"><summary aria-label="More">···</summary>' +
-    '<div class="next-menu-items">' +
-    '<button type="button" data-next-action="dashboard">dashboard mode <kbd>d</kbd></button>' +
-    "</div></details></div></header>" +
+    gate + "</div></header>" +
     stalled + nextViewBody(counts);
   nextAttentionStatus(app);
   nextRestoreFocus(focus, nextAttention);
@@ -320,7 +316,6 @@ document.addEventListener("click", event => {
   if(actionTarget.dataset.nextAction === "needs-input"){
     navigateNext({view: "attention", project: null, session: null});
   }
-  if(actionTarget.dataset.nextAction === "dashboard") location.assign("/");
 });
 
 document.addEventListener("keydown", event => {
@@ -363,9 +358,6 @@ document.addEventListener("keydown", event => {
   }else if(String(event.key).toLowerCase() === "s"){
     event.preventDefault();
     navigateNext({view: "sessions", project: null, session: null});
-  }else if(String(event.key).toLowerCase() === "d"){
-    event.preventDefault();
-    location.assign("/");
   }
 });
 

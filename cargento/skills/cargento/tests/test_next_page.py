@@ -21,45 +21,43 @@ if TYPE_CHECKING:
 class NextPageAssetContractTest(unittest.TestCase):
     @staticmethod
     def _loader() -> Callable[[], bytes]:
-        loader = getattr(frontend_page, "load_next_page", None)
+        loader = getattr(frontend_page, "load_page", None)
         if loader is None:
-            raise AssertionError("page.py does not expose load_next_page")
+            raise AssertionError("page.py does not expose load_page")
         return cast("Callable[[], bytes]", loader)
 
     @staticmethod
     def _fake_font_styles() -> str:
         return "".join(
-            f'@font-face{{src:url("{slot}")}}\n' for _name, slot in frontend_page.NEXT_FONT_ASSETS
+            f'@font-face{{src:url("{slot}")}}\n' for _name, slot in frontend_page.FONT_ASSETS
         )
 
     @staticmethod
     def _write_bundle(web: Path, template: str) -> None:
-        next_web = web / "next"
-        next_web.mkdir()
-        (next_web / "index.html").write_text(template, encoding="utf-8")
-        (next_web / "styles.css").write_text(
+        (web / "index.html").write_text(template, encoding="utf-8")
+        (web / "styles.css").write_text(
             NextPageAssetContractTest._fake_font_styles() + ".next{color:red}\n",
             encoding="utf-8",
         )
-        for name, _slot in frontend_page.NEXT_FONT_ASSETS:
-            asset = next_web / name
+        for name, _slot in frontend_page.FONT_ASSETS:
+            asset = web / name
             asset.parent.mkdir(parents=True, exist_ok=True)
             asset.write_text("d09GMg==\n", encoding="ascii")
-        (next_web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
-        (next_web / "next-attention.js").write_text("const attention = 2;\n", encoding="utf-8")
-        (next_web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
-        (next_web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
-        (next_web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
-        (next_web / "next-activity.js").write_text("const activity = 5;\n", encoding="utf-8")
-        (next_web / "next-session.js").write_text("const session = 6;\n", encoding="utf-8")
-        (next_web / "next-workstream.js").write_text("const workstream = 7;\n", encoding="utf-8")
-        (next_web / "next-delegation.js").write_text("const delegation = 8;\n", encoding="utf-8")
-        (next_web / "next-controls.js").write_text("const controls = 9;\n", encoding="utf-8")
-        (next_web / "next-sessions.js").write_text("const sessions = 3;\n", encoding="utf-8")
-        (next_web / "next-render.js").write_text("const second = 2;\n", encoding="utf-8")
-        (next_web / "next-live.js").write_text("const live = 10;\n", encoding="utf-8")
+        (web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
+        (web / "next-attention.js").write_text("const attention = 2;\n", encoding="utf-8")
+        (web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
+        (web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
+        (web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
+        (web / "next-activity.js").write_text("const activity = 5;\n", encoding="utf-8")
+        (web / "next-session.js").write_text("const session = 6;\n", encoding="utf-8")
+        (web / "next-workstream.js").write_text("const workstream = 7;\n", encoding="utf-8")
+        (web / "next-delegation.js").write_text("const delegation = 8;\n", encoding="utf-8")
+        (web / "next-controls.js").write_text("const controls = 9;\n", encoding="utf-8")
+        (web / "next-sessions.js").write_text("const sessions = 3;\n", encoding="utf-8")
+        (web / "next-render.js").write_text("const second = 2;\n", encoding="utf-8")
+        (web / "next-live.js").write_text("const live = 10;\n", encoding="utf-8")
 
-    def test_load_next_page_resolves_the_patched_web_dir_at_call_time(self) -> None:
+    def test_load_page_resolves_the_patched_web_dir_at_call_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             web = Path(tmp)
             self._write_bundle(
@@ -70,7 +68,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 actual = self._loader()()
 
         embedded_styles = self._fake_font_styles()
-        for _name, slot in frontend_page.NEXT_FONT_ASSETS:
+        for _name, slot in frontend_page.FONT_ASSETS:
             embedded_styles = embedded_styles.replace(
                 slot,
                 "data:font/woff2;base64,d09GMg==",
@@ -88,15 +86,15 @@ class NextPageAssetContractTest(unittest.TestCase):
 
     def test_the_next_template_has_exactly_one_of_each_slot(self) -> None:
         cases = (
-            ("{{CARGENTO_APP}}", "next/index.html must contain one CARGENTO_STYLES slot"),
-            ("{{CARGENTO_STYLES}}", "next/index.html must contain one CARGENTO_APP slot"),
+            ("{{CARGENTO_APP}}", "index.html must contain one CARGENTO_STYLES slot"),
+            ("{{CARGENTO_STYLES}}", "index.html must contain one CARGENTO_APP slot"),
             (
                 "{{CARGENTO_STYLES}}{{CARGENTO_STYLES}}{{CARGENTO_APP}}",
-                "next/index.html must contain one CARGENTO_STYLES slot",
+                "index.html must contain one CARGENTO_STYLES slot",
             ),
             (
                 "{{CARGENTO_STYLES}}{{CARGENTO_APP}}{{CARGENTO_APP}}",
-                "next/index.html must contain one CARGENTO_APP slot",
+                "index.html must contain one CARGENTO_APP slot",
             ),
         )
         for template, message in cases:
@@ -110,10 +108,10 @@ class NextPageAssetContractTest(unittest.TestCase):
                     self._loader()()
 
     def test_the_next_stylesheet_requires_exactly_one_slot_per_font(self) -> None:
-        name, slot = frontend_page.NEXT_FONT_ASSETS[0]
+        name, slot = frontend_page.FONT_ASSETS[0]
         cases = (
-            ("", f"next/styles.css must contain one {slot} slot"),
-            (slot * 2, f"next/styles.css must contain one {slot} slot"),
+            ("", f"styles.css must contain one {slot} slot"),
+            (slot * 2, f"styles.css must contain one {slot} slot"),
         )
         for replacement, message in cases:
             with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as tmp:
@@ -122,7 +120,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                     web,
                     "<style>{{CARGENTO_STYLES}}</style><script>{{CARGENTO_APP}}</script>",
                 )
-                stylesheet = web / "next" / "styles.css"
+                stylesheet = web / "styles.css"
                 stylesheet.write_text(
                     stylesheet.read_text(encoding="utf-8").replace(slot, replacement),
                     encoding="utf-8",
@@ -131,12 +129,12 @@ class NextPageAssetContractTest(unittest.TestCase):
                     mock.patch.object(frontend_page, "WEB_DIR", web),
                     self.assertRaisesRegex(RuntimeError, f"^{re.escape(message)}$"),
                 ):
-                    frontend_page.load_next_styles()
+                    frontend_page.load_styles()
 
         self.assertTrue(name.endswith(".woff2.b64"))
 
     def test_the_next_stylesheet_rejects_invalid_font_payloads(self) -> None:
-        name, _slot = frontend_page.NEXT_FONT_ASSETS[0]
+        name, _slot = frontend_page.FONT_ASSETS[0]
         for payload in ("not base64!", "T1RUTw=="):
             with self.subTest(payload=payload), tempfile.TemporaryDirectory() as tmp:
                 web = Path(tmp)
@@ -144,35 +142,33 @@ class NextPageAssetContractTest(unittest.TestCase):
                     web,
                     "<style>{{CARGENTO_STYLES}}</style><script>{{CARGENTO_APP}}</script>",
                 )
-                (web / "next" / name).write_text(payload, encoding="ascii")
+                (web / name).write_text(payload, encoding="ascii")
                 with (
                     mock.patch.object(frontend_page, "WEB_DIR", web),
                     self.assertRaisesRegex(
                         RuntimeError,
-                        rf"^next font asset {re.escape(name)} must be base64 WOFF2$",
+                        rf"^font asset {re.escape(name)} must be base64 WOFF2$",
                     ),
                 ):
-                    frontend_page.load_next_styles()
+                    frontend_page.load_styles()
 
     def test_a_missing_next_font_stays_inside_the_next_loader_boundary(self) -> None:
-        name, _slot = frontend_page.NEXT_FONT_ASSETS[0]
+        name, _slot = frontend_page.FONT_ASSETS[0]
         with tempfile.TemporaryDirectory() as tmp:
             web = Path(tmp)
             self._write_bundle(
                 web,
                 "<style>{{CARGENTO_STYLES}}</style><script>{{CARGENTO_APP}}</script>",
             )
-            (web / "next" / name).unlink()
+            (web / name).unlink()
             with (
                 mock.patch.object(frontend_page, "WEB_DIR", web),
                 self.assertRaises(FileNotFoundError),
             ):
-                frontend_page.load_next_page()
+                frontend_page.load_page()
 
     def test_every_next_part_exists_and_is_named(self) -> None:
-        next_web = frontend_page.WEB_DIR / "next"
-        if not next_web.is_dir():
-            self.fail("web/next does not exist")
+        web = frontend_page.WEB_DIR
         self.assertEqual(
             (
                 "next-boot.js",
@@ -189,13 +185,13 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "next-render.js",
                 "next-live.js",
             ),
-            frontend_page.NEXT_PARTS,
+            frontend_page.APP_PARTS,
         )
-        actual = {path.name for path in next_web.glob("*.js")}
-        self.assertEqual(set(frontend_page.NEXT_PARTS), actual)
-        for name in frontend_page.NEXT_PARTS:
+        actual = {path.name for path in web.glob("next-*.js")}
+        self.assertEqual(set(frontend_page.APP_PARTS), actual)
+        for name in frontend_page.APP_PARTS:
             with self.subTest(part=name):
-                self.assertGreater((next_web / name).stat().st_size, 0)
+                self.assertGreater((web / name).stat().st_size, 0)
 
     def test_the_next_page_embeds_the_design_fonts_from_pinned_local_assets(self) -> None:
         expected_fonts = {
@@ -291,19 +287,19 @@ class NextPageAssetContractTest(unittest.TestCase):
         }
         self.assertEqual(
             tuple((name, marker) for name, (marker, _range) in expected_faces.items()),
-            frontend_page.NEXT_FONT_ASSETS,
+            frontend_page.FONT_ASSETS,
         )
         for name, (size, digest) in expected_fonts.items():
             with self.subTest(font=name):
                 encoded = "".join(
-                    frontend_page.next_asset_path(name).read_text(encoding="ascii").splitlines()
+                    frontend_page.asset_path(name).read_text(encoding="ascii").splitlines()
                 )
                 payload = base64.b64decode(encoded, validate=True)
                 self.assertEqual(b"wOF2", payload[:4])
                 self.assertEqual(size, len(payload))
                 self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
 
-        styles = frontend_page.next_asset_path("styles.css").read_text(encoding="utf-8")
+        styles = frontend_page.asset_path("styles.css").read_text(encoding="utf-8")
         raw_faces = [line for line in styles.splitlines() if line.startswith("@font-face{")]
         for name, (marker, unicode_range) in expected_faces.items():
             with self.subTest(face=name):
@@ -311,7 +307,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(1, len(matches))
                 self.assertIn(f"unicode-range:{unicode_range}", matches[0])
 
-        assembled = frontend_page.load_next_page().decode()
+        assembled = frontend_page.load_page().decode()
         self.assertNotIn("fonts.googleapis.com", assembled)
         self.assertNotIn("fonts.gstatic.com", assembled)
         self.assertNotIn("{{CARGENTO_FONT_", assembled)
@@ -337,33 +333,27 @@ class NextPageAssetContractTest(unittest.TestCase):
         }
         for name, (size, digest) in expected_notices.items():
             with self.subTest(notice=name):
-                notice = frontend_page.next_asset_path(name).read_bytes()
+                notice = frontend_page.asset_path(name).read_bytes()
                 self.assertEqual(size, len(notice))
                 self.assertEqual(digest, hashlib.sha256(notice).hexdigest())
-        sources = frontend_page.next_asset_path("fonts/SOURCES.txt").read_text(encoding="utf-8")
+        sources = frontend_page.asset_path("fonts/SOURCES.txt").read_text(encoding="utf-8")
         self.assertIn("Space Grotesk v22", sources)
         self.assertIn("Space Mono v17", sources)
         for _size, digest in expected_fonts.values():
             self.assertIn(digest, sources)
 
-    def test_the_next_asset_directory_is_not_a_python_package(self) -> None:
-        next_web = frontend_page.WEB_DIR / "next"
-        if not next_web.is_dir():
-            self.fail("web/next does not exist")
-        self.assertEqual([], sorted(path.name for path in next_web.glob("*.py")))
+    def test_the_retired_preview_asset_directory_is_absent(self) -> None:
+        self.assertFalse((frontend_page.WEB_DIR / "next").exists())
 
-    def test_every_css_variable_the_next_page_uses_is_declared(self) -> None:
-        next_web = frontend_page.WEB_DIR / "next"
-        if not next_web.is_dir():
-            self.fail("web/next does not exist")
-        styles = (next_web / "styles.css").read_text(encoding="utf-8")
-        page = frontend_page.load_next_page().decode()
+    def test_every_css_variable_the_canonical_page_uses_is_declared(self) -> None:
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
+        page = frontend_page.load_page().decode()
         declared = set(re.findall(r"(--[\w-]+)\s*:", styles))
         used = set(re.findall(r"var\((--[\w-]+)", page))
-        self.assertEqual(set(), used - declared, "next page uses CSS variables nothing declares")
+        self.assertEqual(set(), used - declared, "page uses CSS variables nothing declares")
 
     def test_the_need_you_button_keeps_visible_keyboard_focus(self) -> None:
-        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         button = re.search(r"\.next-gate\{([^}]*)\}", styles)
         focus = re.search(r"\.next-gate:focus-visible\{([^}]*)\}", styles)
 
@@ -378,7 +368,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual("3px", focus_rules.get("outline-offset"))
 
     def test_the_next_palette_tracks_system_light_and_dark_themes(self) -> None:
-        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         light = re.search(r"(?:\A|\n):root\{([^}]*)\}", styles, re.DOTALL)
         dark = re.search(
             r"@media\(prefers-color-scheme:dark\)\{\s*:root\{([^}]*)\}\s*\}",
@@ -450,7 +440,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertGreater(contrast(values["--ink"], values["--bg"]), 3.0)
 
     def test_reduced_motion_keeps_the_static_live_cue_without_animation(self) -> None:
-        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         live_rule = re.search(r"\.next-live \.next-status-dot\{([^}]*)\}", styles)
         reduced = re.search(
             r"@media\(prefers-reduced-motion:reduce\)\{\s*"
@@ -466,7 +456,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertIn("animation:none", reduced.group(2) if reduced else "")
 
     def test_activity_subagent_names_can_shrink_inside_the_card(self) -> None:
-        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         pill = re.search(r"\.next-activity-subagent\{([^}]*)\}", styles)
         name = re.search(r"\.next-activity-subagent-name\{([^}]*)\}", styles)
 
@@ -485,7 +475,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         # `max-width:760px` the detail padding drops to 0, so one such token
         # gives the whole page a horizontal scrollbar. Every comparable surface
         # in this stylesheet already guards it.
-        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         for selector in (
             r"\.next-operation-identity,\.next-operation-fact",
             r"\.next-session-detail-instruction",
@@ -496,7 +486,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertIn("overflow-wrap:anywhere", rule.group(1) if rule else "")
 
     def test_session_detail_state_rails_use_the_fixed_palette(self) -> None:
-        styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
+        styles = (frontend_page.WEB_DIR / "styles.css").read_text(encoding="utf-8")
         for state, color in (
             ("needs_input", "var(--warn)"),
             ("working", "var(--accent)"),
@@ -511,7 +501,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertIsNotNone(rule)
                 self.assertIn(f"border-left-color:{color}", rule.group(1) if rule else "")
 
-    def test_load_next_page_preserves_its_byte_oracles(self) -> None:
+    def test_load_page_preserves_its_byte_oracles(self) -> None:
         # Per-part first, deliberately. Every part feeds the assembled page, so a
         # one-part edit fails the assembled oracle too. Naming the part that moved
         # is the more useful failure of the two.
@@ -525,8 +515,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "9ce3a282a6b002ab9d10b2d373a223c7fb23e048e09ba4f883e4e085e07bb5bf",
             ),
             "next-chrome.js": (
-                15_401,
-                "74563a98b0ccf6738cdd35f6326f160a9412b678600aee283304a6640fe50ad9",
+                14_985,
+                "a48c4a81991465a6bf6ce1d41ba7ec6dec4de99a7d9e2d94bf5fc6493d06aaf4",
             ),
             "next-sessions.js": (
                 11_566,
@@ -545,48 +535,48 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "2a74e8ebcd5374ec6b585aceaeaa38818108531edc4bdbe21240e5c45f415858",
             ),
             "next-session.js": (
-                15_800,
-                "55f5fe8d1582f212981df916ccf225aa2b22348a2977d809fbb506dce20ae0de",
+                15_711,
+                "672be9a054a11fd11b4b24304e15f3bad8be0ec79984cdbac7c19728f4ad521a",
             ),
             "next-workstream.js": (
-                11_703,
-                "09a077bdbe24d302fe8494e9a3b050b1ff26a0f3a22c31147f81c7592ca4f3dd",
+                11_696,
+                "5f7132c58033f2ad7aa988fba622f54f94eee4c7b1a45e9b0ac8be353ce6ebd8",
             ),
             "next-delegation.js": (
                 7_544,
                 "d11ed2749ae3aa351fe26c1205665b6f4b57553aa17d0ce1ecc027371a6e7e7b",
             ),
             "next-controls.js": (
-                6_777,
-                "4da6527bbf6401db716ab5807748ac01a64aecce996e993ff9e0b42c22fdc811",
+                6_768,
+                "fb1f51b940a9e29122a6b689beb6ec6c31fe71652c45bc2dffa32f8250084018",
             ),
             "next-render.js": (
-                2_163,
-                "2a9edf6943322da17f5d2bd891fd67c90cfa52db783995615e5f3260fcea3461",
+                2_170,
+                "9cb37e74d6240d55fc62e2e6448cae685e29147741224b064d259c5f809ba299",
             ),
             "next-live.js": (
-                3_470,
-                "aa1aaee8762d734fe8841c88a10ece2c5a4e38b8fe6b6df6f26c62d2d7563d3e",
+                3_375,
+                "4883888e27c3cded21d3bfeb1862b3a9555c8e39316cd53bcaf9a3c31341bb64",
             ),
         }
-        self.assertEqual(tuple(expected_parts), frontend_page.NEXT_PARTS)
+        self.assertEqual(tuple(expected_parts), frontend_page.APP_PARTS)
         for name, (size, digest) in expected_parts.items():
             with self.subTest(part=name):
-                data = frontend_page.next_asset_path(name).read_bytes()
+                data = frontend_page.asset_path(name).read_bytes()
                 self.assertEqual(size, len(data))
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
-        styles = frontend_page.next_asset_path("styles.css").read_bytes()
+        styles = frontend_page.asset_path("styles.css").read_bytes()
         self.assertEqual(39_311, len(styles))
         self.assertEqual(
             "ba607b16e39b44ce354714b271ff65b038eba6b5a47f333e1ba42e48f3befded",
             hashlib.sha256(styles).hexdigest(),
         )
 
-        assembled = frontend_page.load_next_page()
-        self.assertEqual(317_034, len(assembled))
+        assembled = frontend_page.load_page()
+        self.assertEqual(316_425, len(assembled))
         self.assertEqual(
-            "e08f93866fe276915202e393e78bc4664742cbf12451bcc7f52ba5dcda13e852",
+            "9634ad55d8b8551a2d02145a92a3e6359883d6719b0a3d0b26cf23461531f47b",
             hashlib.sha256(assembled).hexdigest(),
         )
 

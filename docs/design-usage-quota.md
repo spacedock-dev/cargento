@@ -272,179 +272,16 @@ Guessing a path would mean reading some other file and calling it a credential, 
 reader reports no credential source and Cursor stays out of the band. Installing the CLI on the
 other two platforms is what unblocks them.
 
-## Q-9: The burn projection is derived in the page, and states quantities rather than a verdict
+## Q-9: promotion retired the client-side burn projection
 
-"How fast is this window filling, and when does it fill?" needs a derivative, and nothing in the
-payload carries one: every quota figure in Q-1 is a level. So the series is built in the page, one
-bounded buffer per harness and window, using the same ring-buffer idiom the token sparkline already
-uses rather than a second one. The constants and the code live in `web/usage.js` under "burn
-projection"; what follows is why it is shaped this way, which is this document's half of it.
+The legacy page sampled quota levels in browser memory and fitted a burn projection. That reading
+was never durable, disappeared on reload, and mixed a derived trend with the vendor's current
+window. The promoted interface does not carry that client-only history forward.
 
-**What the row publishes is quantities, and nothing composed out of them.** A resolved reading
-prints the fitted rate, the ± those samples support, and the interval in which the window reaches
-100%. It does not say whether the reset gets there first. That was answered here once and the answer
-was wrong five times over, so the comparison is left to the reader, who has this window's own reset
-countdown (Q-1) on the same row: two measured figures side by side and no product of them. The
-record is "The burn row's race verdict, built and then deleted" among the rejected alternatives, and
-it is the part of this section to read before putting the verdict back. `burnRead` does not read
-`resetAt` at all, the reset instant is the buffer's business, for the reason in the restart rule
-below, and reading it a third time in the fit is what made the verdict possible.
-
-**A persisted series was considered and deliberately not built.** Storing the samples would mean a
-server-side write path and a cache file, for a signal whose whole value is the last hour. What that
-buys is a projection that survives a reload, and the price is four costs that a page-local buffer
-pays instead. Each one is *rendered* rather than assumed away, which is what makes the trade
-acceptable: none of the four can turn into a confident reading of evidence that is not there.
-
-- **Warm-up.** There is no history when a tab opens, and samples accrue only while a tab is open
-  with usage on, because the fetch is driven by `/api/data` requests carrying the page's consent
-  (Q-3), and in the calm view only while the band itself is open, since a collapsed band does not
-  render and so does not sample. So the signal is coldest at the exact moment somebody opens the
-  dashboard to ask "can I start this now", which is why that moment gets a sentence saying so. Until
-  three samples span ten minutes the row reads "warming up" with its own count and prints no figure
-  at all. Unknown and measured are different answers and only one of them is available at load. At
-  the server's five-minute floor that puts the first projection about ten minutes after the tab
-  opens. The count or the span can be the requirement still short, `asOf` advances as fast as its
-  producer stamps it, not at the fetch floor, so the row names whichever one it is rather than
-  printing "9 of 3".
-- **Reload loss.** The buffer dies with the page, and a reloaded tab is indistinguishable from a
-  fresh one. That is exactly why a fresh one has to read as unmeasured: the alternative is a
-  projection fitted to a just-emptied buffer.
-- **Quantisation.** The published `pct` is an integer and the fetch is floored at 300 seconds
-  (`usage_poll_floor_sec`), so the difference of two samples carries up to a whole point of pure
-  rounding. A measured rise of one point could be a true rise of anything from just above zero to
-  just under two, 100% relative error, and across a ten-minute span that is a rate somewhere
-  between 0 and 12%/h. So a rise this fit's own error bound cannot separate from the rounding is not
-  published as a rate at all, only as a ceiling, and every figure that does print carries the bound
-  it was fitted with. That bound is not a constant, and the error model below is where it, and
-  everything keyed to it, is written down.
-- **Staleness.** `asOf` is the moment the percentage was true, and nothing obliges it to advance. A
-  stored Antigravity receipt keeps being served with a frozen `asOf` for up to `window_hours` after
-  its harness stops (Q-7), and the buffer ignores a repeat of an `asOf` it already holds, so the
-  samples stop arriving while the page goes on rendering. Left unbounded that republishes one fit
-  forever: byte-identical burn rows hours apart, beside a countdown the reader can see ticking. So
-  the newest sample's age is bounded against the viewer's clock at ten minutes (`BURN_STALE_SEC`, which is
-  two arrival intervals at the 300-second fetch floor, because one missed refresh is jitter and two
-  in a row is a feed that has stopped), and a frozen feed reads as unmeasured again, with the age on
-  the row so the reader can tell a harness that went quiet ten minutes ago from one that stopped
-  this morning. The bound is tested ahead of the count and the span, since it outranks them: a
-  buffer holding one three-hour-old reading is not filling up slowly, it has stopped being fed, and
-  counting it towards a threshold nothing is going to cross would print the wrong unknown.
-
-  A window that reports no reset time at all used to be the fourth cost here, and it is not a cost
-  any more. The capture in Q-2 carries a `weekly_scoped` limit with no `resets_at`, and
-  `_shape_window` omits `resetAt` when the vendor sends none; with the race gone there is nothing in
-  the reading that wanted the instant, so such a window now loses nothing from its projection rather
-  than degrading to an unknown verdict
-  (`test_a_window_with_no_reset_time_loses_nothing_from_the_projection`).
-
-**Every reading names what kind of answer it is.** Nothing returns a bare number, because the caller
-must not be able to mistake "we cannot tell" for one. There are five states and each has its own
-words on the row: a window already at 100% ("window spent"), a feed whose newest reading is too old
-to fit ("stale", with the age), a buffer still short of the count or the span ("warming up", with
-whichever is short), a rise this span cannot resolve into a rate ("under 3%/h"), and a resolved
-projection, which prints the rate then both ends of the wall interval separated by an en dash (the
-exact literal is pinned by `test_a_projected_wall_is_published_as_the_interval_its_band_spans` and
-shown in the skill body; it is not reproduced here because these docs hold no dashes in prose and a
-verbatim copy would read as drift). They are tested in that order, and the first two placements
-are decisions rather than accidents of code: a full window outranks even a frozen feed, because "the
-wall is here" must never be buried under a note about staleness, and staleness outranks the count
-and the span for the reason given above. Colour now reaches exactly one of them. A spent window
-keeps the alert tone, because it is a level the payload published rather than anything inferred
-here; every projection is dim however fast it reads, since a tone on a projection is the other half
-of the verdict, a claim about what the number means for the reader, and the readings that used to
-raise one are the readings the reviews found wrong. Both printed figures are marked as what they
-are, `~` for an estimate and `under` for a ceiling, because "7.43%/h" off a handful of integer
-samples would dress a few readings up as a measurement.
-
-**The error model is this fit's own, and it moves with the sample count.** `burnFitError` takes the
-worst thing ±0.5 of integer rounding can do to this particular least-squares slope, from the weights
-of the samples actually held. Read as an error on the fitted rise that is one whole point at three
-samples, 1.2 at four, and climbing towards 1.5 as the buffer fills, more samples over the same span
-widen it rather than tightening it, so no constant can stand in for it. A dozen readings across 55
-minutes carry ±1.5%/h where the three-sample expression would have printed ±1.1%/h and sold the
-estimate as a third sharper than the samples support
-(`test_the_burn_error_band_widens_as_the_buffer_fills` pins both figures, and the earlier drafts of
-this section that stated the three-sample constant are how that would come back). Three things are
-keyed to that bound rather than written down as numbers:
-
-- **The gate.** A slope must clear twice the bound (`BURN_RESOLUTION_FACTOR`) before it prints as a
-  rate, which is two points of rise at three samples and about 2.8 by twelve. Three samples is the
-  warm-up minimum and not the ordinary case, the trailing hour of a tab left open holds about a
-  dozen readings at the 300-second floor, so a fixed two-point gate there would publish as a rate a
-  rise those samples cannot resolve.
-- **The ceiling, for a rise under the gate.** The fitted slope plus the whole bound, never printed
-  tighter than the gate it failed to clear, since a row whose claim is "this span cannot resolve a
-  rise this small" cannot also report having measured a smaller one. It supports exactly one
-  instant, the earliest the window could be full, and that is a bound in one direction only: the
-  same samples are equally consistent with a slope of zero, which never fills at all. So the instant
-  goes in the tooltip and not on the row, where a figure beside "under 3%/h" would read as a
-  prediction with the half that says "possibly going nowhere" missing.
-- **The wall, published as the interval its band spans.** Two sources of ± reach it. The slope's
-  band gives the early end its fastest consistent slope and the late end its slowest, and the
-  published level carries its own half point, an 89 is anything in 88.5 to 89.5, so the early end
-  divides the least headroom consistent with that level and the late end the most. The half point is
-  worth the arithmetic because at a slow slope it is minutes rather than seconds: at 3%/h it is 600
-  seconds, which is why the early end is anchored at `level + 0.5` and not at the integer the row
-  prints. A single "wall in 57m" was the other candidate and is the verdict's defect one layer out:
-  it is exactly the input a reader needs for the comparison this row has stopped making, and handed
-  over as a point it invites that comparison at a precision the fit has not got: at 16.8%/h ±4.8 the
-  wall is anywhere from 43m to 1h 22m out, and "57m" against a reset 50m away reads as fine on
-  evidence that says possibly not. The pessimistic end alone is the mirror of that failure, since a
-  row that only ever names the earliest possible wall overstates every window it describes, and a
-  signal that cries wolf is read as decoration inside a week. The interval states what is known and
-  how well at once, which is the argument for keeping these numbers while dropping the verdict over
-  them. Both ends collapse to one figure when they round the same, so a window about to fill does
-  not read as vague.
-
-**Samples are stamped with the payload's own `asOf`, not the viewer's clock.** `asOf` is the moment
-the percentage was true, and a cached fetch is older than the poll that carried it; stamping at
-receipt would compress a five-minute-old figure onto "now" and steepen the slope. The fit therefore
-lives entirely in payload time, and the viewer's clock is read for exactly two things, both of them
-facts about now rather than about the fit: how old the newest sample is (the staleness bound above),
-and how long the intervals on screen have left, which is the clock the reset countdown in Q-1 reads.
-
-**Two independent signs of a rolled window empty the buffer, and neither one is redundant.** A fall
-in the percentage is the visible sign: the samples before a fall describe a window that no longer
-exists, and a slope fitted across that discontinuity reads as a steep decline into a wall that is
-never coming. A fall alone only catches a roll whose new level sits *below* the old one, though, and
-a window that rolls and then climbs straight past where the last one stood never falls, the buffer
-would keep both sides and fit one slope across two separate allowances, understating the new
-window's rate and pushing its wall out. So every sample also carries the reset instant it was taken
-under, and a change in that instant empties the buffer too. Producers build `resetAt` from the
-vendor's own absolute reset time (`sessions.reset_fields`), so it holds still for the life of a
-window and a change in it really is a new allowance rather than sampling noise. Either restart
-returns the row to warming up, which is the only honest reading of a buffer holding one sample. Both
-triggers are pinned separately
-(`test_the_burn_series_ignores_a_replayed_reading_and_restarts_on_a_roll` and
-`test_the_burn_series_restarts_when_the_reset_instant_moves`), because a draft that named only the
-visible one is what left the second case unhandled.
-
-**It is rendered under each window's own row, and it defaults to off.** A 5-hour window and a weekly
-window fill at different rates and reset at different times, so one projection per harness would
-have to pick one of them silently. Off by default is a decision rather than an omission: the series
-starts empty every time a tab opens, so a default-on row would read "warming up" under every window
-on first load and teach the reader that the band is half-built, whereas an opt-in row is asked for
-by someone who has read what it measures. The buffers fill whether or not the stat is shown, so
-turning it on is instant rather than the start of another ten-minute wait.
-
-**A per-model row is not projected, and says so rather than sitting blank.** `BURN_SLOTS` is the
-three window slots and nothing else, so nothing under `models` (Q-1) is ever sampled and no buffer is
-keyed on a model. While the projection is on, those rows read "not projected" with the reason on the
-hover, which is the sixth answer this block can give and the only one that is a property of the row
-rather than of its samples. Printing something is the point: a model row sitting silent beneath a
-weekly row that reads "~4%/h" is read as a limit that is not filling, and an absence that reads as
-good news is the failure the rest of this section was rebuilt around. Two reasons nothing is fitted,
-and both are about identity rather than arithmetic. The row's only identity is its label, and the
-label is stable only while the vendor's set of names is: a second model whose name collides with the
-first relabels both (`_distinct_labels`), so a key built from it can change under a series that is
-still running. And the scoped element in the capture carried no reset instant, which is exactly the
-input the restart rule above needs, so a per-model row is left with the fall in the percentage as its
-only sign of a roll, and a limit that rolls and then climbs straight past where the old one stood
-never falls. A fit spanning two allowances reads slower than the truth and pushes its wall out, which
-is the reassuring direction, on a signal that has been observed once: one scoped row, on one account,
-at one moment. The weekly window those rows subdivide has a projection of its own, immediately above
-them, and that is where a reader gets a rate.
+Attention now raises **Quota pressure** only from the current published percentage at or above 70
+percent. It states the reported percentage and scope, and does not predict exhaustion or compare it
+with reset time. The server payload remains the evidence boundary; durable quota history would be a
+separate storage decision rather than another browser buffer.
 
 ## Q-3: Consent rides on the poll
 
@@ -514,21 +351,16 @@ was published as `expired` alongside the refusal below until a reader on 0.14.0 
 had expired and to sign in again while every one of her Claude Code sessions was working normally.
 Nothing was wrong with her account. Cargento never refreshes a token, so it reads whatever storage
 holds, and Claude Code rewrites that file only while it runs, so a session already open keeps
-working on a token it holds in memory. A lapsed stamp beside healthy sessions is therefore the expected
-pairing for anyone whose harness was closed overnight, not a contradiction, and the page says so:
-start the harness and it refreshes its own credential. No exclamation on that row either, since the
-badge was the fault half of the same wrong claim.
+working on a token it holds in memory. A lapsed stamp beside healthy sessions is therefore the
+expected payload pairing for anyone whose harness was closed overnight, not a contradiction. Start
+the harness and it refreshes its own credential.
 
-An HTTP 401 or 403 publishes `refused`, and the wording stops there for Claude. A 401 does not
-separate a token gone stale from an account the endpoint does not serve, and "sign in again" fixes
-only the first, and sending someone round that loop for the second is the circle this state exists
-to avoid. Cursor is the exception and it is an evidenced one: its RPC answers a stale token with 401 and
-`actionRequired: "login"`, so its tile keeps the sign-in pointer. The distinction is a property of
-what each vendor's answer says rather than of the state, so both publish the same word and
-`U_SIGNIN_ON_REFUSAL` in web/usage.js names the harnesses whose refusal is measured to mean a
-sign-in. A vendor added later is absent from that set and inherits the wording that prescribes
-nothing, which is the safe direction. Cursor has no local expiry check at all, so `refused` is the
-only unreadable state it can reach.
+An HTTP 401 or 403 publishes `refused`. A 401 does not separate a token gone stale from an account
+the endpoint does not serve, so the payload prescribes no remedy for Claude. Cursor is the evidenced
+exception: its RPC pairs 401 with `actionRequired: "login"`. That fact remains in the acquisition
+contract even though the current Attention surface withholds unreadable entries rather than showing
+a sign-in control. Cursor has no local expiry check, so `refused` is the only unreadable state it can
+reach.
 
 An unavailable token (denied Keychain prompt, missing file, malformed JSON) keeps Claude out of the
 band entirely, because a sign-in is wrong advice when the harness session may be fine. Every failure

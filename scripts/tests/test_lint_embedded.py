@@ -18,38 +18,28 @@ import lint_embedded
 def write_page_module(
     web: Path,
     parts: tuple[str, ...],
-    *,
-    next_parts: tuple[str, ...] | None = None,
 ) -> None:
     """A minimal page.py exposing APP_PARTS, the way the real loader does."""
     names = "".join(f'"{name}", ' for name in parts)
     source = f"APP_PARTS = ({names})\n"
-    if next_parts is not None:
-        next_names = "".join(f'"{name}", ' for name in next_parts)
-        source += f"NEXT_PARTS = ({next_names})\n"
     (web / "page.py").write_text(source, encoding="utf-8")
 
 
-def write_dual_frontend(
+def write_frontend(
     web: Path,
     *,
-    next_html: str = '<main id="app"></main>',
-    next_css: str = ".next{color:red}\n",
-    next_js: str = "const next = 1;\n",
-    stray_next_js: bool = False,
+    html: str = '<main id="app"></main>',
+    css: str = ".app{color:red}\n",
+    js: str = "const app = 1;\n",
+    stray_js: bool = False,
 ) -> None:
-    """Write the smallest old and next bundles accepted by the linter."""
-    (web / "index.html").write_text('<main id="app"></main>', encoding="utf-8")
-    (web / "styles.css").write_text(".old{color:blue}\n", encoding="utf-8")
-    (web / "app.js").write_text("const old = 1;\n", encoding="utf-8")
-    write_page_module(web, ("app.js",), next_parts=("next.js",))
-    next_web = web / "next"
-    next_web.mkdir()
-    (next_web / "index.html").write_text(next_html, encoding="utf-8")
-    (next_web / "styles.css").write_text(next_css, encoding="utf-8")
-    (next_web / "next.js").write_text(next_js, encoding="utf-8")
-    if stray_next_js:
-        (next_web / "stray.js").write_text("const stray = 1;\n", encoding="utf-8")
+    """Write the smallest frontend accepted by the linter."""
+    (web / "index.html").write_text(html, encoding="utf-8")
+    (web / "styles.css").write_text(css, encoding="utf-8")
+    (web / "app.js").write_text(js, encoding="utf-8")
+    write_page_module(web, ("app.js",))
+    if stray_js:
+        (web / "stray.js").write_text("const stray = 1;\n", encoding="utf-8")
 
 
 def run_main_against(web: Path) -> tuple[int, str]:
@@ -132,20 +122,6 @@ class LoadAppPartsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "APP_PARTS"):
                 lint_embedded.load_app_parts(web)
 
-    def test_next_parts_are_read_from_the_root_page_module_in_order(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            web = Path(tmp)
-            write_page_module(
-                web,
-                ("app.js",),
-                next_parts=("next-render.js", "next-boot.js"),
-            )
-
-            self.assertEqual(
-                ("next-render.js", "next-boot.js"),
-                lint_embedded.load_next_parts(web),
-            )
-
 
 class CheckStrayScriptsTest(unittest.TestCase):
     def test_a_script_not_named_in_app_parts_is_a_finding(self) -> None:
@@ -166,63 +142,48 @@ class CheckStrayScriptsTest(unittest.TestCase):
             write_page_module(web, ("b.js", "a.js"))
             self.assertEqual([], lint_embedded.check_stray_scripts(web))
 
-    def test_a_stray_next_script_names_the_next_inventory(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            next_web = Path(tmp)
-            (next_web / "next.js").write_text("const next = 1;\n", encoding="utf-8")
-            (next_web / "stray.js").write_text("const stray = 1;\n", encoding="utf-8")
-            problems = lint_embedded.check_stray_scripts(
-                next_web,
-                ("next.js",),
-                inventory_name="NEXT_PARTS",
-            )
 
-        self.assertEqual(1, len(problems))
-        self.assertIn("stray.js", problems[0])
-        self.assertIn("NEXT_PARTS", problems[0])
-
-
-class NextBundleMainTest(unittest.TestCase):
+class FrontendMainTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_main_rejects_a_syntax_error_in_the_next_bundle(self) -> None:
+    def test_main_rejects_a_syntax_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             web = Path(tmp)
-            write_dual_frontend(web, next_js="const = ;\n")
+            write_frontend(web, js="const = ;\n")
             result, output = run_main_against(web)
 
         self.assertEqual(1, result)
         self.assertIn("node --check", output)
 
-    def test_main_rejects_broken_next_css(self) -> None:
+    def test_main_rejects_broken_css(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             web = Path(tmp)
-            write_dual_frontend(web, next_css=".next{color:red\n")
+            write_frontend(web, css=".app{color:red\n")
             result, output = run_main_against(web)
 
         self.assertEqual(1, result)
         self.assertIn("unclosed brace", output)
 
-    def test_main_rejects_a_missing_next_dom_id(self) -> None:
+    def test_main_rejects_a_missing_dom_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             web = Path(tmp)
-            write_dual_frontend(
+            write_frontend(
                 web,
-                next_js='document.getElementById("ghost");\n',
+                js='document.getElementById("ghost");\n',
             )
             result, output = run_main_against(web)
 
         self.assertEqual(1, result)
         self.assertIn("ghost", output)
 
-    def test_main_rejects_a_stray_next_script(self) -> None:
+    def test_main_rejects_a_stray_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             web = Path(tmp)
-            write_dual_frontend(web, stray_next_js=True)
+            write_frontend(web, stray_js=True)
             result, output = run_main_against(web)
 
         self.assertEqual(1, result)
         self.assertIn("stray.js", output)
-        self.assertIn("NEXT_PARTS", output)
+        self.assertIn("APP_PARTS", output)
 
 
 class CheckCssTest(unittest.TestCase):

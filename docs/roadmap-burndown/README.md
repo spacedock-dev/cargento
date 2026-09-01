@@ -728,7 +728,7 @@ only proof is a review of its own prose. The rules below add the specifics of th
 - **Evidence must be able to fail.** Each AC's cited evidence names the concrete change that would
   flip it. An author who cannot name what would make the evidence fail has not shown it can fail,
   and the criterion does not count.
-- **Frontend byte pins are the conflict you will get.** `tests/test_page.py` holds per-part sizes
+- **Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
   and digests plus the assembled page. Recompute them from the assets rather than resolving a
   conflict textually. Exactly one in-flight PR may touch `cargento_runtime/web/`.
 - **A session you spawn leaves daemons behind.** Driving a harness to reproduce something starts

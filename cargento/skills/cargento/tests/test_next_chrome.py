@@ -233,7 +233,9 @@ console.log(JSON.stringify({fragments, repaired: location.hash}));
         self.assertEqual("#n=project:recce%3Acloud", out["fragments"][3])
         self.assertEqual("#n=sessions", out["repaired"])
 
-    def test_shortcuts_select_matching_top_level_routes_and_leave_for_dashboard(self) -> None:
+    def test_shortcuts_select_matching_top_level_routes_and_ignore_retired_dashboard_key(
+        self,
+    ) -> None:
         out = self._run_page_js(
             """
 __fire("keydown", {key: "s", target: {tagName: "BODY"}, preventDefault(){}});
@@ -272,7 +274,7 @@ console.log(JSON.stringify({
         )
         self.assertEqual("#n=sessions", out["attention"]["hash"])
         self.assertIn("<h1>Session operations</h1>", out["attention"]["html"])
-        self.assertEqual(["/"], out["assigned"])
+        self.assertEqual([], out["assigned"])
         self.assertEqual("?next=true", out["search"])
         self.assertEqual(1, out["keydownListeners"])
 
@@ -675,7 +677,8 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn('href="#n=projects"', out)
         self.assertIn('href="#n=sessions"', out)
         self.assertIn("<h1>Session operations</h1>", out)
-        self.assertEqual(1, out.count("dashboard mode"))
+        self.assertNotIn("dashboard mode", out)
+        self.assertNotIn('data-next-action="dashboard"', out)
 
     def test_poll_forwards_only_the_all_flag(self) -> None:
         out = self._run_page_js(

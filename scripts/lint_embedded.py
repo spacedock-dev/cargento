@@ -6,8 +6,8 @@ files. Python linters cannot see inside those assets, so this script checks
 them:
 
 - JavaScript: each shipped script — the parts named in page.py's
-  ``APP_PARTS`` and ``NEXT_PARTS``, concatenated in those orders, exactly as
-  each page serves them — syntax-checked with ``node --check`` (hard
+  ``APP_PARTS``, concatenated in that order exactly as the page serves them —
+  syntax-checked with ``node --check`` (hard
   requirement; pass ``--allow-missing-node`` to degrade to a warning for local
   machines without node).
 - CSS: structural checks for balanced braces and empty rules.
@@ -46,7 +46,7 @@ WEB_DIR = (
 def load_part_inventory(web_dir: Path, inventory_name: str) -> tuple[str, ...]:
     """One ordered script-part list, read from the root page.py itself.
 
-    page.py owns both inventories; importing it by path keeps this script
+    page.py owns the inventory; importing it by path keeps this script
     standalone (no package on sys.path) while guaranteeing the linter and
     the server agree on what ships. A missing page.py raises
     ``FileNotFoundError``; an empty or malformed part list raises
@@ -71,13 +71,8 @@ def load_part_inventory(web_dir: Path, inventory_name: str) -> tuple[str, ...]:
 
 
 def load_app_parts(web_dir: Path = WEB_DIR) -> tuple[str, ...]:
-    """Return the existing page's ordered script inventory."""
+    """Return the page's ordered script inventory."""
     return load_part_inventory(web_dir, "APP_PARTS")
-
-
-def load_next_parts(web_dir: Path = WEB_DIR) -> tuple[str, ...]:
-    """Return the next page's ordered script inventory."""
-    return load_part_inventory(web_dir, "NEXT_PARTS")
 
 
 def load_frontend(
@@ -206,16 +201,10 @@ def main() -> int:
     args = parser.parse_args()
 
     app_parts = load_app_parts(WEB_DIR)
-    next_parts = load_next_parts(WEB_DIR)
     problems = check_frontend(
         WEB_DIR,
         app_parts,
         inventory_name="APP_PARTS",
-        allow_missing_node=args.allow_missing_node,
-    ) + check_frontend(
-        WEB_DIR / "next",
-        next_parts,
-        inventory_name="NEXT_PARTS",
         allow_missing_node=args.allow_missing_node,
     )
     if problems:

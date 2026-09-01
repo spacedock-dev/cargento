@@ -37,7 +37,6 @@ SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
 sys.path.insert(0, str(SERVER_PATH.parent))
 frontend_page = importlib.import_module("cargento_runtime.web.page")
 PAGE_BYTES = frontend_page.load_page()
-NEXT_PAGE_BYTES = frontend_page.load_next_page()
 
 HOOK_PATH = SERVER_PATH.parent / "notify_hook.py"
 HOOK_SPEC = importlib.util.spec_from_file_location("cargento_notify_hook", HOOK_PATH)
@@ -252,7 +251,6 @@ def make_server(
     host: str = "127.0.0.1",
     application: Any = None,
     page_bytes: bytes | None = None,
-    next_page_bytes: bytes | None = NEXT_PAGE_BYTES,
     window_hours: float = 24,
     observation: Any = None,
 ) -> Any:
@@ -266,7 +264,6 @@ def make_server(
         application if application is not None else build_app(window_hours),
         PAGE_BYTES if page_bytes is None else page_bytes,
         observation,
-        next_page_bytes=next_page_bytes,
     )
 
 

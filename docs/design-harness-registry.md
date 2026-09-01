@@ -65,25 +65,18 @@ then have carried Antigravity's name, which is the same defect pointing the othe
 published key `gemini` would have kept describing Antigravity data. It also would have forced the
 manifest-description edit that the split avoids entirely.
 
-### Why the legacy row keeps Gemini's icon and Antigravity has none
+### Why the legacy row kept Gemini's icon and Antigravity had none
 
-The star is Gemini's mark and belongs on Gemini's data. Antigravity renders its `AG` monogram, the
-same fallback Pi and Droid already use, because borrowing another product's logo is worse than
-showing two letters, and inventing one is worse still.
+The retired dashboard used the star for Gemini and an `AG` fallback for Antigravity. The current
+interface prints the label published by the server and does not maintain a second icon table.
 
-## H-3: the presentation table and the registry are one contract, tested as one
+## H-3: presentation data comes from the registry
 
-The page's `HARNESS` table in `web/spark.js` and the Python registry are two hand-written lists of the
-same set, and nothing connected them. A label changed on one side only passed the entire suite, which
-is exactly how a retired product's name could have survived this split.
-
-`test_the_harness_table_matches_the_registry_in_key_order_and_label` now executes the page script under
-node, dumps the table, and compares keys, labels and order against `default_harnesses`. A companion test
-requires every row to carry a unique two-letter monogram, since that is the icon fallback and a
-duplicate makes two badges ambiguous. Both were mutation-checked against a renamed label, a duplicated
-monogram, and a dropped row.
-
-Order is part of the assertion because registry order is chip order.
+The retired page kept a hand-written `HARNESS` table beside the Python registry. A label changed on
+one side could pass the suite and leave a retired product name visible. The canonical page instead
+reads the payload's `harnesses` list, which `Application.collect` derives from
+`default_harnesses()`. Keys, labels, order, discovery state, and capability disclosures therefore
+come from the same registry entry as collection. Adding a harness requires no frontend list edit.
 
 ## H-4: harness counts are stated in prose, so they drift
 

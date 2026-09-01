@@ -1,115 +1,77 @@
-# Design: the next UI bundle
+# Design: the dashboard UI
 
-This document owns why the opt-in UI is a separate frontend artifact, how two pages on one origin
-stay out of each other's state, and how to remove the split. The runtime module map remains in
+This document records the interface first released behind `?next=true` and the decisions that
+survived its promotion to the default dashboard. The runtime module map remains in
 [design-runtime-architecture.md](design-runtime-architecture.md).
 
-## NUI-1: two precomputed pages make the flag a routing property
+## NUI-1: promotion leaves one precomputed page
 
-Before this work, `web/page.py` assembled `index.html`, `styles.css` and `APP_PARTS` into one byte
-string. `cli.py` loaded it before bind and `CargentoHTTPServer` served that object for every `/`
-request. A condition inside that script could hide new UI, but it could not preserve the old page's
-bytes. Every frontend branch would move the old page's size and digest oracles.
+The preview originally used a second shell, stylesheet, script list, and server byte string so its
+development could not move the legacy page's byte pins. Once the interface was released and chosen
+as the replacement, keeping both implementations stopped buying isolation and started creating two
+failure boundaries, two asset inventories, and a permanent routing decision.
 
-The next UI instead has its own shell, stylesheet and `NEXT_PARTS` under `web/next/`.
-`load_next_page()` assembles a second byte string, and the `/` handler selects it only when the first
-`next` query value is exactly `true`. With the flag absent, the handler still returns the same
-`load_page()` object assembled from untouched inputs.
+Promotion moved the released assets to canonical `web/`, made `load_page()` the only assembler, and
+made the server ignore query parameters when serving `/`. `/?next=true` therefore returns exactly
+the same bytes as `/`; the query remains a harmless compatibility alias for saved links. The legacy
+HTML, stylesheet, scripts, loader, and tests were deleted together so there is no fallback that can
+silently become the product again.
 
-The query flag was chosen over `GET /next` because it composes with `?all=1` and leaves one base URL
-to paste. A separate path would preserve the same byte guarantee and remains viable. The rejected
-option is a client-side flag inside `APP_PARTS`: it would change the frozen bundle, execute both
-interfaces in one global scope, and recreate the byte-pin conflict on every frontend PR.
+The promoted script files keep their `next-*` names. Renaming every internal symbol and test would
+expand the conflict surface without changing behavior, while the single `APP_PARTS` list and root
+asset paths make bundle ownership unambiguous.
 
-## NUI-2: copied tokens keep the stylesheets independent
+## NUI-2: one stylesheet owns the interface
 
-`web/next/styles.css` carries a copy of the default stylesheet's token block. Its root values are the
-light palette, and a `prefers-color-scheme: dark` override carries the dark palette so the preview
-tracks the operating system preference without JavaScript. It does not import, extend or extract
-tokens from `web/styles.css`.
+During preview, copying the token block kept the two stylesheets byte-independent. Promotion made
+that copy the canonical `web/styles.css` and removed the legacy stylesheet. Its light root,
+`prefers-color-scheme: dark` override, type scale, selection tokens, responsive rules, and reduced
+motion treatment now describe the only UI.
 
-That duplication is deliberate. Extracting a shared token file would change the default page and
-make both bundles depend on later edits to one source. Importing the old stylesheet would also load
-all of the old component rules into the preview. A copied block costs two spellings, but it lets each
-bundle change without moving the other bundle's bytes.
+Space Grotesk and Space Mono subsets travel inside the assembled page as data URLs. A missing or
+malformed font is a canonical asset failure and prevents startup before the socket binds. There is
+no font route or browser request to a provider. Licenses and source hashes live under `web/fonts/`.
 
-The same cost applies to small JavaScript rules both pages need, including escaping, relative time
-and status marks. When wording is visible in both interfaces, a cross-bundle equality test is the
-check against drift. Sharing a script part would couple the two assembly orders and is not the fix.
+## NUI-3: the released route and storage namespace remain stable
 
-## NUI-3: one origin needs a state firewall
+The fragment grammar is `#n=sessions`, `#n=projects`, `#n=attention`,
+`#n=project:<encoded-project>`, or a session route carrying encoded project, harness, and complete
+session id. Invalid and retired fragments normalize to Sessions. Hash changes are both navigation
+output and browser-history input, so reload, pasted links, and back or forward preserve the view.
 
-Separate bytes do not separate browser state. Both pages use the same origin, so they share
-`location.hash` and `localStorage`.
+Browser state keeps its `cargento.next.*` namespace. That prefix is no longer a firewall between
+two live bundles; it is compatibility with storage written during the preview and protection from
+stale `cargento.leader` records written by the removed dashboard. The current leader uses
+`cargento.next.leader` and `cargento.next.revision` so a stale old lease cannot demote it.
 
-The default bundle treats any fragment containing `session=` as its session route. The next bundle
-therefore uses one `#n=` token: `projects`, `sessions`, `project:<encoded-project>` or
-`session:<encoded-project>:<encoded-harness>:<encoded-session>`. No form contains that substring.
-A missing or invalid token opens Sessions. Hash changes are the browser-history input as well as
-the output of breadcrumb and Escape navigation, so shared project and session links survive a
-reload without another state store. Every storage key written by the next bundle begins
-`cargento.next.`. The next-page stream follows that rule with `cargento.next.leader` and
-`cargento.next.revision`; it does not read or write the default page's `cargento.leader` or
-`cargento.revision` lease.
+## NUI-4: the canonical bundle fails before bind
 
-`tests/test_next_isolation.py` freezes both directions. State left by the next page cannot change a
-default-page render or display mode, and the next page cannot disturb a foreign default-page lease.
-That file is the milestone firewall, not a fixture later work may relax.
+`cli.main` assembles one required page before creating a daemon log, binding, forking, or spawning a
+Windows child. Failure in the shell, stylesheet, any script part, or any embedded font is fatal and
+reported as a frontend asset error. Requests never read source files, and each server instance owns
+its already assembled bytes.
 
-## NUI-4: the preview fails closed without taking down the dashboard
+The runtime inventory and copied-plugin tests enumerate the root assets explicitly. They prove an
+installed copy is complete rather than relying on recursive copying to conceal an omitted file.
 
-The default bundle is required. If it cannot be assembled, `cli.main` reports the asset error and
-returns before binding. The next bundle is optional and loads under its own exception boundary. A
-failure there produces a warning, leaves the default bytes attached to the server, and makes only a
-flagged request return 503.
+## NUI-5: chrome and navigation reflect the current payload
 
-Both pages are assembled once before serving and stored on the server instance. No request reads
-source files, and two servers in one interpreter cannot answer with each other's pages. The explicit
-runtime inventory and copied-plugin tests cover the nested assets because a recursive copy alone
-would carry them without proving they were expected.
+The header reports running sessions and subagents from the payload and exposes a needs-input button
+only when intervention exists. Projects and Sessions are the primary navigation; Attention is
+reached through that button or `a`. Shortcuts `a`, `p`, and `s` are case-insensitive and do not run
+while a form control owns focus or Meta, Control, or Alt is held. The preview's `dashboard mode`
+button and `d` shortcut were removed during promotion because `/` now serves this same interface.
 
-## NUI-5: the chrome counts the payload it actually has
+Projects groups the current payload by display label and splits active evidence from recently
+observed groups. Sessions separates Active now from Recent history. The active group retains gate
+priority and the working attention ladder, while history remains reachable without presenting its
+last observed state as a current operation. Every row carries the exact route needed by project or
+session detail.
 
-The next page has its own `/api/data` loop because its script shares no scope with the default
-bundle. It polls at the default bundle's named 5 s fallback cadence and forwards `all=1` only when
-the page query carries it. The distinction matters on the server: collection is memoized by the
-`show_all` value, so an all-sessions tab beside a regular tab causes a second filesystem pass.
-
-The chrome does not repair or reinterpret the payload. Running means `summary.working`, not
-`summary.active_sessions`, because the latter also includes sessions waiting for input. The gate
-pill comes from `summary.needs_input`, subagents are counted from the rows, and the project/session
-line names the payload's `window_hours` rather than implying a machine-wide inventory. Two
-consecutive fetch failures show an explanatory notice beside the last good payload; a single failed
-poll does not flash the page on a transient miss. The notice says that live refresh failed, that
-displayed data may be stale, when the last successful refresh arrived, and when automatic retry
-will run. Its manual retry uses the same serialized refresh path. When the reported-block count is
-nonzero, its pill is a native button that opens Session operations. It does not answer, dismiss or
-otherwise control a block.
-
-The running and subagent summary begins with the shared filled live dot. That marker remains when
-both counts are zero because it says the payload-derived summary is live, not that an individual
-session is active. NUI-12 owns the motion and reduced-motion rules.
-
-The chrome owns `projects` and `sessions` body slots without owning either view. Projects groups the
-current payload by its display label, splits groups with active evidence from recently observed
-groups, and renders exact session command facts only for the active members. Session operations
-splits the same payload into Active now and Recent history. The active group keeps the server's gate
-order, uses the established working ladder, and then orders the remaining exact sessions by nearest
-activity. Recent history remains reachable without presenting its last observed state as current
-operation. NUI-16 owns the information hierarchy and responsive form of both views. The session
-detail renderer in NUI-8 consumes the exact route each row carries.
-`dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
-default bundle choose its saved display mode.
-
-The global `p` and `s` shortcuts reciprocally select the Projects and Sessions overview tabs, and
-the More menu exposes both actions as native buttons. Their keys are case-insensitive, but neither
-runs while an input, select or textarea owns focus, or while Meta, Control or Alt is held. Those
-guards keep navigation from taking over typing and browser or operating system commands.
-
-Every client-derived age uses one payload-clock grammar: `Ns` below a minute, `Nm` below an hour,
-`Nh Nm` below a day, then `Nd Nh`. Values are floored from the payload's `generated` time, never the
-browser clock. Missing or invalid timestamps omit the age, while a valid future timestamp clamps to
-`0s`.
+Two consecutive fetch failures show a stalled notice beside the last good payload. A manual retry
+uses the same serialized refresh path. The page forwards only `all=1` to `/api/data`; `next=true`
+never changes collection. Every client-derived age uses the payload's generated time rather than
+the browser clock.
 
 ## NUI-6: a project keeps its workflows separate
 
@@ -251,12 +213,12 @@ when both measurements exist, the loop sentence replaces the generic long-turn e
 than producing a second notice. A loop without a long turn uses `FAILED TOOL LOOP`, and remains
 visible after the session stops because the server retains that peak until the next prompt. A
 missing or malformed positive integer count removes the loop notice. Neither path infers a stalled
-or failed outcome. Its sentences match the default views, and the next bundle keeps a local MCP
-tool-name formatter because importing the default script would cross the byte firewall.
+or failed outcome. The canonical bundle keeps the MCP tool-name formatter near the detail renderer
+that uses it.
 
 Questions render only when the payload advertises the ask capability. Matching is exact on the
 full session ID, keeps payload order, and shows every match. The callout uses the same
-`<harness> is asking you` sentence as native and browser notifications. Each option posts its
+`<harness> is asking you` sentence as native notifications. Each option posts its
 numeric index to the existing `/api/answer` endpoint. Only `answered: true` confirms the action;
 otherwise the question stays put with a failure note keyed to its ask ID. There is no optimistic
 removal.
@@ -272,10 +234,9 @@ number `this turn` or `this session` from the source it actually chose. An absen
 absent and a real zero stays visible, so a lifetime total cannot read as if it described the current
 request.
 
-Reusing `web/session.js` or `web/ask.js` would join the two script scopes and break the default-page
-byte firewall. A new session endpoint would duplicate the current payload and expand the HTTP
-surface without supplying new evidence. The separate `next-session.js` part needs neither. It also
-adds no retained history; that decision remains DRC-4234.
+A new session endpoint would duplicate the current payload and expand the HTTP surface without
+supplying new evidence. The `next-session.js` part renders from the canonical payload and adds no
+retained history; that decision remains DRC-4234.
 
 ## NUI-9: the workstream starts when this tab starts observing
 
@@ -317,7 +278,7 @@ such source or retention policy is implied here. DRC-4234 owns that later decisi
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-The project rail includes STEER and GUARDRAILS because the preview needs the interaction shape, but
+The project rail includes STEER and GUARDRAILS because the dashboard needs the interaction shape, but
 neither is a session-control surface. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It
@@ -326,7 +287,7 @@ while an enabled field with no receipt would look like a successful send.
 
 Guardrail rules are viewer preferences. They are stored under a project-label key in the next
 bundle's localStorage namespace, capped at 50 rules of 500 characters, and kept in memory if storage
-throws. The project label is enough for a local preview preference. It is not stable enough for a
+throws. The project label is enough for a local browser preference. It is not stable enough for a
 server store that changes what agents do. Stored values are untrusted input, so both loaded and new
 rules pass through the shared escaping function every time they render. The header and every row
 say that no observer is enforcing them.
@@ -388,9 +349,8 @@ invented time threshold. Events before the displayed window still establish pend
 events inside the window increment its count. Gate openings, ask registrations and turn stops remain
 agent-side events and do not increment it.
 
-The number begins again when the tab reloads. It is neither durable nor continuous with any figure
-on the default page; [DRC-4234](https://linear.app/recce/issue/DRC-4234) still owns the decision about
-persistent history.
+The number begins again when the tab reloads. It is not durable;
+[DRC-4234](https://linear.app/recce/issue/DRC-4234) still owns the decision about persistent history.
 
 ## NUI-12: motion means observed activity, not mere attention
 
@@ -408,44 +368,31 @@ group without the live dot.
 
 The pulse changes only opacity. Under `prefers-reduced-motion: reduce`, animation is disabled while
 the filled accent dot and `next-live` class remain, so liveness does not depend on motion. All of
-these selectors and the keyframes live in `web/next/styles.css`; the independently assembled
-default page cannot inherit them.
+these selectors and keyframes live in the canonical `web/styles.css`.
 
-## NUI-13: transport is duplicated so ownership is not shared
+## NUI-13: one transport keeps the released namespace
 
-The next page re-derives the default page's leader election and SSE subscription in
-`next-live.js`. It does not share their lease. Both bundles use one origin, and `localStorage`
-belongs to that origin rather than to a path or query string. Reusing `cargento.leader` would let a
-preview tab win the lease and demote an open default page to its 20-second fallback poll. The next
-bundle therefore uses only `cargento.next.leader` and `cargento.next.revision`.
+Tabs elect one leader through `cargento.next.leader`, fan revisions out through storage, and retain
+`cargento.next.revision`. Those names survive promotion so stored preview state remains compatible
+and a stale `cargento.leader` lease from the removed dashboard cannot affect the canonical page.
+There is now one bundle and therefore one leader population, even when `/` and `/?next=true` are
+open together.
 
-That separation has a visible cost in the connection budget. Keeping `/` and `/?next=true` open at
-the same time holds two `EventSource` connections: one leader for each bundle. The server allows
-eight stream clients, while browsers commonly allow roughly six connections to one origin. One
-extra connection during the opt-in compatibility window is preferable to making the default page
-four times slower because a preview tab exists. Sharing can be reconsidered when one bundle is
-removed; it is unsafe while both ship.
-
-Within the next bundle, tabs still elect one leader and fan revisions out through storage. A
-permanently closed stream yields and retries on the next two-second election tick. A 20-second poll
-runs beside SSE as the safety net; a browser without `EventSource` keeps the existing five-second
-poll as its whole transport. Both paths call the same `refreshNext()`, so failed fallback requests
-continue to drive the stalled banner added with the original poll. No stream endpoint, server
-budget or revision rule changes.
+A permanently closed stream yields and retries on the next two-second election tick. A 20-second
+poll runs beside SSE as a safety net; a browser without `EventSource` uses the five-second poll as
+its whole transport. Both call the same serialized refresh function, so failures drive the same
+stalled notice. The server stream budget and revision rules do not change.
 
 ## NUI-14: the specified fonts travel inside the page
 
 The design names Space Grotesk at weights 400 through 700 and Space Mono at weights 400 and 700.
-System fallbacks made that choice depend on which fonts happened to be installed. The next bundle
-now ships the upstream Latin, Latin Extended and Vietnamese WOFF2 subsets. `page.py` checks each
-packaged payload and embeds it as a data URL while assembling the existing one-page response.
+The canonical bundle ships upstream Latin, Latin Extended, and Vietnamese WOFF2 subsets. `page.py`
+validates each packaged payload and embeds it as a data URL while assembling the one-page response.
 
-Keeping the fonts inside that response preserves the split established in NUI-1 and NUI-4. There is
-no font route, no browser request to a font provider and no new failure surface for the default UI.
-A missing or malformed font prevents only the next page from loading, as a missing next-page script
-does. The explicit runtime inventory makes an incomplete installed copy fail validation before that
-point. Each family keeps its upstream SIL Open Font License beside the assets, and
-`web/next/fonts/SOURCES.txt` records the source URLs, decoded sizes and hashes.
+There is no font route, provider request, or optional font failure boundary. Missing or malformed
+font data prevents the canonical page from loading before bind. Each family keeps its upstream SIL
+Open Font License beside the assets, and `web/fonts/SOURCES.txt` records source URLs, decoded sizes,
+and hashes.
 
 ## NUI-15: command facts keep their source and their scope
 
@@ -529,21 +476,18 @@ progressive command facts. No level repeats a broader summary merely because it 
 
 ## What this does not decide
 
-The second bundle does not create durable event, turn or UI history. History-backed regions remain
+Promotion does not create durable event, turn, or UI history. History-backed regions remain
 windowed or withheld after reload. Whether Cargento should persist session history is the follow-up
-decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is not a prerequisite for the
-opt-in UI.
+decision in [DRC-4234](https://linear.app/recce/issue/DRC-4234); it is independent of which
+frontend is canonical.
 
 Project and session rows are live from the existing payload. Their detail views render only that
 snapshot: the project shows the honest Spacedock plan, while the session shows its current asks,
 tasks, subagents and measured token total.
 
-## Way back
+## Promotion boundary
 
-If maintaining two implementations costs more than the compatibility window is worth, promote
-`load_next_page()` to `/` and delete `APP_PARTS` in one PR. Recompute the old byte oracles once at
-that cutover. The namespaced state means no migration is needed to remove the preview.
-
-The other reversible choice is the URL shape. The second blob can move to `GET /next` without
-merging the bundles. Neither rollback requires a backend data migration, and neither is part of the
-flagged milestone.
+The promotion deliberately removes the rollback-by-query path. Recovering the retired dashboard
+would now be a source-control revert, not a runtime flag, so startup and routing cannot disagree
+about which UI is supported. The compatibility query can be removed later without a backend or
+browser-state migration because it already selects no behavior.

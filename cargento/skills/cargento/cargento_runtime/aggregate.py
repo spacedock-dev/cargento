@@ -194,7 +194,7 @@ class HarnessSpec:
     overlay and has no collector detection at all, so a flag meaning the second
     thing labelled Codex blind on the same screen where a Codex gate was red.
     That is the inversion this field exists to prevent, shipped by the field
-    itself. `tests/test_page.py` derives the expected set instead of listing it:
+    itself. `tests/test_next_page.py` derives the expected set instead of listing it:
     every collector module is parsed for the state it actually writes, unioned
     with whatever `EVENTS_BY_HARNESS` maps `input_requested` for, because a
     hand-set bool beside a hand-written literal pinned the bug green. The same
@@ -339,8 +339,8 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
 # `state_detail` earns its place twice over. It is built by hand from the same
 # transcript text — an in-progress task's `activeForm` is copied into it BEFORE
 # the sweep runs — and it is read at ten render sites across six web files,
-# including the browser notification body, which is the one published string
-# that leaves the page.
+# including notification text, which can leave the page through the native
+# notifier.
 _RAW_ROW_TEXT: Final = ("title", "last_prompt", "state_detail")
 
 # `(the row field holding a list of dicts, the keys inside each one)`.

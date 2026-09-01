@@ -511,8 +511,8 @@ def _unreadable_entry(now: float, harness: str, state: str) -> dict[str, Any]:
     Two reasons reach this, and they are not the same fact. `lapsed` is a stamp
     read out of local storage with no request made; `refused` is a request the
     vendor answered 401/403. One shared `expired` published them as one, so the
-    page could only advise one remedy for both, and it advised the wrong one for
-    the commoner case — see the reader-facing wording in web/usage.js.
+    a reader could only advise one remedy for both, and that advice was wrong
+    for the commoner case; design-usage-quota.md records the distinction.
     """
     return {"harness": harness, "state": state, "asOf": int(now)}
 
@@ -681,9 +681,9 @@ def _cursor_entries(
         if exc.code in (401, 403):
             # Cursor answers a stale token with 401 and `actionRequired:
             # "login"`, so here the sign-in remedy is measured rather than
-            # assumed. web/usage.js keys its wording on that, and Cursor is the
-            # only harness it may say it for. There is no local expiry check on
-            # this path, so `refused` is the only unreadable state Cursor has.
+            # assumed. Cursor is the only harness for which that remedy may be
+            # claimed. There is no local expiry check on this path, so
+            # `refused` is the only unreadable state Cursor has.
             return [_unreadable_entry(now, "cursor", "refused")], None
         return [], f"HTTP {exc.code}"
     except (urllib.error.URLError, OSError, ValueError) as exc:

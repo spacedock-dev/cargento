@@ -6,8 +6,8 @@ const NEXT_STEER_RECORD_LIMIT = 20;
 let nextControlsProjects = new Map();
 
 function nextControlsStorageKey(project){
-  // The stable and next pages share an origin. Prefix every viewer-owned key
-  // so these local mock controls cannot alter the stable page's state.
+  // Preserve the released UI's prefix so viewer-owned state stays separate
+  // from browser storage written by earlier dashboard versions.
   return `${NEXT_GUARDRAIL_KEY_PREFIX}${encodeURIComponent(project)}`;
 }
 

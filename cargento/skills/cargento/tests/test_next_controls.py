@@ -4,8 +4,7 @@ import json
 import shutil
 import unittest
 
-from .next_harness import NextPageJsHarness
-from .test_next_isolation import storage_prelude
+from .next_harness import NextPageJsHarness, storage_prelude
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")

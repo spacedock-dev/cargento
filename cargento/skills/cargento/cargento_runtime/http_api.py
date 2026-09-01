@@ -1,4 +1,4 @@
-"""The loopback HTTP service: one server instance, one application, assembled pages."""
+"""The loopback HTTP service: one server instance, one application, one assembled page."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def bind_error_message(exc: OSError, port: int, host: str = "127.0.0.1") -> str:
 class CargentoHTTPServer(ThreadingHTTPServer):
     """Loopback listener that refuses to share its port on Windows.
 
-    It owns exactly one application and its assembled pages, all read from the
+    It owns exactly one application and its assembled page, all read from the
     instance rather than from module globals, so two servers can run in one
     interpreter without either one answering with the other's data.
     """
@@ -109,12 +109,9 @@ class CargentoHTTPServer(ThreadingHTTPServer):
         application: Application,
         page_bytes: bytes,
         observation: Observation | None = None,
-        *,
-        next_page_bytes: bytes | None = None,
     ) -> None:
         self.application = application
         self.page_bytes = page_bytes
-        self.next_page_bytes = next_page_bytes
         # None under --no-events, and None for the many test doubles that only
         # need a page and an application. `serve` reads it to decide whether to
         # run the coordinator or the older periodic producer.
@@ -431,13 +428,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             return
         url = urlparse(self.path)
         if url.path == "/":
-            if parse_qs(url.query).get("next", [""])[0] == "true":
-                if self.server.next_page_bytes is None:
-                    self.send_error(503)
-                else:
-                    self._send(self.server.next_page_bytes, "text/html; charset=utf-8")
-            else:
-                self._send(self.server.page_bytes, "text/html; charset=utf-8")
+            self._send(self.server.page_bytes, "text/html; charset=utf-8")
         elif not self._get_api(url):
             self.send_error(404)
 

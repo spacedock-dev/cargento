@@ -419,7 +419,7 @@ console.log(JSON.stringify({
         self.assertEqual(legacy, out["legacy"])
 
     def test_next_live_source_contains_no_legacy_key_literal(self) -> None:
-        path = frontend_page.WEB_DIR / "next" / "next-live.js"
+        path = frontend_page.WEB_DIR / "next-live.js"
         if not path.is_file():
             self.fail("next-live.js does not exist")
         source = path.read_text(encoding="utf-8")

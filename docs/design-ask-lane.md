@@ -198,13 +198,12 @@ button that would write a mark against a session id for a question the store can
 mark would lapse on that session's next write rather than when the question is answered. The two
 concepts have different lifetimes, and the row shape has one.
 
-Taken: `waitingQueue()` in `web/spark.js`, one function, four readers. It is a **merge rather than a
-sort**, and that distinction is what keeps `gateQueue()` the pure filter it says it is. Both inputs
-arrive ranked by whoever owns that ranking, `row_order` in `aggregate.py` for the sessions and
-`AskRegistry.pending` for the questions, so the comparison only ever decides between one gate and one
-question and neither list's internal order is re-derived. A comparator over the concatenation would
-have been a second definition of both, which is the fault the old `gateQueue()` comment refused in
-one direction and this refuses in two.
+Taken: `nextAttentionModel()` in `web/next-attention.js` keeps asks as first-class Attention
+signals. An ask with an exact owner joins that session's Needs-you subject; an unmatched ask remains
+a standalone subject rather than becoming a synthetic session. Native gates without a matched ask
+form their own session subjects. The comparator then ranks those subjects by the strongest waiting
+evidence while stable identity breaks ties, so multiple asks for one session do not produce
+competing session rows.
 
 What it ranks on is an absolute epoch on the payload's own clock: `blocked_since` for a gate, and
 `generated - age_sec` for a question, which `_ask_cards` rounds to the second from the same `now`

@@ -218,19 +218,21 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
-- The existing frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in
+- The frontend rebuilds `#app` from scratch on every refresh. What triggers one moved in
   Phase 1c:
   the leader tab holds an `EventSource` on `/api/stream` and refetches when the server announces a
   new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
-  falls back to the old five-second poll. The rebuild itself is unchanged, so anything the reader
+  falls back to a five-second poll. The rebuild itself is unchanged, so anything the reader
   set has to live in a module variable and be reapplied after the swap: the expanded row, the
   keyboard cursor, the filters, the scroll offset. Two rules follow. Escape every payload-derived string through
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
-- The opt-in next frontend is a separate assembled scope under `web/next/`. It does not extend
-  `APP_PARTS`, share the default stylesheet, reuse the default bundle's hash grammar, or touch its
-  storage keys. [docs/design-next-ui.md](docs/design-next-ui.md) owns that boundary and its way back.
+- The frontend is one assembled scope under `web/`. `?next=true` is a compatibility alias for the
+  same bytes, not another assembly path. The promoted files retain their `next-*` names and
+  `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless; do not infer a
+  second frontend from those internal names. [docs/design-next-ui.md](docs/design-next-ui.md) owns
+  the promotion decision and route grammar.
 - Size text through the `--fs-*` scale in `styles.css` and nothing else. A test rejects any raw px
   `font-size` and any declared step the file never uses, because the stylesheet previously carried
   twenty ad-hoc values between 8px and 15px, which is drift rather than hierarchy. Adding a rung is
@@ -242,10 +244,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Draw selected state with `--sel-bg` and `--sel-bd`. The display toggle, the order segment, the
   state filter chips and the flag pill all used to paint selection as `--panel` over `--bg`, a 1.2:1
   step, so on and off were indistinguishable in either theme.
-- Test the page by running it, not by matching strings against its source. `PageJsHarness` in
-  `page_harness.py` executes the real dashboard script (the `web/*.js` parts, concatenated in
-  `APP_PARTS` order) under node against a stub DOM. `NextPageJsHarness` runs the independently
-  assembled `NEXT_PARTS` against the same stubs. A test can fire a click or a keystroke and assert
+- Test the page by running it, not by matching strings against its source. `NextPageJsHarness` in
+  `next_harness.py` executes the real dashboard script (the `web/next-*.js` parts, concatenated in
+  `APP_PARTS` order) under node against a stub DOM. A test can fire a click or a keystroke and assert
   on what the page did. A source-text assertion passes forever after the behavior behind it breaks.
   Each check runs in a fresh `vm` context inside the shared worker described above, so it still gets
   a clean set of globals, but it is no longer a clean process: anything a check leaves on a timer
@@ -256,12 +257,11 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   Reporting one means pointing the user at the very log that could not be opened. Note that
   `os.makedirs(exist_ok=True)` is not this check: it succeeds for a directory that already exists
   whatever its mode, which is the likeliest bad state of all.
-  Load an optional frontend in a separate nonfatal boundary. A broken preview must not stop the
-  default page from binding.
+  There is no optional preview boundary: every canonical asset is required before bind.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.
-- Stopping goes over HTTP, so the CLI and the page share one code path, and a handler that stops the
+- Stopping goes over HTTP, and a handler that stops the
   server must do it on its own thread. Not because a `ThreadingHTTPServer` handler would deadlock
   calling `server.shutdown()` inline. It would not, since every request already runs on its own
   thread and the accept loop is never the caller. The reason is that `shutdown()` blocks until the accept
@@ -304,7 +304,8 @@ This is the contribution we most want. Each harness is one registry entry: a key
 - Resolve store roots through the candidate-set resolver rather than a single hardcoded path, and honor the harness's documented relocation variable if it has one.
 - Document the data source and its caveats in `SKILL.md`'s data-sources list. The documentation-matches-code test asserts it.
 - Add tests with a synthetic store fixture, including a hostile-path case.
-- Add the harness to the page's `HARNESS` table in `cargento_runtime/web/spark.js` with a unique two-letter monogram. A contract test compares that table to the registry, so a row added on one side only fails the build.
+- No frontend registry entry is needed. The page reads harness keys and labels from the payload's
+  `harnesses` list, which is derived from `default_harnesses()`.
 - Every row's field set is declared once, in `base_session` in `cargento_runtime/sessions.py`, at `None`. Populate the fields your store can answer and leave the rest; do not add a key that only your harness sets, because then every consumer has to test for presence instead of for a value. `provider` and `model` are there for the same reason and only Pi fills them today, since Pi is the one harness that spends another product's allowance rather than its own.
 
 Before writing any of it, settle whether the thing deserves a row of its own: two store formats can be one harness, and one vendor can be two. [`docs/design-harness-registry.md`](docs/design-harness-registry.md) owns that judgement and the one time it had to be revisited.

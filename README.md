@@ -93,7 +93,7 @@ line. See [HOW_TO_USE.md](HOW_TO_USE.md) for one procedure per task.
 
 | Skill | What it does | Standalone invocation |
 |-------|--------------|------------------------|
-| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across ten coding-agent harnesses, with input-wait notifications (native on macOS, browser notifications elsewhere) | `/cargento:cargento` |
+| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across ten coding-agent harnesses, with native input-wait notifications on macOS | `/cargento:cargento` |
 
 In Codex, invoke it as `$cargento`. In any harness you can also just ask: "open cargento" or "monitor my agents".
 
@@ -133,4 +133,4 @@ privately, as described in [SECURITY.md](SECURITY.md).
 
 Cargento's code and documentation are licensed under the [Apache License 2.0](LICENSE). See
 [NOTICE](NOTICE) for attribution. The bundled Space Grotesk and Space Mono font subsets retain their
-SIL Open Font License notices in `cargento/skills/cargento/cargento_runtime/web/next/fonts/`.
+SIL Open Font License notices in `cargento/skills/cargento/cargento_runtime/web/fonts/`.

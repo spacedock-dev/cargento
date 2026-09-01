@@ -249,26 +249,16 @@ def build_application(
     )
 
 
-def load_frontend_pages() -> tuple[bytes, bytes | None] | None:
-    """Assemble the required page and the optional next-UI preview."""
+def load_frontend_page() -> bytes | None:
+    """Assemble the required dashboard page."""
     try:
-        page_bytes = frontend_page.load_page()
+        return frontend_page.load_page()
     except (OSError, UnicodeError, RuntimeError) as exc:
         print(
             f"Cargento: cannot load frontend assets ({type(exc).__name__}: {exc}).",
             file=sys.stderr,
         )
         return None
-    try:
-        next_page_bytes = frontend_page.load_next_page()
-    except (OSError, UnicodeError, RuntimeError) as exc:
-        print(
-            "Cargento: cannot load next frontend assets "
-            f"({type(exc).__name__}: {exc}); ?next=true is unavailable.",
-            file=sys.stderr,
-        )
-        next_page_bytes = None
-    return page_bytes, next_page_bytes
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -315,10 +305,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     # After the recovery commands above, so --status and --stop still work on an
     # installation whose assets are missing, and while stderr is still attached.
-    pages = load_frontend_pages()
-    if pages is None:
+    page_bytes = load_frontend_page()
+    if page_bytes is None:
         return 1
-    page_bytes, next_page_bytes = pages
     log_file = lifecycle.log_path(config, args.port)
     if args.daemon and not lifecycle.prepare_daemon_home(config, log_file):
         # Reported already; the message has to reach the terminal that asked,
@@ -359,7 +348,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             application,
             page_bytes,
             coordinator,
-            next_page_bytes=next_page_bytes,
         )
     except OSError as exc:
         runtime_io.diag(http_api.bind_error_message(exc, args.port, args.host), print)

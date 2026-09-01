@@ -2,8 +2,8 @@
 // six hours. Keep that useful window with room for transitions while placing a
 // hard ceiling on what one browser tab retains.
 const NEXT_WORKSTREAM_ENTRY_CAP = 100000;
-// The old and next pages share an origin. Keep next-only viewer preferences in
-// their own namespace so the stable bundle cannot mistake them for its state.
+// Preserve the released preference key so stored browser state survives the
+// promotion and cannot collide with keys from retired dashboard versions.
 const NEXT_WORKSTREAM_COLLAPSED_KEY = "cargento.next.workstream.collapsed";
 
 let nextWorkstreamGroups = [];

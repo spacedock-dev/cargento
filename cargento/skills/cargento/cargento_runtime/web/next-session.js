@@ -178,8 +178,7 @@ function nextSessionAskBlock(session, asks){
     `<strong>${esc(nextSessionAskingTitle(session))}</strong></div>${cards}</section>`;
 }
 
-// The next bundle is assembled independently, so this local equivalent keeps
-// MCP transport names out without pulling the stable bundle across the byte firewall.
+// Keep transport-name presentation beside the session detail that uses it.
 function nextSessionHumanTool(text){
   return text.replace(NEXT_SESSION_MCP_TOOL, (whole, server, tool) => {
     const service = server.replace(NEXT_SESSION_MCP_HOST_PREFIX, "").replace(/_+/g, " ").trim();
