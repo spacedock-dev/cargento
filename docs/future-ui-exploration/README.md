@@ -110,6 +110,10 @@ The experiment is accepted only when the captain and first officer both judge th
 - **Good:** The accepted result satisfies the comprehension outcome and preserves honest scope and provenance.
 - **Bad:** Terminalizing because a schedule expired, a fixed iteration count was reached, or reviewers ran out of findings.
 
+## Review package
+
+The [Session Operations Board visual walkthrough](presentations/future-ui-session-operations-board/README.md) pairs the accepted wide and 320-pixel captures with a short explanation for readers who did not follow the experiment. This file remains the reusable workflow definition. Live stage reports and correction history remain in the split-root Spacedock state checkout.
+
 ## Workflow-specific rules
 
 - **Integration branch invariant.** `feat/future-ui` is the only durable product branch this workflow advances. Product commits and accepted correction checkpoints remain there. No workflow command, PR, or terminal action may target `main`.
