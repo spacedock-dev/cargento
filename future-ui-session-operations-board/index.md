@@ -10,6 +10,17 @@ score: 1.0
 worktree:
 issue:
 pr:
+gates:
+    version: 1
+    records:
+        - id: gate:future-ui-session-operations-board:framing
+          stage: framing
+          attempts:
+            - id: gate-attempt:future-ui-session-operations-board-framing-1
+              briefing:
+                id: briefing:future-ui-session-operations-board:framing:attempt-1:revision-1
+                digest: sha256:0af4a0e2729c814dd724d3b4236c0b350bee235e8df0c65e1f25fadfaf3c2b53
+                room-ref: ./review/framing/briefing-1
 ---
 
 Replace the Attention-first ranking model with an exact-session operations board that lets a person scan the fleet and answer where each session is, what it is doing now, what it may do next, and whether it is blocked.
