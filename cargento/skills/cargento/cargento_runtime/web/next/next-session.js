@@ -87,7 +87,7 @@ function nextSessionCommandFact(kind, label, body){
   return `<section data-next-session-command-fact="${kind}"><h2>${label}</h2>${body}</section>`;
 }
 
-function nextSessionCommandSurface(session, asks){
+function nextSessionCommandSurface(session, asks, identity){
   const owner = nextSessionSourceOwner(session);
   const assignment = nextSessionInstruction(session, "asked");
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
@@ -119,8 +119,10 @@ function nextSessionCommandSurface(session, asks){
     : "";
   return '<div class="next-session-command-surface" aria-label="Session command surface">' +
     '<section class="next-session-current" data-next-session-command="activity">' +
-    `<h2>CURRENT ACTIVITY</h2><strong>${esc(executionText)}</strong>${contextLine}</section>` +
-    factBlock + nextSessionSourceCoverage(owner, assignment, next, asks) + "</div>";
+    '<span class="next-session-current-label">CURRENT ACTIVITY</span>' +
+    `<strong>${esc(executionText)}</strong>${contextLine}` +
+    nextSessionSubagents(session) + `</section>${identity}` + factBlock +
+    nextSessionSourceCoverage(owner, assignment, next, asks) + "</div>";
 }
 
 function nextSessionTitle(session, asks){
@@ -259,8 +261,9 @@ function nextSessionSubagents(session){
       `<strong class="next-session-subagent-name">${esc(subagent && subagent.name || "subagent")}</strong>` +
       `${measured}</div>`;
   }).join("");
-  return '<section class="next-session-section" data-next-session-section="subagents">' +
-    `<h2>SUBAGENTS</h2>${rows}</section>`;
+  const label = subagents.length === 1 ? "1 RUNNING SUBAGENT" : `${subagents.length} RUNNING SUBAGENTS`;
+  return '<div class="next-session-current-subagents" data-next-session-subagents>' +
+    `<span>${label}</span>${rows}</div>`;
 }
 
 function nextCompactTokens(value){
@@ -306,14 +309,13 @@ function nextSessionView(project, sid){
   const meta = nextSessionMeta(session);
   const metaLine = meta ? `<p class="next-session-detail-meta">${esc(meta)}</p>` : "";
   const title = nextSessionTitle(session, asks);
+  const identity = `<header class="next-session-detail-header">${stateLabel}` +
+    `<h1>${esc(title)}</h1>${metaLine}</header>`;
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr}>` +
-    `<header class="next-session-detail-header">${stateLabel}` +
-    '<span class="next-session-detail-label">SESSION</span>' +
-    `<h1>${esc(title)}</h1>${metaLine}</header>` +
-    nextSessionCommandSurface(session, asks) + nextSessionHealth(session) +
+    nextSessionCommandSurface(session, asks, identity) + nextSessionHealth(session) +
     nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
-    nextSessionSubagents(session) + nextSessionFooter(session) + "</article>";
+    nextSessionFooter(session) + "</article>";
 }
 
 async function nextAnswerAsk(id, index){

@@ -497,14 +497,6 @@ class NextPageAssetContractTest(unittest.TestCase):
 
     def test_session_detail_state_rails_use_the_fixed_palette(self) -> None:
         styles = (frontend_page.WEB_DIR / "next" / "styles.css").read_text(encoding="utf-8")
-        inset = re.search(
-            r"\.next-session-detail\[data-next-session-state\] "
-            r"\.next-session-detail-header\{([^}]*)\}",
-            styles,
-        )
-
-        self.assertIsNotNone(inset)
-        self.assertIn("padding-left:16px", inset.group(1) if inset else "")
         for state, color in (
             ("needs_input", "var(--warn)"),
             ("working", "var(--accent)"),
@@ -513,11 +505,11 @@ class NextPageAssetContractTest(unittest.TestCase):
             with self.subTest(state=state):
                 rule = re.search(
                     rf'\.next-session-detail\[data-next-session-state="{state}"\] '
-                    r"\.next-session-detail-header\{([^}]*)\}",
+                    r"\.next-session-current\{([^}]*)\}",
                     styles,
                 )
                 self.assertIsNotNone(rule)
-                self.assertIn(f"box-shadow:inset 3px 0 {color}", rule.group(1) if rule else "")
+                self.assertIn(f"border-left-color:{color}", rule.group(1) if rule else "")
 
     def test_load_next_page_preserves_its_byte_oracles(self) -> None:
         # Per-part first, deliberately. Every part feeds the assembled page, so a
@@ -533,12 +525,12 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "56bc4ce7bb65fb19f5d8f1bf35902b4bb219c35663d17bcf2d35759f67eb193f",
             ),
             "next-chrome.js": (
-                13_016,
-                "c1731eaf40c4241ebc5053b5edef1d07fa61565b66ab7632e4d03a0cf15abc61",
+                13_147,
+                "577ce15c7c396e2aaaa718a14a458dc21ab397fa78115aa53c85d574dd498c4d",
             ),
             "next-sessions.js": (
-                8_728,
-                "9c0441fcfe44860991cfc7c495b1b7823627529d7306b278c95048c49eade7d0",
+                10_685,
+                "74ae6544e03de5335254a87d4fd66dd00484c78d1ee2b5630b8b494894292a95",
             ),
             "next-projects.js": (
                 8_626,
@@ -553,8 +545,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "73e9a1cb6f02f818a0bd51ef5832a7766c092d88da564f6ebede654ef430da7b",
             ),
             "next-session.js": (
-                15_766,
-                "6520d5cced3cc1539e76918177e420303db51d468f06db77a33f4680358a8006",
+                15_905,
+                "976d297c1d1298617bf44af69e656441be1117505212f62970042e18418ba696",
             ),
             "next-workstream.js": (
                 11_703,
@@ -585,16 +577,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.next_asset_path("styles.css").read_bytes()
-        self.assertEqual(35_000, len(styles))
+        self.assertEqual(36_343, len(styles))
         self.assertEqual(
-            "5e821fb9c3b25193e701f3af56930e1c80ca2d3b82bd5a433289ec91844e2f77",
+            "c21ec6085310d06192f54235d1994f970917b9c6b7ebd905231a5b52a3e2b13c",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_next_page()
-        self.assertEqual(304_686, len(assembled))
+        self.assertEqual(308_256, len(assembled))
         self.assertEqual(
-            "0e83371a77e737a16afa995ea1ec727c01fd35c07b61cbf9d1da10ab713d176a",
+            "a8333a8baca65896bacb2bab4f7aecc2ddfeb73a1e0fc01be8ac77124c439574",
             hashlib.sha256(assembled).hexdigest(),
         )
 

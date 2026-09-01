@@ -510,11 +510,40 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         )
         self.assertIn(
             '<button type="button" class="next-gate" data-next-action="needs-input">'
-            "1 need you</button>",
+            "1 reported block</button>",
             out,
         )
         self.assertNotIn("4 running", out)
         self.assertIn("<h1>Session operations</h1>", out)
+
+    def test_exact_request_state_skew_is_counted_in_the_header_block_total(self) -> None:
+        out = self._run_page_js(
+            """
+await __settle();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            """
+__els.app = {innerHTML: ""};
+__fetchImpl = async () => ({ok: true, json: async () => ({
+  ask: true,
+  window_hours: 24,
+  summary: {working: 0, needs_input: 0},
+  harnesses: [{key: "codex", reports_needs_input: true}],
+  sessions: [{harness: "codex", sid: "skew", project: "recce", state: "idle"}],
+  asks: [{id: "ask", session_id: "skew", question: "Choose the lane"}]
+})});
+""",
+        )
+
+        self.assertIn(
+            '<button type="button" class="next-gate" data-next-action="needs-input">'
+            "1 reported block</button>",
+            out,
+        )
+        self.assertIn(
+            'data-next-fleet-fact="reported-blocks"><span>REPORTED BLOCKS</span><strong>1</strong>',
+            out,
+        )
 
     def test_the_need_you_pill_opens_the_session_queue(self) -> None:
         out = self._run_page_js(

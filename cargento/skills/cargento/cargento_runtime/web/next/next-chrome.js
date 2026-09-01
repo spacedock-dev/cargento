@@ -163,12 +163,13 @@ function nextRows(){
 
 function nextCounts(){
   const rows = nextRows();
+  const asks = nextOperationsAsks(rows);
   const subagents = rows.reduce(
     (total, row) => total + (Array.isArray(row.subagents) ? row.subagents.length : 0),
     0,
   );
   return {
-    gates: rows.filter(row => row.state === "needs_input").length,
+    gates: rows.filter(row => nextOperationsIsBlocked(row, asks)).length,
     running: rows.filter(row => row.state === "working").length,
     subagents,
   };
@@ -200,8 +201,9 @@ function renderNext(focus = nextCaptureFocus()){
   if(!app) return;
   const counts = nextCounts();
   document.title = nextDocumentTitle();
+  const gateLabel = counts.gates === 1 ? "reported block" : "reported blocks";
   const gate = counts.gates > 0
-    ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} need you</button>`
+    ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
   const stalled = nextRefreshNotice();
   const breadcrumb = nextBreadcrumb();

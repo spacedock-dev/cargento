@@ -56,6 +56,20 @@ function nextOperationsReportsBlocks(session, harnesses){
   return Boolean(harness && harness.reports_needs_input === true);
 }
 
+function nextOperationsAskFor(session, asks){
+  const sid = String(session && session.sid || "");
+  return asks.find(ask => String(ask && ask.session_id || "") === sid) || null;
+}
+
+function nextOperationsIsBlocked(session, asks){
+  return session.state === "needs_input" || Boolean(nextOperationsAskFor(session, asks));
+}
+
+function nextOperationsIsActive(session, asks){
+  return ["working", "needs_input"].includes(String(session.state || "")) ||
+    Boolean(nextOperationsAskFor(session, asks));
+}
+
 function nextOperationsFleetFact(kind, label, value, note = ""){
   const detail = note ? `<small>${esc(note)}</small>` : "";
   return `<section data-next-fleet-fact="${kind}"><span>${label}</span>` +
@@ -63,13 +77,14 @@ function nextOperationsFleetFact(kind, label, value, note = ""){
 }
 
 function nextOperationsFleet(rows, asks, harnesses){
+  const active = rows.filter(session => nextOperationsIsActive(session, asks)).length;
   const working = rows.filter(session => session.state === "working").length;
-  const blocks = rows.filter(session => session.state === "needs_input").length;
+  const blocks = rows.filter(session => nextOperationsIsBlocked(session, asks)).length;
   const covered = rows.filter(session =>
-    nextOperationsReportsBlocks(session, harnesses)).length;
+    nextOperationsReportsBlocks(session, harnesses) || nextOperationsAskFor(session, asks)).length;
   const coverage = `${covered} of ${rows.length} sessions report block state`;
   return '<section class="next-operations-fleet" aria-label="Fleet facts">' +
-    nextOperationsFleetFact("observed", "OBSERVED SESSIONS", rows.length) +
+    nextOperationsFleetFact("active", "ACTIVE NOW", active, `${rows.length} recently observed`) +
     nextOperationsFleetFact("working", "WORKING", working) +
     nextOperationsFleetFact("requests", "EXACT REQUESTS", asks.length) +
     nextOperationsFleetFact("reported-blocks", "REPORTED BLOCKS", blocks, coverage) +
@@ -122,12 +137,14 @@ function nextOperationsNext(session){
 }
 
 function nextOperationsBlocked(session, asks, harnesses){
-  const sid = String(session.sid || "");
-  const ask = asks.find(item => String(item && item.session_id || "") === sid);
+  const ask = nextOperationsAskFor(session, asks);
   if(session.state === "needs_input" || ask){
     const question = String(ask && ask.question || "").trim();
     const detail = question || String(session.state_detail || "").trim() || "Block reported";
-    return nextOperationsFact("blocked", "BLOCKED", "Reported", detail, "blocked");
+    const responsibility = ask ? ` · ${nextAskResponsibility(nextData, ask)}` : "";
+    return nextOperationsFact(
+      "blocked", `BLOCKED${responsibility}`, "Reported", detail, "blocked",
+    );
   }
   if(nextOperationsReportsBlocks(session, harnesses)){
     return nextOperationsFact(
@@ -137,6 +154,12 @@ function nextOperationsBlocked(session, asks, harnesses){
   return nextOperationsFact(
     "blocked", "BLOCKED", "Unknown", "Harness does not report blocks", "unknown",
   );
+}
+
+function nextOperationsAssignment(session){
+  const assignment = nextSessionInstruction(session, "asked");
+  const text = assignment ? String(assignment.text || "").trim() : "";
+  return `<span class="next-operation-assignment">ASSIGNMENT · ${esc(text || "Not published")}</span>`;
 }
 
 function nextOperationsIdentity(session, labels, collisions){
@@ -149,7 +172,7 @@ function nextOperationsIdentity(session, labels, collisions){
   return '<span class="next-operation-identity">' +
     `<small>SESSION · ${esc(harnessLabel)}</small><strong>${dot}${esc(title)}</strong>` +
     `<span class="next-operation-sid">${esc(sid)}</span>` +
-    nextSessionCollision(session, collisions) + "</span>";
+    nextOperationsAssignment(session) + nextSessionCollision(session, collisions) + "</span>";
 }
 
 function nextOperationsRow(session, labels, collisions, asks, harnesses){
@@ -168,6 +191,21 @@ function nextOperationsRow(session, labels, collisions, asks, harnesses){
     "</a>";
 }
 
+function nextOperationsColumns(){
+  return '<div class="next-operations-columns" aria-hidden="true">' +
+    '<span>SESSION</span><span>WHERE</span><span>NOW</span><span>NEXT</span>' +
+    '<span>BLOCKED</span></div>';
+}
+
+function nextOperationsGroup(kind, title, description, sessions, renderer, empty){
+  const rows = sessions.map(renderer).join("");
+  const body = rows || `<p class="next-sessions-empty">${esc(empty)}</p>`;
+  return `<section class="next-operation-group next-operation-group--${kind}" ` +
+    `data-next-operation-group="${kind}"><header><h2>${title}</h2>` +
+    `<p>${description}</p></header>${nextOperationsColumns()}` +
+    `<div class="next-operation-rows">${body}</div></section>`;
+}
+
 function nextSessionsView(){
   const rows = nextRows();
   const asks = nextOperationsAsks(rows);
@@ -176,21 +214,23 @@ function nextSessionsView(){
   const labels = nextHarnessLabels();
   const collisions = nextSessionCollisionCounts();
   const ordered = [...blocks.gates, ...blocks.working, ...blocks.idle, ...blocks.other];
-  const rendered = ordered.map(session =>
-    nextOperationsRow(session, labels, collisions, asks, harnesses)).join("");
-  let body = rendered;
-  if(!body){
-    const windowHours = nextNumber(nextData && nextData.window_hours);
-    const window = windowHours == null ? "current payload" : `${esc(windowHours)}h payload`;
-    body = `<p class="next-sessions-empty">No session rows in this ${window}.</p>`;
-  }
+  const active = ordered.filter(session => nextOperationsIsActive(session, asks));
+  const history = ordered.filter(session => !nextOperationsIsActive(session, asks));
+  const render = session => nextOperationsRow(session, labels, collisions, asks, harnesses);
+  const windowHours = nextNumber(nextData && nextData.window_hours);
+  const window = windowHours == null ? "current payload" : `${windowHours}h payload`;
   return '<section class="next-operations" data-next-view-body="sessions">' +
     '<header class="next-operations-header"><span>COMMAND SURFACE</span>' +
     '<h1>Session operations</h1>' +
-    '<p>Every observed session. One comparable command surface.</p></header>' +
+    '<p>Active evidence leads. Every recently observed session remains reachable.</p></header>' +
     nextOperationsFleet(rows, asks, harnesses) +
-    '<div class="next-operations-columns" aria-hidden="true">' +
-    '<span>SESSION</span><span>WHERE</span><span>NOW</span><span>NEXT</span>' +
-    '<span>BLOCKED</span></div>' +
-    `<div class="next-operation-rows">${body}</div></section>`;
+    nextOperationsGroup(
+      "active", "Active now",
+      "Source-backed by working, needs-input, or exact-request evidence.",
+      active, render, "No exact session has active evidence right now.",
+    ) + nextOperationsGroup(
+      "history", "Recent history",
+      "Recently observed is not proof the harness process is still open or closed.",
+      history, render, `No recent-history rows in this ${window}.`,
+    ) + "</section>";
 }

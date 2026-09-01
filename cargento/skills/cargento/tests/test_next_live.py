@@ -383,8 +383,8 @@ console.log(JSON.stringify({
 
         self.assertEqual(3000, out["afterManual"]["generated"])
         self.assertEqual(out["afterManual"], out["final"])
-        self.assertIn("Keep newer", out["final"]["html"])
-        self.assertNotIn("Do not restore older", out["final"]["html"])
+        self.assertIn('data-next-session="newer"', out["final"]["html"])
+        self.assertNotIn('data-next-session="older"', out["final"]["html"])
         self.assertEqual(0, out["final"]["failures"])
 
     def test_private_browsing_still_streams(self) -> None:

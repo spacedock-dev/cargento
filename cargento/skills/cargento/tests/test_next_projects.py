@@ -317,7 +317,7 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("No project display labels in this 24h payload.", html)
         self.assertIn('<nav aria-label="Primary">', html)
         self.assertIn('<a href="#n=projects" aria-current="page">Projects</a>', html)
-        self.assertIn('<a href="#n=attention">Attention</a>', html)
+        self.assertIn('<a href="#n=sessions">Sessions</a>', html)
         self.assertNotIn('data-next-view-body="attention"', html)
 
     def test_idle_requires_known_states_but_not_active_work(self) -> None:

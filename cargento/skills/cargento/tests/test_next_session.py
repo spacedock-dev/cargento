@@ -121,6 +121,30 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("Claude transcript did not publish an assignment or next action", html)
         self.assertNotIn('<details class="next-session-source-coverage" open', html)
 
+    def test_current_activity_leads_identity_without_a_redundant_session_label(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+
+        activity = html.index('data-next-session-command="activity"')
+        identity = html.index("<h1>Resolve the gate</h1>")
+        self.assertLess(activity, identity)
+        self.assertIn('<span class="next-session-current-label">CURRENT ACTIVITY</span>', html)
+        self.assertNotIn("<h2>CURRENT ACTIVITY</h2>", html)
+        self.assertNotIn('<span class="next-session-detail-label">SESSION</span>', html)
+
+    def test_running_subagents_are_integrated_into_the_current_activity_lede(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        current = re.search(r'<section class="next-session-current"[^>]*>[\s\S]*?</section>', html)
+        self.assertIsNotNone(current)
+        lede = current.group(0) if current else ""
+
+        self.assertIn("2 RUNNING SUBAGENTS", lede)
+        self.assertIn("worker-a", lede)
+        self.assertIn("worker-b", lede)
+        self.assertIn("5m", lede)
+        self.assertNotIn('data-next-session-section="subagents"', html)
+
     def test_plain_exact_ask_is_one_needs_you_fact_and_not_a_next_action(self) -> None:
         html = self.render()
         assert isinstance(html, str)
@@ -771,18 +795,18 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
                 html = self.detail(f'{{label: "{label}", text: "Real work", at: 9400}}')
                 self.assertNotIn("Real work", html)
 
-    def test_the_board_identity_uses_title_without_repeating_assignment(self) -> None:
-        # The operations row reserves its four comparable cells for command
-        # facts. Assignment remains in the drill-down; repeating it under the
-        # title would make one verbose harness dominate the fleet scan.
+    def test_the_board_identity_keeps_title_and_assignment_roles_distinct(self) -> None:
+        # The correction makes assignment coverage visible at fleet level, but
+        # it must not replace or relabel the session title.
         labelled = self.rows('{label: "asked", text: "Reconcile the registry", at: 9400}')
         self.assertIn("Resolve the gate", labelled)
         self.assertIn(self.SID, labelled)
-        self.assertNotIn("Reconcile the registry", labelled)
+        self.assertIn("ASSIGNMENT · Reconcile the registry", labelled)
         self.assertNotIn("next-instruction-label", labelled)
 
         alone = self.rows("null")
         self.assertIn("Resolve the gate", alone)
+        self.assertIn("ASSIGNMENT · Not published", alone)
         self.assertNotIn("next-instruction-label", alone)
 
     def test_the_title_label_never_names_something_that_is_not_the_title(self) -> None:
@@ -799,14 +823,14 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
         # called one.
         fallback = self.rows(asked, title="null", last_prompt='"Deploy the staging store"')
         self.assertIn("Deploy the staging store", fallback)
-        self.assertNotIn("Reconcile the registry", fallback)
+        self.assertIn("ASSIGNMENT · Reconcile the registry", fallback)
         self.assertNotIn('<span class="next-instruction-label">title</span>', fallback)
 
         # Neither identity field is there. The board says the title was not
-        # published; the drill-down remains the place for the assignment.
+        # published while naming the assignment separately.
         empty = self.rows(asked, title="null", last_prompt='""')
         self.assertIn("Title not published", empty)
-        self.assertNotIn("Reconcile the registry", empty)
+        self.assertIn("ASSIGNMENT · Reconcile the registry", empty)
         self.assertNotIn('<span class="next-instruction-label">title</span>', empty)
         # The dangling-colon signature specifically: a caption whose subject was
         # cut off. `<strong></strong>` would pass here for free, because the live

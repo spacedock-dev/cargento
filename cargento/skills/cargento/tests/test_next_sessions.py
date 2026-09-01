@@ -98,15 +98,27 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
             raise AssertionError(f"no {name!r} fact in {row}")
         return match.group(0)
 
+    @staticmethod
+    def operation_group(html: str, name: str) -> str:
+        match = re.search(
+            rf'<section[^>]*data-next-operation-group="{re.escape(name)}"[\s\S]*?</section>',
+            html,
+        )
+        if match is None:
+            raise AssertionError(f"no {name!r} operation group in {html}")
+        return match.group(0)
+
     def test_default_surface_leads_with_four_fleet_facts_from_exact_rows(self) -> None:
         html = self.render()
         assert isinstance(html, str)
 
         self.assertIn('<section class="next-operations"', html)
         self.assertIn("<h1>Session operations</h1>", html)
-        self.assertIn("Every observed session. One comparable command surface.", html)
+        self.assertIn(
+            "Active evidence leads. Every recently observed session remains reachable.", html
+        )
         expected = {
-            "observed": "7",
+            "active": "4",
             "working": "2",
             "requests": "1",
             "reported-blocks": "2",
@@ -121,6 +133,86 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn("6 of 7 sessions report block state", html)
         self.assertNotIn("99", html, "summary aggregates replaced the exact-row population")
         self.assertNotIn("Ignore me", html, "an ask outside the payload entered fleet facts")
+
+    def test_active_now_and_recent_history_use_only_explicit_active_evidence(self) -> None:
+        html = self.render()
+        assert isinstance(html, str)
+        active = self.operation_group(html, "active")
+        history = self.operation_group(html, "history")
+
+        self.assertIn("Active now", active)
+        self.assertIn("working, needs-input, or exact-request evidence", active)
+        for sid in ("gate-z", "gate-a", "work-a", "work-z"):
+            self.assertIn(f'data-next-session="{sid}"', active)
+            self.assertNotIn(f'data-next-session="{sid}"', history)
+        self.assertIn("Recent history", history)
+        self.assertIn(
+            "Recently observed is not proof the harness process is still open or closed", history
+        )
+        for sid in ("idle-new", "idle-mid", "idle-old"):
+            self.assertIn(f'data-next-session="{sid}"', history)
+            self.assertNotIn(f'data-next-session="{sid}"', active)
+
+    def test_exact_request_state_skew_agrees_in_fleet_row_and_active_group(self) -> None:
+        html = self.render(
+            """
+const skewed = nextData.sessions.find(session => session.sid === "idle-mid");
+skewed.spacedock = {role: "first-officer", workflows: []};
+nextData.asks.push({
+  id: "skew", session_id: "idle-mid", question: "Choose the release lane"
+});
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        requests = re.search(
+            r'data-next-fleet-fact="requests"[^>]*>[\s\S]*?<strong>(\d+)</strong>', html
+        )
+        blocks = re.search(
+            r'data-next-fleet-fact="reported-blocks"[^>]*>[\s\S]*?<strong>(\d+)</strong>',
+            html,
+        )
+        self.assertEqual("2", requests.group(1) if requests else None)
+        self.assertEqual("3", blocks.group(1) if blocks else None)
+        self.assertIn('data-next-session="idle-mid"', self.operation_group(html, "active"))
+        blocked = self.fact(self.session_row(html, "idle-mid"), "blocked")
+        self.assertIn("BLOCKED · CAPTAIN", blocked)
+        self.assertIn("Choose the release lane", blocked)
+
+    def test_exact_request_itself_covers_block_state_for_an_incapable_harness(self) -> None:
+        html = self.render(
+            """
+nextData.asks.push({
+  id: "agy-request", session_id: "idle-old", question: "Choose the AGY lane"
+});
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("7 of 7 sessions report block state", html)
+        self.assertIn('data-next-session="idle-old"', self.operation_group(html, "active"))
+        self.assertIn(
+            "Choose the AGY lane", self.fact(self.session_row(html, "idle-old"), "blocked")
+        )
+
+    def test_assignment_presence_and_absence_are_visible_in_each_session_identity(self) -> None:
+        html = self.render(
+            """
+nextData.sessions.find(session => session.sid === "work-a").instruction = {
+  label: "asked", text: "Audit the fleet", at: 9990
+};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("ASSIGNMENT · Audit the fleet", self.session_row(html, "work-a"))
+        self.assertIn("ASSIGNMENT · Not published", self.session_row(html, "idle-old"))
 
     def test_one_row_per_exact_session_survives_exception_sorting(self) -> None:
         html = self.render()
@@ -237,22 +329,26 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
         self.assertIn('<section class="next-operations"', html)
         self.assertIn("<h1>Session operations</h1>", html)
-        self.assertIn("No session rows in this 24h payload.", html)
+        self.assertIn("No exact session has active evidence right now.", html)
+        self.assertIn("No recent-history rows in this 24h payload.", html)
         self.assertIn('<a href="#n=sessions" aria-current="page">Sessions</a>', html)
         self.assertNotIn("data-next-session=", html)
 
     def test_board_css_has_wide_scan_columns_and_narrow_stacks_without_overflow(self) -> None:
         self.assertIn(
-            ".next-operation-row{display:grid;grid-template-columns:",
+            "#app .next-operation-row{display:grid;grid-template-columns:",
             NEXT_STYLES,
         )
         self.assertIn("@media(max-width:980px)", NEXT_STYLES)
         self.assertIn(
-            ".next-operation-row{grid-template-columns:repeat(2,minmax(0,1fr))}",
+            "#app .next-operation-row{grid-template-columns:repeat(2,minmax(0,1fr))}",
             NEXT_STYLES,
         )
         self.assertIn("@media(max-width:620px)", NEXT_STYLES)
-        self.assertIn(".next-operation-row{grid-template-columns:minmax(0,1fr)}", NEXT_STYLES)
+        self.assertIn("#app .next-operation-row{grid-template-columns:minmax(0,1fr)", NEXT_STYLES)
+        self.assertIn("@media(max-width:360px)", NEXT_STYLES)
+        self.assertIn("#app{padding:18px 8px 40px}", NEXT_STYLES)
+        self.assertIn("border:1px solid var(--line2)", NEXT_STYLES)
         self.assertIn("overflow-wrap:anywhere", NEXT_STYLES)
 
     def test_detail_current_work_does_not_share_the_old_activity_rail_selector(self) -> None:
