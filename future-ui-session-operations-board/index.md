@@ -21,6 +21,17 @@ gates:
                 id: briefing:future-ui-session-operations-board:framing:attempt-1:revision-1
                 digest: sha256:0af4a0e2729c814dd724d3b4236c0b350bee235e8df0c65e1f25fadfaf3c2b53
                 room-ref: ./review/framing/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:future-ui-session-operations-board:framing:1
+                briefing: briefing:future-ui-session-operations-board:framing:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-01T00:04:15.863052Z"
+                decision: approve
+                reason: Captain approved the Session Operations Board direction and explicitly requested preparation retry after the corrected artifact path was identified.
+              application:
+                target-stage: reconnaissance
+                state: pending
 ---
 
 Replace the Attention-first ranking model with an exact-session operations board that lets a person scan the fleet and answer where each session is, what it is doing now, what it may do next, and whether it is blocked.
