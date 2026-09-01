@@ -359,3 +359,83 @@ candidate to crucible with fresh wide and 320-pixel proof.
 ### Summary
 
 Correction round 1 preserves the exact-session model while making its command truth legible: explicit active evidence leads, recent observations are clearly historical, every row shares one desktop geometry, mobile becomes a near-full-width card, exact requests agree from fleet to row, and current activity—including subagents—leads session detail. Product commit `8f4ba8e` and matched live captures replace the rejected `569c8ca` candidate on `feat/future-ui` without touching `main`.
+
+## Crucible re-review — correction round 1
+
+**REVISE.** Commit `8f4ba8e` resolves all four prior findings when session IDs
+are unique, and the active/history, desktop, mobile, and detail redesigns survive
+live review. It still violates the product's canonical `(harness, sid)` session
+identity at two command-critical joins: routes use only project plus SID, and
+asks use only SID. One legal cross-harness SID collision therefore makes an
+exact session unreachable and duplicates or misassigns an exact request.
+
+### Correction-package result
+
+| Surface | Independent result |
+|---|---|
+| Active now versus recent history | **Pass.** The live API contained one Working Codex row and three Idle Claude/Antigravity rows. The DOM placed exactly one SID under Active now and the other three under Recent history; the copy says active evidence is Working, Needs input, or an exact request and explicitly refuses to infer that a recent harness process is open or closed. |
+| Stable desktop geometry | **Pass.** All four live rows computed to `display: grid`, width 1360 at x=86, child x-coordinates 86/419/641/918/1196, and the identical `333.047px 222.047px 277.547px 277.562px 249.797px` template across both groups. |
+| Intentional 320-pixel cards | **Pass.** A real 320×900 override measured `innerWidth = scrollWidth = 320`; both column headers computed to `display: none`, and the first link was a 304-pixel card at x=8 with one 302-pixel grid column and vertically stacked, readable facts. Four keyboard Tabs reached that card with a computed 2-pixel visible outline. |
+| Activity-led detail | **Pass.** Live current activity began at y=185, the identity header followed at y=368, and the Faraday row at y=270 was inside current activity. The semantic tree announced current activity and one running subagent before the H1; no detached subagent section remained. |
+| Six captain questions | **Pass for the live population:** overall situation is 1 active of 4 recently observed; assignment is published or explicitly absent; state, activity, and NEXT are visible; no captain action is currently reported. The collision finding below invalidates responsibility and drill-down for a legal adversarial population. |
+
+### Prior-finding dispositions
+
+1. **Resolved — computed CSS cascade.** The higher-specificity row selector now
+   wins at desktop, 980, and 620/360 breakpoints; the live desktop and 320-pixel
+   measurements above disprove the prior inline-flex failure.
+2. **Resolved for one canonical identity — request/state skew.** After changing
+   both fixture gate states to Idle while retaining one exact ask, fleet facts
+   rendered Active 3, Working 2, Exact requests 1, Reported blocks 1; the one
+   owner row moved into Active now and said `BLOCKED · NEEDS YOU / Reported /
+   Approve release?`.
+3. **Resolved — assignment absence.** Every live row now exposes the assignment
+   or `ASSIGNMENT · Not published`; the title remains separately labelled as
+   session identity.
+4. **Resolved for one canonical identity — captain responsibility.** A unique
+   Spacedock asking fixture said `BLOCKED · CAPTAIN` on the board and `CAPTAIN`
+   in drill-down.
+
+### New reproduced finding
+
+**BLOCKER — exact-session ownership drops the harness.** Runtime aggregation and
+the UI's own `nextSessionKey` define identity as `(harness, sid)`, but
+`nextSessionFind`, `nextExactAskOwner`, `nextSessionAsks`, and
+`nextOperationsAskFor` do not preserve that pair.
+
+- With Cursor and Antigravity rows sharing SID `idle-mid` and project
+  `idle/mid`, both rendered links had the identical
+  `#n=session:idle%2Fmid:idle-mid` route. The Antigravity row titled `Shadow AGY`
+  was visible on the board, but navigation always resolved the Cursor row titled
+  `Middle idle`; `Shadow AGY` had no reachable drill-down.
+- With the duplicate Antigravity row instead carrying Spacedock metadata and one
+  Antigravity ask, the fixture should have rendered Active 5, Exact requests 2,
+  Reported blocks 3, and one `BLOCKED · CAPTAIN` owner. It rendered **6 / 2 / 4**
+  and repeated `Choose the release lane` on both rows as **BLOCKED · NEEDS YOU**.
+  The question, block, active membership, and responsibility were all attributed
+  by SID alone to the wrong number of sessions and the wrong owner.
+
+The candidate owns this identity join. Source-owned uncertainty remains exact
+path/branch/worktree for every harness, assignment for live Codex and
+Antigravity, the live subagent's task, Antigravity's unblocked state, and whether
+a Recent history process is open or closed; the corrected UI now labels each of
+those boundaries without inference. The independently rerun 215-test Next suite
+and embedded-source linter were green, but neither contains a cross-harness SID
+collision, so they do not contradict the reproduced blocker.
+
+## Stage Report: crucible (cycle 2)
+
+- DONE: independently verify that active-now and recent-history grouping is source-bound, unmistakable, and never implies either seven open sessions or false closure of idle records.
+  The live API-to-DOM comparison placed one Working row in Active now and all three Idle rows in Recent history while the visible copy withheld both open and closed inference; changing state or adding an exact ask changes membership.
+- DONE: exercise identical desktop column geometry, near-full-width 320-pixel cards, and activity-led session detail with subagents integrated at the rendered and accessibility layers.
+  Fresh computed geometry, wide/mobile screenshots, semantic snapshots, and keyboard focus prove all four claims; restoring inline-flex, horizontal facts, identity-first order, or detached subagents would change the measurements.
+- DONE: reproduce request/state skew and every prior material finding against commit 8f4ba8e, disposition regressions or new findings, and recommend revise, reframe, or accept without relying on green tests alone.
+  All four prior findings are resolved for unique IDs, but a cross-harness SID collision reproduced one unreachable detail and duplicated/misassigned ask truth despite 215 green tests; recommendation is **REVISE**.
+
+### Summary
+
+Correction round 1 successfully fixes the prior candidate and establishes a
+clear active/history command surface, readable mobile cards, and activity-led
+detail. Revise the remaining identity boundary so routes and asks preserve
+`(harness, sid)`, add the collision fixture at renderer and navigation layers,
+then repeat only the affected fleet/request/drill-down proofs.
