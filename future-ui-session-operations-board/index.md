@@ -499,3 +499,83 @@ responsive/history evidence defects found during capture review. Sessions now
 remain collision-safe from fleet row to ask ownership and detail navigation,
 history is observational, Projects reserve operational claims for active
 evidence, and the accessible copy control replaces visible raw identifiers.
+
+## Crucible re-review — correction round 2
+
+**REVISE.** Checkpoint `f57b136` closes the canonical-identity blocker and
+keeps history observational, but it reopens assignment truth and does not make
+Projects a command surface. At 320 pixels the four single-column fleet tiles
+also push the first active session's identity and command facts below the first
+viewport, so the required five-second scan is not immediate.
+
+| Captain question | Fresh result |
+|---|---|
+| Overall situation | **Sessions: pass. Projects: partial.** Both separate active evidence from recent observation, but Projects only counts active sessions. |
+| Current assignment | **Fail when unpublished.** The live Codex row has no assignment disclosure while its drill-down says the transcript published neither assignment nor next action. |
+| Execution state and current activity | **Sessions: pass. Projects: fail.** Projects reduces `state_detail` and in-progress tasks to “1 session executing.” |
+| Next action | **Sessions: pass. Projects: fail.** Sessions says “No pending step published”; Projects does not consume or disclose pending-task evidence. |
+| Blockage and captain responsibility | **Sessions: pass. Projects: partial.** Exact asks surface responsibility, but no-ask Projects rows erase reporter-available versus Antigravity-unknown block state. |
+
+### Reproduced material findings
+
+1. **BLOCKER — Projects drops the command facts its gate asks a person to
+   scan.** The live wide and 320-pixel `recce/cargento` row says only “1 session
+   executing” although Sessions publishes `running 1 subagent`, no pending
+   step, and no reported block. An adversarial renderer run gave one Codex row
+   an in-progress task, a pending task, and `running 1 subagent`, then added a
+   working Antigravity row with the same project label; Projects still rendered
+   only `2 sessions / 2 working / 2 sessions executing`. The source published
+   the facts; `nextProjectRow` never consumes them. **Candidate-owned.**
+2. **HIGH — assignment absence regressed.** Correction round 1 rendered
+   `ASSIGNMENT · Not published`; correction round 2 changed
+   `nextOperationsAssignment` to return an empty string. The live Codex board
+   now presents a prompt-derived session title without an assignment label,
+   while the expanded drill-down says `Codex transcript did not publish an
+   assignment or next action.` Source publication remains collector-owned;
+   exposing absence without mislabelling the title is **candidate-owned**.
+3. **HIGH — the 320-pixel Sessions hierarchy misses the first-view scan.** At
+   `320×900`, the active card starts at y=855, its title begins below the first
+   viewport, and NOW/NEXT/BLOCKED continue through the 472-pixel card. The card
+   itself is readable at 304 pixels with no overflow, but four full-width fleet
+   tiles outrank the first exact command record. **Candidate-owned layout.**
+
+### Dispositions and surviving uncertainty
+
+- **Resolved:** `(harness, sid)` round-trips through canonical routes, collision
+  detail lookup, exact ask ownership, and refresh focus; the AGY collision ask
+  appears once on its captain-owned row and never on the colliding Cursor row.
+- **Resolved:** copy controls are sibling buttons rather than nested controls,
+  expose the full ID in name and title, receive keyboard focus, copy without
+  navigation, and announce success politely. Wide/mobile grids have no overflow.
+- **Resolved:** active/history membership uses working, needs-input, or exact
+  ask evidence. Mobile history renders identity and WHERE only; Projects history
+  renders identity and scope only. Desktop history dashes are alignment marks,
+  not stale activity claims, and its repeated group header is aria-hidden.
+- **Still source-owned:** exact path/branch/worktree, Codex and Antigravity
+  assignment publication, live subagent task detail, Antigravity no-block
+  reporting, and whether a recent-history process is open or closed.
+
+The independently rerun 222-test Next suite, five focused collision/copy/AGY/
+history tests, embedded-source linter, exact capture digests, live semantic
+snapshots, and wide/320 computed geometry all passed their existing oracles.
+Those oracles do not assert that Projects preserves NOW/NEXT/BLOCKED, that an
+unpublished active assignment remains explicit, or that the active record is
+visible in the first 320-pixel viewport. Revise those claims or explicitly
+reframe Projects as inventory and the mobile board as a scroll-first surface.
+
+## Stage Report: crucible (cycle 3)
+
+- DONE: Independently reproduce canonical harness-plus-session routing, ask ownership, copy-ID accessibility, and active-versus-history behavior across Codex, Claude, and AGY evidence.
+  Canonical collision routes and exact ask ownership passed at renderer/detail layers; live Codex/Claude plus AGY fixtures preserved source boundaries, and keyboard semantics plus clipboard/status tests falsify nested, silent, or navigating copy controls.
+- DONE: Antagonistically test whether wide and 320px Sessions and Projects surfaces answer identity, current activity, next action, and blockage in a five-second scan without repeated labels or historical false claims.
+  Wide/320 DOM geometry and screenshots prove readable, truthful Sessions cards and observational history, but reproduce missing Projects command facts and a 320px first viewport that ends before the active title and its NOW/NEXT/BLOCKED facts.
+- DONE: Reproduce every material regression at its failing layer, disposition prior and new findings, and recommend revise, reframe, or accept with source-versus-candidate ownership explicit.
+  **REVISE:** prior identity, ask, copy, layout, and history findings are resolved; one Projects blocker and two high assignment/mobile regressions are reproduced, with collector/runtime uncertainty separated from candidate-owned rendering.
+
+### Summary
+
+Correction round 2 genuinely closes canonical identity and keeps historical
+records truthful, but it does not yet converge on the captain-question gate.
+Revise assignment absence and mobile priority, and either give Projects the
+command facts it claims to summarize or reframe Projects explicitly as
+inventory before another focused crucible pass.
