@@ -33,13 +33,13 @@ stages:
       label: captain and first officer judge the direction genuinely strong
 ---
 
-# Future UI Exploration
+# Future UI exploration
 
 This workflow explores bold ways for Cargento to give people a straightforward understanding of what is happening across all of their harnesses and sessions. It treats the Next UI as a command surface rather than an inventory: the overall situation, the work that matters now, current execution, the next action, and captain responsibility must lead; evidence and detail remain reachable without competing with those facts.
 
-The durable integration branch is `feat/future-ui`. Every product checkpoint produced by this workflow stays on that branch. Nothing in this workflow targets or merges into `main`.
+The durable integration branch is `feat/future-ui`. Ordinary experiment work, product checkpoints, and accepted corrections stay on that branch. A captain may explicitly approve a promotion PR from `feat/future-ui` to `main`. That promotion does not retire, merge away, or change the role of the experiment branch.
 
-## File Naming
+## File naming
 
 Each experiment lives in a folder named with a lowercase, hyphenated slug. Its canonical state file is `index.md`; screenshots, review briefs, and comparison artifacts may live beside it when the experiment needs them.
 
@@ -59,7 +59,7 @@ Every experiment has YAML frontmatter with the following fields.
 | `score` | number | Optional priority from 0.0 to 1.0. |
 | `worktree` | string | The dedicated checkout used after the experiment reaches a product-changing stage. |
 | `issue` | string | Optional GitHub issue reference. |
-| `pr` | string | Optional PR reference; never a PR targeting `main`. |
+| `pr` | string | Optional PR reference. Ordinary workflow PRs target `feat/future-ui`; a PR to `main` requires explicit captain approval. |
 
 ## Stages
 
@@ -67,48 +67,48 @@ Every experiment has YAML frontmatter with the following fields.
 
 The experiment is in framing while the crew turns the underlying ask into a bold, falsifiable design bet without assuming the current dashboard structure should survive.
 
-- **Inputs:** The 2026-08-27 project-cockpit debrief, current `?next=true` UI, captain direction, available design records, and known source limitations.
-- **Outputs:** A concise bet; the user questions it should answer; the command-risk baseline; explicit non-goals; and evidence that would invalidate the model rather than merely suggest polish.
-- **Good:** The frame attacks the information or interaction model, names what should lead, and permits a materially different UI.
-- **Bad:** Treating the work as incremental cleanup, preserving existing regions by default, or defining success as visual preference.
-- **Gate content:** Show the bet, why it could materially improve comprehension, what it risks, how it will be falsified, and what the three harnesses must exercise.
+- Inputs include the 2026-08-27 project-cockpit debrief, the current `?next=true` UI, captain direction, available design records, and known source limitations.
+- Outputs include a concise bet, the user questions it should answer, the command-risk baseline, explicit non-goals, and evidence that would invalidate the model rather than merely suggest polish.
+- A good frame attacks the information or interaction model, names what should lead, and permits a materially different UI.
+- A bad frame treats the work as incremental cleanup, preserves existing regions by default, or defines success as visual preference.
+- The gate shows the bet, why it could improve comprehension, what it risks, how it will be falsified, and what the three harnesses must exercise.
 
 ### `reconnaissance`
 
 The experiment is in reconnaissance while Codex, Claude Code, and AGY generate and inspect real activity against the current Next UI.
 
-- **Inputs:** The approved frame, live dashboard at `http://127.0.0.1:4553/?next=true`, exact session identities, live APIs, relevant source, and the registered interaction origins available to each harness.
-- **Outputs:** One observed session from each harness; screenshots of the project overview and a session drill-down; a fact-versus-inference inventory; and findings ranked by comprehension or command risk.
-- **Good:** Each harness contributes distinct observable evidence, missing sources remain explicit, and the record distinguishes UI failure from unavailable underlying data.
-- **Bad:** Mock-only evaluation, reviewing a static screenshot without live state, letting reviewer-created activity silently replace the session under study, or treating an empty signal as proof that no captain action exists.
+- Inputs include the approved frame, the live dashboard at `http://127.0.0.1:4553/?next=true`, exact session identities, live APIs, relevant source, and the registered interaction origins available to each harness.
+- Outputs include one observed session from each harness, screenshots of the project overview and a session drill-down, a fact-versus-inference inventory, and findings ranked by comprehension or command risk.
+- Good reconnaissance gives each harness distinct observable evidence, keeps missing sources explicit, and distinguishes UI failure from unavailable underlying data.
+- Bad reconnaissance relies on mocks, reviews a static screenshot without live state, lets reviewer-created activity replace the session under study, or treats an empty signal as proof that no captain action exists.
 
 ### `prototyping`
 
 The experiment is in prototyping while the crew implements the strongest candidate on `feat/future-ui`, starting from the accepted checkpoint of the prior round.
 
-- **Inputs:** The approved frame, reconnaissance evidence, current branch bytes, prior crucible findings, and the repository's frontend byte-pin contract.
-- **Outputs:** A coherent candidate at `?next=true`; one durable checkpoint per accepted correction; focused tests; updated byte pins derived from assembled assets; and before/after captures tied to exact candidate bytes.
-- **Good:** Large structural bets are welcome, the lede is legible in a five-second scan, project overview and session drill-down answer different questions, and semantic claims remain source-bound.
-- **Bad:** Adding panels instead of choosing priority, burying command truth under provenance, implying causal links the data does not establish, changing unrelated shipped UI, or running competing full suites in parallel.
+- Inputs include the approved frame, reconnaissance evidence, current branch bytes, prior crucible findings, and the repository's frontend byte-pin contract.
+- Outputs include a coherent candidate at `?next=true`, one durable checkpoint per accepted correction, focused tests, updated byte pins derived from assembled assets, and before/after captures tied to exact candidate bytes.
+- Good prototyping permits large structural bets, makes the lede legible in a five-second scan, gives project overview and session detail different jobs, and keeps semantic claims source-bound.
+- Bad prototyping adds panels instead of choosing priority, buries command truth under provenance, implies causal links the data does not establish, changes unrelated shipped UI, or runs competing full suites in parallel.
 
 ### `crucible`
 
 The experiment is in crucible while fresh reviewers try to disprove that the candidate gives users a truthful, immediate understanding of all harnesses and sessions.
 
-- **Inputs:** The live candidate, fresh screenshots, current APIs, source and renderer fixtures, exact three-harness session evidence, focused test results, and every unresolved finding from the prior round.
-- **Outputs:** Independent reviews covering visual hierarchy, information architecture, command truth, cross-harness comprehension, session drill-down, accessibility, and adversarial states; reproduced material findings; a disposition for every finding; and a recommendation to revise, reframe, or accept.
-- **Good:** Reviewers are fresh, every material claim is exercised at the layer where it can fail, accepted findings are implemented before another review, and disagreement is resolved by reproduced evidence.
-- **Bad:** Reviewer attachment to the prior design, ranking unsupported findings by confidence, optimizing style after command truth is already complete, or claiming convergence because tests are green.
-- **Gate content:** Lead with the recommendation. Show whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility; name every material uncertainty and its owner; then ask the captain to revise, reframe, or accept.
+- Inputs include the live candidate, fresh screenshots, current APIs, source and renderer fixtures, exact three-harness session evidence, focused test results, and every unresolved finding from the prior round.
+- Outputs include independent reviews of visual hierarchy, information architecture, command truth, cross-harness comprehension, session detail, accessibility, and adversarial states. They also include reproduced material findings, a disposition for every finding, and a recommendation to revise, reframe, or accept.
+- Good crucible review uses fresh reviewers, exercises each material claim where it can fail, implements accepted findings before another review, and resolves disagreement with reproduced evidence.
+- Bad crucible review becomes attached to the prior design, ranks unsupported findings by confidence, optimizes style after command truth is complete, or claims convergence because tests are green.
+- The gate leads with the recommendation. It shows whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility. It names every material uncertainty and its owner, then asks the captain to revise, reframe, or accept.
 
 ### `accepted`
 
-The experiment is accepted only when the captain and first officer both judge the direction genuinely strong. Acceptance records the exploration outcome on `feat/future-ui`; it does not authorize a merge to `main`.
+The experiment is accepted only when the captain and first officer both judge the direction genuinely strong. Acceptance records the exploration outcome on `feat/future-ui`. It does not by itself authorize a promotion to `main`; the captain must approve that separately and explicitly.
 
-- **Inputs:** A captain-approved crucible verdict and the exact accepted branch checkpoint.
-- **Outputs:** A terminal record linking the accepted checkpoint, evidence, known limits, and remaining product decisions.
-- **Good:** The accepted result satisfies the comprehension outcome and preserves honest scope and provenance.
-- **Bad:** Terminalizing because a schedule expired, a fixed iteration count was reached, or reviewers ran out of findings.
+- Inputs include a captain-approved crucible verdict and the exact accepted branch checkpoint.
+- Outputs include a terminal record linking the accepted checkpoint, evidence, known limits, and remaining product decisions.
+- A good accepted result satisfies the comprehension outcome and preserves honest scope and provenance.
+- A bad acceptance terminalizes because a schedule expired, a fixed iteration count was reached, or reviewers ran out of findings.
 
 ## Review package
 
@@ -116,16 +116,16 @@ The [Session Operations Board visual walkthrough](presentations/future-ui-sessio
 
 ## Workflow-specific rules
 
-- **Integration branch invariant.** `feat/future-ui` is the only durable product branch this workflow advances. Product commits and accepted correction checkpoints remain there. No workflow command, PR, or terminal action may target `main`.
-- **One rolling experiment.** The pilot is one long-running direction so all work touching `cargento_runtime/web/next/` stays on one conflict surface. New hypotheses become recorded rounds inside the experiment unless the captain explicitly commissions another independent direction.
-- **Large bets are in scope.** A round may replace the information architecture, navigation model, visual hierarchy, or session interaction model. Compatibility with the current Next layout is not a value criterion.
-- **Lede-first stop criterion.** The primary frame must expose assignment, execution, next action, and captain state without opening Evidence. It must also make project scope and current session activity obvious. Once those facts are truthful and unmistakable, another round needs a material comprehension risk rather than a style preference.
-- **Three-harness evidence.** Reconnaissance and crucible must include observed Codex, Claude Code, and AGY sessions. A harness that cannot produce evidence is reported as a source limit, never silently replaced by a mock.
-- **Sequential review loop.** A fresh antagonistic review follows every accepted correction. Each round begins from the prior accepted checkpoint; concurrent product edits are forbidden, while independent read-only lenses may run in parallel.
-- **External proof.** Screenshots establish hierarchy, live APIs and source establish semantic claims, adversarial fixtures test missing or conflicting data, and focused tests protect behavior. A prose assertion cannot prove runtime comprehension.
-- **Contention discipline.** Check sibling worktrees before trusting failures. Run the full suite once and serialize it; retry known load-sensitive modules alone before classifying a failure as a regression.
+- `feat/future-ui` is the durable product branch this workflow advances. Product commits and accepted correction checkpoints remain there. Routine workflow PRs target that branch. Only an explicit captain decision may promote an approved checkpoint from `feat/future-ui` to `main`, and the branch remains independent afterward.
+- The pilot is one rolling experiment so all work touching `cargento_runtime/web/next/` stays on one conflict surface. New hypotheses become recorded rounds inside the experiment unless the captain commissions another independent direction.
+- Large bets are in scope. A round may replace the information architecture, navigation model, visual hierarchy, or session interaction model. Compatibility with the current Next layout is not a value criterion.
+- The primary frame must expose assignment, execution, next action, and captain state without opening Evidence. It must also make project scope and current session activity obvious. Once those facts are truthful and unmistakable, another round needs a material comprehension risk rather than a style preference.
+- Reconnaissance and crucible must include observed Codex, Claude Code, and AGY sessions. A harness that cannot produce evidence is reported as a source limit, never replaced by a mock.
+- A fresh antagonistic review follows every accepted correction. Each round begins from the prior accepted checkpoint. Concurrent product edits are forbidden, while independent read-only lenses may run in parallel.
+- Screenshots establish hierarchy, live APIs and source establish semantic claims, adversarial fixtures test missing or conflicting data, and focused tests protect behavior. A prose assertion cannot prove runtime comprehension.
+- Check sibling worktrees before trusting failures. Run the full suite once and serialize it. Retry known load-sensitive modules alone before classifying a failure as a regression.
 
-## Workflow State
+## Workflow state
 
 View the workflow with:
 
@@ -133,7 +133,7 @@ View the workflow with:
 spacedock status --workflow-dir docs/future-ui-exploration
 ```
 
-## Experiment Template
+## Experiment template
 
 ```yaml
 ---
@@ -179,8 +179,9 @@ Sources or authority the UI cannot honestly recover.
 What this experiment deliberately does not attempt.
 ```
 
-## Commit Discipline
+## Commit discipline
 
 - Commit workflow-state changes at dispatch and gate boundaries.
 - Commit each accepted product correction on `feat/future-ui` before the next antagonistic review.
-- Never create or merge a PR from this workflow into `main`.
+- Keep ordinary workflow PRs and merges on `feat/future-ui`.
+- Create a promotion PR from `feat/future-ui` to `main` only after the captain explicitly approves that checkpoint. The promotion does not close the branch or move future experiment work to `main`.

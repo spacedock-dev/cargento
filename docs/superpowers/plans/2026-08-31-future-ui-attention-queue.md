@@ -13,7 +13,7 @@ will consume that model without reclassifying facts or borrowing authority acros
 **Tech Stack:** Python 3.11+, stdlib `unittest`, plain browser JavaScript in one concatenated script
 scope, HTML/CSS, the repository's Node-backed `NextPageJsHarness`, and live Chrome verification.
 
-**Spec:** `docs/plans/future-ui-attention-queue-design.md`
+**Design record:** `docs/design-next-ui.md`, NUI-15 and NUI-16
 
 ## Global Constraints
 

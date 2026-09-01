@@ -43,13 +43,14 @@ Separate bytes do not separate browser state. Both pages use the same origin, so
 `location.hash` and `localStorage`.
 
 The default bundle treats any fragment containing `session=` as its session route. The next bundle
-therefore uses one `#n=` token: `overview`, `project:<encoded-project>` or
-`session:<encoded-project>:<encoded-session>`. No form contains that substring. Hash changes are
-the browser-history input as well as the output of breadcrumb and Escape navigation, so shared
-project and session links survive a reload without another state store. Every storage key written
-by the next bundle begins `cargento.next.`. The next-page stream follows that rule with
-`cargento.next.leader` and `cargento.next.revision`; it does not read or write the default page's
-`cargento.leader` or `cargento.revision` lease.
+therefore uses one `#n=` token: `projects`, `sessions`, `project:<encoded-project>` or
+`session:<encoded-project>:<encoded-harness>:<encoded-session>`. No form contains that substring.
+A missing or invalid token opens Sessions. Hash changes are the browser-history input as well as
+the output of breadcrumb and Escape navigation, so shared project and session links survive a
+reload without another state store. Every storage key written by the next bundle begins
+`cargento.next.`. The next-page stream follows that rule with `cargento.next.leader` and
+`cargento.next.revision`; it does not read or write the default page's `cargento.leader` or
+`cargento.revision` lease.
 
 `tests/test_next_isolation.py` freezes both directions. State left by the next page cannot change a
 default-page render or display mode, and the next page cannot disturb a foreign default-page lease.
@@ -78,25 +79,25 @@ The chrome does not repair or reinterpret the payload. Running means `summary.wo
 `summary.active_sessions`, because the latter also includes sessions waiting for input. The gate
 pill comes from `summary.needs_input`, subagents are counted from the rows, and the project/session
 line names the payload's `window_hours` rather than implying a machine-wide inventory. Two
-consecutive fetch failures put a stalled marker beside the last good payload; a single failed poll
-does not flash the page on a transient miss. When that gate count is nonzero, its pill is a native
-button that opens the existing sessions overview. It navigates to the attention-ordered queue; it
-does not answer, dismiss or otherwise control a gate.
+consecutive fetch failures show an explanatory notice beside the last good payload; a single failed
+poll does not flash the page on a transient miss. The notice says that live refresh failed, that
+displayed data may be stale, when the last successful refresh arrived, and when automatic retry
+will run. Its manual retry uses the same serialized refresh path. When the reported-block count is
+nonzero, its pill is a native button that opens Session operations. It does not answer, dismiss or
+otherwise control a block.
 
 The running and subagent summary begins with the shared filled live dot. That marker remains when
 both counts are zero because it says the payload-derived summary is live, not that an individual
 session is active. NUI-12 owns the motion and reduced-motion rules.
 
-The overview chrome owns `projects` and `sessions` body slots without owning either view. The
-projects slot now groups the current payload by its display label and renders the measured task
-progress and current state. NOW names that state as blocked, an active-running count, or muted
-idle; it stays blank only when a member state is unknown. Estimate and delegation stay visibly
-withheld: neither value exists at project scope, and folding per-session values would turn a guess
-into a measurement. The sessions slot renders the current payload as one flat attention-ordered
-table. Its gate prefix keeps the server's order, working rows use the established attention ladder,
-and the idle tail puts the nearest activity first. Its neutral `METRIC` column keeps each cell's
-state-specific `wait`, `/m`, or `idle` unit instead of calling all three values rates. The
-session-detail renderer in NUI-8 consumes the route each row carries.
+The chrome owns `projects` and `sessions` body slots without owning either view. Projects groups the
+current payload by its display label, splits groups with active evidence from recently observed
+groups, and renders exact session command facts only for the active members. Session operations
+splits the same payload into Active now and Recent history. The active group keeps the server's gate
+order, uses the established working ladder, and then orders the remaining exact sessions by nearest
+activity. Recent history remains reachable without presenting its last observed state as current
+operation. NUI-16 owns the information hierarchy and responsive form of both views. The session
+detail renderer in NUI-8 consumes the exact route each row carries.
 `dashboard mode` performs a full navigation to `/`, which drops the next-page fragment and lets the
 default bundle choose its saved display mode.
 
@@ -445,6 +446,86 @@ A missing or malformed font prevents only the next page from loading, as a missi
 does. The explicit runtime inventory makes an incomplete installed copy fail validation before that
 point. Each family keeps its upstream SIL Open Font License beside the assets, and
 `web/next/fonts/SOURCES.txt` records the source URLs, decoded sizes and hashes.
+
+## NUI-15: command facts keep their source and their scope
+
+The first command-surface prototype gave every project a workflow-absence panel, gave every
+session four equally weighted command cells, and showed a top-level captain line even when no exact
+request existed. Those regions were structurally consistent and operationally misleading. An
+empty panel looked like a fault, a missing fact looked like a negative fact, and `CAPTAIN` implied
+Spacedock authority on sessions that had published none.
+
+The corrected surface renders a command claim only when its owner publishes the supporting fact.
+An `asked` instruction is an assignment. An `agent` or `earlier` instruction is current execution
+context, not an assignment. The first in-progress source task may explain NOW, and the first pending
+source task may supply NEXT. An exact ask supplies a response fact. `CAPTAIN` requires both that ask
+and an object-valued Spacedock record on the exact owning session; otherwise the request says
+`NEEDS YOU`. A needs-input state without an exact ask can report the bounded block state, but it
+cannot invent a question or authority.
+
+These rules operate on exact identity. Ask ownership resolves by full session ID and, when the ask
+publishes it, harness. An ask without a harness resolves only when its session ID has one payload
+match. Display label never owns the ask. A project display label is useful for grouping but is not
+a repository, directory, branch, worktree, or authority boundary. A same-label collision keeps its
+warning and exact member routes rather than choosing one session as the owner.
+
+Absent optional facts leave no primary placeholder. A project with no Spacedock record omits the
+workflow wrapper instead of saying that a workflow source is unavailable. Session detail omits an
+assignment when none was published and places missing next-action provenance in a closed source
+coverage disclosure. The fixed operational columns may state their bounded absence, such as no
+pending source task, because the column itself answers a stable question. They do not translate
+that absence into intent, completion, or an all-clear.
+
+Current activity leads session detail. Its known state, source-backed activity, and running
+subagents occupy one region because they answer the same question: what is happening now. Session
+title and harness metadata remain identity beneath that lede. Assignment, next action, and exact
+request follow only when published. Health, answer controls, tasks, and token evidence remain
+below the command facts. This hierarchy prevents a session title from competing with its current
+work or making attached subagents look like unrelated sessions.
+
+## NUI-16: operations lead; observation stays reachable
+
+The exception-first Attention route was implemented and tested before the operations board. Its
+taxonomy was source-bound, disclosed coverage, and ranked exact requests, risks, observed stops,
+and published tasks. In live review, that direction still buried the operator's first questions.
+A reader had to decode queue categories and coverage before finding where sessions were, what each
+was doing now, what came next, and whether it was blocked. The compressed remainder also made
+recently observed sessions look too much like current operations. More ranking did not solve the
+information hierarchy.
+
+Session operations therefore became the default route, with Projects beside it as the complete
+map. Its fleet strip leads with four bounded counts: active now, working, exact requests, and
+reported blocks. `Active now` means a working state, a needs-input state, or an exact request. It is
+not the number of rows in the payload. That distinction prevents a 24-hour observation window from
+reading as a list of open harness processes.
+
+The body makes the time boundary visible. Active now contains only exact sessions with active
+evidence and gives each one stable WHERE, NOW, NEXT, and BLOCKED columns. WHERE is the project
+display label and explicitly withholds exact location. NOW prefers an in-progress source task,
+then bounded state detail. NEXT uses a pending source task or names that no pending step was
+published. BLOCKED distinguishes a reported block, a source-backed no-block reading, and a harness
+whose block state is unknown. Recent history retains identity and project scope, but its operational
+facts are neutral dashes on wide screens and disappear on narrow screens. It never claims that a
+recently observed harness is still open or already closed.
+
+Wide rows share one grid definition with their column header, so values do not drift between rows.
+The harness and title remain visible while the full session ID moves behind a dedicated copy
+control. The control exposes the ID in its accessible label and tooltip, writes it to the clipboard,
+and announces success without navigating. Routes include project label, harness, and full session
+ID so equal IDs from different harnesses cannot select the wrong row.
+
+The 320-pixel layout changes form instead of squeezing the table. The fleet strip becomes a compact
+two-by-two summary. Each active session becomes a nearly full-width card with identity across the
+top and WHERE, NOW, NEXT, and BLOCKED in a two-by-two fact grid. Recent history keeps only identity
+and scope. Labels that would repeat desktop column headers appear inside cards only at responsive
+widths. This preserves scan order without a page-level horizontal viewport.
+
+Projects follows the same hierarchy one level up. It separates active projects from recently
+observed projects. An active project shows its grouping identity, summary counts, and one command
+line per exact active session, with NOW, NEXT, and BLOCKED still attached to that session. Historical
+projects keep identity and scope but omit stale operational claims. Project detail then owns
+workflow and grouped activity; session detail owns the exact session's current activity and
+progressive command facts. No level repeats a broader summary merely because it can.
 
 ## What this does not decide
 
