@@ -328,3 +328,34 @@ resolved, but the candidate fails its core promise at the rendered layer and in
 two legal source states. Revise the CSS cascade, fleet block predicate,
 assignment absence, and fleet-level responsibility label, then return the same
 candidate to crucible with fresh wide and 320-pixel proof.
+
+## Stage Report: prototyping — correction round 1
+
+- DONE: make active work unmistakable and separate recently observed history without falsely claiming either that historical records are open or that idle records are closed.
+  Commit `8f4ba8e` uses only explicit working, needs-input, or exact-request evidence for `Active now`; every other observed record remains reachable under `Recent history`, whose visible copy says that recent observation is not proof the harness process is still open or closed. The live mixed capture shows one active row and three recent-history rows without dropping an exact session.
+- DONE: implement stable comparable desktop columns, an intentional near-full-width 320-pixel card interaction, and a session-detail hierarchy led by current activity with running subagents integrated.
+  All four live desktop rows computed to `display: grid` with the identical `333.047px 222.047px 277.547px 277.562px 249.797px` column template. At a real 320×900 Chrome viewport, `innerWidth` and `scrollWidth` were both 320 pixels, column headers were hidden, and the active card measured 304 pixels wide at x=8. The exact-session capture places current activity at y=185 above identity at y=390, includes the running-subagent count and Einstein activity inside that lede, removes the redundant `SESSION` label, and has no detached subagent section.
+- DONE: prove fleet/row request agreement and the redesigned hierarchy with adversarial tests, mechanically recomputed Next byte pins, and matched wide/mobile/active-history/detail captures on `feat/future-ui` only.
+  The 215-test Next suite exercises explicit active/history membership, idle plus exact-request promotion, request/state skew, an exact request from a harness without block reporting, fleet and row block agreement, assignment absence, captain responsibility, CSS specificity, the 620/360 breakpoints, and detail ordering. The product checkpoint and all evidence are on `feat/future-ui`; nothing was committed or merged to `main`.
+
+### Verification
+
+- `python3 -m unittest discover -s cargento/skills/cargento/tests -t . -p 'test_next*.py'` — 215 tests passed.
+- Focused `ruff check` and `ruff format --check` passed for all six touched Next test modules.
+- `python3 scripts/lint_embedded.py` reported clean JavaScript syntax, CSS structure, DOM references, and part inventory; `git diff --check` passed before the product checkpoint.
+- Mechanically recomputed Next parts:
+  - `next-chrome.js`: 13,147 bytes, `sha256:577ce15c7c396e2aaaa718a14a458dc21ab397fa78115aa53c85d574dd498c4d`
+  - `next-sessions.js`: 10,685 bytes, `sha256:74ae6544e03de5335254a87d4fd66dd00484c78d1ee2b5630b8b494894292a95`
+  - `next-session.js`: 15,905 bytes, `sha256:976d297c1d1298617bf44af69e656441be1117505212f62970042e18418ba696`
+  - `styles.css`: 36,343 bytes, `sha256:c21ec6085310d06192f54235d1994f970917b9c6b7ebd905231a5b52a3e2b13c`
+  - assembled Next page: 308,256 bytes, `sha256:a8333a8baca65896bacb2bab4f7aecc2ddfeb73a1e0fc01be8ac77124c439574`
+- Exact-byte capture evidence under `prototyping/correction-1/`:
+  - `wide-mixed-active-history-8f4ba8e.jpg` — 1531×1047, `sha256:771b17730e77ec1befffaf19e1eb4d61a85f41ed8ee5839d45dd1c39ddab0810`
+  - `wide-active-only-8f4ba8e.jpg` — 1531×320, `sha256:94c171cd1c4f910080e51dac4c142ae542c4010a05ffb6fbd634744f9c47e0b6`
+  - `mobile-320-overview-8f4ba8e.jpg` — 320×900, `sha256:98cc5964d7d02c1ec0d91865e26840d506baf0ffaafa6e50b752239a11470b9e`
+  - `mobile-320-active-card-8f4ba8e.jpg` — 320×900, `sha256:bd4faa8b29e91ddb93ab0c36cdca290149a33eda12b0071deac11be533135794`
+  - `detail-activity-led-8f4ba8e.jpg` — 1531×1047, `sha256:4f693824cb8a146ceb7825fb00462582d116f856fbd09591c926f417c3e5ecab`
+
+### Summary
+
+Correction round 1 preserves the exact-session model while making its command truth legible: explicit active evidence leads, recent observations are clearly historical, every row shares one desktop geometry, mobile becomes a near-full-width card, exact requests agree from fleet to row, and current activity—including subagents—leads session detail. Product commit `8f4ba8e` and matched live captures replace the rejected `569c8ca` candidate on `feat/future-ui` without touching `main`.
