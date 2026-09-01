@@ -1,7 +1,7 @@
 ---
 id:
 title: Session Operations Board
-status: framing
+status: reconnaissance
 source: Captain rejection of future-ui-command-surface on 2026-09-01
 started:
 completed:
@@ -31,7 +31,7 @@ gates:
                 reason: Captain approved the Session Operations Board direction and explicitly requested preparation retry after the corrected artifact path was identified.
               application:
                 target-stage: reconnaissance
-                state: pending
+                state: consumed
 ---
 
 Replace the Attention-first ranking model with an exact-session operations board that lets a person scan the fleet and answer where each session is, what it is doing now, what it may do next, and whether it is blocked.
