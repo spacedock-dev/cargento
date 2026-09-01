@@ -426,10 +426,13 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
     def test_desktop_uses_shared_headers_and_mobile_keeps_only_card_labels(self) -> None:
         self.assertIn(
-            ".next-operation-local-label,.next-operation-fact>small{display:none}", NEXT_STYLES
+            ".next-operation-identity>.next-operation-local-label,"
+            ".next-operation-fact>small{display:none}",
+            NEXT_STYLES,
         )
         self.assertIn(
-            ".next-operation-local-label,.next-operation-fact>small{display:block}",
+            ".next-operation-identity>.next-operation-local-label,"
+            ".next-operation-fact>small{display:block}",
             NEXT_STYLES,
         )
         self.assertIn(
