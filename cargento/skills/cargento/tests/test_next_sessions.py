@@ -81,7 +81,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
     @staticmethod
     def session_row(html: str, sid: str) -> str:
         match = re.search(
-            rf'<(?P<tag>a|article)[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</(?P=tag)>',
+            rf'<(?P<tag>article|a)[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</(?P=tag)>',
             html,
         )
         if match is None:
@@ -197,7 +197,7 @@ nextData.asks.push({
 });
 renderNext();
 const board = __els.app.innerHTML;
-const routes = [...board.matchAll(/data-next-harness="([^"]+)"[^>]*data-next-session="idle-mid"[^>]*data-next-route="([^"]+)"/g)]
+const routes = [...board.matchAll(/<article[^>]*data-next-harness="([^"]+)"[^>]*data-next-session="idle-mid"[^>]*>[\\s\\S]*?data-next-route="([^"]+)"/g)]
   .map(match => [match[1], match[2]]);
 const details = {};
 for(const [harness, route] of routes){
@@ -361,16 +361,20 @@ console.log(JSON.stringify(__els.app.innerHTML));
             self.assertIn("sibling worktrees read alike", row)
         self.assertEqual(2, html.count("2 sessions share this label"))
 
-    def test_rows_are_keyboard_links_to_the_exact_session_route(self) -> None:
+    def test_rows_use_a_native_route_link_sibling_to_the_copy_button(self) -> None:
         html = self.render()
         assert isinstance(html, str)
         row = self.session_row(html, "gate-z")
 
-        self.assertIn('role="link"', row)
-        self.assertIn('tabindex="0"', row)
         self.assertIn('data-next-harness="claude"', row)
-        self.assertIn('data-next-route="session:repo%2Fmain:claude:gate-z"', row)
-        self.assertNotIn("<a ", row)
+        route = (
+            '<a class="next-operation-route" href="#n=session:repo%2Fmain:claude:gate-z" '
+            'data-next-route="session:repo%2Fmain:claude:gate-z" '
+            'aria-label="Open session First gate"><strong>First gate</strong></a>'
+        )
+        self.assertIn(route, row)
+        self.assertLess(row.index(route), row.index('data-next-copy-session="gate-z"'))
+        self.assertNotIn('role="link"', row)
 
     def test_history_keeps_identity_and_scope_but_not_empty_operational_copy(self) -> None:
         html = self.render()

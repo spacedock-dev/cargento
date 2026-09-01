@@ -130,7 +130,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-operations-columns span{padding:9px 12px}
 #app .next-operation-row{display:grid;grid-template-columns:minmax(210px,1.2fr) minmax(150px,.8fr) minmax(180px,1fr) minmax(180px,1fr) minmax(170px,.9fr);position:relative;width:100%;min-width:0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;cursor:pointer}
 .next-operation-row:hover{background:var(--panel)}
-.next-operation-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.next-operation-route{display:block;color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:3px}
+.next-operation-route:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .next-operation-row--needs_input{box-shadow:inset 3px 0 var(--warn)}
 .next-operation-row.next-live{box-shadow:inset 3px 0 var(--accent)}
 .next-operation-identity,.next-operation-fact{display:block;min-width:0;padding:16px 12px;overflow-wrap:anywhere}

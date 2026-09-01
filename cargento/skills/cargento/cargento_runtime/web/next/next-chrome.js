@@ -42,7 +42,11 @@ function nextRestoreFocus(snapshot, model){
         String(session.dataset && session.dataset.nextHarness || "") !== snapshot.harness){
         continue;
       }
-      if(typeof session.focus === "function") session.focus();
+      const route = typeof session.querySelector === "function"
+        ? session.querySelector(".next-operation-route")
+        : null;
+      if(route && typeof route.focus === "function") route.focus();
+      else if(typeof session.focus === "function") session.focus();
       return;
     }
     return;

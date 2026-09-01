@@ -170,7 +170,7 @@ function nextOperationsAssignment(session){
     : "";
 }
 
-function nextOperationsIdentity(session, labels, collisions){
+function nextOperationsIdentity(session, labels, collisions, route){
   const harness = String(session.harness == null ? "" : session.harness);
   const harnessLabel = labels.get(harness) || harness || "Harness not published";
   const title = String(session.title || session.last_prompt || "").trim() || "Title not published";
@@ -179,7 +179,9 @@ function nextOperationsIdentity(session, labels, collisions){
   return '<span class="next-operation-identity">' +
     `<small class="next-operation-local-label">SESSION</small>` +
     `<span class="next-operation-harness">${esc(harnessLabel)}</span>` +
-    `<strong>${dot}${esc(title)}</strong>${nextSessionCopyControl(session)}` +
+    `<a class="next-operation-route" href="#n=${esc(route)}" data-next-route="${esc(route)}" ` +
+    `aria-label="Open session ${esc(title)}"><strong>${dot}${esc(title)}</strong></a>` +
+    nextSessionCopyControl(session) +
     nextOperationsAssignment(session) + nextSessionCollision(session, collisions) + "</span>";
 }
 
@@ -198,8 +200,8 @@ function nextOperationsRow(session, labels, collisions, asks, harnesses, history
     : nextOperationsBlocked(session, asks, harnesses);
   return `<article class="next-operation-row next-operation-row--${esc(state)}${live}" ` +
     `data-next-harness="${esc(harness)}" data-next-session="${esc(sid)}" ` +
-    `data-next-route="${esc(route)}" role="link" tabindex="0"${historyAttr}>` +
-    nextOperationsIdentity(session, labels, collisions) +
+    `${historyAttr}>` +
+    nextOperationsIdentity(session, labels, collisions, route) +
     nextOperationsWhere(session) +
     now + next + blocked + "</article>";
 }
