@@ -135,6 +135,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 #app .next-operation-row{display:grid;grid-template-columns:minmax(210px,1.2fr) minmax(150px,.8fr) minmax(180px,1fr) minmax(180px,1fr) minmax(170px,.9fr);position:relative;width:100%;min-width:0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;cursor:pointer}
 .next-operation-row:hover{background:var(--panel)}
 .next-operation-route{display:block;color:var(--ink);text-decoration-color:var(--line2);text-underline-offset:3px}
+.next-operation-route::after{content:"";position:absolute;inset:0}
 .next-operation-route:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .next-operation-row--needs_input{box-shadow:inset 3px 0 var(--warn)}
 .next-operation-row.next-live{box-shadow:inset 3px 0 var(--accent)}
@@ -146,7 +147,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-operation-identity strong,.next-operation-fact strong{margin-top:7px;font-size:var(--fs-sm);font-style:normal;font-weight:500;line-height:1.4}
 .next-operation-harness{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
 .next-operation-live-glyph{display:inline-block;margin-right:7px}
-.next-session-copy{display:inline-flex;align-items:center;justify-content:center;margin-top:8px;padding:4px 7px;border:1px solid var(--line2);border-radius:3px;background:transparent;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);cursor:pointer}
+.next-session-copy{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;margin-top:8px;padding:4px 7px;border:1px solid var(--line2);border-radius:3px;background:transparent;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);cursor:pointer}
 .next-session-copy:hover{border-color:var(--accent);color:var(--ink)}
 .next-session-copy[data-next-copy-state="copied"]{border-color:var(--accent);color:var(--accent-ink)}
 .next-operation-assignment{margin-top:8px;color:var(--ink2);font-size:var(--fs-2xs);line-height:1.4}

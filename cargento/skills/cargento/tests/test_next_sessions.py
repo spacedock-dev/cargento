@@ -376,6 +376,16 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertLess(row.index(route), row.index('data-next-copy-session="gate-z"'))
         self.assertNotIn('role="link"', row)
 
+    def test_native_route_link_covers_the_row_without_covering_copy_id(self) -> None:
+        self.assertIn(
+            '.next-operation-route::after{content:"";position:absolute;inset:0}',
+            NEXT_STYLES,
+        )
+        self.assertIn(
+            ".next-session-copy{position:relative;z-index:1;",
+            NEXT_STYLES,
+        )
+
     def test_history_keeps_identity_and_scope_but_not_empty_operational_copy(self) -> None:
         html = self.render(
             """
