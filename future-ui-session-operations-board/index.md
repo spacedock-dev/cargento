@@ -447,3 +447,55 @@ clear active/history command surface, readable mobile cards, and activity-led
 detail. Revise the remaining identity boundary so routes and asks preserve
 `(harness, sid)`, add the collision fixture at renderer and navigation layers,
 then repeat only the affected fleet/request/drill-down proofs.
+
+## Stage Report: prototyping — correction round 2
+
+- DONE: Desktop sessions use shared headers only, mobile cards retain only necessary local labels, and historical or missing optional facts do not compete with active evidence.
+  At checkpoint `f57b136`, the wide DOM reports the shared header as `grid` and
+  row-local labels as `none`; the 320-pixel DOM reports the shared header as
+  `none`, local labels as `block`, zero visible history NOW/NEXT/BLOCKED facts,
+  zero history assignments, and `scrollWidth === innerWidth === 320`. The
+  historical-assignment fixture now fails if identity/project-only history
+  regresses, while the CSS contract fails if either responsive label boundary
+  is reversed.
+- DONE: Session routes, asks, and the accessible copy-ID control preserve canonical harness-plus-session identity and prove collision-safe navigation and ownership.
+  The collision fixtures exercise two harnesses with the same SID through route
+  production, route parsing, detail lookup, focus restoration, exact ask
+  ownership, and operations-board request state. Removing either harness key
+  changes those assertions. Rendered rows expose a title link and sibling
+  keyboard-operable Copy ID button, zero nested link/button controls, tooltip
+  text containing the full ID, clipboard writes, and a polite copied/failed
+  status; the raw ID is not visible row metadata.
+- DONE: Projects receive the same active-versus-history and omit-missing-data discipline, with focused tests, recomputed Next byte pins, and matched wide/mobile captures on feat/future-ui only.
+  Projects render Active projects before Recently observed projects, derive
+  situation/workflow/assignment claims only from active evidence, and leave
+  history at identity/scope. Focused fixtures fail on stale history claims,
+  negative placeholders, absent assignments, or collapsed summary spacing.
+  The final `feat/future-ui` checkpoint is `f57b136`; the assembled Next page is
+  315,840 bytes with SHA-256
+  `06b03556fae32f180fcb78a72d28f48059f52da18482b357bccb42504c399cef`.
+
+### Exact captures
+
+- [Wide Sessions, 1531×1103](prototyping/correction-2/wide-sessions-f57b136.jpg) — SHA-256 `b15dab90804ec42595ba6ed3e19450e7a0648c6fc36e66cd9e06766eeb05a9f5`.
+- [Mobile Sessions, 320×1752](prototyping/correction-2/mobile-320-sessions-f57b136.jpg) — SHA-256 `219868e19143d7b4acb1cb065a899a227f82fe1383218f0c59321033c27a2ecf`.
+- [Wide Projects, 1531×1103](prototyping/correction-2/wide-projects-f57b136.jpg) — SHA-256 `a48da311750a400ec6706d1e1d0f79ccde8d59c83ef3a688cac4d8df279f27f6`.
+- [Mobile Projects, 320×900](prototyping/correction-2/mobile-320-projects-f57b136.jpg) — SHA-256 `2aec5adaa78a35e21c652668377db2b400894a39c98a5df3beecdb24b4e40b46`.
+
+### Verification
+
+- `python3 -m unittest discover -s cargento/skills/cargento/tests -t . -p 'test_next*.py'`: 222 tests passed.
+- Focused Ruff check and format check passed for the changed Next test modules.
+- `python3 scripts/lint_embedded.py`: frontend assets clean.
+- `git diff --check`: clean before each accepted checkpoint.
+- Browser proof at both widths: no horizontal overflow; two Copy ID buttons,
+  no nested interactive controls, zero mobile history operational facts, and
+  zero history assignments.
+
+### Summary
+
+Correction round 2 closes the remaining identity-boundary blocker and the
+responsive/history evidence defects found during capture review. Sessions now
+remain collision-safe from fleet row to ask ownership and detail navigation,
+history is observational, Projects reserve operational claims for active
+evidence, and the accessible copy control replaces visible raw identifiers.
