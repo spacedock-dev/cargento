@@ -387,6 +387,8 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 }
 @media(max-width:760px){
   #app{padding:24px 18px 48px}
+  .next-breadcrumb-current-separator{display:none}
+  .next-breadcrumb [aria-current="page"]{display:block;margin-top:4px}
   .next-header,.next-header-right,.next-tabs-row{align-items:flex-start;flex-direction:column}
   .next-project-detail-header,.next-project-detail-layout{grid-template-columns:1fr}
   .next-project-detail-status{grid-column:1;grid-row:auto;text-align:left}

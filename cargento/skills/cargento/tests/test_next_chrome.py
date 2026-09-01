@@ -178,7 +178,7 @@ __els.app = {
         self.assertEqual("copied", out["state"])
         self.assertEqual(out["before"], out["after"])
 
-    def test_breadcrumb_segments_are_clickable_and_escape_walks_up(self) -> None:
+    def test_breadcrumb_segments_mark_current_location_and_escape_walks_up(self) -> None:
         out = self._run_page_js(
             """
 const sessionHtml = __els.app.innerHTML;
@@ -197,7 +197,7 @@ console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute})
         self.assertIn('<a href="#n=projects">Projects</a>', out["sessionHtml"])
         self.assertIn('<a class="next-crumb" href="#n=project:recce">recce</a>', out["sessionHtml"])
         self.assertIn("recce", out["sessionHtml"])
-        self.assertIn("<span>Session</span>", out["sessionHtml"])
+        self.assertIn('<span aria-current="page">Session</span>', out["sessionHtml"])
         self.assertNotIn("<span>019a</span>", out["sessionHtml"])
         self.assertEqual(
             {"view": "project", "project": "recce", "session": None},

@@ -164,7 +164,8 @@ function nextBreadcrumb(){
   const project = esc(nextRoute.project);
   if(nextRoute.view === "project"){
     return `${sessions}<span aria-hidden="true"> &gt; </span>${projects}` +
-      `<span aria-hidden="true"> &gt; </span><span>${project}</span>`;
+      `<span class="next-breadcrumb-current-separator" aria-hidden="true"> &gt; </span>` +
+      `<span aria-current="page">${project}</span>`;
   }
   const projectRoute = nextRouteToken({view: "project", project: nextRoute.project});
   const session = nextSessionFind(nextRoute.project, nextRoute.harness, nextRoute.session);
@@ -173,7 +174,8 @@ function nextBreadcrumb(){
     : "Session";
   return `${sessions}<span aria-hidden="true"> &gt; </span>${projects}` +
     `<span aria-hidden="true"> &gt; </span><a class="next-crumb" href="#n=${projectRoute}">${project}</a>` +
-    `<span aria-hidden="true"> &gt; </span><span>${esc(sessionLabel)}</span>`;
+    `<span class="next-breadcrumb-current-separator" aria-hidden="true"> &gt; </span>` +
+    `<span aria-current="page">${esc(sessionLabel)}</span>`;
 }
 
 function nextPrimaryNavigation(){
