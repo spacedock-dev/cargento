@@ -44,7 +44,7 @@ current activity, workflow evidence, delegation measurements, and browser-local 
 a session from either view for its bounded detail, including its exact request, tasks, subagents,
 token measurements, and any answerable question attributed to that session.
 
-The route lives in the URL fragment: `#n=sessions`, `#n=projects`,
+The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`,
 `#n=project:<encoded-project>`, or the full project, harness, and session identity for session
 detail. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
 that belonged to the retired dashboard normalize to Sessions. The compatibility query
@@ -163,8 +163,9 @@ Three paths manage Claude's needs-input state, and a question registered through
 fourth alert rather than needs-input state. On macOS the server can deliver native notifications
 through `osascript`, even with no dashboard tab open. Gate alerts have a 60-second per-session
 cooldown and a 15-second lane-wide floor; questions have their own 15-second floor. Linux and
-Windows have no notification backend in this release. The dashboard still shows every published
-item in Attention on all platforms.
+Windows have no native backend in this release; with a dashboard tab open, the page can deliver
+browser notifications after permission is granted. The dashboard shows every published item in
+Attention on all platforms.
 
 Native alerts fire on the transition into needs-input, not on every refresh. Questions notify on
 arrival. Idle nudges (`idle_prompt`) can notify without marking the session blocked. Notification

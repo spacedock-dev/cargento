@@ -32,8 +32,8 @@ which one launched it, and it runs standalone with no client installed at all:
 python3 cargento/skills/cargento/server.py --port 4553 --daemon
 ```
 
-`--daemon` detaches so the dashboard keeps running after this shell exits. Stop it from the UI's
-`stop` button or with `--stop`; drop `--daemon` to run it in the foreground instead.
+`--daemon` detaches so the dashboard keeps running after this shell exits. Stop it with `--stop`;
+drop `--daemon` to run it in the foreground instead.
 
 ### Claude Code installation
 
@@ -93,7 +93,7 @@ line. See [HOW_TO_USE.md](HOW_TO_USE.md) for one procedure per task.
 
 | Skill | What it does | Standalone invocation |
 |-------|--------------|------------------------|
-| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across ten coding-agent harnesses, with native input-wait notifications on macOS | `/cargento:cargento` |
+| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across ten coding-agent harnesses, with input-wait notifications (native on macOS, browser notifications elsewhere) | `/cargento:cargento` |
 
 In Codex, invoke it as `$cargento`. In any harness you can also just ask: "open cargento" or "monitor my agents".
 

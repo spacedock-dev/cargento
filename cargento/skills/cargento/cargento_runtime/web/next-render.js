@@ -43,6 +43,7 @@ async function refreshNext(manual = false){
     const fresh = await response.json();
     if(request !== nextRefreshRequest) return;
     const freshAttention = nextAttentionModel(fresh);
+    nextSyncNotifications(fresh);
     nextObserveWorkstream(fresh);
     focus = nextCaptureFocus();
     const previousAttention = nextData == null ? null : nextAttention;

@@ -1,8 +1,9 @@
-# Design: daemon mode, and stopping Cargento from its own UI
+# Design: daemon mode and the retired in-dashboard stop control
 
-The durable rationale behind `--daemon`, `--status`, `--stop`, and the two HTTP routes that back
-them. It records the decisions and the alternatives that were tried and rejected. The rejected ones
-are the expensive part, because without them they get re-attempted.
+The durable rationale behind `--daemon`, `--status`, `--stop`, the two HTTP routes that back them,
+and the stop control removed when the replacement dashboard became canonical. It records the
+decisions and the alternatives that were tried and rejected. The rejected ones are the expensive
+part, because without them they get re-attempted.
 
 Behavioral detail lives in [`COMPATIBILITY.md`](../COMPATIBILITY.md) (the per-OS matrix), the written
 paths and the `/api/shutdown` exposure are owned by [`SECURITY.md`](../SECURITY.md), and the
@@ -168,10 +169,12 @@ nothing answered `/api/health` wait too: `main()` removes the state file *before
 listener, so a stop already in progress arrives at "nothing running" with the port still bound, and
 reporting success there is what made the unconditional stop-then-start unsafe in the first place.
 
-## D-5: Stopping is one code path, over HTTP, shared by the button and the CLI
+## D-5: Stopping uses one code path over HTTP
 
-`--stop` POSTs `/api/shutdown`, which is exactly what the UI button does. Two ways to ask for a stop,
-one implementation of stopping, no signal-handling differences between platforms to reconcile.
+`--stop` POSTs `/api/shutdown`, which is also what the retired UI button did. The canonical dashboard
+does not expose that control, but the route remains available to the CLI and integrations. There is
+still one implementation of stopping and no signal-handling difference between platforms to
+reconcile.
 
 A wedged server that has stopped serving cannot be stopped this way. The existing per-platform kill
 blocks therefore stay in the skill body, demoted from the documented way to stop Cargento to the last
@@ -213,7 +216,10 @@ the port could already read every session on the machine through `/api/data`. It
 the server, a smaller capability than the one already granted, gated by the same trust boundary and
 the same `_local_ok()` checks. `SECURITY.md` says so rather than leaving a reader to work it out.
 
-## D-7: The button arms before it fires, and the stopped page is not the stalled page
+## D-7: The retired button armed before it fired, and the stopped page was not the stalled page
+
+This section preserves the interaction reasoning for the dashboard control removed during the UI
+promotion. It describes the retired implementation rather than the current interface.
 
 A `stop` button sits beside the display toggle, in both display modes. The first activation arms it
 in place, asks for confirmation, and restores focus after the header re-render; the second POSTs.

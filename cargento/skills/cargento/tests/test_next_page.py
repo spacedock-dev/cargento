@@ -45,6 +45,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             asset.write_text("d09GMg==\n", encoding="ascii")
         (web / "next-boot.js").write_text("const first = 1;\n", encoding="utf-8")
         (web / "next-attention.js").write_text("const attention = 2;\n", encoding="utf-8")
+        (web / "next-notify.js").write_text("const notify = 2;\n", encoding="utf-8")
         (web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
         (web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
         (web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
@@ -75,7 +76,8 @@ class NextPageAssetContractTest(unittest.TestCase):
             )
         self.assertEqual(
             (f"<style>{embedded_styles}.next{{color:red}}\n</style>").encode()
-            + b"<script>const first = 1;\nconst attention = 2;\nconst middle = 2;\n"
+            + b"<script>const first = 1;\nconst attention = 2;\nconst notify = 2;\n"
+            b"const middle = 2;\n"
             b"const sessions = 3;\nconst projects = 3;\n"
             b"const project = 4;\nconst activity = 5;\n"
             b"const session = 6;\nconst workstream = 7;\nconst delegation = 8;\n"
@@ -173,6 +175,7 @@ class NextPageAssetContractTest(unittest.TestCase):
             (
                 "next-boot.js",
                 "next-attention.js",
+                "next-notify.js",
                 "next-chrome.js",
                 "next-sessions.js",
                 "next-projects.js",
@@ -507,16 +510,20 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                10_734,
-                "eb9571b96a984c1c0b28ad4fdab534a9384efa8f2f219608749a7381fe95bdb3",
+                10_747,
+                "a091d93a9bbde12d609dd6fd7c0f59301075dd2ef1280218b1ccc9d11bbd9ddf",
             ),
             "next-attention.js": (
                 42_051,
                 "9ce3a282a6b002ab9d10b2d373a223c7fb23e048e09ba4f883e4e085e07bb5bf",
             ),
+            "next-notify.js": (
+                3_642,
+                "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
+            ),
             "next-chrome.js": (
-                15_129,
-                "53c3e8a57486e33186f0db36dff4c6eafbfa1ebc03dd02f3f8434f2888e24432",
+                15_341,
+                "e746916f24f46965e96c952db5f17526c092721a349212c741681fdf960a710a",
             ),
             "next-sessions.js": (
                 11_566,
@@ -551,8 +558,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "fb1f51b940a9e29122a6b689beb6ec6c31fe71652c45bc2dffa32f8250084018",
             ),
             "next-render.js": (
-                2_170,
-                "9cb37e74d6240d55fc62e2e6448cae685e29147741224b064d259c5f809ba299",
+                2_204,
+                "3bdb43261d6e223fd7793f9716f4b38a619aa22022c906fcddf27205f515ae66",
             ),
             "next-live.js": (
                 3_375,
@@ -567,16 +574,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(39_433, len(styles))
+        self.assertEqual(39_733, len(styles))
         self.assertEqual(
-            "18464fd53650b5245a3c51ea2d6f6f1301f321e3df55e9401305d422c27aaf8f",
+            "b8a77760c0a2940e44980956f72ba3d013fd67ecee17bb1a0557275adb23e08e",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(316_691, len(assembled))
+        self.assertEqual(320_892, len(assembled))
         self.assertEqual(
-            "7badd29bc3c55d9354bfb031009bcc30380666f599bb7034a763e367232a023e",
+            "ccae209cef2931bada6f5711325331f5e5cdefe7042f29e68c451f4306191977",
             hashlib.sha256(assembled).hexdigest(),
         )
 

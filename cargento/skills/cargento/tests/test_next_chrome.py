@@ -8,10 +8,10 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextChromeBehaviorTest(NextPageJsHarness):
-    def test_sessions_is_default_and_legacy_overviews_normalize_to_it(self) -> None:
+    def test_sessions_is_default_and_invalid_fragments_normalize_to_it(self) -> None:
         out = self._run_page_js(
             """
-const fragments = ["", "#n=overview", "#n=attention", "#n=unknown"];
+const fragments = ["", "#n=overview", "#n=unknown"];
 const routes = fragments.map(nextRouteFromFragment);
 const repaired = routes.map(nextFragmentForRoute);
 console.log(JSON.stringify({routes, repaired}));
@@ -23,6 +23,17 @@ console.log(JSON.stringify({routes, repaired}));
         for route, repaired in zip(out["routes"], out["repaired"], strict=True):
             self.assertEqual("sessions", route["view"])
             self.assertEqual("#n=sessions", repaired)
+
+    def test_attention_route_round_trips(self) -> None:
+        out = self._run_page_js(
+            """
+const route = nextRouteFromFragment("#n=attention");
+console.log(JSON.stringify({route, fragment: nextFragmentForRoute(route)}));
+"""
+        )
+
+        self.assertEqual({"view": "attention", "project": None, "session": None}, out["route"])
+        self.assertEqual("#n=attention", out["fragment"])
 
     def test_primary_routes_are_native_links_with_current_page(self) -> None:
         out = self._run_page_js(
@@ -75,6 +86,11 @@ console.log(JSON.stringify(rendered));
             NEXT_STYLES,
         )
         self.assertIn(".next-menu button{min-block-size:44px", NEXT_STYLES)
+        self.assertIn(
+            '.next-breadcrumb [aria-current="page"]{display:block;margin-top:4px;'
+            "overflow-wrap:anywhere}",
+            NEXT_STYLES,
+        )
 
     def test_route_survives_load_and_browser_history(self) -> None:
         out = self._run_page_js(
@@ -204,7 +220,7 @@ console.log(JSON.stringify({sessionHtml, project, attention, stayed: nextRoute})
             out["project"],
         )
         self.assertEqual(
-            {"view": "sessions", "project": None, "session": None},
+            {"view": "attention", "project": None, "session": None},
             out["attention"],
         )
         self.assertEqual(out["attention"], out["stayed"])
@@ -227,7 +243,7 @@ console.log(JSON.stringify({fragments, repaired: location.hash}));
         )
 
         self.assertTrue(all("session=" not in fragment for fragment in out["fragments"]))
-        self.assertEqual("#n=sessions", out["fragments"][0])
+        self.assertEqual("#n=attention", out["fragments"][0])
         self.assertEqual("#n=projects", out["fragments"][1])
         self.assertEqual("#n=sessions", out["fragments"][2])
         self.assertEqual("#n=project:recce%3Acloud", out["fragments"][3])
@@ -270,10 +286,11 @@ console.log(JSON.stringify({
         self.assertEqual("#n=projects", out["projects"]["hash"])
         self.assertIn("<h1>Projects</h1>", out["projects"]["html"])
         self.assertEqual(
-            {"view": "sessions", "project": None, "session": None}, out["attention"]["route"]
+            {"view": "attention", "project": None, "session": None},
+            out["attention"]["route"],
         )
-        self.assertEqual("#n=sessions", out["attention"]["hash"])
-        self.assertIn("<h1>Session operations</h1>", out["attention"]["html"])
+        self.assertEqual("#n=attention", out["attention"]["hash"])
+        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["attention"]["html"])
         self.assertEqual([], out["assigned"])
         self.assertEqual("?next=true", out["search"])
         self.assertEqual(1, out["keydownListeners"])
@@ -645,9 +662,9 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 """,
         )
 
-        self.assertEqual({"view": "sessions", "project": None, "session": None}, out["route"])
-        self.assertEqual("#n=sessions", out["hash"])
-        self.assertIn("<h1>Session operations</h1>", out["html"])
+        self.assertEqual({"view": "attention", "project": None, "session": None}, out["route"])
+        self.assertEqual("#n=attention", out["hash"])
+        self.assertIn('<h1 tabindex="-1">Attention</h1>', out["html"])
 
     def test_a_payload_with_no_gates_renders_no_pill(self) -> None:
         out = self._run_page_js(

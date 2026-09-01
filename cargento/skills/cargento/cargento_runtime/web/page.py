@@ -10,6 +10,7 @@ WEB_DIR = Path(__file__).resolve().parent
 APP_PARTS: tuple[str, ...] = (
     "next-boot.js",
     "next-attention.js",
+    "next-notify.js",
     "next-chrome.js",
     "next-sessions.js",
     "next-projects.js",

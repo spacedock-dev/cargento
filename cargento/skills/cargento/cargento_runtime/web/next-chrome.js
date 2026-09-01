@@ -249,6 +249,7 @@ function renderNext(focus = nextCaptureFocus()){
   const gate = counts.gates > 0
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
+  const notification = nextNotifyControl(nextData);
   const stalled = nextRefreshNotice();
   const breadcrumb = nextBreadcrumb();
   app.innerHTML = '<header class="next-header">' +
@@ -258,7 +259,7 @@ function renderNext(focus = nextCaptureFocus()){
     "</div>" +
     '<div class="next-header-right">' +
     `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} subagents</span>` +
-    gate + "</div></header>" +
+    gate + notification + "</div></header>" +
     stalled + nextViewBody(counts);
   nextAttentionStatus(app);
   nextRestoreFocus(focus, nextAttention);
@@ -310,6 +311,11 @@ document.addEventListener("click", event => {
     ? event.target.closest("[data-next-action]")
     : null;
   if(!actionTarget) return;
+  if(actionTarget.dataset.nextAction === "enable-notifications"){
+    event.preventDefault();
+    nextRequestNotifyPermission();
+    return;
+  }
   if(actionTarget.dataset.nextAction === "retry-refresh"){
     event.preventDefault();
     void refreshNext(true);
