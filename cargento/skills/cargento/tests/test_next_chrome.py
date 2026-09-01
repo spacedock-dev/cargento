@@ -271,7 +271,7 @@ console.log(JSON.stringify({
   keydownListeners: (__listeners.keydown || []).length
 }));
 """,
-            'location.search = "?next=true";\nlocation.hash = "#n=project:recce";\n'
+            'location.search = "?all=1";\nlocation.hash = "#n=project:recce";\n'
             '__els.app = {innerHTML: ""};\n',
         )
 
@@ -292,7 +292,7 @@ console.log(JSON.stringify({
         self.assertEqual("#n=attention", out["attention"]["hash"])
         self.assertIn('<h1 tabindex="-1">Attention</h1>', out["attention"]["html"])
         self.assertEqual([], out["assigned"])
-        self.assertEqual("?next=true", out["search"])
+        self.assertEqual("?all=1", out["search"])
         self.assertEqual(1, out["keydownListeners"])
 
     def test_projects_shortcut_keeps_modifier_and_form_field_guards(self) -> None:
@@ -704,7 +704,7 @@ await __settle();
 console.log(JSON.stringify({calls: __fetchCalls.map(call => call[0]), periods: __intervalPeriods()}));
 """,
             """
-location.search = "?next=true&all=1&view=ignored";
+location.search = "?all=1&view=ignored";
 __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
   window_hours: 24,
@@ -724,7 +724,7 @@ await __settle();
 console.log(JSON.stringify(__fetchCalls.map(call => call[0])));
 """,
             """
-location.search = "?next=true";
+location.search = "?view=ignored";
 __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
   window_hours: 24,

@@ -228,8 +228,8 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `esc()`, because the page builds HTML by concatenation and session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
-- The frontend is one assembled scope under `web/`. `?next=true` is a compatibility alias for the
-  same bytes, not another assembly path. The promoted files retain their `next-*` names and
+- The frontend is one assembled scope under `web/`. The retired `next` query is rejected at the
+  page boundary, not routed to another assembly path. The promoted files retain their `next-*` names and
   `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless; do not infer a
   second frontend from those internal names. [docs/design-next-ui.md](docs/design-next-ui.md) owns
   the promotion decision and route grammar.

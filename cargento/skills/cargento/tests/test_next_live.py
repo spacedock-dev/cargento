@@ -71,7 +71,7 @@ class EventSource {
 
     def _boot(self, checks: str, **prelude: Any) -> Any:
         fixture = f"""
-location.search = "?next=true";
+location.search = "";
 __els.app = {{innerHTML: ""}};
 let __nextShouldFail = false;
 __fetchImpl = async () => __nextShouldFail

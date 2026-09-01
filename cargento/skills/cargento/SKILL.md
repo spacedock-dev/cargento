@@ -47,8 +47,8 @@ token measurements, and any answerable question attributed to that session.
 The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`,
 `#n=project:<encoded-project>`, or the full project, harness, and session identity for session
 detail. Reload, pasted links, and browser back therefore preserve the selected view. Old fragments
-that belonged to the retired dashboard normalize to Sessions. The compatibility query
-`?next=true` is harmless and serves these same bytes; it no longer selects a different frontend.
+that belonged to the retired dashboard normalize to Sessions. Open the dashboard at its bare URL;
+the retired `next` query is no longer a dashboard route.
 
 The header reports running sessions and subagents. When work needs intervention, a **needs input**
 button opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention, Projects, and
@@ -294,7 +294,6 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty — which is what they already read for a session that was never probed. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the one file Cargento writes on your behalf. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
-| `http://127.0.0.1:4553/?next=true` | Compatibility alias for the default dashboard. The query no longer selects another frontend. |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |
 | `/api/overlays` | Diagnostic: the live event overlays behind each session's state, with their arrival order and timings, plus a record of every time an event overruled a session the dashboard had read as waiting. Use this when a row's state disagrees with what the agent is actually doing and you need to know whether an event said so or never arrived. Empty is a real answer. Absent under `--no-events`. |

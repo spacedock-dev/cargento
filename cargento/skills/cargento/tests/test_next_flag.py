@@ -33,23 +33,30 @@ class DefaultPageRoutingTest(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_every_root_query_serves_the_one_canonical_page(self) -> None:
+    def test_supported_root_queries_serve_the_one_canonical_page(self) -> None:
         httpd = make_server(page_bytes=NEXT_BYTES)
         thread = serve_until_closed(httpd)
         try:
             for path in (
                 "/",
                 "/?all=1",
-                "/?next=true",
-                "/?next=false",
-                "/?next=1",
-                "/?next=TRUE",
                 "/?nextish=true",
-                "/?next=false&next=true",
-                "/?next=true&next=false",
             ):
                 with self.subTest(path=path):
                     self.assertEqual((200, NEXT_BYTES), self._get(httpd.server_port, path))
+        finally:
+            httpd.shutdown()
+            thread.join(timeout=5)
+
+    def test_retired_next_query_is_not_a_page_alias(self) -> None:
+        httpd = make_server(page_bytes=NEXT_BYTES)
+        thread = serve_until_closed(httpd)
+        try:
+            for path in ("/?next=true", "/?next=false", "/?next=", "/?all=1&next=true"):
+                with self.subTest(path=path):
+                    status, body = self._get(httpd.server_port, path)
+                    self.assertEqual(404, status)
+                    self.assertNotEqual(NEXT_BYTES, body)
         finally:
             httpd.shutdown()
             thread.join(timeout=5)
@@ -82,13 +89,12 @@ class DefaultPageRoutingTest(unittest.TestCase):
 
         self.assertIn(b"<title>canonical marker</title>", page)
 
-    def test_shared_server_factory_serves_the_canonical_page_for_both_urls(self) -> None:
+    def test_shared_server_factory_serves_the_canonical_page(self) -> None:
         httpd = make_server()
         thread = serve_until_closed(httpd)
         try:
             expected = (200, frontend_page.load_page())
             self.assertEqual(expected, self._get(httpd.server_port, "/"))
-            self.assertEqual(expected, self._get(httpd.server_port, "/?next=true"))
         finally:
             httpd.shutdown()
             thread.join(timeout=5)

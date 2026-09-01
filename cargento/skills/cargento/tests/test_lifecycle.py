@@ -357,9 +357,8 @@ print(json.dumps({{
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
                 self.assertEqual(frontend_page.load_page(), body)
                 code, headers, body = self._response(port, "GET", "/?next=true")
-                self.assertEqual(200, code)
-                self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
-                self.assertEqual(frontend_page.load_page(), body)
+                self.assertEqual(404, code)
+                self.assertNotEqual(frontend_page.load_page(), body)
             finally:
                 stop: subprocess.CompletedProcess[bytes] | None = None
                 # A live owned process has exclusive possession of its port,

@@ -427,7 +427,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self.send_error(403)
             return
         url = urlparse(self.path)
-        if url.path == "/":
+        if url.path == "/" and "next" not in parse_qs(url.query, keep_blank_values=True):
             self._send(self.server.page_bytes, "text/html; charset=utf-8")
         elif not self._get_api(url):
             self.send_error(404)

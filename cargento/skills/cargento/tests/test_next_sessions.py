@@ -10,7 +10,7 @@ from .next_harness import NEXT_STYLES, NextPageJsHarness
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class NextSessionsBehaviorTest(NextPageJsHarness):
     FIXTURE = """
-location.search = "?next=true";
+location.search = "";
 __els.app = {innerHTML: ""};
 __fetchImpl = async () => ({ok: true, json: async () => ({
   generated: 10000,

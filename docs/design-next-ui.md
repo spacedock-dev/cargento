@@ -11,10 +11,9 @@ development could not move the legacy page's byte pins. Once the interface was r
 as the replacement, keeping both implementations stopped buying isolation and started creating two
 failure boundaries, two asset inventories, and a permanent routing decision.
 
-Promotion moved the released assets to canonical `web/`, made `load_page()` the only assembler, and
-made the server ignore query parameters when serving `/`. `/?next=true` therefore returns exactly
-the same bytes as `/`; the query remains a harmless compatibility alias for saved links. The legacy
-HTML, stylesheet, scripts, loader, and tests were deleted together so there is no fallback that can
+Promotion moved the released assets to canonical `web/` and made `load_page()` the only assembler.
+The retired `next` query now returns 404 rather than preserving a second dashboard URL. The legacy
+HTML, stylesheet, scripts, loader, and tests were deleted together, so there is no fallback that can
 silently become the product again.
 
 The promoted script files keep their `next-*` names. Renaming every internal symbol and test would
@@ -375,8 +374,7 @@ these selectors and keyframes live in the canonical `web/styles.css`.
 Tabs elect one leader through `cargento.next.leader`, fan revisions out through storage, and retain
 `cargento.next.revision`. Those names survive promotion so stored preview state remains compatible
 and a stale `cargento.leader` lease from the removed dashboard cannot affect the canonical page.
-There is now one bundle and therefore one leader population, even when `/` and `/?next=true` are
-open together.
+There is now one bundle and therefore one leader population.
 
 A permanently closed stream yields and retries on the next two-second election tick. A 20-second
 poll runs beside SSE as a safety net; a browser without `EventSource` uses the five-second poll as
@@ -489,5 +487,5 @@ tasks, subagents and measured token total.
 
 The promotion deliberately removes the rollback-by-query path. Recovering the retired dashboard
 would now be a source-control revert, not a runtime flag, so startup and routing cannot disagree
-about which UI is supported. The compatibility query can be removed later without a backend or
-browser-state migration because it already selects no behavior.
+about which UI is supported. The retired query returns 404; it is neither an alias nor a rollback
+surface.

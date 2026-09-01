@@ -101,9 +101,9 @@ mass rename; they do not indicate a second bundle.
 | `web/next-live.js` | Namespaced cross-tab leader election, SSE revision delivery, and fallback polling. It is last in `APP_PARTS` and starts refresh. |
 | `web/fonts/` | Embedded Space Grotesk and Space Mono subsets, licenses, and source hashes. |
 
-The HTTP server serves this same assembled byte string for every `/` query. In particular,
-`?next=true` remains a compatibility alias rather than a routing branch. The promotion decision,
-retained browser namespace, and route grammar live in
+The HTTP server serves this assembled byte string at `/`, including the supported `all=1` view.
+It rejects the retired `next` query with 404 instead of preserving a second page URL. The promotion
+decision, retained browser namespace, and route grammar live in
 [design-next-ui.md](design-next-ui.md).
 
 ## R-2: Dependencies run inward, and the test enforces it

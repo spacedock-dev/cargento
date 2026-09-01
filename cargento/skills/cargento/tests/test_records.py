@@ -637,7 +637,7 @@ class RedactSecretsTest(unittest.TestCase):
             # The dashboard's own address. A port reads as `host:number` and the
             # `@` test lets it through the gate, so this is the false positive
             # that would have blanked the most instruction lines in this repo.
-            ("dashboard url", "open http://127.0.0.1:4553/api/data?next=true"),
+            ("dashboard url", "open http://127.0.0.1:4553/api/data?all=1"),
             ("url with a user and no password", "clone https://someone@github.com/o/r.git"),
             ("image tag", "docker run postgres:16 with the seed applied"),
             ("hex blob", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
@@ -717,7 +717,7 @@ class RedactSecretsTest(unittest.TestCase):
         for name, text in (
             ("dashboard url at the end", "mail me@example.com then open http://127.0.0.1:4553"),
             ("https with a port", "ping ops@example.com about https://example.com:8443"),
-            ("scheme, port and a path", "me@x.io said http://127.0.0.1:4553/api/data?next=true"),
+            ("scheme, port and a path", "me@x.io said http://127.0.0.1:4553/api/data?all=1"),
             ("ssh url", "ssh://git@github.com/o/r.git beside http://127.0.0.1:4553"),
         ):
             with self.subTest(name=name):
