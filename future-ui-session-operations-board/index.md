@@ -40,6 +40,14 @@ gates:
                 id: briefing:future-ui-session-operations-board:crucible:attempt-1:revision-1
                 digest: sha256:df255ff9ddd85ec2182b091a59a62a7c3ec2a6eae579dd60bbb80096489bebf0
                 room-ref: ./review/crucible/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:future-ui-session-operations-board:crucible:1
+                briefing: briefing:future-ui-session-operations-board:crucible:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-01T01:15:16.275796Z"
+                decision: revise
+                reason: 'Captain accepts the exact-session direction but requires correction: enforce stable column sizing across every desktop row; replace the broken 320px table with near-full-width mobile cards or an intentional horizontal-scroll table; remove the redundant SESSION label on session detail and make current activity the dominant lede; integrate running subagents into current activity; and separate actually active/open sessions from historical sessions so the fleet cannot imply that seven sessions are currently open when only one is active.'
 ---
 
 Replace the Attention-first ranking model with an exact-session operations board that lets a person scan the fleet and answer where each session is, what it is doing now, what it may do next, and whether it is blocked.
