@@ -4,7 +4,7 @@ import re
 import shutil
 import unittest
 
-from .next_harness import NextPageJsHarness
+from .next_harness import NEXT_STYLES, NextPageJsHarness
 
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
@@ -281,6 +281,12 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertNotIn("DELEGATION", html)
         self.assertNotIn("no estimate", html)
         self.assertNotIn("not measured", html)
+
+    def test_project_summary_counts_have_visible_separation(self) -> None:
+        self.assertIn(
+            ".next-project-summary{display:flex;flex-wrap:wrap;gap:4px 10px}",
+            NEXT_STYLES,
+        )
 
     def test_no_exact_ask_omits_the_request_lede_and_response_region(self) -> None:
         html = self.render(
