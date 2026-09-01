@@ -1,0 +1,24 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:future-ui-session-operations-board:crucible:attempt-1:revision-1",
+  "question": "Should the Session Operations Board be revised to fix the four reproduced command failures before acceptance?",
+  "artifacts": [
+    {
+      "id": "artifact:future-ui-session-operations-board:crucible:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/afd2dd229d358cdf56c8161f0f3a00994048cc56/future-ui-session-operations-board/index.md",
+      "rev": "sha256:417fa3f7275fd840b63ddae19dd9909b0d473e31e1b7cc55851d04f779f52e24",
+      "mediaType": "text/markdown",
+      "summary": "The exact-session direction is sound, but the crucible reproduced four candidate-owned failures: the CSS cascade breaks comparable columns and mobile stacking, fleet reported-block counts can contradict an exact-request row, assignment absence is hidden, and captain responsibility disappears at fleet level. Recommend revise, correct these failures, and re-run wide, 320-pixel, request-skew, and three-harness proof."
+    }
+  ],
+  "context": [
+    {
+      "type": "Reference",
+      "id": "reference:future-ui-session-operations-board:crucible:attempt-1:revision-1:item-2",
+      "uri": "git-root://main/569c8ca5dce2cc5e62013419470b503fe2b95c21/docs/future-ui-exploration/README.md",
+      "mediaType": "text/markdown",
+      "rev": "sha256:fc45c6f5221aca88756cfc5a017081d0bebc9ea9dbf2802672d369280ff14329"
+    }
+  ]
+}
