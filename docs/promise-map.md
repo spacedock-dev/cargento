@@ -46,7 +46,7 @@ The columns below are the narrative spine of the user journey, in the order a da
 them. Each one gets one promise, the shipped capability that backs it, and the limit that keeps
 the promise honest.
 
-### Which of my agents are running?
+### P1. Which of my agents are running?
 
 **We promise:** every session on this machine, across ten harnesses, on one screen, with what is
 active now kept apart from what is only recent history.
@@ -61,7 +61,7 @@ recent observation cannot prove that a harness is still open, so history keeps i
 and makes no claim about live state. A harness with no local session data shows as discovered but
 disabled rather than silently missing.
 
-### What is it doing, and when should I come back?
+### P2. What is it doing, and when should I come back?
 
 **We promise:** for each live session, what it is doing now, what it plans next, how far into the
 current turn it is, and an estimate of when that turn ends. It tells you when that changes instead
@@ -77,7 +77,7 @@ That boundary is a decision rather than a gap, and lifting it is an open questio
 ([DEC-5](https://linear.app/recce/issue/DRC-4182/dec-5-decision-may-cargento-read-what-a-tool-call-actually-did)).
 An ETA is an estimate, and it says so.
 
-### Is anything waiting on me?
+### P3. Is anything waiting on me?
 
 **We promise:** one queue of everything blocked on you, with what it is waiting for and how long it
 has waited. A session can also ask you a question directly and wait for your answer.
@@ -96,7 +96,7 @@ for how long. Cargento does not answer a prompt for you. The one shape it is all
 asking and Cargento answering
 ([DEC-2](https://linear.app/recce/issue/DRC-4054/dec-2-decision-let-cargento-act-not-just-observe)).
 
-### Will I hit the wall before the work finishes?
+### P4. Will I hit the wall before the work finishes?
 
 **We promise:** your quota in one place across vendors: the windows that reset, per-model
 sub-limits, cost per session, and the burn rate projected to the wall.
@@ -116,7 +116,7 @@ withheld rather than rendered as zero. There is deliberately no single safe-to-s
 quota producer signals failure as an empty list, so a composed light would read green exactly when
 Cargento can see nothing.
 
-### Did anything die quietly?
+### P5. Did anything die quietly?
 
 **We promise:** nothing finishes invisibly. Work that finished and was never read is flagged,
 sessions that went quiet go stale, and a session that ends leaving uncommitted changes says so.
@@ -170,3 +170,37 @@ Before and after screenshots are the design record, not the promise. They explai
 got here to people who followed the process, and they belong in
 [the session operations board walkthrough](future-ui-exploration/presentations/future-ui-session-operations-board/README.md)
 and [the Next UI design record](design-next-ui.md).
+
+## How work links to a promise
+
+Every unit of roadmap work names the promise it serves and how it touches it. The link is two
+labels on the Linear issue and a two-sentence **User value** section at the top of its body: who
+notices this and when in their day, then the promise ID and the move. The
+[burndown workflow](roadmap-burndown/README.md) requires the section at triage and reads the labels
+at selection.
+
+| ID | Question | Linear label | Board column |
+|---|---|---|---|
+| P1 | Which of my agents are running? | `journey:open-sessions` | `open` |
+| P2 | What is it doing, and when should I come back? | `journey:mid-flight` | `mid` |
+| P3 | Is anything waiting on me? | `journey:stopped-at-gate` | `gate` |
+| P4 | Will I hit the wall before the work finishes? | `journey:usage` | `usage` |
+| P5 | Did anything die quietly? | `journey:end-of-sessions` | `end` |
+
+The five labels and the five columns predate the IDs. Nothing was renamed to make this table.
+
+The move says how the work touches its promise.
+
+| Move | Meaning | May change this file |
+|---|---|---|
+| `keep` | Without this, the board says something untrue about the promise. Most defects land here, because the limits are part of the promise. | No |
+| `sharpen` | The promise is kept and this makes it more precise, or covers one more harness. | No |
+| `extend` | A new clause on an existing promise. | Yes, that promise |
+| `new` | Territory no promise covers. Today that is only the Move up a level milestone. | Yes, a new promise |
+| `none` | No user-visible effect. The issue says why, and the Linear project overview counts these so the share stays visible. | No |
+
+A decision issue names the promise its ruling unblocks or forecloses, and takes the move of the
+work it gates.
+
+Only `extend` and `new` may change what this file says. A `keep` or `sharpen` merge changes no
+wording here, and a burndown that closes one says so in its report.
