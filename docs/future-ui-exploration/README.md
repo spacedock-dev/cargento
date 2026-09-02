@@ -106,7 +106,7 @@ The experiment is in crucible while fresh reviewers try to disprove that the can
 - Outputs include independent reviews of visual hierarchy, information architecture, command truth, cross-harness comprehension, session detail, accessibility, and adversarial states. They also include reproduced material findings, a disposition for every finding, and a recommendation to revise, reframe, or accept.
 - Good crucible review uses fresh reviewers, exercises each material claim where it can fail, implements accepted findings before another review, and resolves disagreement with reproduced evidence.
 - Bad crucible review becomes attached to the prior design, ranks unsupported findings by confidence, optimizes style after command truth is complete, or claims convergence because tests are green.
-- The gate leads with the recommendation. It shows whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility, and the promise the bet serves, in the map's words. It names every material uncertainty and its owner, then asks the captain to revise, reframe, or accept.
+- The gate leads with the recommendation. It shows whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility. It also shows the promise the bet serves, in the promise map's words. It names every material uncertainty and its owner, then asks the captain to revise, reframe, or accept.
 
 ### `accepted`
 

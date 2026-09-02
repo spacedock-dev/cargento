@@ -208,6 +208,12 @@ the only stage whose product is a change to the roadmap records rather than to t
     state that no longer exists?
   - The original issue body and the owning milestone description copied **verbatim** into this
     entity under `## Linear edits made`, before anything else, as the pre-edit record.
+  - The issue's **User value** brief drafted as the first section of the rewrite: two sentences,
+    who notices this and when in their day, then the promise ID and the move, in the vocabulary of
+    [the promise map](../promise-map.md#how-work-links-to-a-promise). For a decision issue, the
+    promise the ruling unblocks or forecloses.
+  - The `journey:*` and `move:*` labels to set, named here and written by `implementation` with
+    the rewrite. Until they are set the issue ranks as `none` at `selection`.
   - The rewritten issue body **drafted into this entity, not written to Linear.** Superseded content
     is **demoted to a dated historical section, not deleted** — the record of what was believed and
     when is what makes a later reader able to trust the rest.
@@ -217,15 +223,9 @@ the only stage whose product is a change to the roadmap records rather than to t
     clauses, each split as **offline** (a test, command, or on-disk state a fresh agent reproduces)
     or **interactive** (needs a human or a live drive). The split is declared here, at the gate, so
     a plan to build a harness that automates an interactive AC is visible before the harness exists.
-  - The issue's **User value** brief drafted as the first section of the rewrite: two sentences,
-    who notices this and when in their day, then the promise ID and the move, in the vocabulary of
-    [the promise map](../promise-map.md#how-work-links-to-a-promise). For a decision issue, the
-    promise the ruling unblocks or forecloses.
-  - The `journey:*` and `move:*` labels to set, named here and written by `implementation` with
-    the rewrite. Until they are set the issue ranks as `none` at `selection`.
   - At least one acceptance criterion that is a property a user can see, with its own `Verified
     by:` clause. When the move is `none`, one sentence in the brief on why no user sees this
-    change, and the gate is told so up front.
+    change instead, and the gate is told so up front.
   - An expected surface estimate with tolerance, and the semantics the change may move. **Cost the
     oracles separately from the runtime, and check whether any existing required check compels a new
     test file before declaring** — an import-graph allowlist that rejects a new module, a protocol
@@ -275,9 +275,10 @@ The rewritten issue is approved and gets built in a dedicated worktree on its ow
 - **Inputs:** The approved entity body and its acceptance criteria. The repository. **AGENTS.md**,
   in particular "Pre-PR Checks", "Parallel Work" and "Code Comments".
 - **Outputs:**
-  - **First action:** the drafts the gate approved written to Linear — the issue body, and the
-    owning milestone description. Nothing else in this stage starts until that write lands, so the
-    board and the branch describe the same intent from the moment work begins.
+  - **First action:** the drafts the gate approved written to Linear — the issue body, the owning
+    milestone description, and the `journey:*` and `move:*` labels named at triage. Nothing else in
+    this stage starts until that write lands, so the board and the branch describe the same intent
+    from the moment work begins.
   - `recce-dev:linear-deep-dive` run for this issue and **stopped at step 6, Propose Approach** —
     its classification, key files and risks are used; its own workflow past step 6 is not continued,
     because this stage owns what happens next.
@@ -394,8 +395,8 @@ getting it wrong on `drc-4274`.
   milestone description, the project overview's "As of" block, and the closed issue's `blocks`
   relations.
 - **Outputs:**
-  - All five edits in `## Post-merge Linear reconcile`, in order.
-  - A comment posted on the Linear issue naming all five edits and the merge commit. This is the
+  - All six edits in `## Post-merge Linear reconcile`, in order.
+  - A comment posted on the Linear issue naming all six edits and the merge commit. This is the
     **external receipt**: it lives in the system the reconcile is about, it survives the entity
     being archived, and it is visible to someone who never opens this workflow.
   - `reconciled: {ISO 8601}` written to the entity frontmatter and committed **before**
@@ -404,7 +405,7 @@ getting it wrong on `drc-4274`.
     it is recoverable only because the field is absent. Without it, a session that dies between the
     merge and step 3 leaves an issue whose code shipped and whose Linear record still reads open,
     and the next `selection` cycle picks it again and rebuilds it.
-- **Good:** All five edits made against the merged state, not against the pre-merge intent. The
+- **Good:** All six edits made against the merged state, not against the pre-merge intent. The
   milestone edit names what actually shipped. Step 5 leaves closed-to-closed edges alone.
 - **Bad:** Reporting the issue closed before the receipt is posted. Sweeping a closed-to-closed
   `blocks` edge — that turns a satisfied dependency into no dependency, which is a different and
@@ -531,7 +532,7 @@ declared tolerance or on narrowed AC, require a captain-visible design reset. Cy
 ## Post-merge Linear reconcile
 
 Required, and the reason this workflow exists rather than just the skills it calls. Runs when the
-merge is detected, before the entity is reported closed to the captain. All five, in order, and
+merge is detected, before the entity is reported closed to the captain. All six, in order, and
 only once the merge to `main` is confirmed.
 
 1. Move the Linear issue to `Done`. Not before the merge.
@@ -540,14 +541,19 @@ only once the merge to `main` is confirmed.
    description and Linear's serializer will move some emphasis boundaries in text you did not
    touch — see the milestone-edit rule in `## Workflow-specific rules`. Report it; do not repair it.
 3. Refresh the project overview's "As of" block. Every derived number lives there, so it is one edit.
+   The block's open-issues-by-move line is part of that refresh.
 4. Check the closed issue's `blocks`. Move anything newly free to `Todo`.
 5. If the closed issue still blocks something that no longer depends on it, remove the relation and
    add `relatedTo` in its place, so the closed evidence stays reachable from the item it unblocked.
    **Only when the blocked side is still open.** An edge between two closed issues gates nothing and
    is part of the record of what waited on what — removing those turns a satisfied dependency into
    no dependency, which is a different and less true statement.
+6. If the issue's move was `extend` or `new`, draft the change to the promise wording and hand it to
+   the next docs PR's `sync-docs` pass, which owns the three copies. A `keep` or `sharpen` merge
+   changes no promise wording; say so rather than leaving it implied.
 
-Then report: issue worked, milestone updated, overview refreshed, what became unblocked, what is next.
+Then report: issue worked, which promise it moved and how, milestone updated, overview refreshed,
+what became unblocked, what is next.
 
 The evidence for why this is not optional, as of 2026-08-21: C6 sat behind DEC-2 after a rewrite
 removed its need for one, so a 56 risk-adjusted item read as blocked for weeks. E4 and E5 read as
