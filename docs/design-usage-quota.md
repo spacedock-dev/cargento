@@ -367,6 +367,21 @@ band entirely, because a sign-in is wrong advice when the harness session may be
 surfaces in diagnostics as a fixed category word plus an exception type name; no value read from a
 credential source or a response is ever interpolated.
 
+Droid has no token Cargento may read, and DEC-10 (DRC-4333) settled what it sends instead. The
+Droid CLI keeps a 44-byte encryption key in the macOS Keychain, service `Factory CLI`, account
+`auth-encryption-key-security-cli`, and the session token encrypted with it in
+`~/.factory/auth.v2.loginkeychain`, beside a refresh lock the CLI takes when it rotates the session.
+Reading that would mean decrypting another program's store to lift a credential it refreshes
+itself, and the never-refresh rule above has nothing to bound in that arrangement, so it is
+rejected below. The vendor documents one other route, an API key the user creates and the CLI
+accepts through `FACTORY_API_KEY` on the same bearer header. When the reader ships it takes that
+variable from Cargento's own process environment, presents it to one endpoint as a bearer token,
+and does nothing else with it: not written, not logged, not served, not exchanged. A missing
+variable keeps Droid out of the band with no sign-in advice, since the harness may be signed in and
+working normally without it. Whether the limits endpoint accepts a key is unmeasured until an
+account with windows runs the capture, and SECURITY.md names the endpoint and the variable in the
+same PR as the reader.
+
 ## Q-7: A harness can hand its quota over, so nothing needs fetching
 
 Antigravity keeps no quota on disk and its stored credential is not usable as a bearer token, so
@@ -444,30 +459,30 @@ which is itself one of the states question three has to render rather than hide.
 | Google | Antigravity | percent per named bucket, the worse of two model families (Q-7) | the user pointed the status line at `/api/usage` and the harness ran inside `window_hours` |
 | Cursor | Cursor CLI | spend in cents against a monthly billing cycle, macOS only (Q-8) | the Keychain token reads and the disclosure has been answered |
 | GitHub | Copilot CLI | AI Units consumed, with the entitlement nowhere on the machine (Q-6) | a usage row landed inside `window_hours` |
-| Factory | Droid | nothing yet: the store holds a per-session credit count and no window, and the authenticated route is unread | never, so far as anything here knows |
+| Factory | Droid | nothing: on the account measured, `GET /api/billing/limits` carries no window, and the store holds a per-session credit count | never yet; an account on token-rate-limits billing would publish three windows nobody here has captured |
 
 Two rows in that table are absences of different kinds, and a comparison that treats them alike gets
 question one wrong. GitHub publishes a numerator and no denominator, which is a measured fact:
 `entitlement` and `allowance` appear in no file under `~/.copilot`, and Q-6 is the record of
-looking. Factory is half looked at, and the provenance of each half is different, so it is
-spelled out. Droid 0.202.0 was installed on the machine this work was done against and its store
-was read by hand on 2026-09-02, with the key names recorded on DRC-4073 and no capture file yet:
-each session's sibling `<session-id>.settings.json` carried `tokenUsage` and `inclusiveTokenUsage`
-objects with token counts and a `factoryCredits` figure, a numerator in Copilot's shape, and nothing
-under `~/.factory` resembled a 5 hour, 7 day or 30 day window. Until a capture lands, that is a
-reading and not a measured field, and no parser is written against it. The other half is unread
-because no Factory account was signed in there, which the CLI's own log states. What the binary's
-strings show, read and never run: a `/limits` command, a `FACTORY_API_KEY` variable as one credential
-route, and a login flow backed by an embedded keytar store, so a Keychain item on macOS is the
-expectation and not an observation. The HTTP route behind `/limits` was not found in those strings.
-So "Factory keeps no local quota window" is a reading awaiting its capture, and "Factory publishes
-no window at all" is still the absence of one. Every field this document treats as measured
-(Copilot's `total_nano_aiu`, Cursor's cents, Anthropic's `limits[]`) came from a live store or a
-live response. The Antigravity attempt below is the reason to hold even a searched-for absence
-loosely: its local forensics were thorough, and the number it concluded was out of reach ships
-today, arriving by the pushed path in Q-7 instead. An absence found by looking can still be
-overturned by a route nobody enumerated, so the authenticated route stays unmeasured in writing
-rather than written down as empty.
+looking. Factory was looked at on 2026-09-02, on the account signed in on the machine this work was
+done against, and the record is
+[`captures/droid/billing-limits-0.210.0-macos.jsonl`](captures/droid/billing-limits-0.210.0-macos.jsonl).
+Droid's `/limits` command is `GET https://api.factory.ai/api/billing/limits`, and on that account
+it answered with four top-level fields and no `limits` object, because `usesTokenRateLimitsBilling`
+is false there; Droid's own panel then said it was unable to fetch credit limits. So for that
+account the vendor publishes no window, which is a finding and not the absence of one, and Cargento
+can show nothing the CLI cannot. Individual plans are metered differently, three independent rolling
+windows of Factory Standard Credits at 5 hours, 7 days and 30 days, and the CLI is written against
+`limits.standard.fiveHour`, `weekly` and `monthly`, each with a `usedPercent`; that shape is read in
+the binary and has never been run here, so no parser is written against it. The store holds a
+per-session `<session-id>.settings.json` whose `tokenUsage` object carries token counts and a
+`factoryCredits` figure, a numerator in Copilot's shape, read by hand and not yet captured. Every
+field this document treats as measured (Copilot's `total_nano_aiu`, Cursor's cents, Anthropic's
+`limits[]`) came from a live store or a live response. The Antigravity attempt below is the reason
+to hold even a searched-for absence loosely: its local forensics were thorough, and the number it
+concluded was out of reach ships today, arriving by the pushed path in Q-7 instead. An absence found
+by looking can still be overturned by a route nobody enumerated, so the windowed route stays
+unmeasured in writing rather than written down as empty.
 
 Anthropic's row also says something the other rows do not, and it decides the unit of comparison.
 That percentage is the account's, not Claude Code's: SECURITY.md names the authority as "Claude
@@ -737,6 +752,18 @@ it. Those rows degrade to the dash, which is the honest reading, but it is a wid
 the per-row rule above.
 
 ## Rejected alternatives worth keeping rejected
+
+### Decrypting Droid's login store
+
+The Droid CLI's stored session is an encrypted file whose key sits in the Keychain, so the token is
+one `security find-generic-password` away from being readable in principle: fetch the key, read the
+file, reproduce the CLI's decryption. It is not done, for two reasons that do not weaken with a
+cleverer implementation. The store belongs to another program and its format is that program's to
+change without notice, so a reader here would break silently on the next Droid release and, worse,
+could read the wrong bytes and present them as a credential. And the session it protects is one the
+CLI rotates under a refresh lock, so Cargento would be lifting a value out from under a process that
+is about to replace it, which is the race the never-refresh rule exists to stay out of. The API key
+route in Q-5 costs the user one key and has neither problem.
 
 ### Refreshing a lapsed token
 
