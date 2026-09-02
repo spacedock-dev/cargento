@@ -8,6 +8,11 @@ It came out of a workshop on the shared Figma board (the "Visibility" and
 "Visibility 2x2" sections of the spacedock user-journey file). 27 of the items are from
 that session; the other 30 were proposed afterwards.
 
+Each item's `column` is its link to one of the five promises in
+[`docs/promise-map.md`](../promise-map.md#how-work-links-to-a-promise), and the journey view's
+Promise row carries that file's wording verbatim. The board scores what to build; the map says what
+a user is promised. The link is what keeps them from saying different things.
+
 ## The two axes
 
 **Vertical, impact.** If the user had this information reliably and instantly, how much
