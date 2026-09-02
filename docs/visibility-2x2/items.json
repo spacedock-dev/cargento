@@ -56,23 +56,33 @@
   "columns": [
     {
       "id": "open",
-      "name": "Open Session(s)"
+      "name": "Open Session(s)",
+      "question": "Which of my agents are running?",
+      "promise": "Every session on this machine, across ten harnesses, on one screen, with what is active now kept apart from what is only recent history."
     },
     {
       "id": "mid",
-      "name": "Mid-flight"
+      "name": "Mid-flight",
+      "question": "What is it doing, and when should I come back?",
+      "promise": "For each live session: what it is doing now, what it plans next, how far into the current turn it is, and an estimate of when that turn ends. It tells you when that changes instead of making you poll."
     },
     {
       "id": "gate",
-      "name": "Stopped at Gate"
+      "name": "Stopped at Gate",
+      "question": "Is anything waiting on me?",
+      "promise": "One queue of everything blocked on you, with what it is waiting for and how long it has waited. A session can also ask you a question directly and wait for your answer."
     },
     {
       "id": "usage",
-      "name": "Usage"
+      "name": "Usage",
+      "question": "Will I hit the wall before the work finishes?",
+      "promise": "Your quota in one place across vendors: the windows that reset, per-model sub-limits, cost per session, and the burn rate projected to the wall."
     },
     {
       "id": "end",
-      "name": "End of sessions"
+      "name": "End of sessions",
+      "question": "Did anything die quietly?",
+      "promise": "Nothing finishes invisibly. Work that finished and was never read is flagged, sessions that went quiet go stale, and a session that ends leaving uncommitted changes says so."
     }
   ],
   "states": [

@@ -46,6 +46,7 @@ diff-and-reconcile pass, not a rewrite.
 | `COMPATIBILITY.md` | **Canonical** cross-harness and cross-platform contract: the per-runtime surface matrix, the per-OS capability matrix, the platform caveats, the native per-runtime validators, and **the Python floor** (with the list of every other place it is restated). Carries the sync marker. | Matrices and their footnotes. *Why* a row reads the way it does belongs in `docs/design-*.md`. |
 | `SECURITY.md` | Security posture: the invariants, the known-and-accepted exposures, and private reporting. Covers the whole shipped surface — `server.py` **and** `notify_hook.py`. | Anything that weakens an invariant is a security bug and belongs here. Keep the contact address equal to the one in `CODE_OF_CONDUCT.md`; nothing checks it. |
 | `cargento/skills/cargento/SKILL.md` | **Canonical** product surface: per-harness data sources, session states, start/stop, notifications, options, interpretation notes, common mistakes. | A *shipped, validated artifact* — see the constraints below. It is installed without the repository, so it must never contain a repo-relative link or repo process. |
+| `docs/promise-map.md` | **Canonical** user-facing promise: the five questions of a user's day, one promise each, the shipped capability that backs it, and the limit that keeps it honest. | A promise may not enter it before the capability ships, and the wording of each promise is duplicated verbatim in `docs/visibility-2x2/items.json` (`columns[].promise`) and in the Linear project description. Change one, change all three. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, the inward-only dependency rule, top-level import identity, and the config/state/application split. | Other design docs link here for the module map instead of restating it. The import allowlist it describes is asserted by a test. |
 | `docs/design-*.md` | The durable *why/how* per area — decisions that outlive the build, **including alternatives that were tried and rejected and the reason why**. | A decision earns a place here if re-deriving it would cost a day, or if a maintainer would otherwise re-attempt something already proven wrong. |
 | `docs/plans/*.md` | **Transient** plans for *unshipped* work only. | Once the work ships, fold the durable *what* into the owning doc and the durable *why* into `docs/design-*.md`, then **delete the plan file.** |
@@ -95,7 +96,7 @@ the rule survives the tool going missing.
 In scope, and the exact set check (e) greps:
 
 ```
-README.md  HOW_TO_USE.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY.md  docs/design-*.md  docs/plans/*.md
+README.md  HOW_TO_USE.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY.md  docs/promise-map.md  docs/design-*.md  docs/plans/*.md
 ```
 
 Out of scope, deliberately: `AGENTS.md` and `CLAUDE.md` (agent contracts loaded verbatim as

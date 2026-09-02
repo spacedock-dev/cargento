@@ -7,12 +7,22 @@
 
 Agnostic agent cartography and visualization.
 
-Cargento maps live coding-agent activity on your machine into a single local dashboard. It shows
-sessions, subagents, task progress, turn ETAs, and token output rate across ten harnesses: Claude
-Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose,
-and Factory Droid. Gemini CLI stopped serving consumer accounts in June 2026 and Antigravity CLI
-succeeds it there, but enterprise and API-key use continues, so that row reads either historical or
-live sessions depending on the account.
+Run as many coding agents as you like. Cargento tells you which ones need you, which ones are fine,
+and when it is safe to walk away. One local screen, every harness you use, and nothing leaves the
+machine.
+
+It answers five questions, in the order a working day hits them. Which of my agents are running.
+What is each one doing, and when should I come back. Is anything waiting on me. Will I hit the quota
+wall before the work finishes. Did anything die quietly.
+[What Cargento promises](docs/promise-map.md) states each answer, names the shipped capability
+behind it, and says where it stops.
+
+Under that, Cargento maps live coding-agent activity on your machine into a single local dashboard.
+It shows sessions, subagents, task progress, turn ETAs, quota windows, and token output rate across
+ten harnesses: Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode,
+Cursor CLI, Goose, and Factory Droid. Gemini CLI stopped serving consumer accounts in June 2026 and
+Antigravity CLI succeeds it there, but enterprise and API-key use continues, so that row reads
+either historical or live sessions depending on the account.
 
 This repo contains one plugin, `cargento`, the agent cartography dashboard skill.
 
@@ -107,10 +117,11 @@ self-refreshing dashboard at `http://127.0.0.1:4553/`. No data leaves your machi
 to 127.0.0.1 unless you ask for another address with `--host`, which has no authentication behind it.
 See [SECURITY.md](SECURITY.md) before you do.
 
-The dashboard renders the same data two ways, switched by the `display` control at the top right or
-by pressing `c`. Regular mode is a stack of cards, one per working session. Calm mode is a single
-dense ledger, one row per session, for boards with more sessions than fit as cards. Your choice is
-remembered in the browser.
+The dashboard opens on Sessions, which puts the work that is active now above the work that is only
+recent history and gives each active session the same four facts: where it is, what it is doing now,
+what it does next, and whether it is blocked. Projects groups the same sessions by working directory,
+and Attention collects what needs a human. Keyboard shortcuts `s`, `p` and `a` switch between them,
+and the route lives in the URL fragment so a reload or a pasted link comes back to the same view.
 
 See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.
 

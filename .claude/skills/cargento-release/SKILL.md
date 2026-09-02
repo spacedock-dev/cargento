@@ -249,6 +249,35 @@ parity check is what makes it unconditional on every normal release.
 If the run failed part way, re-push the same tag rather than picking a new number. Every step is
 idempotent and the workflow detects its own resume.
 
+## 6.5 Write the release note for a person
+
+The workflow publishes with `--generate-notes`, which produces a list of merged pull requests. That
+is a changelog, not a release note, and a reader who did not follow the work learns nothing from it.
+It was CL's complaint about the 0.19 and 0.20 packaging, and 0.20's note was rewritten by hand
+afterwards.
+
+So after step 6 confirms the release exists, prepend a note above the generated section and keep the
+generated section underneath:
+
+```bash
+gh release view "v$VERSION" --json body -q .body > /tmp/rel.md   # keep this, it goes at the bottom
+# write the note above it, then:
+gh release edit "v$VERSION" --notes-file /tmp/rel.md
+```
+
+What the note says, in this order:
+
+1. The promise, in the words `docs/promise-map.md` uses. Do not write a new one for each release.
+2. What this release changes about keeping that promise, as two to four bolded claims, each one
+   sentence of what a user can now do and one of what backs it.
+3. How to upgrade, and what does not change.
+4. What the release does not add, and a link to the promise map. This is the paragraph that makes
+   the rest believable.
+
+Two rules that come from the same review. Never promise something the release did not ship, and
+never lead with before-and-after screenshots: they explain a design progression to people who
+followed it, and they belong in `docs/design-*.md`.
+
 ## 7. Announce it, if asked
 
 Only after step 6 confirms the Release exists. Announcing a release that has not published is
