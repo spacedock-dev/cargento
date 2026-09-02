@@ -530,9 +530,22 @@ class StoreRootsTest(unittest.TestCase):
         self.assertEqual(["/home/u/.gemini/tmp"], roots["gemini.tmp"])
         self.assertEqual(["/home/u/.copilot"], roots["copilot.root"])
         self.assertEqual(["/home/u/.cursor/chats"], roots["cursor.chats"])
-        self.assertEqual(["/home/u/.factory/projects"], roots["droid.projects"])
+        self.assertEqual(
+            ["/home/u/.factory/sessions", "/home/u/.factory/projects"], roots["droid.projects"]
+        )
         self.assertEqual(["/home/u/.local/share/opencode"], roots["opencode.data"])
         self.assertEqual(["/home/u/.local/share/goose/sessions/sessions.db"], roots["goose.db"])
+
+    def test_droid_reads_the_sessions_root_before_the_projects_one(self) -> None:
+        # Measured 2026-09-02 (DRC-4331): droid 0.202.0 writes
+        # <home>/.factory/sessions/<slugified-cwd>/<session-id>.jsonl, and with
+        # `projects` as the only root a machine holding three real transcripts
+        # discovered nothing. `projects` stays as the fallback because no
+        # measurement says which versions wrote there, and every root is walked.
+        roots = self.resolve("darwin", {}, self.POSIX_HOME)
+        self.assertEqual(
+            ["/home/u/.factory/sessions", "/home/u/.factory/projects"], roots["droid.projects"]
+        )
 
     def test_pi_defaults_to_its_agent_sessions_directory(self) -> None:
         # Removing Pi's default candidate would leave an ordinary installation
