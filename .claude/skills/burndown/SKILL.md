@@ -92,8 +92,8 @@ This is why the skill exists. Roadmap work here has repeatedly desynced: a miles
    found six such edges and the honest question was whether to sweep them or say why not; this is the
    why not.
 6. If the issue's move was `extend` or `new`, draft the change to the promise wording and hand it to
-   the `sync-docs` pass, which owns the three copies. A `keep` or `sharpen` merge changes no promise
-   wording; say so rather than leaving it implied.
+   the next docs PR's `sync-docs` pass, which owns the three copies. A `keep` or `sharpen` merge
+   changes no promise wording; say so rather than leaving it implied.
 
 Then report: issue worked, which promise it moved and how, milestone updated, overview refreshed, what became unblocked, what is next.
 
