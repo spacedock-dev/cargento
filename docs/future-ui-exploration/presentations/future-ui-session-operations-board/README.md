@@ -1,5 +1,11 @@
 # Cargento future UI: session operations board
 
+**Internal design record.** This is the appendix behind one interface decision, not a statement of
+what Cargento offers a user. The before and after captures here exist to show how the direction
+changed and why the earlier one was rejected. For what the product promises and what backs each
+promise, read [What Cargento promises](../../../promise-map.md) instead, and lead with that when
+explaining a release to anyone who did not follow the design process.
+
 This review package explains the `future-ui-session-operations-board` experiment for people who did not follow the design process. It shows why the prior Attention direction was rejected and how the replacement helps a person answer four questions:
 
 - Which sessions are active now?
