@@ -37,10 +37,11 @@ Then, in this order:
 
 1. Drop anything with an open blocker. A decision issue that is not `Done` is still a blocker, even when its body records the call. Check `blockedBy`, not prose.
 2. Release row: `release:r1`, then `r2`, `r3`, `later`.
-3. Within that row, prefer what other open issues are waiting on.
-4. Then risk-adjusted impact from the issue's own score table, highest first.
-5. Then the smaller estimate.
-6. Tie-break on state: `In Progress`, then `Ready for Review`, then `Todo`, then `Backlog`.
+3. Within that row, prefer an issue whose `move:*` label is not `none`. An issue with no move label ranks as `none` until triage labels it. The labels and what they mean are in [the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise).
+4. Then prefer what other open issues are waiting on.
+5. Then risk-adjusted impact from the issue's own score table, highest first.
+6. Then the smaller estimate.
+7. Tie-break on state: `In Progress`, then `Ready for Review`, then `Todo`, then `Backlog`.
 
 Probes and captures carry no `release:*` label and no score. Give one the earliest release row among the issues it settles, and rank it on what it unblocks rather than on a number it does not have. A probe that settles nothing in an open row is not a candidate.
 
@@ -57,6 +58,8 @@ Propose Approach. This skill owns step 7 onward, so use the analysis and do not 
 skill's own workflow.
 
 Use what it returns: classification, key files, acceptance criteria, risks. Do not repeat its exploration, and do not restate its rules here; issue lifecycle, branch handling and the read-skeptically discipline are all its.
+
+Then write the issue's **User value** brief, two sentences as its first section: who notices this and when in their day, then the promise ID and the move, in the vocabulary of [the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise). Set the `journey:*` and `move:*` labels to match. At least one acceptance criterion must be a property a user can see, with its own `Verified by:` clause; when the move is `none`, the brief says instead why no user sees this change. Inside the roadmap-burndown workflow these are triage outputs and the gate approves them before Linear is written.
 
 If it finds the issue needs a decision nobody filed, stop. File the decision issue, link it as a blocker, and pick again. Guessing a product-identity call is how this project ended up with two issues reading as ready to build behind an unwritten policy.
 
@@ -77,7 +80,7 @@ This is why the skill exists. Roadmap work here has repeatedly desynced: a miles
 
 1. Move the issue to `Done`. Not before the merge.
 2. Fix the owning milestone description wherever the merge made it false. Keep the older dated section and label it historical rather than deleting it.
-3. Refresh the project overview's "As of" block. Every derived number lives there, so it is one edit.
+3. Refresh the project overview's "As of" block. Every derived number lives there, so it is one edit. The block's open-issues-by-move line is part of that refresh.
 4. Check the closed issue's `blocks`. Move anything newly free to `Todo`.
 5. If the closed issue still blocks something that no longer depends on it, remove the relation, and add
    `relatedTo` in its place so the closed evidence stays reachable from the item it unblocked. A closed
@@ -88,8 +91,11 @@ This is why the skill exists. Roadmap work here has repeatedly desynced: a miles
    into no dependency, which is a different and less true statement. The rule exists because an audit
    found six such edges and the honest question was whether to sweep them or say why not; this is the
    why not.
+6. If the issue's move was `extend` or `new`, draft the change to the promise wording and hand it to
+   the `sync-docs` pass, which owns the three copies. A `keep` or `sharpen` merge changes no promise
+   wording; say so rather than leaving it implied.
 
-Then report: issue worked, milestone updated, overview refreshed, what became unblocked, what is next.
+Then report: issue worked, which promise it moved and how, milestone updated, overview refreshed, what became unblocked, what is next.
 
 ## 5. Continue or stop
 
