@@ -4,6 +4,13 @@ This document records the interface first released behind `?next=true` and the d
 survived its promotion to the default dashboard. The runtime module map remains in
 [design-runtime-architecture.md](design-runtime-architecture.md).
 
+It is a record of rationale, including the direction that was rejected, and it is written for
+whoever changes this interface next. What the interface promises a user, and what backs each
+promise, is owned by [promise-map.md](promise-map.md). Before and after captures live with the
+experiment that produced them, in
+[the session operations board walkthrough](future-ui-exploration/presentations/future-ui-session-operations-board/README.md),
+and they explain a progression rather than a product claim.
+
 ## NUI-1: promotion leaves one precomputed page
 
 The preview originally used a second shell, stylesheet, script list, and server byte string so its

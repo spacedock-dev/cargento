@@ -160,6 +160,10 @@ svg{display:block; width:100%; height:auto; min-width:640px}
 .jcard{border-left:3px solid var(--line-strong); padding:5px 7px; border-radius:4px; background:var(--surface-2); cursor:pointer; font-size:12px; line-height:1.35}
 .jcard:hover{outline:1px solid var(--text-muted)}
 .jcard .jid{font:10px ui-monospace,Menlo,monospace; color:var(--text-muted); display:block}
+.jhead small{display:block; font-weight:400; color:var(--text-muted); font-size:11px; margin-top:3px; line-height:1.3}
+.jprom{background:var(--surface-2); border:1px solid var(--line-strong); border-radius:9px; padding:8px 9px; font-size:12px; line-height:1.4; color:var(--text-primary)}
+.jprom-label{font-size:12px; font-weight:650; padding:11px 4px; color:var(--text-primary)}
+.jprom-label small{display:block; font-weight:400; color:var(--text-muted); font-size:11px; margin-top:2px}
 
 /* ---- decisions ---- */
 .dcols{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px}
@@ -231,7 +235,7 @@ td.num{font:11px ui-monospace,Menlo,monospace; color:var(--text-muted); text-ali
   </section>
 
   <section class="view" id="v-jour">
-    <p class="note">Columns are the narrative spine already drawn in the Figma story map. Rows are a proposed sequence: each release only depends on the one above it.</p>
+    <p class="note">Columns are the narrative spine already drawn in the Figma story map, and each one carries the question a user is actually asking at that point in the day. The <b>Promise</b> row is what Cargento claims to answer today, and it is the row that faces users: <a href="../promise-map.md">docs/promise-map.md</a> owns its wording, the proof behind each claim, and the limits. Rows below it are a proposed build sequence: each release only depends on the one above it.</p>
     <div class="jgrid" id="jgrid"></div>
   </section>
 
@@ -506,7 +510,11 @@ const RELEASES=[
 ];
 function drawJour(){
   const f=F(); const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-  let s=`<div></div>`+DATA.columns.map(c=>`<div class="jhead">${c.name}</div>`).join('');
+  let s=`<div></div>`+DATA.columns.map(c=>`<div class="jhead">${c.name}${c.question?`<small>${esc(c.question)}</small>`:''}</div>`).join('');
+  // The promise row is the user-facing claim, not a scored item, so it renders above the
+  // release rows and outside pass(): a filter that hid it would hide what the board is for.
+  s+=`<div class="jprom-label">Promise<small>what we answer today</small></div>`;
+  s+=DATA.columns.map(c=>`<div class="jprom">${c.promise?esc(c.promise):''}</div>`).join('');
   RELEASES.forEach(rel=>{
     s+=`<div class="jrow-label">${rel.name}<small>${esc(rel.sub)}</small></div>`;
     DATA.columns.forEach(col=>{
