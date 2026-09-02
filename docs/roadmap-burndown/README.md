@@ -9,18 +9,23 @@ stages:
   defaults:
     worktree: false
     concurrency: 2
+    model: sonnet
   states:
     - name: selection
       initial: true
+      model: haiku
     - name: triage
       gate: true
+      model: opus
     - name: implementation
       worktree: true
+      model: opus
       context-sections:
         - Review-finding disposition
     - name: review
       worktree: true
       fresh: true
+      model: opus
       feedback-to: implementation
       gate: true
       context-sections:
@@ -132,6 +137,8 @@ Unlabeled issues sit at 0.6 rather than 0 because a probe or a bug carries no `r
 ranks on what it settles, not on a label it was never given.
 
 ## Stages
+
+**Model routing.** Each stage names the model its ensign runs on, so the First Officer's own model, which is the session's and is often Fable, is not inherited by every worker. The default is Sonnet. `selection` picks from a board and runs on Haiku. `triage`, `implementation` and `review` carry the reasoning and run on Opus. A model change between stages forces a fresh dispatch at that boundary, because a reused worker must match the next stage's model; `review` is already `fresh: true`, so only the `selection` to `triage` and `triage` to `implementation` boundaries pay it. Values come from Spacedock's Claude-host enum (`sonnet`, `opus`, `haiku`, `fable`); other hosts ignore the field.
 
 ### `selection`
 
