@@ -268,8 +268,10 @@ gh release edit "v$VERSION" --notes-file /tmp/rel.md
 What the note says, in this order:
 
 1. The promise, in the words `docs/promise-map.md` uses. Do not write a new one for each release.
-2. What this release changes about keeping that promise, as two to four bolded claims, each one
-   sentence of what a user can now do and one of what backs it.
+2. What this release changes about keeping that promise, as two to four bolded claims grouped by
+   promise ID and move, each one sentence of what a user can now do and one of what backs it. The
+   IDs and moves are the ones on the merged issues; a claim with no issue behind it is a claim the
+   release did not ship.
 3. How to upgrade, and what does not change.
 4. What the release does not add, and a link to the promise map. This is the paragraph that makes
    the rest believable.
