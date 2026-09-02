@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -16,6 +17,7 @@ from cargento_runtime.collectors import droid as droid_collector
 
 from .support import (
     STORE_OVERRIDES,
+    USER_HOME,
     RuntimeTestCase,
     make_runtime,
     runtime,
@@ -106,6 +108,25 @@ class DroidCollectorTest(RuntimeTestCase):
         self.assertEqual("Ship feature", s["title"])
         self.assertEqual("ship it", s["last_prompt"])
         self.assertEqual(runtime_records.parse_ts(iso), s["started_at"])
+
+    def test_the_0_202_0_layout_is_discovered_under_the_default_home(self) -> None:
+        # droid 0.202.0 writes <home>/.factory/sessions/<slugified-cwd>/<id>.jsonl
+        # beside an <id>.settings.json the *.jsonl glob must ignore. With the
+        # root at `projects` alone, three real transcripts discovered nothing
+        # (DRC-4331), so this goes through the resolved default roots rather
+        # than a store override, which would pass against any root at all.
+        factory = Path(USER_HOME) / ".factory"
+        self.addCleanup(shutil.rmtree, factory)
+        fp = self._transcript(
+            factory / "sessions", "-w-droidproj", "s0202", {"id": "s0202", "cwd": "/w/droidproj"}
+        )
+        (fp.parent / "s0202.settings.json").write_text("{}")
+        config, state = runtime()
+
+        self.assertTrue(droid_collector.discover(config, state))
+        rows = droid_collector.collect(config, state, self.NOW, 24, True)
+        self.assertEqual(["s0202"], [row["sid"] for row in rows])
+        self.assertEqual("w/droidproj", rows[0]["project"])
 
 
 class DroidReviewFixTest(unittest.TestCase):

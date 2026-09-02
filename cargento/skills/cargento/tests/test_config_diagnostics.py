@@ -530,7 +530,13 @@ class StoreRootsTest(unittest.TestCase):
         self.assertEqual(["/home/u/.gemini/tmp"], roots["gemini.tmp"])
         self.assertEqual(["/home/u/.copilot"], roots["copilot.root"])
         self.assertEqual(["/home/u/.cursor/chats"], roots["cursor.chats"])
-        self.assertEqual(["/home/u/.factory/projects"], roots["droid.projects"])
+        # Sessions first: droid 0.202.0 writes <home>/.factory/sessions/<slugified-cwd>/
+        # <id>.jsonl, and with `projects` as the only root three real transcripts
+        # discovered nothing (DRC-4331). `projects` stays as the fallback because
+        # no measurement says which versions wrote there.
+        self.assertEqual(
+            ["/home/u/.factory/sessions", "/home/u/.factory/projects"], roots["droid.projects"]
+        )
         self.assertEqual(["/home/u/.local/share/opencode"], roots["opencode.data"])
         self.assertEqual(["/home/u/.local/share/goose/sessions/sessions.db"], roots["goose.db"])
 

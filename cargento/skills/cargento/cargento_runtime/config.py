@@ -368,7 +368,13 @@ def resolve_store_roots(
             app_data(roaming_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
             app_data(local_app_data, "Block", "goose", "data", "sessions", "sessions.db"),
         ),
-        "droid.projects": ordered(under_home(".factory", "projects")),
+        # Droid 0.202.0 writes <home>/.factory/sessions/<slugified-cwd>/<id>.jsonl.
+        # Measured 2026-09-02: with `projects` as the only root, three real
+        # transcripts discovered nothing (DRC-4331). `projects` stays as the
+        # fallback because no measurement says which versions wrote there.
+        "droid.projects": ordered(
+            under_home(".factory", "sessions"), under_home(".factory", "projects")
+        ),
     }
 
 

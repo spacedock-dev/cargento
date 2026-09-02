@@ -444,20 +444,30 @@ which is itself one of the states question three has to render rather than hide.
 | Google | Antigravity | percent per named bucket, the worse of two model families (Q-7) | the user pointed the status line at `/api/usage` and the harness ran inside `window_hours` |
 | Cursor | Cursor CLI | spend in cents against a monthly billing cycle, macOS only (Q-8) | the Keychain token reads and the disclosure has been answered |
 | GitHub | Copilot CLI | AI Units consumed, with the entitlement nowhere on the machine (Q-6) | a usage row landed inside `window_hours` |
-| Factory | Droid | nothing | never, so far as anything here knows |
+| Factory | Droid | nothing yet: the store holds a per-session credit count and no window, and the authenticated route is unread | never, so far as anything here knows |
 
 Two rows in that table are absences of different kinds, and a comparison that treats them alike gets
 question one wrong. GitHub publishes a numerator and no denominator, which is a measured fact:
 `entitlement` and `allowance` appear in no file under `~/.copilot`, and Q-6 is the record of
-looking. Factory publishes nothing that anyone here has looked for. Droid is not installed on the
-machine this work was done against, so its store has never been read, and "Factory keeps no local
-quota" is not a finding but the absence of one. Every field this document treats as measured
+looking. Factory is half looked at, and the provenance of each half is different, so it is
+spelled out. Droid 0.202.0 was installed on the machine this work was done against and its store
+was read by hand on 2026-09-02, with the key names recorded on DRC-4073 and no capture file yet:
+each session's sibling `<session-id>.settings.json` carried `tokenUsage` and `inclusiveTokenUsage`
+objects with token counts and a `factoryCredits` figure, a numerator in Copilot's shape, and nothing
+under `~/.factory` resembled a 5 hour, 7 day or 30 day window. Until a capture lands, that is a
+reading and not a measured field, and no parser is written against it. The other half is unread
+because no Factory account was signed in there, which the CLI's own log states. What the binary's
+strings show, read and never run: a `/limits` command, a `FACTORY_API_KEY` variable as one credential
+route, and a login flow backed by an embedded keytar store, so a Keychain item on macOS is the
+expectation and not an observation. The HTTP route behind `/limits` was not found in those strings.
+So "Factory keeps no local quota window" is a reading awaiting its capture, and "Factory publishes
+no window at all" is still the absence of one. Every field this document treats as measured
 (Copilot's `total_nano_aiu`, Cursor's cents, Anthropic's `limits[]`) came from a live store or a
 live response. The Antigravity attempt below is the reason to hold even a searched-for absence
 loosely: its local forensics were thorough, and the number it concluded was out of reach ships
 today, arriving by the pushed path in Q-7 instead. An absence found by looking can still be
-overturned by a route nobody enumerated, so an absence nobody has looked for is worth nothing at
-all, and Factory stays unmeasured in writing rather than written down as empty.
+overturned by a route nobody enumerated, so the authenticated route stays unmeasured in writing
+rather than written down as empty.
 
 Anthropic's row also says something the other rows do not, and it decides the unit of comparison.
 That percentage is the account's, not Claude Code's: SECURITY.md names the authority as "Claude
