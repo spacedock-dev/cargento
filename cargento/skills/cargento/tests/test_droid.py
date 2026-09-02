@@ -116,7 +116,7 @@ class DroidCollectorTest(RuntimeTestCase):
         # (DRC-4331), so this goes through the resolved default roots rather
         # than a store override, which would pass against any root at all.
         factory = Path(USER_HOME) / ".factory"
-        self.addCleanup(shutil.rmtree, factory, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, factory)
         fp = self._transcript(
             factory / "sessions", "-w-droidproj", "s0202", {"id": "s0202", "cwd": "/w/droidproj"}
         )

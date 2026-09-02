@@ -449,21 +449,25 @@ which is itself one of the states question three has to render rather than hide.
 Two rows in that table are absences of different kinds, and a comparison that treats them alike gets
 question one wrong. GitHub publishes a numerator and no denominator, which is a measured fact:
 `entitlement` and `allowance` appear in no file under `~/.copilot`, and Q-6 is the record of
-looking. Factory is half looked at. Droid 0.202.0 was installed on the machine this work was done
-against and its store was read on 2026-09-02 (DRC-4073): each session's sibling
-`<session-id>.settings.json` carries `tokenUsage` and `inclusiveTokenUsage` with token counts and a
-`factoryCredits` figure, which is a numerator in Copilot's shape, and nothing under `~/.factory`
-resembles a 5 hour, 7 day or 30 day window. The other half is unread because no Factory account was
-signed in there: the CLI's `/limits` command exists, its HTTP route is not recoverable from the
-binary, and its credential lands in the Keychain or the `FACTORY_API_KEY` variable only after a
-person signs in. So "Factory keeps no local quota window" is a finding, and "Factory publishes no
-window at all" is still the absence of one. Every field this document treats as measured (Copilot's
-`total_nano_aiu`, Cursor's cents, Anthropic's `limits[]`) came from a live store or a live
-response. The Antigravity attempt below is the reason to hold even a searched-for absence loosely:
-its local forensics were thorough, and the number it concluded was out of reach ships today,
-arriving by the pushed path in Q-7 instead. An absence found by looking can still be overturned by a
-route nobody enumerated, so the authenticated route stays unmeasured in writing rather than written
-down as empty.
+looking. Factory is half looked at, and the provenance of each half is different, so it is
+spelled out. Droid 0.202.0 was installed on the machine this work was done against and its store
+was read by hand on 2026-09-02, with the key names recorded on DRC-4073 and no capture file yet:
+each session's sibling `<session-id>.settings.json` carried `tokenUsage` and `inclusiveTokenUsage`
+objects with token counts and a `factoryCredits` figure, a numerator in Copilot's shape, and nothing
+under `~/.factory` resembled a 5 hour, 7 day or 30 day window. Until a capture lands, that is a
+reading and not a measured field, and no parser is written against it. The other half is unread
+because no Factory account was signed in there, which the CLI's own log states. What the binary's
+strings show, read and never run: a `/limits` command, a `FACTORY_API_KEY` variable as one credential
+route, and a login flow backed by an embedded keytar store, so a Keychain item on macOS is the
+expectation and not an observation. The HTTP route behind `/limits` was not found in those strings.
+So "Factory keeps no local quota window" is a reading awaiting its capture, and "Factory publishes
+no window at all" is still the absence of one. Every field this document treats as measured
+(Copilot's `total_nano_aiu`, Cursor's cents, Anthropic's `limits[]`) came from a live store or a
+live response. The Antigravity attempt below is the reason to hold even a searched-for absence
+loosely: its local forensics were thorough, and the number it concluded was out of reach ships
+today, arriving by the pushed path in Q-7 instead. An absence found by looking can still be
+overturned by a route nobody enumerated, so the authenticated route stays unmeasured in writing
+rather than written down as empty.
 
 Anthropic's row also says something the other rows do not, and it decides the unit of comparison.
 That percentage is the account's, not Claude Code's: SECURITY.md names the authority as "Claude
