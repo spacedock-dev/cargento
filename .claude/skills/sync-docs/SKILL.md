@@ -46,7 +46,7 @@ diff-and-reconcile pass, not a rewrite.
 | `COMPATIBILITY.md` | **Canonical** cross-harness and cross-platform contract: the per-runtime surface matrix, the per-OS capability matrix, the platform caveats, the native per-runtime validators, and **the Python floor** (with the list of every other place it is restated). Carries the sync marker. | Matrices and their footnotes. *Why* a row reads the way it does belongs in `docs/design-*.md`. |
 | `SECURITY.md` | Security posture: the invariants, the known-and-accepted exposures, and private reporting. Covers the whole shipped surface — `server.py` **and** `notify_hook.py`. | Anything that weakens an invariant is a security bug and belongs here. Keep the contact address equal to the one in `CODE_OF_CONDUCT.md`; nothing checks it. |
 | `cargento/skills/cargento/SKILL.md` | **Canonical** product surface: per-harness data sources, session states, start/stop, notifications, options, interpretation notes, common mistakes. | A *shipped, validated artifact* — see the constraints below. It is installed without the repository, so it must never contain a repo-relative link or repo process. |
-| `docs/promise-map.md` | **Canonical** user-facing promise: the five questions of a user's day, one promise each, the shipped capability that backs it, and the limit that keeps it honest. | A promise may not enter it before the capability ships, and the wording of each promise is duplicated verbatim in `docs/visibility-2x2/items.json` (`columns[].promise`) and in the Linear project description. Change one, change all three. |
+| `docs/promise-map.md` | **Canonical** user-facing promise: the five questions of a user's day, one promise each, the shipped capability that backs it, and the limit that keeps it honest. | A promise may not enter it before the capability ships, and the wording of each promise is duplicated verbatim in `docs/visibility-2x2/items.json` (`columns[].promise`) and in the Linear project description. Change one, change all three. The "How work links to a promise" section is the only place the promise IDs and the move taxonomy are defined; every other file links to it. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, the inward-only dependency rule, top-level import identity, and the config/state/application split. | Other design docs link here for the module map instead of restating it. The import allowlist it describes is asserted by a test. |
 | `docs/design-*.md` | The durable *why/how* per area — decisions that outlive the build, **including alternatives that were tried and rejected and the reason why**. | A decision earns a place here if re-deriving it would cost a day, or if a maintainer would otherwise re-attempt something already proven wrong. |
 | `docs/plans/*.md` | **Transient** plans for *unshipped* work only. | Once the work ships, fold the durable *what* into the owning doc and the durable *why* into `docs/design-*.md`, then **delete the plan file.** |
@@ -325,7 +325,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    | **Milestone description** | The group's narrative: what shipped, what it changed for the rest of the group, what the group waits on. | Anything about one item that its own issue could carry. |
    | **Issue body** | That item's scope, score, and its dated staleness notes. | Another item's status. |
    | **Issue comment** | Validation findings, build post-mortems, corrections to the body, cross-issue consequences. | Anything the body should have said instead. |
-   | **Labels** | Release row, journey stage, origin. They *are* the record. | Restating a label's content in prose. |
+   | **Labels** | Release row, journey stage, move, origin. They *are* the record. | Restating a label's content in prose. |
 
    Four tests, applied to every line of the overview:
 
@@ -337,6 +337,10 @@ minutes, a Python version. Stale counts are this repository's most common drift.
      read to decide what to do next, not to learn what went wrong last time.
    - **Did the overview grow after a burndown?** Then something is in the wrong place. Closing work
      should make it shorter.
+
+   One read-only check on the tracker: every open issue in the project carries a `journey:*` label
+   and a `move:*` label. Report the ones that do not; do not label them here, because the label is a
+   triage product and setting it without the brief is the drift this check exists to catch.
 
    Refresh the counts whenever an issue is closed, cancelled, re-scoped or re-gated, and take the
    figures from a fresh query rather than by adjusting the previous block's numbers. Check the

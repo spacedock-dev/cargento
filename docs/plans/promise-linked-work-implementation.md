@@ -239,7 +239,7 @@ In the `triage` stage's `- **Outputs:**` list, insert directly after the bullet 
     the rewrite. Until they are set the issue ranks as `none` at `selection`.
   - At least one acceptance criterion that is a property a user can see, with its own `Verified
     by:` clause. When the move is `none`, one sentence in the brief on why no user sees this
-    change, and the gate is told so up front.
+    change instead, and the gate is told so up front.
 ```
 
 - [ ] **Step 5: Put user value first at the gate**

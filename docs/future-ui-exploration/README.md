@@ -75,7 +75,7 @@ Every experiment has YAML frontmatter with the following fields.
 The experiment is in framing while the crew turns the underlying ask into a bold, falsifiable design bet without assuming the current dashboard structure should survive.
 
 - Inputs include the 2026-08-27 project-cockpit debrief, the current `?next=true` UI, captain direction, available design records, and known source limitations.
-- Outputs include a concise bet, the user questions it should answer, the command-risk baseline, explicit non-goals, and evidence that would invalidate the model rather than merely suggest polish.
+- Outputs include a concise bet, which of the five questions in [the promise map](../promise-map.md#how-work-links-to-a-promise) it answers by ID and which move the bet would be, the command-risk baseline, explicit non-goals, and evidence that would invalidate the model rather than merely suggest polish.
 - A good frame attacks the information or interaction model, names what should lead, and permits a materially different UI.
 - A bad frame treats the work as incremental cleanup, preserves existing regions by default, or defines success as visual preference.
 - The gate shows the bet, why it could improve comprehension, what it risks, how it will be falsified, and what the three harnesses must exercise.
@@ -106,7 +106,7 @@ The experiment is in crucible while fresh reviewers try to disprove that the can
 - Outputs include independent reviews of visual hierarchy, information architecture, command truth, cross-harness comprehension, session detail, accessibility, and adversarial states. They also include reproduced material findings, a disposition for every finding, and a recommendation to revise, reframe, or accept.
 - Good crucible review uses fresh reviewers, exercises each material claim where it can fail, implements accepted findings before another review, and resolves disagreement with reproduced evidence.
 - Bad crucible review becomes attached to the prior design, ranks unsupported findings by confidence, optimizes style after command truth is complete, or claims convergence because tests are green.
-- The gate leads with the recommendation. It shows whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility. It names every material uncertainty and its owner, then asks the captain to revise, reframe, or accept.
+- The gate leads with the recommendation. It shows whether a person can quickly answer overall situation, current assignment, execution state, current activity, next action, and captain responsibility. It also shows the promise the bet serves, in the promise map's words. It names every material uncertainty and its owner, then asks the captain to revise, reframe, or accept.
 
 ### `accepted`
 
@@ -160,6 +160,10 @@ pr:
 ## Design bet
 
 A bold, falsifiable claim about how Cargento can make cross-harness and session state easier to understand.
+
+## User questions
+
+Which of the promise map's five questions this bet answers, by ID, and which move it would be.
 
 ## Baseline and command risk
 

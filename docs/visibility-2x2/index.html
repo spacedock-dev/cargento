@@ -514,7 +514,10 @@ function drawJour(){
   // The promise row is the user-facing claim, not a scored item, so it renders above the
   // release rows and outside pass(): a filter that hid it would hide what the board is for.
   s+=`<div class="jprom-label">Promise<small>what we answer today</small></div>`;
-  s+=DATA.columns.map(c=>`<div class="jprom">${c.promise?esc(c.promise):''}</div>`).join('');
+  // The ID is positional, not stored: items.json orders its columns as the day runs
+  // (open, mid, gate, usage, end) and nothing else pins that order, so reordering the
+  // columns renumbers the promises.
+  s+=DATA.columns.map((c,i)=>`<div class="jprom">${c.promise?`<b>P${i+1}</b> ${esc(c.promise)}`:''}</div>`).join('');
   RELEASES.forEach(rel=>{
     s+=`<div class="jrow-label">${rel.name}<small>${esc(rel.sub)}</small></div>`;
     DATA.columns.forEach(col=>{
