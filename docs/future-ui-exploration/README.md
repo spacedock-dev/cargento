@@ -9,15 +9,20 @@ stages:
   defaults:
     worktree: false
     concurrency: 1
+    model: sonnet
   states:
     - name: framing
       initial: true
       gate: true
+      model: fable
     - name: reconnaissance
+      model: sonnet
     - name: prototyping
+      model: opus
     - name: crucible
       fresh: true
       gate: true
+      model: opus
       feedback-to: prototyping
     - name: accepted
       terminal: true
@@ -62,6 +67,8 @@ Every experiment has YAML frontmatter with the following fields.
 | `pr` | string | Optional PR reference. Ordinary workflow PRs target `feat/future-ui`; a PR to `main` requires explicit captain approval. |
 
 ## Stages
+
+**Model routing.** Each stage names the model its ensign runs on, so the First Officer's own model is not inherited by every worker. `framing` is where the design judgment lives and runs on Fable. `reconnaissance` surveys and runs on Sonnet. `prototyping` and `crucible` build and test the artifacts and run on Opus. A model change between stages forces a fresh dispatch at that boundary; `crucible` is already `fresh: true`. Values come from Spacedock's Claude-host enum (`sonnet`, `opus`, `haiku`, `fable`); other hosts ignore the field.
 
 ### `framing`
 
