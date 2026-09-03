@@ -564,6 +564,17 @@ three — the frontend byte pins and `SKILL.md` — and it changes the shape of 
 eight test files assert. It is not the security or data-loss row, so full adversarial is not
 warranted. The arbiter reproduces findings rather than ranking them.
 
+**Spent at review, 2026-09-03: three lenses plus an arbiter.** The gate's two, plus one the diff
+earned after triage was written. The justifying property is in the diff rather than in the plan:
+`aggregate.py`'s credential-sweep table is in it (+7), because the implementer's own pre-PR lens
+found it had added `subagents[].parent` beside `name` without joining that table, publishing the
+same untrusted `agentName` redacted in one key and raw in the other. That module's docstring
+records the same omission twice before. A change that touches that table gets a lens whose only
+question is what it publishes, so the third lens traced every string this PR adds from its
+untrusted source to the wire. The other two were the gate's: the fold and the frozen field, and
+the frontend with its byte pins. No completeness critic was added — three questions covered the
+diff and a fourth agent had no unread surface left to be given.
+
 ### Feedback Cycles
 
 ## Out of scope
@@ -764,3 +775,189 @@ Surface came in **+1952 net across 41 files** against a declared +230 ±30%, acc
 `fo-ruling[2026-09-03]`. The functional change is +188 net across 9 files, inside the band; the rest
 is oracles the acceptance criteria demanded, an AC-6 oracle that was never costed, a committed
 recorder, and `ruff format` turning each two-key assertion into roughly eight lines.
+
+## Stage Report: review
+
+- DONE: Review depth stated up front as three lenses plus an arbiter — the two the gate set
+  (conflict-prone-surface row: `web/` byte pins and `SKILL.md`) plus a dedicated redaction lens over
+  the published surface, because the diff touches `aggregate.py`'s credential-sweep table and the
+  round's own lens found a bypass there — with the fan-out declared before the first spawn, each lens
+  given one question, and the arbiter reproducing every finding against PR #261's head `0d48cfb` in a
+  throwaway copy rather than ranking it
+  Declared before the first spawn; `## Review depth` carries the tier and the justifying property.
+  Each lens ran in its own `git archive` copy of `0d48cfb`; the worktree was never read as a workspace
+  and never written. The arbiter reproduced every finding it kept and **refuted three**: F3 does not
+  reproduce at the user-visible level, my own 170-vs-178 prose flag dissolved into two different
+  fixtures, and the "+188 functional" figure is unreproducible but its conclusion holds under all three
+  groupings I could construct (188 / 256 / 290 all inside the declared 161–299 band).
+- DONE: AC-1 through AC-6 each reproduced from its own `Verified by:` clause on head `0d48cfb` — the
+  falsifiers re-applied where cheap, AC-4 re-run as the two-collector live comparison the
+  implementation used, AC-5 read from the capture and re-driven once against this board (this
+  session's registered teammates are the fixture; you are one), AC-6's rewritten vocabulary oracle
+  attacked with a fresh defeat of your own — plus the redaction property: the documented AWS
+  placeholder routed through `subagents[].parent` and through every other new string on the element
+  comes back redacted, and no other key added by this PR escapes the sweep
+  All six reproduced, none trusted. **AC-1** falsifier (revert `transcript_started_at` to the one-line
+  read) → `AssertionError: 1788440966.488734 != None`; the expected value is the fixture's own fourth
+  record, so it cannot pass by agreeing with the code. **AC-2** falsifier (drop the
+  `working_threshold_sec` gate on the state-feeding list) → `'running 1 subagent' != 'running 2
+  subagents'` **and** DRC-4263's pre-existing guard → `'idle' != 'working'`. **AC-3** falsifier (walk
+  the lead's transcript instead of the child's) → both grandchildren vanish, two tests fire. **AC-4**
+  proved twice: by construction (`roster` referenced at exactly 5 lines, every state consumer still on
+  the fresh-gated `subagents`) and by comparison (base vs head in separate processes on a pinned `now`
+  across three synthetic stores and the live store — **0 state-bearing fields moved**, head-vs-head
+  churn empty); and statically by me — 27 removed test lines total, **zero** mentioning `state`,
+  `state_detail`, `last_activity`, `blocked_since` or `spacedock`, and the claimed count of exactly one
+  moved `subagents` expectation is exact. **AC-5** re-driven live on this board, same stores, same
+  pinned `now`: base `1 published / 0 measured starts / 0 grandchildren`, head `41 published / 41
+  measured starts / 20 grandchildren across 6 named parents / keys +active,+parent`. The implementer
+  measured 34/34/17/5; the board moved because I am a new teammate with three new lenses. **AC-6**
+  reproduces triage's figures from the capture itself: top-level indices `[3,3,6,3,3,3,3,3]`, all four
+  legacy files at 0, five added registry fields with only `isActive` read, `prompt` present only inside
+  a list of field *names*. **Redaction property holds**: `AKIAIOSFODNN7EXAMPLE` through `name` and
+  `parent` both return `AKIA…REDACTED`; this PR adds exactly two element keys, `parent` (swept) and
+  `active` (a boolean), so no added key escapes. `model` is pre-existing and excused *by name* in
+  `SAFE_TEXTED_ELEMENT_KEYS`, an excuse verified sound — `safe_text` redacts before bounding, and
+  Claude's model goes through `claude_data.py:154`. A new defeat of the AC-6 oracle **did** land
+  (duplicate JSON keys, below). Red-first verified independently: `51e448d` gives `failures=4,
+  errors=1`, exactly the "five oracles, four failures and one error" claimed.
+- DONE: CI read on head `0d48cfb` (every required check, belonging to that head, measurable jobs run
+  not skipped since the diff carries code), `mergeStateStatus`, Copilot confirmed absent rather than
+  unread, the byte pins re-derived from the assets, the surface re-derived against the merge base, and
+  a GO or NO-GO verdict with findings under their disposition labels written as
+  `## Stage Report: review` with evidence on its own line, `## Review depth` filled — no edit to the
+  branch, no merge, no worktree or branch removed
+  13 checks all SUCCESS; all five workflow runs carry `head_sha=0d48cfbe…`; the nine measurable jobs
+  each `completed/success`, none skipped. `mergeStateStatus=CLEAN`, `mergeable=MERGEABLE`. Copilot is an
+  **absent mechanism**: `gh api /users/copilot` → 404, `requested_reviewers` empty, zero
+  `review_requested` timeline events, 0 reviews, 0 inline comments. Byte pins recomputed independently
+  **twice** (me and lens 3, neither using the test's own helper): six moved, six match on size and
+  digest, and lens 3 additionally checked the eight that did *not* move — all correct. Surface
+  re-derived: 41 files, +2052/−100, **net +1952**, matching the implementer's figure exactly. Local
+  suite run **once** at load 4.82: **1874 OK, 1 skipped**; no red, so no module needed the solo re-run.
+  Worktree left clean at `0d48cfb`, nothing merged, nothing removed.
+- FAILED: a GO verdict
+  **NO-GO on one reproduced Material finding.** Details under `## Review-finding disposition` below.
+
+### Review-finding disposition
+
+**Material — routes to `implementation`, unchanged, not fixed here.**
+
+- **The `CURRENT ACTIVITY` heading counts two different populations in one sentence, so it prints
+  "NONE RUNNING" above a row it draws as running.** `next-session.js:255` scopes `running` to live
+  *direct* children (deliberate, so it agrees with the state line — the comment says so); the total in
+  the same label is `subagents.length`, which **includes grandchildren**. Reproduced through the real
+  node render harness on head, fixture = one idle direct child plus one live grandchild:
+  `<span>2 SUBAGENTS · NONE RUNNING</span>` immediately above
+  `<div class="next-session-subagent next-live" …><span … aria-label="running">●</span>`. A screen
+  reader announces "running" for the row the heading says is not running.
+  - *released user and normal workflow*: a lead whose teammate's own worker is running — this
+    session's own shape, and the exact case `## Problem` was filed about.
+  - *observable harm*: the board's headline answer to "what is it doing" is false at a glance.
+  - *affected value AC or boundary*:
+    `contract[docs/promise-map.md#p2-what-is-it-doing-and-when-should-i-come-back]` — P2 is backed by
+    "named pills for running subagents, **session detail that leads with current activity**", and this
+    heading renders inside that section; `promise-map.md` defines move `keep` as "Without this, the
+    board says something untrue about the promise." No AC pins the heading, so the claim rests on the
+    contract rather than on AC-5 — AC-5's own count (the chrome) and AC-2's `state_detail` are both
+    **correct**.
+  - *trigger evidence*: deterministic, no timing. Untested at head: the shipped all-idle case asserts
+    `NONE RUNNING` on a roster where it is true; zero-direct-live-plus-live-grandchild has no oracle.
+  - *provenance worth reading*: review round 1 fixed the **mirror** of this (`running 1 subagent` under
+    `3 RUNNING SUBAGENTS`) by narrowing `running` to direct children, and created this one by leaving
+    the total wide. The fix introduced its neighbour.
+  - *why not file it*: this PR holds the single `web/` slot. A follow-up heading fix needs that slot
+    **again**, putting H1's PR 2 behind two `web/` PRs instead of one. Correcting it in this round is
+    cheaper for the queue than merge-and-file.
+
+**Needs decision — the task cannot own the scope.**
+
+- **A quiet worker survives under a teammate and still vanishes under the lead.** `own_agents` stays
+  fresh-gated at 90 s while children and grandchildren are window-gated at 24 h. Not a regression —
+  at base both vanished — but the fix now reaches one of two populations, and a lens dispatched by the
+  lead is the commonest case on this board. Extending it changes approved scope (disposition rule 5).
+- **One committed capture record has no recorder behind it.** `board_drive_verdict` in
+  `teammate-board-drive-…jsonl`: I confirmed **0** occurrences in `scripts/capture_team_registry.py`.
+  Its values are booleans and counts, so the privacy rule holds and AC-6 is met; what does not hold is
+  provenance, since the README row attributes the file to the recorder and `AGENTS.md` says
+  `docs/captures/` carries "never a value a person or a model wrote". Either name the derivation in the
+  row or teach the recorder to emit it.
+- **The registry demote publishes two authorities on one fact.** Roster `active` is demoted by
+  `isActive` while `state_detail` still follows freshness. Reproduced at the collector level by lens 2;
+  I could **not** reproduce it at the user-visible level (with `state=needs_input` the lede shows the
+  state, not `state_detail`), so I decline to call it user-visible. New in this PR.
+
+**Deferred risk — file in Linear, do not promote.**
+
+- **Duplicate JSON keys walk past the AC-6 vocabulary oracle.** `json.loads` keeps the last duplicate,
+  so the discarded value never becomes a node in the walk. I appended a record carrying a synthetic
+  marker in a duplicated `record` slot: `test_documentation` → **27 tests OK** while the marker sat in
+  the committed bytes. The committed files have no duplicate keys today and every string in both is
+  classified, so nothing leaks at head. One-line fix (`object_pairs_hook`). Promote if a hand-edited
+  capture ever lands — which finding 6 above shows is a live practice.
+- **The oracle's file list is a hardcoded 2-tuple**, so capture number three is walked by nothing; the
+  implementer's own defeat #2 was "read one of two files" and the rewrite hardcodes two.
+- **The classification generalisation is single-path and Claude-only.** It probes one argument tuple of
+  `published_agent`, so a conditionally-string key (`"note": None if active else …`) stays green while
+  publishing unclassified operator text on the `active=False` path — which is most roster entries.
+- **The 70-char slice runs before the sweep**, so up to 30 characters of secret material survive
+  unmarked when the clip lands mid-run. **Pre-existing** — `name` has been `[:70]` — so `parent` adds a
+  second instance of an accepted exposure rather than a new class.
+- **The published roster is uncapped**: 294 elements / 30 KB on one row in the implementer's own
+  measured shape, 38 live today, no cap in the collector and no slice in the detail panel. Already
+  reported in the PR body.
+- **A pane-dispatched nested teammate is discarded.** The code-path half reproduces in six lines of
+  fixture; only the harness premise is unmeasured. Filed correctly, though "not reproduced" understated
+  it.
+
+**Polish.**
+
+- **A sentence this PR adds to `docs/design-session-identity.md:504` is false.** "a child whose named
+  lead is not a published row is promoted rather than dropped" — my fixture (classified child,
+  `teamName` naming a lead with no transcript) publishes **0 sessions**: the child and its worker are
+  both invisible, the exact failure the same sentence says cannot happen. The drop is pre-existing; the
+  claim is new. Correcting the PR's own new prose is not promotion, so this one is worth carrying in the
+  same round it forced.
+- **The chrome header's `N subagents` is now a live-only count under an unqualified word**, so it can
+  read `0 subagents` while the detail reads `2 SUBAGENTS · NONE RUNNING`. Reproduced; but this is what
+  AC-5 *asked for* (`the chrome's running-subagent count equals the number of active entries`), so the
+  finding is the wording, not the number.
+- AC-2's "pending members contribute neither" is **vacuous as tested** — the pending branch outranks
+  Working, so the two halves are mutually exclusive. Behaviour correct; only the AC wording overstates.
+  Only the captain may change an AC.
+- `agent_start_cache` is path-keyed and never mtime-invalidated (same class as `agent_class_cache`,
+  which documents it), its `| None` value is unreachable, and the `read_first_json` fallback is never
+  cached — so a stampless transcript pays two reads a pass forever, the case the cache was added for.
+- The recorder's `session` field is layout-blind: on a label-named legacy file it would emit two
+  characters of operator text, which the oracle's hex pattern then rejects, so it cannot land silently.
+
+### Summary
+
+Three lenses and an arbiter on head `0d48cfb`. The engineering under this PR is strong and the parts
+most likely to be wrong are right: the state freeze is genuine, proved both by construction and by a
+base-vs-head comparison across four stores with **0 state-bearing fields moved**; the credential sweep
+now covers `parent`, proved end to end with the documented placeholder and guarded by a test that fails
+loudly when reverted; all six byte pins match the assets under two independent recomputes; and every
+acceptance criterion reproduces from its own falsifier, including AC-5 re-driven live on this board,
+where this session's own teammates and lenses are the fixture.
+
+**NO-GO on one Material finding**, and it is a heading rather than a mechanism. `next-session.js`
+counts live *direct* children for the running clause and *all* elements for the total in the same
+sentence, so a teammate parked on a running worker renders `2 SUBAGENTS · NONE RUNNING` directly above
+a row carrying `next-live`, a filled dot and `aria-label="running"`. That is the board saying something
+untrue on the surface `docs/promise-map.md` names as P2's backing, in the exact shape this issue was
+filed about — and it is the mirror of the defect review round 1 fixed, reintroduced by narrowing one
+clause and leaving the other wide. No AC pins the heading, and the two counts the ACs do pin are both
+correct, so this is a contract claim rather than an AC failure; I am calling it Material because the
+statement is false on a released surface and because this PR holds the single `web/` slot, which makes
+fixing it here strictly cheaper for the queue than merging and filing a second `web/` PR ahead of H1.
+
+One Polish item is worth carrying in the same round rather than filed: a sentence this PR adds to
+`docs/design-session-identity.md` asserts that a child whose lead is unpublished is promoted rather
+than dropped, and my fixture shows such a child publishes nothing at all. Everything else — the
+retention asymmetry, the demote's two authorities, the uncapped roster, the capture record with no
+recorder, and three oracle-completeness holes including a duplicate-key defeat of the AC-6 vocabulary
+check — is filed, not promoted. Three findings were refuted rather than passed along. CI is green on
+`0d48cfb` with every measurable job run, `mergeStateStatus` is `CLEAN`, and Copilot is an absent
+mechanism rather than an unread one. The branch was not edited, nothing was merged, and the worktree
+still stands at `0d48cfb`.
