@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4044:review:attempt-1:revision-1",
+  "question": "Authorize the merge of PR #260 (H1 PR 1: the history store, --no-history, --forget, the two bounds as flags, and the contract promoted into SECURITY.md) at head b5616b6 after a full-adversarial NO-GO round was closed with 23 falsifying mutations red and re-reviewed GO — and bless the fourth contract deviation (the --forget refusal paragraph) as D6?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4044:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/9aab7c4537e8bba86b35c9367197e6fc3bc5cb4a/drc-4044/index.md",
+      "rev": "sha256:a4edf86fbbda0580821288ecb1b96c033cc01087237719123903634c43dc73e0",
+      "mediaType": "text/markdown",
+      "summary": "Cycle-2 review GO on b5616b6: every round-1 fix verified at the SHA and its named mutation re-applied (22 of 23 red; the green one is a dead second copy of a guard pinned elsewhere), AC1-AC9 hold with falsifiers, seven new properties reproduce end to end, no oracle weakened, CI 12/12 on this head incl. platform-tests, CLEAN, Copilot confirmed absent, Linear drafts landed verbatim. One Needs-decision: a fourth deviation from the plan doc, the five-line --forget refusal paragraph, recommend bless as D6. Five Deferred risk (DR-8..DR-12) and four Polish carried to PR 2, which H1 already owes; two findings refuted after reproduction. Surface cumulative +2777/-188 over 21 files, overage captain-accepted."
+    }
+  ]
+}
