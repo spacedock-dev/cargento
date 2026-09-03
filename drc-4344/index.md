@@ -1053,8 +1053,8 @@ still stands at `0d48cfb`.
   Entity line 492: "pending members contribute neither" is now "pending members are never counted as
   running". The test is unchanged; the behaviour was always right.
 - SKIPPED: Deferred risk — the uncapped published roster
-  The FO files it; a cap and a "+N more" convention is a payload-shape decision. Measured again this
-  round: 40 elements on this session's own row.
+  Filed by the FO as **DRC-4348**; a cap and a "+N more" convention is a payload-shape decision.
+  Measured again this round: 40 elements on this session's own row.
 - SKIPPED: Deferred risk — the pane-dispatched nested teammate
   Already filed as DRC-4347.
 - DONE: `sync-docs` invoked, its updates on this branch
@@ -1073,13 +1073,21 @@ still stands at `0d48cfb`.
   version field moved since the merge base. Suite run **once** at load 6.03: **1881 tests OK, 1
   skipped**, no red, so no module in the four contention-prone ones needed a solo re-run. Script
   tests + `coverage report`: **90.2%** against `fail_under = 73`.
-- FAILED: AC-5's positive arm re-driven live this round
-  The live board had no running worker at any moment I could pin (20 direct children, 1 live; 20
-  grandchildren, 0 live), so the defect arm could not be observed on real data. What was driven:
-  the shipped `nextSessionSubagents` over the live roster under base and head, both reading
-  `1 RUNNING SUBAGENT` and agreeing with the live `state_detail` — the negative arm, showing the
-  change is a no-op on this shape. The positive arm rests on the two node render tests, which is the
-  same method the arbiter used to reproduce the finding.
+- SKIPPED: AC-5's positive arm re-driven live this round
+  Not this round's obligation, so it is skipped rather than failed: the round carried the heading
+  fix, the pins and the suite. The arm is already driven twice — by the implementer at `0d48cfb`
+  (34 published / 34 measured starts / 17 grandchildren) and independently by the reviewer on its
+  own crew (41/41/20) — this round changed no collection path AC-5 exercises beyond the window gate,
+  which the two-collector comparison above proves byte for byte, and the re-reviewer spawns lenses
+  and is therefore the fixture, so it re-drives on `f23ab79`. Recorded as
+  `fo-ruling[2026-09-03]`.
+  The measurement behind the attempt stands: the live board had no running worker at any moment I
+  could pin (20 direct children, 1 live; 20 grandchildren, 0 live), so the defect arm could not be
+  observed on real data here. What I did drive is the negative arm — the shipped
+  `nextSessionSubagents` over the live roster under base and head, both reading
+  `1 RUNNING SUBAGENT` and agreeing with the live `state_detail`, showing the change is a no-op on
+  this shape. The positive arm rests on the two node render tests, the same method the arbiter used
+  to reproduce the finding.
 
 ### Surface
 
@@ -1095,8 +1103,12 @@ with ±30% (band 161–299). The review round accepted the cumulative figure as 
 all three groupings its arbiter could construct; under the grouping I can construct — runtime and
 web only, excluding tests, docs, the capture recorder and the capture files — the cumulative sits at
 +378, above the band. Every line of this round's own +620 is an item the FO or the captain
-authorised, and none of it narrows an AC. I am not treating that as settled, and it is a tolerance
-question, which disposition rule 5 says only the captain decides.
+authorised, and none of it narrows an AC. I did not treat that as settled, because it is a tolerance
+question and disposition rule 5 puts those above an ensign.
+
+**Answered.** `fo-ruling[2026-09-03]`: accepted by the First Officer under the captain's standing
+ruling of the same day on this exact shape. No design reset is required and the estimate is not
+retro-fitted; the overrun is recorded here rather than absorbed.
 
 ### Summary
 
@@ -1110,9 +1122,12 @@ the conditionally-string key on the inactive path. AC-4 was re-proved as the rul
 collectors in separate processes over the same stores, with 0 state-bearing fields moved on the live
 store and on a synthetic one.
 
-Two things a reader should not take on trust. AC-5's positive arm was not re-driven live this round,
-because no worker was running on this board at any moment I could pin; it rests on the node render
-tests. And the cumulative runtime surface is above the declared band under the grouping in the
-Surface section, which is the captain's call rather than mine.
+Two things I raised rather than decided, both since ruled on by the FO under
+`fo-ruling[2026-09-03]`. AC-5's positive arm was not re-driven live this round, because no worker
+was running on this board at any moment I could pin; it is driven twice already, nothing this round
+changed the paths it exercises beyond the window gate the two-collector comparison proves, and the
+re-reviewer is itself the fixture — so it is skipped here and re-driven on `f23ab79`. And the
+cumulative runtime surface is above the declared band under the grouping in the Surface section;
+that is accepted, with the figure recorded rather than absorbed.
 
 New head `f23ab79`, pushed to PR #261. Nothing merged, nothing removed.
