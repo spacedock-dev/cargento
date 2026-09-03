@@ -58,6 +58,9 @@ The posture rests on two invariants:
    than raised at the request. Published text records what that redaction covers. What the route
    reads is covered by Project reads below: the transcript, and the same two kinds of frontmatter a
    stage strip reads, under the same guards and the same `--no-spacedock` switch.
+   The server also keeps its own history of what it observed under `~/.cargento`, written as it
+   observes rather than in answer to a request, and never a harness store, so the read-only rule
+   stands unchanged.
    The git probe runs inside a repository the user chose rather than a harness store, and it neither
    writes there nor executes anything the repository supplies.
 
@@ -258,11 +261,14 @@ retention for a run is what `--no-usage` is for.
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
-The server writes three files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
+The server writes five files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
 authoritative when nonblank): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
 `started`, `log`, `python`); `cargento-<port>.log`, where a detached (`--daemon`) instance's
-output goes; and `cargento-dismissals.json`, the sessions the reader marked handled, described in
-Dismissals below. One forwarder writes a fourth, in the same directory and named in invariant 2 above:
+output goes; `cargento-dismissals.json`, the sessions the reader marked handled, described in
+Dismissals below; `observer/<harness>_<sid>.json`, the sidecar `GET /api/observe` records when a
+reader opens that panel for a session, named in invariant 2 above; and `cargento-history.json`, the
+history of what this server observed, described in Local history above. One forwarder writes a
+sixth, in the same directory and named in invariant 2 above:
 `statusline_hook.py` keeps `statusline-<harness>-<session>.json` per conversation, holding a
 normalized state name and a timestamp, so a status line that fires many times a turn posts once. The directory is created `0o700` because the log can carry local paths: uncaught
 tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
@@ -291,7 +297,7 @@ a state detail can carry a permission prompt's own text, an open question's, or 
 
 ## Dismissals
 
-Marking a session handled writes one file, and it is the only thing Cargento writes on your behalf:
+Marking a session handled writes one file:
 `~/.cargento/cargento-dismissals.json`, opened `0600` with the mode in the `open` call so it is never
 briefly world-readable, written through a temp file and `os.replace` so a reader mid-write sees the
 old file or the new one.
@@ -322,6 +328,76 @@ its next collection, but two marks landing in the same instant resolve last-writ
 file, and the losing mark is lost.
 [`docs/design-dismissals.md`](docs/design-dismissals.md) records why that race is stated rather than
 solved.
+
+## Local history (the session history store)
+
+The board is rebuilt from the harness stores on every start, so a restart used to leave it with no
+memory of sessions that already ran. Cargento keeps its own history of what it observed, on this
+machine, so the board can open knowing what happened before it was last closed.
+
+One rule fixes the rest: the store holds nothing the live snapshot does not already serve. What is
+kept is session identity, states and the transitions between them, gate open and close, turn
+boundaries and their timings, tool names and counts, and the derived two-segment project label the
+board groups by: it is published on every row, it is capped at the last two segments rather than
+being a path, and both panels that read the history group by it, so the history cannot be seeded
+without it. Never a raw working directory.
+
+What is never written to it:
+
+- Prompt text, of any session, at any point, whatever field carries it. Not a row's title, which is
+  derived from a prompt; not `last_prompt`; and not a session's state detail, which can carry a
+  permission prompt's own text, an open question's, or a plan's first line, and which the bounded
+  record of state disputes already omits for exactly that reason.
+- Tool input, in whole or in part, including any substring of a command.
+- Paths. Neither a session's working directory nor any path a tool touched.
+- File contents, of any file.
+
+The store may never widen the set of fields it keeps: a field that is not already published on the
+live board is not a field history may keep. The condition runs one way only — the board publishes
+prompt text, which the first never-item bans outright, and a derived two-segment project label,
+which the kept-list above keeps while the never-list bans the paths it is derived from.
+
+The store lives under Cargento's own directory, next to the dismissals file, and is written the way
+that file and the state file are. It is opened owner-only with the mode in the `open` call, so it is
+never briefly world-readable, and it is written through a temp file and a rename, so a reader
+mid-write sees the old file or the new one. The mode is advisory, exactly as it is for the state
+file and the dismissal store: Windows ignores it, and root reads it either way.
+
+Retention is 14 days by default, with a size cap, and both are configurable. Eviction is by age
+first, oldest observation dropped first, so a session that fell out of the window cannot be brought
+back by raising the cap. The age window and the size cap bound the store together, and raising
+either does not stop the other applying.
+
+The store is on by default. A digest of what happened while the user was away exists only if the
+history was being kept before they left, and Cargento already writes local state on the user's
+behalf by default in the dismissals file, and writes the observer sidecar on demand when a reader
+opens that panel for a session. The trust cost of that default is
+retention, and the bounds above and the delete below are what answer it.
+
+The off switch is `--no-history`. It mirrors `--no-git` at every one of that flag's sites, including
+the branch that forwards flags to a respawned daemon, so a restart cannot re-enable a store the user
+disabled. With the store off nothing is written and nothing is read back: the board opens with no
+memory, exactly as it does today.
+
+`--forget` deletes the store and exits. It is a one-shot command, in the family of `--stop` and
+`--status` rather than the family of per-run switches, because what it does is not reversible by
+running the next command without it. It removes the file whether or not the store is enabled, and it
+adds no endpoint: nothing over the loopback port can delete history.
+
+A store that cannot be read is discarded rather than repaired. Corrupt bytes, an unreadable file, a
+version the running build does not understand: in every case the store is dropped, the board starts
+empty, and the header reports the reset, so a silent loss of history is never mistaken for a machine
+that did nothing.
+
+Nothing in the store ever leaves the machine. It adds no outbound request, no forwarder and no
+endpoint; the network posture described in Scope is unchanged by it.
+
+A violation of any boundary in this section is a security bug: a field in the store that the live
+board does not publish, prompt text or tool input or a path or file content reaching it by any route,
+a write that is not owner-only or not through a temp file and a rename, an unbounded store or one
+evicted by anything but age first, a store still written while the feature is off, a respawned daemon
+that re-enables it, a history file reachable over the port, or any part of the store leaving the
+machine.
 
 ## The ask lane (`ask_operator`)
 
@@ -438,7 +514,7 @@ that was.
 saying the machine's network may read the board, and there is no second gate behind it: everything
 the paragraph below grants another account on the machine, a non-default bind grants anything that
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
-project paths. Writing is the seven POST routes, `/api/shutdown` and `/api/answer` among them, so a
+project paths. Writing is the eight POST routes, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
 somebody other than you. There is nothing to authenticate with, for the reason the ask-lane
 paragraph below gives: the page is served as fixed bytes with no per-run secret in it.

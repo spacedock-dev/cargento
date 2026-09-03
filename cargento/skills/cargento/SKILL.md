@@ -143,9 +143,10 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes three files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+The server writes four files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
-detached server's output goes; and `cargento-dismissals.json`, the sessions marked handled. If you
+detached server's output goes; `cargento-dismissals.json`, the sessions marked handled; and
+`cargento-history.json`, the history of what the server observed, kept for up to 14 days. If you
 wire up Antigravity's status line, `statusline_hook.py` keeps one small memo per conversation in the
 same directory so a status line that fires many times a turn posts once.
 
@@ -292,7 +293,8 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty — which is what they already read for a session that was never probed. |
-| `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the one file Cargento writes on your behalf. |
+| `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
+| `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
 | `http://127.0.0.1:4553/?all=1` | Show all sessions ever, including idle ones |
 | `/api/data` | Raw JSON, same data as the UI |
 | `/api/health` | Liveness and identity (pid, port, start time). Scans nothing, unlike `/api/data`. |

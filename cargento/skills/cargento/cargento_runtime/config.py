@@ -54,6 +54,13 @@ class RuntimeConfig:
     # neither consulted during a collection nor created by a request, so a run
     # that misbehaves leaves no state a later run would honour.
     dismissals_enabled: bool
+    # Whether the local history store is read and written at all.
+    # `--no-history` is the off switch DEC-6's contract made part of the
+    # feature, and off means off in both directions: nothing is written and an
+    # existing store is not read back, so the board opens with no memory
+    # exactly as it did before the store existed. A store still written while
+    # the feature is off is a security bug by that contract's own terms.
+    history_enabled: bool
     # Whether a session may ask the reader a question and wait for the answer.
     # `--no-ask` is the rollback switch, and off means off in both directions:
     # the routes refuse, and the payload carries no `ask` flag, so the page
@@ -162,6 +169,15 @@ class RuntimeConfig:
     # magnitude above the busiest board measured (31 sessions).
     dismissal_read_cap_bytes: int
     dismissal_max_entries: int
+    # The history store's two bounds, which apply together: raising either does
+    # not stop the other applying. Fourteen days is the contract's default. The
+    # byte cap is the read cap as well — a file larger than it is discarded
+    # unread rather than parsed, which is the same posture the state file takes
+    # — and 1 MiB holds roughly nine thousand observations at the record's
+    # measured ~110 bytes, against the 31-session busiest board measured for
+    # `dismissal_max_entries`.
+    history_retention_sec: float
+    history_max_bytes: int
     # What a dismissal request may declare. Three short fields, so this is far
     # below even the event cap: nothing else is read from the body.
     dismissal_body_cap_bytes: int
@@ -402,6 +418,7 @@ def build_runtime_config(
     git_probe_enabled: bool = True,
     dismissals_enabled: bool = True,
     ask_enabled: bool = True,
+    history_enabled: bool = True,
 ) -> RuntimeConfig:
     """Construct runtime configuration solely from explicit inputs."""
     windows = platform_name == "win32"
@@ -443,6 +460,7 @@ def build_runtime_config(
         git_probe_enabled=git_probe_enabled,
         dismissals_enabled=dismissals_enabled,
         ask_enabled=ask_enabled,
+        history_enabled=history_enabled,
         # Ten minutes stays. The burn ordering (DRC-4011) wants the fastest
         # session "right now", and this window is the reason it cannot have it:
         # narrowing it would re-scale the summary tile, both sparklines and every
@@ -510,6 +528,8 @@ def build_runtime_config(
         dismissal_read_cap_bytes=65_536,
         dismissal_max_entries=256,
         dismissal_body_cap_bytes=1_024,
+        history_retention_sec=14 * 24 * 60 * 60,
+        history_max_bytes=1_048_576,
         prompt_path_collapse_min_length=25,
         first_line_json_cap_bytes=200_000,
         notification_body_cap_bytes=65_536,

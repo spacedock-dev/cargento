@@ -563,6 +563,13 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-dismiss")
     if args.no_ask:
         argv.append("--no-ask")
+    if args.no_history:
+        # DEC-6's off switch. Read off the namespace directly, like every branch
+        # above, so a flag added to the parser and forgotten here raises rather
+        # than silently re-enabling a store the user disabled: the two exact-set
+        # assertions in `test_lifecycle` are blind to an omitted branch, and the
+        # hand-written namespaces are what actually force this edit.
+        argv.append("--no-history")
     # Forward the bind host only when the operator chose a non-default address,
     # so a Windows --daemon re-spawn keeps a --host 0.0.0.0 bind instead of
     # silently reverting to loopback.

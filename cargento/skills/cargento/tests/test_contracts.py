@@ -974,6 +974,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
             "cargento_runtime.diagnostics",
+            "cargento_runtime.history",
             "cargento_runtime.http_api",
             "cargento_runtime.io",
             "cargento_runtime.lifecycle",
@@ -1244,6 +1245,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # module, holds no state and takes no lock, which is what lets the
         # coordinator call it from a thread of its own without ordering concerns.
         "cargento_runtime.git_status": set(),
+        # `history` imports `config` and nothing else, which is the shape
+        # `git_status` above took rather than the shape `dismissals` took. A
+        # store the collection lane writes continuously must not be able to
+        # reach a module that could grow an edge back toward it, so the
+        # diagnostic sink is a parameter and `io.diag` is inlined instead.
+        "cargento_runtime.history": {"cargento_runtime.config"},
         "cargento_runtime.probe": {"cargento_runtime.config"},
         "cargento_runtime.records": set(),
         "cargento_runtime.sessions": {"cargento_runtime.config"},

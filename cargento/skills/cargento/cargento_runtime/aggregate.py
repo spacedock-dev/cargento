@@ -14,7 +14,7 @@ from . import io as runtime_io
 from . import snapshot as runtime_snapshot
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
     from .config import RuntimeConfig
     from .events import Overlay
@@ -111,6 +111,24 @@ def _subtract_dismissed(
         )
     ]
     return kept, len(out_sessions) - len(kept)
+
+
+class HistoryLane(Protocol):
+    """The local history store, as the collection reaches it.
+
+    Declared here rather than imported for the reason `OverlaySource` is: the
+    dependency would otherwise run outward from the module that owns collection
+    toward one that owns a file. `history` is a leaf over `config` alone, and it
+    stays one.
+
+    Injected at assembly rather than reached through `overlays`, because that
+    source is None forever under `--no-events` and history's only off switch is
+    `--no-history`.
+    """
+
+    def record(self, rows: Iterable[Mapping[str, Any]], *, now: float) -> list[dict[str, Any]]: ...
+
+    def notice(self) -> str | None: ...
 
 
 class OverlaySource(Protocol):
@@ -443,6 +461,10 @@ class Application:
         # scan-only behaviour that shipped before events existed, which is what
         # makes the rollback switch a one-line assembly change.
         self.overlays = overlays
+        # Attached after construction, exactly as `overlays` above is, and for
+        # the same reason: the assembly point owns which services exist. None
+        # means no lane, which is the behaviour that shipped before history did.
+        self.history_lane: HistoryLane | None = None
 
     def harness_label(self, key: str) -> str:
         """The registry's display label for a harness key, or "" for anything else.
@@ -529,7 +551,7 @@ class Application:
         # which an overlay does change: patching after the sort would leave a row
         # ranked by the state it no longer claims. The summary below is counted
         # from the patched rows for the same reason.
-        self._apply_overlays(out_sessions, now=now)
+        history_fields = self._apply_overlays(out_sessions, now=now)
         # After the overlays, which is load-bearing: a wait only an event knows
         # about is a wait, and reading the collector's state is what left the
         # overlay lane silent on every harness.
@@ -540,6 +562,12 @@ class Application:
         # observable changes if these two lines swap — measured, not assumed.
         # The order is kept because it is the one that stays correct if the gate
         # ever stops consulting the store.
+        # Recorded from the patched rows, so what the store keeps is what the
+        # board published rather than what a collector guessed, which is the
+        # whole of the provenance rule. Before the subtraction deliberately: a
+        # dismissal hides an alert, and an observation that happened still
+        # happened — subtracting first would punch gaps in the history of any
+        # session the reader ever cleared.
         self._notify_waits(out_sessions, generations)
         out_sessions, cleared = _subtract_dismissed(out_sessions, cleared_marks)
         sessions.assign_display_ids(config, out_sessions)
@@ -586,7 +614,7 @@ class Application:
             collection["dismiss"] = True
         # Folded in rather than branched on here: `collect` sits on ruff's
         # complexity and statement caps, and an inline `if` puts it over both.
-        collection.update(self._ask_cards(now))
+        collection.update({**self._ask_cards(now), **history_fields})
         if usage_supported:
             # Present even when empty: the page distinguishes "no quota data
             # yet" (key with no entries) from "nothing here publishes quota"
@@ -599,6 +627,33 @@ class Application:
             # a disk-read provider or with the fetch disabled.
             collection["usage_fetch"] = True
         return collection
+
+    def _history_fields(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
+        """Record this collection's transitions, and the payload keys they earn.
+
+        Both halves here because the recording has to see the rows before the
+        dismissal subtraction while the keys are added at payload assembly, and
+        splitting them would put the ordering constraint in two places.
+        """
+        if self.history_lane is None:
+            # The behaviour that shipped before history existed: an empty series
+            # rather than a missing key, so a consumer needs no presence test.
+            return {"history": []}
+        fields: dict[str, Any] = {}
+        observed = self.history_lane.record(out_sessions, now=now)
+        if self.config.history_enabled:
+            # The observations this run has on record, oldest first. A payload
+            # field rather than a row field: it is a series about sessions, not
+            # a property of one, and adding it to the row would put it in every
+            # consumer's declared field set for the sake of two panels.
+            fields["history"] = observed
+        notice = self.history_lane.notice()
+        if notice is not None:
+            # Which reset this run opened with, so the header can name it. A
+            # corruption reset may be the user's disk; a version reset is ours,
+            # and one message for both hides the difference (D1).
+            fields["history_reset"] = notice
+        return fields
 
     def _ask_cards(self, now: float) -> dict[str, Any]:
         """The ask capability flag and its cards, or nothing at all.
@@ -704,7 +759,7 @@ class Application:
             if str(session["harness"]) not in runtime_events.IDENTITY_NORMALIZERS:
                 session["acquisition"] = runtime_events.ACQUISITION_SCAN
 
-    def _apply_overlays(self, out_sessions: list[Session], *, now: float) -> None:
+    def _apply_overlays(self, out_sessions: list[Session], *, now: float) -> dict[str, Any]:
         """Patch collected rows from the live overlay ledger, if one is attached.
 
         The row list is walked, not the ledger: an overlay can only ever reach a
@@ -712,10 +767,19 @@ class Application:
         creates or removes a row. `note_rows` then reports the full key set back,
         which is what lets an unmatched overlay wait or expire rather than
         silently doing nothing forever.
+
+        This is also the pass at which the row set becomes final — states
+        patched, nothing yet subtracted — which is the only point the history may
+        be recorded from. It returns the payload keys that recording earns rather
+        than storing them on the instance, so `collect` gains no statement (it
+        sits on ruff's statement cap) and no state to get stale.
         """
         source = self.overlays
         if source is None:
-            return
+            # No ledger to patch from, but the history still records: `overlays`
+            # is None forever under --no-events, and a store that went quiet on
+            # that flag would be an off switch with a second, undocumented name.
+            return self._history_fields(out_sessions, now=now)
         for session in out_sessions:
             harness, sid = str(session["harness"]), str(session["sid"])
             overlays = source.overlays_for(harness, sid)
@@ -758,6 +822,7 @@ class Application:
         with self.state.dispute_lock:
             for key in [k for k in self.state.dispute_episodes if k not in collected]:
                 del self.state.dispute_episodes[key]
+        return self._history_fields(out_sessions, now=now)
 
     def _note_dispute(
         self,

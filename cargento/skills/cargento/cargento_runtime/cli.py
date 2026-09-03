@@ -12,7 +12,15 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cargento_runtime import aggregate, diagnostics, http_api, lifecycle, notifications, observation
+from cargento_runtime import (
+    aggregate,
+    diagnostics,
+    history,
+    http_api,
+    lifecycle,
+    notifications,
+    observation,
+)
 from cargento_runtime import config as runtime_config
 from cargento_runtime import io as runtime_io
 from cargento_runtime import state as runtime_state
@@ -135,12 +143,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-history",
+        action="store_true",
+        help=(
+            "do not keep a local history of what this server observed for this "
+            "run: nothing is written and an existing store is not read back, so "
+            "the board opens with no memory of earlier sessions. The off switch "
+            "DEC-6's contract made part of the store"
+        ),
+    )
+    parser.add_argument(
         "--no-dismiss",
         action="store_true",
         help=(
             "do not read or write the dismissal store for this run: sessions "
             "marked handled come back onto the board and the page offers no "
-            "control to clear them. The rollback switch for the one file "
+            "control to clear them. The rollback switch for the dismissal store "
             "Cargento writes on your behalf"
         ),
     )
@@ -173,6 +191,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--stop",
         action="store_true",
         help="stop the Cargento running on --port, and exit",
+    )
+    parser.add_argument(
+        "--forget",
+        action="store_true",
+        help="delete the local history store, and exit",
     )
     parser.add_argument(
         "--daemon",
@@ -213,6 +236,7 @@ def build_runtime(
         git_probe_enabled=not args.no_git,
         dismissals_enabled=not args.no_dismiss,
         ask_enabled=not args.no_ask,
+        history_enabled=not args.no_history,
     )
     return config, runtime_state.build_runtime_state(config, started=started)
 
@@ -238,7 +262,7 @@ def build_application(
 ) -> aggregate.Application:
     """One application over one config and state, with every service injected."""
     popup_notifier = bound_popup_notifier(config, diagnostic_sink)
-    return aggregate.Application(
+    application = aggregate.Application(
         config,
         state,
         aggregate.default_harnesses(usage_fetch_enabled=config.usage_fetch_enabled),
@@ -247,6 +271,11 @@ def build_application(
         diagnostic_sink=diagnostic_sink,
         clock=clock,
     )
+    # Attached here rather than reached through the overlay source, which is
+    # None forever under --no-events: the store's only off switch is
+    # --no-history, so the lane must not hang off an unrelated flag.
+    application.history_lane = history.Lane(config, diagnostic_sink=diagnostic_sink)
+    return application
 
 
 def load_frontend_page() -> bytes | None:
@@ -261,6 +290,51 @@ def load_frontend_page() -> bytes | None:
         return None
 
 
+def run_one_shot(
+    args: argparse.Namespace,
+    config: RuntimeConfig,
+    state: RuntimeState,
+) -> int | None:
+    """The commands that report and exit, or None when this run is to serve.
+
+    Gathered out of `main` rather than left as four consecutive branches there,
+    because `main` sits on ruff's branch cap and `--forget` was the flag that
+    put it over. They are one family: each answers a question or performs one
+    irreversible act, none of them binds a socket, and `--daemon` is refused
+    with all four.
+    """
+    if args.diagnose:
+        report = diagnostics.diagnose(build_application(config, state))
+        runtime_io.diag(
+            json.dumps(report, indent=2) if args.json else diagnostics.render_diagnosis(report),
+            print,
+        )
+        return 0
+    if args.forget:
+        # In the family of --stop and --status rather than the family of per-run
+        # switches, because what it does is not reversible by running the next
+        # command without it. It deletes the file whether or not the store is
+        # enabled, and it adds no route: nothing over the loopback port can
+        # delete history.
+        path = history.store_path(config)
+        runtime_io.diag(
+            f"Cargento: deleted {path}"
+            if history.forget(config)
+            else f"Cargento: no history store at {path}",
+            print,
+        )
+        return 0
+    if args.stop:
+        message, code = lifecycle.stop_instance(config, args.port)
+        runtime_io.diag(message, print)
+        return code
+    if args.status:
+        status = lifecycle.instance_status(config, args.port)
+        runtime_io.diag(lifecycle.render_status(status), print)
+        return 0 if status["state"] == "running" else 1
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse, assemble, and run. Returns an exit code.
 
@@ -273,27 +347,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Sampled before the combination check: the start stamp names this process,
     # and must not shift depending on which validation ran first.
     started = time.time()
-    if args.daemon and (args.diagnose or args.stop or args.status):
-        # Each of those three exits without serving, so --daemon cannot apply.
+    if args.daemon and (args.diagnose or args.stop or args.status or args.forget):
+        # Each of those four exits without serving, so --daemon cannot apply.
         # Accepting it silently would teach that it had been honored.
-        parser.error("--daemon cannot be combined with --diagnose, --stop or --status")
+        parser.error("--daemon cannot be combined with --diagnose, --stop, --status or --forget")
     config, state = build_runtime(args, started=started)
 
-    if args.diagnose:
-        report = diagnostics.diagnose(build_application(config, state))
-        runtime_io.diag(
-            json.dumps(report, indent=2) if args.json else diagnostics.render_diagnosis(report),
-            print,
-        )
-        return 0
-    if args.stop:
-        message, code = lifecycle.stop_instance(config, args.port)
-        runtime_io.diag(message, print)
-        return code
-    if args.status:
-        status = lifecycle.instance_status(config, args.port)
-        runtime_io.diag(lifecycle.render_status(status), print)
-        return 0 if status["state"] == "running" else 1
+    one_shot = run_one_shot(args, config, state)
+    if one_shot is not None:
+        return one_shot
 
     if not runtime_io.sqlite_available():
         runtime_io.diag(

@@ -249,6 +249,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -430,6 +431,7 @@ print(json.dumps({{
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
             daemon=True,
         )
         with (
@@ -1168,7 +1170,7 @@ class CargentoServerTest(PageJsHarness):
         self.assertNotIn("within 10s", message)
 
     def test_daemon_rejects_the_flags_it_cannot_combine_with(self) -> None:
-        for other in ("--diagnose", "--stop", "--status"):
+        for other in ("--diagnose", "--stop", "--status", "--forget"):
             with (
                 mock.patch.object(sys, "argv", ["server.py", "--daemon", other]),
                 # parser.error() raises: argparse owns this exit, not main().
@@ -1217,6 +1219,7 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
             daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
@@ -1247,6 +1250,7 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=False,
                 no_ask=False,
                 no_git=False,
+                no_history=False,
                 daemon=True,
             ),
         )
@@ -1275,10 +1279,18 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=True,
                 no_ask=False,
                 no_git=True,
+                no_history=True,
                 daemon=True,
             ),
         )
-        for flag in ("--no-spacedock", "--no-usage", "--no-events", "--no-dismiss", "--no-git"):
+        for flag in (
+            "--no-spacedock",
+            "--no-usage",
+            "--no-events",
+            "--no-dismiss",
+            "--no-git",
+            "--no-history",
+        ):
             self.assertIn(flag, argv)
 
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
@@ -1291,6 +1303,7 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1496,6 +1509,7 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_dismiss": False,
             "no_ask": False,
             "no_git": False,
+            "no_history": False,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -1523,6 +1537,23 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_git=False))
         self.assertNotIn("--no-git", argv)
+
+    def test_no_history_is_forwarded(self) -> None:
+        # DEC-6's off switch. Without the `spawn_argv` branch a user who turned
+        # the store off gets it back on the respawned daemon, and the promoted
+        # contract calls a respawned daemon that re-enables it a security bug in
+        # as many words. Note the two exact-set assertions in this file are
+        # blind to an omitted branch: what forces the edit is that the branch
+        # reads `args.no_history` directly, so the seven hand-written
+        # namespaces raise AttributeError rather than quietly passing.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_history=True))
+        self.assertIn("--no-history", argv)
+
+    def test_no_history_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_history=False))
+        self.assertNotIn("--no-history", argv)
 
     def test_no_ask_is_forwarded(self) -> None:
         config = cfg()

@@ -330,6 +330,17 @@ dashboard was started with. Tested: a dashboard started under a scratch `CARGENT
 by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
+`--forget` deletes the local history store and exits. It belongs with `--status` and `--stop` rather
+than in the table below, because what it does is not undone by running the next command without it:
+
+```bash
+python3 "<skill-dir>/server.py" --forget
+```
+
+It removes the file whether or not the store was enabled, so turning the feature off and then asking
+for the file to go does what it says. Nothing over the loopback port can delete history; this is the
+only way.
+
 ## Turn a feature off
 
 Each flag belongs to the dashboard process, so changing one means restarting.
@@ -342,6 +353,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-events` | The event coordinator. State comes from scanning stores rather than from pushed events |
 | `--no-spacedock` | Reading Spacedock workflow state out of a project |
 | `--no-git` | The end-of-session git probe. No git command runs inside any repository |
+| `--no-history` | The local history of what the server observed. Nothing is written, and an existing store is not read back |
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 
