@@ -15,7 +15,7 @@ linear-status: Todo
 milestone: 'Nothing dies quietly'
 release: 'r2'
 estimate: 'L'
-reconciled:
+reconciled: 2026-09-03T03:37:22Z
 gates:
     version: 1
     records:
