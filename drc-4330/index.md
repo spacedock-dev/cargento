@@ -1,7 +1,7 @@
 ---
 id: drc-4330
 title: 'History groundwork · SECURITY.md scope section for the local history store'
-status: implementation
+status: review
 source: https://linear.app/recce/issue/DRC-4330
 started: 2026-09-03T03:29:50Z
 completed:
