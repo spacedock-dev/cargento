@@ -527,6 +527,29 @@ def await_daemon(
     )
 
 
+def _history_bound_argv(args: argparse.Namespace) -> list[str]:
+    """The history bounds a respawn has to carry, and nothing it does not.
+
+    Forwarded only when the operator moved one off its shipped default, the way
+    --host is, and split out of `spawn_argv` only because two more branches put
+    that function over ruff's complexity cap. Both halves matter: a respawn that
+    dropped a narrowed retention window would widen a bound the operator
+    tightened, which is the same class of failure as re-enabling a store they
+    turned off, while an argv repeating every default would be one more thing
+    for the Windows respawn assertions to keep in step with the parser.
+
+    The namespace is read directly rather than through `getattr` with a default,
+    for the reason the `--no-history` branch is: a flag added to the parser and
+    forgotten here should raise, not quietly ship the default.
+    """
+    argv: list[str] = []
+    if args.history_days != runtime_config.HISTORY_RETENTION_DEFAULT_DAYS:
+        argv.extend(["--history-days", str(args.history_days)])
+    if args.history_max_bytes != runtime_config.HISTORY_MAX_BYTES_DEFAULT:
+        argv.extend(["--history-max-bytes", str(args.history_max_bytes)])
+    return argv
+
+
 def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     """The complete argv for a re-spawned child, built from parsed values.
 
@@ -563,6 +586,14 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-dismiss")
     if args.no_ask:
         argv.append("--no-ask")
+    if args.no_history:
+        # DEC-6's off switch. Read off the namespace directly, like every branch
+        # above, so a flag added to the parser and forgotten here raises rather
+        # than silently re-enabling a store the user disabled: the two exact-set
+        # assertions in `test_lifecycle` are blind to an omitted branch, and the
+        # hand-written namespaces are what actually force this edit.
+        argv.append("--no-history")
+    argv.extend(_history_bound_argv(args))
     # Forward the bind host only when the operator chose a non-default address,
     # so a Windows --daemon re-spawn keeps a --host 0.0.0.0 bind instead of
     # silently reverting to loopback.

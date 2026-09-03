@@ -609,6 +609,7 @@ def build_runtime(
                 # collect pays. `no_usage` stays the one deliberate difference,
                 # for the reason given above.
                 no_git=False,
+                no_history=False,
                 no_dismiss=False,
                 no_ask=False,
             ),

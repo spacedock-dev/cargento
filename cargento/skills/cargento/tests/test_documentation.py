@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import unittest
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from cargento_runtime import cli, git_status
+from cargento_runtime import cli, git_status, history
 from cargento_runtime import config as runtime_config
 
 from .support import (
     SERVER_PATH,
+    make_config,
 )
 
 if TYPE_CHECKING:
@@ -264,3 +266,87 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         # `changed` counts porcelain entries; git collapses an untracked directory
         # into one. Rendering it as a file count is a wrong number under a true name.
         self.assertIn("counts porcelain entries rather than files", self.FLAT)
+
+
+class HistoryStoreContractDocumentationTest(unittest.TestCase):
+    """SECURITY.md's history section is a contract, so the code must still meet it.
+
+    The direct analogue of `GitProbeContractDocumentationTest` above, and owed by
+    the merged contract: the section was written and reviewed on its own cycle
+    before this code existed (DRC-4330, promoted here from
+    `docs/plans/history-store-security-scope.md` and that file deleted in the
+    same commit). Prose and code can only agree by accident unless something
+    compares them, and this is the comparison.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    # Whitespace-collapsed, so a reflow that changes no words does not fail these.
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+
+    def test_the_contract_section_survived_the_promotion(self) -> None:
+        self.assertIn("## Local history (the session history store)", self.SECURITY)
+
+    def test_the_plan_document_died_with_its_promotion(self) -> None:
+        # Leaving it in place states the contract in two places and lets them drift.
+        self.assertFalse(
+            (self.ROOT / "docs" / "plans" / "history-store-security-scope.md").exists()
+        )
+
+    def test_the_documented_off_switch_is_the_flag_the_parser_accepts(self) -> None:
+        # The prose half is bound to a parser call, so it is not a grep over our
+        # own words: until `--no-history` parses, this assertion would be one.
+        self.assertIn("The off switch is `--no-history`.", self.FLAT)
+        args = cli.build_parser().parse_args(["--no-history"])
+        self.assertTrue(args.no_history)
+
+    def test_the_documented_deletion_command_is_the_flag_the_parser_accepts(self) -> None:
+        self.assertIn("`--forget` deletes the store and exits.", self.FLAT)
+        args = cli.build_parser().parse_args(["--forget"])
+        self.assertTrue(args.forget)
+
+    def test_the_store_lives_where_the_contract_says_it_does(self) -> None:
+        # "under Cargento's own directory, next to the dismissals file" — bound to
+        # the path the code builds rather than asserted about our own prose.
+        config = make_config(state_home="/tmp/cargento-contract")
+        self.assertEqual(
+            os.path.join("/tmp/cargento-contract", "cargento-history.json"),
+            history.store_path(config),
+        )
+        self.assertIn("next to the dismissals file", self.FLAT)
+
+    def test_the_retention_default_the_contract_names_is_the_configured_one(self) -> None:
+        # "Retention is 14 days by default" — a figure in prose that no test
+        # bound would drift from the constant the day either changed.
+        self.assertIn("Retention is 14 days by default", self.FLAT)
+        self.assertEqual(14 * 24 * 60 * 60, make_config().history_retention_sec)
+
+    def test_the_bounds_the_contract_calls_configurable_are_flags(self) -> None:
+        # The captain's ND-1 ruling of 2026-09-03. The sentence was inherited
+        # verbatim from the plan doc and `build_runtime_config` accepted neither
+        # figure, so it was prose about a build that could not do it. Bound to
+        # the parser the way the off switch above is, rather than grepped: until
+        # both flags parse, this assertion would be one about our own words.
+        self.assertIn(
+            "Retention is 14 days by default, with a size cap, and both are configurable.",
+            self.FLAT,
+        )
+        args = cli.build_parser().parse_args(["--history-days", "3", "--history-max-bytes", "4096"])
+        self.assertEqual(3.0, args.history_days)
+        self.assertEqual(4_096, args.history_max_bytes)
+
+    def test_the_kept_list_names_the_project_label_the_store_actually_keeps(self) -> None:
+        # D4, the captain's ruling of 2026-09-03: the label was in an explicit
+        # gap in the contract and the store needs it as the grouping key, so the
+        # promotion put it in the kept-list. Bound to the record, so the prose
+        # and the field set cannot drift apart.
+        self.assertIn("the derived two-segment project label", self.FLAT)
+        self.assertIn("project", history.OBSERVATION_FIELDS)
+
+    def test_the_never_list_bans_the_fields_the_record_omits(self) -> None:
+        # The other direction of the same binding: every carrier the contract
+        # bans is absent from the record the store writes.
+        self.assertIn("Prompt text, of any session, at any point", self.FLAT)
+        for banned in ("title", "last_prompt", "state_detail", "instruction"):
+            with self.subTest(field=banned):
+                self.assertNotIn(banned, history.OBSERVATION_FIELDS)

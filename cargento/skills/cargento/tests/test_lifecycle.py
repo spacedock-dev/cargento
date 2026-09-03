@@ -249,6 +249,9 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -430,6 +433,9 @@ print(json.dumps({{
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with (
@@ -1168,7 +1174,7 @@ class CargentoServerTest(PageJsHarness):
         self.assertNotIn("within 10s", message)
 
     def test_daemon_rejects_the_flags_it_cannot_combine_with(self) -> None:
-        for other in ("--diagnose", "--stop", "--status"):
+        for other in ("--diagnose", "--stop", "--status", "--forget"):
             with (
                 mock.patch.object(sys, "argv", ["server.py", "--daemon", other]),
                 # parser.error() raises: argparse owns this exit, not main().
@@ -1217,6 +1223,9 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
@@ -1247,6 +1256,9 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=False,
                 no_ask=False,
                 no_git=False,
+                no_history=False,
+                history_days=14.0,
+                history_max_bytes=1_048_576,
                 daemon=True,
             ),
         )
@@ -1275,10 +1287,20 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=True,
                 no_ask=False,
                 no_git=True,
+                no_history=True,
+                history_days=14.0,
+                history_max_bytes=1_048_576,
                 daemon=True,
             ),
         )
-        for flag in ("--no-spacedock", "--no-usage", "--no-events", "--no-dismiss", "--no-git"):
+        for flag in (
+            "--no-spacedock",
+            "--no-usage",
+            "--no-events",
+            "--no-dismiss",
+            "--no-git",
+            "--no-history",
+        ):
             self.assertIn(flag, argv)
 
     def test_spawn_detached_uses_a_fixed_argv_and_detaching_flags(self) -> None:
@@ -1291,6 +1313,9 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1496,6 +1521,9 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_dismiss": False,
             "no_ask": False,
             "no_git": False,
+            "no_history": False,
+            "history_days": 14.0,
+            "history_max_bytes": 1_048_576,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -1523,6 +1551,49 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_git=False))
         self.assertNotIn("--no-git", argv)
+
+    def test_no_history_is_forwarded(self) -> None:
+        # DEC-6's off switch. Without the `spawn_argv` branch a user who turned
+        # the store off gets it back on the respawned daemon, and the promoted
+        # contract calls a respawned daemon that re-enables it a security bug in
+        # as many words. Note the two exact-set assertions in this file are
+        # blind to an omitted branch: what forces the edit is that the branch
+        # reads `args.no_history` directly, so the seven hand-written
+        # namespaces raise AttributeError rather than quietly passing.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_history=True))
+        self.assertIn("--no-history", argv)
+
+    def test_no_history_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_history=False))
+        self.assertNotIn("--no-history", argv)
+
+    def test_a_narrowed_retention_window_is_forwarded(self) -> None:
+        # The bounds are configurable as of the captain's ND-1 ruling, and a
+        # respawn that dropped a narrowed one would widen a bound the operator
+        # tightened — the same class of failure as re-enabling a store they
+        # turned off, since what falls outside the window is gone from the file.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_days=2.0))
+        self.assertIn("--history-days", argv)
+        self.assertEqual("2.0", argv[argv.index("--history-days") + 1])
+
+    def test_the_retention_window_is_absent_when_it_is_the_default(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_days=14.0))
+        self.assertNotIn("--history-days", argv)
+
+    def test_a_moved_size_cap_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_max_bytes=4_096))
+        self.assertIn("--history-max-bytes", argv)
+        self.assertEqual("4096", argv[argv.index("--history-max-bytes") + 1])
+
+    def test_the_size_cap_is_absent_when_it_is_the_default(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_max_bytes=1_048_576))
+        self.assertNotIn("--history-max-bytes", argv)
 
     def test_no_ask_is_forwarded(self) -> None:
         config = cfg()

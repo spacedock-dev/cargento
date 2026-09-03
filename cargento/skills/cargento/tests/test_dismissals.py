@@ -1,4 +1,4 @@
-"""The dismissal store: the one file Cargento writes on the reader's behalf.
+"""The dismissal store: one of the two files Cargento writes on the reader's behalf.
 
 Every test here builds its own application over stub harnesses, the way
 `ApplicationIsolationTest` does, because the subject is what `collect` publishes
