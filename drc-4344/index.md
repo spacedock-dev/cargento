@@ -41,13 +41,13 @@ gates:
                 target-stage: implementation
                 state: consumed
 review-round:
-    id: round:drc-4344:review:1
+    id: round:drc-4344:review:2
     stage: review
-    cycle: 1
+    cycle: 2
     briefing:
-        id: briefing:drc-4344:review:round-1:revision-1
-        digest: sha256:783da97dc261856c9978ecf2727acaaa76e6a01fde81a6528362524c11d61dbc
-        room-ref: ./review/review/round-1
+        id: briefing:drc-4344:review:round-2:revision-1
+        digest: sha256:9db5507d5ef3413f03914a70953b74f4803c5148fb44aef3f0d008ec994a87d4
+        room-ref: ./review/review/round-2
 ---
 
 [DRC-4344](https://linear.app/recce/issue/DRC-4344) — Linear priority Urgent, no estimate yet, labels `discovered-by-agent`, `journey:mid-flight`, `move:sharpen`. Filed 2026-09-03 by the first officer from a live defect measured on this very session's board.
@@ -600,6 +600,7 @@ not reproduce — and it is the finding the verdict rests on.
 ### Feedback Cycles
 
 - Cycle 1: NO-GO — review gate, three lenses plus an arbiter (3 of the lens findings refuted), 1 Material + 2 Needs-decision + 4 Deferred risk + 4 Polish fixed in-PR, 2 Needs-decision ruled by the captain (window gate extended to the lead's own agents; AC-2 reworded), 1 Deferred risk filed as DRC-4348; surface 42 files/+2572 LOC vs estimate 17 files/+230 ±30% (runtime +378 vs band 161–299, overage accepted under the captain's standing ruling); AC narrowed: AC-2 wording only
+- Cycle 2: NO-GO — review gate, self-verify plus three lenses (1 Material regraded Deferred, 1 Needs-decision regraded up into the verdict), 1 Needs-decision + 3 Deferred risk + 2 Polish fixed in-PR, heading total deferred to DRC-4348; surface 42 files/+2777 LOC vs estimate 17 files/+230 ±30% (round +205; overage accepted under the captain's standing ruling); AC unchanged
 
 ## Out of scope
 
