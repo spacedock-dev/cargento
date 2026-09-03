@@ -121,6 +121,13 @@ function nextWorkstreamAskTime(ask, generated, floor){
    one arrives — so a replayed window and a polled one are the same shape rather
    than two cases to keep in step.
 
+   A session's LAST stored record closes its span rather than opening one, and
+   that is the load-bearing part. The store records what changed, never when the
+   server stopped, so nothing observed the end of a final `working` record:
+   holding it to this tab's first payload counted a closed laptop as time an
+   agent worked. A state is counted only over a span whose end was actually
+   observed, which biases the figure down and never invents evidence (NUI-11).
+
    The sample objects are shared between batches on purpose. A session's sample
    is identical until its own next record, and a full store is ~7,800 records:
    rebuilding one object per session per record allocated millions where sharing
@@ -145,22 +152,30 @@ function nextWorkstreamSeed(history, labels, generated){
   }
   if(records.length === 0) return false;
   records.sort((left, right) => left.at - right.at);
+  const closes = new Map();
+  records.forEach((record, index) => closes.set(nextWorkstreamSessionKey(record), index));
   const held = new Map();
-  for(const record of records){
+  const seen = new Map();
+  records.forEach((record, index) => {
     const key = nextWorkstreamSessionKey(record);
-    const previous = held.get(key);
-    held.set(key, {
-      at: record.at,
-      harness: record.harness,
-      kind: "sample",
-      project: record.project,
-      // The store keeps no token rate, and an unknown rate is what turns the
-      // delegation figure into a floor rather than a number it cannot support.
-      rate: null,
-      rateKnown: false,
-      sid: record.sid,
-      state: record.state,
-    });
+    const previous = seen.get(key);
+    seen.set(key, record);
+    if(closes.get(key) === index){
+      held.delete(key);
+    }else{
+      held.set(key, {
+        at: record.at,
+        harness: record.harness,
+        kind: "sample",
+        project: record.project,
+        // The store keeps no token rate, and an unknown rate is what turns the
+        // delegation figure into a floor rather than a number it cannot support.
+        rate: null,
+        rateKnown: false,
+        sid: record.sid,
+        state: record.state,
+      });
+    }
     const events = [];
     if(previous && previous.state !== record.state){
       const transition = nextWorkstreamTransition(previous.state, record.state);
@@ -182,7 +197,7 @@ function nextWorkstreamSeed(history, labels, generated){
     // measured against; it is not itself a change, and listing it would make
     // the rail's heading untrue of its own rows.
     nextWorkstreamAppendGroup({at: record.at, events, samples: [...held.values()]});
-  }
+  });
   return true;
 }
 

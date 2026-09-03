@@ -567,6 +567,43 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("no figure yet", block)
         self.assertIn("DELEGATION · SINCE THIS TAB OPENED", block)
 
+    def test_a_session_left_working_in_its_last_record_is_not_counted_to_now(self) -> None:
+        out = self.run_fixture(
+            self.RESET
+            + """
+__delegationPayload = {
+  ...__delegationPayload,
+  generated: 1000000,
+  history: [
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "idle", last_activity: 740800},
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "working", last_activity: 982800}
+  ],
+  sessions: [{...__delegationPayload.sessions[0], state: "idle"}]
+};
+nextObserveWorkstream(__delegationPayload);
+nextData = __delegationPayload;
+renderNext();
+const metric = nextDelegationMetric(nextWorkstreamProjectWindow("alpha/repo"));
+console.log(JSON.stringify({
+  delegatedSec: metric.delegatedSec,
+  totalSec: metric.totalSec,
+  html: __els.app.innerHTML
+}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        # Nothing observed the end of that `working` span: the server stopped
+        # while the session ran, and the store records what changed rather than
+        # when it stopped. Holding the last record to this tab's first payload
+        # would count 4h47m of a closed laptop as time an agent worked — an
+        # upward bias, which is the direction NUI-11 says never to invent in.
+        self.assertEqual(0, out["delegatedSec"])
+        self.assertEqual(0, out["totalSec"])
+        self.assertIn("no figure yet", self.delegation_block(out["html"]))
+
     def test_a_seeded_span_with_no_rate_does_not_dilute_the_measured_one(self) -> None:
         html = self.run_fixture(
             self.RESET
@@ -575,10 +612,12 @@ const busy = {...__delegationPayload.sessions[0], state: "working", rate_per_min
 nextObserveWorkstream({
   ...__delegationPayload,
   generated: 990000,
-  history: [{
-    harness: "claude", sid: "session-one", project: "alpha/repo",
-    state: "working", last_activity: 740800
-  }],
+  history: [
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "working", last_activity: 740800},
+    {harness: "claude", sid: "session-one", project: "alpha/repo",
+     state: "needs_input", last_activity: 982800}
+  ],
   sessions: [busy]
 });
 const live = {...__delegationPayload, generated: 1000000, sessions: [busy]};
