@@ -105,6 +105,17 @@ gates:
                 id: briefing:drc-4037:review:attempt-2:revision-1
                 digest: sha256:07fa592bf7cab2b6aaad236a130826d7d58439940d7c01b055f337921216d083
                 room-ref: ./review/review/briefing-2
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4037:review:2
+                briefing: briefing:drc-4037:review:attempt-2:revision-1
+                by: person:captain
+                at: "2026-09-03T04:13:17.382665Z"
+                decision: approve
+                reason: 'Captain approved the E4 review gate on 2026-09-03 ("I Approve the E4 gate"). Accepts the delivery: PR #239 merged at ac6ac29 with correction round 1 verified closed (R2-R7 each reproduced: test passes, named mutation fails), AC1-AC10 holding on main with AC9/AC10 superseded in wording by PR #245/#247, AC11 interactive and captain-owned, CI 12/12 at eff93f6 and 3/3 on main; PR #245 render stands in for the approved PR 2 per the 2026-09-03 ruling. Post-merge reconcile complete and receipt posted. Bounded: R1 (F1, Needs decision) and the nine unfiled Deferred-risk findings (F2) are handed to the FO for filing, outside this PR.'
+              application:
+                target-stage: done
+                state: pending
 ---
 
 
