@@ -1938,3 +1938,186 @@ neither can be read literally any more: the classic UI they were written against
 frontends" and "both byte-pin oracle sets" each have exactly one survivor, and that survivor passes.
 The one thing worth a follow-up is the promise map's "how many files changed", which reintroduces
 the precise error bound 2 of DEC-3 ruled on, in the user-facing document, where no test pins it.
+
+## Stage Report: review (cycle 3, retrospective)
+
+Depth, chosen from the property of the change before starting: **self-verify by reproduction — one
+reviewer, no lenses, no arbiter.** The property is that PR #239 is already merged (`ac6ac29`, head
+`eff93f6`), its full-adversarial pass ran once and produced R1-R7, and what is unrecorded is only
+whether correction round 1 closed R2-R7 as its report claims. That is six named fixes with six named
+oracles, and every one of them is settled by re-running the fix's test and re-applying the mutation
+the correction round says it now catches — a mechanical check, not a judgment call. `AGENTS.md`'s
+Calibrating Effort forbids spending a second adversarial pass on it, and its own measured lesson is
+that uniform depth is the failure. Nothing under the repository tree was edited: every mutation ran
+in a throwaway local clone at `/tmp/drc4037-review-main`, reverted with `git checkout --` after each.
+
+- DONE: Review depth chosen and stated up front from the property of the change: PR #239 is already merged (merge `ac6ac29`, head `eff93f6`) and its cycle-1 full-adversarial review returned NO-GO on R1-R7; this pass verifies that correction round 1 closed R2-R7 as its report claims — reproduce each fix's named test on today's `main` and re-run its named mutation where that is cheap — and records R1's standing (held as Needs decision, never fixed) honestly; no file under the repository tree is edited.
+  All six reproduced on `main` at `900b51c`. Full suite run **once**: 1768 tests, 1 skip, OK in 33 s
+  at load average 5.5, so no contention re-run was needed. Details under the two sections below.
+- DONE: Every acceptance criterion AC1-AC11 under `## Acceptance criteria (cycle 2)` given an evidence citation against today's `main` (a `git show <sha>:<path>` read, a test run with its pass count, a command's exit code) or named as unmet or superseded — AC9/AC10 by the cycle-3 closeout report's findings, AC11 (interactive) by saying what would settle it without building automation.
+  Eleven citations under `### Acceptance criteria against today's main`; AC9 and AC10 hold in
+  substance with the closeout's supersession confirmed independently, AC11 remains unsettled.
+- DONE: CI state named for the head the evidence belongs to (`eff93f6` on PR #239 and the quality-gate run on `main` at or after `ac6ac29`), Copilot inline review comments on #239 read in addition to top-level reviews with what became of each, and a GO/NO-GO verdict with findings under their disposition labels, written as `## Stage Report: review (cycle 3, retrospective)`.
+  Under `### CI, and the heads the evidence belongs to` and `### Review-finding disposition`.
+
+### R2-R7: the correction round's claims, re-run against today's `main`
+
+Each fix was checked twice — the shipped test passes, and the mutation the correction round names is
+re-applied to confirm that test is what catches it. Runs are `python3 -m unittest` from the clone
+root; the module sets are 238 tests (`test_events` + `test_observation` + `test_git_status`) and 52
+(`test_next_attention` + `test_next_page`), all green unmutated.
+
+- **R2 CLOSED.** `events.py:547-551` guards on the mark's presence as well as its freshness
+  (`fresh = bool(finished_at) and not stale`). Reverting to `fresh = not stale` fails
+  `test_a_reading_with_no_stop_behind_it_is_not_published` and
+  `test_a_lapsed_working_overlay_leaves_the_reading_unpublished` (plus 8 further `test_events` tests
+  that the same revert reaches through `finished_at` — over-determined, not under).
+- **R2's second door CLOSED.** `observation.py:409` pops `_git` alongside the stop mark. Removing
+  that one line fails 3 `test_observation` tests. **Record correction:** the round's report calls
+  them "the three `..._discards_its_reading` coordinator tests"; only two carry that name, the third
+  being `test_a_session_end_that_probes_nothing_does_not_keep_the_last_reading`. The count is right
+  and the naming is not.
+- **R3 CLOSED.** Both mutations the cycle-1 review measured green now fail. Deleting the six
+  `"dirty"/"changed": None` lines from the three `patch.update` blocks fails
+  `test_a_live_{working,gate,idle}_overlay_nulls_the_reading` (3 failures). Forcing
+  `aggregate.py:746`'s `git=` forward to `None` fails
+  `test_a_probed_row_reaches_the_published_bytes_carrying_no_pathname` (1 failure).
+- **R4 CLOSED.** With `PATH` holding no git, `test_git_status` gives **0 errors, 7 skips**; removing
+  the `skipIf` from `GitProbeReadingTest` restores the reviewer's exact **2 errors, 5 skips**.
+- **R5 CLOSED.** AC5's named oracle exists at `test_observation.py:1555` and is not tautological: it
+  drives a real `collect_json()` and asserts `dirty is True` and `changed == 2` on the published
+  bytes as well as the marker's absence, which is why the `git=None` mutation above fails it.
+- **R6 CLOSED.** `GitProbeCallSiteTest` (undecorated, so it holds where the behavioural tests skip)
+  pins argv, cwd, timeout, closed stdin and the absence of `shell=`. Replacing `GIT_STATUS_ARGV` at
+  the call site with `("git","status","--porcelain")` fails it while
+  `test_the_probe_is_exactly_the_one_bounded_command` run alone stays **OK** — the review's claim,
+  reproduced exactly.
+- **R7 CLOSED, and the caveat is now enforced rather than promised.** Both hazard tests run a
+  positive control in a repository of its own and `skipTest` when it cannot arm; the fsmonitor hook
+  is written with `newline=""`. Both controls armed on this host today, so both tests ran rather
+  than skipped (verbose run: 13 tests, 0 skips).
+
+### R1 — standing, verified rather than inherited
+
+**Unfixed, unfiled, and still live on `main`.** Reproduced today against `main`'s own
+`git_status.probe`, with a matched control: in a repo whose committed `.gitattributes` sets
+`*.bin filter=lfs`, one probe left an executable 350-byte `.git/hooks/pre-push` that was absent
+before it; the same repo without the filter attribute left none; `.git/index`'s mtime was unchanged
+in both, so `--no-optional-locks` still does its job and the write goes through a path the two
+bounds never contemplated. The text it falsifies is the text this PR promoted and is on `main`
+today: `SECURITY.md:61-62` — "neither writes there nor executes anything the repository supplies"
+(cycle 1 cited it as `:35` against the PR head; the file has shifted since).
+Per the scope note no fix is proposed; the remedy amends contract text and is the captain's alone.
+
+### Acceptance criteria against today's `main`
+
+- **AC1 MET.** `test_the_probe_is_exactly_the_one_bounded_command` and
+  `test_only_git_status_constructs_a_git_subprocess` pass (`offenders == ["git_status.py"]`), plus
+  `test_the_argv_is_a_tuple_a_caller_cannot_extend`. The call-site half is R6's spy, above. The
+  single-site oracle's weakness is cycle-1's R14, still deferred.
+- **AC2 MET, with the caveat AC2's own text cannot carry.** Both hazard tests ran (not skipped) on
+  this host, controls armed. The "neither writes nor executes" half of the criterion is falsified by
+  R1 above, exactly as the cycle-1 review recorded; the flags do what they claim, the criterion
+  claims more than the flags can deliver. Skip-clean under an absent git is R4, verified.
+- **AC3 MET.** `test_submit_returns_without_waiting_for_the_probe` and
+  `test_the_probe_does_not_run_while_the_coordinator_lock_is_held` pass; the second acquires
+  `_lock` non-blocking from inside the prober and asserts it was free.
+- **AC4 MET.** `test_one_probe_per_session_end_and_on_no_other_edge` and
+  `test_two_session_ends_probe_once_each_and_never_a_third` pass; the second deliberately asserts
+  once per edge rather than once per session, for the `/clear` reason.
+- **AC5 MET.** Diffed `701b7f0` against `main`: `events.PATCHABLE` grew by exactly `"dirty"` and
+  `"changed"`; `DECLARED_SESSION_FIELDS` grew by exactly the same two; `sessions.py:324-325`
+  defaults both to `None`. No-pathname-on-the-wire is R5's oracle.
+- **AC6 MET.** `GitNullSurfaceTest` covers cause 2 against **Codex** (`CODEX_EVENTS` carries no
+  session-end name, and `"codex" in IDENTITY_NORMALIZERS`), not via `scan-only` — the cycle-1
+  unsoundness did not recur. Wording gap worth naming: AC6 asked for "one test per cause" and the
+  four probe-returns-`None` causes are one `subTest` loop over an injected prober; the four are
+  separately exercised at the module boundary by `GitProbeRefusalTest`, so the coverage is there and
+  the shape is not what the AC described.
+- **AC7 MET.** `--no-git` at `cli.py:130`/`:213`, `config.py:48`, `lifecycle.py:558-559`;
+  `test_no_git_is_forwarded`, the `--no-git` parse assertion at `test_build_runtime_freezes_the_parsed_launch_options`
+  (`test_config_diagnostics.py:113`, whose `--no-git` assertion is deliberately separate),
+  `test_every_opt_out_reaches_the_respawned_daemon` (its flag tuple includes `--no-git`), and
+  `test_no_git_stops_the_probe_running_at_all`. `test_lifecycle` alone: OK.
+- **AC8 MET, and it is the strongest evidence in the set.** Recomputed independently: the
+  `SECURITY.md` section between the two named headings and the span between the two `---` rules of
+  `git show 701b7f0:docs/plans/git-probe-security-scope.md` are both **3231 bytes / 55 lines** with
+  identical sha256 (`250195d6eff986ff…`). `4ece71f` alone is `SECURITY.md +61/−1` and the plan doc
+  `−102`, one commit; the file does not exist on `main`; `validate_plugins.py` exit 0.
+- **AC9 MET in substance, superseded in wording — closeout's finding confirmed independently.**
+  `next-attention.js` renders `changed entries` (`:643`, `:686`) and `Stop observed; git state not
+  measured` for a `null` row. Falsifier run: changing `changed entries` to `changed files` fails 3
+  `test_next_attention` tests and both `test_next_page` byte oracles. `spark.js` and `next/` are
+  absent from `main` (deleted by `8d2585c`, PR #247), so "both frontends" has one survivor.
+- **AC10 MET, one oracle set instead of two.** `test_load_page_preserves_its_byte_oracles` passes;
+  pins recomputed outside the test from the shipped bytes — `next-attention.js` 42051 /
+  `9ce3a282a6b0…`, `styles.css` 39733 / `b8a77760c0a2…`, both matching. Part count is **14**, so the
+  figure count is 32 rather than AC10's 28; `test_page.py` does not exist on `main`.
+  `lint_embedded.py` exit 0.
+- **AC11 UNMET, and correctly unautomated.** Nothing here settles it. What would: one live drive —
+  the dashboard running, a real Claude session ended in a repository with known dirty state, and the
+  published `changed` compared against `git -c core.fsmonitor= --no-optional-locks status
+  --porcelain | wc -l` taken at that moment, with the `SessionEnd` payload captured under
+  `docs/captures/claude/` if its shape differs from `hooks-2.1.222-macos.jsonl`. Captain-owned.
+
+### CI, and the heads the evidence belongs to
+
+- **PR #239 head `eff93f6`:** 12 check runs, all `success`, every one reporting `head_sha eff93f6` —
+  `quality-gate`, `validate`, `version-guard`, `latest-client-smoke`, the three `Tests (ubuntu |
+  macos | windows-latest)`, `Runtime floor (Python 3.11)`, `Tests + coverage threshold`, `Type check
+  (mypy --strict)`, `Lint (ruff + format + frontend sources)`, `Detect what the gate can measure`.
+  Four workflow runs, all `pull_request` at that head, all success.
+- **`main` at `ac6ac29`:** three push runs, all `success`, created `2026-08-28T12:53:50Z` —
+  Quality Gate `33172992667`, Validate `33172992647`, Plugin Compatibility `33172992676`.
+- **`mergeStateStatus` now reads `UNKNOWN`**, which is what GitHub returns for a merged PR; it is
+  not a signal here and the cycle-1 `CLEAN` reading at `be1723d` is the last one that meant
+  anything.
+- **Reviews and Copilot:** 0 top-level reviews, 0 requested reviewers, **0 inline review comments**
+  (`/pulls/239/comments` returns an empty array), and the single issue comment is the
+  `github-actions[bot]` coverage table. Copilot review was never requested on #239, so nothing
+  became of an inline comment because there were none — the same vacuous-but-consistent reading
+  cycle 1 recorded across PRs 234/236/237/238.
+
+### Review-finding disposition
+
+- **F1 · Needs decision (R1, restated) + record gap.** R1 reproduces on `main` today (above) and has
+  no record outside this entity: no Linear issue, and DRC-4037's five `relatedTo` edges are all
+  pre-existing. It is a falsification of shipped contract text with no filed decision.
+- **F2 · Deferred risk · the nine cycle-1 Deferred-risk findings were never filed.** R8-R16 are
+  recorded in this entity's cycle-1 report and nowhere else; a Linear search returns no issue for
+  any of them. `## Review-finding disposition` says a Deferred risk is filed rather than promoted,
+  and the filing half did not happen. Promote-to-material condition: R10 (soft timeout on Windows)
+  and R8 (unbounded probe fan-out) become Material the first time either is observed on a supported
+  workflow — R1 having proved a repo-supplied child process exists to hold the pipes open.
+- **F3 · Polish · `docs/promise-map.md:129` still says "how many files changed".** `SECURITY.md:155`
+  says "counts porcelain entries rather than files", and `test_documentation.py:263` pins that
+  wording against `SECURITY.md` only, so the promise map is unpinned. Reported by the cycle-3
+  closeout and handed to the next `sync-docs` pass; confirmed still present on `main` at `900b51c`.
+- **F4 · Polish · one wrong test name in the correction-round report** (the `_discards_its_reading`
+  count, above). The claim it supports is true; the citation is not.
+
+Nothing here changes the merge, and per the stage definition nothing was edited: no worktree removed,
+no branch deleted, no file under the repository tree touched.
+
+### Verdict
+
+**GO**, retrospectively, on the question this pass was dispatched to settle: correction round 1
+closed R2 through R7, each verified twice — the shipped test passes and the named mutation fails it
+— and AC1 through AC10 all hold against today's `main`, with AC9 and AC10 superseded in wording
+exactly as the cycle-3 closeout described and confirmed here independently. AC11 remains unsettled
+and captain-owned. The GO is bounded: it does not reach R1, which is unfixed, unfiled, reproduced
+again today, and still Needs decision, nor the nine Deferred-risk findings that were never filed.
+Those are F1 and F2 above, for the FO to disposition — neither is fixable in this stage and neither
+was ever in this PR's scope.
+
+### Summary
+
+Chose self-verify by reproduction rather than a second adversarial pass, because the open question
+was mechanical: six named fixes with six named oracles. Every one closed, and each was checked by
+re-applying the mutation the correction round says its new test catches — the R6 case is the sharpest,
+where stripping both flags at the call site fails the new spy while the constant-only test stays
+green, which is the cycle-1 finding reproduced end to end. AC8's byte-identity was recomputed from
+`701b7f0` rather than trusted (3231 bytes, matching sha256), and AC9/AC10's byte pins were derived
+from the shipped assets outside the tests. R1 was re-reproduced with a matched control against
+today's `main` and stands unfixed; that plus the nine unfiled Deferred-risk findings are the two
+items this review hands back, and neither belongs to PR #239.
