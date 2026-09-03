@@ -173,6 +173,11 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
                 self.assertIn(name, comment)
 
     REGISTRY_CAPTURE = "claude/team-registry-2.1.259-macos.jsonl"
+    DRIVE_CAPTURE = "claude/teammate-board-drive-2.1.259-macos.jsonl"
+    # Both DRC-4344 files read stores that hold operator text, so the
+    # shapes-never-values rule is checked over both rather than over the one
+    # that happened to be written first.
+    TEAMMATE_CAPTURES: ClassVar[tuple[str, ...]] = (REGISTRY_CAPTURE, DRIVE_CAPTURE)
     # Field names may be recorded; a field's contents may not. A shape map is
     # keyed BY field name, and a name list holds field names as its values, so
     # those are the only two places a forbidden name may legitimately appear.
@@ -208,6 +213,14 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         self.assertTrue(records, "the capture must not be empty")
         return records
 
+    def teammate_capture_records(self) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        for name in self.TEAMMATE_CAPTURES:
+            found = self.records(self.CAPTURES / name)
+            self.assertTrue(found, f"{name} must not be empty")
+            records += found
+        return records
+
     def test_the_team_registry_captures_field_shapes_hold_only_type_names(self) -> None:
         # DRC-4344's capture reads a store whose member entries carry `prompt`,
         # which is the operator's own words. The rule the captures README states
@@ -229,7 +242,7 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         # enough to be prose.
         # Falsified by: recording either field's value anywhere outside a
         # field-name position.
-        for record in self.registry_records():
+        for record in self.teammate_capture_records():
             for trail, value in self.strings(record):
                 if trail and (trail[0] in self.SHAPE_MAPS or trail[-1] in self.NAME_LISTS):
                     continue
@@ -250,7 +263,7 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         # sentence. It catches prose by shape rather than by knowing every field
         # that could carry it.
         # Falsified by: any recorded value that reads as a phrase.
-        for record in self.registry_records():
+        for record in self.teammate_capture_records():
             for trail, value in self.strings(record):
                 self.assertLessEqual(
                     len(value), 64, f"{'.'.join(trail)} is long enough to be prose"
