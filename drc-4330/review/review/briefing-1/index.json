@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4330:review:attempt-1:revision-1",
+  "question": "Authorize the merge of PR #258 (DRC-4330, History groundwork): one 139-line file docs/plans/history-store-security-scope.md at head 0016542, stating DEC-6's contract for the local history store and the SECURITY.md/SKILL.md/cli.py sentences H1's promotion must amend — after a NO-GO round whose five Material findings were fixed as clause-level edits and re-verified GO by a fresh reviewer?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4330:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/293e3275efc28b369bf96e9003cfb7c12d2506b3/drc-4330/index.md",
+      "rev": "sha256:bea9375b908f706dee28134a9acc2929e4ff68fe33b4800ded9550d79a0a5143",
+      "mediaType": "text/markdown",
+      "summary": "Cycle 2 review GO on head 0016542: six authorized fixes closed in five hunks, D1-D3 byte-identical to c46f045, AC-1 through AC-7 reproduced (AC-2 with a negative control; AC-7's previously failing clause repaired at its root), CI green on this head with code=false read from the job log, mergeStateStatus CLEAN, no Copilot review to read. One new Deferred risk D4 (M1's gloss calls the published project label a path) to file against DRC-4044; two Polish seams recorded, no fix asked. Round 1 recorded as round:drc-4330:review:1."
+    }
+  ]
+}
