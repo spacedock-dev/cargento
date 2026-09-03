@@ -1013,3 +1013,18 @@ The honest reading is that the triage estimate was made before three things were
 ### Summary
 
 Both of the FO's conditions are satisfied and each is falsifiable: the transition-only rule is enforced by a flag and checked against the file's own mtime, and AC2 now travels the real aggregate path and fails seven ways without the derivation. The lane placement is recorded with both citations. One condition I did not meet and am not hiding: the write can still run on an HTTP handler thread, and I recommend leaving it there on the evidence that it costs 21 ms at the absolute worst case inside a 154 ms collection, is 1.8 ms and disk-free on a quiet board, and that moving it would add a writer thread plus a shutdown-flush path whose failure mode is losing the last transitions before a restart. The surface is now +40% runtime and +46% oracles, worse than when I first escalated, because satisfying correctness conditions costs lines; the captain's A/B/C ruling is still what this stage is waiting on.
+
+## Stage Report: implementation (cycle 3 — tolerance ruled, PR opened)
+
+- DONE: a PR opened whose body starts `Implements [DRC-4044](https://linear.app/recce/issue/DRC-4044) — H1 · Keep a history of what happened` with a `## Verification` section, its number and head SHA reported
+  **PR [#260](https://github.com/spacedock-dev/cargento/pull/260), head `5f736392e61a2c9f81baebf0af00a81703b0993d`.** Supersedes the cycle-1 `FAILED` entry for this item, which was held pending the tolerance ruling. Body verified after opening: first line exact, `## Verification` present, no `Closes` line (no mirrored GitHub issue exists).
+- DONE: the tolerance overage accepted and recorded
+  `captain-ruling[2026-09-03]` — verbatim: "Yea A - Accept and open the PR". Both overages accepted as compelled correctness rather than scope, with the causes on the record. Quoted in the PR body's surface section alongside both sets of figures.
+- DONE: the surface figures carried into the PR with the ruling's own numbers distinguished from the head's
+  The ruling was given against cycle 1's figures at `83ae971` (runtime +30%, oracles +27%); the head carries cycle 2's (runtime +40%, oracles +46%), because the two review conditions landed after the ruling. Both columns are in the PR body's table rather than only the accepted ones, so the delta is visible in review rather than discovered there. Flagged to the FO before opening.
+- DONE: opened from the head that contains the correction round, not the SHA named in the authorization
+  The FO's instruction named `83ae971`. That commit predates the two conditions the same FO required — it lacks the transition-only flag, the real-path AC2 test and the in-memory baseline. Opened from `5f73639` so the conditions ship, and the discrepancy was put to the FO rather than resolved silently.
+
+### Summary
+
+The captain ruled A and PR [#260](https://github.com/spacedock-dev/cargento/pull/260) is open at head `5f73639`, carrying AC1-AC9 with `## Verification` naming every command and what it said, all four deviations with their before/after sentences and file:line citations, the threading and lock discipline with its measurements, and the surface figures against the estimate with the ruling quoted. Two departures from the letter of the authorization, both reported rather than taken quietly: the PR was opened from `5f73639` instead of the named `83ae971`, because the named commit predates the FO's own conditions, and the accepted figures are labelled as cycle 1's beside the head's higher ones. Implementation is complete; the stage's remaining exposure is AC11, the live drive the issue owes once PR 2 renders the panels.
