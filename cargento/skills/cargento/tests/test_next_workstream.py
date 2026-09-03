@@ -330,6 +330,105 @@ const localStorage = {
         self.assertIn("No state changes observed since this tab opened.", out)
         self.assertNotIn("data-next-workstream-collapsed", out)
 
+    # Three stored observations of one session, oldest first, exactly the shape
+    # `history.appended` writes: a record per state change stamped with the
+    # session's own activity time. Three days before the fixture's `generated`,
+    # so the window a tab-lifetime caption would report and the window the store
+    # actually covers cannot be confused for each other.
+    SEEDED = """[
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "idle", last_activity: 740800},
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "working", last_activity: 748000},
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "needs_input", last_activity: 751600}
+]"""
+
+    def seed_first_payload(self, history: str) -> str:
+        return f"""
+nextWorkstreamGroups = [];
+nextWorkstreamEntryCount = 0;
+nextWorkstreamPreviousSessions = new Map();
+nextWorkstreamSeenAsks = new Map();
+nextWorkstreamLastGenerated = null;
+nextWorkstreamObservedSince = null;
+__workstreamPayload = {{...__workstreamPayload, generated: 1000000{history}}};
+nextObserveWorkstream(__workstreamPayload);
+nextData = __workstreamPayload;
+renderNext();
+const window = nextWorkstreamProjectWindow("alpha/repo");
+console.log(JSON.stringify({{
+  events: window.events.map(event => (
+    {{at: event.at, from: event.fromState, to: event.toState, label: event.label}}
+  )),
+  startedAt: window.startedAt,
+  label: nextWorkstreamWindowLabel(window),
+  html: __els.app.innerHTML
+}}));
+"""
+
+    def test_a_seeded_rail_lists_the_stored_transitions_and_reports_their_window(self) -> None:
+        out = self.run_fixture(self.seed_first_payload(f", history: {self.SEEDED}"))
+        assert isinstance(out, dict)
+
+        # Two transitions from three records: the first record is the baseline a
+        # change is measured against, not a change in itself, which is what keeps
+        # the rail's heading ("OBSERVED STATE CHANGES") true of what it lists.
+        self.assertEqual(
+            [
+                {"at": 748000, "from": "idle", "to": "working", "label": "agent resumed"},
+                {
+                    "at": 751600,
+                    "from": "working",
+                    "to": "needs_input",
+                    "label": "needs input",
+                },
+            ],
+            out["events"],
+        )
+        self.assertEqual(740800, out["startedAt"])
+        self.assertEqual("last 3d", out["label"])
+        # The caption is the falsifier AC10 names: seeding the data and leaving
+        # the caption hardcoded makes the panel lie about its own provenance.
+        self.assertNotIn("since this tab opened", out["html"])
+        self.assertIn("last 3d", out["html"])
+
+    def test_without_a_stored_history_the_rail_still_captions_the_tab(self) -> None:
+        out = self.run_fixture(self.seed_first_payload(""))
+        assert isinstance(out, dict)
+
+        self.assertEqual([], out["events"])
+        self.assertEqual(1000000, out["startedAt"])
+        self.assertEqual("since this tab opened", out["label"])
+        self.assertIn("No state changes observed since this tab opened.", out["html"])
+
+    def test_a_stored_record_the_page_cannot_use_is_dropped_rather_than_drawn(self) -> None:
+        # Every field arrives from a file any local process could have replaced.
+        # A record with no usable stamp or no session identity cannot be placed on
+        # a timeline at all, so it is dropped before it can shift the window that
+        # the caption then reports.
+        out = self.run_fixture(
+            self.seed_first_payload(
+                """, history: [
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "idle", last_activity: "not-a-number"},
+  {harness: "claude", sid: "", project: "alpha/repo",
+   state: "idle", last_activity: 700000},
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "idle", last_activity: 740800},
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "working", last_activity: 748000}
+]"""
+            )
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(
+            [{"at": 748000, "from": "idle", "to": "working", "label": "agent resumed"}],
+            out["events"],
+        )
+        self.assertEqual(740800, out["startedAt"])
+
 
 if __name__ == "__main__":
     unittest.main()

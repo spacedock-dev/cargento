@@ -1,4 +1,9 @@
 const NEXT_DELEGATION_MIN_WINDOW_SEC = 600;
+// The ceiling on a window this tab observed for itself, so the figure keeps
+// meaning "recently". It is deliberately not applied to a window seeded from
+// the store: retention there is the reader's own setting, and clamping a
+// fourteen-day store to six hours would report six hours and call it the
+// window the caption beside it names.
 const NEXT_DELEGATION_MAX_WINDOW_SEC = 6 * 60 * 60;
 
 /* Delegation is elapsed observed project time with at least one working
@@ -57,6 +62,7 @@ function nextDelegationRange(window, startedAt, endedAt){
   let rateArea = 0;
   let rateFloor = false;
   let rateMeasured = false;
+  let rateSec = 0;
   let totalSec = 0;
   for(let index = 0; index + 1 < batches.length; index += 1){
     const batch = batches[index];
@@ -85,6 +91,11 @@ function nextDelegationRange(window, startedAt, endedAt){
       }
     }
     rateArea += aggregateRate * duration;
+    // Divided by the span that was measured, not by every delegated second. A
+    // seeded window carries no token rate at all, so dividing by `delegatedSec`
+    // would spread one measured hour's area across fourteen days and print a
+    // floor two orders of magnitude under the rate it was derived from.
+    if(batchMeasured) rateSec += duration;
     rateMeasured = rateMeasured || batchMeasured;
     rateFloor = rateFloor || batchUnknown;
   }
@@ -96,7 +107,7 @@ function nextDelegationRange(window, startedAt, endedAt){
     humanTurns: nextDelegationHumanTurns(window.events, actualStart, endedAt),
     observedSec,
     rateFloor,
-    ratePerMin: delegatedSec > 0 && rateMeasured ? rateArea / delegatedSec : null,
+    ratePerMin: rateSec > 0 && rateMeasured ? rateArea / rateSec : null,
     startedAt: actualStart,
     totalSec,
   };
@@ -108,7 +119,9 @@ function nextDelegationMetric(window){
   if(endedAt == null || retainedSince == null || endedAt <= retainedSince){
     return nextDelegationRange(window || {batches: [], events: []}, endedAt || 0, endedAt || 0);
   }
-  const startedAt = Math.max(retainedSince, endedAt - NEXT_DELEGATION_MAX_WINDOW_SEC);
+  const startedAt = window && window.seeded
+    ? retainedSince
+    : Math.max(retainedSince, endedAt - NEXT_DELEGATION_MAX_WINDOW_SEC);
   return nextDelegationRange(window, startedAt, endedAt);
 }
 
@@ -156,13 +169,18 @@ function nextProjectDelegation(context){
   const window = nextWorkstreamProjectWindow(context.group.label);
   const metric = nextDelegationMetric(window);
   const withheld = metric.observedSec < NEXT_DELEGATION_MIN_WINDOW_SEC || metric.delegatedPct == null;
-  const label = withheld ? "SINCE THIS TAB OPENED" : nextWorkstreamWindowLabel(metric).toUpperCase();
+  // A withheld figure names the window it is short of, but only when the store
+  // seeded one. A tab that has watched five minutes of its own has nothing to
+  // report but its own lifetime, which is what the caption already said.
+  const label = withheld && !window.seeded
+    ? NEXT_WORKSTREAM_TAB_WINDOW.toUpperCase()
+    : nextWorkstreamWindowLabel(withheld ? window : metric).toUpperCase();
   const header = `<header><span>DELEGATION · ${esc(label)}</span></header>`;
   if(withheld){
     return '<section class="next-delegation" data-next-delegation>' + header +
       '<div class="next-delegation-withheld" data-next-delegation-withheld>' +
       '<strong>no figure yet</strong>' +
-      '<small>Waiting for one complete token-rate window in this tab.</small></div></section>';
+      '<small>Waiting for one complete token-rate window.</small></div></section>';
   }
   const rounded = Math.round(metric.delegatedPct);
   const trend = nextDelegationTrendMarkup(nextDelegationTrend(window));

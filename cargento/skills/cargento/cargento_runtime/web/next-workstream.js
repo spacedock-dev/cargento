@@ -5,6 +5,11 @@ const NEXT_WORKSTREAM_ENTRY_CAP = 100000;
 // Preserve the released preference key so stored browser state survives the
 // promotion and cannot collide with keys from retired dashboard versions.
 const NEXT_WORKSTREAM_COLLAPSED_KEY = "cargento.next.workstream.collapsed";
+// What the caption says when nothing older than this tab is known. Named
+// rather than written twice because both panels ask whether it still
+// applies, and a seeded window that kept saying it would be the panel
+// lying about where its own rows came from.
+const NEXT_WORKSTREAM_TAB_WINDOW = "since this tab opened";
 
 let nextWorkstreamGroups = [];
 let nextWorkstreamEntryCount = 0;
@@ -12,6 +17,7 @@ let nextWorkstreamPreviousSessions = new Map();
 let nextWorkstreamSeenAsks = new Map();
 let nextWorkstreamLastGenerated = null;
 let nextWorkstreamObservedSince = null;
+let nextWorkstreamSeeded = false;
 
 function nextWorkstreamStoredCollapsed(){
   try{
@@ -103,6 +109,83 @@ function nextWorkstreamAskTime(ask, generated, floor){
   return registered > floor && registered <= generated ? registered : generated;
 }
 
+/* The published history holds one record per observed state change, stamped
+   with the session's own activity time (`history.appended`), oldest first. It is
+   replayed here rather than in the panels because both of them read the same
+   group list, and a store that reached only the rail would leave the delegation
+   figure measuring a tab that had just opened.
+
+   Each record's own snapshot becomes a batch: every session known at that stamp,
+   in the state its latest record gave it. That is the reading the delegation
+   arithmetic already makes of a live poll — an observation holds until the next
+   one arrives — so a replayed window and a polled one are the same shape rather
+   than two cases to keep in step.
+
+   The sample objects are shared between batches on purpose. A session's sample
+   is identical until its own next record, and a full store is ~7,800 records:
+   rebuilding one object per session per record allocated millions where sharing
+   allocates one per record. */
+function nextWorkstreamSeed(history, labels, generated){
+  const records = [];
+  for(const entry of Array.isArray(history) ? history : []){
+    const at = nextNumber(entry && entry.last_activity);
+    const sid = String(entry && entry.sid || "");
+    // A record with no ordered stamp or no session cannot be placed on a
+    // timeline at all. The store is a file any local process could have
+    // replaced, so this drops rather than repairs — the same posture the reader
+    // takes on the way in.
+    if(at == null || !sid || at > generated) continue;
+    records.push({
+      at,
+      harness: String(entry && entry.harness || ""),
+      project: String(entry && entry.project || ""),
+      sid,
+      state: String(entry && entry.state || "idle"),
+    });
+  }
+  if(records.length === 0) return false;
+  records.sort((left, right) => left.at - right.at);
+  const held = new Map();
+  for(const record of records){
+    const key = nextWorkstreamSessionKey(record);
+    const previous = held.get(key);
+    held.set(key, {
+      at: record.at,
+      harness: record.harness,
+      kind: "sample",
+      project: record.project,
+      // The store keeps no token rate, and an unknown rate is what turns the
+      // delegation figure into a floor rather than a number it cannot support.
+      rate: null,
+      rateKnown: false,
+      sid: record.sid,
+      state: record.state,
+    });
+    const events = [];
+    if(previous && previous.state !== record.state){
+      const transition = nextWorkstreamTransition(previous.state, record.state);
+      events.push({
+        at: record.at,
+        filled: transition.filled,
+        fromState: previous.state,
+        harness: record.harness,
+        kind: "state",
+        label: nextWorkstreamStateLabel(record.state),
+        project: record.project,
+        right: nextWorkstreamHarnessLabel(record.harness, labels),
+        sid: record.sid,
+        state: record.state,
+        toState: record.state,
+      });
+    }
+    // A session's first stored record establishes the state a later change is
+    // measured against; it is not itself a change, and listing it would make
+    // the rail's heading untrue of its own rows.
+    nextWorkstreamAppendGroup({at: record.at, events, samples: [...held.values()]});
+  }
+  return true;
+}
+
 function nextObserveWorkstream(payload){
   const generated = nextNumber(payload && payload.generated);
   if(generated == null || (nextWorkstreamLastGenerated != null && generated <= nextWorkstreamLastGenerated)){
@@ -140,7 +223,10 @@ function nextObserveWorkstream(payload){
   }
 
   if(nextWorkstreamLastGenerated == null){
-    nextWorkstreamObservedSince = generated;
+    nextWorkstreamSeeded = nextWorkstreamSeed(payload && payload.history, labels, generated);
+    nextWorkstreamObservedSince = nextWorkstreamGroups.length > 0
+      ? nextWorkstreamGroups[0].at
+      : generated;
     nextWorkstreamPreviousSessions = current;
     for(const ask of asks){
       const id = String(ask && ask.id || "");
@@ -235,20 +321,33 @@ function nextWorkstreamProjectWindow(project){
     endedAt: nextWorkstreamLastGenerated,
     events,
     samples,
+    seeded: nextWorkstreamSeeded,
     startedAt: startedAt == null ? nextWorkstreamObservedSince : startedAt,
   };
 }
 
 function nextWorkstreamWindowLabel(window){
   if(window.startedAt == null || window.endedAt == null || window.endedAt <= window.startedAt){
-    return "since this tab opened";
+    return NEXT_WORKSTREAM_TAB_WINDOW;
   }
   const seconds = Math.floor(window.endedAt - window.startedAt);
   if(seconds < 60) return `last ${Math.max(1, seconds)}s`;
   if(seconds < 3600) return `last ${Math.floor(seconds / 60)}m`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return minutes === 0 ? `last ${hours}h` : `last ${hours}h ${minutes}m`;
+  if(seconds < 86400){
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return minutes === 0 ? `last ${hours}h` : `last ${hours}h ${minutes}m`;
+  }
+  // Days, because the store's shipped retention is fourteen of them and a
+  // seeded window reported as `last 336h` is a figure nobody reads as two weeks.
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  return hours === 0 ? `last ${days}d` : `last ${days}d ${hours}h`;
+}
+
+function nextWorkstreamWindowPhrase(window){
+  const label = nextWorkstreamWindowLabel(window);
+  return label === NEXT_WORKSTREAM_TAB_WINDOW ? label : `in the ${label}`;
 }
 
 function nextWorkstreamClock(stamp){
@@ -274,7 +373,7 @@ function nextProjectWorkstream(context){
   }
   if(events.length === 0){
     return '<section class="next-workstream">' + header +
-      '<p class="next-workstream-empty">No state changes observed since this tab opened.</p></section>';
+      `<p class="next-workstream-empty">No state changes observed ${esc(nextWorkstreamWindowPhrase(window))}.</p></section>`;
   }
   const rows = events.map(event => {
     const human = event.filled ? "" : " next-workstream-event--human";
