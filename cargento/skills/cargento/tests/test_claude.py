@@ -2659,6 +2659,10 @@ class DispatchedTeammateTest(RuntimeTestCase):
 
     PARENT = "aaaa1111-0000-0000-0000-000000000000"
 
+    @staticmethod
+    def stamp(when: float) -> str:
+        return datetime.fromtimestamp(when, UTC).isoformat()
+
     def project(self, tmp: str, *, now: float, parent_age: float = 600) -> Path:
         proj = Path(tmp) / "projects" / "-Users-test-repo"
         proj.mkdir(parents=True)
@@ -2922,6 +2926,64 @@ class DispatchedTeammateTest(RuntimeTestCase):
         self.assertIs(
             False, published["ensign-claimed-live"]["active"], "the flag cannot promote a stale one"
         )
+
+    def steady_state_head_reads(self, tmp: str, *, lenses: int, now: float) -> int:
+        """Head reads on the SECOND collection, with `lenses` grandchildren."""
+        proj = self.project(tmp, now=now)
+        child_sid = "bbbb2222-0000-0000-0000-000000000000"
+        self.teammate(
+            proj,
+            sid=child_sid,
+            name="ensign-done",
+            stamp=self.stamp(now - 3600),
+            age=3600,
+            now=now,
+        )
+        directory = proj / child_sid / "subagents"
+        directory.mkdir(parents=True)
+        for index in range(lenses):
+            fp = directory / f"agent-{index}.jsonl"
+            fp.write_text(json.dumps({"type": "user", "timestamp": self.stamp(now - 3600)}) + "\n")
+            os.utime(fp, (now - 3600, now - 3600))
+
+        counted = {"reads": 0}
+        real = runtime_io.read_prefix_bytes
+
+        def counting(path: str, *, max_bytes: int) -> bytes:
+            counted["reads"] += 1
+            return real(path, max_bytes=max_bytes)
+
+        with (
+            store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+            store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            store_patch(TEAMS_DIR=str(Path(tmp) / "no-teams")),
+        ):
+            config, state = runtime()
+            with mock.patch.object(runtime_io, "read_prefix_bytes", counting):
+                claude_collector.collect(config, state, now, 24.0, False)
+                counted["reads"] = 0
+                rows = claude_collector.collect(config, state, now, 24.0, False)
+        self.assertEqual(lenses + 1, len(rows[0]["subagents"]))
+        return counted["reads"]
+
+    def test_the_roster_does_not_cost_a_head_read_per_pass(self) -> None:
+        # The published roster reaches past the freshness gate, so before the
+        # memo it re-read a bounded head per child and per grandchild on every
+        # collection: measured at 178 reads a pass on a store of 8 finished
+        # teammates of 20 workers each, for a roster that was entirely inactive.
+        # Asserted as "does not scale with the roster" rather than as a fixed
+        # count, because a few reads recur for an unrelated reason -- a tiny
+        # transcript's inconclusive classification is deliberately not cached --
+        # and pinning the constant would pin that instead of this.
+        # Falsified by: dropping the `state=` argument at either roster call
+        # site, which makes the wider roster cost proportionally more.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as small:
+            few = self.steady_state_head_reads(small, lenses=2, now=now)
+        with tempfile.TemporaryDirectory() as large:
+            many = self.steady_state_head_reads(large, lenses=12, now=now)
+
+        self.assertEqual(few, many, "steady-state head reads must not grow with the roster's size")
 
     def test_every_published_element_declares_both_new_keys(self) -> None:
         # DRC-4223's rule for this element: always present, null meaning not

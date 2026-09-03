@@ -248,7 +248,13 @@ function nextSessionTasks(session){
 function nextSessionSubagents(session){
   const subagents = Array.isArray(session.subagents) ? session.subagents : [];
   if(!subagents.length) return "";
-  const running = subagents.filter(nextSubagentIsLive).length;
+  /* Counts live DIRECT children only, so this agrees with the row's state line
+     above it: `working_detail` counts the same population and a grandchild is
+     deliberately not in it. Counting every live element made one row read
+     "running 1 subagent" beside a "3 RUNNING SUBAGENTS" heading. */
+  const running = subagents.filter(
+    subagent => subagent && subagent.parent == null && nextSubagentIsLive(subagent),
+  ).length;
   const rows = subagents.map((subagent, index) => {
     const elapsed = nextDurationSince(subagent && subagent.started_at);
     const measured = elapsed == null
@@ -268,7 +274,14 @@ function nextSessionSubagents(session){
       `${esc(subagent && subagent.name || "subagent")}${parent}</strong>` +
       `${measured}</div>`;
   }).join("");
-  const label = running === 1 ? "1 RUNNING SUBAGENT" : `${running} RUNNING SUBAGENTS`;
+  /* The heading has to survive the state this feature creates: a finished board
+     still inside the display window, every element inactive. Guarding the whole
+     block on `running` would hide the list, which is the vanishing act
+     DRC-4344 exists to stop, so the heading tells the truth instead and the
+     rows stay. */
+  const label = running === 0
+    ? `${subagents.length} SUBAGENT${subagents.length === 1 ? "" : "S"} · NONE RUNNING`
+    : running === 1 ? "1 RUNNING SUBAGENT" : `${running} RUNNING SUBAGENTS`;
   return '<div class="next-session-current-subagents" data-next-session-subagents>' +
     `<span>${label}</span>${rows}</div>`;
 }

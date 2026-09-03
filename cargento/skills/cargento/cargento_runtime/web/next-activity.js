@@ -19,8 +19,10 @@ function nextProjectActivitySubagents(session){
   if(!subagents.length) return "";
   /* Ordered so the crew that is moving reads first: a lead with a finished
      teammate and six live lenses would otherwise spend the six-pill budget on
-     work that has stopped. Stable within each group, so the collector's own
-     newest-first order survives. */
+     work that has stopped. `filter` preserves order, so whatever order the
+     collector published survives within each group -- which is mtime order only
+     for the lead's own agents; classified children arrive in path order and
+     their workers follow each one. */
   const ordered = [
     ...subagents.filter(nextSubagentIsLive),
     ...subagents.filter(subagent => !nextSubagentIsLive(subagent)),

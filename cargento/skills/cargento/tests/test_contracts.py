@@ -909,6 +909,44 @@ class PublishedTextSweepTest(unittest.TestCase):
         self.assertNotIn("A" * 20, json.dumps(row))
         self.assertIn(self.MARKER, row["subagents"][0]["name"])
 
+    def test_a_subagent_parent_carries_no_credential(self) -> None:
+        # DRC-4344 added `parent` beside `name` and did not add it to the sweep
+        # table, so the same untrusted `agentName` came back redacted in one key
+        # and raw in the other. That is the third time a field on this element
+        # was left out on the second reading; the docstring above names the
+        # first two. It uses this class's own fixture rather than a new
+        # credential-shaped literal.
+        row: Any = {
+            "subagents": [{"name": f"reviewing {self.FAKE}", "parent": f"lead {self.FAKE}"}]
+        }
+        aggregate._redact_published_text([row])
+        self.assertNotIn("A" * 20, json.dumps(row))
+        self.assertIn(self.MARKER, row["subagents"][0]["parent"])
+
+    # `model` is the one string on the element published through
+    # `records.safe_text` and bounded at `MODEL_CAP_CHARS` by every collector, so
+    # it does not reach the raw-text table. Excusing it by name rather than by
+    # omission is the point: a key that is neither swept nor listed here fails
+    # the check below, which is what `parent` needed and did not get.
+    SAFE_TEXTED_ELEMENT_KEYS: ClassVar[frozenset[str]] = frozenset({"model"})
+
+    def test_every_published_subagent_string_is_swept_or_named_as_safe(self) -> None:
+        # Asserted against the element the collector actually builds, not a
+        # fixture, so a future string key has to be classified before it ships.
+        element = claude_collector.published_agent(
+            "n", model="m", started_at=None, active=True, parent="p"
+        )
+        strings = {key for key, value in element.items() if isinstance(value, str)}
+        swept = set(dict(aggregate._RAW_NESTED_TEXT)["subagents"])
+        unaccounted = strings - swept - self.SAFE_TEXTED_ELEMENT_KEYS
+        self.assertEqual(
+            set(),
+            unaccounted,
+            "a published subagent string must be swept or named as already safe",
+        )
+        # And the excuse cannot be used to quietly drop a swept field.
+        self.assertFalse(swept & self.SAFE_TEXTED_ELEMENT_KEYS)
+
     def test_the_instruction_line_on_an_assembled_row_carries_no_credential(self) -> None:
         # The one branch of the sweep no fixture reaches: only Claude and Codex
         # publish a line 2, and neither builds it by hand — `records.safe_text`

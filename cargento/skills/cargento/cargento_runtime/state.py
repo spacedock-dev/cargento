@@ -98,6 +98,12 @@ class RuntimeState:
     turn_scan: dict[str, Any] = field(default_factory=dict)
     agent_class_cache: dict[str, tuple[bool, str, str]] = field(default_factory=dict)
     spacedock_role_cache: dict[str, str] = field(default_factory=dict)
+    # Beside the two above and keyed the same way, on a path and never stat'd,
+    # because a transcript's start stamp is fixed once the file has one. It joined
+    # them when DRC-4344 widened the published roster past the freshness gate: the
+    # roster then re-read a head per child and per grandchild on every collection,
+    # measured at 170 reads a pass for a roster 91% inactive.
+    agent_start_cache: dict[str, float | None] = field(default_factory=dict)
     spacedock_boot_cache: dict[str, tuple[list[dict[str, Any]], int]] = field(default_factory=dict)
     spacedock_workflow_cache: dict[tuple[str, int, int], dict[str, Any] | None] = field(
         default_factory=dict

@@ -175,38 +175,222 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
     REGISTRY_CAPTURE = "claude/team-registry-2.1.259-macos.jsonl"
     DRIVE_CAPTURE = "claude/teammate-board-drive-2.1.259-macos.jsonl"
     # Both DRC-4344 files read stores that hold operator text, so the
-    # shapes-never-values rule is checked over both rather than over the one
-    # that happened to be written first.
+    # shapes-never-values rule is checked over both.
     TEAMMATE_CAPTURES: ClassVar[tuple[str, ...]] = (REGISTRY_CAPTURE, DRIVE_CAPTURE)
-    # Field names may be recorded; a field's contents may not. A shape map is
-    # keyed BY field name, and a name list holds field names as its values, so
-    # those are the only two places a forbidden name may legitimately appear.
-    SHAPE_MAPS: ClassVar[tuple[str, ...]] = ("member_fields", "header_fields")
-    NAME_LISTS: ClassVar[tuple[str, ...]] = (
-        "added",
-        "removed",
-        "top_level_keys",
-        "older_registry_fields",
-        "newer_registry_fields",
-        "added_fields_the_runtime_reads",
-        "added_fields_deliberately_unread",
+
+    # A POSITIVE vocabulary, and it has to be one. The first version of this
+    # check bounded strings at 64 characters, which was defeatable six ways: it
+    # walked values and never keys, it exempted two containers, and the bound sat
+    # ABOVE the text it guarded, since the labels these files must not carry are
+    # `agentName` values and workflow identifiers and the harness caps its own
+    # names at 64. A structural rule fails for the same reason -- a workflow
+    # identifier is shaped exactly like a field name. So every string in these
+    # files, key or value, at any depth, must be a member of one of the sets
+    # below or match one of the patterns. A string nobody has classified fails,
+    # which is the only form of this check that a label cannot walk through.
+    _SCHEMA_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {
+            # The keys the two recorders write.
+            "format",
+            "harness",
+            "os",
+            "at",
+            "record",
+            "claude_version",
+            "registry",
+            "registry_mtime_age_days",
+            "top_level_keys",
+            "member_fields",
+            "member_count",
+            "members",
+            "backendType",
+            "isActive",
+            "isActive_present",
+            "joinedAt_type",
+            "older_registry_fields",
+            "newer_registry_fields",
+            "added",
+            "removed",
+            "added_fields_the_runtime_reads",
+            "added_fields_deliberately_unread",
+            "layout",
+            "session",
+            "record_types_in_order",
+            "first_timestamped_record_index",
+            "header_fields",
+            "files",
+            "first_timestamped_record_index_per_file",
+            "reads_at_index_zero",
+            "verdict",
+            "arm",
+            "lead",
+            "element_key_sets",
+            "element_keys_uniform",
+            "published_total",
+            "published_with_a_measured_start",
+            "published_with_a_null_start",
+            "direct_children",
+            "grandchildren",
+            "grandchildren_active",
+            "distinct_parents_named",
+            "active_true",
+            "active_false",
+            "active_null",
+            "state",
+            "state_detail_shape",
+            "state_detail_subagent_count",
+            "chrome_running_subagents",
+            "chrome_published_subagents",
+            "registered_members",
+            "before_published",
+            "before_with_a_measured_start",
+            "before_grandchildren_reachable",
+            "after_published",
+            "after_with_a_measured_start",
+            "after_grandchildren_reachable",
+            "after_distinct_parents_named",
+            "grandchildren_active_while_running",
+            "grandchildren_present_after_they_stopped",
+            "grandchildren_active_after_they_stopped",
+            "state_detail_counts_grandchildren",
+            "ac4_state_fields_moved_old_vs_new",
+            "ac4_sessions_compared",
+            "state_detail_counts_only_direct_children",
+            "a_quiet_teammate_reads_inactive_while_its_own_worker_runs",
+            "state_may_lag_a_demoted_child_by_seconds",
+        }
     )
-    TYPE_NAMES: ClassVar[frozenset[str]] = frozenset(
-        {"null", "bool", "int", "float", "string", "list", "object", "unknown"}
+    _HARNESS_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            # Field names read out of the harness's own stores. A new harness build
+            # that adds one fails this check until somebody classifies it, which is
+            # the behaviour an evidence file wants.
+            "agentId",
+            "agentName",
+            "agentSetting",
+            "agentType",
+            "apiBlockIndex",
+            "attributionAgent",
+            "attributionPlugin",
+            "attributionSkill",
+            "color",
+            "createdAt",
+            "cwd",
+            "effort",
+            "entrypoint",
+            "gitBranch",
+            "isSidechain",
+            "isSnapshotUpdate",
+            "joinedAt",
+            "leadAgentId",
+            "leadSessionId",
+            "leafUuid",
+            "members",
+            "message",
+            "messageId",
+            "model",
+            "name",
+            "parentUuid",
+            "permissionMode",
+            "planModeRequired",
+            "prompt",
+            "requestId",
+            "sessionId",
+            "session_id",
+            "snapshot",
+            "sourceToolAssistantUUID",
+            "started_at",
+            "subscriptions",
+            "teamName",
+            "timestamp",
+            "tmuxPaneId",
+            "toolUseResult",
+            "type",
+            "userType",
+            "uuid",
+            "version",
+            "active",
+            "parent",
+        }
+    )
+    _HARNESS_TOKENS: ClassVar[frozenset[str]] = frozenset(
+        {
+            # Closed vocabularies the harness or the recorder picks from, never text
+            # a person wrote. Same class as `tool` and `notification_type` in the
+            # captures README.
+            "agent-setting",
+            "mode",
+            "permission-mode",
+            "user",
+            "assistant",
+            "attachment",
+            "atis",
+            "atis-latch",
+            "last-prompt",
+            "file-history-snapshot",
+            "in-process",
+            "tmux",
+            "claude",
+            "darwin",
+            "working",
+            "team_registry_shape",
+            "registry_field_drift",
+            "transcript_header_shape",
+            "first_timestamp_index_verdict",
+            "board_drive_arm",
+            "board_drive_verdict",
+            "top_level",
+            "legacy_subagents",
+            "positive",
+            "negative",
+            "control_before",
+        }
+    )
+    _RECORDER_SENTENCES: ClassVar[frozenset[str]] = frozenset(
+        {
+            # Composed by the recorder from a measurement, not copied from a store.
+            "a one-line read finds the start stamp",
+            "a one-line read misses the start stamp",
+            "running N subagents",
+        }
+    )
+    _PATTERNS: ClassVar[tuple[re.Pattern[str], ...]] = (
+        re.compile(r"^(?:null|bool|int|float|string|list|object|unknown)$"),  # type names
+        re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"),  # ISO stamp
+        re.compile(r"^[0-9a-f]{8}$"),  # an 8-char session prefix, the README's allowance
+        re.compile(r"^[0-9a-f]{12}$"),  # a salted digest
+        re.compile(r"^\d+\.\d+\.\d+$"),  # a harness version
+        re.compile(r"^agent-[0-9a-f]{2}$"),  # a legacy subagent filename prefix
     )
     FORBIDDEN: ClassVar[frozenset[str]] = frozenset({"prompt", "message"})
 
     @classmethod
     def strings(cls, node: Any, trail: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], str]]:
+        """Every string in the record, KEYS INCLUDED.
+
+        Walking values alone was the hole: a key is a string a recorder chose to
+        write and is exactly as capable of carrying a label as a value is.
+        """
         if isinstance(node, dict):
-            return [
-                pair
-                for key, value in node.items()
-                for pair in cls.strings(value, (*trail, str(key)))
-            ]
+            out: list[tuple[tuple[str, ...], str]] = []
+            for key, value in node.items():
+                out.append(((*trail, "<key>"), str(key)))
+                out += cls.strings(value, (*trail, str(key)))
+            return out
         if isinstance(node, list):
             return [pair for value in node for pair in cls.strings(value, trail)]
         return [(trail, node)] if isinstance(node, str) else []
+
+    @classmethod
+    def classified(cls, text: str) -> bool:
+        if (
+            text in cls._SCHEMA_KEYS
+            or text in cls._HARNESS_FIELDS
+            or text in cls._HARNESS_TOKENS
+            or text in cls._RECORDER_SENTENCES
+        ):
+            return True
+        return any(pattern.match(text) for pattern in cls._PATTERNS)
 
     def registry_records(self) -> list[dict[str, Any]]:
         records = self.records(self.CAPTURES / self.REGISTRY_CAPTURE)
@@ -221,59 +405,59 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
             records += found
         return records
 
-    def test_the_team_registry_captures_field_shapes_hold_only_type_names(self) -> None:
-        # DRC-4344's capture reads a store whose member entries carry `prompt`,
-        # which is the operator's own words. The rule the captures README states
-        # is shapes never values, so a field map may say what type a field holds
-        # and never what it held.
+    def test_every_string_in_a_teammate_capture_is_classified(self) -> None:
+        # The whole privacy rule for these two files, in one assertion over both.
+        # Falsified by: any string a recorder puts in either file that nobody has
+        # classified -- an `agentName`, a workflow identifier, a description, a
+        # path. A label cannot pass this the way it passed a length bound.
+        unclassified = sorted(
+            {
+                text
+                for record in self.teammate_capture_records()
+                for _trail, text in self.strings(record)
+                if not self.classified(text)
+            }
+        )
+        self.assertEqual([], unclassified, "unclassified strings in a capture file")
+
+    def test_a_teammate_captures_field_shapes_hold_only_type_names(self) -> None:
+        # A field map may say what type a field holds and never what it held.
         # Falsified by: a shape map whose value is content rather than a type.
-        for record in self.registry_records():
-            for name in self.SHAPE_MAPS:
+        types = {"null", "bool", "int", "float", "string", "list", "object", "unknown"}
+        for record in self.teammate_capture_records():
+            for name in ("member_fields", "header_fields"):
                 for field, declared in (record.get(name) or {}).items():
                     self.assertLessEqual(
-                        set(declared),
-                        self.TYPE_NAMES,
-                        f"{name}[{field}] must hold type names, not content",
+                        set(declared), types, f"{name}[{field}] must hold type names"
                     )
 
-    def test_the_team_registry_capture_carries_no_operator_text(self) -> None:
-        # The same rule for every other string in the file: `prompt` and
-        # `message` may be named and never valued, and nothing may be long
-        # enough to be prose.
-        # Falsified by: recording either field's value anywhere outside a
-        # field-name position.
+    def test_a_teammate_capture_names_a_forbidden_field_without_reading_it(self) -> None:
+        # `prompt` and `message` may be named and never valued. Named `prompt`
+        # must be, or the capture does not evidence the field the runtime refuses
+        # to read.
+        # Falsified by: a key called `prompt` holding a string, or dropping it
+        # from the drift record.
+        shape_maps = ("member_fields", "header_fields")
+        name_lists = (
+            "added",
+            "removed",
+            "top_level_keys",
+            "older_registry_fields",
+            "newer_registry_fields",
+            "added_fields_the_runtime_reads",
+            "added_fields_deliberately_unread",
+        )
         for record in self.teammate_capture_records():
             for trail, value in self.strings(record):
-                if trail and (trail[0] in self.SHAPE_MAPS or trail[-1] in self.NAME_LISTS):
+                declared = bool(trail) and (trail[0] in shape_maps or trail[-1] in name_lists)
+                if declared or (trail and trail[-1] == "<key>"):
                     continue
                 self.assertNotIn(
                     trail[-1] if trail else "",
                     self.FORBIDDEN,
                     f"{'.'.join(trail)} records that field's value",
                 )
-                self.assertNotIn(
-                    value.strip().lower().rstrip(":"),
-                    self.FORBIDDEN,
-                    f"{'.'.join(trail)} carries {value!r} outside a field-name list",
-                )
-
-    def test_no_string_in_the_team_registry_capture_is_long_enough_to_be_prose(self) -> None:
-        # 64 characters is far past a field name, a type name, a closed
-        # vocabulary token, an ISO stamp or a salted hash, and far short of a
-        # sentence. It catches prose by shape rather than by knowing every field
-        # that could carry it.
-        # Falsified by: any recorded value that reads as a phrase.
-        for record in self.teammate_capture_records():
-            for trail, value in self.strings(record):
-                self.assertLessEqual(
-                    len(value), 64, f"{'.'.join(trail)} is long enough to be prose"
-                )
-
-    def test_the_team_registry_capture_names_prompt_without_reading_it(self) -> None:
-        # Recorded as a name it must be, or the capture does not evidence the
-        # field the runtime is deliberately refusing to read.
-        # Falsified by: dropping `prompt` from the drift record, or listing it
-        # among the fields the runtime reads.
+                self.assertNotIn(value.strip().lower(), self.FORBIDDEN, f"{'.'.join(trail)}")
         drift = [r for r in self.registry_records() if r["record"] == "registry_field_drift"]
         self.assertTrue(drift, "the capture must record the registry's field drift")
         for record in drift:
@@ -282,9 +466,9 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
             self.assertNotIn("prompt", record["added_fields_the_runtime_reads"])
 
     def test_the_team_registry_capture_settles_the_start_stamp_index(self) -> None:
-        # The whole of DRC-4344's first gap in one figure, and it must come from
-        # the file rather than from the code: a top-level transcript's first
-        # timestamped record is not record 0, and a legacy subagent's is.
+        # DRC-4344's first gap in one figure, and it must come from the file
+        # rather than the code: a top-level transcript's first timestamped record
+        # is not record 0, and a legacy subagent's is.
         # Falsified by: a capture whose two layouts agree, which would mean the
         # asymmetry the fix rests on was never measured.
         verdicts = {
@@ -293,9 +477,7 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
             if record["record"] == "first_timestamp_index_verdict"
         }
         self.assertEqual({"top_level", "legacy_subagents"}, set(verdicts))
-
-        top = verdicts["top_level"]
-        legacy = verdicts["legacy_subagents"]
+        top, legacy = verdicts["top_level"], verdicts["legacy_subagents"]
         self.assertEqual(0, top["reads_at_index_zero"], "no top-level file stamps record 0")
         self.assertEqual(
             legacy["files"], legacy["reads_at_index_zero"], "every legacy file stamps record 0"

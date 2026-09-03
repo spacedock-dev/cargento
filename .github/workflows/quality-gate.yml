@@ -189,7 +189,8 @@ jobs:
             scripts.tests.test_bench_collect \
             scripts.tests.test_capture_hook \
             scripts.tests.test_bench_event_latency \
-            scripts.tests.test_derive_prompt_shapes
+            scripts.tests.test_derive_prompt_shapes \
+            scripts.tests.test_capture_team_registry
 
   test:
     name: Tests + coverage threshold
@@ -223,7 +224,8 @@ jobs:
             scripts.tests.test_bench_collect \
             scripts.tests.test_capture_hook \
             scripts.tests.test_bench_event_latency \
-            scripts.tests.test_derive_prompt_shapes
+            scripts.tests.test_derive_prompt_shapes \
+            scripts.tests.test_capture_team_registry
 
       # No `coverage report` here. It reads `fail_under` from pyproject and
       # exits non-zero, and it ran BEFORE the label check below, so a PR

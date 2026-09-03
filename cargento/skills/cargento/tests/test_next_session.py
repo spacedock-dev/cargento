@@ -547,8 +547,12 @@ console.log(JSON.stringify(variants));
         self.assertNotIn("next-live", finished)
         self.assertIn('aria-label="idle">○</span>', finished)
         self.assertIn('aria-label="running">●</span>', live)
-        # Two of the three are running, and the label says so rather than "3".
-        self.assertIn("2 RUNNING SUBAGENTS", measured)
+        # The heading counts live DIRECT children, so it agrees with the row's
+        # own state line: `working_detail` counts that same population and a
+        # grandchild is deliberately not in it. Counting every live element read
+        # "3 RUNNING SUBAGENTS" above a row saying "running 1 subagent".
+        self.assertIn("1 RUNNING SUBAGENT", measured)
+        self.assertNotIn("3 RUNNING SUBAGENTS", measured)
         # A grandchild names the teammate that spawned it; a teammate names none.
         self.assertIn("finished-one", lens)
         self.assertIn("next-session-subagent-parent", lens)
@@ -556,6 +560,34 @@ console.log(JSON.stringify(variants));
         # An element with no `active` key keeps rendering as live.
         self.assertIn("next-live", self.subagent_row(out["unmeasured"], 0))
         self.assertIn("1 RUNNING SUBAGENT", out["unmeasured"])
+
+    def test_an_all_idle_roster_keeps_its_rows_and_does_not_claim_none_running(self) -> None:
+        # The state this feature creates: a finished board still inside the
+        # display window, every element inactive. The block used to guard on the
+        # element count while the heading counted live ones, so it printed
+        # "0 RUNNING SUBAGENTS" above a populated list. Guarding the block on the
+        # live count instead would hide the list, which is the vanishing act
+        # DRC-4344 exists to stop, so the heading tells the truth and the rows
+        # stay.
+        # Falsified by: either restoring the live-count heading, or guarding the
+        # block on it.
+        html = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "done-one", model: null, started_at: 9000, active: false, parent: null},
+  {name: "done-two", model: null, started_at: 9000, active: false, parent: null}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertNotIn("0 RUNNING SUBAGENTS", html)
+        self.assertIn("2 SUBAGENTS · NONE RUNNING", html)
+        self.assertIn("done-one", html)
+        self.assertIn("done-two", html)
+        self.assertNotIn("next-live", self.subagent_row(html, 0))
 
     def test_subagents_keep_payload_order_and_omit_unmeasured_elapsed_time(self) -> None:
         html = self.render()

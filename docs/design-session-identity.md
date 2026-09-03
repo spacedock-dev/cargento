@@ -465,7 +465,9 @@ row and came back, over and over. A teammate that had finished vanished, and the
 rescue it: a member that has written a transcript is correctly excluded from the unstarted list, so
 nothing published a member that had started and stopped. And the pill carried no elapsed at all,
 because the start stamp came from the transcript's first record and this harness opens a top-level
-transcript with three untimestamped control records.
+transcript with untimestamped control records: the first stamp sits at index 3 on seven of the
+eight freshest transcripts measured and at index 6 on the eighth, against index 0 on every
+legacy subagent file.
 
 The fix splits the one list in two. The fresh-gated list still derives state, the state detail, last
 activity and the Spacedock strip, unchanged. A separate published list carries every classified

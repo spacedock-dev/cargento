@@ -324,7 +324,10 @@ def published_agent(
         "model": model,
         "started_at": started_at,
         "active": active,
-        "parent": parent,
+        # The same 70 as `name`, and for the same reason: both are the untrusted
+        # `agentName`, bounded only by the head budget, and `parent` was the one
+        # string on this element leaving the collector unbounded.
+        "parent": parent[:70] if parent else None,
     }
 
 
@@ -500,12 +503,19 @@ def collect(
             )
         }
         models = {path: child_model(analysis) for path, analysis in analyses.items()}
-        # One bounded head read per child, taken once and shared by the two
-        # lists below. Not cached the way the classifier's head read is: the
-        # child count is already bounded by `window_hours`, so a cache would buy
-        # a per-file entry for a read the same pass performs at most once.
+        # One bounded head read per child, shared by the two lists below and
+        # cached across passes. The cache is the point, and the first version of
+        # this comment defended not having one by answering the wrong question:
+        # within a pass the read happens once anyway, while the cost that
+        # actually recurs is per COLLECTION. Measured on a store with 8 finished
+        # teammates of 20 workers each: 170 head reads and 160 sidecar parses
+        # every pass, for a roster 91% of which was inactive. A start stamp is
+        # immutable once a file has it, which is the same property
+        # `agent_identity` and `agent_setting` already cache on over the same
+        # head bytes.
         child_started = {
-            c["path"]: claude_data.transcript_started_at(config, c["path"]) for c in children
+            c["path"]: claude_data.transcript_started_at(config, c["path"], state=state)
+            for c in children
         }
         own_agents = load_subagents(config, transcript, now, found=agent_files, models=models)
         subagents = [
@@ -580,10 +590,16 @@ def collect(
             )
             for a in own_agents
         ]
+        # Keyed on `label`, which prefers the registry's own `name` -- the same
+        # string a child transcript writes as `agentName` and the same one
+        # `started_agent_ids` joins on three calls up. Keying on the `agentId`
+        # halves instead only agreed while `agentId` was `<name>@session-<prefix>`,
+        # and a member whose id is a hex handle would have silently escaped the
+        # demotion.
         member_flags = {
             key: m["active"]
             for m in team_members.get(prefix, [])
-            for key in (m["agent_id"], m["local"])
+            for key in (m["label"], m["agent_id"], m["local"])
         }
         for c in children:
             name = c.get("agent_name") or ""
@@ -619,7 +635,7 @@ def collect(
                         # Never guessed from the parent: no analysis is run over a
                         # grandchild, so None here means not read.
                         model=None,
-                        started_at=claude_data.transcript_started_at(config, gp),
+                        started_at=claude_data.transcript_started_at(config, gp, state=state),
                         active=runtime_sessions.is_fresh(
                             config, now, gm, config.working_threshold_sec
                         ),

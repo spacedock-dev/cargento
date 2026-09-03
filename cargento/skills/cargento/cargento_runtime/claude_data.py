@@ -28,7 +28,9 @@ if TYPE_CHECKING:
 INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 
 
-def transcript_started_at(config: RuntimeConfig, path: str) -> float | None:
+def transcript_started_at(
+    config: RuntimeConfig, path: str, *, state: RuntimeState | None = None
+) -> float | None:
     """Timestamp on the first record inside the bounded head that carries one.
 
     The first record is not it. Claude Code 2.1.259 opens a top-level transcript
@@ -43,7 +45,18 @@ def transcript_started_at(config: RuntimeConfig, path: str) -> float | None:
     files, so a wider read costs no extra syscall. `st_birthtime` is the obvious
     alternative and DRC-4223 rejected it: macOS/BSD only, absent on the Ubuntu
     leg of `platform-tests`.
+
+    With ``state`` the answer is memoised per path, beside the two other head
+    reads over these same files, because a start stamp is immutable once a file
+    has one. Only a FOUND stamp is cached: a transcript whose head carries none
+    yet is one still being written, and remembering that would freeze it at
+    null. Without ``state`` the read is unmemoised, so a caller outside a
+    runtime keeps working.
     """
+    if state is not None:
+        with state.cache_lock:
+            if path in state.agent_start_cache:
+                return state.agent_start_cache[path]
     try:
         size = os.path.getsize(path)
         data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
@@ -63,6 +76,11 @@ def transcript_started_at(config: RuntimeConfig, path: str) -> float | None:
             continue
         stamp = records.parse_ts(record.get("timestamp") or "")
         if stamp is not None:
+            if state is not None:
+                with state.cache_lock:
+                    runtime_state.bounded_put(
+                        state.agent_start_cache, path, stamp, limit=config.max_cache_entries
+                    )
             return stamp
     # A first record wider than the head budget is popped as partial above, and
     # the old one-line read had a cap ten times larger. Falling back to it keeps

@@ -370,9 +370,15 @@ _RAW_ROW_TEXT: Final = ("title", "last_prompt", "state_detail")
 # there, the same string this sweep redacts when that session is a parent row,
 # and goose, codex and claude slice theirs out of the record with no `safe_text`
 # in the way.
+#
+# `parent` is the same string as `name` one key over: DRC-4344 added it from the
+# same `agentName` slice and did not add it here, so one key came back redacted
+# and the other raw. That is the third field on this element left out on a
+# second reading, after `state_detail` and `name`, which is the whole argument
+# for the table.
 _RAW_NESTED_TEXT: Final = (
     ("tasks", ("subject", "activeForm")),
-    ("subagents", ("name",)),
+    ("subagents", ("name", "parent")),
 )
 
 
