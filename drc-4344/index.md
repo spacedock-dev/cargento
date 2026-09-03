@@ -597,6 +597,19 @@ not reproduce, a change to a frozen state field, or a redaction regression at th
 The second of those happened — a provenance sentence this PR adds to `docs/captures/README.md` does
 not reproduce — and it is the finding the verdict rests on.
 
+**Spent at re-review, 2026-09-03 (cycle 3): self-verify by reproduction, no lenses.** The property
+that chose it belongs to the correction round rather than to the diff: eight bounded items, each
+already carrying its own named red-first mutation, over a runtime change of one bound and one
+comment in one file (`claude.py`, +15/-5) and one web asset (`next-chrome.js`, +2/-1). The decisive
+pass is therefore to re-apply the round's own mutations in throwaway checkouts and to recompute the
+pins from the assets, not to re-ask the questions the `0d48cfb` three-lens pass and the cycle-2
+lenses already answered; that work stands and is not repeated. What would have made me climb to
+lenses: a runtime edit outside the `state_detail` bound, a second changed web asset, a moved pin
+whose asset did not move, any state-bearing field moving in the two-collector run, or the capture
+directory's provenance claim still failing to reproduce. None of the five happened. AC-5 was
+re-driven live rather than carried over, because dispatching one worker of my own makes this session
+the fixture the criterion needs.
+
 ### Feedback Cycles
 
 - Cycle 1: NO-GO — review gate, three lenses plus an arbiter (3 of the lens findings refuted), 1 Material + 2 Needs-decision + 4 Deferred risk + 4 Polish fixed in-PR, 2 Needs-decision ruled by the captain (window gate extended to the lead's own agents; AC-2 reworded), 1 Deferred risk filed as DRC-4348; surface 42 files/+2572 LOC vs estimate 17 files/+230 ±30% (runtime +378 vs band 161–299, overage accepted under the captain's standing ruling); AC narrowed: AC-2 wording only
@@ -1256,3 +1269,45 @@ re-driven control counts a different board population than the two patched arms 
 a later moment — so the verdict's before/after figures are no longer one snapshot. The README row says
 so, and what the control is there to establish is the element's shape and its null start, which no
 population changes.
+
+## Stage Report: review (cycle 3)
+
+- DONE: Review depth chosen from the property of the correction round and stated up front — the three-lens pass at `0d48cfb` stands and is not repeated; new are the heading fix, the window gate extended to the lead's own agents, sweep-before-slice, the oracle hardenings, the start-stamp cache, the recorder's verdict derivation, and the doc corrections — then each of the eight items in `## Stage Report: implementation (correction round 2)` verified against PR #261's head `5314e09` at the SHA, stated closed or not with the line cited, the round's named red-first mutations re-applied in a throwaway copy where cheap, and the byte pins recomputed independently from the assets in both files that pin the page
+  **All eight closed, the two SKIPPED ones as the authorized no-changes.** (1) **The blocker is closed.** All three committed arms now carry the identical 25-key set; `registered_members` is absent from every arm and present only on the verdict, so the README's "five fields no arm can carry" is true of the bytes. I re-derived the control from the payload shape its own record describes and every field matched except the two `state_detail_*` ones I could not reconstruct without the real string — a hand-written record does not survive that. Red-first on the exact rejected bytes: `git show f23ab79:` the capture into a `git archive` copy turns `test_every_committed_arm_carries_the_key_set_the_recorder_emits` red naming `arm='control_before'` **only**, missing the five keys and carrying `registered_members`, while `test_the_committed_verdict_is_reproduced_from_the_committed_arms` stays **green** on those same bytes — the blind spot, demonstrated rather than described. (2) `state_detail` re-bounded at `claude.py:789` via `records.redact_clip(label, 70)`; `test_a_long_member_name_cannot_grow_the_state_line` green at head, and restoring `f23ab79`'s raw interpolation in a throwaway copy gives **98 != 228**. (3) The recorder refuses every input class from the CLI, nothing written in any arm: five bad `--lead` values (free text, uppercase, short, long, empty) exit 2 with no file; a duplicate `--arm` exits 2 with no file; all seven declared-count values (`1_0`, ` 7`, `7 `, `+7`, `-3`, `٣`, `0x10`) exit 2 with no file, against a `--measured registered_members=7` control that writes all four records — the positive control that makes the seven non-vacuous. (4) `next-chrome.js:258-259`'s `subagentLabel` renders `1 subagent running` through the real shipped JS; reverting to the plural-only string renders `1 subagents running` and reddens the test. **All 26 pins recomputed by me from the assets** (14 JS parts, `styles.css`, 9 base64-decoded font payloads, 2 OFL notices) — every one MATCH — and the assembled page recomputes to `324_759` with the pinned digest in **both** `test_next_page.py` and `test_next_flag.py`. The moved-pin set equals the changed-asset set in both directions: `next-chrome.js` is the round's only changed web asset, and appending one byte to it reddens three assertions (`15973 != 15974`, `324759 != 324760` twice). (5) The boundary test loops both offsets: with the pre-fix `[:70]` slices restored, **four** subtest failures — `lead=1` and `lead=60` × `name` and `parent` — at 1 the whole 64-character value published unmarked, at 60 only the key prefix survived the cut, which is the pair the round said it needed. (6/7) The two SKIPPED items are unchanged and their reasons hold at head: no web asset but `next-chrome.js` moved, so `next-session.js`'s heading is untouched; and the parentless entry is still appended unconditionally at `claude.py:674` **before** the grandchild loop at `:689`, so a populated list cannot carry a zero total. (8) `docs/design-credential-redaction.md`'s "seventeen call sites" reproduces: 18 `redact_clip` invocations in `cargento_runtime/`, less the intra-module delegation at `records.py:442`.
+- DONE: AC-1 through AC-6 re-verified on head `5314e09` from their own clauses — AC-4 re-run as the two-collector live comparison (base `ff8280a` vs head, pinned `now`, live and synthetic stores) and AC-5's positive arm re-driven live by you, since you spawn lenses and are therefore the fixture: with your lenses running, `/api/data` carries them under your name with `active` true and a measured start, the session detail heading reads the three-population sentence correctly for your shape, and the negative arm after they finish shows them present and inactive — plus the redaction property at the new clip boundary (a long name and parent carrying the documented placeholder mid-clip come back marked)
+  **AC-1/AC-2/AC-3**: the seven `DispatchedTeammateTest` cases green at head, each the case its criterion names. **AC-4 re-run as two collectors in separate processes on a pinned `now` against the same live stores**: **2713 sessions × 32 non-roster fields = 86,816 comparisons, 0 state-bearing fields moved**, `state`/`state_detail`/`last_activity` each on 0 sessions, while the roster simultaneously goes **0 → 49 elements** with `active` and `parent` on all of them and 49/49 measured starts; a 24-hour-window pass gives the same 0 over 6 sessions with the roster at 1 → 50. `test_claude.py` is **purely additive this round (0 deleted lines)**, so no frozen expectation was edited. The new bound cannot bite here and I measured why: the largest registry member label on this machine is **42 characters, 0 over 70** — the synthetic arm is the repo's own unmodified `state`/`state_detail`/`last_activity` cases rather than a second live process, which is what AC-4's clause actually asks for. **AC-5 re-driven live by me on head, both arms.** Positive: I dispatched one worker of my own and sampled the collector six times over 40 s — the element appears under `parent` = my own name, `active: true`, with a measured start, `active_total` 2; the real shipped JS on that live payload renders the detail heading **`1 RUNNING SUBAGENT · 1 WORKER RUNNING BENEATH`** over **47 rows with 2 `next-live`**, and the chrome reads `1 running · 2 subagents running` — the chrome count equals the number of active entries, as the clause requires. Negative: the read taken before I dispatched anything shows cycle 2's **three** finished lenses still attributed to my name, **present and inactive**, each keeping its measured start. `state_detail` stayed `running 1 subagent` throughout, counting no grandchild. **AC-6**: the capture file exists with 17 records over four record kinds, is in the README Files table with its provenance, and `test_documentation`'s positive-vocabulary check over it is green. **Redaction boundary**: green at head on both offsets and both keys; red four ways at base, as above.
+- DONE: CI on head `5314e09` (all thirteen checks belonging to that head, measurable jobs run), `mergeStateStatus`, Copilot confirmed absent, the surface re-derived, and a GO or NO-GO verdict with any new or surviving finding under its disposition label, written as `## Stage Report: review (cycle 3)` with evidence on its own line and `## Review depth` extended — no edit to the branch, no merge, no worktree or branch removed
+  **13/13 `success`, every check-run's `head_sha` = `5314e09`**, and each measurable job RAN rather than skipped (Lint, mypy --strict, Runtime floor 3.11, Tests + coverage, Tests on ubuntu/macos/windows, latest-client-smoke, actionlint, validate, version-guard, Detect, quality-gate). `mergeStateStatus: CLEAN`, `OPEN`. **Copilot absent** — 0 reviews, 0 inline review comments, 0 requested reviewers. Suite run **once** at load 3.34: **1883 tests OK, 1 skipped**, plus **209 OK** across the eight script modules, so no failure appeared in the four contention-prone modules and no solo re-run was owed; `coverage report` **90.2%** against `fail_under = 73`. `ruff check`, `ruff format --check` (151 files), `mypy` (112 files), `lint_embedded`, `validate_plugins`, `bump_version --current` 0.20.0 all clean; **no version field moved since the merge base** (the half nothing local checks, run by hand); `claude plugin validate --strict` and `agy plugin validate` both pass. Surface re-derived: round **12 files, +246/-41**; cumulative **42 files, +2899/-122** — both agree with the round's own figures. Branch untouched (`git status --porcelain` empty, HEAD still `5314e09`), nothing merged, worktree and branch intact; every reproduction ran in `/tmp` `git archive` copies. My one dispatched worker finished and no server was started.
+
+### Findings under their disposition labels
+
+**No new finding, and the cycle-2 blocker is closed.** The `board_drive_verdict` provenance item that
+carried the cycle-2 NO-GO reproduces as fixed: the arms' key sets are identical, `registered_members`
+lives only on the verdict as a declared measurement, and the README row states the control's own
+re-drive, its own `at`, and the population caveat instead of asserting a provenance it did not have.
+
+**Deferred risk — filed, not promoted.** The heading total counting direct children while rows show
+every element (promotes with DRC-4348's roster cap). The `0 SUBAGENTS` case, unreachable at
+`claude.py:674` before `:689`. Both were left unchanged this round, as authorized.
+
+**Polish — declined, pre-existing.** Three other collectors still bound a subagent label with a bare
+`[:70]` (`goose.py:93`, `codex.py:168`, `opencode.py:94`). Present at base, outside this PR's diff,
+and covered by the `aggregate._redact_published_text` backstop. Naming it here so a reader of item 5
+does not mistake the claim for a codebase-wide one; not promoted.
+
+### Summary
+
+**GO.** Self-verify by reproduction, chosen from the correction round's shape and stated before the
+work: eight bounded items with their own red-first mutations, and a runtime diff of one bound. All
+eight closed at the SHA, five of them re-falsified in throwaway `git archive` copies — including the
+one that matters most, where the exact bytes the cycle-2 gate rejected turn the round's new arm
+oracle red while the older reproduction test stays green, which is the blind spot the round claimed
+to close, closed. All 26 byte pins recomputed from the assets in both pinning files and biting in
+three places. AC-1 through AC-6 reproduced from their own clauses rather than trusted: AC-4 as 86,816
+base-versus-head comparisons with **0 state-bearing fields moved** over a roster that simultaneously
+goes 0 → 49, with the reason the new bound cannot bite here measured (42 characters, 0 over 70); AC-5
+driven live in both arms on this head off a worker I dispatched for the purpose, the shipped JS
+rendering the three-population sentence correctly for that shape.
+
+CI is 13/13 on `5314e09` with every measurable job run, `mergeStateStatus` is `CLEAN`, Copilot is
+absent, and the surface matches the round's own figures. Nothing was edited, merged or removed.
