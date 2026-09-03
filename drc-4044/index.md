@@ -875,6 +875,21 @@ The arbiters earned the tier: they **refuted or downgraded 9 of the 24**, includ
 premise was wrong in the PR's favour and one where a correct 4.5-second measurement was attached to a
 conclusion that did not follow.
 
+**Cycle 2 (re-review of the correction round, 2026-09-03): self-verify by reproduction.** The full
+adversarial pass at `5f73639` stands and was not repeated — a second fan-out would have re-read a
+change four lenses, a critic and two arbiters had already read. What is new at `b5616b6` is a bounded
+set of fix spans over that same change: M-1..M-5, ND-2, ND-3, DR-1..DR-7, six Polish, the two knobs
+the captain ruled, and one PR-body line. The property that sets the tier is that every one of those
+arrived with a named falsifying mutation attached, so the cheap and complete check is to re-apply
+them rather than to re-argue the design. Four things were declared in advance as grounds to climb
+back to a fan-out: a fix landing outside its span, a cited figure that does not reproduce, a
+`cargento_runtime/web/` file touched, or a change to the promoted contract beyond D3/D4/D5. The first
+three did not fire. The fourth did — one paragraph past the three authorized deviations — and it was
+read at the byte rather than escalated, because it adds a promise rather than relaxing one. Three
+verification lanes ran in throwaway `git archive` copies (23 mutations re-applied; AC1-AC9 reproduced
+from their own clauses; seven claimed behaviours driven end to end), and the branch was never
+written to.
+
 ### Feedback Cycles
 
 - Cycle 1: NO-GO — review gate, full adversarial (4 lenses, critic, 2 arbiters; 9 of 24 refuted or downgraded), 5 Material + 2 Needs-decision fixed, 2 Needs-decision ruled by the captain (bounds wired as flags; reset header scoped to PR 2 as AC12), 7 Deferred risk fixed in-PR and 1 filed as DRC-4345; surface 21 files/+2777 LOC vs estimate 15 files/+1090 (255%, overage captain-accepted 2026-09-03); AC unchanged, AC12 added for PR 2
@@ -1418,3 +1433,67 @@ promoted prose is true rather than amended, which is what the captain asked for.
 AC12 is on the entity with a falsifier that names the exact state PR 1 ships, PR 2's surface records
 it, and the PR body says so. Six more mutations, six more reds, on top of round 1's seventeen. The
 round is now +1184/−113 over twelve files against `5f73639`, two thirds of it oracles.
+
+## Stage Report: review (cycle 2)
+
+- DONE: Review depth chosen from the property of the correction round and stated up front — the full adversarial pass at `5f73639` stands and is not repeated; what is new is the fix spans for M-1..M-5, ND-2, ND-3, DR-1..DR-7, the two knobs, and one PR-body line — then each of those items verified against PR #260's head `b5616b6` by reading the file at that SHA and stated as closed or not with the line cited, the review's named falsifying mutations re-applied in a throwaway copy where cheap, and the promoted `SECURITY.md` section re-diffed against the plan doc at `5a156bc` to confirm D3, D4 and D5 remain the only differences
+  Depth stated in `## Review depth` above with the four declared grounds to climb. Every fix read at `b5616b6`: M-1 `history.py:_bounded_project` + the bound at `observation`; M-2 `cli.py:389` refusal + `history.py:Lane._forget_a_deleted_baseline`; M-3 `_numeric` hooks, `OverflowError` in `_decode`, `_opened` latched before the read at `Lane._open`; M-4 `appended`'s expiry fall-through with `changed = kept != held`; M-5 `build_application(record_history=False)` from the `--diagnose` branch; ND-2 the two reset literals pinned; ND-3 `SKILL.md` four→five with the sidecar enumerated; DR-1 `_store_bytes` replacing the re-serialise loop; DR-2..DR-7 all oracles. **23 mutations re-applied one at a time in a throwaway `git archive` copy, never on the branch: 22 RED, 1 GREEN.** The GREEN is M-3b and is structural, not a test gap — see Polish. **The re-diff did NOT confirm three differences: there are four.** D4's kept-list clause, D4's `omits`→`keeps`, D5's dismissals/sidecar correction, and a new five-line `--forget` refusal paragraph added at `2185738`. Recorded as ND-5.
+- DONE: AC1 through AC9 re-verified on head `b5616b6` from their own `Verified by:` clauses, plus the new properties this round claims — a six-segment fallback label stored as two segments, `--forget` refused under a live instance and a deleted store not resurrected, three tampered files each discarded with a reset reason while `/api/data` stays valid JSON and `--diagnose` runs, five 100-day entries evicted against an empty board, `--diagnose` leaving no store, and `--history-days` / `--history-max-bytes` reaching the lane's bounds and the respawn argv — with CI 12/12 on this head including platform-tests, `mergeStateStatus`, the Copilot mechanism confirmed absent rather than unread, and the Linear body, milestone and comment matching the approved drafts
+  **AC1-AC9 all HOLD**, each reproduced from its own clause and each falsifier applied (170 tests OK across the three AC-bearing modules). No oracle was weakened: `EvictionTest` is byte-identical to `5f73639` — the `_store_bytes` rewrite changed `evict`'s arithmetic, not its shape — and every test change this round was additive. AC4's previously-vacuous failed-write test is genuinely fixed: instrumented, `os.open` is reached exactly once on the `.tmp` path with mode `0o600`, the temp file exists at 123 bytes when `os.replace` raises, and the directory is empty after `save` returns False. AC10/AC11 correctly not claimed; AC12 recorded with both clauses as ruled, no `web/` and no runtime file touched for it, and the one PR-body bullet present. **All seven new properties reproduce**: the six-segment label publishes `alpha-…-zeta` and stores `epsilon-zeta`; `--forget` exits 1 leaving a 142-byte store and deletes after `--stop`; three tampered stores each yield `((), 'unreadable')` with 0 bare `Infinity`/`NaN` tokens and `node JSON.parse` OK (Python's decoder accepts both and was rejected as an oracle); five 100-day entries against a genuinely empty board leave 23 bytes and `[]`; `--diagnose` leaves an empty `.cargento/` non-vacuously (the seeded session is discoverable, `sessions: 1`); both knobs reach the bounds and forward on respawn only when moved. **CI: 12/12 `success`, every check-run's `head_sha` is `b5616b6`**, including `Tests (ubuntu-latest)`, `(macos-latest)` and `(windows-latest)`. `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`. **Copilot is an absent mechanism, not an unread review**: 0 inline comments, 0 reviews, and `gh pr edit --add-reviewer copilot` fails `Could not resolve user with login 'copilot'`. Linear: Draft A live (body opens as drafted), Draft B applied (`kept on this machine for up to 14 days`, nothing else moved), Draft C posted 07:49:45 with its seven blocks unedited (`updatedAt == createdAt`).
+- DONE: the local gate reproduced independently, and the surface figures re-derived
+  Run once at load **3.13**, no competing unittest process: `ruff check` passed, `ruff format --check` 149 files, `mypy` clean over 110 files, `lint_embedded` clean, `validate_plugins` OK, `bump_version --current` 0.20.0, **1,857 tests OK (1 skipped) in 34.6 s**, 190 script tests OK, `coverage report` **90.4%** against `fail_under` 73. No red, so nothing needed re-running alone. Surface re-derived and **exact** against the report: round `5f73639..b5616b6` = 12 files, +1184/−113 (runtime 5 +311/−37, oracles 3 +832/−64, docs 4 +41/−12); cumulative from `5a156bc` = 21 files, +2777/−188. No `cargento_runtime/web/` file, no `test_next_page.py` change, no version field moved, `history.py` holds no `"git"` literal. The observer-sidecar docstring fix rode in per the captain's standing directive.
+- DONE: a GO or NO-GO verdict with any new or surviving finding under its disposition label
+  **GO**, conditional on the captain blessing ND-5 at this gate. No Material finding; nothing routes back to `implementation`. Details below.
+- SKIPPED: on GO, the worktree removed before the branch is deleted
+  Not this stage's to do here: the verdict carries one Needs-decision item the gate must answer first. The worktree at `.worktrees/spacedock-ensign-drc-4044` is clean at `b5616b6` on `spacedock-ensign/drc-4044`; no edit, no merge, no branch or worktree removed.
+
+### Findings under their disposition (cycle 2)
+
+**No Material.** Nothing routes back to `implementation`.
+
+**Needs decision (1)** — the captain's word, not a code change.
+
+**ND-5 — the promoted contract carries a fourth deviation; three were authorized.**
+- *Released user and normal workflow:* a reader of `SECURITY.md`'s history section.
+- *Observable harm:* none. The paragraph documents the refusal M-2's authorized fix introduced, and `SECURITY.md` describes shipped behaviour only — omitting it would leave the section saying `--forget` deletes, with no mention that it can decline.
+- *Affected boundary:* `contract[docs/plans/history-store-security-scope.md]` "the section above is promoted unchanged"; `captain-ruling[2026-09-03]` authorized D3, D4 and D5 and no fourth.
+- *Trigger evidence:* `b5616b6:SECURITY.md` 331-405 against `5a156bc:docs/plans/history-store-security-scope.md` 18-85 is **four** content differences, the new one five lines beginning "It is refused while a dashboard answers on the port it names". Both its sentences are true as written and reproduce (see M-2 above). **Recommendation: bless as D6 rather than revert** — a contract that omits a refusal the build performs is the worse of the two states.
+
+**Deferred risk (5)** — filed per AGENTS.md, not promoted into this PR.
+
+- **DR-8 — `_bounded_project` truncates a label that was already correct.** It splits on `/` when one is present and on `-` otherwise, resting on "only the dash-encoded fallback is split on `-`". False: `project_from_cwd` ends in `"/".join(parts[-2:])`, so a project one directory under `$HOME` yields a bare name with no `/`. Reproduced two ways — as a unit (`/Users/alice/my-cool-project` → publishes `my-cool-project`, stores `cool-project`) and end to end through a real transcript **carrying a `cwd`** (`recce-cloud-infra` → `cloud-infra`). M-1's security property is untouched; the six-segment fallback still lands as `epsilon-zeta`, and no path escapes. *Promote if* PR 2's seeded panels render, when a hyphenated project directly under `$HOME` groups its history under a different label than the live board and shows as two projects. ~1 line plus the docstring sentence.
+- **DR-9 — AC4's own named falsifier does not red the suite.** The AC names `open()` then `os.chmod` as its falsifier; applying exactly that leaves `test_history` and `test_contracts` green, because `test_the_store_is_owner_only_from_the_open_call` stats only the final mode and the new temp-file spy records paths without the mode argument. Instrumented under the mutation the temp file sits at `0o644` between the calls under umask 022. **The shipped code is correct** (`os.open(tmp, …, 0o600)`) — a missing oracle, not a defect, and pre-existing. *Promote if* `save`'s write path changes. ~1 line: assert the mode argument in the spy.
+- **DR-10 — AC2's sentinel oracle can be defeated by truncation.** Routing the `spacedock_workflow` sentinel into `project` *through* `_bounded_project` keeps `NothingPromptDerivedReachesTheStoreTest` green: the bound splits `SENTINEL-SPACEDOCK-e8` on `-` and stores `SPACEDOCK-e8`, which the `assertNotIn` misses. DR-7 closed the fixture gap the last review found and opened this one. *Promote if* anything routes derived text into `project`. ~1 line: a dash-free sentinel, or assert on a substring that survives a two-segment trim.
+- **DR-11 — `--forget`'s refusal probes the port, not the store.** Observed while reproducing M-5: a `--forget` under `CARGENTO_HOME=/tmp/…/sb7` at the default port was refused by this machine's real dashboard, which owns a different store entirely, and the remedy it names (`--stop`) would stop that unrelated instance. Fail-safe direction and the code comment says as much. *Promote if* a relocated `CARGENTO_HOME` becomes a documented multi-instance workflow.
+- **DR-12 — a store above a lowered `--history-max-bytes` is never reclaimed, but only below one record's size.** `load` discards an over-cap file unread, and if the fresh record also fails the cap `changed` is False, so the oversized file stays on disk indefinitely holding observations past the retention window. **I bounded it rather than taking the reproduction's conclusion:** at cap 200 (one 134-byte record fits) a seeded 309-byte store is reclaimed to 119 bytes on the first transition; at cap 100 it stays at 309 forever. So the hole needs a cap below ~135 bytes, which disables the store and for which `--no-history` is the documented switch, and nothing is published from the stranded file. New this round, since ND-1 is what made the cap movable. *Promote if* the cap gains a floor that admits an over-cap store a record still fits into.
+
+**Polish (4)** — no current user-visible loss.
+- The PR body's `## Verification` block still opens "Every command below was run on this tree at `5f73639`" and reports that head's figures (1824 tests, 90.2%). `5f73639` is the head this gate rejected; `b5616b6` measures 1,857 and 90.4%. One line, on the artifact the gate approves.
+- `OverflowError` in `_decode`'s except tuple is unreachable once the parse hooks are installed: an oversized integer literal reaches `_numeric` as a *string*, `float(text)` returns `inf` rather than raising, and `math.isfinite` then raises `ValueError`. Reproduced directly, and it is why mutation 22-of-23 stayed green. The comment above it describes the pre-fix path the same commit closed upstream. The defence is real and pinned at `Lane._open`, where removing it does go red — this is the second, dead copy.
+- The entity's `## Acceptance criteria` preamble still reads "Eleven criteria. AC1-AC8 belong to PR 1, AC9-AC10 to PR 2". There are twelve since AC12, and AC9 is PR 1's — its test ships and passes on this head. The PR body's "Carries AC1–AC9" is the correct split; the live Linear body repeats the stale count.
+- `history_reset` is cited as `aggregate.py:655` in both the PR body and the entity; it moved to 659 in the ND-1 commit.
+
+**Refuted (2)** — reproduced, and the conclusion does not follow.
+- **The prior review's `--forget` symptom recurs verbatim with live sessions, and is not the defect.** 2 entries → delete the file → one transition → 3 entries back, with byte-identical stamps. But the baseline *is* dropped: those are fresh observations of sessions still on the board, whose `last_activity` coincides because the transcripts have not changed. With the sessions aged off the board, only the new record returns and the deleted two do not. M-2 is genuinely fixed; the symptom is re-observation, not resurrection.
+- **AC3's "age first" clause is unobservable from outside `evict`, so the green mutation is an equivalent mutant.** Both bounds are suffix-selectors over a list sorted ascending by `last_activity`, so filter-then-cap and cap-then-filter are provably the same function; two divergence scenarios produced identical output. M-3's `isfinite` guard removed the NaN input where they used to differ, which closes the last review's Polish item on this. The three tests correctly oracle the three properties that *are* observable, and each has a verified red.
+
+### Summary
+
+**GO**, conditional on the captain blessing ND-5. Every authorized fix landed as specified and nothing
+else moved: the round is exactly +1184/−113 over twelve files, no `web/` file, no byte pin, no version
+field, and 22 of the 23 named falsifying mutations go red in a throwaway copy. AC1-AC9 all hold with
+their falsifiers re-applied, no oracle was weakened, AC4's vacuous failed-write test is genuinely
+fixed, and all seven new properties reproduce end to end — including the two the last review could
+only describe as broken. CI is 12/12 on this head with platform-tests, `CLEAN`, and Copilot is an
+absent mechanism rather than an unread review.
+
+The one thing the checklist asked me to confirm that I could not is that D3, D4 and D5 remain the only
+differences from the plan doc: there is a fourth, the `--forget` refusal paragraph, and it needs a word
+rather than a fix — it documents shipped behaviour the contract would otherwise misdescribe. The
+twenty-third mutation stayed green for a structural reason worth naming rather than burying: the
+`OverflowError` the commit added to `_decode` cannot be raised there once the parse hooks are in, and
+the guard that does the work sits at `Lane._open`, where it is pinned. Five Deferred-risk items are
+filed rather than promoted, two of them oracle gaps in AC2 and AC4 whose code is correct today, and
+two findings put to me by reproduction were refuted after being reproduced.
+
+No edit to the branch, no merge, no worktree or branch removed.
