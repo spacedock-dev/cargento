@@ -347,10 +347,14 @@ def _decode(raw: bytes) -> tuple[tuple[Observation, ...], str | None]:
             parse_int=_numeric,
             parse_constant=_numeric,
         )
-    # OverflowError alongside the other two because it is the class a numeric
-    # too large for a float raises, and it was in no except tuple on this path:
-    # it escaped `load`, `Lane._open` and `Application.collect`, and a live
-    # server then answered nothing at all until the file was removed by hand.
+    # OverflowError cannot be raised here while the three hooks above are
+    # installed: an oversized integer literal reaches `_numeric` as text,
+    # `float()` returns `inf` rather than raising, and `math.isfinite` turns it
+    # into the ValueError beside it. Kept anyway, and named as unreachable
+    # rather than deleted, because it is one class in a tuple and the shape it
+    # guards against — a numeric no float can hold escaping this boundary — took
+    # a live server down permanently once. The reachable copy is at
+    # `Lane._open`, where removing it goes red.
     except (ValueError, RecursionError, OverflowError):
         return (), RESET_UNREADABLE
     if not isinstance(data, dict):

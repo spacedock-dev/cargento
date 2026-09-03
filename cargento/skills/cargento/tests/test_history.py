@@ -42,15 +42,22 @@ if TYPE_CHECKING:
 # title into the existing `project` field would pass AC1 (the key set is
 # unchanged) and pass AC2 (no sentinel to look for), which was demonstrated
 # with the text on disk and 46 tests green.
+# Separated by `_` rather than `-`, and that is the point rather than a style.
+# `history._bounded_project` trims a dash-joined label to its last two segments,
+# so a sentinel routed into `project` reached the store as `SPACEDOCK-e8` while
+# an `assertNotIn` for `SENTINEL-SPACEDOCK-e8` stayed green — the oracle below
+# could be defeated by the truncation it is supposed to see through. Neither
+# separator the bound splits on appears in these strings, so any prefix of one
+# that survives a trim is still a substring of the whole.
 SENTINELS = {
-    "title": "SENTINEL-TITLE-e1",
-    "last_prompt": "SENTINEL-PROMPT-e2",
-    "state_detail": "SENTINEL-DETAIL-e3",
-    "instruction": "SENTINEL-INSTRUCTION-e4",
-    "task_subject": "SENTINEL-TASKSUBJECT-e5",
-    "task_active_form": "SENTINEL-ACTIVEFORM-e6",
-    "subagent_name": "SENTINEL-SUBAGENT-e7",
-    "spacedock_workflow": "SENTINEL-SPACEDOCK-e8",
+    "title": "SENTINEL_TITLE_e1",
+    "last_prompt": "SENTINEL_PROMPT_e2",
+    "state_detail": "SENTINEL_DETAIL_e3",
+    "instruction": "SENTINEL_INSTRUCTION_e4",
+    "task_subject": "SENTINEL_TASKSUBJECT_e5",
+    "task_active_form": "SENTINEL_ACTIVEFORM_e6",
+    "subagent_name": "SENTINEL_SUBAGENT_e7",
+    "spacedock_workflow": "SENTINEL_SPACEDOCK_e8",
 }
 
 
@@ -419,12 +426,17 @@ class OwnerOnlyWriteTest(HistoryStoreTestCase):
         # two syscalls, so a simplification of the write path goes red here.
         config = self.config()
         target = history.store_path(config)
-        opened: list[str] = []
+        opened: list[tuple[str, int | None]] = []
         renamed: list[tuple[str, str]] = []
         real_open, real_replace = os.open, os.replace
 
         def spy_open(path: Any, *args: Any, **kwargs: Any) -> int:
-            opened.append(str(path))
+            # The mode argument, not merely the path. Recording the path alone
+            # left AC4's own named falsifier green: `open()` then `os.chmod`
+            # writes the same temp file to the same target, and only the mode
+            # passed to the call tells the two apart while the file is on disk.
+            mode = kwargs.get("mode", args[1] if len(args) > 1 else None)
+            opened.append((str(path), mode))
             return int(real_open(path, *args, **kwargs))
 
         def spy_replace(src: Any, dst: Any, **kwargs: Any) -> None:
@@ -437,9 +449,11 @@ class OwnerOnlyWriteTest(HistoryStoreTestCase):
         ):
             self.assertTrue(history.save(config, [], diagnostic_sink=self.diagnostics.append))
         self.assertEqual(1, len(opened))
-        self.assertTrue(opened[0].endswith(".tmp"), opened[0])
-        self.assertNotEqual(target, opened[0], "the target was opened directly")
-        self.assertEqual([(opened[0], target)], renamed)
+        path, mode = opened[0]
+        self.assertTrue(path.endswith(".tmp"), path)
+        self.assertNotEqual(target, path, "the target was opened directly")
+        self.assertEqual(0o600, mode)
+        self.assertEqual([(path, target)], renamed)
 
     def test_a_failed_write_leaves_no_temp_file_behind(self) -> None:
         # The rename fails, not `makedirs`: the old setup made `state_home` a
