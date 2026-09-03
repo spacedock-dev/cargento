@@ -489,7 +489,7 @@ unstarted.** (offline)
 Verified by: a case with two classified children — one with an mtime inside `working_threshold_sec`,
 one aged past it but inside `window_hours` — and a roster listing both. Asserts the published list
 holds both entries; that the stale one is inactive and the fresh one active; that pending members
-contribute neither; and that `state_detail` reads `running 1 subagent`.
+are never counted as running; and that `state_detail` reads `running 1 subagent`.
 Falsified by: appending the stale child to the fresh-gated list instead of the published one, which
 flips `state_detail` to `running 2 subagents` and breaks DRC-4263's AC-3.
 
@@ -964,3 +964,155 @@ check — is filed, not promoted. Three findings were refuted rather than passed
 `0d48cfb` with every measurable job run, `mergeStateStatus` is `CLEAN`, and Copilot is an absent
 mechanism rather than an unread one. The branch was not edited, nothing was merged, and the worktree
 still stands at `0d48cfb`.
+
+## Stage Report: implementation (correction round 1)
+
+- DONE: Material — `next-session.js:255`, the heading's total and its running clause count the same
+  population, with the render test the arbiter's fixture describes and the round-1 mixed case kept
+  red-able
+  `4ce2a3c`. Both clauses count DIRECT children; a live worker beneath a teammate gets a third
+  clause. The honest sentence chosen over silence: a live grandchild's row carries
+  `aria-label="running"` either way, so a heading saying only `NONE RUNNING` still contradicts what
+  a screen reader reads one line down. Two new tests through the real node harness:
+  `test_the_heading_never_says_none_running_over_a_running_worker` (one idle direct child + one live
+  grandchild) asserts `1 SUBAGENT · NONE RUNNING · 1 WORKER RUNNING BENEATH` and `assertNotIn("2
+  SUBAGENTS")` — red at `0d48cfb` with the exact defect (`2 SUBAGENTS · NONE RUNNING` above a
+  `next-live` row); `test_the_heading_counts_workers_beneath_a_live_teammate_separately` asserts
+  `1 RUNNING SUBAGENT · 2 WORKERS RUNNING BENEATH`, red at `0d48cfb`. Round 1's mixed case is
+  unmodified and still red-able: its `assertNotIn("3 RUNNING SUBAGENTS")` fires if `running` is
+  widened again. Byte pins recomputed from the assets in BOTH places that pin the page —
+  `test_next_page.py` and `test_next_flag.py`, the second found only by running the suite.
+- DONE: Needs decision, FIX — `board_drive_verdict` provenance
+  `ca4a1c8`. Taught the recorder rather than annotating the row, because the README route would have
+  documented a hand-written record in a directory whose contract forbids one. `drive_verdict` derives
+  every count from the arm records committed beside it; the five fields no arm can carry are typed
+  declared measurements (`--measured KEY=NUMBER`, allowlisted keys, bool or int only).
+  `test_the_committed_verdict_is_reproduced_from_the_committed_arms` asserts the recorder reproduces
+  the committed record exactly — it would fail if any derived field, including the two `state_detail`
+  comparisons, were computed differently. Verified: reproduces byte-identical. Two guards beside it:
+  no verdict from a partial drive, and a declared measurement cannot carry text.
+- DONE: Needs decision, HELD then FIXED under captain-ruling[2026-09-03] — the 24-hour window gate
+  extended to the lead's own `own_agents`
+  `ca4a1c8`. `load_subagents` gained `window_sec` and returns every agent inside it with its own
+  `active`; the state list filters back to the running ones, so it is one file read rather than two
+  calls. `test_a_quiet_agent_the_lead_dispatched_itself_stays_published`: quiet own agent published
+  `active: false`, `parent: null`; one aged past the window absent; `state_detail` still
+  `running 1 subagent`. Red at `0d48cfb` for the right reason (`quiet-lens` missing from the
+  roster). **AC-4 re-proved by the two-collector comparison, as the ruling required** — base and
+  head in separate processes on a pinned `now`: live store, 6 sessions, **0 state-bearing fields
+  moved**, roster 39→40 and 0→1 on the two sessions holding a quiet own agent; synthetic store,
+  **0 moved**, roster 4→5 with `ancient-lens` correctly absent. One pre-existing expectation moved
+  and it is the ruling's own effect:
+  `test_a_legacy_hex_member_joins_through_its_own_transcript` asserted `subagents == []`; it now
+  asserts the shape that proves what the case owns (a STARTED member gone quiet, never a pending
+  one), and its `state` assertion is untouched.
+- DONE: Needs decision, RECORD — the registry demote is one authority on `active` while
+  `state_detail` follows freshness
+  `f23ab79`. One paragraph in `docs/design-session-identity.md` beside the demote rule: two answers
+  to one question on purpose, disagreeing for up to ninety seconds, with why each side is where it is.
+- DONE: Deferred risk, FIX — `object_pairs_hook` so duplicate keys are walked
+  `ca4a1c8`. `records()` keeps every pair, parking a displaced duplicate under a slot no vocabulary
+  classifies. The arbiter's own defeat replays as caught: appending a record with a duplicated
+  `record` key holding a label now fails with
+  `['a-label-someone-wrote', 'record <duplicate 6>']`. Last-wins is preserved for every other
+  assertion.
+- DONE: Deferred risk, FIX — the oracle's file list globs both recorders' names
+  `ca4a1c8`. `REGISTRY_GLOB`/`DRIVE_GLOB` replace the hardcoded 2-tuple. Proved by adding a third
+  file (`teammate-board-drive-2.1.260-macos.jsonl`) carrying an unclassified string: now red, where
+  before it was walked by nothing.
+- DONE: Deferred risk, FIX — sweep before slicing, both keys, one test
+  `ca4a1c8`. `published_agent` uses `records.redact_clip(…, 70)`, and the three upstream display
+  clips are removed so the full string reaches it.
+  `test_a_long_subagent_name_is_swept_before_it_is_bounded` is red at `0d48cfb` on both keys with
+  `sk-ant-api` published unmarked, and also holds the bound (limit plus a marker's length).
+- DONE: Deferred risk, FIX — the classification probe runs the `active=False` path
+  `ca4a1c8`. `ELEMENT_ARGUMENTS` covers four shapes the collector actually builds. Proved by
+  injecting the finding's own defeat, `"note": None if active else "…"`: the widened probe fails
+  with `unaccounted={'note'}`, where the single tuple stayed green.
+- DONE: Polish, FIX — the false promotion sentence at `docs/design-session-identity.md:504`
+  `f23ab79`. Corrected to what the code does and the drop named. Verified by exercising, not by
+  reading: one fresh classified child naming an absent lead, holding one live worker, publishes
+  **0 sessions**. The promotion is not implemented here.
+- DONE: Polish, FIX — the chrome's `N subagents` under an unqualified word
+  `4ce2a3c`. Now `N subagents running`, the wording AC-5's clause implies. Chose it over a bare
+  `N running` because the header already reads `N running` for sessions, and two identical
+  unqualified words is worse than one. Three chrome assertions moved with it.
+- DONE: Polish, FIX — `agent_start_cache`
+  `ca4a1c8`. Keyed on `(mtime_ns, size)` like the five caches beside it. The three sub-items
+  conflicted, so the resolution is stated: caching the fallback is what makes `| None` REACHABLE, so
+  it is cured by being filled rather than deleted — deleting it would have forbidden the fallback
+  cache the same item asked for. Three tests in `StartStampCacheTest`: a stampless head is read once
+  and not once per pass (red at `0d48cfb` with 3 head reads for 3 calls); a transcript that gains a
+  stamp stops reading as unstarted (the guard on caching a null); a rewritten transcript does not
+  serve the old start (red at `0d48cfb`, served the previous file's stamp).
+- DONE: Polish, FIX — the recorder's `session` field
+  `ca4a1c8`. `session_slot` emits the prefix only when it is 8 hex characters and a salted digest
+  otherwise, so the guarantee is in the recorder rather than in the oracle downstream. Red at
+  `0d48cfb`: a legacy `agent-evidence-skeptic.jsonl` emitted `agent-ev`.
+- DONE: Polish, captain's — AC-2's wording, under captain-ruling[2026-09-03]
+  Entity line 492: "pending members contribute neither" is now "pending members are never counted as
+  running". The test is unchanged; the behaviour was always right.
+- SKIPPED: Deferred risk — the uncapped published roster
+  The FO files it; a cap and a "+N more" convention is a payload-shape decision. Measured again this
+  round: 40 elements on this session's own row.
+- SKIPPED: Deferred risk — the pane-dispatched nested teammate
+  Already filed as DRC-4347.
+- DONE: `sync-docs` invoked, its updates on this branch
+  `f23ab79`. Found two claims this round's code falsified beyond the two it was sent for.
+  `design-runtime-architecture.md`'s cache accounting was stale — nineteen caches with seven
+  stat-keyed, against twenty-one and nine — and both omissions are named rather than absorbed
+  (`codex_plan_cache`, pre-existing; `agent_start_cache`, this round's), with why it sits apart from
+  `agent_class_cache` over the same head bytes. `design-credential-redaction.md`'s swept set gains
+  `subagents[].parent` as its third late arrival and its `redact_clip` call-site count moves 14→16.
+  `SKILL.md`'s legacy-agent clause states the new retention. Checks a-e run; the marker is
+  deliberately not stamped (feature branch). Unresolved and not this branch's prose: `HOW_TO_USE.md`
+  and `SECURITY.md` carry pre-existing em dashes from #260's history work.
+- DONE: The canonical pre-PR suite run once, and the diff reviewed in the worktree before pushing
+  `ruff check` clean, `ruff format --check` clean, `mypy --strict` 112 files clean,
+  `lint_embedded.py` clean, `validate_plugins.py` clean, `bump_version.py --current` 0.20.0 with no
+  version field moved since the merge base. Suite run **once** at load 6.03: **1881 tests OK, 1
+  skipped**, no red, so no module in the four contention-prone ones needed a solo re-run. Script
+  tests + `coverage report`: **90.2%** against `fail_under = 73`.
+- FAILED: AC-5's positive arm re-driven live this round
+  The live board had no running worker at any moment I could pin (20 direct children, 1 live; 20
+  grandchildren, 0 live), so the defect arm could not be observed on real data. What was driven:
+  the shipped `nextSessionSubagents` over the live roster under base and head, both reading
+  `1 RUNNING SUBAGENT` and agreeing with the live `state_detail` — the negative arm, showing the
+  change is a no-op on this shape. The positive arm rests on the two node render tests, which is the
+  same method the arbiter used to reproduce the finding.
+
+### Surface
+
+Round's own surface, `git diff --numstat 0d48cfb..HEAD`: **19 files, +713/-93, net +620** — of which
+runtime and web is **+86** across 5 files, the oracles **+403** across 8, the capture recorder
+**+109**, and docs **+22**.
+
+Cumulative, `git diff --numstat "$(git merge-base main HEAD)"..HEAD`: **42 files, +2692/-120, net
++2572**; runtime and web **+378** across 20 files.
+
+**Surfaced rather than passed silently.** The declared estimate is +230 net across runtime and docs
+with ±30% (band 161–299). The review round accepted the cumulative figure as inside that band under
+all three groupings its arbiter could construct; under the grouping I can construct — runtime and
+web only, excluding tests, docs, the capture recorder and the capture files — the cumulative sits at
++378, above the band. Every line of this round's own +620 is an item the FO or the captain
+authorised, and none of it narrows an AC. I am not treating that as settled, and it is a tolerance
+question, which disposition rule 5 says only the captain decides.
+
+### Summary
+
+Fifteen authorized items closed in one pass, including both the captain approved on the day: the
+lead's own agents now keep the same 24-hour retention as its children and grandchildren, and AC-2's
+vacuous clause is reworded. The Material finding is fixed by making every number in the heading name
+its own population rather than by narrowing one clause and leaving another wide, which is how round 1
+created it. Every behavioural fix was watched red at `0d48cfb` first, and three of them are proved by
+replaying the reviewer's own defeats: the duplicate-key walk-past, the third unwalked capture, and
+the conditionally-string key on the inactive path. AC-4 was re-proved as the ruling required, by two
+collectors in separate processes over the same stores, with 0 state-bearing fields moved on the live
+store and on a synthetic one.
+
+Two things a reader should not take on trust. AC-5's positive arm was not re-driven live this round,
+because no worker was running on this board at any moment I could pin; it rests on the node render
+tests. And the cumulative runtime surface is above the declared band under the grouping in the
+Surface section, which is the captain's call rather than mine.
+
+New head `f23ab79`, pushed to PR #261. Nothing merged, nothing removed.
