@@ -1336,3 +1336,75 @@ the six the review filed as unfalsifiable and the two shapes of tampered numeric
 whole board down. Three figures were re-measured rather than inherited — the record's byte size, the
 1 MiB fit, and the store's own size arithmetic against the bytes `save` writes — and the one that did
 not reproduce is reported as it measured here rather than as the review had it.
+
+## Stage Report: implementation (correction round 1, captain rulings ND-1 and ND-4)
+
+New head `b5616b6`, pushed to PR #260 (not merged). **Round surface** re-measured from the rejected
+snapshot `5f73639`: 12 files, **+1184 / −113** — runtime 5 files +311/−37, oracles 3 files +832/−64,
+docs 4 files +41/−12. The two rulings alone, `461c605..b5616b6`: 8 files, **+253 / −4**. Cumulative
+against merge base `5a156bc`: 21 files, **+2777 / −188**.
+
+- DONE: **ND-1** — two knobs wired, so "both are configurable" is true as written
+  `--history-days` (default 14) and `--history-max-bytes` (default 1048576) follow `--window-hours`'s
+  shape, carry through `build_runtime_config` into the two fields the lane reads, and take their
+  defaults from named `config.py` constants because argparse and the constructor otherwise state the
+  same figure twice. `SECURITY.md` unchanged, as instructed — the sentence needed no edit once the
+  build could do it. `history.py` still holds no quoted literal `"git"` (`grep -c '"git"'` → 0).
+- DONE: **ND-1, rejected on nonsense values**
+  `positive_float` and `positive_int` are argparse `type=` callables, so zero, negative,
+  non-finite and non-numeric are refused at parse time — before a daemon can be respawned with a bound
+  its parent would not have taken. Rejection at the type rather than in `main` on purpose: `main` is
+  already at ruff's branch cap and carries the exemption for it.
+- DONE: **ND-1, forwarded on the daemon respawn path the way `--no-history` is**
+  `_history_bound_argv` sends whichever bound was moved and neither when both are the shipped
+  defaults; it reads `args.history_days` and `args.history_max_bytes` directly, so an omission raises.
+  The FO's prediction held exactly — the seven hand-written namespaces in `test_lifecycle.py` produced
+  **16 AttributeErrors** and forced the edit rather than passing quietly. Split into its own function
+  only because two more branches put `spawn_argv` at complexity 11 against ruff's 10, and widening
+  `lifecycle.py`'s per-file ignores to swallow that would have been the wrong trade.
+- DONE: **ND-1 tests** — the flag reaches the bounds, and the bounds are what evicts
+  `BothBoundsAreConfigurableTest`: the defaults are the contract's literals (14 days, 1 MiB, written
+  as literals rather than read from the subject's constants); both flags reach the config; a
+  `--history-days 1` lane really drops a two-day-old observation; a `--history-max-bytes 140` lane
+  keeps exactly the newest record (measured: 111 bytes each against a 23-byte envelope, so one store
+  is 134 and two are 247); and six nonsense values each exit 2. Four new `test_lifecycle` tests cover
+  the respawn both ways. And the prose is bound to the parser the way the off switch already was:
+  `test_the_bounds_the_contract_calls_configurable_are_flags` asserts the contract sentence and then
+  parses both flags, so ND-1 cannot recur as prose about a build that cannot do it.
+- DONE: **ND-1 docs** — both flags documented beside `--no-history`
+  `HOW_TO_USE.md` gains a "Move the history's two bounds" section with the command, the refusal, the
+  respawn behaviour and the one thing a user has to know (what leaves the file is gone from it).
+  `SKILL.md`'s options table gains a row each. `validate_plugins.py` OK, so no link or anchor moved.
+- DONE: **ND-1 falsified before believed** — six mutations, six reds
+  Dropping the two arguments from `build_runtime` (config never moves), removing the respawn call
+  (bounds not forwarded), forwarding unconditionally (`if True`), accepting non-positive floats,
+  dropping the int guard, and misspelling the flag so the contract sentence is unbound: each reddens
+  the class named above, run one at a time in a throwaway copy at `/tmp/drc4044-mut2`, never on the
+  branch.
+- DONE: **ND-4** — scoped into PR 2, and no code in this PR
+  `AC12 (offline, PR 2) — the header reports a store reset with its distinguishable reason` is
+  recorded under `## Acceptance criteria` on this entity, with a *Verified by:* naming the render test
+  PR 2 adds over `history_reset` (both literals, and the absent-field case) and a *Falsified by:* — a
+  payload carrying `history_reset` and a header identical to one without it, which is exactly what PR
+  1 ships. `## Delivery shape` now records AC12 against PR 2's surface at ~5 `web/` lines plus a
+  render test, and why it rides there: only one PR may touch `cargento_runtime/web/`. PR #260's body
+  gained one line under `## Verification` saying the clause is PR 2's against `history_reset`, per the
+  ruling. **No `web/` file and no runtime file was touched for ND-4.**
+- DONE: the canonical suite run once, at a load average this machine could be trusted at
+  `uptime` first: **3.92**, nowhere near the 20 the lenses left behind, so nothing had to be re-run
+  alone and nothing failed. `ruff check` clean, `ruff format --check` 149 files, `mypy --strict` clean
+  over 110 files, `lint_embedded` clean, `validate_plugins` OK, `bump_version --current` 0.20.0,
+  **1,857 tests OK (1 skipped) in 37.8 s**, script tests 190 OK, `coverage report` exit 0 at
+  **90.4%** against `fail_under` 73, `claude plugin validate --strict` passed. No version field moved.
+- DONE: pushed so #260's head moved, and the checks read on the head that owns them
+  **12/12 required checks `success` on `b5616b6`**, every check-run returned by that SHA;
+  `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`. Pushed, not merged.
+
+### Summary
+
+Both rulings are applied on `b5616b6`. ND-1 is two flags with the shipped defaults, validated at parse
+time, forwarded on respawn only when moved, and now bound to the contract sentence by a test — the
+promoted prose is true rather than amended, which is what the captain asked for. ND-4 took no code:
+AC12 is on the entity with a falsifier that names the exact state PR 1 ships, PR 2's surface records
+it, and the PR body says so. Six more mutations, six more reds, on top of round 1's seventeen. The
+round is now +1184/−113 over twelve files against `5f73639`, two thirds of it oracles.
