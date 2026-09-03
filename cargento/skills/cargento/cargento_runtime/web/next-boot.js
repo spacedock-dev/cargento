@@ -238,6 +238,15 @@ function nextStatusDot(label, className, filled = true){
     `${filled ? "●" : "○"}</span>`;
 }
 
+/* Only `active === false` withholds the live pulse and the running count. None
+   means the collector does not measure per-entry liveness, so a harness nobody
+   has taught to measure it renders exactly as it did before. This also retires a
+   defect DRC-4229 left standing: a registered member that has demonstrably not
+   started was already published in `subagents[]` and pulsed like a running one. */
+function nextSubagentIsLive(subagent){
+  return !subagent || subagent.active !== false;
+}
+
 function nextProjectGroups(){
   const groups = new Map();
   for(const session of nextRows()){

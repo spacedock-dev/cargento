@@ -1968,7 +1968,15 @@ class SubagentElementContractTest(unittest.TestCase):
         # "not read" — never that the child runs on no model, and never a value
         # borrowed from the parent card.
         self.assertEqual(
-            [{"name": "subagent 9f3c1a55", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "subagent 9f3c1a55",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             rows[0]["subagents"],
         )
 

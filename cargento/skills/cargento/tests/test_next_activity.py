@@ -149,6 +149,64 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn("1,235 /m", work)
         self.assertIn("Claude Code · running 1 subagent", work)
 
+    def test_live_subagents_win_the_pill_budget_and_idle_ones_are_dimmed(self) -> None:
+        # DRC-4344. The strip shows six pills. A lead with one finished teammate
+        # and several live lenses must not spend that budget on work that has
+        # stopped, so the moving crew is ordered first; an entry with no `active`
+        # key stays live, which is every harness but Claude.
+        # Falsified by: rendering the published order as it arrives, which pushes
+        # the seventh element (a live lens) out of the six visible slots.
+        html = self.render(
+            """
+__setNow(999999);
+nextData.sessions.find(session => session.sid === "work-z").subagents = [
+  {name: "done-a", started_at: 9000, active: false, parent: null},
+  {name: "done-b", started_at: 9000, active: false, parent: null},
+  {name: "live-a", started_at: 9600, active: true, parent: null},
+  {name: "live-b", started_at: 9600, active: true, parent: "live-a"},
+  {name: "live-c", started_at: 9600, active: true, parent: "live-a"},
+  {name: "live-d", started_at: 9600, active: true, parent: "live-a"},
+  {name: "live-e", started_at: 9600, active: true, parent: "live-a"},
+  {name: "unmeasured", started_at: 9600}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        card = self.activity_card(html, "work-z")
+
+        self.assertEqual(6, card.count("data-next-activity-subagent="))
+        # All six slots go to entries that are live or unmeasured; the two
+        # finished teammates are what "+2 more" now stands for.
+        for name in ("live-a", "live-b", "live-c", "live-d", "live-e", "unmeasured"):
+            self.assertIn(name, card)
+        self.assertNotIn("done-a", card)
+        self.assertNotIn("done-b", card)
+        self.assertIn("+2 more", card)
+        self.assertNotIn("next-activity-subagent--idle", card)
+
+    def test_an_idle_subagent_pill_is_marked_when_it_does_fit(self) -> None:
+        # The dim class is the only thing separating a finished teammate from a
+        # running one in the strip, which has no room for a status dot.
+        # Falsified by: dropping the class, which renders the two identically.
+        html = self.render(
+            """
+__setNow(999999);
+nextData.sessions.find(session => session.sid === "work-z").subagents = [
+  {name: "live-a", started_at: 9600, active: true, parent: null},
+  {name: "done-a", started_at: 9000, active: false, parent: null}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        card = self.activity_card(html, "work-z")
+
+        self.assertNotIn("next-activity-subagent--idle", self.activity_subagent(card, 0))
+        self.assertIn("next-activity-subagent--idle", self.activity_subagent(card, 1))
+
     def test_card_subagents_are_bounded_escaped_and_use_payload_clock_ages(self) -> None:
         html = self.render(
             """

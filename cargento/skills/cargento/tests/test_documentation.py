@@ -172,6 +172,123 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
             with self.subTest(never_fired=name):
                 self.assertIn(name, comment)
 
+    REGISTRY_CAPTURE = "claude/team-registry-2.1.259-macos.jsonl"
+    # Field names may be recorded; a field's contents may not. A shape map is
+    # keyed BY field name, and a name list holds field names as its values, so
+    # those are the only two places a forbidden name may legitimately appear.
+    SHAPE_MAPS: ClassVar[tuple[str, ...]] = ("member_fields", "header_fields")
+    NAME_LISTS: ClassVar[tuple[str, ...]] = (
+        "added",
+        "removed",
+        "top_level_keys",
+        "older_registry_fields",
+        "newer_registry_fields",
+        "added_fields_the_runtime_reads",
+        "added_fields_deliberately_unread",
+    )
+    TYPE_NAMES: ClassVar[frozenset[str]] = frozenset(
+        {"null", "bool", "int", "float", "string", "list", "object", "unknown"}
+    )
+    FORBIDDEN: ClassVar[frozenset[str]] = frozenset({"prompt", "message"})
+
+    @classmethod
+    def strings(cls, node: Any, trail: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], str]]:
+        if isinstance(node, dict):
+            return [
+                pair
+                for key, value in node.items()
+                for pair in cls.strings(value, (*trail, str(key)))
+            ]
+        if isinstance(node, list):
+            return [pair for value in node for pair in cls.strings(value, trail)]
+        return [(trail, node)] if isinstance(node, str) else []
+
+    def registry_records(self) -> list[dict[str, Any]]:
+        records = self.records(self.CAPTURES / self.REGISTRY_CAPTURE)
+        self.assertTrue(records, "the capture must not be empty")
+        return records
+
+    def test_the_team_registry_captures_field_shapes_hold_only_type_names(self) -> None:
+        # DRC-4344's capture reads a store whose member entries carry `prompt`,
+        # which is the operator's own words. The rule the captures README states
+        # is shapes never values, so a field map may say what type a field holds
+        # and never what it held.
+        # Falsified by: a shape map whose value is content rather than a type.
+        for record in self.registry_records():
+            for name in self.SHAPE_MAPS:
+                for field, declared in (record.get(name) or {}).items():
+                    self.assertLessEqual(
+                        set(declared),
+                        self.TYPE_NAMES,
+                        f"{name}[{field}] must hold type names, not content",
+                    )
+
+    def test_the_team_registry_capture_carries_no_operator_text(self) -> None:
+        # The same rule for every other string in the file: `prompt` and
+        # `message` may be named and never valued, and nothing may be long
+        # enough to be prose.
+        # Falsified by: recording either field's value anywhere outside a
+        # field-name position.
+        for record in self.registry_records():
+            for trail, value in self.strings(record):
+                if trail and (trail[0] in self.SHAPE_MAPS or trail[-1] in self.NAME_LISTS):
+                    continue
+                self.assertNotIn(
+                    trail[-1] if trail else "",
+                    self.FORBIDDEN,
+                    f"{'.'.join(trail)} records that field's value",
+                )
+                self.assertNotIn(
+                    value.strip().lower().rstrip(":"),
+                    self.FORBIDDEN,
+                    f"{'.'.join(trail)} carries {value!r} outside a field-name list",
+                )
+
+    def test_no_string_in_the_team_registry_capture_is_long_enough_to_be_prose(self) -> None:
+        # 64 characters is far past a field name, a type name, a closed
+        # vocabulary token, an ISO stamp or a salted hash, and far short of a
+        # sentence. It catches prose by shape rather than by knowing every field
+        # that could carry it.
+        # Falsified by: any recorded value that reads as a phrase.
+        for record in self.registry_records():
+            for trail, value in self.strings(record):
+                self.assertLessEqual(
+                    len(value), 64, f"{'.'.join(trail)} is long enough to be prose"
+                )
+
+    def test_the_team_registry_capture_names_prompt_without_reading_it(self) -> None:
+        # Recorded as a name it must be, or the capture does not evidence the
+        # field the runtime is deliberately refusing to read.
+        # Falsified by: dropping `prompt` from the drift record, or listing it
+        # among the fields the runtime reads.
+        drift = [r for r in self.registry_records() if r["record"] == "registry_field_drift"]
+        self.assertTrue(drift, "the capture must record the registry's field drift")
+        for record in drift:
+            self.assertIn("prompt", record["added"])
+            self.assertIn("prompt", record["added_fields_deliberately_unread"])
+            self.assertNotIn("prompt", record["added_fields_the_runtime_reads"])
+
+    def test_the_team_registry_capture_settles_the_start_stamp_index(self) -> None:
+        # The whole of DRC-4344's first gap in one figure, and it must come from
+        # the file rather than from the code: a top-level transcript's first
+        # timestamped record is not record 0, and a legacy subagent's is.
+        # Falsified by: a capture whose two layouts agree, which would mean the
+        # asymmetry the fix rests on was never measured.
+        verdicts = {
+            record["layout"]: record
+            for record in self.registry_records()
+            if record["record"] == "first_timestamp_index_verdict"
+        }
+        self.assertEqual({"top_level", "legacy_subagents"}, set(verdicts))
+
+        top = verdicts["top_level"]
+        legacy = verdicts["legacy_subagents"]
+        self.assertEqual(0, top["reads_at_index_zero"], "no top-level file stamps record 0")
+        self.assertEqual(
+            legacy["files"], legacy["reads_at_index_zero"], "every legacy file stamps record 0"
+        )
+        self.assertNotEqual(top["verdict"], legacy["verdict"])
+
     def test_the_capture_files_table_is_one_block(self) -> None:
         # Two rows were left stranded below the prose that follows the table,
         # and every capture PR adds its row by copying the one above it, so a

@@ -208,8 +208,14 @@ function nextRows(){
 function nextCounts(){
   const rows = nextRows();
   const asks = nextOperationsAsks(rows);
+  /* Only the ones moving. The chrome's figure is read as "how much is running
+     right now", and the published list now also carries teammates that have
+     finished and members that have not started — counting those would make the
+     header lie in order to close a pill-level gap. */
   const subagents = rows.reduce(
-    (total, row) => total + (Array.isArray(row.subagents) ? row.subagents.length : 0),
+    (total, row) => total + (Array.isArray(row.subagents)
+      ? row.subagents.filter(nextSubagentIsLive).length
+      : 0),
     0,
   );
   return {

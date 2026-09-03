@@ -248,17 +248,27 @@ function nextSessionTasks(session){
 function nextSessionSubagents(session){
   const subagents = Array.isArray(session.subagents) ? session.subagents : [];
   if(!subagents.length) return "";
+  const running = subagents.filter(nextSubagentIsLive).length;
   const rows = subagents.map((subagent, index) => {
     const elapsed = nextDurationSince(subagent && subagent.started_at);
     const measured = elapsed == null
       ? ""
       : `<span class="next-session-subagent-elapsed">${elapsed}</span>`;
-    return `<div class="next-session-subagent next-live" data-next-session-subagent="${index}">` +
-      `${nextStatusDot("running", "next-session-subagent-glyph")}` +
-      `<strong class="next-session-subagent-name">${esc(subagent && subagent.name || "subagent")}</strong>` +
+    const live = nextSubagentIsLive(subagent);
+    /* Nested inside the name cell rather than given a grid column of its own, so
+       attribution costs one CSS rule instead of a new column every breakpoint
+       has to agree about. */
+    const parent = subagent && subagent.parent
+      ? `<span class="next-session-subagent-parent"> · ${esc(subagent.parent)}</span>`
+      : "";
+    return `<div class="next-session-subagent${live ? " next-live" : ""}" ` +
+      `data-next-session-subagent="${index}">` +
+      `${nextStatusDot(live ? "running" : "idle", "next-session-subagent-glyph", live)}` +
+      '<strong class="next-session-subagent-name">' +
+      `${esc(subagent && subagent.name || "subagent")}${parent}</strong>` +
       `${measured}</div>`;
   }).join("");
-  const label = subagents.length === 1 ? "1 RUNNING SUBAGENT" : `${subagents.length} RUNNING SUBAGENTS`;
+  const label = running === 1 ? "1 RUNNING SUBAGENT" : `${running} RUNNING SUBAGENTS`;
   return '<div class="next-session-current-subagents" data-next-session-subagents>' +
     `<span>${label}</span>${rows}</div>`;
 }

@@ -176,7 +176,15 @@ class CopilotCollectorTest(RuntimeTestCase):
         self.assertEqual("w/myproj", s["project"])  # DRC-3963: <parent>/<basename>
         self.assertEqual("fix the login bug", s["last_prompt"])
         self.assertEqual(
-            [{"name": "researcher", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "researcher",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             s["subagents"],
         )
         self.assertEqual(records.parse_ts(iso), s["started_at"])
@@ -911,6 +919,8 @@ class CopilotModelTest(RuntimeTestCase):
                     "name": "github-context-memory",
                     "model": self.CHILD,
                     "started_at": None,
+                    "active": None,
+                    "parent": None,
                 }
             ],
             row["subagents"],
@@ -1242,6 +1252,8 @@ class CopilotPermissionGateTest(RuntimeTestCase):
                     "name": "researcher",
                     "model": "gpt-5.4-mini",
                     "started_at": None,
+                    "active": None,
+                    "parent": None,
                 }
             ],
             row["subagents"],

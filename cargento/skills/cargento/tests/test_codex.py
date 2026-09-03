@@ -123,6 +123,8 @@ class CodexCollectorTest(RuntimeTestCase):
                     "name": "worker",
                     "model": None,
                     "started_at": runtime_records.parse_ts(timestamp(-30)),
+                    "active": None,
+                    "parent": None,
                 }
             ],
             sessions[0]["subagents"],
@@ -608,7 +610,7 @@ class CodexSessionModelTest(RuntimeTestCase):
         # stay distinguishable from a reading.
         expected_start = runtime_records.parse_ts(_stamp(now - 30))
         for agent in session["subagents"]:
-            self.assertEqual({"name", "model", "started_at"}, set(agent))
+            self.assertEqual({"name", "model", "started_at", "active", "parent"}, set(agent))
             self.assertEqual(expected_start, agent["started_at"])
 
 

@@ -132,7 +132,15 @@ class SqliteCollectorTest(RuntimeTestCase):
         # None: OpenCode records no model, and that is a different fact from
         # "this child runs whatever its parent runs".
         self.assertEqual(
-            [{"name": "researcher", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "researcher",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             rows[0]["subagents"],
         )
         self.assertEqual("working", rows[0]["state"])
@@ -781,7 +789,15 @@ class SqliteCollectorTest(RuntimeTestCase):
 
         self.assertEqual(["parent-1"], [r["sid"] for r in rows], "a child must not be a peer row")
         self.assertEqual(
-            [{"name": "cursor-guide", "model": "vega", "started_at": None}],
+            [
+                {
+                    "name": "cursor-guide",
+                    "model": "vega",
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             rows[0]["subagents"],
         )
         self.assertEqual("running 1 subagent", rows[0]["state_detail"])
@@ -817,6 +833,8 @@ class SqliteCollectorTest(RuntimeTestCase):
                     "name": "cursor-guide",
                     "model": "last-week-model",
                     "started_at": None,
+                    "active": None,
+                    "parent": None,
                 }
             ],
             rows[0]["subagents"],
@@ -1499,7 +1517,7 @@ class SqliteCollectorTest(RuntimeTestCase):
         self.assertEqual("Fix flaky tests", s["title"])
         self.assertEqual("add retries", s["last_prompt"])
         self.assertEqual(
-            [{"name": "helper", "model": None, "started_at": None}],
+            [{"name": "helper", "model": None, "started_at": None, "active": None, "parent": None}],
             s["subagents"],
         )
         self.assertEqual(100, s["rate_per_min"])  # 1000 tokens / 10 min window

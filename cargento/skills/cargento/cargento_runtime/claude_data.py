@@ -29,9 +29,46 @@ INPUT_TOOLS = {"AskUserQuestion", "ExitPlanMode"}
 
 
 def transcript_started_at(config: RuntimeConfig, path: str) -> float | None:
-    """Timestamp on the transcript's first bounded JSON record, if usable."""
-    record = runtime_io.read_first_json(config, path)
-    return records.parse_ts(record.get("timestamp") or "")
+    """Timestamp on the first record inside the bounded head that carries one.
+
+    The first record is not it. Claude Code 2.1.259 opens a top-level transcript
+    with untimestamped control records -- `agent-setting`, `mode`,
+    `permission-mode` -- putting the first usable stamp at index 3 on seven of
+    the eight freshest transcripts measured here, and index 0 on all four legacy
+    `agent-*.jsonl` files. Reading line 1 alone therefore worked for the layout
+    DRC-4223 was written against and returned None for every teammate
+    dispatched into its own pane.
+
+    The scan reuses the head budget `agent_identity` already reads over the same
+    files, so a wider read costs no extra syscall. `st_birthtime` is the obvious
+    alternative and DRC-4223 rejected it: macOS/BSD only, absent on the Ubuntu
+    leg of `platform-tests`.
+    """
+    try:
+        size = os.path.getsize(path)
+        data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
+    except OSError:
+        return None
+    lines = data.split(b"\n")
+    if size > len(data) and data and not data.endswith(b"\n"):
+        lines.pop()  # the byte prefix ended inside a JSON record
+    for line in lines[: config.claude_agent_scan_lines]:
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        stamp = records.parse_ts(record.get("timestamp") or "")
+        if stamp is not None:
+            return stamp
+    # A first record wider than the head budget is popped as partial above, and
+    # the old one-line read had a cap ten times larger. Falling back to it keeps
+    # this change purely widening: no transcript that reported a start before
+    # can lose it here.
+    return records.parse_ts(runtime_io.read_first_json(config, path).get("timestamp") or "")
 
 
 def input_summary(block: Mapping[str, Any], *, limit: int) -> str:

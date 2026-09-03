@@ -512,6 +512,51 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("TASKS · 1 OF 3 DONE", html)
         self.assertIn("Prepare payload", html)
 
+    def test_an_inactive_subagent_neither_pulses_nor_counts_as_running(self) -> None:
+        # DRC-4344. A teammate that has finished, and a member that never
+        # started, are both published now. Only `active === false` withholds the
+        # pulse and leaves the running label; an element that does not carry the
+        # key at all is a harness nobody has taught to measure liveness and must
+        # render exactly as before.
+        # Falsified by: stamping `next-live` unconditionally, or counting every
+        # element into the label, which is the state of the code today.
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+session.subagents = [
+  {name: "live-one", model: null, started_at: 9700, active: true, parent: null},
+  {name: "finished-one", model: null, started_at: 9000, active: false, parent: null},
+  {name: "lens-a", model: null, started_at: 9500, active: true, parent: "finished-one"}
+];
+renderNext();
+variants.measured = __els.app.innerHTML;
+session.subagents = [{name: "unmeasured", model: null, started_at: 9700}];
+renderNext();
+variants.unmeasured = __els.app.innerHTML;
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        measured = out["measured"]
+        live = self.subagent_row(measured, 0)
+        finished = self.subagent_row(measured, 1)
+        lens = self.subagent_row(measured, 2)
+        self.assertIn("next-live", live)
+        self.assertNotIn("next-live", finished)
+        self.assertIn('aria-label="idle">○</span>', finished)
+        self.assertIn('aria-label="running">●</span>', live)
+        # Two of the three are running, and the label says so rather than "3".
+        self.assertIn("2 RUNNING SUBAGENTS", measured)
+        # A grandchild names the teammate that spawned it; a teammate names none.
+        self.assertIn("finished-one", lens)
+        self.assertIn("next-session-subagent-parent", lens)
+        self.assertNotIn("next-session-subagent-parent", live)
+        # An element with no `active` key keeps rendering as live.
+        self.assertIn("next-live", self.subagent_row(out["unmeasured"], 0))
+        self.assertIn("1 RUNNING SUBAGENT", out["unmeasured"])
+
     def test_subagents_keep_payload_order_and_omit_unmeasured_elapsed_time(self) -> None:
         html = self.render()
         assert isinstance(html, str)

@@ -574,6 +574,40 @@ __fetchImpl = async () => {
         self.assertEqual(out["afterSuccess"]["writes"], out["finalWrites"])
         self.assertEqual("Attention updated: 1 need you", out["text"])
 
+    def test_the_subagent_count_excludes_the_ones_that_are_not_running(self) -> None:
+        # DRC-4344. The published list now carries finished teammates and
+        # unstarted members. The chrome figure is read as "how much is running
+        # right now", so counting those would make the header lie in order to
+        # close a pill-level gap. An element with no `active` key still counts,
+        # which is every harness but Claude.
+        # Falsified by: counting `subagents.length`, which is the code today and
+        # reports 5 here.
+        out = self._run_page_js(
+            """
+await __settle();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            """
+__els.app = {innerHTML: ""};
+__fetchImpl = async () => ({ok: true, json: async () => ({
+  window_hours: 24,
+  summary: {working: 1, needs_input: 0, active_sessions: 1},
+  sessions: [
+    {project: "recce", state: "working", subagents: [
+      {name: "live-a", active: true, parent: null},
+      {name: "lens-a", active: true, parent: "live-a"},
+      {name: "done-a", active: false, parent: null},
+      {name: "never-started", active: false, parent: null},
+      {name: "unmeasured"}
+    ]}
+  ]
+})});
+""",
+        )
+
+        self.assertIn("1 running · 3 subagents</span>", out)
+        self.assertNotIn("5 subagents", out)
+
     def test_the_running_count_excludes_blocked_sessions(self) -> None:
         out = self._run_page_js(
             """

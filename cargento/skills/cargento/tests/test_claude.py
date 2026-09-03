@@ -749,6 +749,8 @@ class ClaudeCollectorTest(RuntimeTestCase):
                     "name": "spark-reviewer",
                     "model": None,
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             parent["subagents"],
@@ -807,7 +809,23 @@ class ClaudeCollectorTest(RuntimeTestCase):
         self.assertEqual(1, len(sessions), "the child must still not be a standalone session")
         parent = sessions[0]
         self.assertEqual(parent_id[:8], parent["session"])
-        self.assertEqual([], parent["subagents"])
+        # DRC-4344 changed what "stops counting" means, and only that. The child
+        # stays on the published row, because vanishing is how a live teammate
+        # blocked on its own subagents disappeared for minutes at a time; what it
+        # no longer does is read as running. The state assertions below are the
+        # ones this case was written for and are untouched.
+        self.assertEqual(
+            [
+                {
+                    "name": "spark-reviewer",
+                    "model": None,
+                    "started_at": records.parse_ts(stale_iso),
+                    "active": False,
+                    "parent": None,
+                }
+            ],
+            parent["subagents"],
+        )
         self.assertEqual("idle", parent["state"])
         self.assertTrue(parent["active"], "a child write keeps the session in the window")
 
@@ -963,6 +981,8 @@ class ClaudeCollectorTest(RuntimeTestCase):
                     "started_at": records.parse_ts(
                         datetime.fromtimestamp(now - 5, UTC).isoformat()
                     ),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             session["subagents"],
@@ -1279,6 +1299,8 @@ class ClaudeModelTest(RuntimeTestCase):
                     "name": "spark-reviewer",
                     "model": "claude-fable-5",
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             parent["subagents"],
@@ -1331,6 +1353,8 @@ class ClaudeModelTest(RuntimeTestCase):
                     "name": "detect:backend",
                     "model": "claude-fable-5",
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             session["subagents"],
@@ -1373,6 +1397,8 @@ class ClaudeModelTest(RuntimeTestCase):
                     "name": "detect:backend",
                     "model": None,
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             session["subagents"],
@@ -2827,9 +2853,7 @@ class DispatchedTeammateTest(RuntimeTestCase):
         child_sid = "bbbb2222-0000-0000-0000-000000000000"
         with tempfile.TemporaryDirectory() as tmp:
             proj = self.project(tmp, now=now)
-            self.teammate(
-                proj, sid=child_sid, name="ensign-review", stamp=stamp, age=5, now=now
-            )
+            self.teammate(proj, sid=child_sid, name="ensign-review", stamp=stamp, age=5, now=now)
             lenses = proj / child_sid / "subagents"
             lenses.mkdir(parents=True)
             for label in ("evidence", "design"):
@@ -2892,7 +2916,9 @@ class DispatchedTeammateTest(RuntimeTestCase):
             session = self.collect_one(tmp, teams, now)
 
         published = {a["name"]: a for a in session["subagents"]}
-        self.assertIs(False, published["ensign-retained"]["active"], "the flag demotes a fresh child")
+        self.assertIs(
+            False, published["ensign-retained"]["active"], "the flag demotes a fresh child"
+        )
         self.assertIs(
             False, published["ensign-claimed-live"]["active"], "the flag cannot promote a stale one"
         )
