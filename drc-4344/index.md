@@ -9,7 +9,7 @@ verdict:
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4344
 issue:
-pr: "#261"
+pr: pr-merge:261
 mod-block:
 linear-status: 'Todo'
 milestone: ''
