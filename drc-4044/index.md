@@ -330,7 +330,10 @@ of `--no-git`'s sites, `--forget`, the promotion into `SECURITY.md` with its ame
 count fixes, the plan doc deleted in the same commit, and the `SKILL.md`, `HOW_TO_USE.md` and
 architecture-doc rows. Carries AC1-AC9.
 
-**PR 2 — the render.** `web/` only, plus the byte pins and the two panel suites. Carries AC10.
+**PR 2 — the render.** `web/` only, plus the byte pins and the two panel suites. Carries AC10, and
+AC12 by the captain's ND-4 ruling of 2026-09-03: the reset header is scoped in here rather than the
+clause amended, at roughly five `web/` lines plus a render test over `history_reset`. It rides in this
+PR because only one PR may touch `cargento_runtime/web/`.
 Both PRs belong to H1; the issue is not `Done` until PR 2 lands, and no second issue is filed because
 the render carries no decision content of its own.
 
@@ -803,6 +806,20 @@ live scenario for a runtime claim and a negative case that reds the grade.
 *Falsified by:* the fresh tab showing an empty rail — which is what a store that persists but is
 never published produces, and the failure the panels' tab-lifetime windowing makes easy to ship
 unnoticed. A page reload, not merely a server restart, is the honest test.
+
+**AC12 (offline, PR 2) — the header reports a store reset with its distinguishable reason.** When a
+collection publishes `history_reset`, the page's header says a history reset happened and which of
+the two reasons it was; when the field is absent, the header says nothing. Added by the captain's
+ND-4 ruling of 2026-09-03 ("scope the reset-header render into PR 2") rather than by amending the
+clause: `SECURITY.md`'s "the board starts empty, and the header reports the reset" was a promise with
+no implementer, since PR 1 publishes `history_reset` at `aggregate.py:655` and nothing reads it.
+*Verified by:* a render test PR 2 adds over `history_reset`, in the header suite that already covers
+the other payload-keyed header states, driving both literals — `unreadable` and `version` — and
+asserting the rendered text differs between them, plus the absent-field case rendering no notice.
+D1's whole point is that a corruption reset may be the user's disk while a version reset is ours, so
+a render that showed one message for both would discharge the clause and lose the ruling.
+*Falsified by:* a payload carrying `history_reset` and a header identical to one without it — which
+is exactly the state PR 1 ships and what this criterion exists to close.
 
 ## Test plan
 
