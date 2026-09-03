@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4044:triage:attempt-1:revision-1",
+  "question": "Approve H1's triage: the rewritten DRC-4044 body (Draft A), the one-clause milestone correction (Draft B), the findings comment (Draft C), the two-PR delivery split on web/, the eleven acceptance criteria and their surface estimates — and rule on the five gate decisions, above all D4 (may the store keep the derived two-segment project label, without which AC11 is undeliverable)?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4044:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/da2aa28b14b7ab70d1f9ecfe13ec3cf20521f142/drc-4044.md",
+      "rev": "sha256:1219be5327268cdfbe54cd2a971f69522071f4f97985d39d8689e299359a7d6b",
+      "mediaType": "text/markdown",
+      "summary": "Triage found H1's approach sound and its description false in six places: three of six kept categories are not served by the snapshot (transitions, gate open/close, tool counts), tool names reach the wire only via the banned state_detail, and both panels are windowed by tab lifetime not server restart, so the old AC could pass a build that persists nothing. Store rule re-read as field provenance. Two PRs split on web/ (PR 1 full adversarial, PR 2 two lenses + arbiter); eleven ACs, AC11 interactive with a fresh-tab live drive. Five decisions with recommendations: D1 yes (version reset distinguishable), D2 not reopened, D3 yes (fix counts: five/sixth, eight POST), D4 yes (keep the project label), D5 yes (correct the on-by-default clause during promotion). Zero Linear writes."
+    }
+  ]
+}
