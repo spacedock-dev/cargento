@@ -976,3 +976,40 @@ precedent's byte-pin rationale is now the weakest of the three reasons rather th
 ### Summary
 
 PR 1 is built, committed on `spacedock-ensign/drc-4044` (`9b51cd2`, `8796828`, `3a12b97`, `83ae971`) and green on the whole canonical suite, but **the PR is deliberately not open**: the runtime surface came in at +30% and the oracles at +27% against +/-20% and +/-25%, and the stage definition says a tolerance breach goes to the captain as a design reset rather than into a PR. The file counts hit 7/6/8 exactly and no scope widened; the entire overage is three correctness items the triage estimate could not have priced — the `--no-events` coupling that made the approved lane placement unbuildable, two refactors ruff's own complexity caps compelled once `--forget` and the published field landed, and a disclosure defect the mandated worktree diff review found in my own code, where the store's strings reached the DOM unbounded and unstripped on the read-back path. Three contract deviations were applied exactly as authorized and each is recorded above with its before/after sentence; a fourth, from the approved approach rather than the contract, was flagged to the FO before any code was written. Two findings worth the reviewer's attention beyond that: `DECLARED_SESSION_FIELDS` was not in fact compelled, because the store publishes a payload field rather than a row field, and the emphasis-boundary guard moved on a shape triage had not measured — an issue mention splitting a bold run, with no code span involved.
+
+## Stage Report: implementation (cycle 2)
+
+Correction round against the FO's authorization of the lane placement and its two conditions. Code branch `spacedock-ensign/drc-4044`, now five commits, head `5f73639`. Still no PR, because the surface question the first report raised is now larger rather than settled.
+
+- DONE: the lane placement recorded with both citations
+  `aggregate.py:441` ("None until the coordinator is attached, and None forever under `--no-events`") and `cli.py:343` (`if not args.no_events:` guarding the only construction). Both are already in the cycle-1 report's **Contract deviations** block and both go in the PR body's `## Verification`. Authorized as a mechanism change inside approved scope, not a scope or AC change.
+- DONE: condition 1a — the lane writes only on an observed transition, never per collection cycle
+  The transition rule is now enforced by a returned flag rather than implied: `history.appended()` returns `(kept, changed)` and the caller skips `save()` entirely when `changed` is false. Test: `AQuietBoardDoesNotGrowTheStoreTest`, 2 tests, and the oracle is the **file** rather than a record count — twenty collections of an unchanged board leave both the bytes and `st_mtime_ns` untouched. Falsified by appending per cycle, which the coordinator's `reconcile_interval_sec` tick would turn into roughly 2,880 records a day per session in a store nothing had happened in.
+- DONE: condition 1b — the write is outside the coordinator lock
+  `observation._collect` takes `self._lock` only to snapshot `_dirty` and clear `_coalesce_until`/`_urgent`, releases it, and *then* calls `application.collect_json`. The write therefore never runs under the coordinator lock. The lane holds a lock of its own during the write; it is lane-local, is never held across a collection, and is the same shape `dismissals.dismiss` uses.
+- FAILED: condition 1b — the write is off the HTTP handler thread
+  **Not done, and I recommend not doing it. Reporting rather than quietly accepting.** It genuinely can run there: `http_api.py:473` calls `collect_json` on the request thread, which collects when the snapshot is stale, so a transition observed by a `GET /api/data` writes on that thread. What the measurements say, all at the 1 MiB cap, which needs ~8,885 recorded transitions to reach:
+  - a real `Application.collect` over this machine's stores: **154 ms** median;
+  - `Lane.record` with a transition: **21 ms** (was 44 ms before this round's in-memory baseline, because the re-read was 23 ms of it against the write's 6);
+  - `Lane.record` on a quiet board: **1.8 ms**, and no disk touch at all.
+  So the write is 14% of a collection it already rides inside, on the rarest path, and zero on the common one. Taking it off the request thread needs a writer thread, a one-slot mailbox, and a shutdown flush wired through `lifecycle.serve` — roughly 70 more lines on a PR already over tolerance — and it introduces a failure mode the synchronous write does not have: a shutdown that loses the last transitions, which is a hole in the one promise this issue exists to keep. I have not built it. Say the word and I will.
+- DONE: condition 2 — AC2's fixture drives through the real aggregate path
+  `NoOperatorTextSurvivesTheRealCollectionTest`. A stub harness returns a `base_session` row carrying all seven sentinels, and the assertion travels the real path: `collect` -> `dedupe_sessions` -> `_redact_published_text` -> `_apply_overlays` -> the lane -> disk. It asserts the row really did publish its sentinel (so the fixture cannot silently stop carrying one) and that none of the seven is in the store's bytes. Falsified by reverting `observation()` to `dict(row)`: fails seven ways there while the unit form of AC2 still passes, which is the gap the condition names.
+- DONE: `DECLARED_SESSION_FIELDS` recorded as one fewer oracle edit than estimated
+  Not compelled, because the build publishes a payload field (`collection["history"]`) rather than a row field, so `sessions.base_session` is unchanged and the declared set is *read* by AC1 rather than edited. Counted against the estimate: the oracle axis was costed at 8 files including it, and came in at 8 files with `test_config_diagnostics.py` taking its place — that one was not estimated at all and is where the `--no-history` `build_runtime` assertion went.
+
+### Surface after this round
+
+| Axis | Estimate | Cycle 1 | Cycle 2 | Tolerance | Verdict |
+|---|---|---|---|---|---|
+| Runtime | +440 / 7 files | +570 (+30%) | **+618 (+40%)** | +/-20% | OUT |
+| Docs | -60 / 6 files | -48 (+20%) | -48 (+20%) | +/-25% | within |
+| Oracles | +650 / 8 files | +828 (+27%) | **+948 (+46%)** | +/-25% | OUT |
+
+File counts still hit 7/6/8 exactly. Every increment since triage is a correctness requirement rather than scope: 70 lines for the `--no-events` lane placement, ~44 for two refactors ruff's own complexity caps compelled, 84 for the read-back disclosure fix the worktree diff review found, and 168 for this round's two conditions. AC1-AC9 remain the whole of it and no file under `cargento_runtime/web/` is touched.
+
+The honest reading is that the triage estimate was made before three things were known: that the approved lane placement was unbuildable, that the store's strings reached the DOM unbounded, and that the review would require the transition rule and AC2 to be proven rather than asserted. The estimate is not wrong about the shape of the work; it is wrong about the cost of proving it correct. That is a design-reset question only the captain can answer, and it is the one blocking the PR.
+
+### Summary
+
+Both of the FO's conditions are satisfied and each is falsifiable: the transition-only rule is enforced by a flag and checked against the file's own mtime, and AC2 now travels the real aggregate path and fails seven ways without the derivation. The lane placement is recorded with both citations. One condition I did not meet and am not hiding: the write can still run on an HTTP handler thread, and I recommend leaving it there on the evidence that it costs 21 ms at the absolute worst case inside a 154 ms collection, is 1.8 ms and disk-free on a quiet board, and that moving it would add a writer thread plus a shutdown-flush path whose failure mode is losing the last transitions before a restart. The surface is now +40% runtime and +46% oracles, worse than when I first escalated, because satisfying correctness conditions costs lines; the captain's A/B/C ruling is still what this stage is waiting on.
