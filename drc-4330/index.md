@@ -48,6 +48,17 @@ gates:
                 id: briefing:drc-4330:review:attempt-1:revision-1
                 digest: sha256:1697f98403e7495f0e9cc0647b8ef1ee7ca55f34b3591b0740ebac7d4e393ef6
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4330:review:1
+                briefing: briefing:drc-4330:review:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-03T04:40:38.552646Z"
+                decision: approve
+                reason: 'Captain approved the review gate on 2026-09-03: "approve to authorize the merge of PR #258". Accepts the delivery: one 139-line file docs/plans/history-store-security-scope.md at head 0016542, cycle-2 review GO after correction round 1 closed all five Material findings inside five hunks, AC-1 through AC-7 reproduced on this head, CI green with code=false, mergeStateStatus CLEAN, no Copilot pass to read. D4 (Deferred risk) to be filed against DRC-4044; P4/P5 recorded.'
+              application:
+                target-stage: done
+                state: pending
 review-round:
     id: round:drc-4330:review:1
     stage: review
