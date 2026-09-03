@@ -48,6 +48,17 @@ gates:
                 id: briefing:drc-4044:review:attempt-1:revision-1
                 digest: sha256:83766f8806b79b59111e1173d75026613fff4bac9c8328f56844e0c1514fb4e2
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4044:review:1
+                briefing: briefing:drc-4044:review:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-03T12:25:44.869087Z"
+                decision: approve
+                reason: 'Captain approved the review gate on 2026-09-03: "I approve H1 approve to merge PR #260 (squash) and start the post-merge reconcile— H1 stays open in Linear until PR 2 lands". Accepts the cycle-2 GO on b5616b6 and blesses the fourth contract deviation (the --forget refusal paragraph) as D6; DR-8..DR-12 and four Polish carried into PR 2. PR 1 merges; the issue stays open for PR 2 (render, byte pins, AC10, AC12), so this approval is not the terminal delivery — the entity returns to implementation for PR 2 after the merge.'
+              application:
+                target-stage: done
+                state: pending
 review-round:
     id: round:drc-4044:review:1
     stage: review
