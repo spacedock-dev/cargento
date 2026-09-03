@@ -1,15 +1,15 @@
 ---
 id: drc-4044
 title: 'H1 · Keep a history of what happened'
-status: review
+status: implementation
 source: https://linear.app/recce/issue/DRC-4044
 started: 2026-09-03T07:17:13Z
 completed:
 verdict:
 score: 0.5
-worktree: .worktrees/spacedock-ensign-drc-4044
+worktree:
 issue:
-pr: "#260"
+pr:
 mod-block:
 linear-status: Todo
 milestone: 'Move up a level'
@@ -58,7 +58,7 @@ gates:
                 reason: 'Captain approved the review gate on 2026-09-03: "I approve H1 approve to merge PR #260 (squash) and start the post-merge reconcile— H1 stays open in Linear until PR 2 lands". Accepts the cycle-2 GO on b5616b6 and blesses the fourth contract deviation (the --forget refusal paragraph) as D6; DR-8..DR-12 and four Polish carried into PR 2. PR 1 merges; the issue stays open for PR 2 (render, byte pins, AC10, AC12), so this approval is not the terminal delivery — the entity returns to implementation for PR 2 after the merge.'
               application:
                 target-stage: done
-                state: pending
+                state: superseded
 review-round:
     id: round:drc-4044:review:1
     stage: review
