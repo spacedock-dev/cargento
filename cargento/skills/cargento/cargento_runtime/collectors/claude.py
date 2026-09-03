@@ -583,7 +583,14 @@ def collect(
         # hours ago must not make its parent read "running 1 subagent", and
         # DRC-4263's AC-3 requires it. What a person reads on the row is a
         # different question: a teammate blocked on its own subagents writes
-        # nothing for minutes and used to flicker off the row entirely.
+        # nothing for minutes and used to flicker off the row entirely. It now
+        # stays, and reads as stopped -- which is what AC-2 asked for and is not
+        # the whole of what a reader wants. A teammate whose own worker is
+        # writing is alive, and nothing here says so: the honest fix absorbs a
+        # grandchild's mtime into this session's activity the way DRC-4118 does
+        # for Cursor and `latest_agent_file_mtime` already does for the lead's
+        # own agents, and that moves `state`, which this issue's gate froze.
+        # Filed rather than taken.
         roster: list[dict[str, Any]] = [
             published_agent(
                 a["label"], model=a["model"], started_at=a["started_at"], active=True, parent=None
