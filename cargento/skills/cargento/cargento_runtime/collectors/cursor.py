@@ -771,7 +771,14 @@ def collect(
     for chat in tops:
         kids = sorted(children.get(chat.sid, []), key=lambda k: -k.mtime)
         subagents = [
-            {"name": k.type_name or "subagent", "model": k.model, "started_at": None} for k in kids
+            {
+                "name": k.type_name or "subagent",
+                "model": k.model,
+                "started_at": None,
+                "active": None,
+                "parent": None,
+            }
+            for k in kids
         ]
         # The whole subtree, so a parent parked on a working child does not age
         # out of the window — the same absorption Goose and OpenCode do, and

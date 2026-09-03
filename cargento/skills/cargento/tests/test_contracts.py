@@ -909,6 +909,97 @@ class PublishedTextSweepTest(unittest.TestCase):
         self.assertNotIn("A" * 20, json.dumps(row))
         self.assertIn(self.MARKER, row["subagents"][0]["name"])
 
+    def test_a_subagent_parent_carries_no_credential(self) -> None:
+        # DRC-4344 added `parent` beside `name` and did not add it to the sweep
+        # table, so the same untrusted `agentName` came back redacted in one key
+        # and raw in the other. That is the third time a field on this element
+        # was left out on the second reading; the docstring above names the
+        # first two. It uses this class's own fixture rather than a new
+        # credential-shaped literal.
+        row: Any = {
+            "subagents": [{"name": f"reviewing {self.FAKE}", "parent": f"lead {self.FAKE}"}]
+        }
+        aggregate._redact_published_text([row])
+        self.assertNotIn("A" * 20, json.dumps(row))
+        self.assertIn(self.MARKER, row["subagents"][0]["parent"])
+
+    def test_a_long_subagent_name_is_swept_before_it_is_bounded(self) -> None:
+        # The element bounds both untrusted strings at 70 characters. Slicing
+        # first published up to 70 characters of key body with no marker on it:
+        # the tail the cut removed is what the shape matches on, so a run
+        # straddling the bound stopped matching and went out raw. `redact_clip`
+        # owns the order, and the collector calls it for both keys.
+        # Falsified by: restoring `(name or "subagent")[:70]` and
+        # `parent[:70]` in `published_agent`, which drops the marker from both
+        # values below and leaves `sk-ant-api03-AAAA…` on the wire.
+        #
+        # Both offsets, because they fail differently and only the second one
+        # states the defect in full: at lead 60 the slice cut the run short
+        # enough that the shape stopped matching and the KEY PREFIX went out
+        # unmarked, while at lead 1 the whole value fits inside the bound only
+        # after the marker replaces it -- the slice published a 56-character
+        # run of key BODY, measured. One case reads as a cosmetic truncation;
+        # the pair reads as the leak it was.
+        for lead in ("x", "a" * 60):
+            element = claude_collector.published_agent(
+                f"{lead}{self.FAKE}",
+                model=None,
+                started_at=None,
+                active=True,
+                parent=f"{lead}{self.FAKE}",
+            )
+            for key in ("name", "parent"):
+                with self.subTest(lead=len(lead), key=key):
+                    self.assertIn(self.MARKER, element[key])
+                    self.assertNotIn("A" * 20, element[key])
+            # And the bound still holds: `redact_clip` may overrun only far
+            # enough to finish a marker the cut landed inside.
+            with self.subTest(lead=len(lead), bound=True):
+                self.assertLessEqual(len(element["name"]), 70 + len("…REDACTED"))
+
+    # `model` is the one string on the element published through
+    # `records.safe_text` and bounded at `MODEL_CAP_CHARS` by every collector, so
+    # it does not reach the raw-text table. Excusing it by name rather than by
+    # omission is the point: a key that is neither swept nor listed here fails
+    # the check below, which is what `parent` needed and did not get.
+    SAFE_TEXTED_ELEMENT_KEYS: ClassVar[frozenset[str]] = frozenset({"model"})
+
+    # Every argument shape the collector actually builds this element with: an
+    # own agent or a live child, a retained one, a grandchild naming its
+    # teammate, and a pending member. One tuple was not enough — a key whose
+    # value is conditionally a string (`None if active else "…"`) is invisible
+    # on the arm the probe does not walk, and the inactive arm is most of the
+    # roster.
+    ELEMENT_ARGUMENTS: ClassVar[tuple[dict[str, Any], ...]] = (
+        {"name": "n", "model": "m", "started_at": 1.0, "active": True, "parent": None},
+        {"name": "n", "model": None, "started_at": None, "active": False, "parent": None},
+        {"name": "n", "model": None, "started_at": 1.0, "active": True, "parent": "p"},
+        {"name": "n", "model": None, "started_at": 1.0, "active": None, "parent": "p"},
+    )
+
+    def test_every_published_subagent_string_is_swept_or_named_as_safe(self) -> None:
+        # Asserted against the element the collector actually builds, not a
+        # fixture, so a future string key has to be classified before it ships.
+        strings: set[str] = set()
+        for arguments in self.ELEMENT_ARGUMENTS:
+            element = claude_collector.published_agent(
+                arguments["name"],
+                model=arguments["model"],
+                started_at=arguments["started_at"],
+                active=arguments["active"],
+                parent=arguments["parent"],
+            )
+            strings |= {key for key, value in element.items() if isinstance(value, str)}
+        swept = set(dict(aggregate._RAW_NESTED_TEXT)["subagents"])
+        unaccounted = strings - swept - self.SAFE_TEXTED_ELEMENT_KEYS
+        self.assertEqual(
+            set(),
+            unaccounted,
+            "a published subagent string must be swept or named as already safe",
+        )
+        # And the excuse cannot be used to quietly drop a swept field.
+        self.assertFalse(swept & self.SAFE_TEXTED_ELEMENT_KEYS)
+
     def test_the_instruction_line_on_an_assembled_row_carries_no_credential(self) -> None:
         # The one branch of the sweep no fixture reaches: only Claude and Codex
         # publish a line 2, and neither builds it by hand — `records.safe_text`
@@ -1968,7 +2059,15 @@ class SubagentElementContractTest(unittest.TestCase):
         # "not read" — never that the child runs on no model, and never a value
         # borrowed from the parent card.
         self.assertEqual(
-            [{"name": "subagent 9f3c1a55", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "subagent 9f3c1a55",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             rows[0]["subagents"],
         )
 

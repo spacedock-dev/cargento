@@ -602,7 +602,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
         self.assertEqual(1, len(sessions))
         self.assertEqual(parent_sid, sessions[0]["sid"])
         self.assertEqual(
-            [{"name": "Research Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Research Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
 
@@ -683,7 +691,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
         self.assertEqual([root_sid], [session["sid"] for session in sessions])
         self.assertEqual(
-            [{"name": "Nested Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Nested Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
         self.assertEqual("working", sessions[0]["state"])
@@ -752,7 +768,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(
-            [{"name": "Fresh Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Fresh Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
         self.assertEqual("running 1 subagent", sessions[0]["state_detail"])
@@ -863,7 +887,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                 sessions = agy_collector.collect(config, state, now, 24, False)
 
         self.assertEqual(
-            [{"name": "subagent 22222222", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "subagent 22222222",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
 
@@ -1127,6 +1159,8 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
                     "name": "Research Auditor",
                     "model": "Gemini 3.1 Pro (Low)",
                     "started_at": None,
+                    "active": None,
+                    "parent": None,
                 }
             ],
             sessions[0]["subagents"],
@@ -1160,7 +1194,15 @@ class GeminiAntigravityCollectorTest(RuntimeTestCase):
 
         self.assertEqual("Gemini 3.6 Flash (High)", sessions[0]["model"])
         self.assertEqual(
-            [{"name": "Research Auditor", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "Research Auditor",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
 

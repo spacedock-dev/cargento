@@ -130,8 +130,8 @@ collectors slice them straight out of the record. What every hand-built one has 
 ordering, and the ordering is what went wrong. A slice that runs before the filter hands the sweep
 below a shape whose tail has already fallen off, and a shape whose tail has fallen off no longer
 matches: that is how a URL credential cut short of its `@` published its password. `redact_clip` is
-one function that redacts and then bounds, so the order is written once instead of at fourteen call
-sites that each have to remember it.
+one function that redacts and then bounds, so the order is written once instead of at seventeen
+call sites that each have to remember it.
 
 Over the assembled rows in `aggregate._redact_published_text`, which is the backstop under both of
 the above. Ten call sites would be ten chances for the eleventh harness to be forgotten, so the sweep
@@ -146,13 +146,22 @@ contract says, on a branch already touching ten collectors. It is the right next
 same step.
 
 The swept set is `title`, `last_prompt`, `state_detail`, the instruction line's `text`,
-`tasks[].subject`, `tasks[].activeForm` and `subagents[].name`. Task subjects are there because an
-agent's todo written from a prompt that held a key can quote it. The last two joined after the first
-version shipped without them, and both were measured publishing a credential run with no marker:
+`tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and `subagents[].parent`. Task subjects
+are there because an agent's todo written from a prompt that held a key can quote it. Three of them
+joined after the first version shipped without them, and the first two were measured publishing a
+credential run with no marker:
 `state_detail` carried a 108-character run while `tasks[].activeForm` on the same row correctly
 showed `sk-ant-…REDACTED`, because the collector copies the task into the line before the sweep runs;
 and a subagent name carried a 95-character one, which on opencode is the child session's own title,
 the same string the sweep redacts when that session is a parent row.
+
+`subagents[].parent` is the third, and it is the one that shows the sweep is a backstop rather than a
+fix. It arrived as the same untrusted `agentName` one key over from `name`, went out raw beside a
+redacted twin, and was joined to the table a commit later. Then the ordering caught up with it as
+well: both keys were bounded at 70 characters by a plain slice before the sweep ran, so a credential
+whose run straddled the cut stopped matching and published unmarked. Both now go through
+`redact_clip` in the collector, which is the same lesson as `title` and `last_prompt` arriving at a
+third pair of keys, and the reason the bound and the filter are one function rather than two lines.
 
 That miss is the argument for the sweep restated. The fields are a table rather than a block apiece,
 and the bar for joining it is "could a collector ever put transcript text here", not "does one

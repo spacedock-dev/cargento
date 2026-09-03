@@ -749,6 +749,8 @@ class ClaudeCollectorTest(RuntimeTestCase):
                     "name": "spark-reviewer",
                     "model": None,
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             parent["subagents"],
@@ -807,7 +809,23 @@ class ClaudeCollectorTest(RuntimeTestCase):
         self.assertEqual(1, len(sessions), "the child must still not be a standalone session")
         parent = sessions[0]
         self.assertEqual(parent_id[:8], parent["session"])
-        self.assertEqual([], parent["subagents"])
+        # DRC-4344 changed what "stops counting" means, and only that. The child
+        # stays on the published row, because vanishing is how a live teammate
+        # blocked on its own subagents disappeared for minutes at a time; what it
+        # no longer does is read as running. The state assertions below are the
+        # ones this case was written for and are untouched.
+        self.assertEqual(
+            [
+                {
+                    "name": "spark-reviewer",
+                    "model": None,
+                    "started_at": records.parse_ts(stale_iso),
+                    "active": False,
+                    "parent": None,
+                }
+            ],
+            parent["subagents"],
+        )
         self.assertEqual("idle", parent["state"])
         self.assertTrue(parent["active"], "a child write keeps the session in the window")
 
@@ -963,6 +981,8 @@ class ClaudeCollectorTest(RuntimeTestCase):
                     "started_at": records.parse_ts(
                         datetime.fromtimestamp(now - 5, UTC).isoformat()
                     ),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             session["subagents"],
@@ -1098,6 +1118,107 @@ class ClaudeCollectorTest(RuntimeTestCase):
                 sessions = collect_claude(now, 24, False)
 
         self.assertEqual("git-spacedock-subspace", sessions[0]["project"])
+
+
+class StartStampCacheTest(RuntimeTestCase):
+    """The memo behind every roster element's start stamp.
+
+    The roster reaches past the freshness gate, so a quiet agent's head is read
+    on every collection unless something remembers it. What it remembers has to
+    be invalidated on the file, not on the path alone: a transcript's start
+    stamp is immutable only once the file HAS one.
+    """
+
+    @staticmethod
+    def transcript(tmp: str, *, body: str) -> str:
+        fp = Path(tmp) / "agent-x.jsonl"
+        fp.write_text(body)
+        return str(fp)
+
+    def test_a_stampless_head_is_read_once_and_not_once_per_pass(self) -> None:
+        # A transcript whose head carries no timestamp is exactly the case the
+        # memo was added for, and it was the one case the memo missed: only a
+        # FOUND stamp was cached, so every pass paid the bounded head read AND
+        # the one-line fallback again, forever. Keying on the file's own
+        # (mtime, size) is what makes remembering a null answer safe.
+        # Falsified by: caching only a found stamp, which doubles both counts.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.transcript(tmp, body=json.dumps({"type": "mode"}) + "\n")
+            config, state = runtime()
+            heads, firsts = {"n": 0}, {"n": 0}
+            real_head, real_first = runtime_io.read_prefix_bytes, runtime_io.read_first_json
+
+            def head(target: str, *, max_bytes: int) -> bytes:
+                heads["n"] += 1
+                return real_head(target, max_bytes=max_bytes)
+
+            def first(conf: Any, target: str) -> dict[str, Any]:
+                firsts["n"] += 1
+                return real_first(conf, target)
+
+            with (
+                mock.patch.object(runtime_io, "read_prefix_bytes", head),
+                mock.patch.object(runtime_io, "read_first_json", first),
+            ):
+                for _ in range(3):
+                    self.assertIsNone(claude_data.transcript_started_at(config, path, state=state))
+
+        self.assertEqual(1, heads["n"], "the bounded head read must happen once")
+        self.assertEqual(1, firsts["n"], "so must the one-line fallback")
+
+    def test_a_transcript_that_gains_a_stamp_stops_reading_as_unstarted(self) -> None:
+        # The reason the memo cannot be keyed on the path alone. A teammate
+        # parked on a permission prompt has a head with no timestamp in it; the
+        # moment it takes its first turn the file grows one, and a remembered
+        # null would freeze the pill at "no start measured" for the rest of the
+        # session.
+        # Falsified by: dropping the (mtime, size) key, which returns the
+        # remembered null after the file has moved.
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.transcript(tmp, body=json.dumps({"type": "mode"}) + "\n")
+            config, state = runtime()
+            self.assertIsNone(claude_data.transcript_started_at(config, path, state=state))
+            Path(path).write_text(
+                json.dumps({"type": "mode"})
+                + "\n"
+                + json.dumps({"type": "user", "timestamp": stamp})
+                + "\n"
+            )
+            os.utime(path, (now, now))
+
+            self.assertEqual(
+                records.parse_ts(stamp),
+                claude_data.transcript_started_at(config, path, state=state),
+            )
+
+    def test_a_rewritten_transcript_does_not_serve_the_old_start(self) -> None:
+        # The same invalidation from the other side: a found stamp was cached on
+        # the path forever, so a rotated or replaced transcript at a reused path
+        # kept reporting the previous file's start.
+        # Falsified by: keying the memo on the path alone.
+        now = time.time()
+        first_stamp = datetime.fromtimestamp(now - 3600, UTC).isoformat()
+        second_stamp = datetime.fromtimestamp(now - 10, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.transcript(
+                tmp, body=json.dumps({"type": "user", "timestamp": first_stamp}) + "\n"
+            )
+            config, state = runtime()
+            self.assertEqual(
+                records.parse_ts(first_stamp),
+                claude_data.transcript_started_at(config, path, state=state),
+            )
+            Path(path).write_text(
+                json.dumps({"type": "user", "timestamp": second_stamp, "pad": "x" * 40}) + "\n"
+            )
+            os.utime(path, (now, now))
+
+            self.assertEqual(
+                records.parse_ts(second_stamp),
+                claude_data.transcript_started_at(config, path, state=state),
+            )
 
 
 class ClaudeModelTest(RuntimeTestCase):
@@ -1279,6 +1400,8 @@ class ClaudeModelTest(RuntimeTestCase):
                     "name": "spark-reviewer",
                     "model": "claude-fable-5",
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             parent["subagents"],
@@ -1331,6 +1454,8 @@ class ClaudeModelTest(RuntimeTestCase):
                     "name": "detect:backend",
                     "model": "claude-fable-5",
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             session["subagents"],
@@ -1373,6 +1498,8 @@ class ClaudeModelTest(RuntimeTestCase):
                     "name": "detect:backend",
                     "model": None,
                     "started_at": records.parse_ts(iso),
+                    "active": True,
+                    "parent": None,
                 }
             ],
             session["subagents"],
@@ -2543,7 +2670,18 @@ class TeamRosterTest(RuntimeTestCase):
             session = self.collect_one(tmp, teams, now)
 
         self.assertEqual("idle", session["state"])
-        self.assertEqual([], session["subagents"])
+        # The member is published as a STARTED agent gone quiet, never as an
+        # unstarted one. Asserted on the shape rather than on an empty list
+        # because captain-ruling[2026-09-03] gave the lead's own agents the same
+        # 24-hour retention its children already had, so a quiet one is now
+        # retained and inactive. The join is what this case owns, and a broken
+        # join is still loud: it would publish a PENDING element carrying the
+        # hex agentId as its name and the join stamp as its start.
+        published = session["subagents"]
+        self.assertEqual(1, len(published))
+        self.assertIs(False, published[0]["active"])
+        self.assertNotEqual(agent_id, published[0]["name"])
+        self.assertNotEqual((now - 600) * 1000, published[0]["started_at"])
 
     def test_a_member_that_has_only_just_joined_is_not_reported_yet(self) -> None:
         # Every healthy fan-out passes through this window on its way to a first
@@ -2620,3 +2758,426 @@ class TeamRosterTest(RuntimeTestCase):
 
         self.assertEqual("needs_input", session["state"])
         self.assertEqual(["evidence-skeptic"], [a["name"] for a in session["subagents"]])
+
+    def test_a_long_member_name_cannot_grow_the_state_line(self) -> None:
+        # `state_detail` is the one place a registry label reaches the payload
+        # outside `published_agent`, which redacts and then bounds at 70. This
+        # round removed the upstream `label[:70]` on the strength of that bound
+        # and left this interpolation with none, so an untrusted name of any
+        # length went out on `/api/data`, every SSE snapshot and the
+        # notification body. Two runs differing only in name length must give
+        # the same line length, because both names bound to the same 70.
+        # Falsified by: interpolating the raw label, which puts the 200-
+        # character arm 130 characters past the 70-character one.
+        now = time.time()
+        joined = (now - 300) * 1000
+        lengths = []
+        for size in (70, 200):
+            with tempfile.TemporaryDirectory() as tmp:
+                _, teams = self.build(tmp, [self.member("n" * size, joined)], now=now)
+                lengths.append(len(self.collect_one(tmp, teams, now)["state_detail"]))
+
+        self.assertEqual(lengths[0], lengths[1])
+        self.assertEqual(70 + len(" has not started, waiting 5m"), lengths[0])
+
+
+class DispatchedTeammateTest(RuntimeTestCase):
+    """A teammate dispatched into its own pane, as the board must report it.
+
+    The fixtures here are the measured Claude Code 2.1.259 shapes rather than
+    invented ones: a top-level transcript opens with untimestamped control
+    records, and a teammate's own subagents live under its own session
+    directory. Both were read off live stores before these cases were written.
+    """
+
+    PARENT = "aaaa1111-0000-0000-0000-000000000000"
+
+    @staticmethod
+    def stamp(when: float) -> str:
+        return datetime.fromtimestamp(when, UTC).isoformat()
+
+    def project(self, tmp: str, *, now: float, parent_age: float = 600) -> Path:
+        proj = Path(tmp) / "projects" / "-Users-test-repo"
+        proj.mkdir(parents=True)
+        parent_fp = proj / f"{self.PARENT}.jsonl"
+        parent_fp.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": self.PARENT,
+                    "timestamp": datetime.fromtimestamp(now - parent_age, UTC).isoformat(),
+                    "message": {"role": "user", "content": "build the feature"},
+                }
+            )
+            + "\n"
+        )
+        os.utime(parent_fp, (now - parent_age, now - parent_age))
+        return proj
+
+    def teammate(
+        self,
+        proj: Path,
+        *,
+        sid: str,
+        name: str,
+        stamp: str,
+        age: float,
+        now: float,
+        preamble: bool = False,
+    ) -> Path:
+        """One classified top-level teammate transcript.
+
+        With ``preamble``, the file opens with the three untimestamped control
+        records the harness writes before any turn — the shape that made
+        ``started_at`` null for every teammate — so the first usable stamp is at
+        record index 3.
+        """
+        lines: list[str] = []
+        if preamble:
+            lines += [
+                json.dumps({"type": "agent-setting", "agentSetting": "spacedock:ensign"}),
+                json.dumps({"type": "mode", "mode": "default"}),
+                json.dumps({"type": "permission-mode", "permissionMode": "acceptEdits"}),
+            ]
+        lines.append(
+            json.dumps(
+                {
+                    "type": "user",
+                    "sessionId": sid,
+                    "agentName": name,
+                    "teamName": f"session-{self.PARENT[:8]}",
+                    "timestamp": stamp,
+                    "message": {"role": "user", "content": "do the work"},
+                }
+            )
+        )
+        fp = proj / f"{sid}.jsonl"
+        fp.write_text("\n".join(lines) + "\n")
+        os.utime(fp, (now - age, now - age))
+        return fp
+
+    def registry(self, tmp: str, members: list[dict[str, Any]]) -> Path:
+        teams = Path(tmp) / "teams" / f"session-{self.PARENT[:8]}"
+        teams.mkdir(parents=True)
+        (teams / "config.json").write_text(
+            json.dumps(
+                {
+                    "name": f"session-{self.PARENT[:8]}",
+                    "leadSessionId": self.PARENT,
+                    "members": [
+                        {
+                            "agentId": f"team-lead@session-{self.PARENT[:8]}",
+                            "name": "team-lead",
+                            "backendType": "in-process",
+                        },
+                        *members,
+                    ],
+                }
+            )
+        )
+        return Path(tmp) / "teams"
+
+    def member(
+        self, name: str, joined_ms: float, *, is_active: bool | None = None
+    ) -> dict[str, Any]:
+        entry: dict[str, Any] = {
+            "agentId": f"{name}@session-{self.PARENT[:8]}",
+            "name": name,
+            "agentType": "general-purpose",
+            "joinedAt": joined_ms,
+            "backendType": "tmux",
+        }
+        if is_active is not None:
+            entry["isActive"] = is_active
+        return entry
+
+    def own_agent(self, proj: Path, *, label: str, age: float, now: float) -> Path:
+        """One agent the LEAD dispatched itself, under the lead's own directory.
+
+        The same `agent-*.jsonl` plus `.meta.json` pair a teammate's own workers
+        use, one level up: this is the population `load_subagents` reads.
+        """
+        agents = proj / self.PARENT / "subagents"
+        agents.mkdir(parents=True, exist_ok=True)
+        fp = agents / f"agent-{label}.jsonl"
+        fp.write_text(
+            json.dumps({"type": "user", "timestamp": self.stamp(now - age), "message": {}}) + "\n"
+        )
+        (agents / f"agent-{label}.meta.json").write_text(json.dumps({"name": f"{label}-lens"}))
+        os.utime(fp, (now - age, now - age))
+        return fp
+
+    def collect_one(self, tmp: str, teams: Path | None, now: float) -> dict[str, Any]:
+        patches = [
+            store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+            store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            store_patch(TEAMS_DIR=str(teams or Path(tmp) / "no-teams")),
+        ]
+        with patches[0], patches[1], patches[2]:
+            sessions = collect_claude(now, 24, False)
+        self.assertEqual(1, len(sessions), "a teammate is folded, never a standalone row")
+        return sessions[0]
+
+    def test_a_teammate_start_comes_from_the_first_timestamped_record(self) -> None:
+        # AC-1. The harness opens a top-level transcript with three
+        # untimestamped control records, so reading record 0 alone returned None
+        # for every dispatched teammate and the pill rendered no elapsed at all.
+        # The expected value is the fixture's own fourth record, not a runtime
+        # constant, so the assertion cannot pass by agreeing with the code.
+        # Falsified by: restoring the one-line read in transcript_started_at.
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 120, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.teammate(
+                proj,
+                sid="bbbb2222-0000-0000-0000-000000000000",
+                name="ensign-one",
+                stamp=stamp,
+                age=5,
+                now=now,
+                preamble=True,
+            )
+            session = self.collect_one(tmp, None, now)
+
+        published = session["subagents"]
+        self.assertEqual(["ensign-one"], [a["name"] for a in published])
+        self.assertEqual(records.parse_ts(stamp), published[0]["started_at"])
+
+    def test_a_quiet_teammate_stays_published_and_reads_as_not_running(self) -> None:
+        # AC-2. The published roster and the state derivation are two different
+        # lists. A teammate blocked on its own subagents writes nothing for
+        # minutes and must stay on the row; the lead must still read as running
+        # exactly one subagent, because DRC-4118 and DRC-4263's AC-3 both forbid
+        # a parked child from inflating the parent's state detail.
+        # Falsified by: appending the stale child to the fresh-gated list, which
+        # flips state_detail to "running 2 subagents".
+        now = time.time()
+        fresh_stamp = datetime.fromtimestamp(now - 30, UTC).isoformat()
+        stale_stamp = datetime.fromtimestamp(now - 3600, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.teammate(
+                proj,
+                sid="bbbb2222-0000-0000-0000-000000000000",
+                name="ensign-live",
+                stamp=fresh_stamp,
+                age=5,
+                now=now,
+            )
+            self.teammate(
+                proj,
+                sid="cccc3333-0000-0000-0000-000000000000",
+                name="ensign-quiet",
+                stamp=stale_stamp,
+                age=3600,
+                now=now,
+            )
+            teams = self.registry(
+                tmp,
+                [
+                    self.member("ensign-live", (now - 300) * 1000),
+                    self.member("ensign-quiet", (now - 4000) * 1000),
+                ],
+            )
+            session = self.collect_one(tmp, teams, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"ensign-live", "ensign-quiet"}, set(published))
+        self.assertIs(True, published["ensign-live"]["active"])
+        self.assertIs(False, published["ensign-quiet"]["active"])
+        # Both members have written a transcript, so neither is pending and the
+        # roster contributes no extra element.
+        self.assertEqual(2, len(session["subagents"]))
+        self.assertEqual("working", session["state"])
+        self.assertEqual("running 1 subagent", session["state_detail"])
+
+    def test_a_teammates_own_subagents_are_published_under_it(self) -> None:
+        # AC-3. The lenses a reviewer spawns live under the reviewer's own
+        # session directory, which no call site ever handed to the directory
+        # walk. Flattened onto the roster with the teammate named as parent —
+        # nesting would let a grandchild orphan into a peer row, which is the
+        # rule DRC-4118 settled for Cursor.
+        # Falsified by: walking only the lead's transcript, which yields zero
+        # grandchildren.
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 60, UTC).isoformat()
+        lens_stamp = datetime.fromtimestamp(now - 45, UTC).isoformat()
+        child_sid = "bbbb2222-0000-0000-0000-000000000000"
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.teammate(proj, sid=child_sid, name="ensign-review", stamp=stamp, age=5, now=now)
+            lenses = proj / child_sid / "subagents"
+            lenses.mkdir(parents=True)
+            for label in ("evidence", "design"):
+                fp = lenses / f"agent-{label}.jsonl"
+                fp.write_text(
+                    json.dumps({"type": "user", "timestamp": lens_stamp, "message": {}}) + "\n"
+                )
+                (lenses / f"agent-{label}.meta.json").write_text(
+                    json.dumps({"name": f"{label}-lens"})
+                )
+                os.utime(fp, (now - 10, now - 10))
+            session = self.collect_one(tmp, None, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"ensign-review", "design-lens", "evidence-lens"}, set(published))
+        self.assertIsNone(published["ensign-review"]["parent"])
+        self.assertEqual("ensign-review", published["design-lens"]["parent"])
+        self.assertEqual("ensign-review", published["evidence-lens"]["parent"])
+        self.assertEqual(records.parse_ts(lens_stamp), published["design-lens"]["started_at"])
+        # A grandchild is published, never counted into the parent's state: the
+        # lead is running one teammate, whatever that teammate is running.
+        self.assertEqual("running 1 subagent", session["state_detail"])
+
+    def test_a_quiet_agent_the_lead_dispatched_itself_stays_published(self) -> None:
+        # captain-ruling[2026-09-03]. The window gate reached children and
+        # grandchildren and left the lead's OWN agents fresh-gated at 90 s, so a
+        # lens the lead dispatched directly still vanished the moment it went
+        # quiet — the commonest population on this board. All three now share
+        # one retention rule: published inside `window_hours`, `active` from
+        # `working_threshold_sec`.
+        # The fresh-gated list that drives state is untouched, which is the half
+        # AC-4 froze: one running lens, so `state_detail` reads one subagent
+        # however many quiet ones are retained beside it.
+        # Falsified by: restoring the freshness gate on the roster's own-agent
+        # arm (the quiet lens disappears), or feeding the retained list into the
+        # state derivation ("running 2 subagents", which also fires DRC-4263's
+        # pre-existing guard).
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.own_agent(proj, label="live", age=10, now=now)
+            self.own_agent(proj, label="quiet", age=3600, now=now)
+            self.own_agent(proj, label="ancient", age=25 * 3600, now=now)
+            session = self.collect_one(tmp, None, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"live-lens", "quiet-lens"}, set(published))
+        self.assertIs(True, published["live-lens"]["active"])
+        self.assertIs(False, published["quiet-lens"]["active"])
+        # An agent the lead ran itself belongs to no teammate.
+        self.assertIsNone(published["live-lens"]["parent"])
+        self.assertIsNone(published["quiet-lens"]["parent"])
+        self.assertEqual("working", session["state"])
+        self.assertEqual("running 1 subagent", session["state_detail"])
+
+    def test_the_registry_inactive_flag_demotes_but_never_promotes(self) -> None:
+        # Gap 4. Claude Code 2.1.259 retains a finished member and marks it
+        # isActive false rather than pruning it. That flag may take a fresh
+        # child out of "running"; it may never put a stale one back in, because
+        # DRC-4229 keeps transcript freshness authoritative and whether a
+        # hard-killed pane clears the flag is unmeasured.
+        # Falsified by: reading isActive as the liveness signal in either
+        # direction, which flips one of the two assertions below.
+        now = time.time()
+        fresh_stamp = datetime.fromtimestamp(now - 30, UTC).isoformat()
+        stale_stamp = datetime.fromtimestamp(now - 3600, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.teammate(
+                proj,
+                sid="bbbb2222-0000-0000-0000-000000000000",
+                name="ensign-retained",
+                stamp=fresh_stamp,
+                age=5,
+                now=now,
+            )
+            self.teammate(
+                proj,
+                sid="cccc3333-0000-0000-0000-000000000000",
+                name="ensign-claimed-live",
+                stamp=stale_stamp,
+                age=3600,
+                now=now,
+            )
+            teams = self.registry(
+                tmp,
+                [
+                    self.member("ensign-retained", (now - 300) * 1000, is_active=False),
+                    self.member("ensign-claimed-live", (now - 4000) * 1000, is_active=True),
+                ],
+            )
+            session = self.collect_one(tmp, teams, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertIs(
+            False, published["ensign-retained"]["active"], "the flag demotes a fresh child"
+        )
+        self.assertIs(
+            False, published["ensign-claimed-live"]["active"], "the flag cannot promote a stale one"
+        )
+
+    def steady_state_head_reads(self, tmp: str, *, lenses: int, now: float) -> int:
+        """Head reads on the SECOND collection, with `lenses` grandchildren."""
+        proj = self.project(tmp, now=now)
+        child_sid = "bbbb2222-0000-0000-0000-000000000000"
+        self.teammate(
+            proj,
+            sid=child_sid,
+            name="ensign-done",
+            stamp=self.stamp(now - 3600),
+            age=3600,
+            now=now,
+        )
+        directory = proj / child_sid / "subagents"
+        directory.mkdir(parents=True)
+        for index in range(lenses):
+            fp = directory / f"agent-{index}.jsonl"
+            fp.write_text(json.dumps({"type": "user", "timestamp": self.stamp(now - 3600)}) + "\n")
+            os.utime(fp, (now - 3600, now - 3600))
+
+        counted = {"reads": 0}
+        real = runtime_io.read_prefix_bytes
+
+        def counting(path: str, *, max_bytes: int) -> bytes:
+            counted["reads"] += 1
+            return real(path, max_bytes=max_bytes)
+
+        with (
+            store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+            store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            store_patch(TEAMS_DIR=str(Path(tmp) / "no-teams")),
+        ):
+            config, state = runtime()
+            with mock.patch.object(runtime_io, "read_prefix_bytes", counting):
+                claude_collector.collect(config, state, now, 24.0, False)
+                counted["reads"] = 0
+                rows = claude_collector.collect(config, state, now, 24.0, False)
+        self.assertEqual(lenses + 1, len(rows[0]["subagents"]))
+        return counted["reads"]
+
+    def test_the_roster_does_not_cost_a_head_read_per_pass(self) -> None:
+        # The published roster reaches past the freshness gate, so before the
+        # memo it re-read a bounded head per child and per grandchild on every
+        # collection: measured at 178 reads a pass on a store of 8 finished
+        # teammates of 20 workers each, for a roster that was entirely inactive.
+        # Asserted as "does not scale with the roster" rather than as a fixed
+        # count, because a few reads recur for an unrelated reason -- a tiny
+        # transcript's inconclusive classification is deliberately not cached --
+        # and pinning the constant would pin that instead of this.
+        # Falsified by: dropping the `state=` argument at either roster call
+        # site, which makes the wider roster cost proportionally more.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as small:
+            few = self.steady_state_head_reads(small, lenses=2, now=now)
+        with tempfile.TemporaryDirectory() as large:
+            many = self.steady_state_head_reads(large, lenses=12, now=now)
+
+        self.assertEqual(few, many, "steady-state head reads must not grow with the roster's size")
+
+    def test_every_published_element_declares_both_new_keys(self) -> None:
+        # DRC-4223's rule for this element: always present, null meaning not
+        # measured. A pending member has demonstrably not started, so its
+        # liveness is measured False rather than unknown.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            self.project(tmp, now=now)
+            teams = self.registry(tmp, [self.member("ensign-pending", (now - 300) * 1000)])
+            session = self.collect_one(tmp, teams, now)
+
+        for agent in session["subagents"]:
+            self.assertEqual({"name", "model", "started_at", "active", "parent"}, set(agent))
+        self.assertEqual(["ensign-pending"], [a["name"] for a in session["subagents"]])
+        self.assertIs(False, session["subagents"][0]["active"])
+        self.assertIsNone(session["subagents"][0]["parent"])

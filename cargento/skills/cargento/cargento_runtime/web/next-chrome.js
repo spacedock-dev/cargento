@@ -208,8 +208,17 @@ function nextRows(){
 function nextCounts(){
   const rows = nextRows();
   const asks = nextOperationsAsks(rows);
+  /* Only the ones moving. The chrome's figure is read as "how much is running
+     right now", and the published list now also carries teammates that have
+     finished and members that have not started — counting those would make the
+     header lie in order to close a pill-level gap. The label says `running`
+     for the same reason: under the bare word `subagents` a live-only count
+     read as a total, so the header could print `0 subagents` above a detail
+     panel listing two. */
   const subagents = rows.reduce(
-    (total, row) => total + (Array.isArray(row.subagents) ? row.subagents.length : 0),
+    (total, row) => total + (Array.isArray(row.subagents)
+      ? row.subagents.filter(nextSubagentIsLive).length
+      : 0),
     0,
   );
   return {
@@ -246,6 +255,7 @@ function renderNext(focus = nextCaptureFocus()){
   const counts = nextCounts();
   document.title = nextDocumentTitle();
   const gateLabel = counts.gates === 1 ? "reported block" : "reported blocks";
+  const subagentLabel = counts.subagents === 1 ? "subagent running" : "subagents running";
   const gate = counts.gates > 0
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
@@ -258,7 +268,7 @@ function renderNext(focus = nextCaptureFocus()){
     (breadcrumb ? `<nav class="next-breadcrumb" aria-label="Breadcrumb">${breadcrumb}</nav>` : "") +
     "</div>" +
     '<div class="next-header-right">' +
-    `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} subagents</span>` +
+    `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} ${subagentLabel}</span>` +
     gate + notification + "</div></header>" +
     stalled + nextViewBody(counts);
   nextAttentionStatus(app);

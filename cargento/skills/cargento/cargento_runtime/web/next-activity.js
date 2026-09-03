@@ -17,12 +17,23 @@ const NEXT_ACTIVITY_SUBAGENT_LIMIT = 6;
 function nextProjectActivitySubagents(session){
   const subagents = Array.isArray(session.subagents) ? session.subagents : [];
   if(!subagents.length) return "";
-  const rows = subagents.slice(0, NEXT_ACTIVITY_SUBAGENT_LIMIT).map((subagent, index) => {
+  /* Ordered so the crew that is moving reads first: a lead with a finished
+     teammate and six live lenses would otherwise spend the six-pill budget on
+     work that has stopped. `filter` preserves order, so whatever order the
+     collector published survives within each group -- which is mtime order only
+     for the lead's own agents; classified children arrive in path order and
+     their workers follow each one. */
+  const ordered = [
+    ...subagents.filter(nextSubagentIsLive),
+    ...subagents.filter(subagent => !nextSubagentIsLive(subagent)),
+  ];
+  const rows = ordered.slice(0, NEXT_ACTIVITY_SUBAGENT_LIMIT).map((subagent, index) => {
     const elapsed = nextDurationSince(subagent && subagent.started_at);
     const measured = elapsed == null ? "" :
       `<span class="next-activity-subagent-elapsed">${elapsed}</span>`;
-    return `<span class="next-activity-subagent" role="listitem" ` +
-      `data-next-activity-subagent="${index}">` +
+    const live = nextSubagentIsLive(subagent);
+    return `<span class="next-activity-subagent${live ? "" : " next-activity-subagent--idle"}" ` +
+      `role="listitem" data-next-activity-subagent="${index}">` +
       `<span class="next-activity-subagent-name">${esc(subagent && subagent.name || "subagent")}</span>` +
       `${measured}</span>`;
   }).join("");

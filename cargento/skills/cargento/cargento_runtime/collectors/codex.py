@@ -202,7 +202,13 @@ def collect(
         scan = turns.scan_turns(config, state, fp, "codex") if info else None
         last_event_sources = (info["last_event_ts"] if info else 0, *activity_sources)
         subagents = [
-            {"name": label, "model": model, "started_at": started_at}
+            {
+                "name": label,
+                "model": model,
+                "started_at": started_at,
+                "active": None,
+                "parent": None,
+            }
             for label, _, model, started_at in agents
         ]
         # Behind the same `active` gate as the rest of the reads: a stale

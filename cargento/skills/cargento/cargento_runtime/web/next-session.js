@@ -248,17 +248,50 @@ function nextSessionTasks(session){
 function nextSessionSubagents(session){
   const subagents = Array.isArray(session.subagents) ? session.subagents : [];
   if(!subagents.length) return "";
+  /* Every number in the heading counts DIRECT children, so the leading clause
+     agrees with the row's state line above it: `working_detail` counts that
+     same population and a grandchild is deliberately not in it. Counting every
+     live element made one row read "running 1 subagent" beside a
+     "3 RUNNING SUBAGENTS" heading; leaving the TOTAL wide while narrowing the
+     running clause then made an idle teammate holding a live worker read
+     "2 SUBAGENTS · NONE RUNNING" above a row a screen reader announces as
+     running. A worker beneath a teammate is a third population and gets its
+     own clause rather than being folded into either count. */
+  const direct = subagents.filter(subagent => !(subagent && subagent.parent));
+  const running = direct.filter(nextSubagentIsLive).length;
+  const beneath = subagents.filter(
+    subagent => subagent && subagent.parent && nextSubagentIsLive(subagent),
+  ).length;
   const rows = subagents.map((subagent, index) => {
     const elapsed = nextDurationSince(subagent && subagent.started_at);
     const measured = elapsed == null
       ? ""
       : `<span class="next-session-subagent-elapsed">${elapsed}</span>`;
-    return `<div class="next-session-subagent next-live" data-next-session-subagent="${index}">` +
-      `${nextStatusDot("running", "next-session-subagent-glyph")}` +
-      `<strong class="next-session-subagent-name">${esc(subagent && subagent.name || "subagent")}</strong>` +
+    const live = nextSubagentIsLive(subagent);
+    /* Nested inside the name cell rather than given a grid column of its own, so
+       attribution costs one CSS rule instead of a new column every breakpoint
+       has to agree about. */
+    const parent = subagent && subagent.parent
+      ? `<span class="next-session-subagent-parent"> · ${esc(subagent.parent)}</span>`
+      : "";
+    return `<div class="next-session-subagent${live ? " next-live" : ""}" ` +
+      `data-next-session-subagent="${index}">` +
+      `${nextStatusDot(live ? "running" : "idle", "next-session-subagent-glyph", live)}` +
+      '<strong class="next-session-subagent-name">' +
+      `${esc(subagent && subagent.name || "subagent")}${parent}</strong>` +
       `${measured}</div>`;
   }).join("");
-  const label = subagents.length === 1 ? "1 RUNNING SUBAGENT" : `${subagents.length} RUNNING SUBAGENTS`;
+  /* The heading has to survive the state this feature creates: a finished board
+     still inside the display window, every element inactive. Guarding the whole
+     block on `running` would hide the list, which is the vanishing act
+     DRC-4344 exists to stop, so the heading tells the truth instead and the
+     rows stay. */
+  const label = (running === 0
+    ? `${direct.length} SUBAGENT${direct.length === 1 ? "" : "S"} · NONE RUNNING`
+    : running === 1 ? "1 RUNNING SUBAGENT" : `${running} RUNNING SUBAGENTS`) +
+    (beneath === 0
+      ? ""
+      : ` · ${beneath} WORKER${beneath === 1 ? "" : "S"} RUNNING BENEATH`);
   return '<div class="next-session-current-subagents" data-next-session-subagents>' +
     `<span>${label}</span>${rows}</div>`;
 }

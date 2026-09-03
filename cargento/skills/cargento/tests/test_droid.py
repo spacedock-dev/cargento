@@ -204,7 +204,15 @@ class DroidVerificationFixTest(unittest.TestCase):
         # The child declares no `turn_context`, so its model is genuinely unread
         # and the key is present holding None rather than absent.
         self.assertEqual(
-            [{"name": "reviewer", "model": None, "started_at": None}],
+            [
+                {
+                    "name": "reviewer",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
             sessions[0]["subagents"],
         )
         self.assertLessEqual(sessions[0]["last_activity"], self.NOW, "skewed mtime displayed")

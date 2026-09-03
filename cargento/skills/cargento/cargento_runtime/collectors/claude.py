@@ -46,10 +46,16 @@ def load_team_members(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
     The registry is a ROSTER, not a heartbeat: one file mtime covers every
     member, and it moves only on a join or a leave, so nothing here can age an
     individual member the way ``load_subagents`` ages a transcript. Callers get
-    ``joined`` per member and must bound it themselves. Reading it is safe as a
-    live-only signal because ``members[]`` is pruned on completion — measured on
-    two finished sessions that were left holding their lead alone while their
-    members' inbox files survived.
+    ``joined`` per member and must bound it themselves.
+
+    It is no longer safe to read as a live-only signal. Pruning on completion was
+    measured on two finished sessions here and held until Claude Code 2.1.259,
+    which RETAINS a finished member and marks it ``isActive: false`` instead.
+    ``active`` carries that flag, and a caller may only ever let it demote a
+    member it already believes is running: transcript freshness stays
+    authoritative for "running now" (DRC-4229), and whether a hard-killed pane
+    clears the flag is unmeasured. ``None`` means the registry did not say —
+    which is the case for the in-process lead on every registry measured.
 
     An older layout keeps ``teams/<uuid>/inboxes/`` with no ``config.json`` at
     all; the glob simply does not match it, and those members are reachable
@@ -87,12 +93,24 @@ def load_team_members(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
                 # rather than assumed, so a seconds-valued field would read as a
                 # stale join (excluded) instead of one 55,000 years in the future.
                 when = joined / 1000 if joined > 1e11 else float(joined)
+            flag = member.get("isActive")
             by_prefix.setdefault(prefix, []).append(
                 {
                     "agent_id": agent_id,
                     "local": agent_id.split("@", 1)[0],
-                    "label": label[:70],
+                    # Unbounded on purpose: the roster join and `member_flags`
+                    # key on this string, where a clip loses a long name
+                    # outright. Each consumer that publishes it bounds its own
+                    # copy -- both of them. That is the part that was missed:
+                    # "published_agent bounds it" is true of the element and
+                    # not of the label, and the state line below went a round
+                    # with no bound at all on the strength of it.
+                    "label": label,
                     "joined": when,
+                    # Untrusted JSON: only a real bool counts, so a string
+                    # "false" reads as "the registry did not say" rather than as
+                    # a demotion.
+                    "active": flag if isinstance(flag, bool) else None,
                 }
             )
     return by_prefix
@@ -276,6 +294,55 @@ def child_model(analysis: dict[str, Any] | None) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def agent_label(transcript: str) -> str | None:
+    """The display name beside a subagent transcript, from its meta sibling."""
+    try:
+        with open(transcript[: -len(".jsonl")] + ".meta.json", encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):  # ValueError covers UnicodeDecodeError
+        return None
+    # Meta values are untyped JSON: a non-string name must not TypeError the
+    # whole Claude collector.
+    if not isinstance(meta, dict):
+        return None
+    for key in ("name", "description", "agentType"):
+        value = meta.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def published_agent(
+    name: str | None,
+    *,
+    model: str | None,
+    started_at: float | None,
+    active: bool | None,
+    parent: str | None,
+) -> dict[str, Any]:
+    """One element of the published ``subagents[]`` list.
+
+    Both new keys are declared for every element rather than added where they
+    happen to be known, which is DRC-4223's rule for widening this element:
+    always present, null meaning not measured.
+    """
+    # `redact_clip`, not a slice: both strings are the untrusted `agentName`,
+    # and a bare `[:70]` bounds BEFORE the credential sweep runs over the
+    # assembled rows, so a cut landing inside a key leaves a run too short to
+    # match and publishes it unmarked. Redacting first is the order
+    # `records.redact_clip` exists to own, and the callers hand this the full
+    # string for that reason. `aggregate._redact_published_text` still sweeps
+    # both keys: it covers every harness, and redacting an already-marked
+    # string is a no-op.
+    return {
+        "name": records.redact_clip(name or "subagent", 70),
+        "model": model,
+        "started_at": started_at,
+        "active": active,
+        "parent": records.redact_clip(parent, 70) if parent else None,
+    }
+
+
 def load_subagents(
     config: RuntimeConfig,
     transcript: str | None,
@@ -283,9 +350,11 @@ def load_subagents(
     *,
     found: list[tuple[str, float]] | None = None,
     models: dict[str, str | None] | None = None,
+    window_sec: float | None = None,
+    state: RuntimeState | None = None,
 ) -> list[dict[str, Any]]:
-    """Running Claude subagents beneath the session directory; fresh mtime =
-    running. Covers both layouts in ``SUBAGENT_GLOBS``.
+    """Claude subagents beneath the session directory, each carrying its own
+    ``active``; fresh mtime = running. Covers both layouts in ``SUBAGENT_GLOBS``.
 
     ``found`` lets a caller that has already listed the directory hand the
     listing over, so one session costs one scan. The collector needs the full
@@ -295,31 +364,35 @@ def load_subagents(
     analysis the caller has already run for the session's rate. A path this
     function is not told about publishes None, which is what a caller with no
     analyses to hand gets for every agent — never a guess at the parent's model.
+
+    ``window_sec`` widens what is RETURNED without widening what reads as
+    running: an agent quiet for longer than ``working_threshold_sec`` but inside
+    this window comes back with ``active`` false. One list rather than two calls,
+    because the meta read and the head read are per file and a caller that wants
+    only the running ones filters on ``active``. Without it only running agents
+    come back, so every existing caller is unchanged.
+
+    ``state`` memoises the head read behind the start stamp, which starts to
+    matter once ``window_sec`` retains a quiet agent: unmemoised, a retained
+    roster re-reads a head per agent per collection, the cost
+    ``agent_start_cache`` exists for.
     """
     agents: list[dict[str, Any]] = []
     for fp, mtime in agent_transcripts(transcript) if found is None else found:
-        if not runtime_sessions.is_fresh(config, now, mtime, config.working_threshold_sec):
+        live = runtime_sessions.is_fresh(config, now, mtime, config.working_threshold_sec)
+        if not live and not (
+            window_sec is not None and runtime_sessions.is_fresh(config, now, mtime, window_sec)
+        ):
             continue
-        label = None
-        try:
-            with open(fp[: -len(".jsonl")] + ".meta.json", encoding="utf-8") as f:
-                meta = json.load(f)
-        except (OSError, ValueError):  # ValueError covers UnicodeDecodeError
-            meta = None
-        # Meta values are untyped JSON: a non-string name must not TypeError the
-        # whole Claude collector.
-        if isinstance(meta, dict):
-            for key in ("name", "description", "agentType"):
-                value = meta.get(key)
-                if isinstance(value, str) and value:
-                    label = value
-                    break
+        label = agent_label(fp)
         agents.append(
             {
-                "label": (label or "subagent")[:70],
+                # Bounded by `published_agent`, which redacts first.
+                "label": label or "subagent",
                 "mtime": mtime,
                 "model": (models or {}).get(fp),
-                "started_at": claude_data.transcript_started_at(config, fp),
+                "started_at": claude_data.transcript_started_at(config, fp, state=state),
+                "active": live,
             }
         )
     agents.sort(key=lambda a: -a["mtime"])
@@ -416,9 +489,10 @@ def collect(
                         {
                             "path": fp,
                             "mtime": mtime,
-                            "label": (agent_name or "subagent")[:70],
-                            # The label is truncated for display; the roster join
+                            # Both unbounded: `published_agent` redacts and
+                            # then bounds for display, and the roster join
                             # needs the name as written or a long one misses.
+                            "label": agent_name or "subagent",
                             "agent_name": agent_name,
                         }
                     )
@@ -461,18 +535,49 @@ def collect(
             )
         }
         models = {path: child_model(analysis) for path, analysis in analyses.items()}
-        subagents = load_subagents(config, transcript, now, found=agent_files, models=models)
-        subagents += [
-            {
-                "label": c["label"],
-                "mtime": c["mtime"],
-                "model": models.get(c["path"]),
-                "started_at": claude_data.transcript_started_at(config, c["path"]),
-            }
+        # One bounded head read per child, shared by the two lists below and
+        # cached across passes. The cache is the point, and the first version of
+        # this comment defended not having one by answering the wrong question:
+        # within a pass the read happens once anyway, while the cost that
+        # actually recurs is per COLLECTION. Measured on a store with 8 finished
+        # teammates of 20 workers each: 170 head reads and 160 sidecar parses
+        # every pass, for a roster 91% of which was inactive. A start stamp is
+        # immutable once a file has it, which is the same property
+        # `agent_identity` and `agent_setting` already cache on over the same
+        # head bytes.
+        child_started = {
+            c["path"]: claude_data.transcript_started_at(config, c["path"], state=state)
             for c in children
-            if runtime_sessions.is_fresh(
-                config, now, c["mtime"], config.working_threshold_sec
-            )  # fresh = running
+        }
+        # Retained inside the display window with `active` per agent, the same
+        # rule the children and grandchildren below already follow
+        # (captain-ruling 2026-09-03: a lens the LEAD dispatched was still
+        # fresh-gated, so it vanished at 90 s while a teammate's did not). The
+        # state derivation takes the running ones straight back out, so the two
+        # lists stay exactly as far apart as AC-4 froze them.
+        own_agents = load_subagents(
+            config,
+            transcript,
+            now,
+            found=agent_files,
+            models=models,
+            window_sec=window_hours * 3600,
+            state=state,
+        )
+        subagents = [
+            *(a for a in own_agents if a["active"]),
+            *(
+                {
+                    "label": c["label"],
+                    "mtime": c["mtime"],
+                    "model": models.get(c["path"]),
+                    "started_at": child_started[c["path"]],
+                }
+                for c in children
+                if runtime_sessions.is_fresh(
+                    config, now, c["mtime"], config.working_threshold_sec
+                )  # fresh = running
+            ),
         ]
         latest_agent_mtime = max(
             (a["mtime"] for a in subagents),
@@ -516,6 +621,93 @@ def collect(
             and runtime_sessions.is_fresh(config, now, m["joined"], window_hours * 3600)
         ]
         pending_members.sort(key=lambda m: m["joined"])
+
+        # The published roster is deliberately NOT the list above. Everything
+        # that derives state -- the Working pin, `working_detail`, the Spacedock
+        # strip, `last_activity` -- keeps reading `subagents`, which is gated on
+        # `working_threshold_sec` because DRC-4118 settled that a child parked
+        # hours ago must not make its parent read "running 1 subagent", and
+        # DRC-4263's AC-3 requires it. What a person reads on the row is a
+        # different question: a teammate blocked on its own subagents writes
+        # nothing for minutes and used to flicker off the row entirely. It now
+        # stays, and reads as stopped -- as does an agent the lead dispatched
+        # itself, which review round 1 found still fresh-gated while the
+        # children and grandchildren beside it were not. That is what AC-2 asked
+        # for and is not
+        # the whole of what a reader wants. A teammate whose own worker is
+        # writing is alive, and nothing here says so: the honest fix absorbs a
+        # grandchild's mtime into this session's activity the way DRC-4118 does
+        # for Cursor and `latest_agent_file_mtime` already does for the lead's
+        # own agents, and that moves `state`, which this issue's gate froze.
+        # Filed rather than taken.
+        roster: list[dict[str, Any]] = [
+            published_agent(
+                a["label"],
+                model=a["model"],
+                started_at=a["started_at"],
+                active=a["active"],
+                parent=None,
+            )
+            for a in own_agents
+        ]
+        # Keyed on `label`, which prefers the registry's own `name` -- the same
+        # string a child transcript writes as `agentName` and the same one
+        # `started_agent_ids` joins on three calls up. Keying on the `agentId`
+        # halves instead only agreed while `agentId` was `<name>@session-<prefix>`,
+        # and a member whose id is a hex handle would have silently escaped the
+        # demotion.
+        member_flags = {
+            key: m["active"]
+            for m in team_members.get(prefix, [])
+            for key in (m["label"], m["agent_id"], m["local"])
+        }
+        for c in children:
+            name = c.get("agent_name") or ""
+            live = runtime_sessions.is_fresh(config, now, c["mtime"], config.working_threshold_sec)
+            # Demote only. A retained-but-finished member is marked inactive and
+            # that is worth believing; the reverse is not, because the flag on a
+            # hard-killed pane is unmeasured and DRC-4229 keeps transcript
+            # freshness authoritative for "running now".
+            if live and member_flags.get(name) is False:
+                live = False
+            roster.append(
+                published_agent(
+                    c["label"],
+                    model=models.get(c["path"]),
+                    started_at=child_started[c["path"]],
+                    active=live,
+                    parent=None,
+                )
+            )
+            # A teammate's own subagents, flattened onto the roster rather than
+            # nested under it. Flattening is the rule this codebase already
+            # follows -- Antigravity flattens a whole subtree onto the root card,
+            # and DRC-4118 chose `rootParentAgentId` because flattening cannot
+            # orphan a grandchild into a peer row. They reach the roster only:
+            # counting them into `subagents` would make a lead running one
+            # teammate read as running eight.
+            for gp, gm in agent_transcripts(c["path"], config=config, state=state):
+                if not runtime_sessions.is_fresh(config, now, gm, window_hours * 3600):
+                    continue
+                roster.append(
+                    published_agent(
+                        agent_label(gp),
+                        # Never guessed from the parent: no analysis is run over a
+                        # grandchild, so None here means not read.
+                        model=None,
+                        started_at=claude_data.transcript_started_at(config, gp, state=state),
+                        active=runtime_sessions.is_fresh(
+                            config, now, gm, config.working_threshold_sec
+                        ),
+                        parent=name or None,
+                    )
+                )
+        roster += [
+            published_agent(
+                m["label"], model=None, started_at=m["joined"], active=False, parent=None
+            )
+            for m in pending_members
+        ]
 
         project = (
             (
@@ -588,7 +780,14 @@ def collect(
             blocked_since = pending_members[0]["joined"]
             waited = runtime_sessions.fmt_duration(runtime_sessions.age(config, now, blocked_since))
             state_detail = (
-                f"{pending_members[0]['label']} has not started, waiting {waited}"
+                # The label arrives unbounded (see `load_team_members`), and
+                # this is the one place besides the element where a registry
+                # name reaches the payload. `redact_clip` rather than a slice
+                # for the reason that function owns: a cut landing inside a
+                # credential leaves a run too short for the sweep downstream
+                # to match.
+                f"{records.redact_clip(pending_members[0]['label'], 70)}"
+                f" has not started, waiting {waited}"
                 if len(pending_members) == 1
                 else f"{len(pending_members)} subagents have not started, waiting {waited}"
             )
@@ -737,18 +936,7 @@ def collect(
                 # Working test would let a roster entry stand in for work that
                 # has demonstrably not begun. `started_at` is when the member
                 # joined the team, which is the instant the wait began.
-                "subagents": [
-                    {
-                        "name": a["label"],
-                        "model": a["model"],
-                        "started_at": a["started_at"],
-                    }
-                    for a in subagents
-                ]
-                + [
-                    {"name": m["label"], "model": None, "started_at": m["joined"]}
-                    for m in pending_members
-                ],
+                "subagents": roster,
                 "tasks": tasks,
                 "spacedock": session_spacedock(
                     config, state, transcript, subagents, now, window_hours * 3600

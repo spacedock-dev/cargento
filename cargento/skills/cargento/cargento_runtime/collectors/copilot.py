@@ -490,6 +490,8 @@ def collect(
                     "name": pending.get("name") or "subagent",
                     "model": _row_model(pending.get("model")),
                     "started_at": None,
+                    "active": None,
+                    "parent": None,
                 }
                 for pending in (info or {}).get("pending_agents", {}).values()
             ]

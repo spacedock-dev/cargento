@@ -345,11 +345,21 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # have seen it. Claude only, since Claude is the only harness that
         # records whether a tool call failed (see records.tool_outcome).
         "loop": None,
-        # One element per subagent: `{"name": str, "model": str | None,
-        # "started_at": float | None}`. Both measurement keys are always present.
-        # None means not read, never "same as the parent" for model or "started
-        # with the parent" for time. A child start comes from its own transcript;
-        # mtime is last activity and cannot stand in for it.
+        # One element per subagent, carrying `name` (str), `model` (str | None),
+        # `started_at` (float | None), `active` (bool | None) and `parent`
+        # (str | None). Every measurement key is always present. None means not
+        # read, never "same as the parent" for model or "started with the
+        # parent" for time. A child start comes from its own transcript; mtime
+        # is last activity and cannot stand in for it.
+        #
+        # `active` is this element's own liveness and `parent` the member that
+        # spawned it, both added by DRC-4344 for teammates dispatched into their
+        # own panes. Claude measures them; every other collector publishes None
+        # on both, which says its liveness and parentage are unread rather than
+        # that the child is idle and parentless. The frontend therefore treats
+        # None as live, so a harness nobody has taught to measure this renders
+        # exactly as it did before. Only `False` withholds the pulse and the
+        # running count.
         #
         # Model is a key rather than a parallel list of only the children whose
         # model differs, because absence from such a map would mean either
