@@ -143,9 +143,10 @@ python3 "<skill-dir>/server.py" --port 4553 --status
 `--status` reports one of three things, and never guesses: running (with pid and start time), not
 running, or that the port belongs to some other process — in which case it changes nothing.
 
-The server writes four files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
+The server writes five files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`):
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
-detached server's output goes; `cargento-dismissals.json`, the sessions marked handled; and
+detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
+`observer/<harness>_<sid>.json`, the sidecar an observer panel records when a reader opens one; and
 `cargento-history.json`, the history of what the server observed, kept for up to 14 days. If you
 wire up Antigravity's status line, `statusline_hook.py` keeps one small memo per conversation in the
 same directory so a status line that fires many times a turn posts once.
@@ -288,7 +289,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--stop` | Stop the instance on `--port` over `/api/shutdown`. Returns once the port is free, so a restart on the same port works. |
 | `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
-| `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; nothing is transmitted. |
+| `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; it writes nothing and transmits nothing. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
 | `--no-usage` | For this run, never fetch vendor quota over the network and ignore quota a harness pushes in, regardless of the setting stored in the dashboard. Quota a harness writes into its own store (Codex, Copilot) still shows. |
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |

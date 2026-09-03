@@ -58,11 +58,10 @@ The posture rests on two invariants:
    than raised at the request. Published text records what that redaction covers. What the route
    reads is covered by Project reads below: the transcript, and the same two kinds of frontmatter a
    stage strip reads, under the same guards and the same `--no-spacedock` switch.
-   The server also keeps its own history of what it observed under `~/.cargento`, written as it
-   observes rather than in answer to a request, and never a harness store, so the read-only rule
-   stands unchanged.
    The git probe runs inside a repository the user chose rather than a harness store, and it neither
-   writes there nor executes anything the repository supplies.
+   writes there nor executes anything the repository supplies. The server also keeps its own history
+   of what it observed under `~/.cargento`, written as it observes rather than in answer to a
+   request, and never a harness store, so the read-only rule stands unchanged.
 
 Anything that weakens either invariant is a security bug: a bind reaching an address the operator did
 not ask for, a request admitted that the bind's own Host gate should have refused, file reads outside
@@ -371,8 +370,8 @@ either does not stop the other applying.
 The store is on by default. A digest of what happened while the user was away exists only if the
 history was being kept before they left, and Cargento already writes local state on the user's
 behalf by default in the dismissals file, and writes the observer sidecar on demand when a reader
-opens that panel for a session. The trust cost of that default is
-retention, and the bounds above and the delete below are what answer it.
+opens that panel for a session. The trust cost of that default is retention, and the bounds above
+and the delete below are what answer it.
 
 The off switch is `--no-history`. It mirrors `--no-git` at every one of that flag's sites, including
 the branch that forwards flags to a respawned daemon, so a restart cannot re-enable a store the user
@@ -382,7 +381,12 @@ memory, exactly as it does today.
 `--forget` deletes the store and exits. It is a one-shot command, in the family of `--stop` and
 `--status` rather than the family of per-run switches, because what it does is not reversible by
 running the next command without it. It removes the file whether or not the store is enabled, and it
-adds no endpoint: nothing over the loopback port can delete history.
+adds no endpoint: nothing over the loopback port can delete history. It is refused while a dashboard
+answers on the port it names, and says to `--stop` that instance first: a running server holds its
+own copy of the history in memory and would write the deleted records back on the next transition,
+which is the one way a delete could report success and not have happened. A dashboard on some other
+port is out of that probe's reach, so the recording lane also drops its copy when the file it read
+has gone.
 
 A store that cannot be read is discarded rather than repaired. Corrupt bytes, an unreadable file, a
 version the running build does not understand: in every case the store is dropped, the board starts

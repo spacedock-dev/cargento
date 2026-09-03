@@ -265,7 +265,7 @@ settings file. Both are yours to edit; the plugin does not write either.
 
 A collector skips a store it cannot read rather than taking the dashboard down, so a wrong path and an
 idle machine look identical on the board. `--diagnose` is the only thing that tells them apart. It
-reads local paths, transmits nothing, and starts no server:
+reads local paths, writes nothing, transmits nothing, and starts no server:
 
 ```bash
 python3 "$SKILL/server.py" --diagnose
@@ -340,6 +340,12 @@ python3 "<skill-dir>/server.py" --forget
 It removes the file whether or not the store was enabled, so turning the feature off and then asking
 for the file to go does what it says. Nothing over the loopback port can delete history; this is the
 only way.
+
+Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
+it names, because a running server keeps its own copy of the history in memory and writes the
+deleted records back on its next observation — so the delete would report success and be undone a
+few seconds later. It finds the instance with the same probe `--status` and `--stop` use, so
+`--stop` and then `--forget` is the whole procedure.
 
 ## Turn a feature off
 

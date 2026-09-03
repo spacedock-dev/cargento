@@ -173,8 +173,10 @@ class RuntimeConfig:
     # not stop the other applying. Fourteen days is the contract's default. The
     # byte cap is the read cap as well — a file larger than it is discarded
     # unread rather than parsed, which is the same posture the state file takes
-    # — and 1 MiB holds roughly nine thousand observations at the record's
-    # measured ~110 bytes, against the 31-session busiest board measured for
+    # — and 1 MiB holds 7,825 observations at the 132 bytes a Claude record
+    # measures over this machine's real board (2,713 rows), or 6,853 at the 151
+    # bytes a Codex one does, since a record's size is its identity strings.
+    # Both are against the 31-session busiest board measured for
     # `dismissal_max_entries`.
     history_retention_sec: float
     history_max_bytes: int
