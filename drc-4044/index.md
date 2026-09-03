@@ -29,6 +29,17 @@ gates:
                 id: briefing:drc-4044:triage:attempt-1:revision-1
                 digest: sha256:23393862135d5c9e76239f7002f82f9dbfd44dfee8062ccf34f371c064312665
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4044:triage:1
+                briefing: briefing:drc-4044:triage:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-03T07:45:25.820283Z"
+                decision: approve
+                reason: 'Captain approved the triage gate on 2026-09-03: "Agreed and approved, agree on all your recommendations for the 4 decisions. Continue". Accepts the direction: Drafts A/B/C authorized as drafted; two-PR delivery split on web/ (PR 1 full adversarial, PR 2 two lenses plus arbiter); eleven ACs and surface estimates accepted; decisions ruled as recommended — D1 yes (version reset distinguishable), D2 not reopened, D3 yes (SECURITY.md counts five/sixth and eight POST routes), D4 yes (the store keeps the derived two-segment project label, cost accepted), D5 yes (on-by-default clause corrected during promotion). D3/D4/D5 are captain-authorized deviations from the contract literal text.'
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4044](https://linear.app/recce/issue/DRC-4044) — Linear priority Medium, estimate L.
