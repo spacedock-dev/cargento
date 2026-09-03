@@ -29,6 +29,17 @@ gates:
                 id: briefing:drc-4330:triage:attempt-1:revision-1
                 digest: sha256:b8601df7c5586a8f0f8314a5e5140c1ad30fad6f3c6b6024e0b2dc69630c4e7a
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4330:triage:1
+                briefing: briefing:drc-4330:triage:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-03T03:48:29.370321Z"
+                decision: approve
+                reason: 'Captain approved the triage drafts at the gate 2026-09-03: "I approve, also fold in the siblings. and also fix the seed paragraph if needed". Accepts the direction — the history-store security contract goes to docs/plans/history-store-security-scope.md, promoted into SECURITY.md by H1, with the Linear body rewrite and the one-hunk milestone correction authorized as drafted; additionally authorizes one dated correction comment on each of DRC-4326, DRC-4327 and DRC-4329, and correcting the entity opening paragraph mis-citation.'
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4330](https://linear.app/recce/issue/DRC-4330) — Linear priority High, no estimate, labels `journey:mid-flight`, `move:none`. Filed 2026-09-02 as the groundwork for H1 (DRC-4044), the shape the quota, git-probe and ask-lane groundwork issues used: a SECURITY.md scope section that lands before the code it bounds.
