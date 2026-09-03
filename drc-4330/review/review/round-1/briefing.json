@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4330:review:round-1:revision-1",
+  "question": "Correction round 1 for PR #258 (DRC-4330, History groundwork): the review returned NO-GO on two Material findings in docs/plans/history-store-security-scope.md (a false set-equality clause at line 36, and a never-list that did not exclude state_detail), with three further Material findings riding the same round (SKILL.md:146 count, the sole-occupancy clause at SKILL.md:295 and cli.py:144, and line 47 denying the size cap). Were the FO-authorized clause-level fixes delivered on the same single file, with D1-D3 untouched, so the reviewer can re-run on the corrected head?",
+  "artifacts": [
+    {
+      "id": "briefing:drc-4330:review:round-1:revision-1:item-1",
+      "uri": "git-root://state/9f698632b25cd748efe4b6b522defc901028632c/drc-4330/index.md",
+      "rev": "sha256:7d1d60d5062b1661aaffb6fbf6ceb3291d95925a8af731d386c3fa3c5a39ad6b",
+      "mediaType": "text/markdown",
+      "summary": "The entity at the state commit carrying the review report (two lenses plus an arbiter, every finding reproduced against c46f045: 5 Material, 3 Deferred risk, 3 Polish, 4 refuted) and the correction-round report (M1-M5 and P1 fixed as clause-level edits, D1-D3 byte-identical, head 0016542, round surface 19/7, cumulative 139/0 in one file, validate_plugins exit 0, test_documentation 14 OK, mergeStateStatus CLEAN)."
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 ---
-id:
+id: drc-4330
 title: 'History groundwork · SECURITY.md scope section for the local history store'
 status: implementation
 source: https://linear.app/recce/issue/DRC-4330
@@ -40,6 +40,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+review-round:
+    id: round:drc-4330:review:1
+    stage: review
+    cycle: 1
+    briefing:
+        id: briefing:drc-4330:review:round-1:revision-1
+        digest: sha256:20a7b62ae334e0be52f28223ebf9680002bb2cdfc798176a31a074f6bd7c3dcc
+        room-ref: ./review/review/round-1
 ---
 
 [DRC-4330](https://linear.app/recce/issue/DRC-4330) — Linear priority High, no estimate, labels `journey:mid-flight`, `move:none`. Filed 2026-09-02 as the groundwork for H1 (DRC-4044), the shape the quota, git-probe and ask-lane groundwork issues used: a security contract written under `docs/plans/` before the code it bounds, promoted into `SECURITY.md` by the feature's own PR.
@@ -449,6 +457,8 @@ Material, 3 as Deferred risk, 3 as Polish, and 4 were refuted — including lens
 which were correct readings attached to the wrong conclusion.
 
 ### Feedback Cycles
+
+- Cycle 1: NO-GO — review gate, two lenses plus an arbiter, 5 Material + 1 Polish fixed in one file, 3 Deferred risk filed not promoted; surface 1 file/139 LOC vs estimate 130 ± 30 (107%); AC unchanged
 
 ## Out of scope
 
