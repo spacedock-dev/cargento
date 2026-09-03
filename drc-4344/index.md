@@ -647,3 +647,120 @@ Two things the gate should read rather than skim. The rewrite is **longer** than
 and it is declared in the entity rather than hidden. And the estimate names eight test files as
 compelled by an existing contract rather than by this feature — the exact shape of the DRC-4037
 overrun, declared up front so it is not discovered at review.
+
+## Stage Report: implementation
+
+- DONE: First action, before any file in the tree changes: the authorized Linear writes performed
+  and read back — Draft A sent verbatim and unwrapped, Draft B built by script from a fresh capture
+  with an exactly-once assertion on the DRC-4329 anchor line and a diff showing exactly one hunk,
+  the labels confirmed, the relation set read back after each write, every emphasis-boundary move
+  reported rather than repaired
+  Both writes landed before any tree change. Draft A read back and diffed against the draft with
+  mention tags normalized: **exactly two differences, both the documented shift** where the approved
+  prose ends a bold run immediately before a code span (`**…null.** ` → `**…null. **`). Text content
+  identical; reported, not repaired. Draft B: the live `get_milestone` read was byte-identical to the
+  entity's pre-edit capture (sha256 `a7db04f8…` both sides), so that capture *was* the fresh capture;
+  anchor asserted present exactly once; `difflib` gave **1 hunk, 1 added line, 0 removed**. New
+  serializer artifact, worth the record: every link href came back wrapped as `(<url>)`, five of the
+  six lines pre-existing text nobody touched. Labels `journey:mid-flight` and `move:sharpen`
+  confirmed already correct, so no label write. Relations read back after each write: `relatedTo`
+  4 → 5, one unrequested edge (DRC-4223, the only new reference not already related), no
+  `blocks`/`blockedBy`, so not Material. Milestone set on the issue, the plain consequence of triage
+  naming its owner.
+- DONE: The four approved changes built test-first in the worktree, each watched to fail first …
+  `SKILL.md:15` and `:17` corrected, the capture written per AC-6 with its README row, the canonical
+  pre-PR suite run once, `sync-docs` invoked, the surface measured before the PR opens, the diff
+  reviewed in the worktree
+  Red first in `51e448d`: five oracles, four failures and one error, each for its own reason.
+  Implementation `776c11f`. Rebased onto `ff8280a` after H1's PR 1 landed, no conflict, and main's
+  advance touched no `web/` file or byte pin. Suite once at load 3.07 on the final tree: **1874
+  dashboard tests OK** (1 skipped) plus **200 script tests OK**, ruff / format / mypy(112) /
+  lint_embedded / validate_plugins clean, `bump_version --current` 0.20.0, no version field moved,
+  coverage **90.2%** against `fail_under = 73`, both native validators pass. Byte pins recomputed
+  from the assets twice, after the rebase and after the review round, and re-verified by running the
+  oracles rather than reasoning about them. `sync-docs` in `ff2ad74` found real drift, including a
+  true claim in `COMPATIBILITY.md` resting on a premise that had stopped being true. Surface put to
+  the FO before the PR and accepted as `fo-ruling[2026-09-03]`, citing the captain's ruling that day
+  on H1's identically shaped overage.
+- DONE: A PR opened whose body starts `Implements [DRC-4344](…) — <title>` with a `## Verification`
+  section, its number and head SHA reported; AC-5 driven live against this session's own board with
+  the negative arm, recorded under `docs/captures/` without any operator text; and
+  `## Stage Report: implementation` giving AC-1 through AC-6 each an evidence citation
+  **PR #261, head `0d48cfb`.** Body carries `## Surface, declared against actual`,
+  `## Review round 1`, `## Review guidance`, `## Known and not fixed` and `## Verification`. No
+  `Closes` line. Two lenses read the diff in the worktree before it opened.
+
+### Acceptance criteria
+
+- **AC-1** (start stamp measured) — `test_a_teammate_start_comes_from_the_first_timestamped_record`
+  asserts the published start equals the fixture's own fourth record, the first carrying a stamp.
+  Fails if `transcript_started_at` returns to the one-line read: it then reads the untimestamped
+  `agent-setting` preamble and yields null, which is what it did at `51e448d`.
+- **AC-2** (quiet teammate published, neither running nor unstarted) —
+  `test_a_quiet_teammate_stays_published_and_reads_as_not_running` holds both children with the
+  stale one inactive while `state_detail` stays `running 1 subagent`. Fails if the stale child is
+  appended to the fresh-gated list, which flips it to `running 2 subagents`.
+- **AC-3** (a teammate's workers, attributed) —
+  `test_a_teammates_own_subagents_are_published_under_it` finds both `agent-*.jsonl` under the
+  child's own directory with `parent` set to the child's name and the child's own `parent` null.
+  Fails if `agent_transcripts` is called only on the lead's path: zero grandchildren.
+- **AC-4** (state derivation unchanged) — proved beyond the unit tests. The pre-change tree extracted
+  with `git archive`, both collectors run in separate processes against the **same live stores** on a
+  pinned `now`, and `state` / `state_detail` / `active` / `blocked_since` / `spacedock` /
+  `last_activity` compared per session: **9 sessions both sides, 0 state-bearing fields moved.** A
+  lens independently proved the same thing by construction, tracing that `roster` is referenced only
+  at the payload key. No pre-existing state expectation was edited; one pre-existing `subagents`
+  expectation moved by design and carries a comment naming DRC-4344.
+- **AC-5** (a user sees the workers, live) —
+  `Verified by: live session:~/.claude/projects/<project>/df15489c-….jsonl`, recorded as arity in
+  `docs/captures/claude/teammate-board-drive-2.1.259-macos.jsonl`. Control on shipped code:
+  **2 published, 0 measured starts**, no grandchild reachable. Patched, same stores: **34 published,
+  34 measured starts, 17 grandchildren across 5 named parents**, 2 active; the chrome counted 3
+  running, not 37. Negative arm once the workers stopped: **present and inactive**, not absent.
+  Fails if the read returns the lead's own children only.
+- **AC-6** (the shapes captured as evidence) —
+  `docs/captures/claude/team-registry-2.1.259-macos.jsonl` (17 records) and its README row. It
+  independently reproduces triage's two figures: the first timestamped record at index 3 on seven of
+  eight top-level transcripts and 6 on the eighth, index 0 on all four legacy files; and the five
+  member fields today's registry adds, of which only `isActive` is read. `prompt` is recorded **by
+  name only**. The oracle behind this was defeatable six ways and is rewritten as a positive
+  vocabulary over **both** captures, keys included; all six defeats plus a seventh replay as caught,
+  and it rejected two keys added later in the same round. The recorder is committed as
+  `scripts/capture_team_registry.py` with its own tests, and re-running it reproduces both files'
+  records and both verdicts.
+
+### Filed
+
+- **Grandchild liveness does not reach the teammate.** Reproduced: teammate quiet 300 s, its worker
+  2 s, and the teammate publishes `active: false` with a live worker under it and the lead reading
+  `idle`. Two mechanisms weighed. Making the teammate live when a worker is puts an active pill
+  under an idle lead, which is the worse lie. Absorbing a grandchild's mtime into the session's
+  activity is the consistent one, is what DRC-4118 does for Cursor and `latest_agent_file_mtime`
+  already does for the lead's own agents, and it moves `state` — the field AC-4 froze. Needs its own
+  acceptance criterion and the captain's call to reopen that field.
+- **A teammate that dispatches its own teammate into a pane is reachable by nothing.** That bucket
+  lands in `agent_children[<child prefix>]` and the session loop iterates `set(transcripts) |
+  set(tasks_by_session)`, which holds neither, so it is silently discarded. Reasoned through the code
+  path, **not reproduced**: whether the harness writes `teamName: session-<child prefix>` for a
+  nested dispatch is unmeasured.
+
+### Summary
+
+The filed diagnosis was wrong and triage's correction held: the teams-era join already worked, so
+this changed what the fold publishes, when, and how deep it looks. Four changes plus a frontend that
+reads liveness per entry, which also closed a defect DRC-4229 left standing where an unstarted
+member pulsed like a running one.
+
+Two things the review gate should read rather than skim. **I introduced a credential-redaction
+bypass**: `subagents[].parent` was added beside `name` without being added to `aggregate.py`'s sweep
+table, so the same untrusted `agentName` came back redacted in one key and raw in the other. That
+module's docstring already records the same omission twice; this was the third. Found by my own lens
+before the PR opened, fixed test-first, and generalised so the next key added there must be
+classified. And the **AC-6 oracle I wrote was defeatable six ways** — it never checked dict keys, read
+one of two files, and bounded strings at 64 characters when the labels it guards are shorter than
+that by construction. Rewritten as an enumerated vocabulary; every defeat replays as caught.
+
+Surface came in **+1952 net across 41 files** against a declared +230 ±30%, accepted as
+`fo-ruling[2026-09-03]`. The functional change is +188 net across 9 files, inside the band; the rest
+is oracles the acceptance criteria demanded, an AC-6 oracle that was never costed, a committed
+recorder, and `ruff format` turning each two-key assertion into roughly eight lines.
