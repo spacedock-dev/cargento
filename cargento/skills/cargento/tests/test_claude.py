@@ -2759,6 +2759,27 @@ class TeamRosterTest(RuntimeTestCase):
         self.assertEqual("needs_input", session["state"])
         self.assertEqual(["evidence-skeptic"], [a["name"] for a in session["subagents"]])
 
+    def test_a_long_member_name_cannot_grow_the_state_line(self) -> None:
+        # `state_detail` is the one place a registry label reaches the payload
+        # outside `published_agent`, which redacts and then bounds at 70. This
+        # round removed the upstream `label[:70]` on the strength of that bound
+        # and left this interpolation with none, so an untrusted name of any
+        # length went out on `/api/data`, every SSE snapshot and the
+        # notification body. Two runs differing only in name length must give
+        # the same line length, because both names bound to the same 70.
+        # Falsified by: interpolating the raw label, which puts the 200-
+        # character arm 130 characters past the 70-character one.
+        now = time.time()
+        joined = (now - 300) * 1000
+        lengths = []
+        for size in (70, 200):
+            with tempfile.TemporaryDirectory() as tmp:
+                _, teams = self.build(tmp, [self.member("n" * size, joined)], now=now)
+                lengths.append(len(self.collect_one(tmp, teams, now)["state_detail"]))
+
+        self.assertEqual(lengths[0], lengths[1])
+        self.assertEqual(70 + len(" has not started, waiting 5m"), lengths[0])
+
 
 class DispatchedTeammateTest(RuntimeTestCase):
     """A teammate dispatched into its own pane, as the board must report it.

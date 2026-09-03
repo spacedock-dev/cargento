@@ -98,10 +98,13 @@ def load_team_members(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
                 {
                     "agent_id": agent_id,
                     "local": agent_id.split("@", 1)[0],
-                    # Unbounded on purpose: `published_agent` redacts and
-                    # then bounds, and this is also the string the roster
-                    # join and `member_flags` key on, where a clip loses a
-                    # long name outright.
+                    # Unbounded on purpose: the roster join and `member_flags`
+                    # key on this string, where a clip loses a long name
+                    # outright. Each consumer that publishes it bounds its own
+                    # copy -- both of them. That is the part that was missed:
+                    # "published_agent bounds it" is true of the element and
+                    # not of the label, and the state line below went a round
+                    # with no bound at all on the strength of it.
                     "label": label,
                     "joined": when,
                     # Untrusted JSON: only a real bool counts, so a string
@@ -777,7 +780,14 @@ def collect(
             blocked_since = pending_members[0]["joined"]
             waited = runtime_sessions.fmt_duration(runtime_sessions.age(config, now, blocked_since))
             state_detail = (
-                f"{pending_members[0]['label']} has not started, waiting {waited}"
+                # The label arrives unbounded (see `load_team_members`), and
+                # this is the one place besides the element where a registry
+                # name reaches the payload. `redact_clip` rather than a slice
+                # for the reason that function owns: a cut landing inside a
+                # credential leaves a run too short for the sweep downstream
+                # to match.
+                f"{records.redact_clip(pending_members[0]['label'], 70)}"
+                f" has not started, waiting {waited}"
                 if len(pending_members) == 1
                 else f"{len(pending_members)} subagents have not started, waiting {waited}"
             )

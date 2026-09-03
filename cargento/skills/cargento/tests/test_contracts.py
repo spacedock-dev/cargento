@@ -932,21 +932,30 @@ class PublishedTextSweepTest(unittest.TestCase):
         # Falsified by: restoring `(name or "subagent")[:70]` and
         # `parent[:70]` in `published_agent`, which drops the marker from both
         # values below and leaves `sk-ant-api03-AAAA…` on the wire.
-        lead = "a" * 60  # the sweep's own gate needs the run to survive the cut
-        element = claude_collector.published_agent(
-            f"{lead}{self.FAKE}",
-            model=None,
-            started_at=None,
-            active=True,
-            parent=f"{lead}{self.FAKE}",
-        )
-        for key in ("name", "parent"):
-            with self.subTest(key=key):
-                self.assertIn(self.MARKER, element[key])
-                self.assertNotIn("A" * 20, element[key])
-        # And the bound still holds: `redact_clip` may overrun only far enough
-        # to finish a marker the cut landed inside.
-        self.assertLessEqual(len(element["name"]), 70 + len("…REDACTED"))
+        #
+        # Both offsets, because they fail differently and only the second one
+        # states the defect in full: at lead 60 the slice cut the run short
+        # enough that the shape stopped matching and the KEY PREFIX went out
+        # unmarked, while at lead 1 the whole value fits inside the bound only
+        # after the marker replaces it -- the slice published a 56-character
+        # run of key BODY, measured. One case reads as a cosmetic truncation;
+        # the pair reads as the leak it was.
+        for lead in ("x", "a" * 60):
+            element = claude_collector.published_agent(
+                f"{lead}{self.FAKE}",
+                model=None,
+                started_at=None,
+                active=True,
+                parent=f"{lead}{self.FAKE}",
+            )
+            for key in ("name", "parent"):
+                with self.subTest(lead=len(lead), key=key):
+                    self.assertIn(self.MARKER, element[key])
+                    self.assertNotIn("A" * 20, element[key])
+            # And the bound still holds: `redact_clip` may overrun only far
+            # enough to finish a marker the cut landed inside.
+            with self.subTest(lead=len(lead), bound=True):
+                self.assertLessEqual(len(element["name"]), 70 + len("…REDACTED"))
 
     # `model` is the one string on the element published through
     # `records.safe_text` and bounded at `MODEL_CAP_CHARS` by every collector, so

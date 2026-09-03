@@ -255,6 +255,7 @@ function renderNext(focus = nextCaptureFocus()){
   const counts = nextCounts();
   document.title = nextDocumentTitle();
   const gateLabel = counts.gates === 1 ? "reported block" : "reported blocks";
+  const subagentLabel = counts.subagents === 1 ? "subagent running" : "subagents running";
   const gate = counts.gates > 0
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
@@ -267,7 +268,7 @@ function renderNext(focus = nextCaptureFocus()){
     (breadcrumb ? `<nav class="next-breadcrumb" aria-label="Breadcrumb">${breadcrumb}</nav>` : "") +
     "</div>" +
     '<div class="next-header-right">' +
-    `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} subagents running</span>` +
+    `<span class="next-running next-live">${nextStatusDot("live")} ${counts.running} running · ${counts.subagents} ${subagentLabel}</span>` +
     gate + notification + "</div></header>" +
     stalled + nextViewBody(counts);
   nextAttentionStatus(app);

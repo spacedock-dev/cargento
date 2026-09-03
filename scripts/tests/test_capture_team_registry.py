@@ -216,6 +216,38 @@ class DriveVerdictTest(unittest.TestCase):
         / "teammate-board-drive-2.1.259-macos.jsonl"
     )
 
+    ENVELOPE: ClassVar[tuple[str, ...]] = ("format", "harness", "os", "at", "claude_version")
+
+    def committed(self) -> list[dict[str, Any]]:
+        return [
+            json.loads(line)
+            for line in self.CAPTURE.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    def test_every_committed_arm_carries_the_key_set_the_recorder_emits(self) -> None:
+        # The hole the verdict test below cannot see: it reads the arms as given
+        # data, so an arm nobody ran passes it. `drive_arm` emits the same keys
+        # for every payload, so its own output over a fixture is the oracle for
+        # what a real arm looks like -- and `AGENTS.md` says `docs/captures/`
+        # carries "never a value a person or a model wrote", which is a claim
+        # about each record and not only about the one derived from the others.
+        # Falsified by: the `control_before` arm as first committed, which was
+        # missing the five keys `drive_arm` emits unconditionally
+        # (`active_true`, `active_false`, `active_null`,
+        # `chrome_published_subagents`, `chrome_running_subagents`) and carried
+        # `registered_members`, which it never emits.
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = Path(tmp) / "payload.json"
+            payload.write_text(json.dumps(DriveArmTest.PAYLOAD), encoding="utf-8")
+            emitted = set(recorder.drive_arm(str(payload), "positive", "df15489c", {}))
+
+        arms = [r for r in self.committed() if r["record"] == "board_drive_arm"]
+        self.assertEqual(3, len(arms))
+        for arm in arms:
+            with self.subTest(arm=arm["arm"]):
+                self.assertEqual(emitted, set(arm) - set(self.ENVELOPE))
+
     def test_the_committed_verdict_is_reproduced_from_the_committed_arms(self) -> None:
         # The provenance the review round found missing: the verdict record was
         # in the file with no code behind it, and `AGENTS.md` says
@@ -227,11 +259,7 @@ class DriveVerdictTest(unittest.TestCase):
         # Falsified by: any derived field the recorder computes differently from
         # the committed one -- including the two `state_detail` comparisons,
         # which would flip if the derivation were copied rather than compared.
-        records = [
-            json.loads(line)
-            for line in self.CAPTURE.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        records = self.committed()
         arms = {r["arm"]: r for r in records if r["record"] == "board_drive_arm"}
         committed = next(r for r in records if r["record"] == "board_drive_verdict")
         base = {k: committed[k] for k in ("format", "harness", "os", "at", "claude_version")}
@@ -330,6 +358,88 @@ class MainTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 recorder.main(["drive", "--lead", "abcd1234", "--out", str(out), "--arm", "oops"])
         self.assertFalse(out.exists())
+
+    def test_a_lead_that_is_not_a_session_prefix_is_refused(self) -> None:
+        # `--lead` is written verbatim onto every arm and onto the verdict, so
+        # it is the one free-text channel into a file whose whole promise is
+        # that it carries no operator text. `session_slot` already applies this
+        # rule to a prefix it reads off disk; the one a person types was left
+        # unchecked.
+        # Falsified by: dropping the pattern, which writes the note below into
+        # three records.
+        for lead in ("a note about the run", "DF15489C", "df15489", "df15489cc", ""):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(lead=lead):
+                payload = Path(tmp) / "payload.json"
+                payload.write_text(json.dumps(DriveArmTest.PAYLOAD), encoding="utf-8")
+                out = Path(tmp) / "capture.jsonl"
+                with self.assertRaises(SystemExit):
+                    recorder.main(
+                        [
+                            "drive",
+                            "--lead",
+                            lead,
+                            "--out",
+                            str(out),
+                            "--arm",
+                            f"positive={payload}",
+                        ]
+                    )
+                self.assertFalse(out.exists())
+
+    def test_a_repeated_arm_name_is_refused_rather_than_silently_replaced(self) -> None:
+        # Arms are keyed by name, so a second `--arm positive=…` overwrote the
+        # first and the file kept two records the verdict was not derived from.
+        # A drive is re-run by hand often enough that this is the likely typo.
+        # Falsified by: assigning into `arms` without the membership check,
+        # which exits 0 and writes three records here.
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = Path(tmp) / "payload.json"
+            payload.write_text(json.dumps(DriveArmTest.PAYLOAD), encoding="utf-8")
+            out = Path(tmp) / "capture.jsonl"
+            with self.assertRaises(SystemExit):
+                recorder.main(
+                    [
+                        "drive",
+                        "--lead",
+                        "df15489c",
+                        "--out",
+                        str(out),
+                        "--arm",
+                        f"positive={payload}",
+                        "--arm",
+                        f"positive={payload}",
+                    ]
+                )
+            self.assertFalse(out.exists())
+
+    def test_a_declared_count_must_be_plain_decimal_digits(self) -> None:
+        # `int()` is lenient in ways a captured measurement must not be: it
+        # accepts an underscore separator, surrounding whitespace, a sign, and
+        # non-ASCII digits, so the number in the record could differ from the
+        # characters a reader sees on the command line. None of these is a
+        # count.
+        # Falsified by: restoring the bare `int(text)`, which accepts every
+        # value below.
+        for value in ("1_0", " 7", "7 ", "+7", "-3", "\u0663", "0x10"):
+            with tempfile.TemporaryDirectory() as tmp, self.subTest(value=value):
+                payload = Path(tmp) / "payload.json"
+                payload.write_text(json.dumps(DriveArmTest.PAYLOAD), encoding="utf-8")
+                out = Path(tmp) / "capture.jsonl"
+                with self.assertRaises(SystemExit):
+                    recorder.main(
+                        [
+                            "drive",
+                            "--lead",
+                            "df15489c",
+                            "--out",
+                            str(out),
+                            "--arm",
+                            f"positive={payload}",
+                            "--measured",
+                            f"ac4_sessions_compared={value}",
+                        ]
+                    )
+                self.assertFalse(out.exists())
 
 
 if __name__ == "__main__":

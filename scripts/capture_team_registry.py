@@ -53,6 +53,15 @@ DIGEST_CHARS = 12
 # The head of a transcript is all this needs: the control records come first and
 # the first stamp was measured at index 3 and 6.
 HEADER_RECORDS = 12
+# A session prefix, wherever one enters this recorder -- sliced off a transcript
+# name or typed as `--lead`. One pattern rather than two because the guarantee
+# is one: no operator text reaches the file. `--lead` was the string that got
+# the rule late, and it is written onto every arm and onto the verdict.
+SESSION_PREFIX = r"[0-9a-f]{8}"
+# `int()` accepts an underscore separator, surrounding whitespace, a sign and
+# non-ASCII digits, so the number in a record could differ from the characters
+# the operator typed. A captured measurement is a plain count or nothing.
+DECIMAL_COUNT = r"[0-9]+"
 
 
 # `bool` before `int` deliberately: `isinstance(True, int)` is true in Python,
@@ -94,7 +103,7 @@ def session_slot(path: str) -> str:
     and the 12-character digest and nothing else.
     """
     stem = os.path.basename(path)[:8]
-    return stem if re.fullmatch(r"[0-9a-f]{8}", stem) else salted(path)
+    return stem if re.fullmatch(SESSION_PREFIX, stem) else salted(path)
 
 
 def harness_version() -> str:
@@ -345,9 +354,11 @@ DECLARED_MEASUREMENTS = (
 
 
 def declared_value(text: str) -> int | bool:
-    """A declared measurement's value: a bool or an int, never a string."""
+    """A declared measurement's value: a bool or a plain count, never a string."""
     if text in ("true", "false"):
         return text == "true"
+    if not re.fullmatch(DECIMAL_COUNT, text):
+        raise ValueError(text)
     return int(text)
 
 
@@ -406,7 +417,11 @@ def main(argv: list[str] | None = None) -> int:
     registry.add_argument("--out", required=True)
 
     drive = sub.add_parser("drive", help="record board-drive arms from saved payloads")
-    drive.add_argument("--lead", required=True, help="the lead session's 8-character prefix")
+    drive.add_argument(
+        "--lead",
+        required=True,
+        help="the lead session's 8-character prefix, lowercase hex and nothing else",
+    )
     drive.add_argument("--out", required=True)
     drive.add_argument(
         "--arm",
@@ -428,6 +443,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    if args.mode == "drive" and not re.fullmatch(SESSION_PREFIX, args.lead):
+        parser.error(f"--lead expects an 8-character session prefix, got {args.lead!r}")
+
     base = envelope(harness_version())
 
     if args.mode == "registry":
@@ -439,6 +458,12 @@ def main(argv: list[str] | None = None) -> int:
             name, _, path = spec.partition("=")
             if not name or not path:
                 parser.error(f"--arm expects NAME=PAYLOAD, got {spec!r}")
+            # Keyed by name, so a repeat overwrote the arm the verdict derives
+            # from while both records stayed in the file. Refused rather than
+            # last-win: re-running a drive by hand is exactly when this typo
+            # happens.
+            if name in arms:
+                parser.error(f"--arm {name} given twice")
             arms[name] = drive_arm(path, name, args.lead, base)
             records.append(arms[name])
         declared: dict[str, int | bool] = {}
@@ -449,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 declared[key] = declared_value(value)
             except ValueError:
-                parser.error(f"--measured {key} expects a number or true/false, got {value!r}")
+                parser.error(f"--measured {key} expects a count or true/false, got {value!r}")
         # Only with all three arms: the verdict is a before/after/after-they-
         # stopped comparison and cannot be written from a partial drive.
         if {"control_before", "positive", "negative"} <= set(arms):

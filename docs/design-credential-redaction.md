@@ -130,8 +130,8 @@ collectors slice them straight out of the record. What every hand-built one has 
 ordering, and the ordering is what went wrong. A slice that runs before the filter hands the sweep
 below a shape whose tail has already fallen off, and a shape whose tail has fallen off no longer
 matches: that is how a URL credential cut short of its `@` published its password. `redact_clip` is
-one function that redacts and then bounds, so the order is written once instead of at sixteen call
-sites that each have to remember it.
+one function that redacts and then bounds, so the order is written once instead of at seventeen
+call sites that each have to remember it.
 
 Over the assembled rows in `aggregate._redact_published_text`, which is the backstop under both of
 the above. Ten call sites would be ten chances for the eleventh harness to be forgotten, so the sweep

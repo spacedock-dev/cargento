@@ -608,6 +608,35 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn("1 running · 3 subagents running</span>", out)
         self.assertNotIn("5 subagents", out)
 
+    def test_a_single_running_subagent_reads_in_the_singular(self) -> None:
+        # `1 subagents running` is reachable and this round is what put the
+        # word `running` beside the number, so the sentence is this round's to
+        # finish. The gate count beside it has had a singular arm all along.
+        # Falsified by: the bare `${counts.subagents} subagents running`, which
+        # renders "1 subagents running" here.
+        out = self._run_page_js(
+            """
+await __settle();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            """
+__els.app = {innerHTML: ""};
+__fetchImpl = async () => ({ok: true, json: async () => ({
+  window_hours: 24,
+  summary: {working: 1, needs_input: 0, active_sessions: 1},
+  sessions: [
+    {project: "recce", state: "working", subagents: [
+      {name: "live-a", active: true, parent: null},
+      {name: "done-a", active: false, parent: null}
+    ]}
+  ]
+})});
+""",
+        )
+
+        self.assertIn("1 running · 1 subagent running</span>", out)
+        self.assertNotIn("1 subagents", out)
+
     def test_the_running_count_excludes_blocked_sessions(self) -> None:
         out = self._run_page_js(
             """
