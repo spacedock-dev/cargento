@@ -1,7 +1,7 @@
 ---
 id: drc-4344
 title: 'A team member dispatched into its own pane is a black box: its session is never published, the lead''s row shows a bare name, and its own subagents are unreachable'
-status: triage
+status: implementation
 source: https://linear.app/recce/issue/DRC-4344
 started: 2026-09-03T09:39:35Z
 completed:
@@ -39,7 +39,7 @@ gates:
                 reason: 'Captain approved the triage gate on 2026-09-03 ("1. approve"). Accepts the direction: Drafts A and B authorized as drafted (rewrite longer than the original, declared and accepted); enrich-the-fold approach over peer rows; six ACs with AC-5 the live user-visible drive and AC-6 the shape capture; +230 LOC ±30% across 6 runtime/doc and 11 test files; takes the single web/ slot ahead of H1 PR 2; review at two lenses plus an arbiter.'
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4344](https://linear.app/recce/issue/DRC-4344) — Linear priority Urgent, no estimate yet, labels `discovered-by-agent`, `journey:mid-flight`, `move:sharpen`. Filed 2026-09-03 by the first officer from a live defect measured on this very session's board.
