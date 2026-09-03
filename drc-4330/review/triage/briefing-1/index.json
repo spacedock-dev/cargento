@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4330:triage:attempt-1:revision-1",
+  "question": "Approve the triage rewrite of DRC-4330: route the history-store security contract to a new docs/plans/history-store-security-scope.md (not into SECURITY.md or HOW_TO_USE.md, which H1's PR updates when the flags become real), authorize the drafted Linear body rewrite and the one-hunk milestone correction, and accept the seven acceptance criteria and the 130 ± 30 line single-file surface?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4330:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/0f670ca24eb651a8687d88d8711ee63c98c7d8f6/drc-4330.md",
+      "rev": "sha256:d73838ff53b93675b1c180220aeb84c3811e43ccc8c423a8fbc78d89e421ed3c",
+      "mediaType": "text/markdown",
+      "summary": "Triage found the issue's content correct and its destination wrong: all three shipped groundwork precedents wrote a docs/plans file promoted by the feature PR, none wrote SECURITY.md directly, and the two flags it would document do not parse today. Drafts only; zero Linear writes. Seven ACs (6 offline, 1 interactive), surface 130 ± 30 lines in one file, recommended review depth two lenses plus arbiter."
+    }
+  ]
+}
