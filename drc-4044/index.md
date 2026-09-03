@@ -1,7 +1,7 @@
 ---
 id:
 title: 'H1 · Keep a history of what happened'
-status: implementation
+status: review
 source: https://linear.app/recce/issue/DRC-4044
 started: 2026-09-03T07:17:13Z
 completed:
@@ -9,7 +9,7 @@ verdict:
 score: 0.5
 worktree: .worktrees/spacedock-ensign-drc-4044
 issue:
-pr:
+pr: "#260"
 mod-block:
 linear-status: Todo
 milestone: 'Move up a level'
