@@ -40,6 +40,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+review-round:
+    id: round:drc-4344:review:1
+    stage: review
+    cycle: 1
+    briefing:
+        id: briefing:drc-4344:review:round-1:revision-1
+        digest: sha256:783da97dc261856c9978ecf2727acaaa76e6a01fde81a6528362524c11d61dbc
+        room-ref: ./review/review/round-1
 ---
 
 [DRC-4344](https://linear.app/recce/issue/DRC-4344) — Linear priority Urgent, no estimate yet, labels `discovered-by-agent`, `journey:mid-flight`, `move:sharpen`. Filed 2026-09-03 by the first officer from a live defect measured on this very session's board.
@@ -576,6 +584,8 @@ the frontend with its byte pins. No completeness critic was added — three ques
 diff and a fourth agent had no unread surface left to be given.
 
 ### Feedback Cycles
+
+- Cycle 1: NO-GO — review gate, three lenses plus an arbiter (3 of the lens findings refuted), 1 Material + 2 Needs-decision + 4 Deferred risk + 4 Polish fixed in-PR, 2 Needs-decision ruled by the captain (window gate extended to the lead's own agents; AC-2 reworded), 1 Deferred risk filed as DRC-4348; surface 42 files/+2572 LOC vs estimate 17 files/+230 ±30% (runtime +378 vs band 161–299, overage accepted under the captain's standing ruling); AC narrowed: AC-2 wording only
 
 ## Out of scope
 
