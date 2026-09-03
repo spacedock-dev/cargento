@@ -1,7 +1,7 @@
 ---
 id:
 title: 'H1 · Keep a history of what happened'
-status: triage
+status: implementation
 source: https://linear.app/recce/issue/DRC-4044
 started: 2026-09-03T07:17:13Z
 completed:
@@ -39,7 +39,7 @@ gates:
                 reason: 'Captain approved the triage gate on 2026-09-03: "Agreed and approved, agree on all your recommendations for the 4 decisions. Continue". Accepts the direction: Drafts A/B/C authorized as drafted; two-PR delivery split on web/ (PR 1 full adversarial, PR 2 two lenses plus arbiter); eleven ACs and surface estimates accepted; decisions ruled as recommended — D1 yes (version reset distinguishable), D2 not reopened, D3 yes (SECURITY.md counts five/sixth and eight POST routes), D4 yes (the store keeps the derived two-segment project label, cost accepted), D5 yes (on-by-default clause corrected during promotion). D3/D4/D5 are captain-authorized deviations from the contract literal text.'
               application:
                 target-stage: implementation
-                state: pending
+                state: consumed
 ---
 
 [DRC-4044](https://linear.app/recce/issue/DRC-4044) — Linear priority Medium, estimate L.
