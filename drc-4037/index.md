@@ -1821,3 +1821,120 @@ The one new file in the set is `docs/design-needs-input.md`, taking the count fr
 ### Summary
 
 R2 through R7 are fixed, each watched to fail first and each re-mutated afterwards to confirm the new test is what catches it rather than something incidental. R2 turned out to have a second door the review had not named — a later `turn_stopped` re-pairing a retained reading with a stop it was not taken at — so the fix retires the reading where the stop mark is retired as well as guarding on the mark's presence. R1 is untouched and still open as Needs decision. The full canonical suite is green twice on `eff93f6` with no contention failures despite a load average above 20, and PR #239 stands at that head, open and blocked, ready for the reviewer to re-verify. The one figure needing a decision is added lines at +43.2% against a ±35% tolerance, cause and breakdown above.
+
+## Stage Report: implementation (cycle 3, post-merge closeout)
+
+- DONE: Verify on `main` at its SHA (`git show`, never `gh pr diff`) that the `dirty`/`changed`
+  render landed via PR #245 in `cargento_runtime/web/next-attention.js`, then re-run AC9's and AC10's
+  named oracles as they exist on today's tree (`tests/test_next_page.py` byte-pin test,
+  `python3 scripts/lint_embedded.py`, and any label pin); report per AC what passed, what the AC's
+  wording can no longer mean now that the classic UI is gone from `web/`, and make no code edit.
+  Two separate `git log -S` runs over `web/`, for `stop-dirty` and for `changed entries`, each return
+  `7ba0992` (#245) and nothing else; the render is at `next-attention.js:200-204` and `:684-691`,
+  read via `git show main:<path>`.
+- DONE: Run the six `## Post-merge Linear reconcile` steps in order against the merged state —
+  Linear already reads `Done` from GitHub automation, so verify step 1 rather than re-setting it;
+  build the milestone edit by script from a pre-write capture with an exactly-once assertion and a
+  diff; read back the relation set after any body write; report every emphasis-boundary move without
+  repairing it.
+  Six steps run in order; two of the six needed no write and the reason each is a no-op is recorded
+  below, not assumed. Zero Linear writes other than the receipt comment.
+- DONE: Post the receipt comment on DRC-4037 naming the six edits, the merge commit of PR #239, and
+  the captain's 2026-09-03 ruling that PR #245's render stands in for the approved PR 2; then write
+  `## Stage Report: implementation (cycle 3, post-merge closeout)` on this entity with
+  DONE/SKIPPED/FAILED per item and every evidence line on its own line — do not touch frontmatter
+  (`reconciled` is the FO's stamp) and do not run `merge guard`.
+  Comment `dfe49fef-36f2-4093-a5c9-26994f2c8d8f`, posted 2026-09-03T03:37:22Z; body returned
+  byte-identical to what was sent, so the receipt itself took no emphasis damage.
+
+### AC9 and AC10 against today's tree
+
+**AC9 — substance HOLDS; its named artifacts no longer exist.** `nextAttentionStopSignal` starts at
+`stop-unknown` and moves only on `dirty === true` / `=== false`, so a `null` row renders "Git state
+was not measured" — neither "clean" nor `0`, which is stronger than AC9 asked for. Every render of
+`changed` says entries (`:643`, `:686`). Pinned by `test_next_attention.py:1158-1167`, which asserts
+all three rendered strings — "3 changed entries", "Stop observed; git state clean", "Stop observed;
+git state not measured" — against the assembled HTML; changing the label to "files" or falling back
+to a clean badge on `null` fails it. 32 tests, all pass.
+**What AC9's wording can no longer mean:** it required "a rendering test on both frontends, since
+they share no JavaScript", naming `spark.js:318 finishedMark()` and `next/next-sessions.js:34-44`.
+`spark.js` and the whole `next/` subdirectory were deleted by `8d2585c` (PR #247, "promote next
+interface to default"); a sweep of every `.js`, `.css` and `.html` under `web/` finds `dirty` and
+`changed` in one file only. There is now one frontend, so "both frontends" is unsatisfiable as
+written and the one that survives is covered.
+
+**AC10 — HOLDS, with one oracle set instead of two.** `test_next_page.py:507
+test_load_page_preserves_its_byte_oracles` passes (20 tests in the module, all pass), and
+`scripts/lint_embedded.py` exits 0. The pins are derived from the shipped bytes, checked outside the
+test: `git cat-file -s main:.../next-attention.js` gives 42051 and its sha256 is
+`9ce3a282…07bb5bf`, both identical to the pinned pair; `styles.css` likewise at 39733 /
+`b8a77760…3e08e`. Editing one byte of the render fails the per-part pin and the assembled pin
+together.
+**What AC10's wording can no longer mean:** it required "both byte-pin oracle sets" and named
+`tests/test_page.py:104 test_load_page_preserves_all_three_byte_oracles`. That file does not exist
+on `main`; only `test_next_page.py` remains. Its part count is 14, not the 12 AC10 recorded, so the
+figure count is 32 rather than 28 — the next UI absorbed the classic one's parts.
+
+### The six reconcile steps
+
+1. **Issue state — verified, not set.** `Done`, `completedAt` 2026-08-28T12:53:50.208Z, two seconds
+   after `ac6ac29`. Set by GitHub automation; this workflow's reconcile never ran, which is why the
+   issue had zero comments before today.
+2. **Milestone — no write, and the exactly-once assertion is why.** Draft B2's target passage occurs
+   **zero** times in the live description of `Nothing dies quietly`: the whole 2026-08-23 update
+   section it lived in is gone, the description having been rewritten by a later cycle (progress 16
+   → 37.04). The scripted pre-write capture and count are at `/tmp/ms4037.py`; a replacement built
+   from it would have had to invent its anchor, so it correctly refused. Nothing in the current
+   description is made false by this merge — E4 is already off "What remains", and the E5 line's
+   "from the probe that already runs" became true with it.
+3. **Project overview — no write, all twelve figures re-derived and matching.** Verified against
+   fresh label-filtered queries rather than by adjusting the numbers in place, per the project's own
+   Authority section: 48 board items, 24 open / 24 closed, 16 shipped, 8 cancelled; open board items
+   by release r1 0, r2 2, r3 10, later 12; 44 open issues; by move keep 6, sharpen 5, extend 13,
+   new 8, none 12, unlabelled 0. Arithmetic run at `/tmp/asof.py`, not done in the head. The block
+   was refreshed on 2026-09-02 and already counts E4 among the shipped.
+4. **Blocks — nothing to free.** `blocks: []`, so no issue became eligible to move to `Todo`.
+5. **Relations — no edge changed.** Nothing blocks, so there is no blocking edge to convert. Four of
+   the five `relatedTo` are closed-to-closed and were left alone deliberately; the open one,
+   DRC-4038 (E5), is a preferred-over note rather than a dependency.
+6. **Promise wording — no move label, and a defect handed on.** Labels are `origin:proposed`,
+   `alternative`, `release:r2`, `journey:end-of-sessions`; there is no `move:*` label, so the
+   reconcile's "extend or new" test cannot be applied as written. **Consequence: none published.**
+   The As-of block's by-move line counts open issues only, and this one is closed, so the missing
+   label corrupts no figure — but it does mean the project's "every issue carries two labels" rule
+   is broken here, and only a person can say which move E4 was. On the substance nothing is owed:
+   `docs/promise-map.md`'s P5 section was authored 2026-09-02 (`7c3e427`, PR #248), after the merge,
+   and already cites "the end-of-session git probe that shipped in 0.19".
+
+### Discrepancies on read-back — the FO's to disposition
+
+- **`docs/promise-map.md:129` carries the entries-versus-files error this issue's ruling settled.**
+  It says the probe publishes "how many files changed"; `SECURITY.md:155` says "counts porcelain
+  entries rather than files". `test_documentation.py:266` pins the `SECURITY.md` wording and reads
+  that file only, so the promise map is unpinned and the two owned docs now contradict each other on
+  bound 2's exact predicate. Handed to the next `sync-docs` pass in the receipt, per step 6; no file
+  edited here.
+- **Two `relatedTo` edges look mention-created.** The 2026-08-28 capture in this entity recorded
+  `relatedTo: [DRC-4122, DRC-4038]`; it is now five. DRC-4274 is this issue's groundwork and belongs.
+  DRC-4177 and DRC-4061 appear in the body only as shape precedents, both as markdown links — the
+  documented mechanism that adds edges nobody asked for, which links do not prevent. Left in place.
+- **Emphasis-boundary damage stands in the issue body, unrepaired.** Bounds 1 and 3 carry split and
+  swallowed marks around code spans (`**The probe is **`, `no****` / `****probe.**`) and stray italic
+  runs at the hard-wrap breaks. Reported per the rule; a repair re-creates the input the next write
+  drops.
+- **The dispatch's own premise was off by one PR on the classic UI.** It says the classic UI "no
+  longer exists under `web/`", which is true, but `spark.js` was deleted by PR #247, not #245.
+  Immaterial to the ruling; recorded so the record is not wrong.
+
+### Summary
+
+E4's post-merge reconcile ran for the first time today, five days after the merge, and found most of
+it already true: Linear had been flipped to `Done` by GitHub automation, and a later cycle had
+rewritten both the milestone description and the project's As-of block. So four of the six steps
+were verifications and only one produced a Linear write — the receipt comment. The two no-op writes
+are recorded with the reason each is a no-op, because "nothing to do" and "did not look" are
+indistinguishable in a receipt otherwise. AC9 and AC10 both hold in substance on today's tree, but
+neither can be read literally any more: the classic UI they were written against is gone, so "both
+frontends" and "both byte-pin oracle sets" each have exactly one survivor, and that survivor passes.
+The one thing worth a follow-up is the promise map's "how many files changed", which reintroduces
+the precise error bound 2 of DEC-3 ruled on, in the user-facing document, where no test pins it.
