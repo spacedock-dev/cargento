@@ -484,6 +484,13 @@ retired an assumption the code and the shipped skill body both carried. But tran
 stays authoritative for whether something is running now, because whether a hard-killed pane clears
 that flag has never been measured. A signal that can only ever confirm a stop cannot invent a start.
 
+That leaves two answers to one question, on purpose. The roster's `active` can read false as soon as
+the registry says a member finished, while `state_detail` keeps counting that member as running until
+its transcript ages past `working_threshold_sec`, so the pill and the state line can disagree for up
+to ninety seconds and then agree again. It is not an inconsistency to tidy up: the flag is allowed to
+demote the pill because a demotion is the half of it that was measured, and the state line is
+deliberately left on freshness because DRC-4118 and DRC-4263 both settled what may move it.
+
 A teammate's own workers are flattened onto the same list with the teammate named, not nested under
 it. Nesting is the shape a reader might expect and it is the one that can orphan a grandchild into a
 peer row, which is the defect the Cursor work closed by choosing `rootParentAgentId`. Antigravity
@@ -499,9 +506,15 @@ for free, and the change is deleting a `continue`. It reverses the Cursor decisi
 where the parent link is strongest, since a teammate names its lead by id, which is exactly the
 condition under which that work folds rather than promotes. The population settled it: of the twenty
 top-level transcripts fresh inside twenty-four hours in one project directory, fourteen were
-classified teammates of a single lead, so promotion turns a six-row board into a twenty-row one. The
-promotion rule itself is kept, because a dropped row is an invisible failure: a child whose named
-lead is not a published row is promoted rather than dropped.
+classified teammates of a single lead, so promotion turns a six-row board into a twenty-row one.
+
+What is not kept, and was claimed here in the round that shipped the fold, is a promotion rule. There
+is none. A classified child is folded onto the prefix its `teamName` names and the loop moves on, so
+a child whose named lead has no transcript of its own is attached to a row that never appears, and
+its own workers go with it. Driven on a fixture of exactly that shape: one fresh classified child
+naming an absent lead, holding one live worker, publishes **zero sessions**. The drop predates this
+work and closing it means either promoting such a child or reporting the orphan, which is a
+different decision than the one this issue was filed to make.
 
 Keeping the ninety-second publication gate and encoding "finished" in the label string. Cheaper, and
 refused because the chrome counts published elements into its running total, so the header would
