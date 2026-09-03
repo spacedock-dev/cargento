@@ -17,7 +17,7 @@ release: ''
 promise: 'P2'
 move: 'sharpen'
 estimate: ''
-reconciled:
+reconciled: 2026-09-03T23:35:39Z
 gates:
     version: 1
     records:
