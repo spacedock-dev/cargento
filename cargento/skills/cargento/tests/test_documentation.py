@@ -116,9 +116,31 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
     }
 
     @staticmethod
-    def records(path: Path) -> list[dict[str, Any]]:
+    def _every_pair(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        """A JSON object with every pair kept, duplicates included.
+
+        `json.loads` keeps the LAST value for a duplicate key and the discarded
+        one never becomes a node in the walk, so a record carrying
+        `{"record": "…", "record": "<a label>"}` passed the vocabulary check
+        with the label sitting in the committed bytes. Verified as a defeat
+        before this existed. The displaced value is parked under a slot named
+        after the key it lost, which no vocabulary classifies, so a duplicate
+        key fails the walk instead of hiding inside it. Last-wins is preserved
+        for every other assertion, which reads these records as plain dicts.
+        """
+        out: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in out:
+                out[f"{key} <duplicate {len(out)}>"] = out[key]
+            out[key] = value
+        return out
+
+    @classmethod
+    def records(cls, path: Path) -> list[dict[str, Any]]:
         lines = path.read_text(encoding="utf-8").splitlines()
-        return [json.loads(line) for line in lines if line.strip()]
+        return [
+            json.loads(line, object_pairs_hook=cls._every_pair) for line in lines if line.strip()
+        ]
 
     @staticmethod
     def unwrapped(relative: str) -> str:
@@ -172,11 +194,16 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
             with self.subTest(never_fired=name):
                 self.assertIn(name, comment)
 
-    REGISTRY_CAPTURE = "claude/team-registry-2.1.259-macos.jsonl"
-    DRIVE_CAPTURE = "claude/teammate-board-drive-2.1.259-macos.jsonl"
-    # Both DRC-4344 files read stores that hold operator text, so the
-    # shapes-never-values rule is checked over both.
-    TEAMMATE_CAPTURES: ClassVar[tuple[str, ...]] = (REGISTRY_CAPTURE, DRIVE_CAPTURE)
+    # Globs rather than filenames. Both recorders are versioned in their own
+    # names, so a re-record at a new harness build or a second drive lands
+    # beside the file it supersedes -- and a hardcoded tuple then walks the old
+    # one and nothing else, which is the same "read one of two files" defeat
+    # this oracle was rewritten to close.
+    REGISTRY_GLOB = "claude/team-registry-*.jsonl"
+    DRIVE_GLOB = "claude/teammate-board-drive-*.jsonl"
+    # Both DRC-4344 stores hold operator text, so the shapes-never-values rule
+    # is checked over every file either recorder has written.
+    TEAMMATE_CAPTURE_GLOBS: ClassVar[tuple[str, ...]] = (REGISTRY_GLOB, DRIVE_GLOB)
 
     # A POSITIVE vocabulary, and it has to be one. The first version of this
     # check bounded strings at 64 characters, which was defeatable six ways: it
@@ -392,17 +419,26 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
             return True
         return any(pattern.match(text) for pattern in cls._PATTERNS)
 
+    def matching(self, pattern: str) -> list[Path]:
+        found = sorted(self.CAPTURES.glob(pattern))
+        self.assertTrue(found, f"{pattern} must match at least one capture")
+        return found
+
     def registry_records(self) -> list[dict[str, Any]]:
-        records = self.records(self.CAPTURES / self.REGISTRY_CAPTURE)
-        self.assertTrue(records, "the capture must not be empty")
+        records: list[dict[str, Any]] = []
+        for path in self.matching(self.REGISTRY_GLOB):
+            found = self.records(path)
+            self.assertTrue(found, f"{path.name} must not be empty")
+            records += found
         return records
 
     def teammate_capture_records(self) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
-        for name in self.TEAMMATE_CAPTURES:
-            found = self.records(self.CAPTURES / name)
-            self.assertTrue(found, f"{name} must not be empty")
-            records += found
+        for pattern in self.TEAMMATE_CAPTURE_GLOBS:
+            for path in self.matching(pattern):
+                found = self.records(path)
+                self.assertTrue(found, f"{path.name} must not be empty")
+                records += found
         return records
 
     def test_every_string_in_a_teammate_capture_is_classified(self) -> None:

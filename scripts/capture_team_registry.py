@@ -39,6 +39,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -79,6 +80,21 @@ def type_name(value: object) -> str:
 def salted(text: str) -> str:
     """A store path reduced to a digest, so records group without naming it."""
     return hashlib.sha256((SALT + text).encode()).hexdigest()[:DIGEST_CHARS]
+
+
+def session_slot(path: str) -> str:
+    """A transcript's 8-character session prefix, or a digest when it has none.
+
+    Layout-blind slicing was the hole: a legacy `agent-<label>.jsonl` is named
+    after its AGENT, so the first eight characters of that basename are operator
+    text. Hashed rather than dropped, so the record still groups by file, and
+    checked here rather than left to the oracle downstream -- a recorder that
+    can emit operator text and relies on a test to refuse it has the guarantee
+    in the wrong place. `docs/captures/README.md` admits the 8-character prefix
+    and the 12-character digest and nothing else.
+    """
+    stem = os.path.basename(path)[:8]
+    return stem if re.fullmatch(r"[0-9a-f]{8}", stem) else salted(path)
 
 
 def harness_version() -> str:
@@ -198,8 +214,7 @@ def layout_records(layout: str, paths: list[str], base: dict[str, Any]) -> list[
                 **base,
                 "record": "transcript_header_shape",
                 "layout": layout,
-                # Eight characters, the allowance `docs/captures/README.md` states.
-                "session": os.path.basename(path)[:8],
+                "session": session_slot(path),
                 **shape,
             }
         )
@@ -314,6 +329,74 @@ def drive_arm(payload_path: str, arm: str, lead: str, base: dict[str, Any]) -> d
     }
 
 
+# The verdict's fields that no arm can supply, because they come from a
+# comparison rather than from a payload: the old-versus-new collector run behind
+# AC-4, the registry's own membership, the window the state line can trail a
+# demoted child by, and the one disagreement the drive observed directly. Each
+# must be passed as a number or a bool, and the key must be one of these, so the
+# verdict cannot grow a free-text field by accident.
+DECLARED_MEASUREMENTS = (
+    "registered_members",
+    "ac4_sessions_compared",
+    "ac4_state_fields_moved_old_vs_new",
+    "state_may_lag_a_demoted_child_by_seconds",
+    "a_quiet_teammate_reads_inactive_while_its_own_worker_runs",
+)
+
+
+def declared_value(text: str) -> int | bool:
+    """A declared measurement's value: a bool or an int, never a string."""
+    if text in ("true", "false"):
+        return text == "true"
+    return int(text)
+
+
+def drive_verdict(
+    arms: dict[str, dict[str, Any]], declared: dict[str, int | bool], base: dict[str, Any]
+) -> dict[str, Any]:
+    """The board drive's verdict, derived from the arm records themselves.
+
+    Written by the recorder rather than by hand, which is the whole point: the
+    first version of this file carried a `board_drive_verdict` record with no
+    code behind it, and `AGENTS.md` says `docs/captures/` holds "never a value a
+    person or a model wrote". Every count below is read out of a committed arm
+    record, so re-running this over the capture reproduces the verdict; the four
+    fields no arm can supply are passed in and named as declared in the captures
+    README row.
+
+    The two `state_detail` verdicts are comparisons rather than copies: the
+    state line counts grandchildren if any arm's subagent count runs past that
+    arm's direct-children count, and counts only direct children if none does.
+    """
+    before, after, stopped = arms["control_before"], arms["positive"], arms["negative"]
+    counted = [
+        arm
+        for arm in (before, after, stopped)
+        if isinstance(arm.get("state_detail_subagent_count"), int)
+    ]
+    return {
+        **base,
+        "record": "board_drive_verdict",
+        "lead": after["lead"],
+        "before_published": before["published_total"],
+        "before_with_a_measured_start": before["published_with_a_measured_start"],
+        "before_grandchildren_reachable": before["grandchildren"],
+        "after_published": after["published_total"],
+        "after_with_a_measured_start": after["published_with_a_measured_start"],
+        "after_grandchildren_reachable": after["grandchildren"],
+        "after_distinct_parents_named": after["distinct_parents_named"],
+        "grandchildren_active_while_running": after["grandchildren_active"],
+        "grandchildren_present_after_they_stopped": stopped["grandchildren"],
+        "grandchildren_active_after_they_stopped": stopped["grandchildren_active"],
+        "state_detail_counts_grandchildren": any(
+            arm["state_detail_subagent_count"] > arm["direct_children"] for arm in counted
+        ),
+        "state_detail_counts_only_direct_children": bool(counted)
+        and all(arm["state_detail_subagent_count"] <= arm["direct_children"] for arm in counted),
+        **declared,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -332,6 +415,17 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME=PAYLOAD",
         help="an arm name and the /api/data payload file recording it",
     )
+    drive.add_argument(
+        "--measured",
+        action="append",
+        default=[],
+        metavar="KEY=NUMBER",
+        help=(
+            "a verdict field no arm can supply, from "
+            f"{', '.join(DECLARED_MEASUREMENTS)}; emits the verdict record when "
+            "the control_before, positive and negative arms are all present"
+        ),
+    )
 
     args = parser.parse_args(argv)
     base = envelope(harness_version())
@@ -340,11 +434,26 @@ def main(argv: list[str] | None = None) -> int:
         records = record_registry(args.home, base)
     else:
         records = []
+        arms: dict[str, dict[str, Any]] = {}
         for spec in args.arm:
             name, _, path = spec.partition("=")
             if not name or not path:
                 parser.error(f"--arm expects NAME=PAYLOAD, got {spec!r}")
-            records.append(drive_arm(path, name, args.lead, base))
+            arms[name] = drive_arm(path, name, args.lead, base)
+            records.append(arms[name])
+        declared: dict[str, int | bool] = {}
+        for spec in args.measured:
+            key, sep, value = spec.partition("=")
+            if not sep or key not in DECLARED_MEASUREMENTS:
+                parser.error(f"--measured expects one of {DECLARED_MEASUREMENTS}, got {spec!r}")
+            try:
+                declared[key] = declared_value(value)
+            except ValueError:
+                parser.error(f"--measured {key} expects a number or true/false, got {value!r}")
+        # Only with all three arms: the verdict is a before/after/after-they-
+        # stopped comparison and cannot be written from a partial drive.
+        if {"control_before", "positive", "negative"} <= set(arms):
+            records.append(drive_verdict(arms, declared, base))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:

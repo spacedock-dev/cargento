@@ -46,17 +46,39 @@ def transcript_started_at(
     alternative and DRC-4223 rejected it: macOS/BSD only, absent on the Ubuntu
     leg of `platform-tests`.
 
-    With ``state`` the answer is memoised per path, beside the two other head
-    reads over these same files, because a start stamp is immutable once a file
-    has one. Only a FOUND stamp is cached: a transcript whose head carries none
-    yet is one still being written, and remembering that would freeze it at
-    null. Without ``state`` the read is unmemoised, so a caller outside a
+    With ``state`` the answer is memoised beside the two other head reads over
+    these same files, and keyed on the file's own ``(mtime, size)`` the way
+    ``session_title`` and the Codex readers are. A start stamp is immutable only
+    once a file HAS one: a teammate parked on a permission prompt has a head
+    with no timestamp in it, and the moment it takes its first turn the file
+    grows one. Keying on the path alone therefore had to refuse to remember a
+    null answer, which left the case the memo was ADDED for — a quiet agent
+    retained on the roster — paying the bounded head read and the one-line
+    fallback on every collection. Keying on the file makes remembering a null
+    safe, so the whole answer is cached and every retained element costs one
+    read once. Without ``state`` the read is unmemoised, so a caller outside a
     runtime keeps working.
     """
+    key = None
     if state is not None:
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return None
+        key = (stat.st_mtime_ns, stat.st_size)
         with state.cache_lock:
-            if path in state.agent_start_cache:
-                return state.agent_start_cache[path]
+            hit = state.agent_start_cache.get(path)
+        if hit is not None and hit[0] == key:
+            return hit[1]
+
+    def remember(value: float | None) -> float | None:
+        if state is not None and key is not None:
+            with state.cache_lock:
+                runtime_state.bounded_put(
+                    state.agent_start_cache, path, (key, value), limit=config.max_cache_entries
+                )
+        return value
+
     try:
         size = os.path.getsize(path)
         data = runtime_io.read_prefix_bytes(path, max_bytes=config.claude_agent_scan_bytes)
@@ -76,17 +98,15 @@ def transcript_started_at(
             continue
         stamp = records.parse_ts(record.get("timestamp") or "")
         if stamp is not None:
-            if state is not None:
-                with state.cache_lock:
-                    runtime_state.bounded_put(
-                        state.agent_start_cache, path, stamp, limit=config.max_cache_entries
-                    )
-            return stamp
+            return remember(stamp)
     # A first record wider than the head budget is popped as partial above, and
     # the old one-line read had a cap ten times larger. Falling back to it keeps
     # this change purely widening: no transcript that reported a start before
-    # can lose it here.
-    return records.parse_ts(runtime_io.read_first_json(config, path).get("timestamp") or "")
+    # can lose it here. Its result is remembered too, null included: a stampless
+    # transcript is the recurring cost, and it is the one the memo used to miss.
+    return remember(
+        records.parse_ts(runtime_io.read_first_json(config, path).get("timestamp") or "")
+    )
 
 
 def input_summary(block: Mapping[str, Any], *, limit: int) -> str:

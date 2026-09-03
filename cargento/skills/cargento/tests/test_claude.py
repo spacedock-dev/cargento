@@ -1120,6 +1120,107 @@ class ClaudeCollectorTest(RuntimeTestCase):
         self.assertEqual("git-spacedock-subspace", sessions[0]["project"])
 
 
+class StartStampCacheTest(RuntimeTestCase):
+    """The memo behind every roster element's start stamp.
+
+    The roster reaches past the freshness gate, so a quiet agent's head is read
+    on every collection unless something remembers it. What it remembers has to
+    be invalidated on the file, not on the path alone: a transcript's start
+    stamp is immutable only once the file HAS one.
+    """
+
+    @staticmethod
+    def transcript(tmp: str, *, body: str) -> str:
+        fp = Path(tmp) / "agent-x.jsonl"
+        fp.write_text(body)
+        return str(fp)
+
+    def test_a_stampless_head_is_read_once_and_not_once_per_pass(self) -> None:
+        # A transcript whose head carries no timestamp is exactly the case the
+        # memo was added for, and it was the one case the memo missed: only a
+        # FOUND stamp was cached, so every pass paid the bounded head read AND
+        # the one-line fallback again, forever. Keying on the file's own
+        # (mtime, size) is what makes remembering a null answer safe.
+        # Falsified by: caching only a found stamp, which doubles both counts.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.transcript(tmp, body=json.dumps({"type": "mode"}) + "\n")
+            config, state = runtime()
+            heads, firsts = {"n": 0}, {"n": 0}
+            real_head, real_first = runtime_io.read_prefix_bytes, runtime_io.read_first_json
+
+            def head(target: str, *, max_bytes: int) -> bytes:
+                heads["n"] += 1
+                return real_head(target, max_bytes=max_bytes)
+
+            def first(conf: Any, target: str) -> dict[str, Any]:
+                firsts["n"] += 1
+                return real_first(conf, target)
+
+            with (
+                mock.patch.object(runtime_io, "read_prefix_bytes", head),
+                mock.patch.object(runtime_io, "read_first_json", first),
+            ):
+                for _ in range(3):
+                    self.assertIsNone(claude_data.transcript_started_at(config, path, state=state))
+
+        self.assertEqual(1, heads["n"], "the bounded head read must happen once")
+        self.assertEqual(1, firsts["n"], "so must the one-line fallback")
+
+    def test_a_transcript_that_gains_a_stamp_stops_reading_as_unstarted(self) -> None:
+        # The reason the memo cannot be keyed on the path alone. A teammate
+        # parked on a permission prompt has a head with no timestamp in it; the
+        # moment it takes its first turn the file grows one, and a remembered
+        # null would freeze the pill at "no start measured" for the rest of the
+        # session.
+        # Falsified by: dropping the (mtime, size) key, which returns the
+        # remembered null after the file has moved.
+        now = time.time()
+        stamp = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.transcript(tmp, body=json.dumps({"type": "mode"}) + "\n")
+            config, state = runtime()
+            self.assertIsNone(claude_data.transcript_started_at(config, path, state=state))
+            Path(path).write_text(
+                json.dumps({"type": "mode"})
+                + "\n"
+                + json.dumps({"type": "user", "timestamp": stamp})
+                + "\n"
+            )
+            os.utime(path, (now, now))
+
+            self.assertEqual(
+                records.parse_ts(stamp),
+                claude_data.transcript_started_at(config, path, state=state),
+            )
+
+    def test_a_rewritten_transcript_does_not_serve_the_old_start(self) -> None:
+        # The same invalidation from the other side: a found stamp was cached on
+        # the path forever, so a rotated or replaced transcript at a reused path
+        # kept reporting the previous file's start.
+        # Falsified by: keying the memo on the path alone.
+        now = time.time()
+        first_stamp = datetime.fromtimestamp(now - 3600, UTC).isoformat()
+        second_stamp = datetime.fromtimestamp(now - 10, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.transcript(
+                tmp, body=json.dumps({"type": "user", "timestamp": first_stamp}) + "\n"
+            )
+            config, state = runtime()
+            self.assertEqual(
+                records.parse_ts(first_stamp),
+                claude_data.transcript_started_at(config, path, state=state),
+            )
+            Path(path).write_text(
+                json.dumps({"type": "user", "timestamp": second_stamp, "pad": "x" * 40}) + "\n"
+            )
+            os.utime(path, (now, now))
+
+            self.assertEqual(
+                records.parse_ts(second_stamp),
+                claude_data.transcript_started_at(config, path, state=state),
+            )
+
+
 class ClaudeModelTest(RuntimeTestCase):
     """The model a Claude session and its subagents report.
 
@@ -2569,7 +2670,18 @@ class TeamRosterTest(RuntimeTestCase):
             session = self.collect_one(tmp, teams, now)
 
         self.assertEqual("idle", session["state"])
-        self.assertEqual([], session["subagents"])
+        # The member is published as a STARTED agent gone quiet, never as an
+        # unstarted one. Asserted on the shape rather than on an empty list
+        # because captain-ruling[2026-09-03] gave the lead's own agents the same
+        # 24-hour retention its children already had, so a quiet one is now
+        # retained and inactive. The join is what this case owns, and a broken
+        # join is still loud: it would publish a PENDING element carrying the
+        # hex agentId as its name and the join stamp as its start.
+        published = session["subagents"]
+        self.assertEqual(1, len(published))
+        self.assertIs(False, published[0]["active"])
+        self.assertNotEqual(agent_id, published[0]["name"])
+        self.assertNotEqual((now - 600) * 1000, published[0]["started_at"])
 
     def test_a_member_that_has_only_just_joined_is_not_reported_yet(self) -> None:
         # Every healthy fan-out passes through this window on its way to a first
@@ -2758,6 +2870,22 @@ class DispatchedTeammateTest(RuntimeTestCase):
             entry["isActive"] = is_active
         return entry
 
+    def own_agent(self, proj: Path, *, label: str, age: float, now: float) -> Path:
+        """One agent the LEAD dispatched itself, under the lead's own directory.
+
+        The same `agent-*.jsonl` plus `.meta.json` pair a teammate's own workers
+        use, one level up: this is the population `load_subagents` reads.
+        """
+        agents = proj / self.PARENT / "subagents"
+        agents.mkdir(parents=True, exist_ok=True)
+        fp = agents / f"agent-{label}.jsonl"
+        fp.write_text(
+            json.dumps({"type": "user", "timestamp": self.stamp(now - age), "message": {}}) + "\n"
+        )
+        (agents / f"agent-{label}.meta.json").write_text(json.dumps({"name": f"{label}-lens"}))
+        os.utime(fp, (now - age, now - age))
+        return fp
+
     def collect_one(self, tmp: str, teams: Path | None, now: float) -> dict[str, Any]:
         patches = [
             store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
@@ -2879,6 +3007,38 @@ class DispatchedTeammateTest(RuntimeTestCase):
         self.assertEqual(records.parse_ts(lens_stamp), published["design-lens"]["started_at"])
         # A grandchild is published, never counted into the parent's state: the
         # lead is running one teammate, whatever that teammate is running.
+        self.assertEqual("running 1 subagent", session["state_detail"])
+
+    def test_a_quiet_agent_the_lead_dispatched_itself_stays_published(self) -> None:
+        # captain-ruling[2026-09-03]. The window gate reached children and
+        # grandchildren and left the lead's OWN agents fresh-gated at 90 s, so a
+        # lens the lead dispatched directly still vanished the moment it went
+        # quiet — the commonest population on this board. All three now share
+        # one retention rule: published inside `window_hours`, `active` from
+        # `working_threshold_sec`.
+        # The fresh-gated list that drives state is untouched, which is the half
+        # AC-4 froze: one running lens, so `state_detail` reads one subagent
+        # however many quiet ones are retained beside it.
+        # Falsified by: restoring the freshness gate on the roster's own-agent
+        # arm (the quiet lens disappears), or feeding the retained list into the
+        # state derivation ("running 2 subagents", which also fires DRC-4263's
+        # pre-existing guard).
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = self.project(tmp, now=now)
+            self.own_agent(proj, label="live", age=10, now=now)
+            self.own_agent(proj, label="quiet", age=3600, now=now)
+            self.own_agent(proj, label="ancient", age=25 * 3600, now=now)
+            session = self.collect_one(tmp, None, now)
+
+        published = {a["name"]: a for a in session["subagents"]}
+        self.assertEqual({"live-lens", "quiet-lens"}, set(published))
+        self.assertIs(True, published["live-lens"]["active"])
+        self.assertIs(False, published["quiet-lens"]["active"])
+        # An agent the lead ran itself belongs to no teammate.
+        self.assertIsNone(published["live-lens"]["parent"])
+        self.assertIsNone(published["quiet-lens"]["parent"])
+        self.assertEqual("working", session["state"])
         self.assertEqual("running 1 subagent", session["state_detail"])
 
     def test_the_registry_inactive_flag_demotes_but_never_promotes(self) -> None:

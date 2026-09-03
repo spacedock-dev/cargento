@@ -191,6 +191,112 @@ class DriveArmTest(unittest.TestCase):
         self.assertEqual(1, record["state_detail_subagent_count"])
 
 
+class SessionSlotTest(unittest.TestCase):
+    def test_a_session_named_transcript_records_its_prefix(self) -> None:
+        self.assertEqual("df15489c", recorder.session_slot("/store/df15489c-d87d-473c-a092.jsonl"))
+
+    def test_a_label_named_transcript_records_a_digest_instead(self) -> None:
+        # A legacy `agent-<label>.jsonl` is named after its agent, so slicing
+        # eight characters off the basename emitted operator text. The oracle
+        # downstream would reject it, which is the wrong place for the
+        # guarantee: the recorder must not be able to write it.
+        # Falsified by: restoring `os.path.basename(path)[:8]`, which emits
+        # "agent-ev" for the file below.
+        slot = recorder.session_slot("/store/agent-evidence-skeptic.jsonl")
+        self.assertNotIn("agent", slot)
+        self.assertRegex(slot, r"^[0-9a-f]{12}$")
+
+
+class DriveVerdictTest(unittest.TestCase):
+    CAPTURE = (
+        Path(__file__).resolve().parents[2]
+        / "docs"
+        / "captures"
+        / "claude"
+        / "teammate-board-drive-2.1.259-macos.jsonl"
+    )
+
+    def test_the_committed_verdict_is_reproduced_from_the_committed_arms(self) -> None:
+        # The provenance the review round found missing: the verdict record was
+        # in the file with no code behind it, and `AGENTS.md` says
+        # `docs/captures/` carries "never a value a person or a model wrote".
+        # Every count in it now comes out of the arm records committed beside
+        # it, so the file checks itself. The five fields no arm can supply are
+        # taken from the record and passed back in as declared measurements,
+        # which is what the captures README row names them as.
+        # Falsified by: any derived field the recorder computes differently from
+        # the committed one -- including the two `state_detail` comparisons,
+        # which would flip if the derivation were copied rather than compared.
+        records = [
+            json.loads(line)
+            for line in self.CAPTURE.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        arms = {r["arm"]: r for r in records if r["record"] == "board_drive_arm"}
+        committed = next(r for r in records if r["record"] == "board_drive_verdict")
+        base = {k: committed[k] for k in ("format", "harness", "os", "at", "claude_version")}
+        declared = {k: committed[k] for k in recorder.DECLARED_MEASUREMENTS if k in committed}
+
+        self.assertEqual({"control_before", "positive", "negative"}, set(arms))
+        self.assertEqual(committed, recorder.drive_verdict(arms, declared, base))
+        # And the declared half is exactly the half no arm carries.
+        for key in declared:
+            self.assertNotIn(key, arms["positive"], f"{key} is derivable and must not be declared")
+
+    def test_a_verdict_is_not_written_from_a_partial_drive(self) -> None:
+        # Two of the three arms cannot answer a before/after/after-they-stopped
+        # comparison, so nothing is emitted rather than a verdict built on a
+        # missing arm.
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = Path(tmp) / "payload.json"
+            payload.write_text(json.dumps(DriveArmTest.PAYLOAD), encoding="utf-8")
+            out = Path(tmp) / "capture.jsonl"
+            recorder.main(
+                [
+                    "drive",
+                    "--lead",
+                    "df15489c",
+                    "--out",
+                    str(out),
+                    "--arm",
+                    f"positive={payload}",
+                    "--arm",
+                    f"negative={payload}",
+                ]
+            )
+            kinds = [
+                json.loads(line)["record"]
+                for line in out.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+
+        self.assertEqual(["board_drive_arm", "board_drive_arm"], kinds)
+
+    def test_a_declared_measurement_cannot_carry_text(self) -> None:
+        # The one way a free-text value could enter this file. Both arms of the
+        # refusal: an unknown key, and a known key holding a word.
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = Path(tmp) / "payload.json"
+            payload.write_text(json.dumps(DriveArmTest.PAYLOAD), encoding="utf-8")
+            out = Path(tmp) / "capture.jsonl"
+            for spec in ("a_note=looks fine", "ac4_sessions_compared=nine"):
+                with self.subTest(spec=spec), self.assertRaises(SystemExit):
+                    recorder.main(
+                        [
+                            "drive",
+                            "--lead",
+                            "df15489c",
+                            "--out",
+                            str(out),
+                            "--arm",
+                            f"positive={payload}",
+                            "--measured",
+                            spec,
+                        ]
+                    )
+            self.assertFalse(out.exists())
+
+
 class MainTest(unittest.TestCase):
     def test_drive_mode_writes_one_record_per_arm(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

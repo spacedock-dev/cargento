@@ -98,7 +98,11 @@ def load_team_members(config: RuntimeConfig) -> dict[str, list[dict[str, Any]]]:
                 {
                     "agent_id": agent_id,
                     "local": agent_id.split("@", 1)[0],
-                    "label": label[:70],
+                    # Unbounded on purpose: `published_agent` redacts and
+                    # then bounds, and this is also the string the roster
+                    # join and `member_flags` key on, where a clip loses a
+                    # long name outright.
+                    "label": label,
                     "joined": when,
                     # Untrusted JSON: only a real bool counts, so a string
                     # "false" reads as "the registry did not say" rather than as
@@ -319,15 +323,20 @@ def published_agent(
     happen to be known, which is DRC-4223's rule for widening this element:
     always present, null meaning not measured.
     """
+    # `redact_clip`, not a slice: both strings are the untrusted `agentName`,
+    # and a bare `[:70]` bounds BEFORE the credential sweep runs over the
+    # assembled rows, so a cut landing inside a key leaves a run too short to
+    # match and publishes it unmarked. Redacting first is the order
+    # `records.redact_clip` exists to own, and the callers hand this the full
+    # string for that reason. `aggregate._redact_published_text` still sweeps
+    # both keys: it covers every harness, and redacting an already-marked
+    # string is a no-op.
     return {
-        "name": (name or "subagent")[:70],
+        "name": records.redact_clip(name or "subagent", 70),
         "model": model,
         "started_at": started_at,
         "active": active,
-        # The same 70 as `name`, and for the same reason: both are the untrusted
-        # `agentName`, bounded only by the head budget, and `parent` was the one
-        # string on this element leaving the collector unbounded.
-        "parent": parent[:70] if parent else None,
+        "parent": records.redact_clip(parent, 70) if parent else None,
     }
 
 
@@ -338,9 +347,11 @@ def load_subagents(
     *,
     found: list[tuple[str, float]] | None = None,
     models: dict[str, str | None] | None = None,
+    window_sec: float | None = None,
+    state: RuntimeState | None = None,
 ) -> list[dict[str, Any]]:
-    """Running Claude subagents beneath the session directory; fresh mtime =
-    running. Covers both layouts in ``SUBAGENT_GLOBS``.
+    """Claude subagents beneath the session directory, each carrying its own
+    ``active``; fresh mtime = running. Covers both layouts in ``SUBAGENT_GLOBS``.
 
     ``found`` lets a caller that has already listed the directory hand the
     listing over, so one session costs one scan. The collector needs the full
@@ -350,18 +361,35 @@ def load_subagents(
     analysis the caller has already run for the session's rate. A path this
     function is not told about publishes None, which is what a caller with no
     analyses to hand gets for every agent — never a guess at the parent's model.
+
+    ``window_sec`` widens what is RETURNED without widening what reads as
+    running: an agent quiet for longer than ``working_threshold_sec`` but inside
+    this window comes back with ``active`` false. One list rather than two calls,
+    because the meta read and the head read are per file and a caller that wants
+    only the running ones filters on ``active``. Without it only running agents
+    come back, so every existing caller is unchanged.
+
+    ``state`` memoises the head read behind the start stamp, which starts to
+    matter once ``window_sec`` retains a quiet agent: unmemoised, a retained
+    roster re-reads a head per agent per collection, the cost
+    ``agent_start_cache`` exists for.
     """
     agents: list[dict[str, Any]] = []
     for fp, mtime in agent_transcripts(transcript) if found is None else found:
-        if not runtime_sessions.is_fresh(config, now, mtime, config.working_threshold_sec):
+        live = runtime_sessions.is_fresh(config, now, mtime, config.working_threshold_sec)
+        if not live and not (
+            window_sec is not None and runtime_sessions.is_fresh(config, now, mtime, window_sec)
+        ):
             continue
         label = agent_label(fp)
         agents.append(
             {
-                "label": (label or "subagent")[:70],
+                # Bounded by `published_agent`, which redacts first.
+                "label": label or "subagent",
                 "mtime": mtime,
                 "model": (models or {}).get(fp),
-                "started_at": claude_data.transcript_started_at(config, fp),
+                "started_at": claude_data.transcript_started_at(config, fp, state=state),
+                "active": live,
             }
         )
     agents.sort(key=lambda a: -a["mtime"])
@@ -458,9 +486,10 @@ def collect(
                         {
                             "path": fp,
                             "mtime": mtime,
-                            "label": (agent_name or "subagent")[:70],
-                            # The label is truncated for display; the roster join
+                            # Both unbounded: `published_agent` redacts and
+                            # then bounds for display, and the roster join
                             # needs the name as written or a long one misses.
+                            "label": agent_name or "subagent",
                             "agent_name": agent_name,
                         }
                     )
@@ -517,9 +546,23 @@ def collect(
             c["path"]: claude_data.transcript_started_at(config, c["path"], state=state)
             for c in children
         }
-        own_agents = load_subagents(config, transcript, now, found=agent_files, models=models)
+        # Retained inside the display window with `active` per agent, the same
+        # rule the children and grandchildren below already follow
+        # (captain-ruling 2026-09-03: a lens the LEAD dispatched was still
+        # fresh-gated, so it vanished at 90 s while a teammate's did not). The
+        # state derivation takes the running ones straight back out, so the two
+        # lists stay exactly as far apart as AC-4 froze them.
+        own_agents = load_subagents(
+            config,
+            transcript,
+            now,
+            found=agent_files,
+            models=models,
+            window_sec=window_hours * 3600,
+            state=state,
+        )
         subagents = [
-            *own_agents,
+            *(a for a in own_agents if a["active"]),
             *(
                 {
                     "label": c["label"],
@@ -584,7 +627,10 @@ def collect(
         # DRC-4263's AC-3 requires it. What a person reads on the row is a
         # different question: a teammate blocked on its own subagents writes
         # nothing for minutes and used to flicker off the row entirely. It now
-        # stays, and reads as stopped -- which is what AC-2 asked for and is not
+        # stays, and reads as stopped -- as does an agent the lead dispatched
+        # itself, which review round 1 found still fresh-gated while the
+        # children and grandchildren beside it were not. That is what AC-2 asked
+        # for and is not
         # the whole of what a reader wants. A teammate whose own worker is
         # writing is alive, and nothing here says so: the honest fix absorbs a
         # grandchild's mtime into this session's activity the way DRC-4118 does
@@ -593,7 +639,11 @@ def collect(
         # Filed rather than taken.
         roster: list[dict[str, Any]] = [
             published_agent(
-                a["label"], model=a["model"], started_at=a["started_at"], active=True, parent=None
+                a["label"],
+                model=a["model"],
+                started_at=a["started_at"],
+                active=a["active"],
+                parent=None,
             )
             for a in own_agents
         ]
