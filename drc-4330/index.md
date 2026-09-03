@@ -932,3 +932,39 @@ the measurable jobs skipped by the filter rather than by a failure; `mergeStateS
 there is no Copilot review to read on this PR or on the three before it; and the Linear body is
 byte-identical to the approved draft. Nothing on the branch was edited, nothing merged, no worktree
 or branch removed.
+
+## Stage Report: implementation (correction round 1)
+
+- DONE: M1 — remove or correct the set-equality clause at line 36, keep the necessary condition
+  `docs/plans/history-store-security-scope.md:38-40`; the false clause is gone and replaced with the one-way reading ("The condition runs one way only — the board publishes prompt text and project paths, and the never-list above bans both"). Reproduced the reviewer's citations first: `SECURITY.md:382-383` publishes the title, the line beneath it, `last_prompt`, the observer goal and a Codex title; `SECURITY.md:440` publishes project paths.
+- DONE: M2 — write the `state_detail` exclusion into never-item 1 as an elaboration, not a fifth item
+  `:30-33`; item 1 now bans prompt text "whatever field carries it" and names the row title, `last_prompt` and the state detail. The never-list is still exactly DEC-6's four (AC-3 holds).
+- DONE: M3 — add `SKILL.md:146`'s three-files count to the promotion list
+  `:120-124`; the `SKILL.md` bullet bumps the count only and says why — verified `SKILL.md:147-148` names `statusline_hook.py` as the forwarder with no ordinal, unlike `SECURITY.md`'s "One forwarder writes a fourth".
+- DONE: M4 — name `SKILL.md:295` and `cli.py:144` as sites the sole-occupancy amendment must reach
+  `:108-109` (amendment 3 now says it is not done until both go) and `:125-127` (the promotion list carries them). Both strings reproduced verbatim: the `--no-dismiss` flag row and its `--help` text each call the dismissals file "the one file Cargento writes on your behalf". The two docstrings are listed as non-user-facing and load-bearing on nothing, per the P2 decline.
+- DONE: M5 — reword line 47 so age retention and the size cap bound the store together
+  `:48-51`; "Retention is what bounds the store; nothing else does" is replaced by "The age window and the size cap bound the store together, and raising either does not stop the other applying". Age-first eviction is unchanged in the sentence above and in the violation list at `:79`.
+- DONE: P1 — rephrase lines 30-31 as a write ban rather than a category claim
+  `:30-31`; "The title a row shows is derived from a prompt and is not history" became "Not a row's title, which is derived from a prompt", inside the M2 elaboration. Every never-item is now a ban.
+- DONE: D1, D2, D3 declined and P2, P3 recorded — none touched
+  The version-mismatch discard trigger (`:68-71`), the "adds no endpoint" boundary (`:66`, `:73-74`) and the two loose `SECURITY.md` counts in amendments 1-2 (`:90-102`) are byte-identical to `c46f045`; `git diff c46f045..HEAD` touches only the six spans above.
+
+### Surface, checks and head
+
+- New head: `0016542` (`00165422447ea3a9c39f6de026def656edcabf5c`), pushed to `spacedock-ensign/drc-4330`; PR #258 head confirmed moved, still one file in the diff.
+- Round surface, `git diff --numstat c46f045..HEAD`: `19 7 docs/plans/history-store-security-scope.md`.
+- Cumulative, `git diff --numstat "$(git merge-base main HEAD)"..HEAD`: `139 0`, one file. Against the 130 ± 30 estimate that is 107% of the midpoint, inside the band (100-160). AC-1 holds — one new file, nothing else in the diff.
+- `python3 scripts/validate_plugins.py` — exit 0, "Validated 1 skills across 1 plugins". It resolves every relative Markdown link and heading anchor across the owned docs, so a broken link or a renamed heading in this file would fail it.
+- `python3 -m unittest cargento.skills.cargento.tests.test_documentation` — 14 tests, OK. These bind doc prose to code: the git-probe pair asserts `SECURITY.md` says "The off switch is `--no-git`." *and* that the parser accepts `--no-git`, so dropping either half fails. Nothing in them reads this plan file yet — the history analogue is owed by H1, as `:128-131` says.
+- Commit is DCO signed off (`Signed-off-by` present). Not merged.
+- Document re-read end to end after patching, before the push. That pass caught four seams the patches left — an awkward "earns a field nothing here" tail on M1, a loose "The two bounds" antecedent on M5, an ambiguous "two lines already in it" on M3, and two ragged rewraps — all fixed in the same commit.
+
+### Discrepancy for the FO
+
+- The M2 disposition says `state_detail` is what "the dismissals record deliberately omits for that reason". `SECURITY.md:288-290` attributes that omission to the **bounded record of state disputes**, not the dismissals store: "the row's title and its state detail are deliberately absent". I wrote the accurate attribution rather than the disposition's wording. The exclusion M2 asked for is unaffected; only the cited precedent's name changed.
+- `sync-docs` was not re-invoked this round. It was run in round 0, this round's diff is prose inside one `docs/plans/` file that no test opens by literal path, and a sync-docs commit touching a second path would breach AC-1.
+
+### Summary
+
+Five material findings and one polish, all six landing as clause-level edits to `docs/plans/history-store-security-scope.md` and nothing else. Every citation the reviewer made was reproduced against `c46f045` before editing, and all five held. The one judgement call was M2's precedent: `SECURITY.md` credits the state-dispute record, not the dismissals record, with omitting state detail, so the document says that instead — flagged above rather than silently reconciled. The `state_detail` exclusion went in as an elaboration of never-item 1, keeping the list at DEC-6's four as AC-3 requires, so the `route for decision` escape was not needed.
