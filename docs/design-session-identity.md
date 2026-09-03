@@ -445,3 +445,62 @@ must not make its parent read "running 1 subagent". The label is `typeName` (`cu
 the live store) because a child's own `name` is the generic literal `New Agent`, and its model
 is read from its own store rather than inherited, so a child running elsewhere is a
 measurement and not an attribution.
+
+## Claude
+
+### A teammate dispatched into its own pane
+
+Cursor's rule above is the one every harness is meant to follow: every folded child is published,
+and only the children moving now are counted into the state detail. Claude did the opposite of the
+first half. A team member dispatched into its own tmux pane writes an ordinary top-level
+transcript, and the collector classified it, folded it and joined it to the teams registry
+correctly, then published it only while it was fresher than the ninety-second working threshold. One
+internal list was doing both jobs, so publication inherited a gate that only the state derivation
+needed.
+
+Three things followed, all measured on a live board rather than argued.
+
+A teammate blocked on its own subagents writes nothing while it waits, so it dropped off its lead's
+row and came back, over and over. A teammate that had finished vanished, and the registry could not
+rescue it: a member that has written a transcript is correctly excluded from the unstarted list, so
+nothing published a member that had started and stopped. And the pill carried no elapsed at all,
+because the start stamp came from the transcript's first record and this harness opens a top-level
+transcript with three untimestamped control records.
+
+The fix splits the one list in two. The fresh-gated list still derives state, the state detail, last
+activity and the Spacedock strip, unchanged. A separate published list carries every classified
+child inside the display window, plus the unstarted members, plus each teammate's own subagents,
+each element stamped with its own liveness and with the member it belongs to. A parked teammate
+therefore stays on the row and reads as stopped, which is what the Cursor rule asked for in the
+first place.
+
+Two decisions inside it are worth keeping.
+
+The registry's `isActive` flag may demote and may never promote. Claude Code 2.1.259 retains a
+finished member and marks it inactive instead of pruning it, which is a genuine liveness signal and
+retired an assumption the code and the shipped skill body both carried. But transcript freshness
+stays authoritative for whether something is running now, because whether a hard-killed pane clears
+that flag has never been measured. A signal that can only ever confirm a stop cannot invent a start.
+
+A teammate's own workers are flattened onto the same list with the teammate named, not nested under
+it. Nesting is the shape a reader might expect and it is the one that can orphan a grandchild into a
+peer row, which is the defect the Cursor work closed by choosing `rootParentAgentId`. Antigravity
+already flattens a whole subtree onto the root card. The attribution is a label rather than a join
+key, and labels here are not unique: two runs of the same named agent inside the display window are
+two children with the same name, and their workers cannot be told apart by it.
+
+#### Rejected
+
+Publishing the teammate as a peer row that names its lead. A teammate transcript is a complete
+session transcript, so this would have delivered state, turn, tokens and the teammate's own pills
+for free, and the change is deleting a `continue`. It reverses the Cursor decision on the surface
+where the parent link is strongest, since a teammate names its lead by id, which is exactly the
+condition under which that work folds rather than promotes. The population settled it: of the twenty
+top-level transcripts fresh inside twenty-four hours in one project directory, fourteen were
+classified teammates of a single lead, so promotion turns a six-row board into a twenty-row one. The
+promotion rule itself is kept, because a dropped row is an invisible failure: a child whose named
+lead is not a published row is promoted rather than dropped.
+
+Keeping the ninety-second publication gate and encoding "finished" in the label string. Cheaper, and
+refused because the chrome counts published elements into its running total, so the header would
+have had to lie in order to close a gap at the pill.
