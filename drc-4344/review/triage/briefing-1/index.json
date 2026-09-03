@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4344:triage:attempt-1:revision-1",
+  "question": "Approve DRC-4344's triage: the rewritten body (which corrects the filed diagnosis — the join works, three publishing gaps do not), the one-line Steer-before-waste milestone insertion, the enrich-the-fold approach over promoting teammates to peer rows, six ACs with AC-5 the live user-visible one and AC-6 the shape capture, +230 LOC ±30% across 6 runtime/doc files and 11 test files (8 compelled by the subagents[] element contract, 4 byte pins), taking the single web/ slot ahead of H1's PR 2, review at two lenses plus arbiter?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4344:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/0304fba1b8cdf5f1866fcc1cdcf6207234cc18a4/drc-4344.md",
+      "rev": "sha256:78e16122e16cc69adf8cfa4f3f38be3807adfab2c6fd070e98425797560f74a9",
+      "mediaType": "text/markdown",
+      "summary": "Triage falsified the filed diagnosis by calling the runtime's own functions: agent_identity classifies a teammate transcript correctly. Three measured gaps: transcript_started_at reads one line and 2.1.259 writes three untimestamped preamble records (stamp at index 3 on 7 of 8); publication is gated on 90 s freshness so a live reviewer blinked off at 09:41Z and the finished implementer never appeared; a child's own subagents directory is never walked (7 lenses reachable by nothing). Fourth: the registry now retains finished members with isActive false, falsifying SKILL.md:17. Approach: split the fresh-gated list from a published roster, add active and parent to every subagents[] entry, walk each child's directory and flatten, frontend reads liveness per entry (also fixes DRC-4229's pulse on unstarted members). Peer rows rejected: 14 of 20 fresh transcripts are teammates. Zero Linear writes; rewrite longer than original (5,770 vs 4,041 bytes), declared."
+    }
+  ]
+}
