@@ -1,7 +1,7 @@
 ---
 id:
 title: 'History groundwork · SECURITY.md scope section for the local history store'
-status: implementation
+status: review
 source: https://linear.app/recce/issue/DRC-4330
 started: 2026-09-03T03:29:50Z
 completed:
@@ -9,7 +9,7 @@ verdict:
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4330
 issue:
-pr:
+pr: "#258"
 mod-block:
 linear-status: 'Todo'
 milestone: 'Move up a level'
