@@ -100,6 +100,11 @@ gates:
                     NOT authorized and explicitly out of scope for this round: any change to SECURITY.md's promoted text, to the invariant wording, or to the feature's bounds. Those await the R1 ruling.
 
                     Evidence quality noted. The expensive tier earned its cost: R1 was found at arbitration rather than by any lens, after six cycles of decisions, a merged contract and twelve green checks had all missed it. Two reproductions initially refuted their own findings and were confirmed only after the harness was rebuilt — R2 by the reviewer and R1 by the FO, whose first attempt declared a filter attribute and never created a matching file. Both are recorded as refuted-then-confirmed so a first negative result is not mistaken for absence. What is clean is clean by measurement: AC3 is over-determined, its falsifier failing thirty out of thirty with four sibling tests deadlocking, and AC8's promotion is byte-identical at 3232 bytes and 55 lines with matching sha256.
+            - id: gate-attempt:drc-4037-review-2
+              briefing:
+                id: briefing:drc-4037:review:attempt-2:revision-1
+                digest: sha256:07fa592bf7cab2b6aaad236a130826d7d58439940d7c01b055f337921216d083
+                room-ref: ./review/review/briefing-2
 ---
 
 

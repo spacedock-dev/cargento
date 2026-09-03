@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4037:review:attempt-2:revision-1",
+  "question": "Approve E4 (DRC-4037) as delivered: PR #239 merged at ac6ac29 with correction round 1 verified closed (R2–R7) and AC1–AC10 holding on today's main, PR #245's render standing in for PR 2 per your 2026-09-03 ruling — authorizing merge guard to terminalize and archive the issue?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4037:review:attempt-2:revision-1:item-1",
+      "uri": "git-root://state/27a3d7aea39e1ac49528f648d1a614dc1bda0def/drc-4037/index.md",
+      "rev": "sha256:609d7fb53a57dd3b267e45c8e24cacd69d854d31c31bdf0fff7008892b2d365b",
+      "mediaType": "text/markdown",
+      "summary": "Retrospective self-verify review: six correction-round fixes reproduced on main (test passes, named mutation fails), AC1–AC10 met with AC9/AC10 superseded in wording, AC11 interactive and unsettled, CI 12/12 success at eff93f6 and 3/3 on main at ac6ac29, no Copilot inline comments. GO bounded: R1 (repo-supplied hook write) reproduced and unfixed, nine cycle-1 Deferred-risk findings never filed. Post-merge reconcile complete, reconciled stamped, receipt posted."
+    }
+  ]
+}
