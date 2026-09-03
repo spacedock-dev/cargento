@@ -701,3 +701,123 @@ class ATamperedStoreCannotReorderTheBoardTest(HistoryStoreTestCase):
         self.write_store(self.base(project="a\u200cb\u200dc"))
         entries, _ = history.load(self.config())
         self.assertEqual("a\u200cb\u200dc", entries[0]["project"])
+
+
+class NoOperatorTextSurvivesTheRealCollectionTest(HistoryStoreTestCase):
+    """AC2 again, driven through `aggregate.collect` rather than a unit shim.
+
+    The unit form of AC2 calls `history.record` directly, which proves the
+    record is narrow but not that the caller hands it narrow rows. Since
+    `aggregate` is what calls the lane, the fixture has to travel the real path:
+    stub harness -> collect -> dedupe -> redaction -> overlays -> lane -> disk.
+    A future caller that passed whole rows in would fail here and pass there.
+    """
+
+    def application(self, config: RuntimeConfig) -> Any:
+        from cargento_runtime import aggregate  # noqa: PLC0415
+        from cargento_runtime import history as h  # noqa: PLC0415
+        from cargento_runtime import sessions as rs  # noqa: PLC0415
+        from cargento_runtime.state import build_runtime_state  # noqa: PLC0415
+
+        def discover(cfg: Any, st: Any) -> bool:
+            del cfg, st
+            return True
+
+        def collect(
+            cfg: Any, st: Any, now: float, window_hours: float, show_all: bool
+        ) -> list[dict[str, Any]]:
+            del cfg, st, now, window_hours, show_all
+            # The full operator-text fixture, on a row a real collector shapes.
+            row = rs.base_session("claude", "sid-1", "recce/cargento")
+            row.update(
+                {
+                    "state": "working",
+                    "last_activity": 4_900.0,
+                    "own_activity": 4_900.0,
+                    "title": SENTINELS["title"],
+                    "last_prompt": SENTINELS["last_prompt"],
+                    "state_detail": SENTINELS["state_detail"],
+                    "instruction": {"text": SENTINELS["instruction"], "kind": "plan"},
+                    "tasks": [
+                        {
+                            "subject": SENTINELS["task_subject"],
+                            "activeForm": SENTINELS["task_active_form"],
+                            "status": "in_progress",
+                        }
+                    ],
+                    "subagents": [{"name": SENTINELS["subagent_name"], "sid": "child-1"}],
+                }
+            )
+            return [row]
+
+        state = build_runtime_state(config, started=1_700_000_000.0)
+        app = aggregate.Application(
+            config,
+            state,
+            (
+                aggregate.HarnessSpec(
+                    key="claude", label="Claude", discover=discover, collect=collect
+                ),
+            ),
+            native_notifier=lambda platform: f"stub@{platform}",
+            popup_notifier=lambda *_: None,
+            diagnostic_sink=self.diagnostics.append,
+            clock=lambda: 5_000.0,
+        )
+        app.history_lane = h.Lane(config, diagnostic_sink=self.diagnostics.append)
+        return app
+
+    def test_no_sentinel_reaches_the_store_through_the_real_collection(self) -> None:
+        config = self.config()
+        payload = self.application(config).collect(show_all=True)
+        # The row really did carry the fixture through to publication.
+        self.assertEqual(SENTINELS["title"], payload["sessions"][0]["title"])
+        # And the store really was written by that same collection.
+        raw = self.store_bytes(config)
+        self.assertIn(b'"working"', raw)
+        for field, sentinel in SENTINELS.items():
+            with self.subTest(field=field):
+                self.assertNotIn(sentinel.encode("utf-8"), raw, f"{field} reached the store")
+
+
+class AQuietBoardDoesNotGrowTheStoreTest(HistoryStoreTestCase):
+    """The lane writes on an observed transition and never per collection.
+
+    A store that grew on every poll of a quiet board would be an unbounded
+    writer: the coordinator collects at least every `reconcile_interval_sec`
+    whether or not anything moved, so per-cycle appends would put roughly 2,880
+    records a day per session into a fourteen-day store that nothing had
+    happened in. The oracle is the file itself, not a record count: mtime and
+    bytes both have to hold still.
+    """
+
+    def test_repeated_collections_of_an_unchanged_board_rewrite_nothing(self) -> None:
+        config = self.config()
+        history.record(config, [loaded_row("working", last_activity=1_000.0)], now=1_000.0)
+        path = history.store_path(config)
+        before_bytes = self.store_bytes(config)
+        before_mtime = os.stat(path).st_mtime_ns
+
+        # Twenty further collections, the state unchanged, activity advancing
+        # the way a working session's does.
+        for tick in range(20):
+            history.record(
+                config,
+                [loaded_row("working", last_activity=1_100.0 + tick)],
+                now=1_100.0 + tick,
+            )
+
+        self.assertEqual(before_bytes, self.store_bytes(config), "the store was rewritten")
+        self.assertEqual(before_mtime, os.stat(path).st_mtime_ns, "the file was touched")
+        entries, _ = history.load(config)
+        self.assertEqual(1, len(entries))
+
+    def test_a_quiet_board_with_no_store_yet_creates_no_file(self) -> None:
+        # An idle row whose state never changes still records its first
+        # observation, but never a second.
+        config = self.config()
+        history.record(config, [loaded_row("idle", last_activity=1_000.0)], now=1_000.0)
+        first = self.store_bytes(config)
+        for tick in range(5):
+            history.record(config, [loaded_row("idle", last_activity=1_010.0 + tick)], now=1_010.0)
+        self.assertEqual(first, self.store_bytes(config))

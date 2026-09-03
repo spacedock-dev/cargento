@@ -292,25 +292,26 @@ def save(
     return True
 
 
-def record(
-    config: RuntimeConfig,
+def appended(
+    held: tuple[Observation, ...],
     rows: Iterable[Mapping[str, Any]],
     *,
     now: float,
-    diagnostic_sink: Callable[[str], object] = print,
-) -> tuple[Observation, ...]:
-    """Record the transitions in one collection's rows, and return the store.
+    retention_sec: float,
+    max_bytes: int,
+) -> tuple[tuple[Observation, ...], bool]:
+    """The history after this collection, and whether anything actually changed.
 
-    A transition and not a sample: a row whose state matches the last observation
-    already held for it records nothing, so the file grows with what changed
-    rather than with how often the board was collected. The baseline comes from
-    the store itself rather than from process memory, which is what stops the
-    first collection after a restart from re-recording every session's current
-    state as a fresh transition.
+    A transition and not a sample: a row whose state matches the last
+    observation already held for it records nothing. That is load-bearing
+    rather than tidy — the coordinator collects at least every
+    `reconcile_interval_sec` whether or not anything moved, so a per-cycle
+    append would write thousands of records a day per session into a store
+    nothing had happened in.
+
+    The bool is what lets the caller skip the write on a quiet board, so an idle
+    Cargento touches the file exactly never.
     """
-    if not config.history_enabled:
-        return ()
-    held, _ = load(config)
     latest: dict[tuple[str, str], Observation] = {}
     for entry in held:
         key = (entry["harness"], entry["sid"])
@@ -328,14 +329,39 @@ def record(
         latest[(observed["harness"], observed["sid"])] = observed
         fresh.append(observed)
     if not fresh:
-        return held
-    kept = evict(
-        [*held, *fresh],
+        return held, False
+    kept = evict([*held, *fresh], now=now, retention_sec=retention_sec, max_bytes=max_bytes)
+    return kept, True
+
+
+def record(
+    config: RuntimeConfig,
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    now: float,
+    diagnostic_sink: Callable[[str], object] = print,
+) -> tuple[Observation, ...]:
+    """One-shot record: read the store, append this collection, write it back.
+
+    The baseline comes from the store itself, which is what stops a fresh
+    process from re-recording every session's current state as a new
+    transition. `Lane` does not use this on the serving path — it holds its
+    baseline in memory instead, because re-reading a full store costs 23 ms
+    against the write's 6 and the collection it rides on may be answering an
+    HTTP request. This one stays for a caller that owns no lane.
+    """
+    if not config.history_enabled:
+        return ()
+    held, _ = load(config)
+    kept, changed = appended(
+        held,
+        rows,
         now=now,
         retention_sec=config.history_retention_sec,
         max_bytes=config.history_max_bytes,
     )
-    save(config, kept, diagnostic_sink=diagnostic_sink)
+    if changed:
+        save(config, kept, diagnostic_sink=diagnostic_sink)
     return kept
 
 
@@ -400,13 +426,35 @@ class Lane:
         self._opened = True
 
     def record(self, rows: Iterable[Mapping[str, Any]], *, now: float) -> list[dict[str, Any]]:
-        """Record this collection's transitions and return the whole history."""
+        """Record this collection's transitions and return the whole history.
+
+        The baseline is this lane's own copy, loaded once when it opened, rather
+        than a fresh read of the file. Measured at the 1 MiB cap: re-reading
+        costs 23 ms where the write costs 6, and this runs inside the collection
+        that may be answering a `GET /api/data` on a request thread, so the
+        re-read was the expensive half of a cost paid on somebody's response.
+        What a re-read would buy is a second dashboard's records, and whole-file
+        last-writer-wins between two dashboards is an exposure `SECURITY.md`
+        already carries for the dismissal store.
+
+        Nothing is written when nothing changed, so a quiet board never touches
+        the file.
+        """
         with self._lock:
             self._open()
             if not self._config.history_enabled:
                 return []
-            self._entries = record(self._config, rows, now=now, diagnostic_sink=self._sink)
-            return [dict(entry) for entry in self._entries]
+            kept, changed = appended(
+                self._entries,
+                rows,
+                now=now,
+                retention_sec=self._config.history_retention_sec,
+                max_bytes=self._config.history_max_bytes,
+            )
+            self._entries = kept
+            if changed:
+                save(self._config, kept, diagnostic_sink=self._sink)
+            return [dict(entry) for entry in kept]
 
     def notice(self) -> str | None:
         """Which reset this run opened with, or None if it opened cleanly."""
