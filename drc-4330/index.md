@@ -456,6 +456,18 @@ arbitrated by reproducing every one myself rather than ranking them: 5 survived 
 Material, 3 as Deferred risk, 3 as Polish, and 4 were refuted — including lens A's two strongest,
 which were correct readings attached to the wrong conclusion.
 
+**Re-review depth, 2026-09-03 (cycle 2): self-verify by reproduction**, chosen from the property of
+the correction round rather than of the whole change and stated before the re-review started. The
+document was read at two lenses plus an arbiter at `c46f045` and every citation in it reproduced;
+that work stands and was not repeated. What is new is five hunks of clause-level prose inside spans
+round 1 had already read, so the question is narrower than the one the lenses answered: did each
+authorized fix land, did anything else move, and do the two points AC-7 failed on now settle. Every
+claim the new clauses make was reproduced against the tree rather than taken from the implementation
+report, and AC-2 was driven from its `Falsified by:` clause in a throwaway copy of the head. What
+would have made me climb back to two lenses: a hunk reaching outside the six authorized spans, an
+outward citation I could not reproduce, a second path in the diff, or a fix that restructured the
+fenced section rather than editing clauses inside it. None of the four held.
+
 ### Feedback Cycles
 
 - Cycle 1: NO-GO — review gate, two lenses plus an arbiter, 5 Material + 1 Polish fixed in one file, 3 Deferred risk filed not promoted; surface 1 file/139 LOC vs estimate 130 ± 30 (107%); AC unchanged
@@ -978,3 +990,136 @@ or branch removed.
 ### Summary
 
 Five material findings and one polish, all six landing as clause-level edits to `docs/plans/history-store-security-scope.md` and nothing else. Every citation the reviewer made was reproduced against `c46f045` before editing, and all five held. The one judgement call was M2's precedent: `SECURITY.md` credits the state-dispute record, not the dismissals record, with omitting state detail, so the document says that instead — flagged above rather than silently reconciled. The `state_detail` exclusion went in as an elaboration of never-item 1, keeping the list at DEC-6's four as AC-3 requires, so the `route for decision` escape was not needed.
+
+## Stage Report: review (cycle 2)
+
+- DONE: Each of the six authorized correction-round fixes (M1, M2, M3, M4, M5, P1) verified against
+  PR #258's current head `0016542` by reading the file at that SHA, each stated as closed or not with
+  the line cited; and D1, D2, D3 confirmed untouched by `git diff c46f045..0016542`, which must reach
+  only the six spans the round claims.
+  All six closed, lines cited below. `git diff -U0 c46f045..0016542` is five hunks — `@@ -30,2 +30,4`
+  (M2+P1), `@@ -36,2 +38,3` (M1), `@@ -47 +50,2` (M5), `@@ -104 +108,2` (M4), `@@ -115 +120,8`
+  (M3+M4) — and reaches nothing else; D1's discard triggers (`:68-71`), D2's no-endpoint clauses
+  (`:66`, `:73-74`) and D3's amendments 1-2 (`:90-102`) are byte-identical to `c46f045`.
+- DONE: AC-1 through AC-7 re-verified on head `0016542` from their own `Verified by:` clauses, plus
+  CI green on this head, `mergeStateStatus`, and Copilot inline comments read.
+  Seven PASS, reproduced below; three checks all carry `head_sha=00165422447ea3a9c39f6de026def656edcabf5c`,
+  `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`, and `pulls/258/comments`, `pulls/258/reviews`
+  and `issues/258/comments` are each length 0 — no Copilot pass exists to read on this PR.
+- DONE: A GO or NO-GO verdict with any new or surviving finding under its disposition label, with no
+  edit to the branch, no merge, no worktree or branch removed.
+  Verdict **GO**. One new **Deferred risk** and two **Polish**, none blocking, all below.
+  `git status --porcelain` in the worktree is empty and HEAD is still `0016542`; nothing merged,
+  no worktree or branch removed. Negative controls ran in `/tmp/drc4330rev2`, a `git archive` copy.
+
+### The six fixes, at `0016542`
+
+- **M1 — closed.** The false set-equality is gone. `:38-40` now reads "The store may never widen that
+  list: a field that is not already published on the live board is not a field history may keep. The
+  condition runs one way only — the board publishes prompt text and project paths, and the
+  never-list above bans both." Both halves reproduced: `SECURITY.md:382-383` publishes the title,
+  `last_prompt`, the observer goal and a Codex title; `SECURITY.md:440` publishes project paths.
+- **M2 — closed, and AC-3 survives it.** `state_detail` is banned inside never-item 1 at `:30-33`
+  ("not a session's state detail, which can carry a permission prompt's own text, an open question's,
+  or a plan's first line"), not as a fifth item. The list is still four bullets (`:30`, `:34`, `:35`,
+  `:36`), items 2-4 byte-identical to `c46f045`. Producer confirmed: `sessions.py:289`.
+- **M3 — closed.** `:120-124` adds `SKILL.md`'s own count to the promotion list. Reproduced:
+  `SKILL.md:146` is verbatim "The server writes three files, all under `~/.cargento`", and the
+  sentence after it names `statusline_hook.py` with no ordinal, so "the count only" is right.
+- **M4 — closed at all three user-facing sites.** `:108-109` makes amendment 3 unfinished until the
+  other sites go; `:120-124` carries `SKILL.md:295` and `:125-127` carries `cli.py:144`. Both strings
+  reproduced verbatim. A repository-wide grep at this head returns exactly the five sites the round-1
+  finding named; the two docstrings are recorded at `:127` as non-user-facing, per the P2 decline.
+- **M5 — closed.** `:50-51` replaces the denial with "The age window and the size cap bound the store
+  together, and raising either does not stop the other applying"; age-first eviction is unchanged at
+  `:48-50` and the violation list at `:78-79` still reads "an unbounded store or one evicted by
+  anything but age first". Nothing now contradicts H1's "or beyond the size cap" criterion.
+- **P1 — closed.** `:30-31` is a write ban ("Not a row's title, which is derived from a prompt")
+  rather than the category claim "is not history". Every never-item is now phrased as an exclusion.
+
+### Acceptance criteria, reproduced on `0016542`
+
+- **AC-1 — PASS.** `git diff --name-status "$(git merge-base main HEAD)"..HEAD` is one line,
+  `A docs/plans/history-store-security-scope.md`, `139 0`. The `changes` job log on this head emits
+  "Every changed path is prose the gate cannot measure." then `code=false`, and the aggregator log
+  shows `CODE: false` with `R_CHANGES: success` and `R_LINT`/`R_TYPECHECK`/`R_FLOOR`/`R_TEST`/`R_PLATFORM: skipped`
+  — the filter, not a dead dependency.
+- **AC-2 — PASS, with a negative control.** `python3 scripts/validate_plugins.py` exit 0 in the
+  worktree at this head. Exit 0 alone proves nothing, so a `git archive 0016542` copy with
+  `[broken](./no-such-file.md)` appended gives "docs/plans/history-store-security-scope.md: Markdown
+  link target does not exist" and exit 1 — the validator reaches this file at this head. The document
+  still contains no inline link and no `localhost` spelling (`grep -nE '\]\(|localhost|http://'`
+  returns nothing), so it can still be promoted without rewriting.
+- **AC-3 — PASS.** The never-list is exactly DEC-6's four items, `state_detail` inside item 1 rather
+  than a fifth; the permitted list at `:24-26` is untouched this round, so round 1's producer
+  reproduction still holds.
+- **AC-4 — PASS.** The three `SECURITY.md` sentences and amendment 1's arithmetic are untouched by
+  this round's diff; `SECURITY.md` is unchanged in the tree.
+- **AC-5 — PASS.** `:58-61` and `:63-66` are untouched; round 1's three-site reproduction stands.
+- **AC-6 — PASS.** The diff touches neither `HOW_TO_USE.md`, `SECURITY.md` nor `docs/promise-map.md`.
+  Re-run at this head: `parse_args(['--no-history'])` and `parse_args(['--forget'])` both exit 2 with
+  "unrecognized arguments" while `--no-git` exits 0, so the parser is answering rather than erroring
+  for another reason; `test_documentation` 14 tests OK, and it pins "The off switch is `--no-git`."
+  in `SECURITY.md` by literal path, so an edit to that file's git-probe clauses is what turns it red.
+- **AC-7 — PASS, including the clause that failed at `c46f045`.** Read against
+  `git show 701b7f0:docs/plans/git-probe-security-scope.md` (102 lines) as round 1 did. The shape is
+  unchanged and still precedent-faithful — same opening formula, same fenced section, same "A
+  violation of any boundary in this section is a security bug:" enumeration, same two closing
+  sections — at 139 lines against 102 and 84, inside 130 ± 30. Both points a stranger could not
+  settle are now settled from the document alone: `state_detail` may not be kept (`:30-33`, with the
+  reason and the precedent named), and the size cap is an enforced bound, not decoration (`:50-51`
+  read with `:78-79`). All seven DEC-6 elements remain present, and every edit narrows what the store
+  may keep rather than widening it.
+
+### Findings
+
+**D4 — Deferred risk — M1's gloss calls the board's published project label a path the never-list
+bans.** Released user and normal workflow: none today; H1's builder, when it designs the store's
+fields. Observable harm: `:39-40` says "the board publishes prompt text and project paths, and the
+never-list above bans both", while never-item 3 bans "a session's working directory" and "any path a
+tool touched" — the published `project` (`sessions.py:265`) is a derived two-segment label, and
+`SECURITY.md:485-486` says raw `cwd` is "never echoed to `/api/data`". Round 1 refuted R1 on exactly
+that distinction; this clause blurs it in the safe direction. Affected boundary:
+`value-ac[AC-7]`, weakly — the kept-list at `:24-26` is exhaustive and already omits `project`, so a
+stranger still builds one consistent store (no project label), which is why this is not Material.
+Trigger evidence: `:39-40` read against `:35`, `sessions.py:265` and `SECURITY.md:440`, `:485-486`.
+Promote-to-material condition: H1's interactive rail needs the project label and its builder reads
+this clause as forbidding it. **File against DRC-4044; do not promote into this PR.**
+
+**P4 — Polish — "may never widen that list" (`:38`) names the prohibition list where the operative
+sense is the set of fields kept.** Pre-existing phrasing, and the colon-clause beside it states the
+rule unambiguously. No fix asked.
+
+**P5 — Polish — "the bound above" (`:56`) is singular where `:48-51` now sets two bounds.** A seam
+left by M5's rewording. No fix asked.
+
+Nothing else new, and nothing from round 1 survives: M1-M5 and P1 are closed, D1-D3 and P2-P3 stand
+declined and untouched.
+
+### The FO's flagged judgement
+
+The implementer is right and the round-1 disposition was wrong. `SECURITY.md:287-290` attributes the
+omission of the title and the state detail to **the bounded record of state disputes** — "The same
+route serves the bounded record of state disputes … the row's title and its state detail are
+deliberately absent, because a state detail can carry a permission prompt's own text, an open
+question's, or a plan's first line". The Dismissals section begins at `:292` and makes no such
+statement. The document's `:32-33` says "the bounded record of state disputes", which is accurate;
+M2's wording was mine to get wrong, and the correction did not change what the fix excludes.
+
+### Summary
+
+**GO.** All five Material findings and the one Polish landed as clause-level edits inside the six
+authorized spans and nothing else moved: five hunks, one file, `139 0` cumulative, and the three
+deferred findings byte-identical to `c46f045`. Every claim the new clauses make about `SECURITY.md`,
+`SKILL.md` and `cli.py` was reproduced at this head rather than read back from the implementation
+report, and all of them hold.
+
+AC-7's failing clause is repaired at its root: the false framing sentence is gone, the `state_detail`
+exclusion is written into never-item 1 with its reason and its precedent, and the size cap is an
+enforced bound rather than a denied one — so the two questions a stranger could not answer at
+`c46f045` are answerable from the document alone, and the never-list is still DEC-6's four. CI is
+green on `0016542` with `code=false` read from the job log and the measurable jobs skipped under
+`CODE: false`, `mergeStateStatus` is `CLEAN`, and there is no Copilot review or inline comment on
+this PR to read. One new Deferred risk (D4) is filed for H1 rather than promoted, per the workflow's
+own rule, and two Polish seams are recorded without a fix request. Nothing on the branch was edited,
+nothing merged, no worktree or branch removed.
