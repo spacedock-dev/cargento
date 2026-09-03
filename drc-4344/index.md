@@ -1,7 +1,7 @@
 ---
 id: drc-4344
 title: 'A team member dispatched into its own pane is a black box: its session is never published, the lead''s row shows a bare name, and its own subagents are unreachable'
-status: review
+status: implementation
 source: https://linear.app/recce/issue/DRC-4344
 started: 2026-09-03T09:39:35Z
 completed:
