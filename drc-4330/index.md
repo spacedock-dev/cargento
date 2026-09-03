@@ -42,7 +42,7 @@ gates:
                 state: consumed
 ---
 
-[DRC-4330](https://linear.app/recce/issue/DRC-4330) — Linear priority High, no estimate, labels `journey:mid-flight`, `move:none`. Filed 2026-09-02 as the groundwork for H1 (DRC-4044), the shape the quota, git-probe and ask-lane groundwork issues used: a SECURITY.md scope section that lands before the code it bounds.
+[DRC-4330](https://linear.app/recce/issue/DRC-4330) — Linear priority High, no estimate, labels `journey:mid-flight`, `move:none`. Filed 2026-09-02 as the groundwork for H1 (DRC-4044), the shape the quota, git-probe and ask-lane groundwork issues used: a security contract written under `docs/plans/` before the code it bounds, promoted into `SECURITY.md` by the feature's own PR.
 
 **Pick, 2026-09-03.** Captain-directed. The captain asked to start with A6 (DRC-4009); A6 is `blockedBy` H1 (DRC-4044, `Todo`), which is `blockedBy` this issue, which has no open blocker. Rule 1 drops A6 and H1; this issue is the unblocked root of that chain, so it goes first and A6 stays the destination. Not a rules pick — recorded so a reader can disagree with the step.
 
@@ -501,3 +501,112 @@ DRC-4329) carry the same mis-citation and the same instruction; fixing them is o
 one-issue-per-branch rule, so the hazard is named rather than acted on. And the milestone correction
 is one hunk against a capture proven byte-exact, so `implementation` can script it with an
 exactly-once assertion instead of hand-reconstructing the description.
+
+## Stage Report: implementation
+
+- DONE: First action, before any file in the tree changes: the authorized Linear writes performed
+  and read back — the drafted DRC-4330 body rewrite sent verbatim and unwrapped, the one-hunk
+  `Move up a level` milestone correction built by script from a fresh capture with an exactly-once
+  assertion and a diff showing exactly one hunk, one dated correction comment on each of DRC-4326,
+  DRC-4327 and DRC-4329 (captain-authorized 2026-09-03) stating what the three shipped precedents
+  actually did, the relation set read back after the body write, and every emphasis-boundary move
+  reported rather than repaired; then the entity's own opening paragraph corrected so it no longer
+  calls the deliverable "a SECURITY.md scope section".
+  All five writes landed before the tree changed. Body: `get_issue` read-back diffed against the
+  stored draft by script, byte-identical once the three `<issue …>` mention wrappers are normalized
+  away; the single bold run round-tripped intact. Milestone: fresh `get_milestone` capture proved
+  byte-identical to the entity restore point, target passage asserted to occur exactly once (the
+  "Waits on" near-miss did not match), scripted diff showed one hunk, and the read-back matched the
+  intended text once Linear's own change was normalized. That change is reported not repaired: the
+  serializer wrapped all 16 link hrefs in angle brackets, in pre-existing text this edit was not
+  touching, and no emphasis run moved. Comments: three posted, one per sibling, tailored so each
+  states only what its own body actually cites. Seed paragraph corrected in the same pass.
+- DONE: `docs/plans/history-store-security-scope.md` written as the only file in the diff on the
+  worktree branch, DCO signed off; `python3 scripts/validate_plugins.py` exit 0 and
+  `python3 -m unittest cargento.skills.cargento.tests.test_documentation` run locally and their
+  results reported; the surface measured with `git diff --numstat "$(git merge-base main HEAD)"..HEAD`
+  against 130 ± 30 lines in one file before the PR opens, with the percentage; the diff reviewed in
+  the worktree; `sync-docs` invoked and any doc commit landed on this branch.
+  Commit `c46f045`, one file, `127 0 docs/plans/history-store-security-scope.md`, 2.3% under the
+  130-line estimate and inside the ±30 band. Validator exit 0; it reaches the file through
+  `(ROOT / "docs").rglob("*.md")`, so a link or anchor that did not resolve, or the banned
+  `localhost` spelling, would fail it. `test_documentation` 14 tests OK; `GitProbeContractDocumentationTest`
+  reads `SECURITY.md` by literal path, so editing its git-probe clauses is the change that turns it
+  red, which is what makes it proof this PR left that file alone. The self-review before the PR
+  found a third falsified sentence triage had not (Dismissals' "the only thing Cargento writes on
+  your behalf"), now amendment 3. `sync-docs` ran as a pre-PR-gate pass: checks a, b, c, d clean,
+  and check e caught one em dash in the new file, fixed and amended into the same commit. No
+  separate doc commit was owed; the marker in `COMPATIBILITY.md` was deliberately left alone, per
+  the branch rule.
+- DONE: A PR opened whose body starts `Implements [DRC-4330](https://linear.app/recce/issue/DRC-4330) — History groundwork · SECURITY.md scope section for the local history store`
+  and carries a `## Verification` section, its number and head SHA reported; and a
+  `## Stage Report: implementation` on this entity giving AC-1 through AC-7 each an evidence
+  citation or naming it as owed to review (AC-7 is interactive: say what the reviewer reads and
+  against which precedent commit).
+  PR #258, head `c46f0455fad90910898239a87274d92bd04a50a1`, base `main` at `900b51c`,
+  `mergeStateStatus: BLOCKED` because review is outstanding, which is the intended state. Body's
+  first line verified against the required string by `gh pr view --jq`; it carries `## Verification`.
+  Per-AC evidence below.
+
+### Acceptance criteria, with evidence
+
+- AC-1 (one new file, detector agrees prose-only): `git diff --name-only` over the merge-base range
+  returns exactly `docs/plans/history-store-security-scope.md`. `is_prose` derives its deny list by
+  grepping `"docs/…"` literals from the test files; no test names this path (checked), so the
+  `changes` job emits `code=false`. The job-level half is owed to CI on the PR head.
+- AC-2 (link- and anchor-clean): `python3 scripts/validate_plugins.py` exit 0 with the file in the
+  tree. The document contains no relative links at all, by design, so it can be promoted without
+  rewriting.
+- AC-3 (permitted fields all have live producers; never-list is DEC-6's): session identity and state
+  at `sessions.py:207`, `:264` and `:288`; gate open and close at `events.py:660`, `:676`, `:693`
+  (`blocked_since` set and cleared); turn boundaries and timings at `turns.py:90-112`
+  (`turn_start`, `durations`); tool names at `turns.py:35`, `claude_data.py:353` and four
+  `transcripts.py` collectors (`:611`, `:703`, `:866`, `:954`). Never-list is DEC-6's four verbatim.
+  Discrepancy: AC-3 cites `turns.py:289` for turn boundaries; that line is the `tool_names` entry in
+  the turn-scan state dict, and the boundary producer is `turn_start` at `:90-112`. Cited the
+  sharper site rather than the AC's.
+- AC-4 (names every sentence the store falsifies): three, not two. `SECURITY.md:261` Process
+  lifecycle opener plus the "One forwarder writes a fourth" sentence that counts from it,
+  `SECURITY.md:35` Scope invariant 2's writer enumeration, and `SECURITY.md:294` Dismissals'
+  "the only thing Cargento writes on your behalf".
+- AC-5 (off switch reaches respawn; `--forget` is one-shot): the contract names the three sites the
+  existing switch occupies, verified at `cli.py:130` (parser), `cli.py:213` (runtime flag) and
+  `lifecycle.py:558-559` (the branch that re-appends `--no-git` to a detached restart's argv), and
+  places `--forget` with `--stop` and `--status` rather than in the off-switch table.
+- AC-6 (nothing states a flag, path or promise that does not exist): the diff touches neither
+  `HOW_TO_USE.md`, `SECURITY.md` nor `docs/promise-map.md`. Re-run on this tree at `900b51c`:
+  `parse_args(['--no-history'])` and `parse_args(['--forget'])` both exit 2.
+- AC-7 (reads as a contract, at the precedents' length): owed to review, interactive by
+  declaration. The reviewer reads `docs/plans/history-store-security-scope.md` against
+  `git show 701b7f0:docs/plans/git-probe-security-scope.md` (102 lines) and
+  `git show 7134a01:docs/plans/quota-fetch-security-scope.md` (84 lines), checking all of DEC-6's
+  elements are present and bounded and that the document bounds the store rather than arguing for it.
+
+### Discrepancies and findings for the FO
+
+- Comment mentions create relations, which the workflow README documents only for body text. All
+  three correction comments added `relatedTo` edges, all reciprocal: DRC-4326 gained DRC-4061,
+  DRC-4177, DRC-4274, DRC-4330; DRC-4327 gained those four plus DRC-4326 and DRC-4329; DRC-4329
+  gained those four plus DRC-4326 and DRC-4327; and DRC-4330 itself gained DRC-4326, DRC-4327 and
+  DRC-4329. No `blocks` or `blockedBy` edge appeared anywhere, so nothing is Material. Reported, not
+  repaired. Baselines are in the read-backs above; DRC-4330's relation set immediately after the
+  body write was unchanged at `blocks: DRC-4044`, `relatedTo: DRC-4234`.
+- Triage's adversarial read says "Nothing in `docs/plans/` at all — the directory does not currently
+  exist". False at `900b51c`: `git ls-files docs/plans` returns
+  `event-driven-session-observation.md` and `native-notifications.md`, both tracked. The
+  promote-and-delete evidence stands on the six commits and does not need the directory to be empty.
+- DRC-4326's body cites only the quota and git-probe groundwork, both of which shipped, so the
+  self-citation half of the mis-citation applies to DRC-4327 and DRC-4329 only. Its comment says the
+  accurate thing rather than the uniform thing.
+- Linear workflow status left at `Todo`. Changing it was not among the four writes the gate
+  authorized, and the workflow's post-merge reconcile owns the transition.
+
+### Summary
+
+The three authorized Linear writes and the entity's seed paragraph went first, each read back and
+diffed by script rather than by eye; the only drift was Linear's own serializer wrapping 16 link
+hrefs in the milestone, reported and left alone. The deliverable is one 127-line file,
+`docs/plans/history-store-security-scope.md`, stating DEC-6's contract and nothing wider, with the
+promotion contract H1 executes and the `SECURITY.md` sentences the store falsifies. Reviewing it
+before opening the PR found a third such sentence triage had missed, in Dismissals, which is the
+AC-4 failure mode caught rather than shipped. PR #258 is open at `c46f045` and waits for review.
