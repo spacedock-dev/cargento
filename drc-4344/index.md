@@ -29,6 +29,17 @@ gates:
                 id: briefing:drc-4344:triage:attempt-1:revision-1
                 digest: sha256:9d8ed1fc4175fd0dafe571cacaf14bf5d3eae32a62d4acee57e8d04bb3ed9525
                 room-ref: ./review/triage/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4344:triage:1
+                briefing: briefing:drc-4344:triage:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-03T11:20:38.142656Z"
+                decision: approve
+                reason: 'Captain approved the triage gate on 2026-09-03 ("1. approve"). Accepts the direction: Drafts A and B authorized as drafted (rewrite longer than the original, declared and accepted); enrich-the-fold approach over peer rows; six ACs with AC-5 the live user-visible drive and AC-6 the shape capture; +230 LOC ±30% across 6 runtime/doc and 11 test files; takes the single web/ slot ahead of H1 PR 2; review at two lenses plus an arbiter.'
+              application:
+                target-stage: implementation
+                state: pending
 ---
 
 [DRC-4344](https://linear.app/recce/issue/DRC-4344) — Linear priority Urgent, no estimate yet, labels `discovered-by-agent`, `journey:mid-flight`, `move:sharpen`. Filed 2026-09-03 by the first officer from a live defect measured on this very session's board.
