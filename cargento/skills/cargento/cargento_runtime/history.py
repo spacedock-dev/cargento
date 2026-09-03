@@ -27,13 +27,14 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import re
 import threading
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from cargento_runtime.config import RuntimeConfig
 
@@ -68,6 +69,11 @@ _UNSAFE_CHARS = re.compile("[\x00-\x1f\x7f\u200b\u200e\u200f\u202a-\u202e\u2066-
 # disk, a version reset is ours, and one message for both hides the difference.
 RESET_UNREADABLE: Final = "unreadable"
 RESET_VERSION: Final = "version"
+
+# How many segments a stored project label may hold. The captain's D4 ruling
+# authorized the derived two-segment label the board groups by and nothing
+# wider, and the never-list bans a working directory outright.
+PROJECT_SEGMENT_CAP: Final = 2
 
 
 class Observation(TypedDict):
@@ -116,8 +122,11 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
     on purpose, the way the overlay activity guards are — it declines to record,
     and never invents a time.
     """
-    stamp = row.get("last_activity")
-    if not isinstance(stamp, (int, float)) or isinstance(stamp, bool) or stamp <= 0:
+    # `stamp <= 0` cannot stand alone: every comparison against NaN is false,
+    # so the guard that rejects the declared default admitted the one value
+    # that has no order. `_finite` is where that is refused.
+    stamp = _finite(row.get("last_activity"))
+    if stamp is None or stamp <= 0:
         return None
     harness, sid, state = row.get("harness"), row.get("sid"), row.get("state")
     if not all(isinstance(x, str) and x for x in (harness, sid, state)):
@@ -128,12 +137,62 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
         "sid": str(sid),
         # Kept by the captain's D4 ruling: both panels group by this label and
         # cannot be seeded without a grouping key. It is already published on
-        # every row, it is capped at the last two segments rather than being a
-        # path, and it is never a raw working directory.
-        "project": project if isinstance(project, str) else "",
+        # every row, and it is bounded here to the two segments that ruling
+        # authorized rather than trusted to be that already — a row whose
+        # collector fell back to the encoded directory name carries a whole
+        # home-relative path, which the never-list bans outright.
+        "project": _bounded_project(project) if isinstance(project, str) else "",
         "state": str(state),
-        "last_activity": float(stamp),
+        "last_activity": stamp,
     }
+
+
+def _bounded_project(label: str) -> str:
+    """A project label trimmed to its last two segments, never a path.
+
+    `sessions.project_from_cwd` already caps its own label at two segments, so
+    the reason this exists is the fallback beneath it: with no `cwd` in a
+    transcript's first records — 0.75% of the 3,888 real transcripts on this
+    machine — three collectors fall back to `sessions.project_label`, which
+    strips the encoded home prefix and returns *every* remaining segment of a
+    real filesystem path joined by `-`. Bounding here rather than at the three
+    collectors is what makes the store's own guarantee independent of the row:
+    whatever a caller hands over, the file cannot hold a path.
+
+    The separator is chosen rather than guessed. A label carrying `/` came from
+    `project_from_cwd`, whose segments may legitimately contain `-`, so
+    dash-splitting it would mangle a correct label; only the dash-encoded
+    fallback is split on `-`, and that split is the guess the collector
+    declined to make. The trade is deliberate: a label trimmed too short groups
+    two projects under one name, which is a rendering cost, while a path kept
+    whole is the security bug the contract names.
+    """
+    separator = "/" if "/" in label else "-"
+    return separator.join(label.split(separator)[-PROJECT_SEGMENT_CAP:])
+
+
+def _finite(value: Any) -> float | None:
+    """One numeric field as a finite float, or nothing.
+
+    Three shapes `isinstance` alone admits are refused here. A bool, which is
+    an int. `Infinity` and `NaN`, which Python's `json` accepts as an extension
+    and a tampered store can therefore carry. And an integer too large for a
+    float, which `float()` refuses with OverflowError rather than ValueError —
+    the class that was not in any except tuple, and so escaped the read
+    boundary entirely.
+
+    The cost of admitting one is not this record: a stamp that cannot be ordered
+    reorders eviction, and a non-finite one makes `json.dumps` emit a bare
+    `Infinity` token that `JSON.parse` rejects, which loses the whole
+    `/api/data` body rather than one row.
+    """
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        numeric = float(value)
+    except OverflowError:
+        return None
+    return numeric if math.isfinite(numeric) else None
 
 
 def _text(value: Any) -> str:
@@ -156,15 +215,15 @@ def _entry(value: Any) -> Observation | None:
         return None
     if not isinstance(project, str):
         return None
-    stamp = value.get("last_activity")
-    if not isinstance(stamp, (int, float)) or isinstance(stamp, bool):
+    stamp = _finite(value.get("last_activity"))
+    if stamp is None:
         return None
     return {
         "harness": _text(harness),
         "sid": _text(sid),
         "project": _text(project),
         "state": _text(state),
-        "last_activity": float(stamp),
+        "last_activity": stamp,
     }
 
 
@@ -172,6 +231,22 @@ def _payload(entries: Iterable[Observation]) -> bytes:
     return json.dumps({"v": SCHEMA_VERSION, "entries": [dict(entry) for entry in entries]}).encode(
         "utf-8"
     )
+
+
+# The store's serialised size, derived from the records' own lengths rather
+# than by re-serialising the whole file. `_payload` is `json.dumps` with its
+# default separators, so a store is the empty envelope, plus each record, plus
+# the two bytes (`, `) that join one record to the next; `ensure_ascii` is on
+# by default, so one character is one byte and the arithmetic is exact rather
+# than an estimate. `test_history` pins it against `_payload` itself.
+_EMPTY_STORE_BYTES: Final = len(_payload(()))
+_RECORD_SEPARATOR_BYTES: Final = 2
+
+
+def _store_bytes(lengths: Sequence[int]) -> int:
+    if not lengths:
+        return _EMPTY_STORE_BYTES
+    return _EMPTY_STORE_BYTES + sum(lengths) + _RECORD_SEPARATOR_BYTES * (len(lengths) - 1)
 
 
 def evict(
@@ -195,11 +270,22 @@ def evict(
         key=lambda e: e["last_activity"],
     )
     # One at a time, not a proportion: in steady state the store is at most one
-    # observation over the cap, and the read below refuses a file larger than it
-    # so an oversized store never reaches this loop.
-    while kept and len(_payload(kept)) > max_bytes:
-        kept.pop(0)
-    return tuple(kept)
+    # observation over the cap. Sized from each record's own length, though,
+    # rather than by re-serialising the whole store after every drop — that loop
+    # cost 4.505 s and 593 `json.dumps` calls on a store an external tool had
+    # compacted, inside the collection memo lock on a thread that can be
+    # answering a request. And the premise it leaned on, that "an oversized
+    # store never reaches this loop", was false for exactly that reason: `load`
+    # caps the raw file's bytes while `_payload` re-serialises 8.16% larger, so
+    # a file that parses inside the cap can exceed it on the way back out.
+    lengths = [len(json.dumps(dict(entry))) for entry in kept]
+    size = _store_bytes(lengths)
+    dropped = 0
+    while dropped < len(kept) and size > max_bytes:
+        joined = _RECORD_SEPARATOR_BYTES if len(kept) - dropped > 1 else 0
+        size -= lengths[dropped] + joined
+        dropped += 1
+    return tuple(kept[dropped:])
 
 
 def load(config: RuntimeConfig) -> tuple[tuple[Observation, ...], str | None]:
@@ -229,6 +315,24 @@ def load(config: RuntimeConfig) -> tuple[tuple[Observation, ...], str | None]:
     return _decode(raw)
 
 
+def _numeric(text: str) -> float:
+    """One JSON numeric literal as a finite float, or a reset for the store.
+
+    Handed to `json.loads` as its three number hooks, which is the only place
+    these shapes can be told apart from a record this build wrote. `Infinity`
+    and `NaN` are not JSON at all — Python's decoder accepts them as an
+    extension — and an integer no float can hold is not a stamp any clock
+    produced, so a file carrying either did not come from `save`. That makes it
+    the contract's "corrupt bytes" case, dropped whole with the reset the header
+    names, rather than the malformed-*record* case beside it, which is dropped
+    on its own so one bad line cannot cost a fortnight of history.
+    """
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f"non-finite JSON number: {text[:32]}")
+    return value
+
+
 def _decode(raw: bytes) -> tuple[tuple[Observation, ...], str | None]:
     """The store's bytes as observations, or which reset they earned.
 
@@ -237,8 +341,17 @@ def _decode(raw: bytes) -> tuple[tuple[Observation, ...], str | None]:
     because the header has to name which one it was.
     """
     try:
-        data = json.loads(raw or b"null")
-    except (ValueError, RecursionError):
+        data = json.loads(
+            raw or b"null",
+            parse_float=_numeric,
+            parse_int=_numeric,
+            parse_constant=_numeric,
+        )
+    # OverflowError alongside the other two because it is the class a numeric
+    # too large for a float raises, and it was in no except tuple on this path:
+    # it escaped `load`, `Lane._open` and `Application.collect`, and a live
+    # server then answered nothing at all until the file was removed by hand.
+    except (ValueError, RecursionError, OverflowError):
         return (), RESET_UNREADABLE
     if not isinstance(data, dict):
         return (), RESET_UNREADABLE
@@ -328,10 +441,20 @@ def appended(
             continue
         latest[(observed["harness"], observed["sid"])] = observed
         fresh.append(observed)
-    if not fresh:
+    if not fresh and not any(now - e["last_activity"] > retention_sec for e in held):
+        # Nothing appended and nothing expired: the size cap cannot be newly
+        # exceeded by a store nothing was added to, so a quiet board pays one
+        # comparison per record instead of the sizing pass, and touches the file
+        # exactly never. A quiet board with expired records in it does fall
+        # through — retention used to be reachable only from a write, so a
+        # finished project or a machine left running with no active sessions kept
+        # its observations past the window, on disk and in `/api/data`.
         return held, False
     kept = evict([*held, *fresh], now=now, retention_sec=retention_sec, max_bytes=max_bytes)
-    return kept, True
+    # Compared rather than assumed: a fresh observation already outside the
+    # window leaves the file it would have been written to unchanged, and
+    # rewriting identical bytes is what the quiet-board oracle forbids.
+    return kept, kept != held
 
 
 def record(
@@ -416,14 +539,37 @@ class Lane:
         self._lock = threading.Lock()
         self._entries: tuple[Observation, ...] = ()
         self._reset: str | None = None
-        # Lazily, so building an application for `--diagnose` reads no store.
         self._opened = False
 
     def _open(self) -> None:
         if self._opened:
             return
-        self._entries, self._reset = load(self._config)
+        # Latched before the read, not after it. `load` is bounded but it was
+        # not infallible, and a read that raised left this False — so the next
+        # collection re-read the same file and raised again, and a tampered
+        # store took the board down permanently instead of being discarded once.
+        # The contract's rule is that a store which cannot be read is discarded,
+        # and that has to hold for a read that fails as well as for one that
+        # returns a reason.
         self._opened = True
+        try:
+            self._entries, self._reset = load(self._config)
+        except (OSError, ValueError, RecursionError, OverflowError):
+            self._entries, self._reset = (), RESET_UNREADABLE
+
+    def _forget_a_deleted_baseline(self) -> None:
+        """Drop the in-memory baseline when the file it was read from is gone.
+
+        `--forget` refuses while a dashboard answers on the port it names, but a
+        delete is a file operation and this baseline is a copy in memory: a
+        store removed by hand, or by a `--forget` aimed at another port, would
+        otherwise be written back whole on the next transition and the delete
+        would appear to have done nothing. Existence rather than an mtime,
+        because a removal is exactly what has to be noticed, and it is one
+        `stat` on a path this lane is about to write anyway.
+        """
+        if self._entries and not os.path.exists(store_path(self._config)):
+            self._entries = ()
 
     def record(self, rows: Iterable[Mapping[str, Any]], *, now: float) -> list[dict[str, Any]]:
         """Record this collection's transitions and return the whole history.
@@ -444,6 +590,7 @@ class Lane:
             self._open()
             if not self._config.history_enabled:
                 return []
+            self._forget_a_deleted_baseline()
             kept, changed = appended(
                 self._entries,
                 rows,

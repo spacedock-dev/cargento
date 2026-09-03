@@ -636,9 +636,13 @@ class Application:
         splitting them would put the ordering constraint in two places.
         """
         if self.history_lane is None:
-            # The behaviour that shipped before history existed: an empty series
-            # rather than a missing key, so a consumer needs no presence test.
-            return {"history": []}
+            # One shape for both ways of not recording. The key is present
+            # exactly when the store is on and a lane is attached, which is the
+            # keying `dismiss` already uses: absent means the page draws
+            # nothing, rather than an empty series a consumer has to tell apart
+            # from a board on which nothing has happened yet. No lane is
+            # `--diagnose`, and off is `--no-history`.
+            return {}
         fields: dict[str, Any] = {}
         observed = self.history_lane.record(out_sessions, now=now)
         if self.config.history_enabled:

@@ -195,7 +195,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--forget",
         action="store_true",
-        help="delete the local history store, and exit",
+        help=(
+            "delete the local history store, and exit. Refused while a "
+            "dashboard is running on --port, which would write it back"
+        ),
     )
     parser.add_argument(
         "--daemon",
@@ -259,8 +262,18 @@ def build_application(
     *,
     diagnostic_sink: Callable[[str], None] = print,
     clock: Callable[[], float] = time.time,
+    record_history: bool = True,
 ) -> aggregate.Application:
-    """One application over one config and state, with every service injected."""
+    """One application over one config and state, with every service injected.
+
+    `record_history` is the one service a caller has to think about, and only
+    one caller says no to it: `--diagnose` reports what the stores hold and must
+    not write while doing it. Attached unconditionally, one `--diagnose` into a
+    clean `CARGENTO_HOME` created a 26,086-byte store of 189 records spanning
+    13.41 days — 176 of them outside `window_hours` and unreachable from a
+    serving collection — and `--forget && --diagnose` put back the file the
+    delete had just removed.
+    """
     popup_notifier = bound_popup_notifier(config, diagnostic_sink)
     application = aggregate.Application(
         config,
@@ -271,10 +284,11 @@ def build_application(
         diagnostic_sink=diagnostic_sink,
         clock=clock,
     )
-    # Attached here rather than reached through the overlay source, which is
-    # None forever under --no-events: the store's only off switch is
-    # --no-history, so the lane must not hang off an unrelated flag.
-    application.history_lane = history.Lane(config, diagnostic_sink=diagnostic_sink)
+    if record_history:
+        # Attached here rather than reached through the overlay source, which is
+        # None forever under --no-events: the store's only off switch is
+        # --no-history, so the lane must not hang off an unrelated flag.
+        application.history_lane = history.Lane(config, diagnostic_sink=diagnostic_sink)
     return application
 
 
@@ -304,7 +318,9 @@ def run_one_shot(
     with all four.
     """
     if args.diagnose:
-        report = diagnostics.diagnose(build_application(config, state))
+        # No recording lane: diagnostics read the stores and report, and
+        # `SKILL.md` sends the reader here first whenever a harness is missing.
+        report = diagnostics.diagnose(build_application(config, state, record_history=False))
         runtime_io.diag(
             json.dumps(report, indent=2) if args.json else diagnostics.render_diagnosis(report),
             print,
@@ -317,6 +333,20 @@ def run_one_shot(
         # enabled, and it adds no route: nothing over the loopback port can
         # delete history.
         path = history.store_path(config)
+        # Refused while an instance is up, because a running dashboard holds its
+        # own baseline in memory and republishes it on the next transition: the
+        # delete reported success and every record came back. The probe is the
+        # one `--status` and `--stop` already use, so it needs neither the home
+        # the dashboard was started with nor a state file. It covers the port
+        # this invocation names and cannot see an instance on another one, which
+        # is why the lane also drops a baseline whose file has gone.
+        if lifecycle.instance_status(config, args.port)["state"] == "running":
+            runtime_io.diag(
+                f"Cargento: a dashboard is running on port {args.port} and would "
+                f"write {path} back from memory; stop it with --stop first, then --forget",
+                print,
+            )
+            return 1
         runtime_io.diag(
             f"Cargento: deleted {path}"
             if history.forget(config)
