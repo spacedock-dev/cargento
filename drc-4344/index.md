@@ -48,6 +48,17 @@ gates:
                 id: briefing:drc-4344:review:attempt-1:revision-1
                 digest: sha256:1abb513d37018af8f343f783982e6bd18593aae229c8f7c22371b70977da1a83
                 room-ref: ./review/review/briefing-1
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4344:review:1
+                briefing: briefing:drc-4344:review:attempt-1:revision-1
+                by: person:captain
+                at: "2026-09-03T23:26:50.929059Z"
+                decision: approve
+                reason: 'Captain approved the review gate on 2026-09-04 ("yes I approve, go with your recommendation"). Accepts the cycle-3 GO on 5314e09 after two correction rounds: AC-1..AC-6 reproduced, AC-4 with 0 state fields moved over 86,816 comparisons, AC-5 driven live both arms, 26 byte pins matched in both pinning files, redaction at the clip boundary proven, 13/13 checks on this head. Deferred items filed as DRC-4346, DRC-4347, DRC-4348; surface overage accepted under the standing ruling.'
+              application:
+                target-stage: done
+                state: pending
 review-round:
     id: round:drc-4344:review:2
     stage: review
