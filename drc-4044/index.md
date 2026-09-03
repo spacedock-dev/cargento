@@ -1,5 +1,5 @@
 ---
-id:
+id: drc-4044
 title: 'H1 · Keep a history of what happened'
 status: implementation
 source: https://linear.app/recce/issue/DRC-4044
@@ -40,6 +40,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+review-round:
+    id: round:drc-4044:review:1
+    stage: review
+    cycle: 1
+    briefing:
+        id: briefing:drc-4044:review:round-1:revision-1
+        digest: sha256:822089602fe06cef877f7db77adf92bedd5617bcfeffa27922ec5d5358078659
+        room-ref: ./review/review/round-1
 ---
 
 [DRC-4044](https://linear.app/recce/issue/DRC-4044) — Linear priority Medium, estimate L.
@@ -868,6 +876,8 @@ premise was wrong in the PR's favour and one where a correct 4.5-second measurem
 conclusion that did not follow.
 
 ### Feedback Cycles
+
+- Cycle 1: NO-GO — review gate, full adversarial (4 lenses, critic, 2 arbiters; 9 of 24 refuted or downgraded), 5 Material + 2 Needs-decision fixed, 2 Needs-decision ruled by the captain (bounds wired as flags; reset header scoped to PR 2 as AC12), 7 Deferred risk fixed in-PR and 1 filed as DRC-4345; surface 21 files/+2777 LOC vs estimate 15 files/+1090 (255%, overage captain-accepted 2026-09-03); AC unchanged, AC12 added for PR 2
 
 ## Out of scope
 
