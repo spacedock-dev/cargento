@@ -126,9 +126,9 @@ a finished session and one still waiting, a way to mark a session handled so it 
 and the end-of-session git probe that shipped in 0.19.
 
 Where it stops: the git probe runs one bounded, read-only, non-executing command as a session ends
-and publishes two numbers, whether the tree is dirty and how many files changed. It never publishes
-a pathname, and `--no-git` turns it off entirely. Telling a session that died from one that finished
-is not shipped yet.
+and publishes two numbers, whether the tree is dirty and how many porcelain entries changed. It
+never publishes a pathname, and `--no-git` turns it off entirely. Telling a session that died from
+one that finished is not shipped yet.
 
 ## What we do not promise yet
 
