@@ -40,7 +40,10 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 The dashboard opens on **Sessions**, a command surface with active work first and recent history
 below it. **Projects** groups the same sessions by working directory and opens a project detail with
-current activity, workflow evidence, delegation measurements, and browser-local guardrails. Select
+current activity, workflow evidence, delegation measurements, and browser-local guardrails. Its
+state-change rail and its delegation figure start from the local history the server kept, so both
+survive a restart and a fresh tab instead of beginning again, and each captions itself with the
+window it actually covers. Select
 a session from either view for its bounded detail, including its exact request, tasks, subagents,
 token measurements, and any answerable question attributed to that session.
 
@@ -147,7 +150,9 @@ The server writes five files, all under `~/.cargento` (relocatable with `CARGENT
 `cargento-<port>.json`, which records the running instance; `cargento-<port>.log`, where a
 detached server's output goes; `cargento-dismissals.json`, the sessions marked handled;
 `observer/<harness>_<sid>.json`, the sidecar an observer panel records when a reader opens one; and
-`cargento-history.json`, the history of what the server observed, kept for up to 14 days. If you
+`cargento-history.json`, the history of what the server observed, kept for up to 14 days. A store
+that cannot be read is discarded rather than repaired, the board starts empty, and the header names
+which reset it was. If you
 wire up Antigravity's status line, `statusline_hook.py` keeps one small memo per conversation in the
 same directory so a status line that fires many times a turn posts once.
 

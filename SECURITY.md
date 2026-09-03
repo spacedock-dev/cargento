@@ -352,7 +352,7 @@ What is never written to it:
 - File contents, of any file.
 
 The store may never widen the set of fields it keeps: a field that is not already published on the
-live board is not a field history may keep. The condition runs one way only — the board publishes
+live board is not a field history may keep. The condition runs one way only: the board publishes
 prompt text, which the first never-item bans outright, and a derived two-segment project label,
 which the kept-list above keeps while the never-list bans the paths it is derived from.
 

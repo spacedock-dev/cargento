@@ -89,13 +89,13 @@ mass rename; they do not indicate a second bundle.
 | `web/styles.css` | The light-root palette, system dark override, responsive layout, live-dot pulse, and reduced-motion override. |
 | `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, and fragment route grammar. It is first in `APP_PARTS`. |
 | `web/next-attention.js` | Attention evidence, stable ordering, coverage gaps, risk groups, and answerable questions. |
-| `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, delegated controls, document title, and keyboard shortcuts. |
+| `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, the stalled-refresh and history-reset notices, delegated controls, document title, and keyboard shortcuts. |
 | `web/next-sessions.js` | Active and recent session-operation tables with exact detail routes. |
 | `web/next-projects.js` | Project overview, measured task progress, current state, and explicit withholding. |
 | `web/next-project.js` | Project detail, workflow-plan merge, entity rows, empty states, and rail layout. |
 | `web/next-activity.js` | Project activity cards and completed-work list. |
 | `web/next-session.js` | Exact session detail, request attribution, measured metadata, subagents, token footer, and answer POST. |
-| `web/next-workstream.js` | The bounded in-tab observation ledger and project workstream rail. |
+| `web/next-workstream.js` | The bounded observation ledger, seeded from the published `history` field and extended by each advancing payload, and the project workstream rail. |
 | `web/next-delegation.js` | Windowed delegation percentage, token-rate aggregate, human-turn count, evidence floor, and trend gate. |
 | `web/next-controls.js` | Browser-local steer receipts and guardrail preferences. |
 | `web/next-render.js` | View dispatch, payload fetch, refresh serialization, and failure state. |

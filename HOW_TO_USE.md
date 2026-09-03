@@ -343,7 +343,7 @@ only way.
 
 Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
 it names, because a running server keeps its own copy of the history in memory and writes the
-deleted records back on its next observation — so the delete would report success and be undone a
+deleted records back on its next observation, so the delete would report success and be undone a
 few seconds later. It finds the instance with the same probe `--status` and `--stop` use, so
 `--stop` and then `--forget` is the whole procedure.
 
@@ -373,7 +373,7 @@ python3 "<skill-dir>/server.py" --history-days 3 --history-max-bytes 262144
 ```
 
 Either one alone still applies: narrowing the window drops what falls outside it, and the cap drops
-the oldest first once the file would exceed it. Neither accepts zero or a negative number — a window
+the oldest first once the file would exceed it. Neither accepts zero or a negative number: a window
 of zero days is a store that evicts everything it records, and `--no-history` is the switch for
 turning the store off. A `--daemon` respawn carries whichever of the two you moved, so a restart
 cannot widen a bound you tightened. What leaves the file is gone from it, so raising a figure back
