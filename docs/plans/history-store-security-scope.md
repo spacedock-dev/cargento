@@ -27,14 +27,17 @@ boundaries and their timings, and tool names and counts.
 
 What is never written to it:
 
-- Prompt text, of any session, at any point. The title a row shows is derived from a prompt and is
-  not history.
+- Prompt text, of any session, at any point, whatever field carries it. Not a row's title, which is
+  derived from a prompt; not `last_prompt`; and not a session's state detail, which can carry a
+  permission prompt's own text, an open question's, or a plan's first line, and which the bounded
+  record of state disputes already omits for exactly that reason.
 - Tool input, in whole or in part, including any substring of a command.
 - Paths. Neither a session's working directory nor any path a tool touched.
 - File contents, of any file.
 
-That list is the same one the board itself is held to, and the store may never widen it: a field
-that is not already published on the live board is not a field history may keep.
+The store may never widen that list: a field that is not already published on the live board is not
+a field history may keep. The condition runs one way only — the board publishes prompt text and
+project paths, and the never-list above bans both.
 
 The store lives under Cargento's own directory, next to the dismissals file, and is written the way
 that file and the state file are. It is opened owner-only with the mode in the `open` call, so it is
@@ -44,7 +47,8 @@ file and the dismissal store: Windows ignores it, and root reads it either way.
 
 Retention is 14 days by default, with a size cap, and both are configurable. Eviction is by age
 first, oldest observation dropped first, so a session that fell out of the window cannot be brought
-back by raising the cap. Retention is what bounds the store; nothing else does.
+back by raising the cap. The age window and the size cap bound the store together, and raising
+either does not stop the other applying.
 
 The store is on by default. A digest of what happened while the user was away exists only if the
 history was being kept before they left, and Cargento already writes local state on the user's
@@ -101,7 +105,8 @@ three change:
    claiming sole occupancy goes. The rest of that sentence, and everything after it about how the
    dismissals file is written, is correct as it stands and is not touched. This one is easy to miss
    because the false part is a subordinate clause rather than a heading or a count, and promoting
-   the section without it leaves SECURITY.md contradicting itself two sections apart.
+   the section without it leaves SECURITY.md contradicting itself two sections apart. The same claim
+   is shipped in two more places, listed below, and this amendment is not done until they go too.
 
 No count in Scope's network paragraph changes. The store adds no outbound request and no endpoint,
 so invariant 1 is untouched, and `--forget` adds a command rather than a route.
@@ -112,7 +117,14 @@ so invariant 1 is untouched, and `--forget` adds a command rather than a route.
   table, and `--forget` documented with the one-shot commands rather than in that table, since every
   other row there is a reversible per-run switch and this one deletes a file. Neither flag parses
   today, so neither entry may land before this PR.
-- `SKILL.md` gains a `--no-history` row in the flag table.
+- `SKILL.md` gains a `--no-history` row in the flag table, and two things already in that file change
+  with it. Its own "The server writes three files, all under `~/.cargento`" count rises to four with
+  the store enumerated — the count only, because the sentence after it names the forwarder without an
+  ordinal, unlike SECURITY.md's copy — and its `--no-dismiss` row drops the sole-occupancy claim
+  amendment 3 removes.
+- `--help` carries that sole-occupancy claim too: `--no-dismiss` calls the dismissals file the one file
+  Cargento writes on the user's behalf, in `cli.py`, so H1 amends that string alongside the other two.
+  Two docstrings repeat it as well; they are not user-facing and nothing here turns on them.
 - The contract test lands here. `tests/test_documentation.py` binds the git probe's section to the
   code by asserting both that SECURITY.md says "The off switch is `--no-git`." and that the parser
   accepts `--no-git`. The history analogue is owed by this PR and could not be written before it:
