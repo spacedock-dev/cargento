@@ -132,6 +132,30 @@ The [Session Operations Board visual walkthrough](presentations/future-ui-sessio
 - Screenshots establish hierarchy, live APIs and source establish semantic claims, adversarial fixtures test missing or conflicting data, and focused tests protect behavior. A prose assertion cannot prove runtime comprehension.
 - Check sibling worktrees before trusting failures. Run the full suite once and serialize it. Retry known load-sensitive modules alone before classifying a failure as a regression.
 
+## Captain's standing directives
+
+Given 2026-09-03, in the captain's own words where quoted. They bind the first officer's conduct in
+this workflow and override the defaults above wherever the two differ.
+
+- **When waiting on the captain, be extremely clear, concise and to the point.** A decision request
+  is one short block: what is waiting, the recommended answer, and what saying yes does. It is never
+  buried in a status report, never restated across several messages, and never mixed with things
+  that are not waiting. "It is way too easy for these to get lost."
+- **Gate approval approves everything discussed.** When the captain approves a gate, every
+  recommendation and disposition the first officer put in that presentation is approved with it —
+  finding dispositions, filings, follow-ups. Only what the captain asks to revise needs amending.
+  Do not re-ask.
+- **Small findings are fixed in the PR in flight, not filed.** A one-clause wording fix, a wrong
+  count, a stale citation: integrate it into the PR being worked, or the next one already open,
+  rather than opening a Linear issue for it. Only a finding that needs its own cycle — a contract
+  decision, a design question, work with its own acceptance criteria — becomes a Linear issue. This
+  narrows the "never promote a deferred finding" rule to findings large enough to be their own
+  cycle; a small fix is not a promotion, it is a fix.
+- **Do not wait for "yes, that's fine."** Reversible follow-through — filing the issues a review
+  produced, folding small fixes into a PR, dispatching the next stage the captain already directed —
+  happens without a confirmation round. Ask only for choices that are hard to reverse or genuinely
+  the captain's to make. "I want to get things done."
+
 ## Workflow state
 
 View the workflow with:

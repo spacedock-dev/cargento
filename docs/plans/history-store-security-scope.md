@@ -35,9 +35,10 @@ What is never written to it:
 - Paths. Neither a session's working directory nor any path a tool touched.
 - File contents, of any file.
 
-The store may never widen that list: a field that is not already published on the live board is not
-a field history may keep. The condition runs one way only — the board publishes prompt text and
-project paths, and the never-list above bans both.
+The store may never widen the set of fields it keeps: a field that is not already published on the
+live board is not a field history may keep. The condition runs one way only — the board publishes
+prompt text, which the first never-item bans outright, and a derived two-segment project label,
+which the kept-list above omits while the never-list bans the paths it is derived from.
 
 The store lives under Cargento's own directory, next to the dismissals file, and is written the way
 that file and the state file are. It is opened owner-only with the mode in the `open` call, so it is
@@ -53,7 +54,7 @@ either does not stop the other applying.
 The store is on by default. A digest of what happened while the user was away exists only if the
 history was being kept before they left, and Cargento already writes local state on the user's
 behalf by default in the dismissals file and the observer sidecar. The trust cost of that default is
-retention, and the bound above and the delete below are what answer it.
+retention, and the bounds above and the delete below are what answer it.
 
 The off switch is `--no-history`. It mirrors `--no-git` at every one of that flag's sites, including
 the branch that forwards flags to a respawned daemon, so a restart cannot re-enable a store the user
