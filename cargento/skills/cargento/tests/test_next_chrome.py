@@ -605,7 +605,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
 """,
         )
 
-        self.assertIn("1 running · 3 subagents</span>", out)
+        self.assertIn("1 running · 3 subagents running</span>", out)
         self.assertNotIn("5 subagents", out)
 
     def test_the_running_count_excludes_blocked_sessions(self) -> None:
@@ -632,7 +632,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn(
             '<span class="next-running next-live">'
             '<span class="next-status-dot" aria-label="live">●</span> '
-            "1 running · 3 subagents</span>",
+            "1 running · 3 subagents running</span>",
             out,
         )
         self.assertIn(
@@ -719,7 +719,7 @@ __fetchImpl = async () => ({ok: true, json: async () => ({
         self.assertIn(
             '<span class="next-running next-live">'
             '<span class="next-status-dot" aria-label="live">●</span> '
-            "0 running · 0 subagents</span>",
+            "0 running · 0 subagents running</span>",
             out,
         )
         self.assertNotIn('class="next-gate"', out)

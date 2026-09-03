@@ -589,6 +589,63 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("done-two", html)
         self.assertNotIn("next-live", self.subagent_row(html, 0))
 
+    def test_the_heading_never_says_none_running_over_a_running_worker(self) -> None:
+        # Review round 1 narrowed the running clause to direct children so it
+        # would agree with the state line, and left the total counting every
+        # element. One idle teammate holding one live worker then rendered
+        # "2 SUBAGENTS · NONE RUNNING" directly above a row carrying `next-live`
+        # and `aria-label="running"`, so the heading contradicted the row a
+        # screen reader announces one line down.
+        # Both numbers now name their own population: the total counts direct
+        # children, and a live worker beneath one gets its own clause rather
+        # than being folded into a count of teammates.
+        # Falsified by: restoring `subagents.length` as the total (reads
+        # "2 SUBAGENTS"), or dropping the beneath clause (leaves "NONE RUNNING"
+        # as the whole sentence above a live row).
+        html = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "parked-teammate", model: null, started_at: 9000, active: false, parent: null},
+  {name: "lens-a", model: null, started_at: 9500, active: true, parent: "parked-teammate"}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("1 SUBAGENT · NONE RUNNING · 1 WORKER RUNNING BENEATH", html)
+        self.assertNotIn("2 SUBAGENTS", html)
+        # The rows themselves are unchanged: the worker still renders, still
+        # live, still attributed. Only the sentence above them moved.
+        self.assertNotIn("next-live", self.subagent_row(html, 0))
+        self.assertIn("next-live", self.subagent_row(html, 1))
+        self.assertIn("next-session-subagent-parent", self.subagent_row(html, 1))
+
+    def test_the_heading_counts_workers_beneath_a_live_teammate_separately(self) -> None:
+        # The plural arm of the same sentence. A live teammate with two live
+        # workers used to read "1 RUNNING SUBAGENT" above three live rows; the
+        # leading clause still counts direct children only, so it agrees with
+        # `state_detail`, and the workers are stated rather than implied.
+        # Falsified by: counting workers into the leading clause, which is the
+        # defect review round 1 fixed and would reintroduce "3 RUNNING
+        # SUBAGENTS" beside "running 1 subagent".
+        html = self.render(
+            """
+nextData.sessions[0].subagents = [
+  {name: "live-teammate", model: null, started_at: 9700, active: true, parent: null},
+  {name: "lens-a", model: null, started_at: 9500, active: true, parent: "live-teammate"},
+  {name: "lens-b", model: null, started_at: 9500, active: true, parent: "live-teammate"}
+];
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+
+        self.assertIn("1 RUNNING SUBAGENT · 2 WORKERS RUNNING BENEATH", html)
+        self.assertNotIn("3 RUNNING SUBAGENTS", html)
+
     def test_subagents_keep_payload_order_and_omit_unmeasured_elapsed_time(self) -> None:
         html = self.render()
         assert isinstance(html, str)
