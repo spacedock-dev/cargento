@@ -1208,3 +1208,50 @@ runtime is not implicated and no released user is harmed, which is why it is Nee
 Material; it blocks because it is the one authorized item that cannot honestly be reported closed,
 and because it is a ten-line correction in the directory whose only value is that its figures can be
 re-derived. Everything else is GO. Nothing was edited, merged or removed.
+
+## Stage Report: implementation (correction round 2)
+
+- DONE: **the blocker** — `control_before` re-driven through the recorder against the shipped collector, `registered_members` dropped from the arm, the verdict re-derived, and `test_the_committed_verdict_is_reproduced_from_the_committed_arms` still byte-identical
+  Preferred route taken, not the annotation route: `ff8280a` extracted with `git archive` to `/tmp/drc4344-control`, served on port 4611 against the same stores, its `/api/data` payload saved and run through the real `drive_arm`. The arm's key set now equals `positive`'s exactly (asserted, not eyeballed); `registered_members` is absent from it and stays a declared measurement on the verdict. Verdict re-derived by `drive_verdict` from the three arms: `before_published` 2 → **1**, `before_with_a_measured_start` and `before_grandchildren_reachable` unchanged at 0, and both `state_detail` comparison booleans unchanged (`1 <= 1` direct children). The control's own `at` is its own re-drive stamp; the other two arms keep theirs. The re-driven control still reproduces every AC-1/AC-2/AC-3 gap it was there to establish — element keys `model, name, started_at` with no `active` and no `parent`, `published_with_a_null_start: 1`, `grandchildren: 0` — because that is a shape claim and does not rest on how many teammates were live. Server on 4611 stopped; the captain's 4553 untouched.
+- DONE: that test strengthened so it checks each arm's key set against `drive_arm`'s, not only the verdict
+  `test_every_committed_arm_carries_the_key_set_the_recorder_emits` (`scripts/tests/test_capture_team_registry.py:228`) runs `drive_arm` over the class fixture and asserts every committed arm's keys, less the envelope, equal what it emits. Asserts that no record in the file can be a hand-written arm. **Red-first proved on the real bytes**: `git show f23ab79:` the capture back into place turns it red naming `arm='control_before'` only, then restored — the reproduction test stayed green on those same bytes, which is exactly the blind spot.
+- DONE: `state_detail` re-bounded where the label is interpolated, with one test at label length 71+
+  `records.redact_clip(label, 70)` at `claude.py:789` — `redact_clip` and not a slice, for the ordering that function owns. `test_a_long_member_name_cannot_grow_the_state_line` (`test_claude.py:2762`) collects twice with names of 70 and 200 characters and asserts equal `state_detail` length, pinned at `70 + len(" has not started, waiting 5m")`. Watched fail first at the pre-fix code: **98 != 228**. The `load_team_members` comment that licensed the removal is corrected: `published_agent` bounds the element's copy, not the label.
+- DONE: `--lead` validated on `re.fullmatch` of 8 hex, the same rule `session_slot` applies
+  One shared `SESSION_PREFIX` constant now serves both, so the recorder has one rule rather than two. `test_a_lead_that_is_not_a_session_prefix_is_refused` covers a free-text note, uppercase, short, long and empty; each must exit and write nothing. Red first — the note reached three records.
+- DONE: duplicate `--arm` names refused, and declared counts parsed with a strict non-negative decimal pattern
+  `parser.error(f"--arm {name} given twice")` before the arm is built, and `declared_value` raises unless `re.fullmatch(r"[0-9]+")`. `test_a_repeated_arm_name_is_refused_rather_than_silently_replaced` and `test_a_declared_count_must_be_plain_decimal_digits` (`1_0`, ` 7`, `7 `, `+7`, `-3`, `٣`, `0x10`). Both red first: the duplicate wrote three records at exit 0, and every one of those seven values was accepted.
+- SKIPPED: "0 SUBAGENTS over a populated list" — no change, as authorized
+  Recorded as the round was asked to: unreachable because `claude.py:673` appends the teammate's own parentless entry unconditionally **before** the grandchild loop that appends at `:692`, so the list cannot hold a grandchild without holding the direct child that produced the `1`. A zero heading over a populated list therefore needs a published element with no parent row above it, which no path builds.
+- SKIPPED: the heading total counting direct children while rows show every element — not changed again this round
+  Regraded Deferred by the reviewer and promotes with DRC-4348's roster cap; the round's constraint says leave it.
+- DONE: chrome gains the singular arm so `1 subagents running` cannot render
+  `subagentLabel` beside the existing `gateLabel` in `next-chrome.js:258`. `test_a_single_running_subagent_reads_in_the_singular` asserts `1 subagent running` and refuses `1 subagents`; watched fail first on the plural-only string. The only `web/` change in the round.
+- DONE: the redaction boundary test states its own defect fully, at `lead = "x"` alongside the 60-offset case
+  `test_a_long_subagent_name_is_swept_before_it_is_bounded` (`test_contracts.py:926`) now loops both offsets. Measured why the pair is needed: at lead 60 the pre-round slice published **0** body characters but **no marker**, at lead 1 it published a **56-character run of key body** unmarked. One offset reads as truncation; the two together read as the leak.
+- DONE: byte pins recomputed from the assets in both pinning files, never resolved textually
+  Recomputed by importing `frontend_page` and hashing: exactly one part moved (`next-chrome.js` 15_883 → 15_973, +90) and the assembled page moved by the same 90 (324_669 → 324_759), consistent in both directions. Updated in `test_next_page.py` (part + assembled) and `test_next_flag.py` (assembled).
+- DONE: canonical suite run once, no Linear write, pushed without merging, surfaces declared
+  `uptime` load 3.08 at the start, so no contention re-run was owed and none of the four fragile modules went red: **1883 tests OK, 1 skipped** (1881 before, +2 from this round's dashboard tests), script tests **19 OK** in the recorder module and 205 across the seven others, `coverage report` **90.2%** against `fail_under = 73`. `ruff check`, `ruff format --check` (151 files), `mypy` (112 files), `lint_embedded`, `validate_plugins`, `bump_version --current` 0.20.0 all clean; no version field moved since the merge base; `claude plugin validate --strict` and `agy plugin validate` both pass. No Linear call was made. Pushed to `spacedock-ensign/drc-4344`; PR #261's head is now `5314e09` and nothing was merged.
+
+### Surface
+
+Round: **12 files, +246/-41, net +205** (`git diff --numstat f23ab79..5314e09`). Cumulative against the merge base: **42 files, +2899/-122, net +2777**. Two-thirds of the round is test text — 115 lines of it in `scripts/tests/test_capture_team_registry.py`, which is the price of the arm oracle and three refusal tests each covering their whole input class rather than one example.
+
+### Summary
+
+New head **`5314e09`**. The one NO-GO is closed on the route the gate preferred rather than the
+cheaper one: the control arm is now genuinely a `drive_arm` output, driven against `ff8280a` served
+from a `git archive` copy on a spare port, and the README row states what changed and when instead of
+asserting machine provenance for a record nobody ran. The reproduction test's blind spot is closed by
+an oracle that compares each arm to what the recorder emits, proved red on the exact bytes the gate
+rejected. Three inputs that reach a captured record now carry the rule `session_slot` already had,
+`state_detail` is bounded again where it publishes, and both polish items landed.
+
+Two items are deliberately unchanged and reported as such: the heading total, which the reviewer
+regraded and which promotes with DRC-4348, and the `0 SUBAGENTS` case, whose unreachability is now
+recorded with the line that makes it so. The one judgement worth the gate's attention is that the
+re-driven control counts a different board population than the two patched arms — the same stores at
+a later moment — so the verdict's before/after figures are no longer one snapshot. The README row says
+so, and what the control is there to establish is the element's shape and its null start, which no
+population changes.
