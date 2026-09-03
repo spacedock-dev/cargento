@@ -115,7 +115,15 @@ class CargentoServerTest(RuntimeTestCase):
         # from defaults anywhere downstream would discard the port, window and
         # Spacedock choices the user actually asked for.
         args = cli.build_parser().parse_args(
-            ["--port", "6789", "--window-hours", "7.5", "--no-spacedock", "--no-git"]
+            [
+                "--port",
+                "6789",
+                "--window-hours",
+                "7.5",
+                "--no-spacedock",
+                "--no-git",
+                "--no-history",
+            ]
         )
         config, state = cli.build_runtime(args, started=1234.5, launcher_path=SERVER_PATH)
 
@@ -125,6 +133,11 @@ class CargentoServerTest(RuntimeTestCase):
         # this fail (git_probe_enabled stays True) while every other assertion here
         # still passes, which is the point of asserting it separately.
         self.assertFalse(config.git_probe_enabled)
+        # `--no-history` is DEC-6's off switch, asserted separately for the same
+        # reason: dropping its build_runtime line leaves history_enabled True, so
+        # the store would go on being written for a user who turned it off, which
+        # the promoted contract calls a security bug in as many words.
+        self.assertFalse(config.history_enabled)
         self.assertIs(config, state.config)
         self.assertEqual(1234.5, state.server_started)
 
