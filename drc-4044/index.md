@@ -1152,3 +1152,170 @@ argument for this tier rather than against it.
 Findings route to `implementation` over the `feedback-to` edge with their evidence and classifications
 unchanged; nothing was fixed, re-triaged, or promoted here, and the four Needs-decision items are the
 captain's. No edit to the PR branch, no merge, no worktree or branch removed.
+
+## Stage Report: implementation (correction round 1)
+
+New head `461c605` on `spacedock-ensign/drc-4044`, pushed to PR #260 (not merged). Rejected snapshot
+was `5f73639`. **Round surface** `git diff --numstat 5f73639..HEAD`: 9 files, **+931 / −109** —
+runtime 4 files +216/−33, oracles 1 file +692/−64, docs 4 files +23/−12. **Cumulative** against merge
+base `5a156bc`: 21 files, **+2527 / −187** — runtime 7 files +832/−31, oracles 6 files +1579/−5, docs
+8 files +116/−151 (bucketed by path: `cargento_runtime/` runtime, `tests/` oracles, everything else
+docs; that rule reproduces the head figures of record to within two lines on each axis). Nothing was
+trimmed to hit a number.
+
+**Every fix was falsified before it was believed.** Seventeen mutations applied one at a time in a
+throwaway `git archive` copy at `/tmp/drc4044-mut`, never on the branch; each ran only the test class
+it targets. **All seventeen go RED.** Two went green on the first attempt and both were my fault, not
+the tests' — recorded here rather than quietly fixed: the `--diagnose` assertion was vacuous on a
+machine with no stores (no rows, so no write whatever lane is attached — fixed by seeding one
+transcript in the isolated home), and my first DR-3 mutation *added* a second `_apply_overlays` call
+instead of moving the first (the correct move-mutation is RED).
+
+- DONE: **M-1** — the `project_label` fallback stored a full home-relative path
+  `history.observation` now bounds the label through `_bounded_project`, so the store cannot hold more
+  than two segments whatever a row carries. The separator is chosen, not guessed: a `/` label came from
+  `project_from_cwd` and its own segments may contain `-`. Fixture is end-to-end through the real Claude
+  collector — a transcript with no `cwd` under a six-directory encoded name — and the row publishes
+  `repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish` while the store's bytes hold
+  `3976-finish`. Removing the bound reddens `AFallbackProjectLabelIsNotAPathTest`. **The arbiter's
+  narrowing stands: this was a retention violation, not an AC1 provenance breach** — the live board
+  publishes the identical string, and AC1's key set never changed. Applied at the derivation only, not
+  at `_entry`: no store written by a shipped build can hold a pre-fix path, since nothing has shipped.
+- DONE: **M-2** — `--forget` while a dashboard runs
+  Both halves. `cli.run_one_shot` refuses when `lifecycle.instance_status(config, args.port)` reports
+  `running`, exits 1, and names `--stop`; `Lane._forget_a_deleted_baseline` drops the in-memory
+  baseline when the store file has gone, which is what covers an instance on a port the probe cannot
+  see. Tests: the refusal keeps the file and asserts the probe was called with the port; the lane test
+  records two transitions, deletes the store out of band, and asserts one entry back rather than three.
+  Removing either half reddens `ForgetIsRefusedWhileADashboardCouldWriteItBackTest`.
+- DONE: **M-3** — `Infinity` / `NaN` / overflow in a tampered store
+  Three mechanisms, and the first is a deviation worth naming: `_decode` passes `parse_float`,
+  `parse_int` and `parse_constant` to `json.loads`, so all three shapes are **corrupt bytes** and earn
+  the reset the contract promises. The `math.isfinite` guard the disposition asked for is in `_finite`
+  and covers `observation` too (the write path has no parse hook, and `stamp <= 0` is false for NaN);
+  `OverflowError` is in `_decode`'s except tuple; `_opened` is latched **before** the read so a raising
+  `load` discards once with `RESET_UNREADABLE` instead of raising on every collection. A per-record
+  drop alone would have given no reset reason, which is why the hooks exist. Tests: three tampered
+  files each yield `((), RESET_UNREADABLE)`; the published body carries neither `Infinity` nor `NaN`
+  (the token is the oracle — Python's own decoder accepts both); a mocked raising `load` is called once
+  and both collections still serve; `--diagnose` over the overflow store exits 0. Also closes the two
+  Polish items the arbiter tied to it (AC3's ordering divergence needed a NaN input).
+- DONE: **M-4** — retention enforced only on write
+  `appended` now falls through to `evict` whenever anything has expired, not only when something was
+  appended, and reports `changed` as `kept != held` so identical bytes are never rewritten. A quiet
+  board with nothing expired pays one comparison per record and still touches the file never
+  (`AQuietBoardDoesNotGrowTheStoreTest` is unchanged and green). Test: five 100-day entries against a
+  genuinely empty board — no rows at all — leaves zero entries on disk and `[]` published. `HOME` and
+  every `STORE_ENV_VARS` path are blanked by the fixture per the arbiter's warning.
+- DONE: **M-5** — `--diagnose` wrote the store
+  `build_application` takes `record_history: bool = True` and the `--diagnose` branch passes `False`,
+  so the lane is constructed only when the caller will serve. Shape deviation, stated: moving the
+  construction to `main` outright would have made 30-odd test call sites restate a default they do not
+  care about. Tests: `--diagnose` over an isolated home holding one discoverable session leaves no
+  store, and `--forget && --diagnose` leaves none. Both would pass vacuously without the seeded
+  session, which is why it is there.
+- DONE: **ND-2** — pin the two reset-reason literals
+  `test_the_two_reset_reasons_are_the_literals_the_header_will_read` asserts `"unreadable"`,
+  `"version"` and that they differ; setting `RESET_VERSION = "unreadable"` now reddens
+  `UnreadableStoreIsDiscardedTest`, which it did not before.
+- DONE: **ND-3** — carry D3's corrected count to `SKILL.md`
+  Before: "The server writes **four** files … `cargento-dismissals.json`, the sessions marked handled;
+  and `cargento-history.json`". After: "The server writes **five** files … `cargento-dismissals.json`,
+  the sessions marked handled; `observer/<harness>_<sid>.json`, the sidecar an observer panel records
+  when a reader opens one; and `cargento-history.json`". No test pins that sentence, so no oracle
+  changed with it.
+- SKIPPED: **ND-1** — `SECURITY.md` says both bounds "are configurable"
+  HELD for the captain, per the disposition. Untouched: no knob wired, no sentence amended. No ruling
+  reached me during the round.
+- SKIPPED: **ND-4** — "the header reports the reset" has no implementer
+  HELD for the captain, per the disposition. `history_reset` is still published and still read by
+  nothing; no `web/` file was touched and no clause was amended.
+- DONE: **DR-1** — `evict` re-serialised per dropped record, and its docstring's premise was false
+  It now sizes the store from each record's own length (`_store_bytes` over an empty-envelope constant
+  plus the two `, ` bytes per join) and drops the oldest with running arithmetic, so the whole store is
+  never re-serialised in the loop. The false premise is gone and replaced with the measured reason:
+  4.505 s / 593 `json.dumps` calls on an externally compacted store, and `load` caps raw bytes while
+  `_payload` re-serialises 8.16% larger. Tests: `_store_bytes` equals `len(_payload(...))` at 0, 1, 2
+  and 17 records (setting the separator to 0 reddens it), and a 600-record store over a 2,000-byte cap
+  lands inside the cap with the newest kept while putting the next-oldest back exceeds it — which is
+  what fails if the arithmetic over-subtracts.
+- DONE: **DR-2** — the default production exit of `_apply_overlays` had no test
+  `TheDefaultProductionPathRecordsTest` attaches a real (inert) `observation.Observation` the way `cli`
+  does and asserts both the published field and the store's bytes. Mutating that exit to `return {}`
+  reddens it.
+- DONE: **DR-3** — record-before-dismissal-subtraction had no oracle
+  A dismissed session (marked through `dismissals.dismiss`) is absent from `payload["sessions"]` and
+  its transition is still in `payload["history"]`. Moving `_apply_overlays` after `_subtract_dismissed`
+  reddens it with `['working'] != []`.
+- DONE: **DR-4** — the `(harness, sid)` dedupe key was unfalsified
+  Two sessions, two collections: the store holds exactly `sid-1 working`, `sid-2 idle`, `sid-2 working`.
+  Collapsing the key to `harness` alone reddens it — and the assertion is on the tuples, not the count,
+  because the collapse both suppresses the real transition and fabricates one.
+- DONE: **DR-5** — AC4's atomicity had no oracle, and the failed-write test was vacuous
+  `test_the_store_is_written_through_a_temp_file_and_renamed` spies `os.open` and `os.replace`: exactly
+  one open, on a `.tmp` path that is not the target, and one rename of that path onto it. Writing in
+  place reddens `OwnerOnlyWriteTest`. The failed-write test's setup is fixed too — it made `state_home`
+  a regular file so `makedirs` raised before `os.open` was ever reached; it now fails at the rename,
+  which is the shape that actually leaves a temp file to clean up.
+- DONE: **DR-6** — `load`'s `except OSError` branch was dead
+  A directory at the store path yields `((), RESET_UNREADABLE)`, and a lane over one still serves the
+  collection and reports the reset. Deleting the branch reddens
+  `ADirectoryAtTheStorePathOpensEmptyTest` with `IsADirectoryError`.
+- DONE: **DR-7** — AC2's fixture never set `spacedock`
+  `SENTINELS` gains `spacedock_workflow` and `loaded_row` carries it in a first-officer `spacedock`
+  object. Routing that text into `project` reddens `NothingPromptDerivedReachesTheStoreTest`, which it
+  passed before.
+- SKIPPED: **FILE, not fix** — the predictable `<target>.<pid>.tmp` without `O_NOFOLLOW`/`O_EXCL`
+  The write primitive is unchanged: `save`'s `os.open` flags and temp path are byte-identical to
+  `5f73639`, and the FO files the issue spanning `lifecycle.write_state`, `dismissals.save` and
+  `history.save`. The new atomicity oracle asserts temp+rename and deliberately asserts nothing about
+  the flags, so it will not have to change when that issue lands.
+- DONE: **Polish taken** — six, all in files this round already opened
+  `evict`'s docstring (with DR-1); `config.py`'s byte figures, re-measured here rather than inherited
+  — 1 MiB holds **7,825** observations at the **132** bytes a Claude record takes over this machine's
+  real board of 2,713 rows, or **6,853** at **151** bytes for Codex (the review's 8,594/122 did not
+  reproduce; its Codex fit of 6,853 did, exactly); the payload-key asymmetry, resolved to one shape —
+  the key is present exactly when the store is on and a lane is attached, which is `dismiss`'s keying,
+  with the comment rewritten and its test flipped to `assertNotIn`; `Lane.__init__`'s `--diagnose`
+  comment deleted, moot after M-5; and both `SECURITY.md` seams — amendment 2's sentence moved to the
+  end of Scope invariant 2 where the merged contract put it, and the D5-amended paragraph rewrapped.
+- DONE: **Polish declined** — four, one line each
+  The kept-list wording: inherited verbatim from approved plan-doc prose, and the arbiter's own reading
+  ("What is kept is…" as description) makes it correct as it stands. `FIELD_CAP_CHARS` self-pin:
+  refuted. The `sid`/`project` write-path cap: materiality refuted — `io.read_first_json` bounds every
+  cited collector at 200,000 bytes against the 1,044,998 chars needed. The owner-only test-name
+  assertion: established practice at `test_events_ingress.py:313`, and the mode is now spied at
+  `os.open` anyway.
+- DONE: Constraints on the round, each checked
+  No file under `cargento_runtime/web/` (the round's 9 files are listed above); no version field moved
+  (`git diff` over `*plugin.json`, `*marketplace.json`, `*gemini-extension.json` since the merge base
+  is empty, and `bump_version.py --current` reports 0.20.0); no Linear write of any kind;
+  `history.py` still contains no quoted literal `"git"` (`grep -c '"git"'` → 0).
+- DONE: the canonical suite re-run once, at a load average this machine could be trusted at
+  `uptime` first: **4.34** at the start and 5.81 at the last run, never near the 20 the lenses left
+  behind, so no red had to be re-run alone and none appeared. `ruff check` clean, `ruff format --check`
+  149 files, `mypy --strict` clean over 110 files, `lint_embedded` clean, `validate_plugins` OK,
+  **1,847 tests OK (1 skipped) in 33.6 s**, script tests 190 OK, `coverage report` exit 0 at **90.4%**
+  against a `fail_under` of 73, `claude plugin validate --strict` passed. The suite was run twice in
+  total: once before a one-token tidy (`float(stamp)` → `stamp`, already a float) and once after.
+- DONE: CI read on the new head, and the head it belongs to checked
+  All **twelve** required checks `success` on `461c605` and every check-run queried by that SHA
+  belongs to it, not to a superseded head: `quality-gate`, `validate`, `version-guard`, `Detect what
+  the gate can measure`, Lint, `Type check (mypy --strict)`, `Runtime floor (Python 3.11)`,
+  `Tests + coverage threshold`, `latest-client-smoke`, and platform-tests on ubuntu, macOS and
+  Windows. `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`. Pushed, not merged.
+- DONE: two existing tests made machine-independent rather than left to pass by luck
+  `ForgetIsACommandAndNotARouteTest`'s two `--forget` tests now patch `lifecycle.instance_status` to
+  report nothing on the port. Without that they fail on any machine with a dashboard on 4553 — this one
+  has, so M-2 would have shipped a suite that passes only where no Cargento is running.
+
+### Summary
+
+All five Material findings, both FO-authorized Needs-decision items, DR-1's mechanism and all six
+deferred test gaps are fixed on `461c605`; ND-1 and ND-4 are untouched and still the captain's, and the
+tmp-path hardening is left for the FO's issue with the write primitive byte-identical. The round is
++931/−109 over nine files, two thirds of it the oracles: seventeen mutations, seventeen reds, including
+the six the review filed as unfalsifiable and the two shapes of tampered numeric that used to take the
+whole board down. Three figures were re-measured rather than inherited — the record's byte size, the
+1 MiB fit, and the store's own size arithmetic against the bytes `save` writes — and the one that did
+not reproduce is reported as it measured here rather than as the review had it.
