@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4344:review:attempt-1:revision-1",
+  "question": "Authorize the merge of PR #261 (DRC-4344: a dispatched teammate shows its work, not just its name — measured start, liveness, its own workers attributed, quiet members kept visible; the lead's own workers window-gated too) at head 5314e09 after two correction rounds and a cycle-3 GO with no new finding?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4344:review:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/b2e12cd087f5219bd68a229f20108bb5a66bf931/drc-4344/index.md",
+      "rev": "sha256:86918e6c2a30e0ab13513c432e627b6f8ac1323d27505591d5df5a54b92a70bb",
+      "mediaType": "text/markdown",
+      "summary": "Cycle-3 review GO on 5314e09: all eight round-2 items closed at the SHA, five re-falsified in throwaway copies including the cycle-2 blocker (arm-key-set oracle red on the rejected bytes, green at head); AC-1..AC-6 reproduced from their clauses, AC-4 as 86,816 base-vs-head comparisons with 0 state fields moved while the roster grew 0 to 49, AC-5 both arms driven live off the reviewer's own worker with the shipped JS rendering the three-population heading; 26 byte pins recomputed in both pinning files; redaction at the clip boundary red four ways at base; CI 13/13 on this head with every measurable job run, CLEAN, Copilot absent. Deferred and filed: heading total vs rows (with DRC-4348), grandchild liveness (DRC-4346), nested pane teammates (DRC-4347). Surface cumulative +2777 over 42 files, overage accepted under the captain's standing ruling."
+    }
+  ]
+}

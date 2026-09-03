@@ -40,6 +40,14 @@ gates:
               application:
                 target-stage: implementation
                 state: consumed
+        - id: gate:drc-4344:review
+          stage: review
+          attempts:
+            - id: gate-attempt:drc-4344-review-1
+              briefing:
+                id: briefing:drc-4344:review:attempt-1:revision-1
+                digest: sha256:1abb513d37018af8f343f783982e6bd18593aae229c8f7c22371b70977da1a83
+                room-ref: ./review/review/briefing-1
 review-round:
     id: round:drc-4344:review:2
     stage: review
