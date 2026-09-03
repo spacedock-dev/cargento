@@ -1,7 +1,7 @@
 ---
 id:
 title: 'H1 · Keep a history of what happened'
-status: review
+status: implementation
 source: https://linear.app/recce/issue/DRC-4044
 started: 2026-09-03T07:17:13Z
 completed:
