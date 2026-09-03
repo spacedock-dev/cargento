@@ -640,3 +640,64 @@ class ForgetIsACommandAndNotARouteTest(HistoryStoreTestCase):
         source = Path(http_api.__file__).read_text(encoding="utf-8")
         self.assertNotIn(history.STORE_FILENAME, source)
         self.assertNotIn("/api/history", source)
+
+
+class ATamperedStoreCannotReorderTheBoardTest(HistoryStoreTestCase):
+    """The store is a file any local process could have replaced, and its four
+    strings reach the DOM through `/api/data`.
+
+    The write path is safe by construction: every value comes off a row that has
+    already been through `records.safe_text`. The read-back path is not, which is
+    why `dismissals.py` bounds its own two strings on the way in and cites the
+    same reason. This is that check, one store over.
+    """
+
+    def write_store(self, entry: dict[str, Any]) -> None:
+        with open(os.path.join(self.state_home, history.STORE_FILENAME), "w") as handle:
+            json.dump({"v": history.SCHEMA_VERSION, "entries": [entry]}, handle)
+
+    def base(self, **changes: Any) -> dict[str, Any]:
+        entry = {
+            "harness": "claude",
+            "sid": "sid-1",
+            "project": "p/q",
+            "state": "working",
+            "last_activity": 1_000.0,
+        }
+        entry.update(changes)
+        return entry
+
+    def test_a_bidi_override_in_a_project_label_is_stripped(self) -> None:
+        # U+202E reorders how everything after it renders, so a stored label
+        # could make a row read as something it does not say.
+        self.write_store(self.base(project="safe\u202egnop.exe"))
+        entries, reset = history.load(self.config())
+        self.assertIsNone(reset)
+        self.assertNotIn("\u202e", entries[0]["project"])
+
+    def test_control_characters_are_stripped_from_every_stored_string(self) -> None:
+        self.write_store(
+            self.base(harness="cla\x00ude", sid="s\x1bid", project="p\x7fq", state="wor\nking")
+        )
+        entries, _ = history.load(self.config())
+        stored = entries[0]
+        for field in ("harness", "sid", "project", "state"):
+            with self.subTest(field=field):
+                self.assertFalse(
+                    any(ord(c) < 0x20 or ord(c) == 0x7F for c in str(stored[field])),
+                    f"{field} kept a control character",
+                )
+
+    def test_an_overlong_stored_string_is_bounded(self) -> None:
+        self.write_store(self.base(project="x" * 5_000))
+        entries, _ = history.load(self.config())
+        self.assertEqual(history.FIELD_CAP_CHARS, len(entries[0]["project"]))
+
+    def test_the_zero_width_joiners_that_compose_an_emoji_survive(self) -> None:
+        # ZWJ and ZWNJ cannot reorder text, and stripping them would break a
+        # project label in Persian or several Indic scripts. Same carve-out
+        # `records` makes, asserted here so an inlined table cannot drift into
+        # the stricter range.
+        self.write_store(self.base(project="a\u200cb\u200dc"))
+        entries, _ = history.load(self.config())
+        self.assertEqual("a\u200cb\u200dc", entries[0]["project"])

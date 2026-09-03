@@ -28,6 +28,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import threading
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
@@ -45,6 +46,23 @@ if TYPE_CHECKING:
 SCHEMA_VERSION: Final = 1
 
 STORE_FILENAME: Final = "cargento-history.json"
+
+# What a stored string may occupy. The identity fields are far shorter than this
+# (Claude publishes an 8-character sid, the longest harness key is 11) and the
+# project label is capped at two segments by the collector that derives it, so
+# this is a ceiling on a tampered file rather than a bound any real value meets.
+FIELD_CAP_CHARS: Final = 256
+
+# C0 and DEL, the zero-width space, the two directional marks, and the bidi
+# embedding and isolate ranges, mirroring `records._UNSAFE_CHARS`. Inlined
+# rather than imported because this module imports `config` and nothing else,
+# and the reason it is here at all is that these four strings reach the DOM
+# through `/api/data`: this file is one any local process could have replaced,
+# and a bidi mark in a project label reorders how the row renders around it. The
+# credential redaction `records.safe_text` also does is not repeated, and does
+# not need to be — every value written here came off a row that had already been
+# through it, so the only strings this guards are an attacker's own.
+_UNSAFE_CHARS = re.compile("[\x00-\x1f\x7f\u200b\u200e\u200f\u202a-\u202e\u2066-\u2069]+")
 
 # Why the store reports which reset it was: a corruption reset may be the user's
 # disk, a version reset is ours, and one message for both hides the difference.
@@ -118,6 +136,11 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
     }
 
 
+def _text(value: Any) -> str:
+    """One stored string, stripped of reordering characters and bounded."""
+    return _UNSAFE_CHARS.sub(" ", str(value))[:FIELD_CAP_CHARS]
+
+
 def _entry(value: Any) -> Observation | None:
     """One untrusted record as an observation, or nothing.
 
@@ -137,10 +160,10 @@ def _entry(value: Any) -> Observation | None:
     if not isinstance(stamp, (int, float)) or isinstance(stamp, bool):
         return None
     return {
-        "harness": str(harness),
-        "sid": str(sid),
-        "project": project,
-        "state": str(state),
+        "harness": _text(harness),
+        "sid": _text(sid),
+        "project": _text(project),
+        "state": _text(state),
         "last_activity": float(stamp),
     }
 
