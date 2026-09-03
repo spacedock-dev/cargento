@@ -431,6 +431,23 @@ yet" and self-verify — but something does call it. H1 promotes this text verba
 security policy, so a defect here is a security-document defect on a delay fuse. The diff is small;
 the leverage is not.
 
+**Chosen at review, 2026-09-03: accepted as recommended — two lenses plus an arbiter, stated before
+the review started.** The diff property that decided it is not the size (one file, 127 lines, no
+code) but the destination: the document's own lines 7-8 instruct H1 to promote the section
+"unchanged", so every sentence inside the `---` fences at lines 16 and 79 is a draft of published
+security policy, and the entity's own tolerance section already named that as the whole risk here.
+The Calibrating Effort row "no user-visible behaviour change and nothing calls it yet" was overruled
+on the second half: H1 calls it. The row actually used is "anything else — two lenses plus an
+arbiter".
+
+Two lenses, dispatched in parallel and told to refute by default, each given one question:
+DEC-6 fidelity and scope width against the ruling's verbatim text (lens A), and every
+outward-pointing citation against the tree at `900b51c` plus an exhaustive hunt for a further
+`SECURITY.md` sentence the store falsifies (lens B). They returned 6 and 9 findings, 15 in all. I
+arbitrated by reproducing every one myself rather than ranking them: 5 survived as proposed
+Material, 3 as Deferred risk, 3 as Polish, and 4 were refuted — including lens A's two strongest,
+which were correct readings attached to the wrong conclusion.
+
 ### Feedback Cycles
 
 ## Out of scope
@@ -610,3 +627,308 @@ hrefs in the milestone, reported and left alone. The deliverable is one 127-line
 promotion contract H1 executes and the `SECURITY.md` sentences the store falsifies. Reviewing it
 before opening the PR found a third such sentence triage had missed, in Dismissals, which is the
 AC-4 failure mode caught rather than shipped. PR #258 is open at `c46f045` and waits for review.
+
+## Stage Report: review
+
+- DONE: Review depth chosen from the property of the diff and stated up front: one 127-line file
+  under `docs/plans/` that H1's PR will promote verbatim into the published security policy; triage
+  recommended two lenses plus an arbiter, and the report says whether that is accepted or overruled
+  and why; then AC-1 through AC-7 each reproduced from its own `Verified by:` clause against PR
+  #258's head rather than trusted from the implementation report — AC-7 is interactive, so read the
+  document against `git show 701b7f0:docs/plans/git-probe-security-scope.md` and
+  `git show 7134a01:docs/plans/quota-fetch-security-scope.md` and say whether all seven DEC-6
+  (DRC-4234) elements are present and bounded, and whether anything in it is wider than DEC-6
+  allowed.
+  Depth accepted as recommended and recorded under `## Review depth` above, before the review
+  started. Seven ACs reproduced below, each from its own clause and several from their `Falsified
+  by:` clause as well. DEC-6 read verbatim from DRC-4234 rather than through the entity: all seven
+  elements are present, and nothing in the document is wider than the ruling in the hard sense — no
+  permission, default, retention window, network posture or capability exceeds it, and the
+  on-by-default rationale and the four-item never-list are DEC-6's own words. Where it drifts it
+  drifts into DEC-6's silences, and one such drift is a false statement about the shipped board.
+- DONE: CI read on the current head `c46f045`: the `changes` job's `code` output, `validate` and
+  `version-guard` results, and whether the measurable jobs were skipped by the filter or by an
+  upstream failure; `mergeStateStatus` and the head the checks belong to; Copilot inline review
+  comments read in addition to top-level reviews; and the DRC-4330 body as it stands in Linear
+  compared against the approved draft under `## Linear edits made` on this entity, since approved
+  prose is immutable and the read-back is the check.
+  All three runs belong to `c46f0455fad90910898239a87274d92bd04a50a1` and none predates it;
+  `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE` (implementation reported `BLOCKED`, which was
+  the pre-check state). Detail below.
+- DONE: A GO or NO-GO verdict with the findings that produced it under their disposition labels,
+  written as `## Stage Report: review` with every evidence line on its own line — with no edit to
+  the PR branch, no merge, and no worktree or branch removed: the captain's gate authorizes the
+  merge and the FO runs the ceremony.
+  Verdict **NO-GO**, on M1 and M2. `git status --porcelain` in the worktree is empty and HEAD is
+  still `c46f045`; nothing was merged, no worktree or branch removed. Adversarial work ran in three
+  `git archive` copies under `/tmp/drc4330rev/`, never in the candidate tree.
+
+### CI and PR state, on the current head
+
+- Head `c46f045`, base `main` at `900b51c`, one file, `127 0 docs/plans/history-store-security-scope.md`.
+- `changes` ("Detect what the gate can measure") **success**, and its log emits `code=false` with
+  "Every changed path is prose the gate cannot measure."
+- The five measurable jobs are `skipped` **by the filter, not by an upstream failure**: the detector
+  itself succeeded, and the aggregator's own log shows it accepting `skipped` only under
+  `CODE: false` (`R_LINT`/`R_TYPECHECK`/`R_FLOOR`/`R_TEST`/`R_PLATFORM: skipped`, `R_CHANGES: success`).
+- `validate` **pass** (36s), `version-guard` **pass** (5s), `quality-gate` **pass**.
+- **Copilot: no inline comments, and no review of any kind.** `pulls/258/comments` is length 0,
+  `pulls/258/reviews` is empty, `reviewRequests` is empty. This is the repository's normal state
+  rather than an omission on this PR — PRs #257, #256 and #253 each carry zero reviews and zero
+  inline comments. Nothing was merged past an unread inline finding; there is no Copilot pass to
+  read unless the FO requests one.
+- **Linear read-back: byte-identical to the approved draft.** The live DRC-4330 description diffed
+  against the `## Linear edits made` draft by `difflib` after normalizing away the three `<issue …>`
+  mention wrappers: identical, 3661 characters both sides. Relations are `blocks: DRC-4044`,
+  `blockedBy: []` — no blocking edge appeared, so the hazard triage flagged did not fire. The
+  milestone's `What remains` line carries the drafted correction and the `Waits on` near-miss line
+  is untouched.
+- Two live-state notes the implementation report predates, neither a finding: the Linear workflow
+  status is now `Ready for Review`, not `Todo` — `stateHistory` puts the transition at
+  2026-09-03T04:00:20Z, the moment PR #258 was attached, so it is the GitHub integration rather than
+  an unauthorized write; and `docs/plans/` holds two other tracked files, as the report itself
+  corrected.
+
+### Acceptance criteria, reproduced
+
+- **AC-1 — one new file, detector agrees prose-only. PASS.** `git diff --name-only` over the
+  merge-base range returns exactly `docs/plans/history-store-security-scope.md`; `code=false` read
+  from the `changes` job log, not inferred; five jobs `skipped` with the aggregator confirming the
+  filter as the cause. The `Falsified by:` half checked too: no test names this path, while
+  `test_documentation.py:208` names `docs/plans/event-driven-session-observation.md`, so the deny
+  list is genuinely per-path rather than a blanket pass for `docs/plans/`.
+- **AC-2 — link- and anchor-clean. PASS, with negative controls.** `python3 scripts/validate_plugins.py`
+  exit 0 in the worktree. Exit 0 alone proves nothing, so both `Falsified by:` clauses were driven
+  in a throwaway `git archive` copy: appending `[broken](./no-such-file.md)` produces
+  "docs/plans/history-store-security-scope.md: Markdown link target does not exist" and exit 1, and
+  appending `http://localhost:4553` produces "contains 'http://localhost:4553'" and exit 1. The
+  validator does reach this file. The document contains no inline links at all, so it can be
+  promoted without rewriting.
+- **AC-3 — permitted fields have live producers; never-list is DEC-6's. PASS on both halves, but see
+  M1 and M2.** Producers confirmed: session identity `sessions.py:262-265`, state and detail
+  `:288-289`, `project` `:265`; gate open and close `events.py:676` (set) and `:660`/`:693`
+  (cleared); turn boundaries and timings `turns.py:90-113`; tool names `sessions.py:447` and
+  `claude_data.py:353` plus four `transcripts.py` collectors. Never-list is DEC-6's four items, in
+  DEC-6's order, nothing added or dropped — read against the ruling's verbatim text. The
+  implementation's own disclosure stands: `turns.py:289` is the `tool_names` state-dict entry, and
+  `turns.py:35` is an internal `tool_id → name` map whose publish sites are `turns.py:377` and
+  `sessions.py:447`. Wrong sites, right claims.
+- **AC-4 — names every `SECURITY.md` sentence the store makes false. PASS.** All three quoted
+  strings exist verbatim: `SECURITY.md:261` "The server writes three files, all under `~/.cargento`",
+  `:265` "One forwarder writes a fourth", `:35` "Read-only against harness stores.", `:294`
+  "Marking a session handled writes one file, and it is the only thing Cargento writes on your
+  behalf". Invariant 2's enumeration counted independently and matches the document's paraphrase
+  exactly: seven mutating endpoints, six in memory, one `POST` to disk, one forwarder, one `GET`
+  sidecar. Amendment 1's arithmetic is right — bumping `:261` without `:265` really would leave two
+  files called the fourth. **Is there a fourth inside `SECURITY.md`? No.** An independent sweep for
+  count claims, "writes" claims, network-posture claims and restart/retention claims found only the
+  three the document names; `:320` and `:33` survive the store unchanged. The document's own scope
+  hedge is "elsewhere in `SECURITY.md`", and within that scope it is complete. M3 and M4 are outside
+  it.
+- **AC-5 — off switch reaches the respawn path; `--forget` is one-shot. PASS.** Every occurrence of
+  the flag in runtime code is exactly three — `cli.py:130` (declaration), `cli.py:213`
+  (`git_probe_enabled=not args.no_git`), `lifecycle.py:558-559` (`if args.no_git:
+  argv.append("--no-git")`, beside six sibling flags) — so "mirrors `--no-git` at every one of that
+  flag's sites" is accurate, and it is the sentence pattern `SECURITY.md:173` already uses for
+  `--no-spacedock`. `--forget`'s placement is checkable: `--stop` and `--status` are real one-shot
+  commands at `cli.py:168` and `:173`, and all six rows of the `HOW_TO_USE.md` off-switch table
+  (`:339-344`) are reversible per-run switches, so the document's reason for keeping it out of that
+  table holds.
+- **AC-6 — nothing states a flag, path or promise that does not exist. PASS.** The diff touches
+  neither `HOW_TO_USE.md`, `SECURITY.md` nor `docs/promise-map.md`. Re-run at `c46f045`:
+  `parse_args(['--no-history'])` and `parse_args(['--forget'])` both exit 2 with "unrecognized
+  arguments", while `--no-git` exits 0 — so the parser is answering, not erroring for another
+  reason. `test_documentation` 14 tests OK; it reads `SECURITY.md` by literal path and pins "The off
+  switch is `--no-git`." (`test_documentation.py:259-261`), so an edit to that file's git-probe
+  clauses is what turns it red, which is what makes the pass evidence this PR left it alone.
+- **AC-7 — reads as a contract, at the precedents' length, buildable by a stranger. PASS on shape,
+  FAIL on the last clause; this is where M1 and M2 land.** Read against both precedents at their
+  own commits. Shape is precedent-faithful to the sentence pattern: the same opening formula, the
+  same "The section, verbatim" fence, the same "A violation of any boundary in this section is a
+  security bug:" closing enumeration, the same "Intro amendments that ride with the promotion" and
+  "What else the build PR does with this file". 127 lines against 102 and 84 — above the git probe,
+  as the entity predicted, and inside 130 ± 30. It bounds rather than argues: the one rationale
+  paragraph (49-52) is DEC-6's own recorded reasoning reproduced almost verbatim, and the quota
+  precedent carries a comparable "Consent and the off switch" paragraph, so it is in keeping. All
+  seven DEC-6 elements are present. **What a stranger could not settle from it alone** is whether
+  the published `state_detail` may be kept (M2) and whether the size cap triggers eviction (M5),
+  and one sentence they would rely on is false (M1).
+
+### Review-finding disposition
+
+Five proposed **Material**, three **Deferred risk**, three **Polish**, four refuted. Every finding
+below was reproduced by me against the tree at `c46f045`, not accepted from the lens that raised it.
+Materiality is proposed, not authorized: this is an `actor:ensign` round and its resolution is
+advisory. No fix was made and no candidate byte changed.
+
+**M1 — Material — the section asserts a set equality that `SECURITY.md` itself contradicts.**
+Released user and normal workflow: a reader of the published security policy, from the day H1
+promotes the section; today only H1's builder and reviewer reach it.
+Observable harm: line 36 says of the four-item never-list "That list is the same one the board
+itself is held to". The board is held to a strictly looser list. `SECURITY.md:382-383` — "The
+dashboard reads those stores and publishes prompt text: the session title, the line beneath it,
+`last_prompt`, the observer goal, and a Codex title". `SECURITY.md:440` — "Reading `/api/data` is
+the whole board: every session's titles, prompts and project paths". Promoted verbatim, `SECURITY.md`
+would deny at one section what it asserts at two others — the "contradicting itself two sections
+apart" failure amendment 3 was written to prevent, this time inside the fenced section rather than
+the intro.
+Affected value AC or boundary: `value-ac[AC-7]` — a stranger cannot build a boundary from a document
+whose framing sentence is false; and `contract[SECURITY.md#published-text-credential-redaction]`,
+which exists because the board publishes prompt text.
+Trigger evidence: doc line 36 read against `SECURITY.md:382-383` and `:440`, both quoted above. The
+operative second half of the sentence ("a field that is not already published on the live board is
+not a field history may keep") is a sound necessary condition and survives; it is the first clause
+that is wrong. Raised by lens B, reproduced independently.
+
+**M2 — Material — the contract does not exclude `state_detail`, and its own rule points at keeping it.**
+Released user and normal workflow: a user whose board showed a permission prompt, after H1 ships a
+store that keeps 14 days of it.
+Observable harm: `state_detail` is a published snapshot field (`sessions.py:289`), and
+`SECURITY.md:289-290` says plainly that "a state detail can carry a permission prompt's own text, an
+open question's, or a plan's first line" — which is why the dismissals record leaves the title and
+the state detail "deliberately absent". The history store is the closest analogue to that record and
+the document's never-list does not exclude either field, while its line 24 rule ("holds nothing the
+live snapshot does not already serve") plus M1's false set-equality reads as a licence to keep
+anything published. If H1 keeps it, `SECURITY.md:410-411` — "The fourth thing carrying this text is
+a file: the observer sidecar" — becomes false, and the store is the first durable, rolling home for
+that text rather than one file per session.
+Affected value AC or boundary: `contract[SECURITY.md#published-text-credential-redaction]`, the
+section that exists because this text can carry a live credential — `SECURITY.md:384-385` records
+seven distinct live Anthropic credentials found in ordinary local prompt history.
+Trigger evidence: `sessions.py:289` against doc lines 24-26 and 30-34. The fix stays inside AC-3's
+"exactly DEC-6's" letter if it is written as an elaboration of never-item 1 rather than a fifth item,
+exactly as that list already elaborates "tool input" and "paths". Raised by lens B, reproduced
+independently.
+
+**M3 — Material — the "three files" count also lives in `SKILL.md`, and the document does not name it.**
+Released user and normal workflow: anyone reading the shipped skill body after H1 lands.
+Observable harm: `SKILL.md:146` — "The server writes three files, all under `~/.cargento`" — with
+the same enumeration. The day the store ships, `SKILL.md` says three and the amended `SECURITY.md`
+says four. Doc line 115 states `SKILL.md`'s whole obligation as one `--no-history` flag row, so the
+miss is caused by an exhaustive-sounding sentence rather than by silence.
+Affected value AC or boundary: `contract[cargento/skills/cargento/SKILL.md#start]` — the shipped
+product surface, a validated artifact per `AGENTS.md`'s documentation table.
+Trigger evidence: `SKILL.md:146-150` quoted against doc line 115. Its forwarder sentence carries no
+ordinal, so only the count needs bumping there. Raised by lens B, reproduced independently.
+
+**M4 — Material — the sole-occupancy clause amendment 3 removes lives at four further sites.**
+Released user and normal workflow: a user reading `--help`, or the shipped skill body, after H1 lands.
+Observable harm: the claim that the dismissals file is the only thing Cargento writes on the user's
+behalf also sits at `SKILL.md:295` ("The rollback switch for the one file Cargento writes on your
+behalf.") and, as user-facing output rather than a comment, at `cli.py:144` inside `--no-dismiss`'s
+help text. A repository-wide grep finds five sites in all; the document names one. Amendment 3's own
+rationale — "easy to miss because the false part is a subordinate clause rather than a heading or a
+count" — applies word for word to the sites it missed.
+Affected value AC or boundary: `contract[cargento/skills/cargento/SKILL.md#options]` for the skill
+row, and the `--help` string as shipped program output.
+Trigger evidence: `grep -rn 'on your behalf'` over the tree at `c46f045` returns `SECURITY.md:294`,
+`SKILL.md:295`, `cli.py:144`, `dismissals.py:3` and `tests/test_dismissals.py:1`. Raised by lens B
+for three sites; the two docstrings are mine and are Polish, below.
+
+**M5 — Material — line 47 denies the size cap two lines after requiring it.**
+Released user and normal workflow: a reader of the promoted policy; and H1's reviewer, who will read
+it against H1's own acceptance criteria.
+Observable harm: line 45 states "Retention is 14 days by default, with a size cap, and both are
+configurable", and line 47 then states "Retention is what bounds the store; nothing else does".
+DEC-6's own words are "Retention is 14 days by default with a size cap, both configurable, evicted
+by age first", and H1's acceptance criteria say "Records older than the retention bound, **or beyond
+the size cap**, are evicted oldest first". Line 47 read literally denies the bound H1 must
+implement, while lines 74-75 simultaneously call "an unbounded store" a security bug.
+Affected value AC or boundary: `value-ac[AC-7]` — the retention element is present but not cleanly
+bounded, which is the second thing a stranger could not settle from the document alone.
+Trigger evidence: doc lines 45-47 read against DEC-6's ruling paragraph on DRC-4234 and H1's
+acceptance-criteria paragraph on DRC-4044, both fetched live. The clause is the document's own
+addition; DEC-6 does not contain it. Raised by lens A, reproduced independently.
+
+**D1 — Deferred risk — the discard trigger gains a case DEC-6 does not name.**
+Line 65 lists "a version the running build does not understand" among the discard triggers. DEC-6
+says only "A corrupt store starts empty and the board says so", and H1 says "a corrupt or unreadable
+store is discarded". DEC-6 does not forbid it, so this is silence resolved permissively rather than a
+boundary breached, but it licenses discarding an intact, readable store on any format bump.
+Promote-to-material condition: H1 ships a version-mismatch discard path that loses a readable store
+without the header reporting it.
+
+**D2 — Deferred risk — "adds no endpoint" is promoted as a security boundary DEC-6 never imposed.**
+Doc lines 62, 70 and 76 make the absence of any new route a violation criterion ("a history file
+reachable over the port"). DEC-6 says only "Nothing in it leaves the machine." D10 (DRC-4033), the
+away-digest, is the dependent this store exists for, and a loopback route serving a digest would then
+be a documented security violation rather than a design choice. The narrowing is in keeping with the
+git-probe precedent's own "There is no fallback to a plain `git status`", so it is probably the right
+posture — it should be intentional. Promote-to-material condition: D10's design needs a route this
+clause forbids. File against D10.
+
+**D3 — Deferred risk — two pre-existing `SECURITY.md` counts are already loose, and one survives the
+mechanical amendment.**
+`SECURITY.md:261`'s "three files" omits the observer sidecar the same document says the server writes
+under `~/.cargento` (`:50-51`, `:411-412`) while counting the equally per-conversation status-line
+memo as "a fourth". And `SECURITY.md:441` says "the seven POST routes" where there are eight —
+`/api/events/<harness>` at `http_api.py:845` plus the seven-entry table at `:852-858` — because it
+borrows invariant 2's seven-mutating figure, which excludes `/api/shutdown`, and then names
+`/api/shutdown` as one of them. Counted independently. Neither is falsified by the store, and doc
+lines 106-107's "No count in Scope's network paragraph changes" is correct. File separately rather
+than promoting into this PR.
+
+**P1 — Polish — "is not history" is softer than the bullet around it.**
+Doc lines 30-31: "Prompt text, of any session, at any point. The title a row shows is derived from a
+prompt and is not history." The bullet sits under the heading "What is never written to it:", so its
+plain force is exclusion and lens A's reading of it as a licence does not survive. But "is not
+history" is the one exclusion in the list phrased as a category claim rather than as a write ban,
+and it is a sentence an implementer under pressure would reach for.
+
+**P2 — Polish — the sole-occupancy claim also sits in two docstrings.**
+`dismissals.py:3` ("The one thing Cargento writes on the reader's behalf") and
+`tests/test_dismissals.py:1`. Cosmetic rather than user-facing, unlike M4's three sites.
+
+**P3 — Polish — three citation audits, all wrong site and right claim.**
+`turns.py:289` is the `tool_names` state-dict entry rather than the turn-boundary producer at
+`:90-113`; `turns.py:35` is an internal `tool_id → name` map whose only reader is `:46`, with the
+publish sites at `turns.py:377` and `sessions.py:447`; `sessions.py:264` is `"harness"` rather than
+the session id at `:263`, though harness is half the session key. None of the three claims fails —
+each holds at a different line. The first was already disclosed by implementation.
+
+**Refuted — four, including both of lens A's strongest.**
+R1: that the allow-list omits the `project` label H1's interactive rail criterion needs, so H1 must
+either store a forbidden field or fail its own AC. Refuted: `SECURITY.md:166` and `:485-486` already
+draw exactly this line — raw `cwd` is "a matching hint" and "never echoed to `/api/data`", while the
+two-segment `project_from_cwd` label at `sessions.py:265` is published and `:440` says so. Storing
+the published label is not storing a path. What survives is M1: the reason a reader could reach the
+wrong answer is the false set-equality, not a missing field.
+R2: that the one-directional content rule at lines 36-37 is itself a defect for dropping the
+allow-list's closure. Refuted as a separate finding — the necessary-condition form is correct; it is
+the clause beside it that is false, which is M1.
+R3: that "mirrors `--no-git` at every one of that flag's sites" overstates the evidence. Refuted:
+the flag occupies exactly three runtime sites, and `SECURITY.md:173` uses this identical formula for
+`--no-spacedock`, which has the identical three-site shape. Lens B's useful residue is passed to H1
+rather than treated as a finding: `test_lifecycle.py:1281` asserts a fixed five-flag forwarding set,
+so it will not fail if `--no-history` is left out of the respawn branch and must be hand-updated.
+R4: the hypothesis that a fourth falsified sentence hides inside `SECURITY.md`. Refuted by an
+independent sweep — the document's three are the three. The genuine misses are outside the file, and
+are M3 and M4.
+
+### Summary
+
+Verdict **NO-GO**, on M1 and M2 alone; the other three Material findings are worth the same round
+but would not by themselves have blocked. The document is a faithful, precedent-shaped statement of
+DEC-6 — all seven elements present, nothing wider in any hard sense, the never-list and the
+default-on rationale DEC-6's own words, and every citation it makes about the runtime and about
+`SECURITY.md` checks out, including invariant 2's counts and amendment 1's arithmetic. Six of the
+seven acceptance criteria pass on reproduced evidence, two of them driven from their `Falsified by:`
+clause in a throwaway checkout rather than trusted from an exit code.
+
+What blocks it is one sentence and one omission, and they are the same defect seen twice. Line 36
+tells the reader the store's four-item never-list "is the same one the board itself is held to"; the
+board publishes prompt text and project paths, and `SECURITY.md` says so at `:382-383` and `:440`.
+Paired with the closure rule beside it, that reads as a licence to keep anything the board publishes
+— which includes `state_detail`, the field carrying "a permission prompt's own text, an open
+question's, or a plan's first line", the field the dismissals record deliberately excludes for that
+reason, and the field a 14-day store would be the first durable home for. Both fixes are one clause
+each and neither touches DEC-6's scope.
+
+The remaining three are the completeness of the promotion, which is this document's central promise:
+the sole-occupancy clause lives at five sites and the document names one, the "three files" count
+lives at two and the document names one, and line 47 denies the size cap that line 45 requires and
+H1's own criteria enforce. CI is green on the current head with `code=false` read from the log and
+the measurable jobs skipped by the filter rather than by a failure; `mergeStateStatus` is `CLEAN`;
+there is no Copilot review to read on this PR or on the three before it; and the Linear body is
+byte-identical to the approved draft. Nothing on the branch was edited, nothing merged, no worktree
+or branch removed.
