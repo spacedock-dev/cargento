@@ -1,11 +1,11 @@
 ---
 id: drc-4344
 title: 'A team member dispatched into its own pane is a black box: its session is never published, the lead''s row shows a bare name, and its own subagents are unreachable'
-status: review
+status: done
 source: https://linear.app/recce/issue/DRC-4344
 started: 2026-09-03T09:39:35Z
-completed:
-verdict:
+completed: 2026-09-03T23:37:57Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4344
 issue:
@@ -58,7 +58,7 @@ gates:
                 reason: 'Captain approved the review gate on 2026-09-04 ("yes I approve, go with your recommendation"). Accepts the cycle-3 GO on 5314e09 after two correction rounds: AC-1..AC-6 reproduced, AC-4 with 0 state fields moved over 86,816 comparisons, AC-5 driven live both arms, 26 byte pins matched in both pinning files, redaction at the clip boundary proven, 13/13 checks on this head. Deferred items filed as DRC-4346, DRC-4347, DRC-4348; surface overage accepted under the standing ruling.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
 review-round:
     id: round:drc-4344:review:2
     stage: review
@@ -67,6 +67,7 @@ review-round:
         id: briefing:drc-4344:review:round-2:revision-1
         digest: sha256:9db5507d5ef3413f03914a70953b74f4803c5148fb44aef3f0d008ec994a87d4
         room-ref: ./review/review/round-2
+archived: 2026-09-03T23:37:57Z
 ---
 
 [DRC-4344](https://linear.app/recce/issue/DRC-4344) — Linear priority Urgent, no estimate yet, labels `discovered-by-agent`, `journey:mid-flight`, `move:sharpen`. Filed 2026-09-03 by the first officer from a live defect measured on this very session's board.
