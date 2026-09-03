@@ -10,6 +10,8 @@ only that the subject is self-consistent.
 
 from __future__ import annotations
 
+import contextlib
+import io as std_io
 import json
 import os
 import sys
@@ -1425,6 +1427,90 @@ class TheDedupeKeyIsPerSessionAndNotPerHarnessTest(HistoryStoreTestCase):
             ],
             observed,
         )
+
+
+class BothBoundsAreConfigurableTest(HistoryStoreTestCase):
+    """The captain's ND-1 ruling: two knobs, so the contract's sentence is true.
+
+    `SECURITY.md` said "Retention is 14 days by default, with a size cap, and
+    both are configurable" while `build_runtime_config` accepted neither — the
+    sentence was inherited verbatim from the plan doc the promotion came from,
+    and nothing in the build could move either figure.
+    """
+
+    def parsed(self, argv: list[str]) -> Any:
+        from cargento_runtime import cli  # noqa: PLC0415
+
+        return cli.build_parser().parse_args(argv)
+
+    def built(self, argv: list[str]) -> RuntimeConfig:
+        from cargento_runtime import cli  # noqa: PLC0415
+
+        with mock.patch.dict(os.environ, {CARGENTO_HOME_ENV: self.state_home}):
+            config, _state = cli.build_runtime(self.parsed(argv), started=1_700_000_000.0)
+        return config
+
+    def test_the_defaults_are_the_figures_the_contract_names(self) -> None:
+        # Literals rather than the module's own constants: a test that reads the
+        # subject's constants proves only that the subject agrees with itself,
+        # and 14 days is what the promoted contract says in prose.
+        config = self.built([])
+        self.assertEqual(14 * 24 * 60 * 60, config.history_retention_sec)
+        self.assertEqual(1_048_576, config.history_max_bytes)
+
+    def test_both_flags_reach_the_configuration_the_lane_reads(self) -> None:
+        config = self.built(["--history-days", "3", "--history-max-bytes", "4096"])
+        self.assertEqual(3 * 24 * 60 * 60, config.history_retention_sec)
+        self.assertEqual(4_096, config.history_max_bytes)
+
+    def test_a_narrowed_window_is_the_window_the_lane_evicts_by(self) -> None:
+        # The bound has to reach the eviction and not merely the dataclass, so
+        # this drives a real lane: one observation a day old, a two-day window
+        # narrowed to one, and the record has to be gone.
+        config = self.built(["--history-days", "1"])
+        lane = history.Lane(config, diagnostic_sink=self.diagnostics.append)
+        day = 24 * 60 * 60.0
+        lane.record([loaded_row("working", last_activity=1_000.0)], now=1_000.0)
+        self.assertEqual(1, len(history.load(config)[0]))
+        published = lane.record(
+            [loaded_row("idle", last_activity=1_000.0 + 2 * day)], now=1_000.0 + 2 * day
+        )
+        self.assertEqual(["idle"], [e["state"] for e in published])
+        self.assertEqual(["idle"], [e["state"] for e in history.load(config)[0]])
+
+    def test_a_narrowed_cap_is_the_cap_the_lane_evicts_by(self) -> None:
+        # 140 bytes holds one of these records and not two: measured at 111
+        # bytes each against a 23-byte envelope, so one store is 134 and two
+        # are 247. Four transitions therefore have to leave the newest alone.
+        config = self.built(["--history-max-bytes", "140"])
+        lane = history.Lane(config, diagnostic_sink=self.diagnostics.append)
+        for tick, state in enumerate(("working", "idle", "working", "idle")):
+            lane.record([loaded_row(state, last_activity=1_000.0 + tick)], now=1_000.0 + tick)
+        kept, _reset = history.load(config)
+        self.assertLessEqual(len(self.store_bytes(config)), 140)
+        self.assertEqual(["idle"], [e["state"] for e in kept])
+        self.assertEqual([1_003.0], [e["last_activity"] for e in kept])
+
+    def test_neither_bound_accepts_a_nonsense_value(self) -> None:
+        # Zero or negative is refused at parse time rather than clamped: a
+        # window of zero days is a store that evicts everything it records,
+        # which reads as broken rather than as off — and there is already a
+        # switch that turns it off. Refused before a daemon can be respawned
+        # with a bound the parent would not have accepted.
+        for argv in (
+            ["--history-days", "0"],
+            ["--history-days", "-1"],
+            ["--history-days", "nonsense"],
+            ["--history-max-bytes", "0"],
+            ["--history-max-bytes", "-4096"],
+            ["--history-max-bytes", "1.5"],
+        ):
+            with (
+                self.subTest(argv=" ".join(argv)),
+                contextlib.redirect_stderr(std_io.StringIO()),
+                self.assertRaises(SystemExit),
+            ):
+                self.parsed(argv)
 
 
 class ADirectoryAtTheStorePathOpensEmptyTest(HistoryStoreTestCase):

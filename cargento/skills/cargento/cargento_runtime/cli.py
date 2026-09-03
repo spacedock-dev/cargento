@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import ipaddress
 import json
+import math
 import os
 import sys
 import time
@@ -101,6 +102,35 @@ def bind_host(value: str) -> str:
             "reach the dashboard over loopback, which such a bind does not answer"
         )
     return value
+
+
+def positive_float(value: str) -> float:
+    """A float above zero, or an argparse error naming what was wrong.
+
+    Zero or negative is refused rather than clamped: a retention window of zero
+    days is a store that evicts everything it records, which reads as the store
+    being broken rather than as the operator having turned it off — and there is
+    already a switch that turns it off. Rejected at parse time, so a daemon
+    cannot be respawned with a bound the parent would not have accepted.
+    """
+    try:
+        number = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from None
+    if not math.isfinite(number) or number <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than zero, not {value!r}")
+    return number
+
+
+def positive_int(value: str) -> int:
+    """An int above zero, or an argparse error naming what was wrong."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number") from None
+    if number <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than zero, not {value!r}")
+    return number
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -211,6 +241,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=24,
         help="sessions with no activity in this window are hidden (default 24)",
     )
+    parser.add_argument(
+        "--history-days",
+        type=positive_float,
+        default=runtime_config.HISTORY_RETENTION_DEFAULT_DAYS,
+        help=(
+            "how long the local history keeps an observation, in days "
+            f"(default {runtime_config.HISTORY_RETENTION_DEFAULT_DAYS:g}). Eviction is by "
+            "age first, so narrowing this drops what falls outside it and "
+            "widening it again brings nothing back"
+        ),
+    )
+    parser.add_argument(
+        "--history-max-bytes",
+        type=positive_int,
+        default=runtime_config.HISTORY_MAX_BYTES_DEFAULT,
+        help=(
+            "the size cap on the local history store, in bytes (default "
+            f"{runtime_config.HISTORY_MAX_BYTES_DEFAULT}). It is the read cap too: a "
+            "file larger than it is discarded unread rather than parsed"
+        ),
+    )
     return parser
 
 
@@ -240,6 +291,8 @@ def build_runtime(
         dismissals_enabled=not args.no_dismiss,
         ask_enabled=not args.no_ask,
         history_enabled=not args.no_history,
+        history_retention_sec=args.history_days * runtime_config.SECONDS_PER_DAY,
+        history_max_bytes=args.history_max_bytes,
     )
     return config, runtime_state.build_runtime_state(config, started=started)
 

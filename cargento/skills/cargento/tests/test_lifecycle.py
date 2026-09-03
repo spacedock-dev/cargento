@@ -250,6 +250,8 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_ask=False,
             no_git=False,
             no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -432,6 +434,8 @@ print(json.dumps({{
             no_ask=False,
             no_git=False,
             no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with (
@@ -1220,6 +1224,8 @@ class CargentoServerTest(PageJsHarness):
             no_ask=False,
             no_git=False,
             no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         argv = lifecycle.spawn_argv(config, args)
@@ -1251,6 +1257,8 @@ class CargentoServerTest(PageJsHarness):
                 no_ask=False,
                 no_git=False,
                 no_history=False,
+                history_days=14.0,
+                history_max_bytes=1_048_576,
                 daemon=True,
             ),
         )
@@ -1280,6 +1288,8 @@ class CargentoServerTest(PageJsHarness):
                 no_ask=False,
                 no_git=True,
                 no_history=True,
+                history_days=14.0,
+                history_max_bytes=1_048_576,
                 daemon=True,
             ),
         )
@@ -1304,6 +1314,8 @@ class CargentoServerTest(PageJsHarness):
             no_ask=False,
             no_git=False,
             no_history=False,
+            history_days=14.0,
+            history_max_bytes=1_048_576,
             daemon=True,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1510,6 +1522,8 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_ask": False,
             "no_git": False,
             "no_history": False,
+            "history_days": 14.0,
+            "history_max_bytes": 1_048_576,
         }
         base.update(overrides)
         return argparse.Namespace(**base)
@@ -1554,6 +1568,32 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_history=False))
         self.assertNotIn("--no-history", argv)
+
+    def test_a_narrowed_retention_window_is_forwarded(self) -> None:
+        # The bounds are configurable as of the captain's ND-1 ruling, and a
+        # respawn that dropped a narrowed one would widen a bound the operator
+        # tightened — the same class of failure as re-enabling a store they
+        # turned off, since what falls outside the window is gone from the file.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_days=2.0))
+        self.assertIn("--history-days", argv)
+        self.assertEqual("2.0", argv[argv.index("--history-days") + 1])
+
+    def test_the_retention_window_is_absent_when_it_is_the_default(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_days=14.0))
+        self.assertNotIn("--history-days", argv)
+
+    def test_a_moved_size_cap_is_forwarded(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_max_bytes=4_096))
+        self.assertIn("--history-max-bytes", argv)
+        self.assertEqual("4096", argv[argv.index("--history-max-bytes") + 1])
+
+    def test_the_size_cap_is_absent_when_it_is_the_default(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(history_max_bytes=1_048_576))
+        self.assertNotIn("--history-max-bytes", argv)
 
     def test_no_ask_is_forwarded(self) -> None:
         config = cfg()

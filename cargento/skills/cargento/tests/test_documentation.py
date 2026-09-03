@@ -321,6 +321,20 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
         self.assertIn("Retention is 14 days by default", self.FLAT)
         self.assertEqual(14 * 24 * 60 * 60, make_config().history_retention_sec)
 
+    def test_the_bounds_the_contract_calls_configurable_are_flags(self) -> None:
+        # The captain's ND-1 ruling of 2026-09-03. The sentence was inherited
+        # verbatim from the plan doc and `build_runtime_config` accepted neither
+        # figure, so it was prose about a build that could not do it. Bound to
+        # the parser the way the off switch above is, rather than grepped: until
+        # both flags parse, this assertion would be one about our own words.
+        self.assertIn(
+            "Retention is 14 days by default, with a size cap, and both are configurable.",
+            self.FLAT,
+        )
+        args = cli.build_parser().parse_args(["--history-days", "3", "--history-max-bytes", "4096"])
+        self.assertEqual(3.0, args.history_days)
+        self.assertEqual(4_096, args.history_max_bytes)
+
     def test_the_kept_list_names_the_project_label_the_store_actually_keeps(self) -> None:
         # D4, the captain's ruling of 2026-09-03: the label was in an explicit
         # gap in the contract and the store needs it as the grouping key, so the

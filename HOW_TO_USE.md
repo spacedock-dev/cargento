@@ -363,6 +363,22 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 
 [SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
 
+### Move the history's two bounds
+
+The history keeps 14 days of observations inside a 1 MiB file, and both figures are flags rather
+than constants:
+
+```bash
+python3 "<skill-dir>/server.py" --history-days 3 --history-max-bytes 262144
+```
+
+Either one alone still applies: narrowing the window drops what falls outside it, and the cap drops
+the oldest first once the file would exceed it. Neither accepts zero or a negative number — a window
+of zero days is a store that evicts everything it records, and `--no-history` is the switch for
+turning the store off. A `--daemon` respawn carries whichever of the two you moved, so a restart
+cannot widen a bound you tightened. What leaves the file is gone from it, so raising a figure back
+afterwards brings nothing with it.
+
 ## Usage and quota
 
 This is the only thing Cargento sends anywhere. It is on by default, carries the vendor's own token
