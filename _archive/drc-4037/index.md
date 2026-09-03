@@ -1,11 +1,11 @@
 ---
 id:
 title: 'E4 · Ended with uncommitted work'
-status: review
+status: done
 source: https://linear.app/recce/issue/DRC-4037
 started: 2026-08-28T06:33:15Z
-completed:
-verdict:
+completed: 2026-09-03T04:13:23Z
+verdict: PASSED
 score: 0.7
 worktree: .worktrees/spacedock-ensign-drc-4037
 issue:
@@ -115,7 +115,8 @@ gates:
                 reason: 'Captain approved the E4 review gate on 2026-09-03 ("I Approve the E4 gate"). Accepts the delivery: PR #239 merged at ac6ac29 with correction round 1 verified closed (R2-R7 each reproduced: test passes, named mutation fails), AC1-AC10 holding on main with AC9/AC10 superseded in wording by PR #245/#247, AC11 interactive and captain-owned, CI 12/12 at eff93f6 and 3/3 on main; PR #245 render stands in for the approved PR 2 per the 2026-09-03 ruling. Post-merge reconcile complete and receipt posted. Bounded: R1 (F1, Needs decision) and the nine unfiled Deferred-risk findings (F2) are handed to the FO for filing, outside this PR.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
+archived: 2026-09-03T04:13:23Z
 ---
 
 
