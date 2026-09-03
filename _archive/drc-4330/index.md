@@ -1,11 +1,11 @@
 ---
 id: drc-4330
 title: 'History groundwork · SECURITY.md scope section for the local history store'
-status: review
+status: done
 source: https://linear.app/recce/issue/DRC-4330
 started: 2026-09-03T03:29:50Z
-completed:
-verdict:
+completed: 2026-09-03T04:52:55Z
+verdict: PASSED
 score: 0.6
 worktree: .worktrees/spacedock-ensign-drc-4330
 issue:
@@ -58,7 +58,7 @@ gates:
                 reason: 'Captain approved the review gate on 2026-09-03: "approve to authorize the merge of PR #258". Accepts the delivery: one 139-line file docs/plans/history-store-security-scope.md at head 0016542, cycle-2 review GO after correction round 1 closed all five Material findings inside five hunks, AC-1 through AC-7 reproduced on this head, CI green with code=false, mergeStateStatus CLEAN, no Copilot pass to read. D4 (Deferred risk) to be filed against DRC-4044; P4/P5 recorded.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
 review-round:
     id: round:drc-4330:review:1
     stage: review
@@ -67,6 +67,7 @@ review-round:
         id: briefing:drc-4330:review:round-1:revision-1
         digest: sha256:20a7b62ae334e0be52f28223ebf9680002bb2cdfc798176a31a074f6bd7c3dcc
         room-ref: ./review/review/round-1
+archived: 2026-09-03T04:52:55Z
 ---
 
 [DRC-4330](https://linear.app/recce/issue/DRC-4330) — Linear priority High, no estimate, labels `journey:mid-flight`, `move:none`. Filed 2026-09-02 as the groundwork for H1 (DRC-4044), the shape the quota, git-probe and ask-lane groundwork issues used: a security contract written under `docs/plans/` before the code it bounds, promoted into `SECURITY.md` by the feature's own PR.
