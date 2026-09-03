@@ -811,7 +811,10 @@ recorder, and `ruff format` turning each two-key assertion into roughly eight li
   moved `subagents` expectation is exact. **AC-5** re-driven live on this board, same stores, same
   pinned `now`: base `1 published / 0 measured starts / 0 grandchildren`, head `41 published / 41
   measured starts / 20 grandchildren across 6 named parents / keys +active,+parent`. The implementer
-  measured 34/34/17/5; the board moved because I am a new teammate with three new lenses. **AC-6**
+  measured 34/34/17/5; the board moved because I am a new teammate with three new lenses. I then took
+  the **negative arm** myself once my three lenses had finished: same `41 published / 20 grandchildren`,
+  `active` down `4 → 1`, so the stopped workers are **present and inactive rather than absent** — the
+  arm the criterion names, observed on my own crew. **AC-6**
   reproduces triage's figures from the capture itself: top-level indices `[3,3,6,3,3,3,3,3]`, all four
   legacy files at 0, five added registry fields with only `isActive` read, `prompt` present only inside
   a list of field *names*. **Redaction property holds**: `AKIAIOSFODNN7EXAMPLE` through `name` and
