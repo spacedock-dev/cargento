@@ -53,7 +53,7 @@ def collect(
 
         project = sessions.project_from_cwd(
             config, meta.get("cwd") or ""
-        ) or sessions.project_label(config, os.path.basename(os.path.dirname(fp)))
+        ) or sessions.bounded_project_label(config, os.path.basename(os.path.dirname(fp)))
         s = sessions.base_session("droid", sid, project)
         scan = turns.scan_turns(config, state, fp, "droid") if info else None
         s.update(

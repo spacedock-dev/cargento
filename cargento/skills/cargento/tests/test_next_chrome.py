@@ -980,6 +980,54 @@ __fetchImpl = async () => {
         self.assertEqual(0, out["recoveredFailures"])
         self.assertEqual(2000, out["recoveredGenerated"])
 
+    def test_a_history_reset_is_reported_with_which_reset_it_was(self) -> None:
+        out = self._run_page_js(
+            """
+const rendered = {};
+for(const reason of ["unreadable", "version", "absent"]){
+  nextData = {
+    summary: {working: 0, needs_input: 0}, sessions: [], asks: [],
+    ...(reason === "absent" ? {} : {history_reset: reason})
+  };
+  renderNext();
+  rendered[reason] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(rendered));
+""",
+            '__els.app = {innerHTML: ""};\n',
+        )
+        assert isinstance(out, dict)
+
+        for reason in ("unreadable", "version"):
+            with self.subTest(reason=reason):
+                self.assertIn('data-next-state="history-reset"', out[reason])
+        # The two literals must not render the same sentence. A corruption reset
+        # may be the reader's disk while a version reset is ours (D1), so a header
+        # identical for both would discharge the contract's clause and lose the
+        # distinction the ruling exists for.
+        self.assertNotEqual(out["unreadable"], out["version"])
+        self.assertNotIn("history-reset", out["absent"])
+
+    def test_an_unknown_history_reset_literal_renders_no_notice(self) -> None:
+        # The field is untrusted: it reaches the page from a store any local
+        # process could have written. An unrecognised reason draws nothing rather
+        # than inventing a sentence about it.
+        out = self._run_page_js(
+            """
+nextData = {
+  summary: {working: 0, needs_input: 0}, sessions: [], asks: [],
+  history_reset: "<img src=x onerror=alert(1)>"
+};
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+""",
+            '__els.app = {innerHTML: ""};\n',
+        )
+        assert isinstance(out, str)
+
+        self.assertNotIn("history-reset", out)
+        self.assertNotIn("onerror", out)
+
 
 if __name__ == "__main__":
     unittest.main()

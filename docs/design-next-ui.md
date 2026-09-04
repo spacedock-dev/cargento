@@ -244,13 +244,20 @@ A new session endpoint would duplicate the current payload and expand the HTTP s
 supplying new evidence. The `next-session.js` part renders from the canonical payload and adds no
 retained history; that decision remains DRC-4234.
 
-## NUI-9: the workstream starts when this tab starts observing
+## NUI-9: the workstream starts from the store, then from this tab
 
-The server still publishes one current snapshot. `next-workstream.js` therefore builds a bounded
-ledger only from advancing payloads seen by this tab. The first successful payload establishes the
-session and ask baseline without turning existing state into invented history. Later payloads add
-state transitions, newly measured turn stops and newly observed asks in timestamp order. Replayed
-payloads add nothing.
+`next-workstream.js` builds a bounded ledger from the local history the server publishes plus every
+advancing payload this tab sees. On the first payload it replays `history`, the record of state
+changes DRC-4234 authorised the server to keep. Each stored record becomes a batch holding every
+session known at that stamp, so a replayed window and a polled one are the same shape: an
+observation holds until the next one arrives. A session's first stored record is the baseline a
+later change is measured against and is not listed as a change itself, and its last stored record
+closes its span rather than opening one: the store records what changed, never when the server
+stopped, so nothing observed the end of a final `working` record and holding it to the first payload
+counted a closed laptop as time an agent worked. With the store off, or on a
+machine that has never run with it, the first payload establishes the session and ask baseline and
+nothing older exists. Later payloads add state transitions, newly measured turn stops and newly
+observed asks in timestamp order. Replayed payloads add nothing.
 
 Every advancing payload also contributes one sample per session with its project, state and
 measured token rate. These samples are the evidence the later delegation panel needs; transitions
@@ -273,14 +280,18 @@ tail-bounded, a defensive path far outside the measured population.
 
 The section names the retained span rather than copying the mock's fixed six-hour label. Before a
 span exists it says `since this tab opened`; elapsed labels come from payload `generated` times, not
-the viewer clock. Its header always keeps the `N of M unattended` ratio; expansion appends the
-retained span instead of replacing that ratio. The rail is empty until a post-baseline event arrives
-and says so explicitly. Reloading discards the ledger. Only the collapsed preference survives,
-under the next bundle's storage namespace and behind a storage failure boundary.
+the viewer clock. The span reads in days once it passes one, because the shipped retention is
+fourteen of them and `last 336h` is not a figure anyone reads as two weeks. Its header always keeps
+the `N of M unattended` ratio; expansion appends the retained span instead of replacing that ratio.
+The rail is empty until an event arrives and says which window it found none in, rather than
+asserting the tab's lifetime. Reloading discards the in-tab ledger and rebuilds it from the store.
+Only the collapsed preference survives in the browser, under the next bundle's storage namespace and
+behind a storage failure boundary.
 
 Rendering consumes the ledger through a project-window function rather than reading its mutable
-arrays. A future server history source can replace that function without changing the rail, but no
-such source or retention policy is implied here. DRC-4234 owns that later decision.
+arrays. That is what let the server history source arrive without changing the rail: the seeding
+pass appends groups through the same path a payload takes, and the renderer never learned it had
+happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
@@ -309,10 +320,10 @@ an autonomous-observer decision.
 MCP operation, persisted runtime state or model call, so the audited mutating-route inventory and
 the direction invariant do not change.
 
-## NUI-11: delegation is wall time inside this tab's evidence
+## NUI-11: delegation is wall time inside the observed evidence
 
-The project rail's delegation figure integrates adjacent sample batches from the in-tab workstream
-ledger. A batch owns the wall-clock interval until the next advancing payload, clipped to the
+The project rail's delegation figure integrates adjacent sample batches from the workstream ledger,
+whether they came from this tab's own polls or from the store NUI-9 seeds it with. A batch owns the wall-clock interval until the next advancing payload, clipped to the
 displayed window. That makes an irregular refresh cost the time it actually spans instead of one
 vote in a poll-count average. A non-empty interval with at least one working session and no gate
 adds to the numerator, denominator and observed coverage. Any `needs_input` session makes the
@@ -335,15 +346,20 @@ Ten minutes is the minimum observed evidence window because each published `rate
 itself a trailing ten-minute mean. An all-idle window still has no denominator and remains
 withheld. Below that floor the block says `no figure yet` and prints no percentage, bar, token
 rate or human-turn count. The headline grows with the retained span up to six hours, the window
-the ledger cap was sized to preserve at the measured 22-session population. A trend needs two
-independent full observed windows: it compares the latest six hours with the six before them only
-when twelve retained hours exist. At the measured population the cap may prevent that condition,
-in which case no trend is more honest than a flat arrow.
+the ledger cap was sized to preserve at the measured 22-session population. That ceiling is the
+tab's, not the store's: a seeded window is measured whole, because retention there is the reader's
+own setting and clamping a fourteen-day store to six hours would report six hours under a caption
+naming two weeks. A trend needs two independent full observed windows: it compares the latest six
+hours with the six before them only when twelve retained hours exist. At the measured population the
+cap may prevent that condition, in which case no trend is more honest than a flat arrow.
 
 For each delegated interval, the session rates in that payload are summed and those per-payload
-aggregates are time-weighted over delegated wall time. A session whose harness cannot measure rate
-makes the result a `≥` floor; if nothing in the delegated intervals has a measured rate, or no
-delegated interval exists, the token figure is absent rather than zero. Human-turn candidates are
+aggregates are time-weighted over the delegated wall time that was measured. The denominator is that
+measured span rather than every delegated second, because the store keeps no token rate at all: a
+seeded fortnight beside one measured hour would otherwise spread that hour's area across the whole
+window and print a floor two orders of magnitude under the rate it came from. A session whose
+harness cannot measure rate makes the result a `≥` floor; if nothing in the delegated intervals has
+a measured rate, or no delegated interval exists, the token figure is absent rather than zero. Human-turn candidates are
 transitions out of `needs_input` and `idle` to `working` prompt boundaries. Delegation coalesces an
 immediate same-session `needs_input` to `idle` transition followed by `idle` to `working` into one
 inferred answer. A direct gate-to-working transition still counts once, and a later prompt boundary
@@ -355,8 +371,10 @@ invented time threshold. Events before the displayed window still establish pend
 events inside the window increment its count. Gate openings, ask registrations and turn stops remain
 agent-side events and do not increment it.
 
-The number begins again when the tab reloads. It is not durable;
-[DRC-4234](https://linear.app/recce/issue/DRC-4234) still owns the decision about persistent history.
+The number survives a reload and a restart as far back as the store reaches, and no further. What
+the store holds is state changes, not token rates, so a window that predates this tab reports its
+percentage and human turns while withholding or flooring the rate. DRC-4234 authorised the store;
+its bounds and its off switch are in `SECURITY.md`.
 
 ## NUI-12: motion means observed activity, not mere attention
 

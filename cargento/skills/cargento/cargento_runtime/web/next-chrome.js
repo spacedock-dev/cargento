@@ -249,6 +249,33 @@ function nextRefreshNotice(){
     `<button type="button" data-next-action="retry-refresh"${disabled}>Retry now</button></div>`;
 }
 
+/* The two reasons `history.RESET_UNREADABLE` and `history.RESET_VERSION` publish,
+   listed here so an unrecognised literal draws nothing: the field arrives from a
+   file any local process could have replaced, and inventing a sentence about a
+   reason this build does not know is how a tampered store gets to write header
+   copy. */
+const NEXT_HISTORY_RESET_REASONS = {
+  unreadable: "The saved file could not be read.",
+  version: "It was written by a different version of Cargento.",
+};
+
+function nextHistoryResetNotice(){
+  const reason = nextData && typeof nextData.history_reset === "string"
+    ? nextData.history_reset
+    : "";
+  const detail = Object.prototype.hasOwnProperty.call(NEXT_HISTORY_RESET_REASONS, reason)
+    ? NEXT_HISTORY_RESET_REASONS[reason]
+    : "";
+  if(!detail) return "";
+  /* Which reset it was, not merely that one happened. A corruption reset may be
+     the reader's own disk while a version reset is ours, and one message for
+     both would satisfy the contract's clause while losing the only thing it is
+     there to tell them apart by (D1). */
+  return '<div class="next-stalled" data-next-state="history-reset" role="status">' +
+    "<strong>The saved history was reset.</strong>" +
+    `<span>${esc(detail)} The rail and the delegation figure start from this tab.</span></div>`;
+}
+
 function renderNext(focus = nextCaptureFocus()){
   const app = document.getElementById("app");
   if(!app) return;
@@ -260,7 +287,7 @@ function renderNext(focus = nextCaptureFocus()){
     ? `<button type="button" class="next-gate" data-next-action="needs-input">${counts.gates} ${gateLabel}</button>`
     : "";
   const notification = nextNotifyControl(nextData);
-  const stalled = nextRefreshNotice();
+  const stalled = nextRefreshNotice() + nextHistoryResetNotice();
   const breadcrumb = nextBreadcrumb();
   app.innerHTML = '<header class="next-header">' +
     '<div class="next-header-left">' +

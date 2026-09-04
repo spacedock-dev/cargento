@@ -42,15 +42,22 @@ if TYPE_CHECKING:
 # title into the existing `project` field would pass AC1 (the key set is
 # unchanged) and pass AC2 (no sentinel to look for), which was demonstrated
 # with the text on disk and 46 tests green.
+# Separated by `_` rather than `-`, and that is the point rather than a style.
+# `history._bounded_project` trims a dash-joined label to its last two segments,
+# so a sentinel routed into `project` reached the store as `SPACEDOCK-e8` while
+# an `assertNotIn` for `SENTINEL-SPACEDOCK-e8` stayed green — the oracle below
+# could be defeated by the truncation it is supposed to see through. Neither
+# separator the bound splits on appears in these strings, so any prefix of one
+# that survives a trim is still a substring of the whole.
 SENTINELS = {
-    "title": "SENTINEL-TITLE-e1",
-    "last_prompt": "SENTINEL-PROMPT-e2",
-    "state_detail": "SENTINEL-DETAIL-e3",
-    "instruction": "SENTINEL-INSTRUCTION-e4",
-    "task_subject": "SENTINEL-TASKSUBJECT-e5",
-    "task_active_form": "SENTINEL-ACTIVEFORM-e6",
-    "subagent_name": "SENTINEL-SUBAGENT-e7",
-    "spacedock_workflow": "SENTINEL-SPACEDOCK-e8",
+    "title": "SENTINEL_TITLE_e1",
+    "last_prompt": "SENTINEL_PROMPT_e2",
+    "state_detail": "SENTINEL_DETAIL_e3",
+    "instruction": "SENTINEL_INSTRUCTION_e4",
+    "task_subject": "SENTINEL_TASKSUBJECT_e5",
+    "task_active_form": "SENTINEL_ACTIVEFORM_e6",
+    "subagent_name": "SENTINEL_SUBAGENT_e7",
+    "spacedock_workflow": "SENTINEL_SPACEDOCK_e8",
 }
 
 
@@ -419,12 +426,17 @@ class OwnerOnlyWriteTest(HistoryStoreTestCase):
         # two syscalls, so a simplification of the write path goes red here.
         config = self.config()
         target = history.store_path(config)
-        opened: list[str] = []
+        opened: list[tuple[str, int | None]] = []
         renamed: list[tuple[str, str]] = []
         real_open, real_replace = os.open, os.replace
 
         def spy_open(path: Any, *args: Any, **kwargs: Any) -> int:
-            opened.append(str(path))
+            # The mode argument, not merely the path. Recording the path alone
+            # left AC4's own named falsifier green: `open()` then `os.chmod`
+            # writes the same temp file to the same target, and only the mode
+            # passed to the call tells the two apart while the file is on disk.
+            mode = kwargs.get("mode", args[1] if len(args) > 1 else None)
+            opened.append((str(path), mode))
             return int(real_open(path, *args, **kwargs))
 
         def spy_replace(src: Any, dst: Any, **kwargs: Any) -> None:
@@ -437,9 +449,11 @@ class OwnerOnlyWriteTest(HistoryStoreTestCase):
         ):
             self.assertTrue(history.save(config, [], diagnostic_sink=self.diagnostics.append))
         self.assertEqual(1, len(opened))
-        self.assertTrue(opened[0].endswith(".tmp"), opened[0])
-        self.assertNotEqual(target, opened[0], "the target was opened directly")
-        self.assertEqual([(opened[0], target)], renamed)
+        path, mode = opened[0]
+        self.assertTrue(path.endswith(".tmp"), path)
+        self.assertNotEqual(target, path, "the target was opened directly")
+        self.assertEqual(0o600, mode)
+        self.assertEqual([(path, target)], renamed)
 
     def test_a_failed_write_leaves_no_temp_file_behind(self) -> None:
         # The rename fails, not `makedirs`: the old setup made `state_home` a
@@ -1016,6 +1030,7 @@ class AFallbackProjectLabelIsNotAPathTest(HistoryStoreTestCase):
     # `make_config` builds. A real measured value, not an invented one.
     ENCODED = "-home-cargento-test-repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish"
     PUBLISHED = "repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish"
+    BOUNDED = "3976-finish"
 
     def collected(self) -> tuple[RuntimeConfig, dict[str, Any]]:
         import dataclasses  # noqa: PLC0415
@@ -1038,11 +1053,16 @@ class AFallbackProjectLabelIsNotAPathTest(HistoryStoreTestCase):
         )
         return config, application.collect(show_all=True)
 
-    def test_the_row_really_does_publish_the_whole_path(self) -> None:
-        # Non-vacuity: the assertion below proves nothing unless the collector
-        # actually put the six-segment path on the row it hands the lane.
-        _config, payload = self.collected()
-        self.assertEqual(self.PUBLISHED, payload["sessions"][0]["project"])
+    def test_the_row_and_the_store_agree_on_the_bounded_label(self) -> None:
+        # Non-vacuity, and DR-8's fix in one assertion. The uncapped fallback
+        # still returns the whole six-segment path, so there is a path to bound;
+        # the row the collector publishes carries the bounded label instead, so
+        # the board groups this project under the same name the store keeps.
+        # Before the bound moved, the row carried the path and the two disagreed.
+        config, payload = self.collected()
+        self.assertEqual(self.PUBLISHED, runtime_sessions.project_label(config, self.ENCODED))
+        self.assertEqual(self.BOUNDED, payload["sessions"][0]["project"])
+        self.assertEqual(self.BOUNDED, payload["history"][0]["project"])
 
     def test_the_store_holds_two_segments_and_never_the_path(self) -> None:
         config, payload = self.collected()
@@ -1055,13 +1075,29 @@ class AFallbackProjectLabelIsNotAPathTest(HistoryStoreTestCase):
         self.assertEqual(1, len(payload["history"]))
         self.assertEqual(stored, payload["history"][0]["project"])
 
-    def test_a_two_segment_label_whose_names_carry_dashes_survives_intact(self) -> None:
-        # The separator is chosen, not guessed. A label from `project_from_cwd`
-        # carries `/` and its own segments may hold `-`, so splitting this one
-        # on `-` would trim a correct label to "cool-repo".
-        record = history.observation({**loaded_row(), "project": "recce/my-cool-repo"})
-        assert record is not None
-        self.assertEqual("recce/my-cool-repo", record["project"])
+    def test_the_store_bounds_on_the_path_separator_and_never_on_a_dash(self) -> None:
+        # DR-8. The store used to split a label with no `/` on `-`, which is the
+        # one thing it cannot do correctly: a hyphenated directory name and a
+        # dash-encoded path are the same string here, and every name below is a
+        # real directory on the machine this was measured on. The bound now lives
+        # at `sessions.bounded_project_label`, where the label is built from path
+        # segments and the difference is known.
+        cases = [
+            ("my-cool-project", "my-cool-project"),
+            ("recce-cloud-infra", "recce-cloud-infra"),
+            ("spacedock-ensign-drc-4044", "spacedock-ensign-drc-4044"),
+            ("docs-sync-next-ui-design-parity", "docs-sync-next-ui-design-parity"),
+            ("alpha-beta-gamma-delta-epsilon-zeta", "alpha-beta-gamma-delta-epsilon-zeta"),
+            # The `/` bound stays: a label from `project_from_cwd` is at most two
+            # segments already, and anything wider did not come from there.
+            ("recce/my-cool-repo", "recce/my-cool-repo"),
+            ("a/b/c", "b/c"),
+        ]
+        for label, expected in cases:
+            with self.subTest(label=label):
+                record = history.observation({**loaded_row(), "project": label})
+                assert record is not None
+                self.assertEqual(expected, record["project"])
 
 
 class ForgetIsRefusedWhileADashboardCouldWriteItBackTest(HistoryStoreTestCase):

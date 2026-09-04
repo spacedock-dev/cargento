@@ -148,27 +148,24 @@ def observation(row: Mapping[str, Any]) -> Observation | None:
 
 
 def _bounded_project(label: str) -> str:
-    """A project label trimmed to its last two segments, never a path.
+    """A project label trimmed to its last two path segments.
 
-    `sessions.project_from_cwd` already caps its own label at two segments, so
-    the reason this exists is the fallback beneath it: with no `cwd` in a
-    transcript's first records — 0.75% of the 3,888 real transcripts on this
-    machine — three collectors fall back to `sessions.project_label`, which
-    strips the encoded home prefix and returns *every* remaining segment of a
-    real filesystem path joined by `-`. Bounding here rather than at the three
-    collectors is what makes the store's own guarantee independent of the row:
-    whatever a caller hands over, the file cannot hold a path.
+    Both label producers cap themselves now — `sessions.project_from_cwd` at two
+    path segments, and `sessions.bounded_project_label` at two segments of the
+    dash-encoded fallback — so what arrives here is bounded already and this is
+    the store's own guarantee rather than the row's.
 
-    The separator is chosen rather than guessed. A label carrying `/` came from
-    `project_from_cwd`, whose segments may legitimately contain `-`, so
-    dash-splitting it would mangle a correct label; only the dash-encoded
-    fallback is split on `-`, and that split is the guess the collector
-    declined to make. The trade is deliberate: a label trimmed too short groups
-    two projects under one name, which is a rendering cost, while a path kept
-    whole is the security bug the contract names.
+    There used to be a second branch splitting a label with no `/` on `-`, and it
+    is gone rather than fixed: a dash-encoded path and a hyphenated directory
+    name are the same string by the time they reach this module, so the split
+    truncated correct labels. Measured on real directories, `my-cool-project`
+    was stored as `cool-project` and `spacedock-ensign-drc-4044` as `drc-4044`,
+    which grouped a project's history under a different name than the live board
+    and left the seeded panels with nothing to show for it (DRC-4044 DR-8). The
+    fix is the bound moving to `sessions`, where the label is being built by
+    joining path segments and the difference is still known.
     """
-    separator = "/" if "/" in label else "-"
-    return separator.join(label.split(separator)[-PROJECT_SEGMENT_CAP:])
+    return "/".join(label.split("/")[-PROJECT_SEGMENT_CAP:])
 
 
 def _finite(value: Any) -> float | None:
@@ -347,10 +344,14 @@ def _decode(raw: bytes) -> tuple[tuple[Observation, ...], str | None]:
             parse_int=_numeric,
             parse_constant=_numeric,
         )
-    # OverflowError alongside the other two because it is the class a numeric
-    # too large for a float raises, and it was in no except tuple on this path:
-    # it escaped `load`, `Lane._open` and `Application.collect`, and a live
-    # server then answered nothing at all until the file was removed by hand.
+    # OverflowError cannot be raised here while the three hooks above are
+    # installed: an oversized integer literal reaches `_numeric` as text,
+    # `float()` returns `inf` rather than raising, and `math.isfinite` turns it
+    # into the ValueError beside it. Kept anyway, and named as unreachable
+    # rather than deleted, because it is one class in a tuple and the shape it
+    # guards against — a numeric no float can hold escaping this boundary — took
+    # a live server down permanently once. The reachable copy is at
+    # `Lane._open`, where removing it goes red.
     except (ValueError, RecursionError, OverflowError):
         return (), RESET_UNREADABLE
     if not isinstance(data, dict):

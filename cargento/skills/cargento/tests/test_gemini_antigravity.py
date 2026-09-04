@@ -81,6 +81,38 @@ def _generation_blob(
 
 
 class GeminiAntigravityCollectorTest(RuntimeTestCase):
+    def test_a_chat_without_a_cwd_caps_its_project_directory_label(self) -> None:
+        # DR-15. The cwd-less fallback is bound to `bounded_project_label`, and
+        # nothing here saw that: no existing fixture drives the fallback with a
+        # directory deeper than two segments, so reverting the bind to
+        # `project_label` left the whole suite green.
+        now = time.time()
+        sid = "cccccccc-dddd-eeee-ffff-000000000000"
+        home = "/Users/cl"
+        encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = Path(tmp) / "gemini-tmp"
+            chats = legacy / encoded / "chats"
+            chats.mkdir(parents=True)
+            # No `directories`, so `project_from_cwd` returns "" and the encoded
+            # directory name is the only label left.
+            (chats / f"session-{sid}.jsonl").write_text(
+                json.dumps({"sessionId": sid, "kind": "main"}) + "\n",
+                encoding="utf-8",
+            )
+            os.utime(chats / f"session-{sid}.jsonl", (now - 30, now - 30))
+            empty = Path(tmp) / "no-antigravity"
+            empty.mkdir()
+            with (
+                store_patch(GEMINI_TMP=str(legacy), ANTIGRAVITY_CLI_DIR=str(empty)),
+                config_patch(home=home),
+            ):
+                config, state = runtime()
+                rows = gemini_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("spacedock-subspace", rows[0]["project"])
+
     def test_the_legacy_gemini_row_still_reads_its_own_store_alone(self) -> None:
         # Gemini CLI lost its consumer tiers, not its enterprise and API-key
         # ones, so this store is historical on some machines and live on others.

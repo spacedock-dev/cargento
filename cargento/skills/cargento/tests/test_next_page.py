@@ -522,8 +522,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
             ),
             "next-chrome.js": (
-                15_973,
-                "e0a5c84a2240f77499978a706fe5589799a4a817413343c4b1a7bbe8534c31d1",
+                17_327,
+                "5101046a31b7f7ccbdb71c88ce0d31a78f7a8ad4b86fa44e6ea8ebc535214d49",
             ),
             "next-sessions.js": (
                 11_566,
@@ -546,12 +546,12 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "664f3a01c11cd1318b0c2453f81c20b44fa3a23731057269608dd54a6431a56d",
             ),
             "next-workstream.js": (
-                11_696,
-                "5f7132c58033f2ad7aa988fba622f54f94eee4c7b1a45e9b0ac8be353ce6ebd8",
+                17_492,
+                "a19c72133ff79a084ca435b46501cc33ad38d20f79b37f741ec38e1eb176f0e7",
             ),
             "next-delegation.js": (
-                7_544,
-                "d11ed2749ae3aa351fe26c1205665b6f4b57553aa17d0ce1ecc027371a6e7e7b",
+                8_583,
+                "e526ce96d25ef9c6347d6cbac903aa4c0da9b6399ecdbe0056ce3c119dcc9fdb",
             ),
             "next-controls.js": (
                 6_768,
@@ -581,9 +581,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(324_759, len(assembled))
+        self.assertEqual(332_948, len(assembled))
         self.assertEqual(
-            "5028ce9d58ccac5fbb33ad11f748320c1d295b08ba6997a92fed99b71baa7c91",
+            "49b12a4466b7a729236e1bebf3a4e430cc76f3cf377f2eeb2ec8918eb675dd8f",
             hashlib.sha256(assembled).hexdigest(),
         )
 

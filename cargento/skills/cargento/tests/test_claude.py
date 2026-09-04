@@ -1100,9 +1100,14 @@ class ClaudeCollectorTest(RuntimeTestCase):
 
     def test_claude_project_falls_back_when_transcript_has_no_cwd(self) -> None:
         # A transcript head can be written before any record carries cwd. The
-        # encoded directory name is lossy (Claude replaces every separator
-        # with "-", so it cannot be split back apart), so the documented
-        # fallback stays whole rather than guessing at a split.
+        # encoded directory name is lossy: Claude replaces every separator with
+        # "-", so it cannot be split back apart. It is capped at the last two
+        # segments rather than published whole, which is the one thing that can
+        # be said about it here without guessing, and it is what makes this row
+        # and the history store hold the same label. It does not make this row
+        # group with the same directory's cwd-derived rows: grouping is on the
+        # exact string, so `spacedock/subspace` and `spacedock-subspace` are
+        # still two groups. What the cap buys is that neither of them is a path.
         now = time.time()
         home = "/Users/cl"
         encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
@@ -1117,7 +1122,7 @@ class ClaudeCollectorTest(RuntimeTestCase):
             ):
                 sessions = collect_claude(now, 24, False)
 
-        self.assertEqual("git-spacedock-subspace", sessions[0]["project"])
+        self.assertEqual("spacedock-subspace", sessions[0]["project"])
 
 
 class StartStampCacheTest(RuntimeTestCase):
