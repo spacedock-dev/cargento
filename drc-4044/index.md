@@ -1645,3 +1645,50 @@ pins and the label bound, and names AC11 as the reviewer's to run.
 **GO.** AC10 and AC12 reproduce from their own clauses — I recomputed all six byte pins from the assets, reddened the caption mutation at all three sites, and reddened the seeded-window, denominator, clamp and identical-header falsifiers. **AC11 is graded and met:** after a real stop-and-restart, a fresh tab listed 12 earlier transitions captioned `last 22h 49m` and rendered the delegation figure at `LAST 22H 48M`, while the `--no-history` arm showed the empty rail and the withheld figure and left the store byte-identical. The one thing I will not overstate is that the machine produced no live state changes in 40 minutes, so the transitions in that store are scripted over real session identities; the recording lane is PR 1's ground and green.
 
 Six findings, **none Material**, so nothing routes back to `implementation`. The arbiter downgraded four of them by reproducing rather than ranking — most usefully by measuring the store's 1 MiB ceiling, which put lens A's HIGH below its own trigger. **DR-14 and DR-15 should be filed, not promoted:** AGENTS.md is explicit that promoting a deferred finding buys an implement-and-CI round for something already judged not worth blocking on, and four such promotions cost about an hour on the measured run. DR-15 is the one I would put to the captain anyway, because it is two five-line tests against a Material contract invariant that `history.py` no longer backstops, and the standing directive lets small fixes ride the PR in flight — but that is the FO's authorization to give, not mine to take.
+
+## Stage Report: implementation (PR 2, review polish)
+
+The PR 2 review returned **GO** with no Material finding. Three items ride before the gate under the
+captain's standing directive, all test-and-comment only: no runtime file, no `web/` file, and the byte
+pins do not move. Everything the reviewer passed is unchanged.
+
+- DONE: DR-15 — two tests mirroring `test_claude_project_falls_back_when_transcript_has_no_cwd` for `collectors/droid.py:56` and `collectors/gemini.py:113`, each red when its bind is reverted
+  The gap was real and the reviewer measured it right: Droid's existing fallback fixture used `-w-droidwork`, already two segments, so the cap is a no-op there, and no Gemini fixture drove the fallback at all — reverting either bind to `project_label` left the whole suite green. Both new tests use a deeper encoded name (`<home>-git-spacedock-subspace`) and assert `spacedock-subspace`. **Watched fail first by reverting the bind in a throwaway `git archive` copy, one collector at a time, never on the branch: both red with `'spacedock-subspace' != 'git-spacedock-subspace'`.** Claude's own oracle already reds this way, so all three binds are now pinned.
+- DONE: P-1 — one seeded-rail fixture at a non-integral day span so `Math.floor` → `Math.ceil` in the days bucket goes red
+  Every seeded fixture until now spanned an exact multiple of a day, where the two functions agree, so the days bucket had no oracle able to separate them. The new fixture spans **3d 12h** and asserts `last 3d 12h`. **Mutation run:** under `Math.ceil` it reads `last 4d 12h` and reds, while the exact-day fixtures stay **green** under the same mutation — which is the reviewer's point reproduced rather than taken on trust.
+- DONE: P-3 — the comment at `tests/test_claude.py` overclaims grouping
+  It said the cap makes the row group with the same directory's cwd-derived rows. It does not: grouping is on the exact string, so `spacedock/subspace` and `spacedock-subspace` are still two groups. The sentence now says what the bound actually buys — the row and the history store hold the same label, and neither of them is a path. Comment only; the assertion is untouched.
+
+### The round
+
+New head **`be27d7f`**, PR [#262](https://github.com/spacedock-dev/cargento/pull/262). The diff from
+`eb45b9d` is **4 files, +76/-4**, and the file list is the claim:
+
+```
+cargento/skills/cargento/tests/test_claude.py             +4/-4   (P-3, comment only)
+cargento/skills/cargento/tests/test_droid.py             +18/-0   (DR-15)
+cargento/skills/cargento/tests/test_gemini_antigravity.py +32/-0  (DR-15)
+cargento/skills/cargento/tests/test_next_workstream.py   +22/-0   (P-1)
+```
+
+Tests and one comment, nothing else. No `cargento_runtime/` file and no `web/` asset, so
+`test_next_page.py` and `test_next_flag.py` keep the figures recomputed last round.
+
+Suite run once at `be27d7f`: `ruff check` passed, `ruff format --check` 151 files, `mypy` clean over
+112 files, `lint_embedded` clean, `validate_plugins` OK, `bump_version --current` 0.20.0, merge-base
+version diff **empty**, **1,898 tests OK (1 skipped) in 41.0 s**, 209 script tests OK, coverage
+**90.2%** against `fail_under` 73. No red in any module, so nothing needed re-running alone.
+
+**CI on this head: 12 of 12 `success`**, and every check run's `head_sha` is `be27d7f` rather than
+a superseded one — checked, because a run that finished before a branch update is still reported
+green. `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`.
+
+### Summary
+
+Three review items closed with the property each was filed for, and each proved by running the
+mutation rather than by reading the new test: both reverted collector binds go red where they were
+green this morning, and the day-bucket ceiling reds only against the non-integral span. The comment
+correction removes a claim about grouping that the code does not make.
+
+**AC11 is still owed** and unchanged by this round: the restart-and-fresh-tab drive with its
+`--no-history` negative case, recorded as a capture.
