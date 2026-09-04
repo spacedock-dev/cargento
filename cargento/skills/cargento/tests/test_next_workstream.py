@@ -402,6 +402,26 @@ console.log(JSON.stringify({{
         self.assertEqual("since this tab opened", out["label"])
         self.assertIn("No state changes observed since this tab opened.", out["html"])
 
+    def test_a_seeded_rail_with_no_transitions_names_the_window_it_found_none_in(self) -> None:
+        # The other hardcoded caption. A project whose store holds one record has
+        # nothing to list, and the empty paragraph used to assert the tab's
+        # lifetime regardless of how far back the window reached. Reverting it to
+        # that literal reds here and nowhere else.
+        out = self.run_fixture(
+            self.seed_first_payload(
+                """, history: [
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "idle", last_activity: 740800}
+]"""
+            )
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual([], out["events"])
+        self.assertEqual(740800, out["startedAt"])
+        self.assertIn("No state changes observed in the last 3d.", out["html"])
+        self.assertNotIn("since this tab opened", out["html"])
+
     def test_a_stored_record_the_page_cannot_use_is_dropped_rather_than_drawn(self) -> None:
         # Every field arrives from a file any local process could have replaced.
         # A record with no usable stamp or no session identity cannot be placed on

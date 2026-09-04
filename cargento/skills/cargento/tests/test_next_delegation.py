@@ -567,6 +567,36 @@ console.log(JSON.stringify(__els.app.innerHTML));
         self.assertIn("no figure yet", block)
         self.assertIn("DELEGATION · SINCE THIS TAB OPENED", block)
 
+    def test_a_withheld_figure_over_a_seeded_window_names_that_window(self) -> None:
+        # The third hardcoded caption. A seeded window with nothing countable in
+        # it still knows how far back it reaches, and printing `SINCE THIS TAB
+        # OPENED` over a fortnight of store is the panel lying about its own
+        # provenance while withholding.
+        html = self.run_fixture(
+            self.RESET
+            + """
+__delegationPayload = {
+  ...__delegationPayload,
+  generated: 1000000,
+  history: [{
+    harness: "claude", sid: "session-one", project: "alpha/repo",
+    state: "idle", last_activity: 740800
+  }],
+  sessions: [{...__delegationPayload.sessions[0], state: "idle"}]
+};
+nextObserveWorkstream(__delegationPayload);
+nextData = __delegationPayload;
+renderNext();
+console.log(JSON.stringify(__els.app.innerHTML));
+"""
+        )
+        assert isinstance(html, str)
+        block = self.delegation_block(html)
+
+        self.assertIn("no figure yet", block)
+        self.assertIn("DELEGATION · LAST 3D", block)
+        self.assertNotIn("SINCE THIS TAB OPENED", block)
+
     def test_a_session_left_working_in_its_last_record_is_not_counted_to_now(self) -> None:
         out = self.run_fixture(
             self.RESET

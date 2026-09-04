@@ -18,6 +18,11 @@ let nextWorkstreamSeenAsks = new Map();
 let nextWorkstreamLastGenerated = null;
 let nextWorkstreamObservedSince = null;
 let nextWorkstreamSeeded = false;
+// How far back the store reaches per project, which is not the same question
+// as what can be counted there. A project whose only stored record closes a
+// span contributes no countable row, but the store still observed it that
+// long ago and the caption has to say so.
+let nextWorkstreamSeededSince = new Map();
 
 function nextWorkstreamStoredCollapsed(){
   try{
@@ -133,6 +138,7 @@ function nextWorkstreamAskTime(ask, generated, floor){
    rebuilding one object per session per record allocated millions where sharing
    allocates one per record. */
 function nextWorkstreamSeed(history, labels, generated){
+  nextWorkstreamSeededSince = new Map();
   const records = [];
   for(const entry of Array.isArray(history) ? history : []){
     const at = nextNumber(entry && entry.last_activity);
@@ -158,6 +164,9 @@ function nextWorkstreamSeed(history, labels, generated){
   const seen = new Map();
   records.forEach((record, index) => {
     const key = nextWorkstreamSessionKey(record);
+    if(!nextWorkstreamSeededSince.has(record.project)){
+      nextWorkstreamSeededSince.set(record.project, record.at);
+    }
     const previous = seen.get(key);
     seen.set(key, record);
     if(closes.get(key) === index){
@@ -331,13 +340,15 @@ function nextWorkstreamProjectWindow(project){
     samples.push(...groupSamples);
     events.push(...groupEvents);
   }
+  const observed = startedAt == null ? nextWorkstreamObservedSince : startedAt;
+  const seededAt = nextWorkstreamSeededSince.get(project);
   return {
     batches,
     endedAt: nextWorkstreamLastGenerated,
     events,
     samples,
     seeded: nextWorkstreamSeeded,
-    startedAt: startedAt == null ? nextWorkstreamObservedSince : startedAt,
+    startedAt: seededAt != null && (observed == null || seededAt < observed) ? seededAt : observed,
   };
 }
 
