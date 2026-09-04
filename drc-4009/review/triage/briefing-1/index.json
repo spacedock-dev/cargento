@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4009:triage:attempt-1:revision-1",
+  "question": "Rule on DEC-12 — may Cargento publish a projection or a likelihood about quota it has not measured? — and approve A6's triage: file DEC-12 blocking DRC-4009 (and E7, DRC-4040), then under the recommended option B rewrite A6 to publish measured working-span quantities only (median, p80, longest, sample count) with no verdict, retract P4's projection clause, and run the cheapest check first: leave a dashboard up for a day and count closed spans in the store?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4009:triage:attempt-1:revision-1:item-1",
+      "uri": "git-root://state/b807865388d6e469c212d3667246d2c601169564/drc-4009.md",
+      "rev": "sha256:d2e7e5f9b0e27e46b13af915bb8e01737462701455c6b9af1c813d32e7da9b9c",
+      "mediaType": "text/markdown",
+      "summary": "Triage against main at 4de75d2 found A6 unbuildable as filed: its size estimate needs prompt text, banned outright by the history contract; per-session consumption exists for Copilot alone and rate_per_min is null for four harnesses; the composition step is the burn-row verdict Q-9 built, measured (five false-green defects) and deleted; and no projection ships — the page never sends usage=1 so Claude and Cursor quota is never fetched in normal use, which makes promise-map P4 false where A6 rests on it. The only real history store holds 25 entries, 17 sids, zero closed working spans (a pre-merge sample). Drafted DEC-12 with four options (A no projection ever; B quantities never a verdict — recommended, with the P4 retraction riding; C amend DEC-6's kept-list; D publish the likelihood), the precedent read both ways (Q-9/A9 vs C7). Contingent B rewrite, one PR touching web/, two lenses plus arbiter, five ACs with AC3 pinning the published key set so no verdict can be added silently, surface ~570 lines ±40/60%. Two findings recommended for filing: the usage=1 gap and a five-harness session-id collision in the store. Zero Linear writes."
+    }
+  ]
+}
