@@ -2,7 +2,7 @@
 
 Run as many coding agents as you like. Cargento tells you which ones need you, which ones are
 fine, and when it is safe to walk away. One local screen, every harness you use, and nothing
-leaves the machine.
+leaves your machine that you cannot switch off.
 
 This file is the user-facing half of the roadmap. It says what Cargento answers today, what backs
 each answer, and where each answer stops. The internal half, the scored candidate signals and the

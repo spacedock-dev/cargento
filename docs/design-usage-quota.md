@@ -286,9 +286,18 @@ separate storage decision rather than another browser buffer.
 ## Q-3: Consent rides on the poll
 
 The fetch trigger lives in `/api/data` handling, not in collection, and fires only for requests
-carrying `usage=1`. The page sends that parameter exactly when the usage switch is on and the
+carrying `usage=1`. The page is to send that parameter exactly when the usage switch is on and the
 first-run disclosure banner has been answered. Three contract clauses fall out of this placement
 rather than being scheduled or checked:
+
+**The page half of that handshake is not shipped, so the design below describes the server's side
+only (measured 2026-09-04).** No JavaScript in `web/` reads the `usage_fetch` capability flag, so
+there is no banner, no configure switch, and no stored answer, and no page request carries
+`usage=1`. The consequence is that the fetch never fires in ordinary use, which is why the three
+clauses below currently hold vacuously rather than by the mechanism they name. Every statement in
+this section that says "the page sends" is a statement about the intended handshake. Restoring the
+disclosure and sending the parameter are one job, in that order, tracked as DRC-4376; SECURITY.md's
+own consent paragraph carries the same correction.
 
 1. "No polling while no dashboard page is connected": no request, no fetch.
 2. "Disclosed before it acts": on first run the banner is up, no poll carries consent yet, and

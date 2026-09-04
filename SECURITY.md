@@ -30,8 +30,14 @@ The posture rests on two invariants:
    and the MCP server refuse to reach anywhere but loopback, ignore proxy environment variables, and
    do not follow redirects. `--host` is the one way that first clause moves, it is an explicit
    argument nothing sets for you, and what it costs is under Known and accepted.
-   Session data never leaves the machine. The quota poll is the single outbound exception, and it
-   carries a vendor token out and quota numbers back, nothing else.
+   Two kinds of outbound request are in scope, one shipped and one written down before it exists,
+   and they are named apart rather than counted together because they are not the same exposure.
+   The quota poll carries a vendor token out and quota numbers back, and no session content
+   whatever. A harness invocation, described in Light harness usage below, would carry
+   session-derived text: it is the one pathway by which the operator's own words may leave this
+   machine. No shipped feature uses it, so nothing travels by it today, and that section is the
+   contract the first one has to satisfy, `--no-harness-usage` included. Nothing else Cargento does
+   reaches the network.
 2. Read-only against harness stores. They are opened read-only and never written. Seven endpoints
    mutate, and six of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
@@ -230,12 +236,24 @@ Token handling is read-only, one way, and never expands:
   loopback endpoint must not carry it, in any form.
 - Reading the token adds no write access anywhere. Harness stores stay read-only.
 
-Consent and the off switch: the feature is on by default and disclosed before it acts. The first
-time the dashboard opens with the feature available, a banner explains the token read and the
-request above, and carries the switch that turns the feature off. The setting can be changed later
-from the dashboard's configure panel, and `--no-usage` disables the feature for a run regardless
-of the stored setting. With the feature off, Cargento's network surface is exactly the three
-loopback-bound kinds of component described above, and nothing is fetched.
+Consent and the off switch, as designed: the feature is on by default and disclosed before it acts.
+The first time the dashboard opens with the feature available, a banner explains the token read and
+the request above, and carries the switch that turns the feature off. The setting can be changed
+later from the dashboard's configure panel, and `--no-usage` disables the feature for a run
+regardless of the stored setting. With the feature off, Cargento's network surface is exactly the
+three loopback-bound kinds of component described above, and nothing is fetched.
+
+**As shipped, the page half of that consent is missing, and this paragraph overstated the
+protection until 2026-09-04.** The server raises the capability flag the banner is meant to wake,
+and it is tested; no JavaScript in `cargento_runtime/web/` reads it, so there is no banner, no
+configure panel and no stored setting. The next-UI promotion appears to have dropped them, and
+nothing failed because nothing bound this paragraph to the page. Today the promise is satisfied
+only vacuously: the page also never sends the `usage=1` parameter the fetch requires, so the fetch
+never fires in normal use and no credential is read. Both halves are one defect and must be fixed
+together, restoring the disclosure before the parameter is sent and never the other way round, or
+Cargento would begin reading a credential and calling a vendor with the disclosure this document
+promises absent. Tracked as DRC-4376, which also adds the test that binds this paragraph to the
+page so the surface cannot vanish silently again.
 
 Polling posture: responses are cached, and at most one request per vendor is made every five
 minutes. No polling happens while no dashboard page is connected. `--diagnose` never triggers a
@@ -257,6 +275,73 @@ narrower, and deliberately so. It governs the outbound fetch and the display, wh
 govern for a harness that publishes its quota locally: with it off, a pushed receipt is still kept
 and still served on the loopback port, exactly as a disk-read tile (Codex, Copilot) is. Withdrawing
 retention for a run is what `--no-usage` is for.
+
+## Light harness usage (asking a harness a bounded question)
+
+Cargento was built to sit outside harness usage: it watched, and it spent nothing. DEC-14 changed
+that on 2026-09-04, because several of the answers the dashboard most wants to give cannot be
+derived from a transcript by rule (whether a quiet session died or finished, what happened while
+the operator was away, what a session's actual goal is rather than its opening instruction), and
+each of those shipped withholding its answer instead. Cargento may now ask a harness a bounded
+question and consume a little of the operator's own capacity doing it.
+
+This is the section to read before adding such a feature, and it grants nothing on its own. No
+shipped feature uses this pathway today. Each one arrives with its own entry here naming what it
+sends, what it asks, and what it caps.
+
+What makes this different from every other boundary in this document: it is the only one that sends
+the operator's own words off this machine. The quota poll carries a token and numbers. A harness
+invocation carries session-derived text, which is why invariant 1 names it separately rather than
+widening the quota exception to cover it, and why the consent below is opt-in where `--no-usage` is
+opt-out.
+
+The bounds, all of which hold together:
+
+- Opt-in, and off until answered. The feature does nothing until the operator turns it on. It
+  is disclosed the way the quota fetch is disclosed, and for a stronger reason: this one spends
+  their capacity rather than reading a number. A run with the setting unanswered makes no
+  invocation.
+- The operator causes it, and a caller cannot. An invocation starts from Cargento's own
+  observation lane or from an operator action, never as a side effect of an unauthenticated
+  request. Loopback is not a per-user boundary and `--host` widens it further, both of which Known
+  and accepted describes, so a trigger-shaped route with no authority behind it, the shape
+  `GET /api/observe` has, would let any other account on the machine spend the operator's capacity
+  by calling it in a loop. A feature that must be request-triggered carries the per-run capability
+  `POST /api/events/<harness>` uses, plus a floor and an in-flight gate the way the quota poll's
+  polling posture does, so a repeated request cannot repeat the spend.
+- The operator's own harness, never a Cargento credential. Cargento invokes the harness the
+  operator has already installed and signed in, non-interactively. It holds no API key, reads no
+  new secret, and adds no endpoint to the list in Usage quota reads. Nothing about token handling
+  changes, because there is no new token. A future feature that wanted to call a vendor API
+  directly would be a different decision needing its own endpoint entry there.
+- Redacted before it leaves, and bounded after. What is sent is prompt-derived text, so it goes
+  through `records.redact_secrets` first and the bound second, the same order and for the same
+  reason Published text gives. A key pasted into a prompt must not be handed to a subprocess any
+  more than it may be published to the page.
+- One bounded question, no tools, no recursion. A single prompt under a stated cap, a timeout,
+  no tool access granted to the invoked harness, and a guard against invoking a harness that is
+  itself running Cargento's hooks, which would have Cargento observing the session it just
+  created.
+- Visible spend. A feature that consumes capacity states what it consumed. Cargento already
+  renders quota windows; its own share of one is not allowed to be the invisible part.
+- Off switch. The first feature to use this pathway ships `--no-harness-usage` with it: a flag
+  that disables the pathway for a run regardless of the stored setting, mirroring `--no-usage` and
+  `--no-history` at every one of their sites, including the branch that forwards flags to a
+  respawned daemon, so a restart cannot re-enable what the operator disabled. That flag does not
+  exist yet, and this document does not claim it does. No feature uses the pathway, so there is
+  nothing to switch off. A test holds those two statements together: it asserts this section still
+  says the pathway is unused *and* that the parser still has no such flag, so whoever adds the flag
+  is failed here until they amend this section too. The rule is the ND-1 lesson, which this
+  repository learned by documenting configurable bounds that the config builder would not accept.
+
+A violation of any of those is a security bug: an invocation with the setting off or unanswered, an
+invocation carrying unredacted text, a credential read that this section does not name, tool access
+granted to an invoked harness, or an unbounded or untimed call.
+
+What is accepted rather than solved: the invoked harness is another program with its own logging and
+its own retention, and what it does with a prompt is outside Cargento's control. That is the same
+trust the operator already extends to that harness by running it, but it is a real transfer and it is
+stated here rather than implied.
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
@@ -341,20 +426,53 @@ board groups by: it is published on every row, it is capped at the last two segm
 being a path, and both panels that read the history group by it, so the history cannot be seeded
 without it. Never a raw working directory.
 
-What is never written to it:
+What is never written to it, under any circumstances and with no exception available:
 
-- Prompt text, of any session, at any point, whatever field carries it. Not a row's title, which is
-  derived from a prompt; not `last_prompt`; and not a session's state detail, which can carry a
-  permission prompt's own text, an open question's, or a plan's first line, and which the bounded
-  record of state disputes already omits for exactly that reason.
 - Tool input, in whole or in part, including any substring of a command.
 - Paths. Neither a session's working directory nor any path a tool touched.
 - File contents, of any file.
 
-The store may never widen the set of fields it keeps: a field that is not already published on the
-live board is not a field history may keep. The condition runs one way only: the board publishes
-prompt text, which the first never-item bans outright, and a derived two-segment project label,
-which the kept-list above keeps while the never-list bans the paths it is derived from.
+**Prompt-derived text is avoided by default and allowlisted per field when a feature needs it.**
+Until 2026-09-04 this was a fourth outright prohibition, and DEC-13 replaced it with the allowlist
+below. What did not change is that the store keeps no prompt-derived text nobody named: a carrier
+absent from the allowlist is banned exactly as firmly as tool input is, and the allowlist is a list
+of decisions rather than a category.
+
+The reason the ban became an allowlist is that it was stricter than the product around it and the
+asymmetry was doing no work. The dashboard already publishes prompt text: the session title, the
+line beneath it, `last_prompt`, the observer goal, and Codex's title, which is a prompt because
+Codex writes no generated title. And `GET /api/observe` already writes prompt-derived text to disk
+as a sidecar under `~/.cargento/observer/`, redacted on the way in and written owner-only. Prompt
+text on disk in Cargento's own state was therefore already a shipped pattern with a review behind
+it, and the history store was the one place holding a harder line than the surface it records.
+
+A field carrying prompt-derived text may be kept only when every one of these holds:
+
+1. it is named in the allowlist below, on its own line, with the feature that needs it;
+2. it is already published on the live board, so the one rule above, that the store holds nothing the
+   live snapshot does not already serve, still holds unchanged;
+3. it has passed `records.redact_secrets`, through `safe_text` or `redact_clip`, **before** it is
+   bounded and never after, the order Published text requires and for the reason given there;
+4. it is bounded to a cap this section states;
+5. it lives inside the retention window, the size cap, `--no-history` and `--forget` described
+   below, with no separate lifetime of its own.
+
+The allowlist, one line per field:
+
+- Nothing yet. No feature has earned an entry, so the store's records carry no prompt-derived text
+  today and `history.PROMPT_TEXT_ALLOWLIST` is empty. A test binds that tuple to this block and to
+  the record's own field set: an entry with no record behind it fails, and none of the carriers
+  named in `history.PROMPT_DERIVED_CARRIERS` may enter the record without an entry here. That tuple
+  is a hand-kept list of names, so a carrier it does not yet name is held out by this section and by
+  review rather than by the test. Adding a prompt-derived field to the record means adding its name
+  there in the same change.
+
+The store may never widen the set of fields it keeps otherwise: a field that is not already
+published on the live board is not a field history may keep. That condition used to run one way
+only, because the board published prompt text while the never-list banned it outright; with the
+allowlist the exception is gone and the condition runs both ways for an allowlisted field. The
+derived two-segment project label is kept by the kept-list above while the never-list still bans
+the paths it is derived from.
 
 The store lives under Cargento's own directory, next to the dismissals file, and is written the way
 that file and the state file are. It is opened owner-only with the mode in the `open` call, so it is
@@ -397,7 +515,8 @@ Nothing in the store ever leaves the machine. It adds no outbound request, no fo
 endpoint; the network posture described in Scope is unchanged by it.
 
 A violation of any boundary in this section is a security bug: a field in the store that the live
-board does not publish, prompt text or tool input or a path or file content reaching it by any route,
+board does not publish, prompt-derived text in a field the allowlist above does not name, tool input
+or a path or file content reaching it by any route,
 a write that is not owner-only or not through a temp file and a rename, an unbounded store or one
 evicted by anything but age first, a store still written while the feature is off, a respawned daemon
 that re-enables it, a history file reachable over the port, or any part of the store leaving the

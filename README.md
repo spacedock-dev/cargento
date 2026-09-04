@@ -8,8 +8,8 @@
 Agnostic agent cartography and visualization.
 
 Run as many coding agents as you like. Cargento tells you which ones need you, which ones are fine,
-and when it is safe to walk away. One local screen, every harness you use, and nothing leaves the
-machine.
+and when it is safe to walk away. One local screen, every harness you use, and nothing leaves your
+machine that you cannot switch off.
 
 It answers five questions, in the order a working day hits them. Which of my agents are running.
 What is each one doing, and when should I come back. Is anything waiting on me. Will I hit the quota
@@ -113,9 +113,13 @@ The skill starts a stdlib-only Python server: `cargento/skills/cargento/server.p
 launcher, and the dashboard itself lives in the importable `cargento_runtime` package beside it. The
 server reads local harness session stores read-only, meaning transcripts, task files, and SQLite
 databases, and assembles the HTML, CSS and JavaScript under `cargento_runtime/web/` into a
-self-refreshing dashboard at `http://127.0.0.1:4553/`. No data leaves your machine; the server binds
-to 127.0.0.1 unless you ask for another address with `--host`, which has no authentication behind it.
-See [SECURITY.md](SECURITY.md) before you do.
+self-refreshing dashboard at `http://127.0.0.1:4553/`. The server binds to 127.0.0.1 unless you ask
+for another address with `--host`, which has no authentication behind it. Your session data stays on
+the machine: the one request that leaves it is the quota poll, which carries a vendor token out and
+quota numbers back and no session content, and `--no-usage` turns it off. A second pathway is
+documented and unused: Cargento asking a harness a bounded question, which would carry
+session-derived text and is opt-in for that reason. See [SECURITY.md](SECURITY.md) for both, and
+before you use `--host`.
 
 The dashboard opens on Sessions, which puts the work that is active now above the work that is only
 recent history and gives each active session the same four facts: where it is, what it is doing now,

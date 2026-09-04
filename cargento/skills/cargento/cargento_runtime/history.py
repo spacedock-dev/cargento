@@ -18,7 +18,8 @@ store holds nothing the live snapshot does not already serve, and the enforceabl
 reading of that is field provenance — every field written is one the board
 already publishes. A retained row would satisfy it on its face and violate it in
 its nested carriers, because a row's `tasks` and `subagents` hold operator text
-the never-list bans and the contract's own never-list does not enumerate. So what
+that no `PROMPT_TEXT_ALLOWLIST` entry could reach: DEC-13's allowlist admits one
+named, published, capped field per line, never text buried inside one. So what
 is written is five named fields and never a row, which makes the rule satisfiable
 by construction instead of by review.
 """
@@ -101,6 +102,45 @@ OBSERVATION_FIELDS: Final[tuple[str, ...]] = (
     "state",
     "last_activity",
 )
+
+# The carriers of prompt-derived text the board publishes. Named here so the
+# contract's rule can be checked rather than trusted: none of these may enter
+# `OBSERVATION_FIELDS` unless it also appears in `PROMPT_TEXT_ALLOWLIST` below.
+# `state_detail` is on the list because it can carry a permission prompt's own
+# text, an open question's, or a plan's first line, and `goal` because the
+# observer derives it from the operator's own words — SECURITY.md's Published
+# text section names both among the prompt text the board already serves.
+#
+# A hand-kept list, and that is the limit of what the check can do: a carrier
+# nobody has named here is held out by the contract and by review, not by a
+# test. Keeping it in step with what the board publishes is part of adding a
+# published field, which is why the names are here rather than inferred.
+PROMPT_DERIVED_CARRIERS: Final[tuple[str, ...]] = (
+    "goal",
+    "instruction",
+    "last_prompt",
+    "state_detail",
+    "title",
+)
+
+# DEC-13's allowlist, in code, and empty on purpose.
+#
+# SECURITY.md's "Local history" section used to ban prompt-derived text from this
+# store outright. The captain's ruling of 2026-09-04 replaced that with a
+# per-field allowlist: avoided by default, permitted where a feature earns it and
+# the contract names it. Every entry must be a carrier the live board already
+# publishes, redacted before it is bounded, and inside this store's existing
+# retention and delete.
+#
+# Empty is the enforceable state, not a placeholder. `test_documentation` binds
+# this tuple to the contract's own allowlist block and to `OBSERVATION_FIELDS`:
+# an entry with no record behind it fails, and no carrier named in
+# `PROMPT_DERIVED_CARRIERS` may enter the record without an entry here. What that
+# cannot do is recognise a carrier the tuple above does not name, so the check
+# closes the named holes and the contract closes the rest. A ban that lived only
+# in prose was how the asymmetry the ruling removed went unnoticed for as long as
+# it did.
+PROMPT_TEXT_ALLOWLIST: Final[tuple[str, ...]] = ()
 
 
 def store_path(config: RuntimeConfig) -> str:

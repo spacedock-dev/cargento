@@ -381,11 +381,16 @@ afterwards brings nothing with it.
 
 ## Usage and quota
 
-This is the only thing Cargento sends anywhere. It is on by default, carries the vendor's own token
-and nothing else, and is gated behind a first-run disclosure in the page plus a five minute floor.
-`--no-usage` switches it off for the process, and the page's own configure control switches it off
-without a restart. [SECURITY.md](SECURITY.md#usage-quota-reads-the-quota-fetcher) owns the contract,
-including what is sent, what comes back, and what is never touched.
+This is the only thing Cargento sends anywhere. The server is willing to send it by default, and
+when it does the request carries the vendor's own token and nothing else, behind a five minute
+floor. `--no-usage` switches it off for the process.
+
+Two controls this page used to promise are not there yet: the first-run disclosure in the page and
+the page's own configure switch. Neither is built, and because the page never asks for the fetch,
+the request does not currently happen in ordinary use either. Restoring the disclosure and asking
+for the fetch are one job, tracked as DRC-4376.
+[SECURITY.md](SECURITY.md#usage-quota-reads-the-quota-fetcher) owns the contract, including what is
+sent, what comes back, what is never touched, and that gap.
 
 ## Stop a dashboard, and unstick a port
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import re
@@ -691,10 +693,132 @@ class HistoryStoreContractDocumentationTest(unittest.TestCase):
         self.assertIn("the derived two-segment project label", self.FLAT)
         self.assertIn("project", history.OBSERVATION_FIELDS)
 
-    def test_the_never_list_bans_the_fields_the_record_omits(self) -> None:
-        # The other direction of the same binding: every carrier the contract
-        # bans is absent from the record the store writes.
-        self.assertIn("Prompt text, of any session, at any point", self.FLAT)
-        for banned in ("title", "last_prompt", "state_detail", "instruction"):
-            with self.subTest(field=banned):
-                self.assertNotIn(banned, history.OBSERVATION_FIELDS)
+    @staticmethod
+    def bullets(source: str, header: str) -> list[str]:
+        """The bullet lines of the list directly under `header`.
+
+        Scoped rather than grepped over the whole document, and that is the
+        whole point of it. Every carrier name and every ban clause also occurs
+        in this section's surrounding prose, so an `assertIn` over SECURITY.md
+        is satisfied whatever these two lists actually say: `last_prompt` sits
+        in the rationale paragraph, `state_detail` and the instruction line
+        under Published text, `title` throughout. Matching the file instead of
+        the list is the difference between binding a list and mentioning it.
+
+        A moved or reworded header raises rather than widening back to the file,
+        because the quiet failure here is an assertion that still passes while
+        measuring nothing.
+        """
+        _, found, rest = source.partition(header)
+        if not found:
+            raise AssertionError(f"the block header moved: {header!r}")
+        return [line for line in rest.split("\n\n", 1)[0].splitlines() if line.startswith("- ")]
+
+    def test_the_absolute_bans_took_no_exception_and_still_have_none(self) -> None:
+        # DEC-13 relaxed one of the four never-items and deliberately left the
+        # other three alone. The count is pinned with them: a clause moved out
+        # of this block and into the allowlist paragraph would still satisfy a
+        # substring match on the file, which is exactly the relocation this is
+        # here to refuse.
+        bans = self.bullets(self.SECURITY, "with no exception available:\n\n")
+        self.assertEqual(3, len(bans))
+        block = " ".join(bans)
+        for clause in (
+            "Tool input, in whole or in part",
+            "Paths.",
+            "File contents, of any file",
+        ):
+            with self.subTest(clause=clause):
+                self.assertIn(clause, block)
+
+    def test_the_contract_names_every_field_the_allowlist_admits(self) -> None:
+        # DEC-13, the captain's ruling of 2026-09-04: the outright prompt-text
+        # ban became a per-field allowlist. This is the direction that stops the
+        # store from keeping something the contract never named.
+        self.assertIn("Prompt-derived text is avoided by default and allowlisted", self.FLAT)
+        entries = " ".join(self.bullets(self.SECURITY, "The allowlist, one line per field:\n\n"))
+        for field in history.PROMPT_TEXT_ALLOWLIST:
+            with self.subTest(field=field):
+                self.assertIn(field, entries)
+                # And the contract cannot name a field the store does not write:
+                # an allowlist entry with no record behind it reads as an
+                # exposure that exists when it does not.
+                self.assertIn(field, history.OBSERVATION_FIELDS)
+
+    def test_no_prompt_carrier_reaches_the_store_without_an_allowlist_entry(self) -> None:
+        # The direction with teeth, and the one that replaces the old literal
+        # quote. The ban used to be a sentence; it is now a comparison, so a
+        # field added to the record without an allowlist entry fails here rather
+        # than passing because nobody re-read the prose.
+        for carrier in history.PROMPT_DERIVED_CARRIERS:
+            if carrier in history.PROMPT_TEXT_ALLOWLIST:
+                continue
+            with self.subTest(field=carrier):
+                self.assertNotIn(carrier, history.OBSERVATION_FIELDS)
+
+    def test_the_allowlist_is_empty_and_the_contract_says_so(self) -> None:
+        # The two have to agree about emptiness as well as about contents,
+        # because "nothing yet" is the claim a reader of this contract acts on.
+        self.assertEqual((), history.PROMPT_TEXT_ALLOWLIST)
+        entries = self.bullets(self.SECURITY, "The allowlist, one line per field:\n\n")
+        self.assertEqual(1, len(entries))
+        self.assertIn("Nothing yet. No feature has earned an entry", entries[0])
+
+
+class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
+    """DEC-14's section is a contract for a pathway nothing uses yet.
+
+    The other contract sections here bind prose to shipped code. This one has no
+    shipped code to bind to, which is exactly the state that produced the ND-1
+    defect: a section inherited from a plan, describing bounds the build could
+    not honour, passing because nothing compared the two. So what is bound here
+    is the emptiness. The section must keep saying the pathway is unused, and the
+    parser must keep having no flag to switch it off, and the day either changes
+    the other has to change with it.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+
+    def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
+        self.assertIn("## Light harness usage (asking a harness a bounded question)", self.SECURITY)
+
+    def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
+        # The load-bearing assertion. `--no-harness-usage` is the off switch the
+        # section promises the first feature will ship; until then the section
+        # says so and the parser has no such flag, so whoever adds the flag is
+        # failed here until they amend the section. The reverse does not hold and
+        # is not claimed: nothing in this suite can see a feature that uses the
+        # pathway while shipping no flag, so that half is held by review.
+        self.assertIn("No shipped feature uses this pathway today", self.FLAT)
+        self.assertIn("That flag does not exist yet", self.FLAT)
+        # argparse prints its usage to stderr before exiting, and that banner in
+        # a passing run reads like a failure to anyone watching the suite.
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["--no-harness-usage"])
+
+    def test_the_invariant_names_the_second_outbound_kind_apart(self) -> None:
+        # Invariant 1 used to call the quota poll "the single outbound
+        # exception". A harness invocation carries session-derived text where the
+        # poll carries none, so the amendment names them apart rather than
+        # widening the one exception to cover both. A reader who only skims the
+        # invariants has to see that distinction there.
+        self.assertNotIn("The quota poll is the single outbound exception", self.FLAT)
+        self.assertIn("no session content whatever", self.FLAT)
+        self.assertIn(
+            "the one pathway by which the operator's own words may leave this machine", self.FLAT
+        )
+
+    def test_the_consent_is_opt_in_where_the_quota_fetch_is_opt_out(self) -> None:
+        # The asymmetry is the point: reading a number is not spending capacity,
+        # and the section has to say which one it is.
+        self.assertIn("Opt-in, and off until answered", self.FLAT)
+        self.assertIn("spends their capacity rather than reading a number", self.FLAT)
+
+    def test_the_pathway_adds_no_credential_and_no_endpoint(self) -> None:
+        # The quota section owns the endpoint list and the token rules, and this
+        # pathway must not quietly extend either. It invokes the operator's own
+        # signed-in harness instead.
+        self.assertIn("never a Cargento credential", self.FLAT)
+        self.assertIn("adds no endpoint to the list in Usage quota reads", self.FLAT)
