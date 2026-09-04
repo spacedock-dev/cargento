@@ -715,8 +715,8 @@ def collect(
                     config, claude_data.session_cwd(config, state, transcript)
                 )
                 # Lossy fallback: the encoded name cannot be split back into
-                # segments, so it stays whole rather than guessing at a split.
-                or runtime_sessions.project_label(
+                # segments, so it is capped at two rather than published whole.
+                or runtime_sessions.bounded_project_label(
                     config, os.path.basename(os.path.dirname(transcript))
                 )
             )

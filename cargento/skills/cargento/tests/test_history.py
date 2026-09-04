@@ -1030,6 +1030,7 @@ class AFallbackProjectLabelIsNotAPathTest(HistoryStoreTestCase):
     # `make_config` builds. A real measured value, not an invented one.
     ENCODED = "-home-cargento-test-repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish"
     PUBLISHED = "repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish"
+    BOUNDED = "3976-finish"
 
     def collected(self) -> tuple[RuntimeConfig, dict[str, Any]]:
         import dataclasses  # noqa: PLC0415
@@ -1052,11 +1053,16 @@ class AFallbackProjectLabelIsNotAPathTest(HistoryStoreTestCase):
         )
         return config, application.collect(show_all=True)
 
-    def test_the_row_really_does_publish_the_whole_path(self) -> None:
-        # Non-vacuity: the assertion below proves nothing unless the collector
-        # actually put the six-segment path on the row it hands the lane.
-        _config, payload = self.collected()
-        self.assertEqual(self.PUBLISHED, payload["sessions"][0]["project"])
+    def test_the_row_and_the_store_agree_on_the_bounded_label(self) -> None:
+        # Non-vacuity, and DR-8's fix in one assertion. The uncapped fallback
+        # still returns the whole six-segment path, so there is a path to bound;
+        # the row the collector publishes carries the bounded label instead, so
+        # the board groups this project under the same name the store keeps.
+        # Before the bound moved, the row carried the path and the two disagreed.
+        config, payload = self.collected()
+        self.assertEqual(self.PUBLISHED, runtime_sessions.project_label(config, self.ENCODED))
+        self.assertEqual(self.BOUNDED, payload["sessions"][0]["project"])
+        self.assertEqual(self.BOUNDED, payload["history"][0]["project"])
 
     def test_the_store_holds_two_segments_and_never_the_path(self) -> None:
         config, payload = self.collected()
@@ -1069,13 +1075,29 @@ class AFallbackProjectLabelIsNotAPathTest(HistoryStoreTestCase):
         self.assertEqual(1, len(payload["history"]))
         self.assertEqual(stored, payload["history"][0]["project"])
 
-    def test_a_two_segment_label_whose_names_carry_dashes_survives_intact(self) -> None:
-        # The separator is chosen, not guessed. A label from `project_from_cwd`
-        # carries `/` and its own segments may hold `-`, so splitting this one
-        # on `-` would trim a correct label to "cool-repo".
-        record = history.observation({**loaded_row(), "project": "recce/my-cool-repo"})
-        assert record is not None
-        self.assertEqual("recce/my-cool-repo", record["project"])
+    def test_the_store_bounds_on_the_path_separator_and_never_on_a_dash(self) -> None:
+        # DR-8. The store used to split a label with no `/` on `-`, which is the
+        # one thing it cannot do correctly: a hyphenated directory name and a
+        # dash-encoded path are the same string here, and every name below is a
+        # real directory on the machine this was measured on. The bound now lives
+        # at `sessions.bounded_project_label`, where the label is built from path
+        # segments and the difference is known.
+        cases = [
+            ("my-cool-project", "my-cool-project"),
+            ("recce-cloud-infra", "recce-cloud-infra"),
+            ("spacedock-ensign-drc-4044", "spacedock-ensign-drc-4044"),
+            ("docs-sync-next-ui-design-parity", "docs-sync-next-ui-design-parity"),
+            ("alpha-beta-gamma-delta-epsilon-zeta", "alpha-beta-gamma-delta-epsilon-zeta"),
+            # The `/` bound stays: a label from `project_from_cwd` is at most two
+            # segments already, and anything wider did not come from there.
+            ("recce/my-cool-repo", "recce/my-cool-repo"),
+            ("a/b/c", "b/c"),
+        ]
+        for label, expected in cases:
+            with self.subTest(label=label):
+                record = history.observation({**loaded_row(), "project": label})
+                assert record is not None
+                self.assertEqual(expected, record["project"])
 
 
 class ForgetIsRefusedWhileADashboardCouldWriteItBackTest(HistoryStoreTestCase):

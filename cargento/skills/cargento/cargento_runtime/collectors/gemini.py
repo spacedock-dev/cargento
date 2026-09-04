@@ -110,7 +110,7 @@ def collect(
             state_detail = sessions.working_detail(info, subagents)
 
         cwd = transcripts.gemini_meta(config, state, fp).get("cwd")
-        project = sessions.project_from_cwd(config, cwd or "") or sessions.project_label(
+        project = sessions.project_from_cwd(config, cwd or "") or sessions.bounded_project_label(
             config, os.path.basename(os.path.dirname(os.path.dirname(fp)))
         )
         s = sessions.base_session("gemini", sid, project)

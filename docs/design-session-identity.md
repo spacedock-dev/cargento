@@ -43,12 +43,32 @@ A path under the home directory is labelled relative to it. Without that, `~/foo
 `project_label` fallback that strips exactly that prefix. The two derivations have to land
 on the same string or the unification is only skin deep.
 
+Both are capped at two segments, and the fallback's cap lives in
+`sessions.bounded_project_label` rather than downstream. `project_label` returns every
+remaining segment of a home-relative path joined by `-`, and one real store held
+`repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish`. Capping it here is
+reading the string the way it was just written: this is the only place a label is built by
+joining path segments, so it is the only place a `-` is known to be a separator rather than
+part of a directory's name. The cost is stated rather than hidden. A directory genuinely
+named `work-my-repo` reads as `my-repo` on the 0.75% of rows that carry no `cwd`, which is
+a grouping cost, against a home-relative path in a fourteen-day store, which
+[SECURITY.md](../SECURITY.md)'s never-list calls a security bug.
+
 The comparison against home goes through `normcase`, which folds Windows case and separator
 spelling and preserves length. `C:\Users\jared` and `C:/Users/jared` and `c:\users\JARED`
 are one directory, and a store may record any of them.
 
 ### Rejected
 
+- **Capping the label in the history store instead.** It shipped that way and had to come
+  back out. By the time a label reaches `history.observation` it is one string, and
+  `my-cool-project` is the same shape as `alpha-beta-gamma-delta-epsilon-zeta`: the store
+  split on `-` whenever no `/` was present, so real directories were truncated.
+  `spacedock-ensign-drc-4044` was stored as `drc-4044` while the board went on showing the
+  whole name, which grouped a project's history under a label the board never used and left
+  the seeded panels with nothing to render for it. No segment count separates the two cases
+  either, because `docs-sync-next-ui-design-parity` is a real directory with six of them.
+  The store still bounds on `/`, which is unambiguous.
 - **Splitting on both separators by hand.** Tempting, because a Windows path read on POSIX
   keeps its backslashes. `docs/design-cross-platform.md` already rejected the generic version
   of this helper and the same reasoning applies here: `\` is a legal POSIX filename

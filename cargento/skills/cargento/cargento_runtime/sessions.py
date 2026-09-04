@@ -6,7 +6,7 @@ import ntpath
 import posixpath
 import re
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Final, TypeAlias
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -37,6 +37,41 @@ def project_label(config: RuntimeConfig, dirname: str) -> str:
     """Shorten an encoded project directory name to just the project part."""
     dirname = dirname.removeprefix(encoded_home_prefix(config.home))
     return dirname.lstrip("-") or "(home)"
+
+
+# How many segments a label built by joining path segments may keep. The same
+# figure `history.PROJECT_SEGMENT_CAP` applies to the `/` form, written twice
+# rather than shared because `history` is a leaf over `config` alone and may not
+# import this module. Both come from the captain's D4 ruling of 2026-09-03
+# (Linear DRC-4044), which authorized a derived two-segment label and nothing
+# wider.
+PROJECT_SEGMENT_CAP: Final = 2
+
+
+def bounded_project_label(config: RuntimeConfig, dirname: str) -> str:
+    """``project_label`` capped to the last two segments of the encoded path.
+
+    The fallback three collectors reach when a transcript carries no ``cwd``:
+    measured, 29 of 3,888 real transcripts on one machine. ``project_label``
+    strips the encoded home prefix and returns *every* remaining segment joined
+    by ``-``, which is a whole home-relative path. One real store held
+    ``repos-recce-recce-cloud-infra--claude-worktrees-drc-3976-finish``.
+
+    The cap is here rather than downstream because this is the only place the
+    difference is known. A consumer sees one string, and ``my-cool-project`` and
+    ``alpha-beta-gamma`` are the same shape to it: the history store bounded the
+    dash form for a while and truncated correct labels, so a project one
+    directory under ``$HOME`` grouped under a different name than the live board
+    (DRC-4044 DR-8). Here the label is being built by joining path segments, so
+    trimming it is reading the string the way it was written.
+
+    The trade is stated rather than hidden: a directory genuinely named
+    ``work-my-repo`` under ``$HOME`` reads as ``my-repo`` on the rows that lack a
+    ``cwd``. That is a grouping cost on 0.75% of rows, against a home-relative
+    path in a fourteen-day store, which ``SECURITY.md``'s never-list calls a
+    security bug.
+    """
+    return "-".join(project_label(config, dirname).split("-")[-PROJECT_SEGMENT_CAP:])
 
 
 def project_from_cwd(config: RuntimeConfig, cwd: str) -> str:

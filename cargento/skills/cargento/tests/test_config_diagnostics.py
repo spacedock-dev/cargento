@@ -929,6 +929,37 @@ class OperatingSystemExpectationTest(unittest.TestCase):
                 config = make_config(home=home)
                 self.assertEqual(expected, runtime_sessions.project_label(config, encoded))
 
+    def test_the_bounded_fallback_label_caps_the_encoded_path_at_two_segments(self) -> None:
+        # The fallback three collectors reach when a transcript carries no `cwd`.
+        # `project_label` returns every remaining segment of a home-relative path
+        # joined by `-`, so the cap belongs here: this is the only place a label
+        # is built by joining path segments, and therefore the only place the
+        # difference between a path and a hyphenated directory name is known.
+        cases = [
+            # The measured six-directory case, encoded the way Claude encodes one.
+            (
+                "/home/cargento-test",
+                (
+                    "-home-cargento-test-repos-recce-recce-cloud-infra"
+                    "--claude-worktrees-drc-3976-finish"
+                ),
+                "3976-finish",
+            ),
+            ("/Users/jared", "-Users-jared-alpha-beta-gamma-delta-epsilon-zeta", "epsilon-zeta"),
+            # Already two segments, so the cap is a no-op rather than a trim.
+            ("/Users/jared", "-Users-jared-repos-cargento", "repos-cargento"),
+            ("/Users/jared", "-somewhere-else", "somewhere-else"),
+            # The home sentinel is a label, not a path, and must survive whole.
+            (r"C:\Users\jared", "C--Users-jared", "(home)"),
+        ]
+        for home, encoded, expected in cases:
+            with self.subTest(home=home, encoded=encoded):
+                config = make_config(home=home)
+                self.assertEqual(
+                    expected,
+                    runtime_sessions.bounded_project_label(config, encoded),
+                )
+
     def test_project_from_cwd_is_parent_over_basename(self) -> None:
         # DRC-3963. Bare basename collapses every checkout named "subspace"
         # into one label, so the contract is the last two path segments.
