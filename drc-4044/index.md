@@ -64,6 +64,17 @@ gates:
                 id: briefing:drc-4044:review:attempt-2:revision-1
                 digest: sha256:9246cd7514a8df1f99842a3968e8973d5ccf602fa3f5edee093e6ae649bd9d10
                 room-ref: ./review/review/briefing-2
+              resolution:
+                type: Resolution
+                id: resolution:spacedock:drc-4044:review:2
+                briefing: briefing:drc-4044:review:attempt-2:revision-1
+                by: person:captain
+                at: "2026-09-04T02:18:42.971749Z"
+                decision: approve
+                reason: 'Captain approved the PR 2 review gate on 2026-09-04 ("I agree with your recommendations, approve and continue"). Accepts the GO at eb45b9d plus the test-only polish at be27d7f: AC10 and AC12 reproduced, AC11 graded live (real restart, fresh tab, 12 earlier transitions, figure rendered; --no-history arm empty), AC4 held live, six pins recomputed, 12/12 checks on the head. DR-14 and DRC-4350 filed; DR-15/P-1/P-3 folded in. This is the terminal delivery for H1: PR 2 merges, then the full post-merge reconcile releases A6, D10, F2, F3 and G4.'
+              application:
+                target-stage: done
+                state: pending
 review-round:
     id: round:drc-4044:review:1
     stage: review
