@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from cargento_runtime import records as runtime_records
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import transcripts as runtime_transcripts
 from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.collectors import droid as droid_collector
@@ -19,6 +20,7 @@ from .support import (
     STORE_OVERRIDES,
     USER_HOME,
     RuntimeTestCase,
+    config_patch,
     make_runtime,
     runtime,
     store_patch,
@@ -64,6 +66,22 @@ class DroidCollectorTest(RuntimeTestCase):
 
         self.assertEqual(1, len(rows))
         self.assertEqual("w-droidwork", rows[0]["project"])
+
+    def test_a_transcript_without_a_cwd_caps_its_project_directory_label(self) -> None:
+        # DR-15. The fixture above uses `-w-droidwork`, which is already two
+        # segments, so the cap is a no-op there and reverting the bind to
+        # `project_label` left the whole suite green. A deeper encoded name is
+        # the only thing that tells the two apart.
+        home = "/Users/cl"
+        encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
+        with tempfile.TemporaryDirectory() as tmp:
+            self._transcript(Path(tmp), encoded, "s1", {"id": "s1"})
+            with store_patch(FACTORY_PROJECTS=str(tmp)), config_patch(home=home):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("spacedock-subspace", rows[0]["project"])
 
     def test_droid_sessions_from_project_transcripts(self) -> None:
         now = time.time()

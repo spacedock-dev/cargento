@@ -402,6 +402,28 @@ console.log(JSON.stringify({{
         self.assertEqual("since this tab opened", out["label"])
         self.assertIn("No state changes observed since this tab opened.", out["html"])
 
+    def test_a_window_that_is_not_a_whole_number_of_days_reports_both_parts(self) -> None:
+        # P-1. Every other seeded fixture spans an exact multiple of a day, where
+        # `Math.floor` and `Math.ceil` agree, so the days bucket had no oracle
+        # that could tell them apart. 3d 12h is the shortest span that can:
+        # ceiling the division reads it as 4d 12h, a caption a day and a half
+        # wrong about a store the reader can check.
+        out = self.run_fixture(
+            self.seed_first_payload(
+                """, history: [
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "idle", last_activity: 697600},
+  {harness: "claude", sid: "session-old", project: "alpha/repo",
+   state: "working", last_activity: 700000}
+]"""
+            )
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(697600, out["startedAt"])
+        self.assertEqual("last 3d 12h", out["label"])
+        self.assertIn("last 3d 12h", out["html"])
+
     def test_a_seeded_rail_with_no_transitions_names_the_window_it_found_none_in(self) -> None:
         # The other hardcoded caption. A project whose store holds one record has
         # nothing to list, and the empty paragraph used to assert the tab's

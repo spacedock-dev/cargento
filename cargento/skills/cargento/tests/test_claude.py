@@ -1104,10 +1104,10 @@ class ClaudeCollectorTest(RuntimeTestCase):
         # "-", so it cannot be split back apart. It is capped at the last two
         # segments rather than published whole, which is the one thing that can
         # be said about it here without guessing, and it is what makes this row
-        # group with the same directory's cwd-derived rows: `~/git/spacedock/
-        # subspace` reads `spacedock/subspace` from `project_from_cwd` and
-        # `spacedock-subspace` from here, agreeing on both segments where the
-        # uncapped form agreed on neither.
+        # and the history store hold the same label. It does not make this row
+        # group with the same directory's cwd-derived rows: grouping is on the
+        # exact string, so `spacedock/subspace` and `spacedock-subspace` are
+        # still two groups. What the cap buys is that neither of them is a path.
         now = time.time()
         home = "/Users/cl"
         encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
