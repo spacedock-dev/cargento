@@ -1557,3 +1557,35 @@ open a fresh tab, confirm the rail lists the earlier transitions and captions it
 window while the delegation figure renders instead of `no figure yet` — with the negative case under
 `--no-history` showing the empty rail and the withheld figure. Nothing in CI can open a browser tab,
 so the reviewer runs it and records it as a capture.
+
+## Stage Report: implementation (PR 2, continued after the FO rulings of 2026-09-04)
+
+The prior section closed with two items FAILED and no PR, pending two rulings. Both came back **A**.
+This section carries only what changed; everything marked DONE above stands unaltered.
+
+- DONE: the surface measured against the PR 2 estimate before the PR opens — stopping and putting it to the FO if beyond tolerance — the diff reviewed in the worktree, and a PR opened whose body starts `Implements [DRC-4044](https://linear.app/recce/issue/DRC-4044) — H1 · Keep a history of what happened` with `## Verification`, its number and head SHA reported
+  Measured, found beyond tolerance on both estimated rows, and put to the FO rather than opened quietly. **Decision 1 ruled A** and recorded in the PR body as `fo-ruling[2026-09-04]`, with the mechanism beside the number: the estimate modelled the delegation panel as clamp-gated when it is batch-gated, which is exercised rather than argued — with the widened clamp in place and the seeding pass made to build no batches, the seeded test still renders `no figure yet`. **PR [#262](https://github.com/spacedock-dev/cargento/pull/262), head `eb45b9d`.** Final surface: `web/` **+170 / 3** against 45-75, oracles **+404 / 8** against 112-188, runtime outside `web/` **+36 / 5** as its own declared row, docs **+44 / 7**. The five runtime files are the FO's four (`sessions.py` and the three collectors) plus `history.py`, whose dash branch is the other half of the same ruling. The denominator fix is recorded in the body as a defect the seeding exposed, with its test.
+- DONE: DR-8 `_bounded_project` trimming a correct hyphenated label one directory under `$HOME`
+  **Decision 2 ruled A: bound at the source.** `sessions.bounded_project_label` is the shared helper beside `project_from_cwd`; the three fallback call sites use it (`collectors/claude.py`, `gemini.py`, `droid.py`); `history._bounded_project` splits only on `/`, its docstring naming why the dash branch existed and why it is gone. Test-first, both watched red: a table on the helper (the measured six-directory case caps to `3976-finish`, `alpha-…-zeta` to `epsilon-zeta`, an already-two-segment label and the `(home)` sentinel unchanged) and a table on `_bounded_project` (`my-cool-project`, `recce-cloud-infra`, `spacedock-ensign-drc-4044`, `docs-sync-next-ui-design-parity` and `alpha-…-zeta` all survive whole; `a/b/c` still trims to `b/c`). Reds observed were exactly the four mangled names. The end-to-end through the real Claude collector now asserts **the row and the store agree** on `3976-finish` while the uncapped `project_label` still returns the whole six-segment path, which keeps it non-vacuous and is DR-8's fix in one assertion. **M-1 closes harder**: the path stops reaching the published row at all rather than being trimmed into the store. One shipped contract test changed with it — `test_claude_project_falls_back_when_transcript_has_no_cwd` now expects `spacedock-subspace` rather than `git-spacedock-subspace` — which **is** the user-visible change, declared in the PR body and stated with its trade in `docs/design-session-identity.md`, where the store-side cap is also recorded as a rejected alternative.
+- DONE: `docs/promise-map.md`'s P2 backing clause, carried from DRC-4344
+  `eb45b9d`, its own commit. The clause described "named pills for running subagents"; it now says a pill carries its subagent's measured elapsed, its own model and its own liveness, and that a finished or quiet teammate stays listed. No new promise, and P2's promise sentence — duplicated verbatim in `docs/visibility-2x2/items.json` and the Linear project description — is untouched, so no three-way sync is owed.
+- DONE: the canonical pre-PR suite re-run once after the ruling work
+  At `eb45b9d`: `ruff check` passed, `ruff format --check` 151 files, `mypy` clean over 112 files, `lint_embedded` clean, `validate_plugins` OK, `bump_version --current` 0.20.0, merge-base version diff **empty**, **1,895 tests OK (1 skipped) in 36.9 s**, 209 script tests OK, coverage **90.2%** against `fail_under` 73. No red in any module, so nothing needed re-running alone. Byte pins unchanged this round: no `web/` file moved.
+
+### Filed
+
+- **DR-13 — a server stopped mid-store still contributes its gap.** Recorded in the prior section and in PR #262's "Filed rather than fixed"; the FO is filing it. *Promote if* a stop or start marker ever reaches the store.
+
+### Summary
+
+Both rulings applied and PR **#262** opened at head **`eb45b9d`**. Decision 1 accepted the surface with
+the batch-gated finding recorded beside the table, so the review argues with the mechanism rather than
+the number. Decision 2 moved the fallback label's cap to `sessions.bounded_project_label`, which is
+what makes AC10's grouping honest for a project one directory under `$HOME` and closes PR 1's M-1
+harder; its user-visible consequence is declared in the PR body, in the design doc, and in the one
+shipped contract test that changed with it.
+
+**AC11 remains owed to review** and is not claimed: the restart-and-fresh-tab drive with its
+`--no-history` negative case, recorded as a capture, since nothing in CI can open a browser tab.
+`## Review guidance` in the PR body points at the caption test, the batch reconstruction, the byte
+pins and the label bound, and names AC11 as the reviewer's to run.
