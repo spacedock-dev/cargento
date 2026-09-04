@@ -68,8 +68,9 @@ current turn it is, and an estimate of when that turn ends. It tells you when th
 of making you poll.
 
 Backed by the current-turn elapsed and ETA estimate with its progress bar, the warning that fires
-when a request runs or is projected to run past fifteen minutes, named pills for running subagents,
-session detail that leads with current activity, the recent token output rate, the model each
+when a request runs or is projected to run past fifteen minutes, a pill per subagent carrying its
+measured elapsed, its own model and its own liveness, with a teammate that has finished or gone
+quiet still listed rather than dropped, session detail that leads with current activity, the recent token output rate, the model each
 session is running on, and desktop notifications on a state change.
 
 Where it stops: Cargento reads a tool call's name and whether it failed, never what it contained.
