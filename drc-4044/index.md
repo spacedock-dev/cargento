@@ -9,7 +9,7 @@ verdict:
 score: 0.5
 worktree: .worktrees/spacedock-ensign-drc-4044
 issue:
-pr: "#262"
+pr: pr-merge:262
 mod-block:
 linear-status: Todo
 milestone: 'Move up a level'
