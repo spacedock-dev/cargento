@@ -855,6 +855,7 @@ def _record_sample(
     key: str,
     at: float,
     pct: int,
+    window_start: float | None = None,
 ) -> tuple[tuple[float, int], ...]:
     """This window's kept readings after admitting `(at, pct)`, if it is new.
 
@@ -872,6 +873,15 @@ def _record_sample(
     A level that has FALLEN is a window that reset. Subtracting across a reset
     gives a negative pace, and clamping one would report zero, so the ring starts
     again from the reset rather than measuring through it.
+
+    A falling level is not the only sign of a reset, though, and it is the weaker
+    one: a window that rolls while spend continues can come back at or above
+    where it was, and the pace would then be measured straight through the
+    boundary. `window_start` is the stronger test, derived from the two fields
+    the entry already carries — `resetAt - windowSec` — so samples older than
+    the current window are dropped whatever the levels did. It is optional
+    because a window that publishes no length cannot supply one, and there the
+    falling-level test is all there is.
     """
     with state.usage_fetch_lock:
         ring = state.usage_samples.get(key)
@@ -884,6 +894,9 @@ def _record_sample(
                 return tuple(ring)
             if pct < newest_pct:
                 ring.clear()
+            elif window_start is not None:
+                while ring and ring[0][0] < window_start:
+                    ring.popleft()
         ring.append((at, pct))
         return tuple(ring)
 
@@ -934,7 +947,18 @@ def observe_windows(
             pct = window.get("pct")
             if not isinstance(pct, int) or isinstance(pct, bool):
                 continue
-            samples = _record_sample(config, state, _sample_key(harness, slot), at, pct)
+            # The current window's start, where both fields are published, so a
+            # sample from a previous window cannot be measured through the
+            # boundary. `_shape_window` states the same relation the other way
+            # round for the page's elapsed figure.
+            reset_at = _finite(window.get("resetAt"))
+            length = _finite(window.get("windowSec"))
+            window_start = (
+                reset_at - length if reset_at is not None and length and length > 0 else None
+            )
+            samples = _record_sample(
+                config, state, _sample_key(harness, slot), at, pct, window_start
+            )
             pace = _pace(samples)
             if pace is not None:
                 window["recent"] = pace

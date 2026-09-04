@@ -464,11 +464,24 @@ class _RequestHandler(BaseHTTPRequestHandler):
         show_all = query.get("all", ["0"])[0] == "1"
         # `usage=1` is the page's consent to the quota fetch riding along
         # on its poll: the page sends it only with the feature switched on
-        # and the first-run disclosure already shown. The fetch is a
+        # and the first-run disclosure already answered. The fetch is a
         # background side effect behind its own floor and in-flight gates;
         # this request is answered from whatever is already cached. A bare
         # request without the parameter never triggers network traffic.
-        if query.get("usage", ["0"])[0] == "1":
+        #
+        # Never on a document navigation, and that is a security check rather
+        # than a tidy-up. `_local_ok` deliberately forgives a cross-site
+        # navigation because the initiating page cannot READ a cross-origin
+        # document, so serving one exfiltrates nothing. A side effect is the
+        # case that reasoning does not cover: an attacker page that gets the
+        # browser to open `http://127.0.0.1:4553/api/data?usage=1` in a tab
+        # reads nothing back and still makes Cargento read a harness
+        # credential out of the Keychain and send it to the vendor, with the
+        # disclosure never shown. The page's own poll goes through `fetch`, so
+        # it reports `Sec-Fetch-Dest: empty` and is unaffected, and a `curl`
+        # caller sends no fetch metadata at all. The body is still served on
+        # the navigation; only the side effect is refused.
+        if query.get("usage", ["0"])[0] == "1" and not self._is_document_navigation():
             self.server.application.request_usage_fetch()
         revision, body = self.server.application.collect_json(show_all=show_all)
         # The cursor rides in a header rather than the body, so the

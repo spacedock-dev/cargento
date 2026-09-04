@@ -93,7 +93,7 @@ how much of its allowance is spent against how much of its own time is gone, so 
 compared: a window a third spent with an eighth of its time gone runs out long before one that is
 nine-tenths spent with nine-tenths of its time gone. Rows are ordered by when the budget runs out at
 the pace measured so far, which is not the same order as by percentage. Beneath them, what the
-remaining budget buys in minutes, and how long sessions in the busiest project have actually run.
+remaining budget buys in minutes, and how long sessions in the busiest project have actually worked, counting the intervals that opened working and were seen to close.
 Cargento never states which of the two times arrives first: the budget's end and the window's reset
 sit side by side and the comparison is yours.
 

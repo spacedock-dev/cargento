@@ -765,10 +765,10 @@ class NonFiniteNumberTest(unittest.TestCase):
                 entry = self._entry(
                     f'{{"five_hour": {{"utilization": 42, "resets_at": {literal}}}}}'
                 )
-                # `windowSec` is the slot's own length and is unrelated to the reset:
-        # a window with no readable countdown still has a duration, and the
-        # page needs it to place the elapsed tick.
-        self.assertEqual({"pct": 42, "windowSec": 5 * 3600}, entry["fiveH"])
+                # `windowSec` is the slot's own length and is unrelated to the
+                # reset: a window with no readable countdown still has a
+                # duration, and the page needs it to place the elapsed tick.
+                self.assertEqual({"pct": 42, "windowSec": 5 * 3600}, entry["fiveH"])
 
     def test_cursors_money_and_cycle_end_refuse_the_same_values(self) -> None:
         # Same defect class, the other fetch vendor: `int()` raises on both, and
@@ -1224,12 +1224,65 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
         httpd = make_server(application=application)
         return httpd, application
 
-    def _get(self, port: int, path: str) -> None:
+    def _get(self, port: int, path: str, headers: dict[str, str] | None = None) -> int:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        conn.request("GET", path)
+        conn.request("GET", path, headers=headers or {})
         response = conn.getresponse()
         response.read()
+        status = response.status
         conn.close()
+        return status
+
+    def test_a_document_navigation_never_arms_the_fetch(self) -> None:
+        """A cross-site link must not spend a credential read as a side effect.
+
+        `_local_ok` deliberately serves a cross-site top-level navigation,
+        because the initiating page cannot read a cross-origin document, so
+        nothing is exfiltrated. That reasoning covers the RESPONSE and not a
+        side effect: an attacker page that gets the browser to open
+        `/api/data?usage=1` in a tab reads nothing back and would still have
+        made Cargento read a harness credential out of the Keychain and send it
+        to the vendor, with the disclosure never shown. The body is still
+        served, so this asserts on the trigger rather than on the status.
+        """
+        httpd, application = self._server()
+        calls: list[bool] = []
+        original = application.request_usage_fetch
+
+        def fake_trigger() -> bool:
+            calls.append(True)
+            return False
+
+        application.request_usage_fetch = fake_trigger
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
+        thread.start()
+        navigation = {
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+        }
+        try:
+            status = self._get(httpd.server_port, "/api/data?usage=1", navigation)
+            # Served, exactly as before: the allowance for opening the API in a
+            # tab is unchanged and only the side effect is refused.
+            self.assertEqual(200, status)
+            self.assertEqual([], calls, "a navigation must never arm the fetch")
+            # And the page's own poll, which goes through `fetch` and so reports
+            # an empty destination, still arms it.
+            self.assertEqual(
+                200,
+                self._get(
+                    httpd.server_port,
+                    "/api/data?usage=1",
+                    {"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "empty"},
+                ),
+            )
+            self.assertEqual(1, len(calls))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+            application.request_usage_fetch = original
 
     def test_only_a_consented_request_triggers_and_diagnose_never_does(self) -> None:
         httpd, application = self._server()

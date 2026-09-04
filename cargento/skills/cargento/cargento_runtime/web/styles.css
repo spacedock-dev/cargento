@@ -427,7 +427,7 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-usage-consent-actions button{min-block-size:44px;padding:6px 14px;border:1px solid var(--line2);border-radius:3px;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
 .next-usage-consent-actions button[data-next-usage-answer="granted"]{border-color:var(--accent);color:var(--accent-ink)}
 .next-usage-consent-actions button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-.next-usage-consent-note{margin-top:11px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);line-height:1.45}
+.next-usage-consent p.next-usage-consent-note{margin-top:11px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);line-height:1.45}
 .next-usage-switch{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
 .next-usage-switch strong{color:var(--ink2);font-weight:400}
 .next-usage-switch button{min-block-size:44px;padding:4px 10px;border:1px solid var(--line2);border-radius:3px;background:transparent;color:var(--ink2);font:inherit;cursor:pointer}
@@ -451,9 +451,11 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-capacity-pace{font-size:var(--fs-sm)}
 .next-capacity-pace.hot{color:var(--alert)}
 .next-capacity-absent,.next-capacity-slack{color:var(--ink3)}
+.next-capacity-spent{color:var(--alert)}
+.next-capacity-row small{display:none}
 .next-capacity-ends em{font-style:normal;color:var(--ink3)}
 .next-capacity-more i{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-style:normal}
-.next-capacity-prospect{margin-top:14px;padding:14px 16px;border-left:3px solid var(--accent);background:var(--panel);font-size:var(--fs-sm);line-height:1.5}
+.next-capacity-prospect{margin-top:14px;padding:14px 16px;border-left:3px solid var(--accent);background:var(--panel);font-size:var(--fs-sm);line-height:1.5;overflow-wrap:anywhere}
 .next-capacity-prospect p{margin:0}
 .next-capacity-prospect p+p{margin-top:7px}
 .next-capacity-prospect b{font-weight:500;font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -461,6 +463,9 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-capacity-scope{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
 @media(max-width:760px){
   .next-capacity-head{display:none}
+  /* The head row is gone, so each value states its own column the way
+     next-sessions.js's cards do. */
+  .next-capacity-row small{display:block;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);letter-spacing:.06em}
   .next-capacity-row{grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;padding:15px 4px}
   .next-capacity-pct{text-align:right}
   .next-capacity-bar,.next-capacity-noclock{grid-column:1/-1;margin-top:4px}

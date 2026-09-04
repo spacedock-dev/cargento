@@ -311,7 +311,7 @@ nextData.history = [
   {harness: "claude", sid: "b", project: "recce/cargento", state: "idle",
    last_activity: nextData.generated - 300}
 ];
-console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData)}));
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
 """,
             storage_prelude({}),
         )
@@ -331,7 +331,7 @@ nextData.history = [
   {harness: "claude", sid: "a", project: "p", state: "idle",
    last_activity: nextData.generated - 60}
 ];
-console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData)}));
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
 """,
             storage_prelude({}),
         )
@@ -415,3 +415,257 @@ console.log(JSON.stringify({
             storage_prelude({}),
         )
         self.assertEqual(0, out["quota"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class CapacityHonestyTest(NextPageJsHarness):
+    """The absences, each one a way this surface could have reassured wrongly.
+
+    Every case here was a real defect found by review before it shipped. They
+    are grouped because they are one rule: a missing or expired input removes a
+    claim, and a measured value is never rendered as an absence.
+    """
+
+    def test_a_reset_already_past_leaves_the_window_untimed(self) -> None:
+        # The one that would have shipped a false all-clear. A stale disk
+        # snapshot describes a window that has since rolled; clamping elapsed to
+        # 1 made the pace look tiny, the projected end enormous, and the row
+        # rendered "lasts, ~123% spare" over evidence that had expired, with
+        # more spare than there was budget left.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+nextData.usage = [{harness: "claude", state: "ok", asOf: nextData.generated - 9000,
+  fiveH: {pct: 78, windowSec: 18000, resetAt: nextData.generated - 600}}];
+const rows = nextCapacityRows(nextData);
+console.log(JSON.stringify({
+  elapsed: rows[0].elapsed,
+  pace: rows[0].paceRatio,
+  ends: rows[0].windowMinutesLeft,
+  html: nextCapacityRow(rows[0], nextData.generated)
+}));
+""",
+            storage_prelude({}),
+        )
+        self.assertIsNone(out["elapsed"])
+        self.assertIsNone(out["pace"])
+        self.assertIsNone(out["ends"])
+        self.assertIn("not projected", out["html"])
+        self.assertNotIn("spare", out["html"])
+        self.assertIn("publishes no clock", out["html"])
+
+    def test_a_spent_budget_says_spent_rather_than_printing_the_present_minute(self) -> None:
+        # Zero minutes left formatted through the clock printed the current
+        # time, which reads as a deadline still ahead.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+nextData.usage = [{harness: "claude", state: "ok", asOf: nextData.generated,
+  fiveH: {pct: 100, windowSec: 18000, resetAt: nextData.generated + 3600}}];
+const rows = nextCapacityRows(nextData);
+console.log(JSON.stringify({html: nextCapacityRow(rows[0], nextData.generated)}));
+""",
+            storage_prelude({}),
+        )
+        self.assertIn("already spent", out["html"])
+
+    def test_a_recent_pace_measured_at_zero_is_not_reported_as_unmeasured(self) -> None:
+        # Three states, not two. The ring publishes `recent` only once two
+        # distinct readings support it, so a zero there is evidence that nothing
+        # was spent, and "no second reading yet" contradicts the payload.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+nextData.usage[0].fiveH.recent = {pctPerMin: 0, samples: 4, spanSec: 1800};
+const rows = nextCapacityRows(nextData);
+const row = rows.find(entry => entry.harness === "claude");
+console.log(JSON.stringify({html: nextCapacityProspect(row, 2, "")}));
+""",
+            storage_prelude({}),
+        )
+        self.assertIn("measured at zero", out["html"])
+        self.assertNotIn("no second reading", out["html"])
+
+    def test_the_thin_basis_qualifier_rides_the_reassuring_verdict_too(self) -> None:
+        # Carrying it only on the alarm meant comfort was asserted with less
+        # evidence than concern.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+nextData.usage = [{harness: "claude", state: "ok", asOf: nextData.generated,
+  fiveH: {pct: 2, windowSec: 18000, resetAt: nextData.generated + 17100}}];
+const rows = nextCapacityRows(nextData);
+console.log(JSON.stringify({
+  elapsed: Math.round(rows[0].elapsed * 100),
+  html: nextCapacityRow(rows[0], nextData.generated)
+}));
+""",
+            storage_prelude({}),
+        )
+        self.assertEqual(5, out["elapsed"])
+        self.assertIn("spare", out["html"])
+        self.assertIn("<em>on ", out["html"])
+
+    def test_budget_ends_names_the_day_when_it_is_not_today(self) -> None:
+        # A weekly window's budget can end days out, and an hour-of-day alone
+        # names the wrong day.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const row = nextCapacityRows(nextData).find(entry => entry.slot === "week");
+console.log(JSON.stringify({
+  ends: nextCapacityClock(row.endsAt, nextData.generated),
+  sameDay: nextCapacityClock(nextData.generated + 600, nextData.generated)
+}));
+""",
+            storage_prelude({}),
+        )
+        # Codex's weekly row outlasts its reset, so take the raw clock: days out
+        # must carry a weekday, and an instant later today must not.
+        self.assertRegex(
+            out["ends"], r"^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d\d:\d\d$|^[A-Z][a-z]{2} \d\d$"
+        )
+        self.assertRegex(out["sameDay"], r"^\d\d:\d\d$")
+
+    def test_the_clock_is_anchored_on_the_payload_not_the_browser(self) -> None:
+        # Every other time figure on the board is anchored on `generated`, and
+        # mixing anchors makes two columns of one row disagree by the payload's
+        # age.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const a = nextCapacityClock(nextData.generated + 3600, nextData.generated);
+const b = nextCapacityClock(nextData.generated + 3600, nextData.generated + 86400);
+console.log(JSON.stringify({a, b}));
+""",
+            storage_prelude({}),
+        )
+        # The same instant read against a later anchor is no longer "today", so
+        # the function is demonstrably using the anchor it was given.
+        self.assertNotEqual(out["a"], out["b"])
+
+    def test_the_spread_counts_working_intervals_and_not_idle_gaps(self) -> None:
+        # First-to-last counted every gap as run time: a session that worked ten
+        # minutes, sat overnight and worked ten more read as fifteen hours.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const g = nextData.generated;
+nextData.history = [
+  {harness: "claude", sid: "a", project: "p", state: "working", last_activity: g - 60000},
+  {harness: "claude", sid: "a", project: "p", state: "idle", last_activity: g - 59400},
+  {harness: "claude", sid: "a", project: "p", state: "working", last_activity: g - 1200},
+  {harness: "claude", sid: "a", project: "p", state: "idle", last_activity: g - 600},
+  {harness: "claude", sid: "b", project: "p", state: "working", last_activity: g - 3600},
+  {harness: "claude", sid: "b", project: "p", state: "idle", last_activity: g - 1800}
+];
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
+""",
+            storage_prelude({}),
+        )
+        html = out["html"]
+        # Session a worked 10m + 10m = 20m, not the 16h5m its first and last
+        # records span. Session b worked 30m.
+        self.assertIn("20m to 30m", html)
+        self.assertIn("from 2 observed", html)
+
+    def test_the_spread_is_scoped_to_the_harness_it_is_printed_under(self) -> None:
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const g = nextData.generated;
+nextData.history = [
+  {harness: "codex", sid: "x", project: "other", state: "working", last_activity: g - 7200},
+  {harness: "codex", sid: "x", project: "other", state: "idle", last_activity: g - 3600},
+  {harness: "codex", sid: "y", project: "other", state: "working", last_activity: g - 7200},
+  {harness: "codex", sid: "y", project: "other", state: "idle", last_activity: g - 3600}
+];
+console.log(JSON.stringify({
+  claude: nextCapacityProjectSpread(nextData, "claude"),
+  codex: nextCapacityProjectSpread(nextData, "codex")
+}));
+""",
+            storage_prelude({}),
+        )
+        self.assertEqual("", out["claude"])
+        self.assertIn("other", out["codex"])
+
+    def test_the_spread_counts_what_it_could_not_measure(self) -> None:
+        # Silently excluding them made the range describe a subset while the
+        # count named only that subset.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const g = nextData.generated;
+nextData.history = [
+  {harness: "claude", sid: "a", project: "p", state: "working", last_activity: g - 3600},
+  {harness: "claude", sid: "a", project: "p", state: "idle", last_activity: g - 1800},
+  {harness: "claude", sid: "b", project: "p", state: "working", last_activity: g - 3600},
+  {harness: "claude", sid: "b", project: "p", state: "idle", last_activity: g - 900},
+  {harness: "claude", sid: "c", project: "p", state: "working", last_activity: g - 300}
+];
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
+""",
+            storage_prelude({}),
+        )
+        # Session c's working record is its last, so nothing observed its end.
+        self.assertIn("from 2 observed", out["html"])
+        self.assertIn("1 more session has no closed working interval", out["html"])
+
+    def test_two_sessions_do_not_report_their_maximum_as_a_median(self) -> None:
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const g = nextData.generated;
+nextData.history = [
+  {harness: "claude", sid: "a", project: "p", state: "working", last_activity: g - 3600},
+  {harness: "claude", sid: "a", project: "p", state: "idle", last_activity: g - 3000},
+  {harness: "claude", sid: "b", project: "p", state: "working", last_activity: g - 3600},
+  {harness: "claude", sid: "b", project: "p", state: "idle", last_activity: g - 1800}
+];
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
+""",
+            storage_prelude({}),
+        )
+        # 10m and 30m: the median is 20m, not the 30m the floor index returned.
+        self.assertIn("10m to 30m", out["html"])
+        self.assertIn("median <b>20m</b>", out["html"])
+
+    def test_the_disclosure_and_strip_reach_the_rendered_sessions_view(self) -> None:
+        # The mount, not the builders. Every other test here calls the builder
+        # directly, and the surface this replaces disappeared precisely because
+        # a view refactor dropped the call and nothing noticed.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+__els.app = {innerHTML: ""};
+navigateNext({view: "sessions", project: null, session: null});
+console.log(JSON.stringify({html: __els.app.innerHTML}));
+""",
+            storage_prelude({}),
+        )
+        self.assertIn("data-next-usage-consent", out["html"])
+        self.assertIn("data-next-capacity", out["html"])
+
+    def test_an_answer_survives_storage_that_refuses_the_write(self) -> None:
+        # A blocked-site-data profile could not dismiss the banner at all: every
+        # read re-derived from storage, so both buttons were inert.
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const before = nextUsageConsent();
+nextSetUsageConsent("declined");
+console.log(JSON.stringify({before, after: nextUsageConsent()}));
+""",
+            """
+const localStorage = {
+  getItem(){ throw new Error("blocked"); },
+  setItem(){ throw new Error("blocked"); },
+  removeItem(){ throw new Error("blocked"); }
+};
+const navigator = {};
+location.hash = "";
+""",
+        )
+        self.assertIsNone(out["before"])
+        self.assertEqual("declined", out["after"])
