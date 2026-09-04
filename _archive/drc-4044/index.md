@@ -1,11 +1,11 @@
 ---
 id: drc-4044
 title: 'H1 · Keep a history of what happened'
-status: review
+status: done
 source: https://linear.app/recce/issue/DRC-4044
 started: 2026-09-03T07:17:13Z
-completed:
-verdict:
+completed: 2026-09-04T02:34:02Z
+verdict: PASSED
 score: 0.5
 worktree: .worktrees/spacedock-ensign-drc-4044
 issue:
@@ -74,7 +74,7 @@ gates:
                 reason: 'Captain approved the PR 2 review gate on 2026-09-04 ("I agree with your recommendations, approve and continue"). Accepts the GO at eb45b9d plus the test-only polish at be27d7f: AC10 and AC12 reproduced, AC11 graded live (real restart, fresh tab, 12 earlier transitions, figure rendered; --no-history arm empty), AC4 held live, six pins recomputed, 12/12 checks on the head. DR-14 and DRC-4350 filed; DR-15/P-1/P-3 folded in. This is the terminal delivery for H1: PR 2 merges, then the full post-merge reconcile releases A6, D10, F2, F3 and G4.'
               application:
                 target-stage: done
-                state: pending
+                state: consumed
 review-round:
     id: round:drc-4044:review:1
     stage: review
@@ -83,6 +83,7 @@ review-round:
         id: briefing:drc-4044:review:round-1:revision-1
         digest: sha256:822089602fe06cef877f7db77adf92bedd5617bcfeffa27922ec5d5358078659
         room-ref: ./review/review/round-1
+archived: 2026-09-04T02:34:02Z
 ---
 
 [DRC-4044](https://linear.app/recce/issue/DRC-4044) — Linear priority Medium, estimate L.
