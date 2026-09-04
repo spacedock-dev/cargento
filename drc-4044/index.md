@@ -15,7 +15,7 @@ linear-status: Todo
 milestone: 'Move up a level'
 release: r3
 estimate: L
-reconciled:
+reconciled: 2026-09-04T02:31:15Z
 promise: P2
 move: new
 gates:
