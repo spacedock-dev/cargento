@@ -1,0 +1,15 @@
+{
+  "type": "Briefing",
+  "version": "1",
+  "id": "briefing:drc-4044:review:attempt-2:revision-1",
+  "question": "Authorize the merge of PR #262 (H1 PR 2: the seeded workstream rail and delegation figure, the reset header, the fallback-label bound at its source) at head be27d7f — closing H1 for real, with the post-merge reconcile moving DRC-4044 to Done and releasing A6, D10, F2, F3 and G4?",
+  "artifacts": [
+    {
+      "id": "artifact:drc-4044:review:attempt-2:revision-1:item-1",
+      "uri": "git-root://state/bebeb11f9d2fc29760452240f1793f9646737ffd/drc-4044/index.md",
+      "rev": "sha256:93f87f62d12efc5cad9d1397ad50d6ace2f55da927f89f8a5a23070ec4dda65c",
+      "mediaType": "text/markdown",
+      "summary": "PR 2 review GO at eb45b9d (two lenses plus arbiter; arbiter downgraded or refuted 4 of 6): AC10 and AC12 reproduced with six pins recomputed from the assets and every named falsifier red; AC11 graded live — real stop and restart, fresh tab listing 12 earlier transitions captioned last 22h 49m and the figure rendering, --no-history arm empty with the store byte-identical (transitions scripted over real session identities, declared); AC4 held live with 7 of 7 store labels equal to the row label; carried items DR-8..DR-12 landed or recorded. Six findings, none Material; DR-15 (droid/gemini bind tests), P-1 and P-3 folded in as a test-and-comment-only polish commit, head be27d7f, 12/12 checks on that head, CLEAN. Filed: DR-14 (rail caption after eviction), DRC-4350 (mid-store gap). Surface accepted under the standing ruling."
+    }
+  ]
+}

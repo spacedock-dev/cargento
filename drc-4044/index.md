@@ -59,6 +59,11 @@ gates:
               application:
                 target-stage: done
                 state: superseded
+            - id: gate-attempt:drc-4044-review-2
+              briefing:
+                id: briefing:drc-4044:review:attempt-2:revision-1
+                digest: sha256:9246cd7514a8df1f99842a3968e8973d5ccf602fa3f5edee093e6ae649bd9d10
+                room-ref: ./review/review/briefing-2
 review-round:
     id: round:drc-4044:review:1
     stage: review
