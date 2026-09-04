@@ -99,23 +99,32 @@ asking and Cargento answering
 
 ### P4. Will I hit the wall before the work finishes?
 
-**We promise:** your quota in one place across vendors: the windows that reset, per-model
-sub-limits, cost per session, and the burn rate projected to the wall.
+**We promise:** your quota in one place across vendors, with each window's budget shown against its
+own clock, so you can see whether there is room before you start rather than partway through.
 
-Backed by the usage band, which reads five harnesses by three different routes. Claude and Cursor
-are fetched from the vendor with the harness credential when fetching is enabled, Codex and Copilot
-are read from files they already write to disk, and Antigravity forwards its own figures through a
-status-line receipt. On top of that sit per-model sub-limits, per-session cost, the projected burn
-rate, and a ranking of which session is burning fastest right now.
+Backed by the capacity strip, which reads five harnesses by three different routes. Claude and
+Cursor are fetched from the vendor with the harness credential once you have answered the
+disclosure, Codex and Copilot are read from files they already write to disk, and Antigravity
+forwards its own figures through a status-line receipt. Each window shows how much of its allowance
+is spent against how much of its time is gone, the pace that comparison implies, when the budget
+runs out at that pace, and when the window resets. Beneath it, what the remaining budget buys in
+minutes at both paces Cargento has measured, and how long sessions in the busiest project on this
+machine have actually worked. On top of that sit per-model sub-limits, per-session cost, and a ranking of which session is
+burning fastest right now.
 
 Where it stops: what a vendor exposes is what you get. Claude, Codex and Antigravity publish
 five-hour and weekly windows, Cursor publishes its monthly billing cycle, and Copilot contributes
 per-session AI Units with no percentage because its entitlement is not stored locally. Cursor
-fetching is macOS only. Credential-backed fetching is opt-out for a run with `--no-usage`, and the
-token is never written, logged, or served. Quota that is expired, rejected, missing, or stale is
-withheld rather than rendered as zero. There is deliberately no single safe-to-start light: every
-quota producer signals failure as an empty list, so a composed light would read green exactly when
-Cargento can see nothing.
+fetching is macOS only, and Cursor's cycle has no published start, so its row shows a level and no
+clock. Credential-backed fetching happens only once the disclosure is answered, `--no-usage`
+refuses it for a run, and the token is never written, logged, or served. Quota that is expired,
+rejected, missing, or stale is withheld rather than rendered as zero.
+
+**Cargento never tells you that you are going to overrun.** It puts the budget's end time beside
+the window's reset time and leaves the comparison to you, including on the day they are ninety
+seconds apart. There is deliberately no single safe-to-start light and no likelihood: every quota
+producer signals failure as an empty list, so a composed verdict reads green exactly when Cargento
+can see nothing.
 
 ### P5. Did anything die quietly?
 

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Self
 from unittest import mock
 
 from cargento_runtime import aggregate, cli, diagnostics, quota, sessions
+from cargento_runtime.collectors import codex as codex_collector
 from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
@@ -341,8 +342,14 @@ class FetchRequestTest(unittest.TestCase):
         iso = datetime.fromtimestamp(NOW + 3600, tz=UTC).isoformat()
         body = {"five_hour": {"utilization": 10, "resets_at": iso}}
         entries, _ = self._fetch(_opener(body))
+        # Shaped for the same slot on both sides, so what is compared is the two
+        # stamp formats rather than the slot length that travels with them.
         self.assertEqual(
-            quota._shape_window(NOW, {"utilization": 10, "resets_at": NOW + 3600}),
+            quota._shape_window(
+                NOW,
+                {"utilization": 10, "resets_at": NOW + 3600},
+                quota.SLOT_WINDOW_SEC["fiveH"],
+            ),
             entries[0]["fiveH"],
         )
 
@@ -758,7 +765,10 @@ class NonFiniteNumberTest(unittest.TestCase):
                 entry = self._entry(
                     f'{{"five_hour": {{"utilization": 42, "resets_at": {literal}}}}}'
                 )
-                self.assertEqual({"pct": 42}, entry["fiveH"])
+                # `windowSec` is the slot's own length and is unrelated to the
+                # reset: a window with no readable countdown still has a
+                # duration, and the page needs it to place the elapsed tick.
+                self.assertEqual({"pct": 42, "windowSec": 5 * 3600}, entry["fiveH"])
 
     def test_cursors_money_and_cycle_end_refuse_the_same_values(self) -> None:
         # Same defect class, the other fetch vendor: `int()` raises on both, and
@@ -1214,12 +1224,65 @@ class NoFetchWithoutConsentTest(RuntimeTestCase):
         httpd = make_server(application=application)
         return httpd, application
 
-    def _get(self, port: int, path: str) -> None:
+    def _get(self, port: int, path: str, headers: dict[str, str] | None = None) -> int:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        conn.request("GET", path)
+        conn.request("GET", path, headers=headers or {})
         response = conn.getresponse()
         response.read()
+        status = response.status
         conn.close()
+        return status
+
+    def test_a_document_navigation_never_arms_the_fetch(self) -> None:
+        """A cross-site link must not spend a credential read as a side effect.
+
+        `_local_ok` deliberately serves a cross-site top-level navigation,
+        because the initiating page cannot read a cross-origin document, so
+        nothing is exfiltrated. That reasoning covers the RESPONSE and not a
+        side effect: an attacker page that gets the browser to open
+        `/api/data?usage=1` in a tab reads nothing back and would still have
+        made Cargento read a harness credential out of the Keychain and send it
+        to the vendor, with the disclosure never shown. The body is still
+        served, so this asserts on the trigger rather than on the status.
+        """
+        httpd, application = self._server()
+        calls: list[bool] = []
+        original = application.request_usage_fetch
+
+        def fake_trigger() -> bool:
+            calls.append(True)
+            return False
+
+        application.request_usage_fetch = fake_trigger
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
+        thread.start()
+        navigation = {
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+        }
+        try:
+            status = self._get(httpd.server_port, "/api/data?usage=1", navigation)
+            # Served, exactly as before: the allowance for opening the API in a
+            # tab is unchanged and only the side effect is refused.
+            self.assertEqual(200, status)
+            self.assertEqual([], calls, "a navigation must never arm the fetch")
+            # And the page's own poll, which goes through `fetch` and so reports
+            # an empty destination, still arms it.
+            self.assertEqual(
+                200,
+                self._get(
+                    httpd.server_port,
+                    "/api/data?usage=1",
+                    {"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "empty"},
+                ),
+            )
+            self.assertEqual(1, len(calls))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+            application.request_usage_fetch = original
 
     def test_only_a_consented_request_triggers_and_diagnose_never_does(self) -> None:
         httpd, application = self._server()
@@ -1551,3 +1614,160 @@ class UsageEndpointTest(RuntimeTestCase):
             application.collect(show_all=True)
         trigger.assert_not_called()
         fetch.assert_not_called()
+
+
+class PublishedWindowLengthTest(RuntimeTestCase):
+    """A window must publish its own length, not leave the page to infer one.
+
+    The page's pace reading is `pct` against how much of the window has elapsed,
+    and elapsed needs the length. Inferring it from the slot name is wrong for
+    exactly one producer and silently so: Codex names no windows, only durations,
+    and `collectors/codex.py` files anything under a day into `fiveH`. A plan
+    whose primary window is 180 minutes would then be drawn against 300, so the
+    tick would sit at 60% of the bar when the window was 100% gone. The length is
+    therefore published per window, measured where the vendor states it and
+    constant where the vendor states only a name.
+    """
+
+    def test_claude_publishes_the_length_its_field_names_imply(self) -> None:
+        entries, note = quota._fetch_windows(_config(), TOKEN, NOW, _opener(_usage_body()))
+        self.assertIsNone(note)
+        (entry,) = entries
+        self.assertEqual(5 * 3600, entry["fiveH"]["windowSec"])
+        self.assertEqual(7 * 86400, entry["week"]["windowSec"])
+
+    def test_codex_publishes_the_duration_the_vendor_stated(self) -> None:
+        # The case a slot-name constant gets wrong. 180 minutes is a real
+        # window under a day, so it files into `fiveH` and must still say 180.
+        mapped = codex_collector._usage_window(NOW, {"used_percent": 34, "window_minutes": 180})
+        self.assertIsNotNone(mapped)
+        assert mapped is not None
+        slot, window = mapped
+        self.assertEqual("fiveH", slot)
+        self.assertEqual(180 * 60, window["windowSec"])
+
+    def test_a_window_with_no_stated_length_publishes_none(self) -> None:
+        # Cursor meters a billing cycle and publishes its END only, and cycles
+        # run 28 to 31 days. Guessing one would draw a tick that is wrong by up
+        # to 10%, so the slot carries no length and the page withholds the tick.
+        entry = quota._cursor_entry(
+            NOW,
+            {
+                "planUsage": {"totalSpend": 1234, "limit": 5000},
+                "billingCycleEnd": int((NOW + 10 * 86400) * 1000),
+            },
+        )
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertNotIn("windowSec", entry.get("month", {}))
+
+
+class WindowSampleRingTest(RuntimeTestCase):
+    """Recent pace, measured from the vendor's own successive readings.
+
+    In memory only: no file, no endpoint, dropped with the process. Every value
+    it holds is one `/api/data` already served, so it widens no boundary.
+
+    Three rules earn their own tests because each one, got wrong, publishes a
+    reassuring number. A reading whose stamp has not advanced is not a new
+    reading, and counting it would divide a zero delta by a growing span and
+    call the result calm. A reading whose percentage has DROPPED is a window
+    that reset, and subtracting across the reset yields a negative pace. And
+    one sample is not a measurement at all.
+    """
+
+    def _observe(self, state: Any, at: float, pct: int, *, config: Any = None) -> dict[str, Any]:
+        entry: dict[str, Any] = {
+            "harness": "claude",
+            "state": "ok",
+            "asOf": int(at),
+            "fiveH": {"pct": pct, "windowSec": 5 * 3600},
+        }
+        quota.observe_windows(config or _config(), state, [entry])
+        return entry
+
+    def test_one_reading_yields_no_pace(self) -> None:
+        state = build_runtime_state(_config(), started=NOW)
+        entry = self._observe(state, NOW, 20)
+        # Not a pace of zero. Zero reads as "not burning", which is the one
+        # thing an unmeasured window must never say.
+        self.assertNotIn("recent", entry["fiveH"])
+
+    def test_two_readings_yield_the_pace_between_them(self) -> None:
+        state = build_runtime_state(_config(), started=NOW)
+        self._observe(state, NOW, 20)
+        entry = self._observe(state, NOW + 600, 26)
+        recent = entry["fiveH"]["recent"]
+        # 6 points over 10 minutes.
+        self.assertAlmostEqual(0.6, recent["pctPerMin"], places=4)
+        self.assertEqual(2, recent["samples"])
+        self.assertEqual(600, recent["spanSec"])
+
+    def test_a_frozen_snapshot_adds_no_sample_and_reports_no_pace(self) -> None:
+        # Codex's `asOf` is the snapshot's own epoch and can stand still for
+        # hours while the page polls every five seconds. Counting those repeats
+        # would publish a pace that falls toward zero the longer the vendor is
+        # stale, which is exactly backwards.
+        state = build_runtime_state(_config(), started=NOW)
+        self._observe(state, NOW, 20)
+        for _ in range(5):
+            entry = self._observe(state, NOW, 20)
+        self.assertNotIn("recent", entry["fiveH"])
+
+    def test_a_regressed_stamp_adds_no_sample(self) -> None:
+        # Codex picks its snapshot as the newest of eight rollout tails, so a
+        # file with a newer mtime can displace the one that held the newest
+        # snapshot and the stamp goes backwards.
+        state = build_runtime_state(_config(), started=NOW)
+        self._observe(state, NOW + 600, 26)
+        entry = self._observe(state, NOW, 20)
+        self.assertNotIn("recent", entry["fiveH"])
+
+    def test_a_reset_clears_the_ring_rather_than_measuring_across_it(self) -> None:
+        state = build_runtime_state(_config(), started=NOW)
+        self._observe(state, NOW, 80)
+        self._observe(state, NOW + 600, 90)
+        # The window rolled: the level fell.
+        entry = self._observe(state, NOW + 1200, 4)
+        self.assertNotIn("recent", entry["fiveH"])
+        # And the new window measures from the reset forward, never across it.
+        entry = self._observe(state, NOW + 1800, 10)
+        recent = entry["fiveH"]["recent"]
+        self.assertAlmostEqual(0.6, recent["pctPerMin"], places=4)
+        self.assertEqual(2, recent["samples"])
+
+    def test_the_ring_is_bounded(self) -> None:
+        config = _config(usage_samples_max=4)
+        state = build_runtime_state(config, started=NOW)
+        for step in range(12):
+            entry = self._observe(state, NOW + step * 600, step, config=config)
+        self.assertEqual(4, entry["fiveH"]["recent"]["samples"])
+
+    def test_each_vendor_and_scope_keeps_its_own_ring(self) -> None:
+        # One shared ring would let Antigravity, which can push a receipt with
+        # no rate limit at all, evict the Claude samples the pace exists to read.
+        state = build_runtime_state(_config(), started=NOW)
+        for at, pct in ((NOW, 10), (NOW + 600, 20)):
+            quota.observe_windows(
+                _config(),
+                state,
+                [
+                    {"harness": "claude", "asOf": int(at), "fiveH": {"pct": pct}},
+                    {"harness": "codex", "asOf": int(at), "fiveH": {"pct": pct * 3}},
+                    {"harness": "claude", "asOf": int(at), "week": {"pct": pct * 2}},
+                ],
+            )
+        entries: list[dict[str, Any]] = [
+            {"harness": "claude", "asOf": int(NOW + 1200), "fiveH": {"pct": 30}},
+            {"harness": "codex", "asOf": int(NOW + 1200), "fiveH": {"pct": 90}},
+        ]
+        quota.observe_windows(_config(), state, entries)
+        # claude fiveH ran 10 -> 30 over twenty minutes; codex 30 -> 90 over the same.
+        self.assertAlmostEqual(1.0, entries[0]["fiveH"]["recent"]["pctPerMin"], places=4)
+        self.assertAlmostEqual(3.0, entries[1]["fiveH"]["recent"]["pctPerMin"], places=4)
+
+    def test_a_window_with_no_percentage_is_not_sampled(self) -> None:
+        state = build_runtime_state(_config(), started=NOW)
+        entry: dict[str, Any] = {"harness": "claude", "asOf": int(NOW), "state": "refused"}
+        quota.observe_windows(_config(), state, [entry])
+        self.assertEqual({"harness": "claude", "asOf": int(NOW), "state": "refused"}, entry)

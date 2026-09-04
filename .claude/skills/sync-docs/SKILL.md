@@ -245,6 +245,7 @@ grep -nE 'target-version|python_version|fail_under' pyproject.toml
 grep -nE 'WEB_DIR|load_frontend' scripts/lint_embedded.py
 grep -o '{{CARGENTO_STYLES}}\|{{CARGENTO_APP}}' "$W/index.html" | sort | uniq -c
 python3 - "$W" <<'PY'
+import base64
 import hashlib
 import importlib.util
 import sys
@@ -255,12 +256,23 @@ spec = importlib.util.spec_from_file_location("cargento_web_page", web / "page.p
 assert spec and spec.loader
 page_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(page_mod)
-font_names = [name for name, _slot in page_mod.FONT_ASSETS]
-for name in ("index.html", "styles.css", *page_mod.APP_PARTS, *font_names):
+# APP_PARTS first: test_next_page compares the tuple by equality, so a new part
+# fails there as well as on its own size, and the order is part of the claim.
+print("APP_PARTS =", page_mod.APP_PARTS)
+for name in (*page_mod.APP_PARTS, "styles.css"):
     payload = (web / name).read_bytes()
+    print(name, len(payload), hashlib.sha256(payload).hexdigest())
+# Fonts are pinned DECODED, not as the .b64 file on disk. Printing the raw bytes
+# here produced plausible figures that fail the test: the oracle joins the .b64
+# lines and base64-decodes before measuring, so the two differ by about a third.
+for name, _slot in page_mod.FONT_ASSETS:
+    encoded = "".join((web / name).read_text(encoding="ascii").splitlines())
+    payload = base64.b64decode(encoded, validate=True)
     print(name, len(payload), hashlib.sha256(payload).hexdigest())
 page = page_mod.load_page()
 print("assembled page", len(page), hashlib.sha256(page).hexdigest())
+print("NOTE: the assembled figures are pinned TWICE, in tests/test_next_page.py")
+print("      and tests/test_next_flag.py. Update both.")
 PY
 # The real CI command surface
 grep -nE '^\s+(- name:|run:|  +[a-z].*)$' .github/workflows/quality-gate.yml | grep -E 'ruff|mypy|coverage|unittest|lint_embedded|validate_plugins'

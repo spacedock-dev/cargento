@@ -420,3 +420,54 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
   .next-operation-fact strong,.next-operation-fact em{grid-column:auto;margin-top:6px}
   .next-operation-row[data-next-operation-history="true"] .next-operation-fact[data-next-operation-fact="where"]{grid-column:1/-1}
 }
+.next-usage-consent{margin-top:22px;padding:16px 18px;border-left:3px solid var(--warn);background:var(--panel);font-size:var(--fs-sm);line-height:1.5}
+.next-usage-consent p{margin:0}
+.next-usage-consent strong{font-weight:500}
+.next-usage-consent-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.next-usage-consent-actions button{min-block-size:44px;padding:6px 14px;border:1px solid var(--line2);border-radius:3px;background:transparent;color:var(--ink);font:inherit;cursor:pointer}
+.next-usage-consent-actions button[data-next-usage-answer="granted"]{border-color:var(--accent);color:var(--accent-ink)}
+.next-usage-consent-actions button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.next-usage-consent p.next-usage-consent-note{margin-top:11px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);line-height:1.45}
+.next-usage-switch{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+.next-usage-switch strong{color:var(--ink2);font-weight:400}
+.next-usage-switch button{min-block-size:44px;padding:4px 10px;border:1px solid var(--line2);border-radius:3px;background:transparent;color:var(--ink2);font:inherit;cursor:pointer}
+.next-usage-switch button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.next-capacity{margin-top:22px;border-top:1px solid var(--line2)}
+.next-capacity-head,.next-capacity-row{display:grid;align-items:center;grid-template-columns:minmax(140px,1.05fr) 52px minmax(160px,2.1fr) 54px minmax(92px,.85fr) minmax(96px,.8fr);gap:0 14px}
+.next-capacity-head{padding:9px 4px 8px;border-bottom:1px solid var(--line2)}
+.next-capacity-head span{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);letter-spacing:.06em}
+.next-capacity-row{padding:13px 4px;border-bottom:1px solid var(--line)}
+.next-capacity-window{min-width:0}
+.next-capacity-window b{display:block;font-weight:500;font-size:var(--fs-sm);overflow-wrap:anywhere}
+.next-capacity-window i{display:block;margin-top:2px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-style:normal}
+.next-capacity-pct{font-family:var(--mono);font-size:var(--fs-md);font-variant-numeric:tabular-nums}
+.next-capacity-bar{position:relative;height:16px;background:var(--sunk);border:1px solid var(--line)}
+.next-capacity-fill{position:absolute;inset:1px auto 1px 1px;background:var(--accent)}
+.next-capacity-fill.warn{background:var(--warn)}
+.next-capacity-fill.crit{background:var(--alert)}
+.next-capacity-tick{position:absolute;top:-5px;bottom:-5px;width:0;border-left:2px solid var(--ink2);box-shadow:0 0 0 1px var(--bg)}
+.next-capacity-noclock{height:16px;border:1px dashed var(--line2);background:repeating-linear-gradient(135deg,var(--sunk) 0 5px,transparent 5px 10px)}
+.next-capacity-pace,.next-capacity-ends,.next-capacity-resets{font-family:var(--mono);font-size:var(--fs-xs);font-variant-numeric:tabular-nums;color:var(--ink2);min-width:0}
+.next-capacity-pace{font-size:var(--fs-sm)}
+.next-capacity-pace.hot{color:var(--alert)}
+.next-capacity-absent,.next-capacity-slack{color:var(--ink3)}
+.next-capacity-spent{color:var(--alert)}
+.next-capacity-row small{display:none}
+.next-capacity-ends em{font-style:normal;color:var(--ink3)}
+.next-capacity-more i{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-style:normal}
+.next-capacity-prospect{margin-top:14px;padding:14px 16px;border-left:3px solid var(--accent);background:var(--panel);font-size:var(--fs-sm);line-height:1.5;overflow-wrap:anywhere}
+.next-capacity-prospect p{margin:0}
+.next-capacity-prospect p+p{margin-top:7px}
+.next-capacity-prospect b{font-weight:500;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.next-capacity-prospect small{display:block;margin-top:9px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);line-height:1.45}
+.next-capacity-scope{color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs)}
+@media(max-width:760px){
+  .next-capacity-head{display:none}
+  /* The head row is gone, so each value states its own column the way
+     next-sessions.js's cards do. */
+  .next-capacity-row small{display:block;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);letter-spacing:.06em}
+  .next-capacity-row{grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;padding:15px 4px}
+  .next-capacity-pct{text-align:right}
+  .next-capacity-bar,.next-capacity-noclock{grid-column:1/-1;margin-top:4px}
+  .next-capacity-ends,.next-capacity-resets{grid-column:1/-1}
+}

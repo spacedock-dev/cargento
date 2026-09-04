@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import heapq
+import math
 import os
 from typing import TYPE_CHECKING, Any
 
@@ -35,13 +36,29 @@ def _usage_window(now: float, raw: Any) -> tuple[str, dict[str, Any]] | None:
     minutes = win.get("window_minutes")
     if not isinstance(pct, (int, float)) or isinstance(pct, bool):
         return None
-    if not isinstance(minutes, (int, float)) or isinstance(minutes, bool):
+    if (
+        not isinstance(minutes, (int, float))
+        or isinstance(minutes, bool)
+        or not math.isfinite(minutes)
+    ):
         return None
     # Codex names no windows, only durations: 300 minutes is the 5-hour
     # window, 10080 the weekly. Classify by length so a plan that carries
     # only one of them (prolite writes just the weekly) still maps.
     key = "fiveH" if minutes < 1440 else "week"
+    # The duration, published rather than left to the slot name. Codex is the one
+    # producer that states a real length, and the slot it lands in cannot carry
+    # it: anything under a day files into `fiveH`, so a 180-minute window drawn
+    # against a five-hour constant would put the page's elapsed tick at 60% of
+    # the bar with the window fully spent. Publishing the measurement is what
+    # keeps that from being a silent error on this vendor alone.
     shaped: dict[str, Any] = {"pct": max(0, min(100, round(pct)))}
+    # Published only when it is a real, positive duration. A zero or negative
+    # `window_minutes` is not a measurement, and publishing one would put a
+    # divide-by-zero behind the page's elapsed figure; omitting it drops the row
+    # into the "no stated length" branch the page already has.
+    if minutes > 0:
+        shaped["windowSec"] = int(minutes * 60)
     resets = win.get("resets_at")
     if isinstance(resets, (int, float)) and not isinstance(resets, bool) and resets > 0:
         shaped.update(sessions.reset_fields(now, resets))

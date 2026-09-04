@@ -254,6 +254,13 @@ class RuntimeConfig:
     # costs a sample, and refusing new ones would stop recording exactly when the
     # fault became frequent.
     dispute_log_max: int
+    # How many successive quota readings to keep per vendor window, for the
+    # recent-pace figure. A ring for the reason `dispute_log_max` is one: the
+    # oldest sample is the least useful, and refusing new ones would freeze the
+    # pace exactly while it was changing. Twelve at the five-minute fetch floor
+    # spans an hour, which is the shortest window's own scale; a vendor read
+    # from disk fills it only as fast as it writes.
+    usage_samples_max: int
     # Event ingress. The body cap is far below the notification cap because the
     # envelope is nine short fields and nothing else is read from it. The rate
     # ceiling is independent of the capability: a looping or compromised adapter
@@ -565,6 +572,7 @@ def build_runtime_config(
         event_pending_ttl_sec=60.0,
         reconcile_interval_sec=30.0,
         dispute_log_max=50,
+        usage_samples_max=12,
         event_body_cap_bytes=8_192,
         event_rate_per_sec=20.0,
         event_burst_max=40,

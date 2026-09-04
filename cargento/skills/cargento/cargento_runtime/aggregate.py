@@ -389,6 +389,30 @@ def _redact_in_place(holder: dict[str, Any], keys: tuple[str, ...]) -> None:
             holder[key] = records.redact_secrets(value)
 
 
+def _harness_row(spec: HarnessSpec, *, found: bool) -> dict[str, Any]:
+    """One harness's published row, before its collector has run.
+
+    Lifted out of `collect` rather than inlined there: the coverage fields are
+    properties of the store rather than of this pass, so they read better beside
+    the spec than in the middle of a loop that is also collecting sessions,
+    quota and overlays.
+    """
+    return {
+        "key": spec.key,
+        "label": spec.label,
+        "discovered": found,
+        # Whether a `rate_per_min` from this harness is a measurement at all.
+        # Stated per harness because it is a property of the store; the matching
+        # session field is null when the answer is no.
+        "reports_rate": spec.reports_rate,
+        # Whether this harness can report a gate at all, for the same reason
+        # `reports_rate` is here: the page cannot derive it, and the absence of a
+        # needs-input row is not evidence of quiet.
+        "reports_needs_input": spec.reports_needs_input,
+        "error": None,
+    }
+
+
 def _redact_published_text(rows: list[Session]) -> list[Session]:
     """Credential shapes out of the row fields that carry operator text.
 
@@ -487,6 +511,30 @@ class Application:
         """
         return next((spec.label for spec in self.harnesses if spec.key == key), "")
 
+    def _usage_for(
+        self,
+        spec: HarnessSpec,
+        now: float,
+        window_hours: float,
+    ) -> list[dict[str, Any]]:
+        """One harness's quota entries, or none if reading them failed.
+
+        Its own method so the failure boundary is stated once and reads as a
+        boundary: a broken quota read is a diagnostic and never a harness error,
+        because the session rows for that harness have already collected and one
+        unreadable tile must not repaint the whole strip red.
+        """
+        if spec.usage is None:
+            return []
+        try:
+            return list(spec.usage(self.config, self.state, now, window_hours))
+        except Exception as e:  # noqa: BLE001 — same boundary as the collector above
+            runtime_io.diag(
+                f"[{spec.key}] usage error: {type(e).__name__}: {e}",
+                self.diagnostic_sink,
+            )
+            return []
+
     def collect(self, *, show_all: bool) -> Collection:
         config, state = self.config, self.state
         window_hours = config.window_hours
@@ -507,20 +555,7 @@ class Application:
                 found = bool(spec.discover(config, state))
             except OSError:
                 found = False
-            harness: dict[str, Any] = {
-                "key": spec.key,
-                "label": spec.label,
-                "discovered": found,
-                # Whether a `rate_per_min` from this harness is a measurement at
-                # all. Stated per harness because it is a property of the store;
-                # the matching session field is null when the answer is no.
-                "reports_rate": spec.reports_rate,
-                # Whether this harness can report a gate at all, for the same
-                # reason `reports_rate` is here: the page cannot derive it, and
-                # the absence of a needs-input row is not evidence of quiet.
-                "reports_needs_input": spec.reports_needs_input,
-                "error": None,
-            }
+            harness = _harness_row(spec, found=found)
             harnesses.append(harness)
             if not found:
                 continue
@@ -541,13 +576,13 @@ class Application:
             # not repaint the whole strip red.
             usage_supported = True
             usage_fetch_active = usage_fetch_active or spec.usage_is_fetch
-            try:
-                usage.extend(spec.usage(config, state, now, window_hours))
-            except Exception as e:  # noqa: BLE001 — same boundary as the collector above
-                runtime_io.diag(
-                    f"[{spec.key}] usage error: {type(e).__name__}: {e}",
-                    self.diagnostic_sink,
-                )
+            usage.extend(self._usage_for(spec, now, window_hours))
+
+        # After every producer has reported and before anything is published, so
+        # one collection records at most one reading per window and the page sees
+        # the same annotation whichever vendor filled the cache. In-memory only:
+        # every value it keeps is one this payload already carries.
+        quota.observe_windows(config, state, usage)
 
         out_sessions = _redact_published_text(sessions.dedupe_sessions(out_sessions))
         _hide_unmeasured_rates(out_sessions, self.harnesses)

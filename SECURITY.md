@@ -236,24 +236,28 @@ Token handling is read-only, one way, and never expands:
   loopback endpoint must not carry it, in any form.
 - Reading the token adds no write access anywhere. Harness stores stay read-only.
 
-Consent and the off switch, as designed: the feature is on by default and disclosed before it acts.
-The first time the dashboard opens with the feature available, a banner explains the token read and
+Consent and the off switch: the feature is disclosed before it acts, and it does not act until the
+disclosure is answered. The first time the dashboard opens with the feature available, a banner explains the token read and
 the request above, and carries the switch that turns the feature off. The setting can be changed
-later from the dashboard's configure panel, and `--no-usage` disables the feature for a run
-regardless of the stored setting. With the feature off, Cargento's network surface is exactly the
+later from that same switch, which sits in the capacity strip beneath the fleet counts, and
+`--no-usage` disables the feature for a run regardless of the stored setting. With the feature off, Cargento's network surface is exactly the
 three loopback-bound kinds of component described above, and nothing is fetched.
 
-**As shipped, the page half of that consent is missing, and this paragraph overstated the
-protection until 2026-09-04.** The server raises the capability flag the banner is meant to wake,
-and it is tested; no JavaScript in `cargento_runtime/web/` reads it, so there is no banner, no
-configure panel and no stored setting. The next-UI promotion appears to have dropped them, and
-nothing failed because nothing bound this paragraph to the page. Today the promise is satisfied
-only vacuously: the page also never sends the `usage=1` parameter the fetch requires, so the fetch
-never fires in normal use and no credential is read. Both halves are one defect and must be fixed
-together, restoring the disclosure before the parameter is sent and never the other way round, or
-Cargento would begin reading a credential and calling a vendor with the disclosure this document
-promises absent. Tracked as DRC-4376, which also adds the test that binds this paragraph to the
-page so the surface cannot vanish silently again.
+**Answered, not assumed, and that is a change of 2026-09-04.** The mechanism is the `usage=1`
+parameter: the server fires the fetch for no request that omits it, and the page adds it only while
+the stored answer is `granted`. So an unanswered disclosure reads no credential and makes no
+request, and neither does a declined one, and an unrecognisable stored value counts as unanswered.
+The server enforces its own half rather than trusting the page: it ignores the parameter on a
+document navigation, so a cross-site link that opens `/api/data?usage=1` in a tab is served the
+body and arms nothing. That check is what makes the sentence above a property of the system and
+not only of the page's URL builder.
+This paragraph previously described the banner as shipped when the page had no banner, no configure
+control and no stored setting at all: the next-UI promotion had dropped them, the page consequently
+sent the parameter never, and nothing failed because nothing bound this paragraph to the page. The
+promise was true only because the feature never acted. DRC-4376 restored the surface and DRC-4352
+made the page ask, in that order. `test_next_capacity.py` binds the builder and the mount, and
+`test_quota.NoFetchWithoutConsentTest` binds the server's refusal, so neither half can go missing
+again without a red test.
 
 Polling posture: responses are cached, and at most one request per vendor is made every five
 minutes. No polling happens while no dashboard page is connected. `--diagnose` never triggers a

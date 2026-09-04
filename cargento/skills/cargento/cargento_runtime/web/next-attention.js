@@ -149,16 +149,73 @@ function nextAttentionLongTurnSignal(session, sourceIndex){
   return null;
 }
 
-function nextAttentionQuotaSignal(entry, scope, row, sourceIndex){
-  if(!entry || entry.state !== "ok" || !row || !Number.isInteger(row.pct) || row.pct < 70){
-    return null;
-  }
+/* Two floors, and a pace may raise a row only above both. Early in a window the
+   ratio is arithmetic on almost no time: 5% spent with 1% elapsed is a
+   five-times pace and means nothing, and a signal firing on that noise teaches
+   the reader to ignore the one that matters.
+
+   A tenth of the window is the time floor. A quarter was tried first and was
+   wrong, because it excluded the case this trigger exists for: a five-hour
+   window a third spent with an eighth of its time gone is 36 real minutes and
+   34 real points, and it runs dry three hours before it resets. That is the
+   reading, not the noise.
+
+   Ten points is the budget floor, and it bounds rounding rather than time.
+   `pct` is an integer, so at two points one point of rounding is half the
+   ratio; at ten it is a tenth. */
+const NEXT_QUOTA_PACE_MIN_ELAPSED = 0.1;
+const NEXT_QUOTA_PACE_MIN_PCT = 10;
+
+function nextAttentionQuotaPace(row, generated){
+  /* The window's own average pace and where it lands, or null when the vendor
+     did not publish enough to say. Both inputs come from one response, so this
+     composes nothing: `windowSec` is the slot's length and `resetAt` its end. */
+  const windowSec = nextNumber(row && row.windowSec);
+  const resetAt = nextNumber(row && row.resetAt);
+  const at = nextNumber(generated);
+  if(windowSec == null || windowSec <= 0 || resetAt == null || at == null) return null;
+  const remainingSec = resetAt - at;
+  const elapsed = Math.max(0, Math.min(1, (windowSec - remainingSec) / windowSec));
+  if(elapsed <= 0) return null;
+  const ratio = row.pct / (elapsed * 100);
+  const perMin = row.pct / (elapsed * windowSec / 60);
+  return {
+    elapsed,
+    ratio,
+    remainingSec,
+    /* Seconds until the budget reaches 100% at the pace measured so far, or
+       null when nothing is being spent. A pace of zero is not "ends never" in
+       any useful sense, but it is honestly "not projected". */
+    endsInSec: perMin > 0 ? ((100 - row.pct) / perMin) * 60 : null,
+  };
+}
+
+function nextAttentionQuotaSignal(entry, scope, row, sourceIndex, generated){
+  if(!entry || entry.state !== "ok" || !row || !Number.isInteger(row.pct)) return null;
+  const pace = nextAttentionQuotaPace(row, generated);
+  /* Two triggers, and the level one is unchanged because it is proven and it
+     catches what pace cannot see. Pace adds the case the level misses entirely:
+     a window a third spent with an eighth of its time gone runs dry hours before
+     it resets, while a window at 88% with 91% elapsed finishes the period with
+     room to spare. Ranking on level alone raises the second and stays silent on
+     the first, which is exactly backwards. */
+  const byLevel = row.pct >= 70;
+  const byPace = pace != null &&
+    pace.elapsed >= NEXT_QUOTA_PACE_MIN_ELAPSED &&
+    row.pct >= NEXT_QUOTA_PACE_MIN_PCT &&
+    pace.endsInSec != null &&
+    pace.remainingSec > 0 &&
+    pace.endsInSec < pace.remainingSec;
+  if(!byLevel && !byPace) return null;
   const resetAt = typeof row.resetAt === "number" && Number.isFinite(row.resetAt) && row.resetAt > 0
     ? row.resetAt
     : null;
   return {kind: "quota", section: "risk", sourceIndex,
     detail: {harness: String(entry.harness || ""), scope, pct: row.pct,
-      resetAt, tone: row.pct >= 90 ? "critical" : "warning"}};
+      resetAt, reason: byLevel ? "level" : "pace",
+      paceRatio: pace == null ? null : pace.ratio,
+      endsInSec: pace == null ? null : pace.endsInSec,
+      tone: row.pct >= 90 || (byPace && !byLevel) ? "critical" : "warning"}};
 }
 
 function nextAttentionQuotaSignalCompare(left, right){
@@ -358,7 +415,7 @@ function nextAttentionModel(payload){
     if(!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
     const harness = String(entry.harness || "");
     const addQuota = (scope, row, sourceIndex) => {
-      const signal = nextAttentionQuotaSignal(entry, scope, row, sourceIndex);
+      const signal = nextAttentionQuotaSignal(entry, scope, row, sourceIndex, payload && payload.generated);
       if(!signal) return;
       const key = `quota:${harness}:${scope}`;
       let subject = riskSubjects.get(key);
@@ -666,7 +723,15 @@ function nextAttentionSignalNow(signal, subject){
       : `Tool failures reported ${detail.errors} times`;
     return {text, note: ""};
   }
-  if(signal.kind === "quota") return {text: `${detail.pct}% reported`, note: ""};
+  if(signal.kind === "quota"){
+    /* The pace is stated beside the level whenever it was measured, because the
+       level alone cannot say why a row at 34% is here and a row at 88% is not. */
+    const pace = nextNumber(detail.paceRatio);
+    const text = pace == null
+      ? `${detail.pct}% reported`
+      : `${detail.pct}% reported, ${pace.toFixed(1)}\u00d7 the pace this window sustains`;
+    return {text, note: ""};
+  }
   if(signal.kind === "long-turn"){
     const session = subject.session || detail.session || {};
     const state = String(session.state_detail || "Working").trim() || "Working";

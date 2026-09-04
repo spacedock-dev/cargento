@@ -272,6 +272,87 @@ Guessing a path would mean reading some other file and calling it a credential, 
 reader reports no credential source and Cursor stays out of the band. Installing the CLI on the
 other two platforms is what unblocks them.
 
+## Q-12: budget against clock, and why there is still no verdict
+
+A9 asked for one safe-to-start light and was cancelled: every quota producer signals failure as an
+empty list, so a composed light reads "safe" exactly when Cargento can see nothing. A5 fitted a burn
+projection and produced five false greens across three review rounds, every one inside the binary
+race verdict and not one in the numbers; the fitted rate and its band survived a 4,000-case
+randomised sweep. Q-9 then retired the client-side projection along with the browser buffer it
+sampled into. So the third attempt at this promise had to answer the same question without
+composing a verdict, and DEC-12 settled how: publish two quantities and let the reader compare them.
+
+**The reading is budget against clock, on one axis.** A window publishes how much of its allowance
+is spent. With its own length and its reset stamp it also says how much of its *time* is spent:
+`elapsed = (windowSec - (resetAt - now)) / windowSec`. Both halves arrive in one response from one
+vendor, so the bar draws the level as fill and the clock as a tick, and the distance between them is
+the whole reading. Nothing adjudicates it. The budget's end time and the window's reset time sit in
+adjacent columns and the reader decides which matters.
+
+The case that justifies the surface is an inversion no single harness can show. A five-hour window
+34% spent with 12% of its time gone runs dry about three hours before it resets. A weekly window 88%
+spent with 91% gone finishes the period with room to spare. **The lowest number is the one to act on
+and the highest is the one to ignore**, and any ranking on level alone gets both wrong. Rows are
+therefore ordered by when the budget ends, earliest first; rows that cannot be timed sort last, by
+level, and say so.
+
+### The window's own length is published, because it cannot be inferred
+
+`windowSec` is a field rather than a constant in the page, and the reason is Codex. Codex names no
+windows, only durations, and its collector files anything under a day into the `fiveH` slot
+(`collectors/codex.py`). A plan whose primary window is 180 minutes therefore publishes as `fiveH`,
+and a page assuming five hours would draw the tick at 60% of the bar with the window fully spent.
+The length is read where the vendor states it and constant where the vendor states only a name:
+
+| Producer | Where the length comes from |
+|---|---|
+| Codex | `window_minutes`, the vendor's own figure, per window |
+| Claude | `quota.SLOT_WINDOW_SEC`, since the response names `five_hour` and `seven_day` and carries no length |
+| Antigravity | the same table, since the status line names `-5h` and `-weekly` |
+| Cursor | nothing. It publishes `billingCycleEnd` and no start, and cycles run 28 to 31 days |
+
+A window with no published length gets no tick, no elapsed figure and no projection. It renders the
+percentage it does have and states that it publishes no clock. That is the shape every absence takes
+here: it removes a claim rather than adding a reassuring one.
+
+### Recent pace is a second measurement, not a fitted curve
+
+The window's average pace needs no stored state at all, being `pct / elapsed`. A *recent* pace needs
+successive readings, and `quota.observe_windows` keeps a bounded ring of them per vendor window in
+memory, holding values `/api/data` already serves. No file, no endpoint, dropped with the process,
+so it widens no boundary in SECURITY.md and is strictly better than the browser buffer Q-9 retired:
+one server-side series, shared by every tab, surviving a reload.
+
+Three refusals in that ring each exist because admitting them publishes a reassuring number:
+
+- **A stamp that has not advanced is not a new reading.** Codex's `asOf` is the epoch of the newest
+  snapshot on disk, so it stands still between that harness's turns while the page polls every few
+  seconds. Counting those repeats divides an unchanged level by a growing span and calls the result
+  calm. The same stamp can also regress, because the snapshot is chosen as the newest of a bounded
+  set of rollout tails and a file with a newer mtime can displace the one that held it.
+- **A level that has fallen is a window that reset.** Subtracting across a reset gives a negative
+  pace, and clamping one would report zero, so the ring restarts rather than measuring through it.
+- **One reading is not a measurement.** Fewer than two distinct readings publishes no `recent` at
+  all, and the page says "not measured" rather than "0 per minute".
+
+The ring is keyed per vendor and per slot rather than shared, because `POST /api/usage` has no rate
+limit: a harness pushing receipts in a loop would otherwise evict the fetched Claude samples the
+pace exists to read.
+
+Where both paces are measured the prospective line states both, and their disagreement is the
+uncertainty. That is deliberately not a ± band on one number: both ends are observations.
+
+### The attention trigger keeps its level test and gains a pace test
+
+Q-9 left Attention raising quota only from a published level at or above 70 percent. That rule
+raises the 88% window that is fine and stays silent on the 34% one that is not, so a second trigger
+fires when the projected end falls before the reset. It is held behind two floors, and the first
+value tried was wrong: a quarter of the window elapsed excluded the exact case the trigger exists
+for, since 12% of five hours is 36 real minutes and 34 real points. A tenth of the window is the
+time floor, and ten points of budget is the second, bounding integer rounding rather than time: at
+two points, one point of rounding is half the ratio. The level trigger is unchanged, because it is
+proven and it catches what pace cannot see.
+
 ## Q-9: promotion retired the client-side burn projection
 
 The legacy page sampled quota levels in browser memory and fitted a burn projection. That reading
@@ -290,14 +371,19 @@ carrying `usage=1`. The page is to send that parameter exactly when the usage sw
 first-run disclosure banner has been answered. Three contract clauses fall out of this placement
 rather than being scheduled or checked:
 
-**The page half of that handshake is not shipped, so the design below describes the server's side
-only (measured 2026-09-04).** No JavaScript in `web/` reads the `usage_fetch` capability flag, so
-there is no banner, no configure switch, and no stored answer, and no page request carries
-`usage=1`. The consequence is that the fetch never fires in ordinary use, which is why the three
-clauses below currently hold vacuously rather than by the mechanism they name. Every statement in
-this section that says "the page sends" is a statement about the intended handshake. Restoring the
-disclosure and sending the parameter are one job, in that order, tracked as DRC-4376; SECURITY.md's
-own consent paragraph carries the same correction.
+**The page half of that handshake went missing and came back, and the sequence is worth keeping.**
+Measured on 2026-09-04: no JavaScript in `web/` read the `usage_fetch` capability flag, so there was
+no banner, no configure switch and no stored answer, and no page request carried `usage=1`. The
+promotion to the next UI had dropped the disclosure and nothing failed, because no test bound the
+prose to the page and the fetch consequently never fired at all. The three clauses below were true,
+but vacuously: they described a mechanism nothing exercised.
+
+Both halves were restored together, disclosure first (DRC-4376) and the parameter second
+(DRC-4352), because the other order would have started reading a credential with no disclosure in
+front of it. `nextUsageConsent` in `web/next-capacity.js` is the gate, and it answers three states
+rather than two: `granted`, `declined`, and unanswered, where an unreadable or unrecognised stored
+value counts as unanswered. `tests/test_next_capacity.py` binds each of them to the URL the page
+actually builds.
 
 1. "No polling while no dashboard page is connected": no request, no fetch.
 2. "Disclosed before it acts": on first run the banner is up, no poll carries consent yet, and

@@ -188,6 +188,7 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/web/next-boot.js",
     "skills/cargento/cargento_runtime/web/next-attention.js",
     "skills/cargento/cargento_runtime/web/next-notify.js",
+    "skills/cargento/cargento_runtime/web/next-capacity.js",
     "skills/cargento/cargento_runtime/web/next-chrome.js",
     "skills/cargento/cargento_runtime/web/next-sessions.js",
     "skills/cargento/cargento_runtime/web/next-projects.js",

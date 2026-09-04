@@ -12,6 +12,7 @@ APP_PARTS: tuple[str, ...] = (
     "next-attention.js",
     "next-notify.js",
     "next-chrome.js",
+    "next-capacity.js",
     "next-sessions.js",
     "next-projects.js",
     "next-project.js",

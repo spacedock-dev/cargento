@@ -47,6 +47,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         (web / "next-attention.js").write_text("const attention = 2;\n", encoding="utf-8")
         (web / "next-notify.js").write_text("const notify = 2;\n", encoding="utf-8")
         (web / "next-chrome.js").write_text("const middle = 2;\n", encoding="utf-8")
+        (web / "next-capacity.js").write_text("const capacity = 11;\n", encoding="utf-8")
         (web / "next-projects.js").write_text("const projects = 3;\n", encoding="utf-8")
         (web / "next-project.js").write_text("const project = 4;\n", encoding="utf-8")
         (web / "next-activity.js").write_text("const activity = 5;\n", encoding="utf-8")
@@ -77,7 +78,7 @@ class NextPageAssetContractTest(unittest.TestCase):
         self.assertEqual(
             (f"<style>{embedded_styles}.next{{color:red}}\n</style>").encode()
             + b"<script>const first = 1;\nconst attention = 2;\nconst notify = 2;\n"
-            b"const middle = 2;\n"
+            b"const middle = 2;\nconst capacity = 11;\n"
             b"const sessions = 3;\nconst projects = 3;\n"
             b"const project = 4;\nconst activity = 5;\n"
             b"const session = 6;\nconst workstream = 7;\nconst delegation = 8;\n"
@@ -177,6 +178,7 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "next-attention.js",
                 "next-notify.js",
                 "next-chrome.js",
+                "next-capacity.js",
                 "next-sessions.js",
                 "next-projects.js",
                 "next-project.js",
@@ -514,8 +516,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "ade573b3cf8db013fc0a57081a29bfb0620369d7348e9a06eddaab05d3d72e68",
             ),
             "next-attention.js": (
-                42_051,
-                "9ce3a282a6b002ab9d10b2d373a223c7fb23e048e09ba4f883e4e085e07bb5bf",
+                45_388,
+                "ac594989ccf9e1348ce41a82a199e4f78960bb8645f86ae131f164c42338f0c5",
             ),
             "next-notify.js": (
                 3_642,
@@ -525,9 +527,13 @@ class NextPageAssetContractTest(unittest.TestCase):
                 17_327,
                 "5101046a31b7f7ccbdb71c88ce0d31a78f7a8ad4b86fa44e6ea8ebc535214d49",
             ),
+            "next-capacity.js": (
+                25_829,
+                "cd568c13fb0e7bf224ba00d8aa7c29032ed4a3f3988853c5d79668fe2c948ec3",
+            ),
             "next-sessions.js": (
-                11_566,
-                "f0a4c655e10ab356011faae99537e792b3eec160705dfce37c245a7d3e03488c",
+                11_898,
+                "222e2f170f74efacb0bb477ff9d14301edbc5b8a3194ce4aa6e76defa633fad8",
             ),
             "next-projects.js": (
                 10_277,
@@ -558,8 +564,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "fb1f51b940a9e29122a6b689beb6ec6c31fe71652c45bc2dffa32f8250084018",
             ),
             "next-render.js": (
-                2_204,
-                "3bdb43261d6e223fd7793f9716f4b38a619aa22022c906fcddf27205f515ae66",
+                2_930,
+                "01ba6981527cb099cfa221499ff7345fd477b5fcdb7513fb4575ceaea5177ec3",
             ),
             "next-live.js": (
                 3_375,
@@ -574,16 +580,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(39_899, len(styles))
+        self.assertEqual(44_457, len(styles))
         self.assertEqual(
-            "033717ac2754ebdc90eca33d6534c636c0c26af36a5dfaa591c63dc6ce8b0de9",
+            "0d5a41f93fd9630a40fa9959e5411cb1cc3f4e280c1fbb5b00ce1aa2ffa1d64c",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(332_948, len(assembled))
+        self.assertEqual(367_730, len(assembled))
         self.assertEqual(
-            "49b12a4466b7a729236e1bebf3a4e430cc76f3cf377f2eeb2ec8918eb675dd8f",
+            "031a0abbc3370e73526aee166391b27f363ea394ac12d6df1db8662b3d67890b",
             hashlib.sha256(assembled).hexdigest(),
         )
 
