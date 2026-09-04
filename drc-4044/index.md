@@ -1558,7 +1558,7 @@ window while the delegation figure renders instead of `no figure yet` — with t
 `--no-history` showing the empty rail and the withheld figure. Nothing in CI can open a browser tab,
 so the reviewer runs it and records it as a capture.
 
-## Stage Report: implementation (PR 2, continued after the FO rulings of 2026-09-04)
+## Stage Report: implementation (PR 2, rulings applied)
 
 The prior section closed with two items FAILED and no PR, pending two rulings. Both came back **A**.
 This section carries only what changed; everything marked DONE above stands unaltered.
