@@ -251,7 +251,10 @@ advancing payload this tab sees. On the first payload it replays `history`, the 
 changes DRC-4234 authorised the server to keep. Each stored record becomes a batch holding every
 session known at that stamp, so a replayed window and a polled one are the same shape: an
 observation holds until the next one arrives. A session's first stored record is the baseline a
-later change is measured against and is not listed as a change itself. With the store off, or on a
+later change is measured against and is not listed as a change itself, and its last stored record
+closes its span rather than opening one: the store records what changed, never when the server
+stopped, so nothing observed the end of a final `working` record and holding it to the first payload
+counted a closed laptop as time an agent worked. With the store off, or on a
 machine that has never run with it, the first payload establishes the session and ask baseline and
 nothing older exists. Later payloads add state transitions, newly measured turn stops and newly
 observed asks in timestamp order. Replayed payloads add nothing.
