@@ -88,10 +88,23 @@ observed records, not commands sent to a harness.
 
 ## Usage and rate limits
 
-Quota evidence appears in Attention when a readable window reaches the risk threshold. Codex reads
-rate-limit snapshots from its own session files. Claude and Cursor use the harness credential only
-when usage fetching is enabled, poll their vendor endpoint at most once per five minutes while a
-page is open, and never refresh, write, log, or serve the token. Cursor fetching is macOS-only.
+The capacity strip sits beneath the fleet counts on Session operations. Each readable window shows
+how much of its allowance is spent against how much of its own time is gone, so the two can be
+compared: a window a third spent with an eighth of its time gone runs out long before one that is
+nine-tenths spent with nine-tenths of its time gone. Rows are ordered by when the budget runs out at
+the pace measured so far, which is not the same order as by percentage. Beneath them, what the
+remaining budget buys in minutes, and how long sessions in the busiest project have actually run.
+Cargento never states which of the two times arrives first: the budget's end and the window's reset
+sit side by side and the comparison is yours.
+
+Quota evidence also appears in Attention, raised either by a level at or above 70 percent or by a
+pace whose projected end falls before the reset. Codex reads rate-limit snapshots from its own
+session files. Claude and Cursor use the harness credential only after the first-run disclosure in
+the page is answered, poll their vendor endpoint at most once per five minutes while a page is open,
+and never refresh, write, log, or serve the token. Until that disclosure is answered no credential
+is read and no request is made, and the strip carries a switch that changes the answer later.
+Cursor fetching is macOS-only, and because Cursor publishes a cycle end with no start, its row shows
+a level and no clock.
 Copilot contributes per-session AI Units from disk but no percentage because its entitlement is not
 stored locally. Antigravity can forward quota from its status-line payload:
 
@@ -99,7 +112,7 @@ stored locally. Antigravity can forward quota from its status-line payload:
 "statusLine": {"command": "python3 <skill-dir>/notify_hook.py http://127.0.0.1:4553/api/usage", "enabled": true}
 ```
 
-`--no-usage` disables credential-backed vendor fetching for a run; disk-read evidence remains.
+`--no-usage` disables credential-backed vendor fetching for a run whatever the page has stored; disk-read evidence remains.
 Expired, rejected, missing, or stale quota is withheld rather than rendered as zero. Claude, Codex,
 and Antigravity may publish five-hour and weekly windows, while Cursor publishes its monthly billing
 cycle. A percentage is amber from 70 percent and red from 90 percent. Model-specific Claude weekly

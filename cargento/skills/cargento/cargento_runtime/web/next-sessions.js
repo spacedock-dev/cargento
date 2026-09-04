@@ -243,6 +243,11 @@ function nextSessionsView(){
     '<h1>Session operations</h1>' +
     '<p>Active evidence leads. Every recently observed session remains reachable.</p></header>' +
     nextOperationsFleet(rows, asks, harnesses) +
+    // Directly beneath the fleet counts, because "what is my fleet doing" and
+    // "how long can it keep doing it" are one look. Its own strip rather than a
+    // fifth count: a projection is not a count, and the fleet grid collapses
+    // two-by-two on narrow screens with exactly four cells.
+    nextCapacityView(nextData) +
     nextOperationsGroup(
       "active", "Active now",
       "Working, needs-input, or exact request.",

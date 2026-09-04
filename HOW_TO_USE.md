@@ -381,16 +381,17 @@ afterwards brings nothing with it.
 
 ## Usage and quota
 
-This is the only thing Cargento sends anywhere. The server is willing to send it by default, and
-when it does the request carries the vendor's own token and nothing else, behind a five minute
-floor. `--no-usage` switches it off for the process.
+This is the only thing Cargento sends anywhere, and it does not send it until you say so. The
+first time the dashboard opens on a machine where a harness could be asked, a banner beneath the
+fleet counts explains that answering yes lets Cargento read the credential that harness already
+stored and send it to that vendor for your usage numbers. Until you answer, nothing is read and
+nothing is sent. The request carries the vendor's own token and nothing else, behind a five minute
+floor.
 
-Two controls this page used to promise are not there yet: the first-run disclosure in the page and
-the page's own configure switch. Neither is built, and because the page never asks for the fetch,
-the request does not currently happen in ordinary use either. Restoring the disclosure and asking
-for the fetch are one job, tracked as DRC-4376.
+Changing your mind takes one click: the capacity strip carries a switch that turns the fetch on or
+off without a restart. `--no-usage` refuses it for a whole run whatever is stored in the page.
 [SECURITY.md](SECURITY.md#usage-quota-reads-the-quota-fetcher) owns the contract, including what is
-sent, what comes back, what is never touched, and that gap.
+sent, what comes back, and what is never touched.
 
 ## Stop a dashboard, and unstick a port
 

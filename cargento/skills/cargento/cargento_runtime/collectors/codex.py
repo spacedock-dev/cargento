@@ -41,7 +41,13 @@ def _usage_window(now: float, raw: Any) -> tuple[str, dict[str, Any]] | None:
     # window, 10080 the weekly. Classify by length so a plan that carries
     # only one of them (prolite writes just the weekly) still maps.
     key = "fiveH" if minutes < 1440 else "week"
-    shaped: dict[str, Any] = {"pct": max(0, min(100, round(pct)))}
+    # The duration, published rather than left to the slot name. Codex is the one
+    # producer that states a real length, and the slot it lands in cannot carry
+    # it: anything under a day files into `fiveH`, so a 180-minute window drawn
+    # against a five-hour constant would put the page's elapsed tick at 60% of
+    # the bar with the window fully spent. Publishing the measurement is what
+    # keeps that from being a silent error on this vendor alone.
+    shaped: dict[str, Any] = {"pct": max(0, min(100, round(pct))), "windowSec": int(minutes * 60)}
     resets = win.get("resets_at")
     if isinstance(resets, (int, float)) and not isinstance(resets, bool) and resets > 0:
         shaped.update(sessions.reset_fields(now, resets))

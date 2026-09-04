@@ -29,6 +29,7 @@ account email that must never reach `/api/data`.
 
 from __future__ import annotations
 
+import collections
 import copy
 import hashlib
 import json
@@ -41,7 +42,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from . import io as runtime_io
 from . import records, sessions
@@ -84,6 +85,14 @@ CURSOR_KEYCHAIN_SERVICE = "cursor-access-token"
 # subprocess must be allowed to sit through a human answering it. On timeout
 # the read fails as "unavailable" and the poll floor schedules the retry.
 KEYCHAIN_TIMEOUT_SEC = 120.0
+# How long each named window slot lasts, for the vendors that publish a name
+# rather than a duration. Claude's response names `five_hour` and `seven_day`
+# and carries no length field; Antigravity's status line names `-5h` and
+# `-weekly`. Codex is deliberately absent from this table: it publishes
+# `window_minutes` outright, so its collector reads the real duration and a
+# constant here would override a measurement with an assumption.
+SLOT_WINDOW_SEC: Final[dict[str, int]] = {"fiveH": 5 * 3600, "week": 7 * 86400}
+
 # Cursor reports money in integer cents. Naming the divisor keeps the unit
 # visible: reading these as dollars overstates every figure a hundredfold,
 # which a small balance hides rather than reveals.
@@ -295,13 +304,24 @@ def _percent(raw: Any) -> int | None:
     return max(0, min(100, round(value)))
 
 
-def _shape_window(now: float, raw: Any) -> dict[str, Any] | None:
-    """One usage window mapped onto the payload contract, or nothing."""
+def _shape_window(now: float, raw: Any, window_sec: int | None = None) -> dict[str, Any] | None:
+    """One usage window mapped onto the payload contract, or nothing.
+
+    `window_sec` is the window's own length, and it is published because the
+    page cannot derive it. The reading it serves is `pct` against how much of
+    the window has elapsed, and elapsed is `windowSec - (resetAt - now)`; with
+    no length there is no elapsed and the page withholds that half rather than
+    assuming one. A vendor that states only a name gets the constant its name
+    implies, a vendor that states a duration gets the duration, and a vendor
+    that states neither gets nothing.
+    """
     win = records.as_dict(raw)
     pct = _percent(win.get("utilization"))
     if pct is None:
         return None
     shaped: dict[str, Any] = {"pct": pct}
+    if window_sec is not None:
+        shaped["windowSec"] = window_sec
     resets = _epoch(win.get("resets_at"))
     if resets:
         shaped.update(sessions.reset_fields(now, resets))
@@ -552,7 +572,7 @@ def _fetch_windows(
         return [], "malformed response"
     entry: dict[str, Any] = {"harness": "claude", "state": "ok", "asOf": int(now)}
     for key, field_name in (("fiveH", "five_hour"), ("week", "seven_day")):
-        shaped = _shape_window(now, payload.get(field_name))
+        shaped = _shape_window(now, payload.get(field_name), SLOT_WINDOW_SEC.get(key))
         if shaped:
             entry[key] = shaped
     if "fiveH" not in entry and "week" not in entry:
@@ -819,6 +839,107 @@ def request_fetch(
     return started
 
 
+# The window slots a pace can be measured for. `month` is absent because the one
+# producer that publishes it, Cursor, meters money over a billing cycle whose
+# start it never sends, so there is no elapsed fraction to read a pace against.
+PACE_SLOTS: Final[tuple[str, ...]] = ("fiveH", "week")
+
+
+def _sample_key(harness: str, slot: str) -> str:
+    return f"{harness}:{slot}"
+
+
+def _record_sample(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    key: str,
+    at: float,
+    pct: int,
+) -> tuple[tuple[float, int], ...]:
+    """This window's kept readings after admitting `(at, pct)`, if it is new.
+
+    Three refusals, and each one exists because admitting it would publish a
+    reassuring number rather than no number:
+
+    A stamp that has not advanced is not a new reading. Codex's `asOf` is the
+    epoch of the newest snapshot it found on disk, so it stands still between
+    that harness's turns while the page polls every few seconds; counting those
+    repeats divides an unchanged level by a growing span and calls the result
+    calm. The same stamp can also regress, because the snapshot is chosen as the
+    newest of a bounded set of rollout tails and a file with a newer mtime can
+    displace the one that held it.
+
+    A level that has FALLEN is a window that reset. Subtracting across a reset
+    gives a negative pace, and clamping one would report zero, so the ring starts
+    again from the reset rather than measuring through it.
+    """
+    with state.usage_fetch_lock:
+        ring = state.usage_samples.get(key)
+        if ring is None:
+            ring = collections.deque(maxlen=max(2, config.usage_samples_max))
+            state.usage_samples[key] = ring
+        if ring:
+            newest_at, newest_pct = ring[-1]
+            if at <= newest_at:
+                return tuple(ring)
+            if pct < newest_pct:
+                ring.clear()
+        ring.append((at, pct))
+        return tuple(ring)
+
+
+def _pace(samples: tuple[tuple[float, int], ...]) -> dict[str, Any] | None:
+    """Points per minute across the kept readings, with the basis it rests on.
+
+    Two readings are the minimum, and the basis travels with the figure so the
+    page can say what it was measured over instead of presenting a rate as if it
+    were the window's own.
+    """
+    if len(samples) < 2:
+        return None
+    (first_at, first_pct), (last_at, last_pct) = samples[0], samples[-1]
+    span = last_at - first_at
+    if span <= 0:
+        return None
+    return {
+        "pctPerMin": round((last_pct - first_pct) / (span / 60.0), 4),
+        "samples": len(samples),
+        "spanSec": int(span),
+    }
+
+
+def observe_windows(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    entries: list[dict[str, Any]],
+) -> None:
+    """Record each window's level, and annotate it with the pace so far.
+
+    Called once per collection, over the entries as published. `recent` appears
+    on a window exactly when two or more distinct readings support it; a window
+    with one reading, a stale one, or one that just reset carries none, and the
+    page reads that absence as "not measured" rather than as a pace of zero. The
+    entry's own `asOf` already says how old the reading is, so nothing here has
+    to restate it.
+    """
+    for entry in entries:
+        harness = entry.get("harness")
+        at = _finite(entry.get("asOf"))
+        if not isinstance(harness, str) or not harness or at is None:
+            continue
+        for slot in PACE_SLOTS:
+            window = entry.get(slot)
+            if not isinstance(window, dict):
+                continue
+            pct = window.get("pct")
+            if not isinstance(pct, int) or isinstance(pct, bool):
+                continue
+            samples = _record_sample(config, state, _sample_key(harness, slot), at, pct)
+            pace = _pace(samples)
+            if pace is not None:
+                window["recent"] = pace
+
+
 def _detached(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Entries a caller cannot use to reach back into the cache.
 
@@ -848,7 +969,7 @@ def cached_entries(state: RuntimeState, vendor: str) -> list[dict[str, Any]]:
 _RECEIPT_WINDOWS = (("-5h", "fiveH"), ("-weekly", "week"))
 
 
-def _receipt_window(now: float, raw: Any) -> tuple[int, dict[str, Any]] | None:
+def _receipt_window(now: float, raw: Any, slot: str) -> tuple[int, dict[str, Any]] | None:
     """One status-line bucket as (percent used, shaped window), or nothing."""
     bucket = records.as_dict(raw)
     remaining = _finite(bucket.get("remaining_fraction"))
@@ -857,6 +978,9 @@ def _receipt_window(now: float, raw: Any) -> tuple[int, dict[str, Any]] | None:
     # The payload reports what is LEFT; the contract publishes what is USED.
     pct = max(0, min(100, round((1.0 - remaining) * 100)))
     shaped: dict[str, Any] = {"pct": pct}
+    length = SLOT_WINDOW_SEC.get(slot)
+    if length is not None:
+        shaped["windowSec"] = length
     resets = _epoch(bucket.get("reset_time"))
     if resets:
         shaped.update(sessions.reset_fields(now, resets))
@@ -885,7 +1009,7 @@ def shape_statusline(payload: dict[str, Any], now: float) -> list[dict[str, Any]
         slot = next((name for suffix, name in _RECEIPT_WINDOWS if key.endswith(suffix)), None)
         if slot is None:
             continue
-        mapped = _receipt_window(now, raw)
+        mapped = _receipt_window(now, raw, slot)
         if mapped is None:
             continue
         current = best.get(slot)

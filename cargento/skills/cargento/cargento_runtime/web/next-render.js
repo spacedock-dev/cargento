@@ -21,7 +21,20 @@ function nextViewBody(){
 }
 
 function nextDataUrl(){
-  return nextQuery.get("all") === "1" ? "/api/data?all=1" : "/api/data";
+  /* `usage=1` is the page's consent to the quota fetch riding along with this
+     poll, and the server fires the fetch for no request without it. It is sent
+     only while the stored answer is `granted`, which is what makes the fetch
+     disclosed before it acts rather than merely documented as such: an
+     unanswered or declined disclosure means the parameter is absent and the
+     credential is never read.
+
+     Both parameters are parsed independently by the server, so all four
+     combinations are valid and the builder emits whichever the two conditions
+     select. */
+  const params = [];
+  if(nextQuery.get("all") === "1") params.push("all=1");
+  if(nextUsageConsent() === "granted") params.push("usage=1");
+  return params.length ? `/api/data?${params.join("&")}` : "/api/data";
 }
 
 function nextRefreshRetryMs(){
