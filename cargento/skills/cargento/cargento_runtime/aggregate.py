@@ -212,12 +212,14 @@ class HarnessSpec:
     overlay and has no collector detection at all, so a flag meaning the second
     thing labelled Codex blind on the same screen where a Codex gate was red.
     That is the inversion this field exists to prevent, shipped by the field
-    itself. `tests/test_next_page.py` derives the expected set instead of listing it:
-    every collector module is parsed for the state it actually writes, unioned
-    with whatever `EVENTS_BY_HARNESS` maps `input_requested` for, because a
-    hand-set bool beside a hand-written literal pinned the bug green. The same
-    test holds the count in the sentence above to the registry, since nothing
-    else does and it has been wrong twice.
+    itself. `tests/test_harness_registry.py` derives the expected set instead of
+    listing it: every collector module is parsed for the state it actually
+    writes, unioned with whatever `EVENTS_BY_HARNESS` maps `input_requested`
+    for, because a hand-set bool beside a hand-written literal pinned the bug
+    green. The same file holds the count in the sentence above to the registry,
+    since nothing else does and it has been wrong twice. Not `test_next_page.py`,
+    where this pointer sent a reader from 8d2585c, which deleted the file that
+    actually held these four, until DRC-4378 restored them.
     """
 
     key: str
