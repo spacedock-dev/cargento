@@ -730,3 +730,39 @@ A store whose blobs are encrypted reports no wait. Every store measured was plai
 bytes simply do not match and the session reads as nobody waiting, which is the honest reading of
 bytes we cannot read. The key is never used, for the reason the model read gives: opening a user's
 conversation to label a card is not a trade this dashboard makes.
+
+## N-11: Pi raises no approval prompt, and the wait it does publish is not passive
+
+DRC-4190 asked what fires while Pi's own approval prompt stands. The premise is wrong: Pi raises no
+approval prompt of its own. The only standing prompt in the product is `project_trust`, and it is
+asked once per directory rather than once per tool call. The vendor is explicit about how little it
+covers: it "is only an input-loading guard. It prevents a repository from silently changing pi's
+settings or extensions before you approve it. It does not make untrusted code, untrusted prompts, or
+untrusted model output safe."
+([pi.dev/docs/latest/security](https://pi.dev/docs/latest/security).) A gate on a tool call is
+something an extension builds, from the `tool_call` event returning `{ block: true }`, so a stock Pi
+has no gate for a collector or an adapter to find.
+
+That leaves Pi's registry row at `reports_needs_input=False`, correctly, but for a reason unlike the
+one most of the other blind rows carry. Pi does publish a wait. `ui_prompt_start` and `ui_prompt_end`
+fire around `ctx.ui.select()`, `ctx.ui.confirm()`, `ctx.ui.input()`, `ctx.ui.editor()` and
+`ctx.ui.custom()`, and the documented purpose is this board's own: "so host/status integrations can
+report 'waiting for user' instead of just 'running'". `ctx.sessionManager.getSessionId()` supplies
+the key an overlay would be filed under. Nested prompts coalesce into one outer span, and handlers
+are best-effort rather than awaited, so what arrives is a notification about a wait and never a hold
+on it. ([pi.dev/docs/latest/extensions](https://pi.dev/docs/latest/extensions).)
+
+So the honest sentence about Pi is that Cargento ships no Pi adapter, not that no signal exists. The
+gap there is ours rather than the harness's, and the build is DRC-4380. `SKILL.md`'s line that Pi has
+no passive needs-input signal survives that either way, because passive here means read out of the
+store: these are events delivered to an extension handler, and whether Pi also writes them to the
+session JSONL is unmeasured, so nothing here claims a transcript path in either direction. Its
+neighbouring clause did not survive, and changed in the same commit. It said a finished turn and an
+unanswered wait need "a turn-end event Pi does not have", where the same vendor page documents
+`turn_end` and `agent_settled`, the second one for status integrations by name. What is missing there
+is the adapter too.
+
+Pi is not the only blind row where the gap is ours. Antigravity is the other one, for a harder
+reason: its confirmation-pending flag already reaches `statusline_hook.py`, which reads `agent_state`
+and drops the rest, and using it needs the reducer precedence rule N-4 describes rather than an
+adapter nobody has written. Nothing is wanted from either vendor.
