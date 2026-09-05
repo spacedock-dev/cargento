@@ -331,6 +331,7 @@ class CargentoServerTest(RuntimeTestCase):
             "eta_h",
             "turn",
             "loop",
+            "resume_id",
             "subagents",
             "tasks",
             "spacedock",
@@ -346,6 +347,32 @@ class CargentoServerTest(RuntimeTestCase):
             with self.subTest(harness=harness):
                 row = runtime_sessions.base_session(harness, f"{harness}-1", "proj")
                 self.assertEqual(self.DECLARED_SESSION_FIELDS, set(row))
+
+    def test_a_resume_token_is_admitted_only_in_a_shape_a_shell_reads_as_one_word(
+        self,
+    ) -> None:
+        # This value is published so the page can put a shell command on someone's
+        # clipboard, which makes the grammar the guard rather than any quoting the
+        # page might do. It comes off a filename, and a filename is untrusted: the
+        # store belongs to the harness, not to us.
+        self.assertEqual(
+            "27d10654-1cb5-481e-8194-6ce868b91bb5",
+            runtime_sessions.resume_token("27d10654-1cb5-481e-8194-6ce868b91bb5"),
+        )
+        self.assertEqual("019fa752_a888", runtime_sessions.resume_token("019fa752_a888"))
+        for refused in (
+            None,
+            "",
+            "id with spaces",
+            "id;rm -rf ~",
+            "$(whoami)",
+            "`id`",
+            "id\nnewline",
+            "../../etc/passwd",
+            "a" * 65,
+        ):
+            with self.subTest(refused=refused):
+                self.assertIsNone(runtime_sessions.resume_token(refused))
 
     def test_no_collector_may_fill_the_completion_stamp(self) -> None:
         # Only the event path can observe a turn ending. A collector inferring it

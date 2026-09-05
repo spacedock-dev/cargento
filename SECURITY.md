@@ -688,6 +688,21 @@ the `quota` block alone, which is what this document asks for a paragraph below 
 the whole status-line document and relying on the server to discard it. `cwd` and `transcript_path` are
 matching hints and are never echoed to `/api/data`.
 
+One published field is derived from a transcript filename, and the sentence above is the one it has
+to be read against. `resume_id` carries the session id a harness's own CLI takes to re-enter that
+session, so the board can hand a reader the command rather than the hunt. It is the transcript's
+stem and never its path: no directory, no home, nothing a filesystem could be walked from, and the
+first eight characters of that same stem are already published as Claude's `sid`. `cwd` is not read
+for it and would not help if it were. Two harnesses fill it, Claude Code and Codex, and the other
+eight publish `null`, which is what stops the page offering a command nobody has verified.
+
+The value is checked against `^[A-Za-z0-9_-]{1,64}$` before it is published and again in the page
+before a command is built from it, and that grammar is the guard rather than any quoting: this is
+the one string on the board that becomes a shell command in the reader's own terminal, and it is
+read off a filename in a store the harness owns. A token a shell would split, or one carrying a
+separator, substitution or newline, is dropped and the row shows no control. Publishing a value that
+fails that grammar, or building a command from one, is a security bug.
+
 The ask lane inherits the loopback exposure above, and it is the first place where that exposure
 reaches beyond what a reader sees. Any local process that can reach the port can answer a question a
 session is waiting on. Two things keep this narrow rather than solved. An answer selects an option by

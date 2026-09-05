@@ -239,6 +239,24 @@ MODEL_CAP_CHARS = 40
 TOOL_NAME_CAP_CHARS = 60
 
 
+# The shape a session id must have before it may be published as `resume_id`.
+#
+# It is a grammar rather than an escaper because of where the value ends up: the
+# page builds `claude --resume <token>` out of it and puts that on a clipboard,
+# so a token a shell would read as more than one word is the whole exposure. The
+# id itself comes off a filename in a store the harness owns, which makes it
+# untrusted like every other reading here. Sixty-four characters covers a UUID
+# with room to spare and nothing near a path.
+RESUME_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+
+
+def resume_token(value: Any) -> str | None:
+    """Return ``value`` when it is a session id safe to build a command from."""
+    if not isinstance(value, str):
+        return None
+    return value if RESUME_TOKEN_PATTERN.match(value) else None
+
+
 def base_session(harness: str, sid: Any, project: str) -> Session:
     # "session" is the display id. The 8 below is the floor and must match
     # config.display_id_len, which assign_display_ids() reads; nothing enforces
@@ -380,6 +398,20 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # have seen it. Claude only, since Claude is the only harness that
         # records whether a tool call failed (see records.tool_outcome).
         "loop": None,
+        # The token this harness's own CLI takes to re-enter this session, or None
+        # where there is nothing honest to publish. It exists because `sid` is not
+        # that token everywhere: Claude's `sid` is the eight-character transcript
+        # prefix, which is its key upstream, and `claude --resume 27d10654` answers
+        # "not a UUID and does not match any session title" (measured on 2.1.261).
+        # Codex's `sid` already is the id `codex resume` takes and it is repeated
+        # here rather than special-cased in the page, so the page's rule can be
+        # total: no token, no control.
+        #
+        # None is the declared value and no collector may infer one. A guessed
+        # command reads exactly like a measured one and fails in the reader's
+        # terminal rather than here. It passes `resume_token` on the way out, for
+        # the reason that function gives.
+        "resume_id": None,
         # One element per subagent, carrying `name` (str), `model` (str | None),
         # `started_at` (float | None), `active` (bool | None) and `parent`
         # (str | None). Every measurement key is always present. None means not

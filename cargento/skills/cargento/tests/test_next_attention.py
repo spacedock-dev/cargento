@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import unittest
+from typing import Any
 
 from .next_harness import NEXT_STYLES, NextPageJsHarness
 
@@ -1433,6 +1434,75 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             self.assertEqual(sorted(positions), positions)
             for key in out["keys"]:
                 self.assertEqual(1, html.count(key.replace('"', "&quot;")))
+
+    def gate_queue_payload(self, harness: str, resume_id: object) -> dict[str, Any]:
+        session: dict[str, Any] = {
+            "harness": harness,
+            "sid": "sid-published",
+            "project": "alpha/repo",
+            "state": "needs_input",
+            "blocked_since": 9_400,
+            "title": "Waiting on you",
+        }
+        if resume_id is not None:
+            session["resume_id"] = resume_id
+        return {
+            "generated": 10_000,
+            "harnesses": [{"key": harness, "label": harness.title()}],
+            "sessions": [session],
+            "asks": [],
+        }
+
+    def test_a_gate_queue_row_carries_the_re_entry_command_for_its_own_harness(self) -> None:
+        # The command is built from the published id, never from `cwd`: SECURITY.md
+        # keeps the working directory a matching hint, and nothing here needs it.
+        claude = self.render(
+            self.gate_queue_payload("claude", "27d10654-1cb5-481e-8194-6ce868b91bb5")
+        )
+        self.assertIn(
+            'data-next-copy-command="claude --resume 27d10654-1cb5-481e-8194-6ce868b91bb5"',
+            claude,
+        )
+        self.assertIn("COPY COMMAND", claude)
+
+        codex = self.render(
+            self.gate_queue_payload("codex", "01a06fac-629f-7c40-9c86-f84c55680151")
+        )
+        self.assertIn(
+            'data-next-copy-command="codex resume 01a06fac-629f-7c40-9c86-f84c55680151"',
+            codex,
+        )
+
+    def test_no_control_without_a_documented_verb_a_published_id_or_a_shell_safe_one(self) -> None:
+        # Three ways to have nothing honest to offer, and all three render the same
+        # row the reader saw before: a harness whose CLI documents no re-entry verb,
+        # one whose verb is documented but whose id the payload does not publish,
+        # and a published id that a shell would read as more than one word.
+        for harness, resume_id in (
+            ("gemini", "aaaa1111-cccc-4444-8888-000000000001"),
+            ("claude", None),
+            ("claude", "id; rm -rf ~"),
+            ("codex", ""),
+        ):
+            with self.subTest(harness=harness, resume_id=resume_id):
+                html = self.render(self.gate_queue_payload(harness, resume_id))
+                self.assertNotIn("data-next-copy-command", html)
+                self.assertNotIn("COPY COMMAND", html)
+
+    def test_the_re_entry_command_rides_the_gate_queue_and_no_other_section(self) -> None:
+        # A row in AT RISK is not a row waiting on an answer, so it gets no control:
+        # the affordance is the gate queue's, and spreading it to every section is
+        # how a small control becomes furniture.
+        payload = self.gate_queue_payload("claude", "27d10654-1cb5-481e-8194-6ce868b91bb5")
+        payload["sessions"][0]["state"] = "working"
+        payload["sessions"][0]["active"] = True
+        del payload["sessions"][0]["blocked_since"]
+        payload["sessions"][0]["loop"] = {"errors": 4, "tool": "Bash"}
+        model = self.model(payload)
+        assert isinstance(model, dict)
+        self.assertEqual([], model["needs"])
+        self.assertEqual(1, len(model["risk"]))
+        self.assertNotIn("data-next-copy-command", self.render(payload))
 
     def test_attention_styles_cover_wide_narrow_focus_hit_targets_and_motion(self) -> None:
         self.assertIn("@media(min-width:900px)", NEXT_STYLES)

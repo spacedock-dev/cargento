@@ -146,6 +146,61 @@ class ClaudeCollectorTest(RuntimeTestCase):
         self.assertEqual(15, session["session_output_tokens"])
         self.assertEqual(15, session["turn_output_tokens"])
 
+    def test_the_row_publishes_the_whole_session_id_the_cli_resume_verb_needs(self) -> None:
+        # `sid` is Claude's eight-character transcript prefix, which is its key
+        # upstream and stays that way. It is not a session id: `claude --resume
+        # 27d10654` answers "Provided value \"27d10654\" is not a UUID and does not
+        # match any session title" (2.1.261), so a control built from `sid` would
+        # hand the reader a command that cannot work. `resume_id` carries the whole
+        # id the verb takes, and nothing else changes.
+        now = time.time()
+        session_id = "27d10654-1cb5-481e-8194-6ce868b91bb5"
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "projects" / "sample"
+            project.mkdir(parents=True)
+            (project / f"{session_id}.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": session_id,
+                        "timestamp": datetime.fromtimestamp(now - 3, UTC).isoformat(),
+                        "message": {"role": "user", "content": "hello"},
+                    }
+                )
+                + "\n"
+            )
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "no-tasks")),
+            ):
+                session = collect_claude(now, 24, False)[0]
+
+        self.assertEqual("27d10654", session["sid"])
+        self.assertEqual(session_id, session["resume_id"])
+
+    def test_a_row_with_only_a_task_file_behind_it_publishes_no_resume_id(self) -> None:
+        # A prefix reaches the registry from the task store as well as from a
+        # transcript, and the task file's directory name is that prefix and nothing
+        # more. There is no id to publish, so the row publishes None rather than the
+        # prefix: a resume command built from a prefix does not work.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            tasks = Path(tmp) / "tasks" / "session-27d10654"
+            tasks.mkdir(parents=True)
+            (tasks / "1.json").write_text(
+                json.dumps({"id": "1", "subject": "Do it", "status": "pending"})
+            )
+            os.utime(tasks / "1.json", (now - 5, now - 5))
+            with (
+                store_patch(PROJECTS_DIR=str(Path(tmp) / "no-projects")),
+                store_patch(TASKS_DIR=str(Path(tmp) / "tasks")),
+            ):
+                rows = collect_claude(now, 24, False)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("27d10654", rows[0]["sid"])
+        self.assertIsNone(rows[0]["resume_id"])
+
     def test_load_tasks_supports_current_and_legacy_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

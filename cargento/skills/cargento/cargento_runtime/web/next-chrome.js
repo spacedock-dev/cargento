@@ -138,18 +138,31 @@ function nextSessionCopyStatus(app){
   return status;
 }
 
-async function nextCopySessionId(target){
-  const sid = String(target && target.dataset && target.dataset.nextCopySession || "");
+// One copy lane for both controls. The re-entry command reuses the session-id
+// control's state attribute and its live region rather than bringing its own, so
+// a reader who has learned one control has learned the other; the only thing that
+// differs is which dataset key carries the payload and what the announcement calls
+// it. Both share the same fallback: on a context with no `navigator.clipboard` the
+// failure is announced and the value stays readable on the control's own title.
+async function nextCopyToClipboard(target){
+  const dataset = target && target.dataset || {};
+  const command = String(dataset.nextCopyCommand || "");
+  const sid = String(dataset.nextCopySession || "");
+  const value = command || sid;
   const status = nextSessionCopyStatus(document.getElementById("app"));
   try{
-    if(!sid || typeof navigator === "undefined" || !navigator.clipboard ||
+    if(!value || typeof navigator === "undefined" || !navigator.clipboard ||
       typeof navigator.clipboard.writeText !== "function") throw new Error("clipboard unavailable");
-    await navigator.clipboard.writeText(sid);
+    await navigator.clipboard.writeText(value);
     target.dataset.nextCopyState = "copied";
-    if(status) status.textContent = `Copied session ID ${sid}`;
+    if(status) status.textContent = command ? `Copied ${command}` : `Copied session ID ${sid}`;
   }catch(_error){
     target.dataset.nextCopyState = "failed";
-    if(status) status.textContent = "Session ID could not be copied";
+    if(status){
+      status.textContent = command
+        ? "Re-entry command could not be copied"
+        : "Session ID could not be copied";
+    }
   }
 }
 
@@ -311,12 +324,12 @@ function navigateNext(route){
 
 document.addEventListener("click", event => {
   const copyTarget = event.target && event.target.closest
-    ? event.target.closest("[data-next-copy-session]")
+    ? event.target.closest("[data-next-copy-session],[data-next-copy-command]")
     : null;
   if(copyTarget){
     event.preventDefault();
     if(typeof event.stopPropagation === "function") event.stopPropagation();
-    void nextCopySessionId(copyTarget);
+    void nextCopyToClipboard(copyTarget);
     return;
   }
   const routeTarget = event.target && event.target.closest
