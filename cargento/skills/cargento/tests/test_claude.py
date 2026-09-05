@@ -2627,11 +2627,29 @@ class TeamRosterTest(RuntimeTestCase):
         return proj, Path(tmp) / "teams"
 
     def member(self, name: str, joined_ms: float) -> dict[str, Any]:
+        # `int`, and it is load-bearing rather than tidiness (DRC-4332). Callers
+        # write `(now - 300) * 1000`, and `claude.py` reads that back with
+        # `joined / 1000`. That round trip is lossy at epoch magnitudes -- one
+        # ULP of a float near 1.7e9 is about 0.24 microseconds -- so for 1.17%
+        # of wall-clock values it yields 299.9999997 rather than 300, and
+        # `fmt_duration` floors a five-minute wait to "4m".
+        #
+        # Truncating here is one-directional: `int` rounds the join DOWN, so the
+        # measured wait is never SHORTER than the interval the fixture asked
+        # for, and the floor cannot slip a minute at any offset. Widening the
+        # fixture off the boundary would have fixed the one assertion; this
+        # fixes the shape, which is latent at every exact-minute offset in this
+        # file. It is also what a real registry writes: whole milliseconds, not
+        # a float.
+        #
+        # Three unrelated PRs paid for this before anyone reproduced it: the
+        # Windows platform test and the Ubuntu coverage job of #256 on
+        # 2026-09-02, and the Ubuntu platform test of #267 on 2026-09-05.
         return {
             "agentId": f"{name}@session-{self.PARENT[:8]}",
             "name": name,
             "agentType": "general-purpose",
-            "joinedAt": joined_ms,
+            "joinedAt": int(joined_ms),
             "backendType": "tmux",
         }
 
@@ -2652,12 +2670,14 @@ class TeamRosterTest(RuntimeTestCase):
         # showed.
         now = time.time()
         joined = (now - 1320) * 1000  # 22 minutes ago, in epoch milliseconds
+        members = [self.member("evidence-skeptic", joined), self.member("design-skeptic", joined)]
+        # Read back from the fixture rather than from `joined`, which is the
+        # value BEFORE `member` truncates it to whole milliseconds. Comparing a
+        # published number against an intermediate the fixture did not write is
+        # how a rounding change reads as a collector defect (DRC-4332).
+        written = members[0]["joinedAt"]
         with tempfile.TemporaryDirectory() as tmp:
-            _, teams = self.build(
-                tmp,
-                [self.member("evidence-skeptic", joined), self.member("design-skeptic", joined)],
-                now=now,
-            )
+            _, teams = self.build(tmp, members, now=now)
             session = self.collect_one(tmp, teams, now)
 
         self.assertEqual("needs_input", session["state"])
@@ -2666,7 +2686,7 @@ class TeamRosterTest(RuntimeTestCase):
             ["design-skeptic", "evidence-skeptic"],
             sorted(agent["name"] for agent in session["subagents"]),
         )
-        self.assertEqual(joined / 1000, session["blocked_since"])
+        self.assertEqual(written / 1000, session["blocked_since"])
 
     def test_one_unstarted_member_is_named_on_the_row(self) -> None:
         # "2 subagents" is not actionable; the name is. A single pending member
@@ -2680,6 +2700,34 @@ class TeamRosterTest(RuntimeTestCase):
 
         self.assertEqual("needs_input", session["state"])
         self.assertEqual("steering-analyst has not started, waiting 5m", session["state_detail"])
+
+    def test_the_wait_label_reads_the_same_at_every_wall_clock_value(self) -> None:
+        # The falsifier for DRC-4332, and the reason the fixture truncates.
+        #
+        # The test above takes ONE reading of `time.time()`, so it exercises one
+        # wall-clock fraction out of the whole space and passes on about 98.8%
+        # of them. It cannot see the defect it was failing on; only a sweep can.
+        # So this drives the production expression -- the fixture's `joinedAt`,
+        # the magnitude-scaled conversion in `claude.py`, `age`, and
+        # `fmt_duration` -- across a deterministic range of clock values and
+        # asserts the label never moves.
+        #
+        # The sweep is fixed rather than random so a failure is reproducible.
+        # Against a float `joinedAt` this range fails at indices 75, 226, 377,
+        # 528 and 531, which is what makes it a falsifier rather than a
+        # restatement: revert the `int` in `member` and this goes red.
+        #
+        # Deliberately NOT an end-to-end collect. Six hundred temporary stores
+        # would cost more than the whole module does today, and every step
+        # between the registry read and the label is shared with the test above,
+        # which does run the collector.
+        config = cfg()
+        for index in range(600):
+            now = 1788600000.0 + index * 0.000173
+            joined = self.member("steering-analyst", (now - 300) * 1000)["joinedAt"]
+            when = joined / 1000 if joined > 1e11 else float(joined)
+            label = runtime_sessions.fmt_duration(runtime_sessions.age(config, now, when))
+            self.assertEqual("5m", label, f"clock {now!r} (index {index}) read {label}")
 
     def test_a_member_that_has_written_a_transcript_is_not_pending(self) -> None:
         # The join in its normal form: the child's agentName plus its teamName
@@ -2719,7 +2767,8 @@ class TeamRosterTest(RuntimeTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             proj, teams = self.build(
                 tmp,
-                [{"agentId": agent_id, "joinedAt": (now - 600) * 1000}],
+                # Whole milliseconds, for the reason `member` gives above.
+                [{"agentId": agent_id, "joinedAt": int((now - 600) * 1000)}],
                 now=now,
             )
             subagents = proj / self.PARENT / "subagents"
@@ -2944,7 +2993,8 @@ class DispatchedTeammateTest(RuntimeTestCase):
             "agentId": f"{name}@session-{self.PARENT[:8]}",
             "name": name,
             "agentType": "general-purpose",
-            "joinedAt": joined_ms,
+            # Whole milliseconds, for the reason `TeamRosterTest.member` gives.
+            "joinedAt": int(joined_ms),
             "backendType": "tmux",
         }
         if is_active is not None:
