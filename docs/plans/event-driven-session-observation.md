@@ -1,14 +1,20 @@
 # Plan: event-driven session observation
 
-Status: Phase 0 has shipped; Phases 1 through 4 are unshipped and still provisional. The Phase 0
-collector fixes, the two quota opt-out repairs and the benchmark have landed with tests, and its four
-gates now carry verdicts: the coarse probe and the adapter semantics are measured, the latter for the
-four harnesses that have adapters; selective reuse is undecided from the one machine measured rather
-than failed; operational rollout is unreached. Phase 2's ingress, coordinator and bundled hooks have
-shipped since this line was written. Everything below the Phase 0 section that is not marked shipped
-remains a problem statement and an option survey. Delete this file once its contents ship or
-are dropped, folding the durable rationale (the ACP, filesystem-watcher and OpenTelemetry findings)
-into a `docs/design-*.md` owner.
+Status, as of 2026-09-05: Phases 0 through 3 have shipped. Phase 4, optional managed sessions, is
+unshipped and was never filed as an issue. The Phase 0 collector fixes, the two quota opt-out repairs
+and the benchmark landed with tests, and its four gates carry verdicts: the coarse probe and the
+adapter semantics are measured, the latter for the four harnesses that have adapters; selective reuse
+is undecided from the one machine measured rather than failed; operational rollout is unreached.
+Phase 1's materialized snapshot and SSE, Phase 2's ingress, coordinator and bundled hooks, and Phase
+3's Codex adapter are all in the runtime.
+
+This paragraph previously said phases 1 through 4 were unshipped while also saying Phase 2 had
+shipped, which is what a status line patched in place rather than re-read turns into.
+
+What remains before this file can be deleted: fold the durable rationale into a `docs/design-*.md`
+owner, specifically the ACP, filesystem-watcher and OpenTelemetry findings, and decide whether Phase
+4 is still wanted. Everything below the Phase 0 section that is not marked shipped is a problem
+statement and an option survey rather than a commitment.
 
 Which runtime file owns what, and the inward-only dependency rule any new module must respect, is
 owned by [`design-runtime-architecture.md`](../design-runtime-architecture.md). The per-harness
