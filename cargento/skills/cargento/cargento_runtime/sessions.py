@@ -243,11 +243,19 @@ TOOL_NAME_CAP_CHARS = 60
 #
 # It is a grammar rather than an escaper because of where the value ends up: the
 # page builds `claude --resume <token>` out of it and puts that on a clipboard,
-# so a token a shell would read as more than one word is the whole exposure. The
-# id itself comes off a filename in a store the harness owns, which makes it
-# untrusted like every other reading here. Sixty-four characters covers a UUID
-# with room to spare and nothing near a path.
-RESUME_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+# so the exposure is everything the reader's shell and the harness's own argument
+# parser will do with it. The id comes off a filename in a store the harness owns,
+# which makes it untrusted like every other reading here. Sixty-four characters
+# covers a UUID with room to spare and nothing near a path.
+#
+# The first character is deliberately narrower than the rest, and that is the half
+# quoting would not have bought. A token a shell reads as one word can still be a
+# word the CLI reads as a flag: `claude --resume` takes an OPTIONAL value, so it
+# never consumes a `-`-leading next token, and clap binds one to an option rather
+# than to Codex's positional. `--dangerously-skip-permissions` as a stem would
+# therefore be pasted as a permission bypass with the session id silently dropped.
+# No real id starts with a dash — both harnesses' ids are UUIDs.
+RESUME_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_-]{0,63}\Z")
 
 
 def resume_token(value: Any) -> str | None:

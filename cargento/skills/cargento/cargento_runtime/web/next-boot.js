@@ -128,7 +128,13 @@ const NEXT_RESUME_COMMANDS = new Map([
 // treats the payload as untrusted the way the server treats a hook's output, and
 // this is the one string on the board that becomes a shell command in someone
 // else's terminal.
-const NEXT_RESUME_TOKEN = /^[A-Za-z0-9_-]{1,64}$/;
+//
+// Same grammar as the server's RESUME_TOKEN_PATTERN, first character included:
+// a `-`-leading token is one word to a shell but a flag to the CLI, and both
+// harnesses have a valueless flag that turns off their permission checks. Keep
+// the two in step; a page-only anchor would leave every other reader of
+// /api/data holding the raw value.
+const NEXT_RESUME_TOKEN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
 
 function nextResumeCommand(session){
   const build = NEXT_RESUME_COMMANDS.get(String(session && session.harness || ""));

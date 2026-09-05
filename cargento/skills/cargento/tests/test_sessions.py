@@ -370,6 +370,16 @@ class CargentoServerTest(RuntimeTestCase):
             "id\nnewline",
             "../../etc/passwd",
             "a" * 65,
+            # A leading dash is the one hostile shape a shell does NOT split, and
+            # so the one the word-splitting reading of this grammar missed. Both
+            # of these are real valueless flags on the CLIs the verb table names,
+            # and both disable that harness's permission checks: `claude --resume`
+            # takes an optional value, so it never consumes a `-`-leading token,
+            # and clap binds one to the option rather than to Codex's positional.
+            # The published id would be dropped and the flag applied.
+            "--dangerously-skip-permissions",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "-p",
         ):
             with self.subTest(refused=refused):
                 self.assertIsNone(runtime_sessions.resume_token(refused))

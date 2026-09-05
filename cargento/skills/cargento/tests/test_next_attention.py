@@ -1474,14 +1474,20 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         )
 
     def test_no_control_without_a_documented_verb_a_published_id_or_a_shell_safe_one(self) -> None:
-        # Three ways to have nothing honest to offer, and all three render the same
+        # Four ways to have nothing honest to offer, and all of them render the same
         # row the reader saw before: a harness whose CLI documents no re-entry verb,
         # one whose verb is documented but whose id the payload does not publish,
-        # and a published id that a shell would read as more than one word.
+        # a published id that a shell would read as more than one word, and one a
+        # shell reads as a single word that the CLI reads as a flag. The last is the
+        # shape quoting would not have caught: `claude --resume` takes an optional
+        # value and so never consumes a `-`-leading token, which would leave the
+        # reader pasting a permission bypass with the session id silently dropped.
         for harness, resume_id in (
             ("gemini", "aaaa1111-cccc-4444-8888-000000000001"),
             ("claude", None),
             ("claude", "id; rm -rf ~"),
+            ("claude", "--dangerously-skip-permissions"),
+            ("codex", "--dangerously-bypass-approvals-and-sandbox"),
             ("codex", ""),
         ):
             with self.subTest(harness=harness, resume_id=resume_id):
