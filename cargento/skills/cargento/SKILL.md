@@ -306,6 +306,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--daemon` | Detach and keep running after the starting session exits. Prints the URL, pid and log path. |
 | `--stop` | Stop the instance on `--port` over `/api/shutdown`. Returns once the port is free, so a restart on the same port works. |
 | `--status` | Report whether Cargento is on `--port`: running, not running, or the port belongs to another process. Exits 0 only when running. |
+| `--forget` | Delete the local history store, then exit. A one-shot command like `--stop` and `--status`, not a switch for a run: what it does is not undone by running the next command without it. Refused while a dashboard answers on `--port`, because a running instance holds its own copy in memory and would write the deleted records back. |
 | `--window-hours H` | Sessions idle longer than H hours are hidden (default 24) |
 | `--diagnose` | Print where each harness's data was searched for and what was found there, then exit. Use this first whenever a harness the user expects is missing — collectors skip broken or absent stores silently, so a wrong path looks exactly like an idle machine. Add `--json` for machine-readable output. Reads local paths only; it writes nothing and transmits nothing. |
 | `--no-spacedock` | Do not read Spacedock workflow definitions. The role badge still shows, but the stage strips do not. |
@@ -313,6 +314,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-events` | For this run, do not accept lifecycle events: no event overlays, no coarse store probe, no capability published, and the fixed-interval scan keeps the board warm instead. The rollback switch if event acquisition misbehaves. |
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty — which is what they already read for a session that was never probed. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
+| `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
 | `--history-days N` | How long the local history keeps an observation, in days (default 14). Eviction is age first, so narrowing this drops what falls outside the window and widening it again brings nothing back. Zero or negative is refused. |
 | `--history-max-bytes N` | The size cap on the local history store, in bytes (default 1048576). It is the read cap too: a file larger than it is discarded unread rather than parsed. Zero or negative is refused. |
