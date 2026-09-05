@@ -120,6 +120,11 @@ max-args = 8
 # only the complexity exemption now, not the branch and statement ones.
 "cargento/skills/cargento/cargento_runtime/collectors/gemini.py" = ["C901"]
 "scripts/validate_plugins.py" = ["C901", "PLR0912", "PLR0915"]
+# The terminal-identity recorder takes one keyword per reading it makes, so
+# every input is injectable and the ancestry walk can be tested against a chain
+# that cannot be built on a machine -- the launcher-inherited terminal, which is
+# the control the capture rests on.
+"scripts/capture_terminal_identity.py" = ["PLR0913"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001", "S104"]
 
