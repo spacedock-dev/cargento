@@ -100,6 +100,60 @@ function nextSessionCopyControl(session){
     '<span aria-hidden="true">COPY ID</span></button>';
 }
 
+// The verb each harness's own CLI takes to re-enter a session, keyed by harness.
+//
+// Both were read off `--help` on the installed CLI rather than off documentation:
+// Claude Code 2.1.261 takes `--resume <session-id>` and Codex 0.153.4 takes
+// `resume <SESSION_ID>`. A harness absent from this table gets no control at all,
+// because a guessed verb costs the reader a failed command on top of the hunt it
+// was meant to replace.
+//
+// On re-entering a session that is still live, which is the question a reader will
+// ask before they trust this: neither harness lets a second process onto the same
+// conversation, and both say so rather than doing it quietly. Measured, not
+// inferred. Claude Code refuses — `Can't open — this session is running in another
+// terminal` interactively, and in the background variant it starts a copy and
+// reports `The original conversation is unchanged`. Codex refuses too, with
+// `thread-store conflict: thread <id> already has an active writer`, observed by
+// running two `codex exec resume` calls against one id. So there is no footgun to
+// warn about, and the control carries no warning: the worst case is a refusal that
+// names what to do next.
+const NEXT_RESUME_COMMANDS = new Map([
+  ["claude", id => `claude --resume ${id}`],
+  ["codex", id => `codex resume ${id}`],
+]);
+
+// The published token is checked again here, having already been checked by the
+// collector that published it. Not belt and braces for its own sake: the page
+// treats the payload as untrusted the way the server treats a hook's output, and
+// this is the one string on the board that becomes a shell command in someone
+// else's terminal.
+//
+// Same grammar as the server's RESUME_TOKEN_PATTERN, first character included:
+// a `-`-leading token is one word to a shell but a flag to the CLI, and both
+// harnesses have a valueless flag that turns off their permission checks. Keep
+// the two in step; a page-only anchor would leave every other reader of
+// /api/data holding the raw value.
+const NEXT_RESUME_TOKEN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$/;
+
+function nextResumeCommand(session){
+  const build = NEXT_RESUME_COMMANDS.get(String(session && session.harness || ""));
+  const token = String(session && session.resume_id || "");
+  return build && NEXT_RESUME_TOKEN.test(token) ? build(token) : "";
+}
+
+function nextSessionResumeControl(session){
+  const command = nextResumeCommand(session);
+  if(!command) return "";
+  // `title` carries the command as well as the clipboard does, which is the
+  // fallback: a context with no `navigator.clipboard` still shows the reader what
+  // to type. Same lane as the session-id control beside it, deliberately.
+  return `<button type="button" class="next-session-copy next-attention-resume" ` +
+    `data-next-copy-command="${esc(command)}" ` +
+    `aria-label="Copy re-entry command ${esc(command)}" title="${esc(command)}">` +
+    '<span aria-hidden="true">COPY COMMAND</span></button>';
+}
+
 function nextAskResponsibility(payload, ask){
   const owner = nextExactAskOwner(payload, ask);
   const spacedock = owner && owner.spacedock;

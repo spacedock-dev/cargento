@@ -84,8 +84,9 @@ An ETA is an estimate, and it says so.
 has waited. A session can also ask you a question directly and wait for your answer.
 
 Backed by the merged gate queue with a keyboard pass over it, the wait reason surfaced without
-opening the session, the standing wait duration, and the ask lane: a session calls one tool, the
-question lands on the dashboard, the answer goes back, and the session continues. An arriving
+opening the session, the standing wait duration, a control on the row that copies the command which
+puts you back in the waiting session, and the ask lane: a session calls one tool, the question lands
+on the dashboard, the answer goes back, and the session continues. An arriving
 question raises a notification rather than sitting there unseen.
 
 Where it stops: four of the ten harnesses can report a gate at all, and they are Claude Code,
@@ -93,8 +94,11 @@ Codex, Copilot and Cursor. The other six have no gate detection, so the board na
 gap rather than letting a quiet row read as an all clear. What each of the four can say also
 differs: Claude names the gate, Codex says one is open without naming it, Copilot says whether a
 command or a URL is being asked about, Cursor says only that a permission request is standing and
-for how long. Cargento does not answer a prompt for you. The one shape it is allowed is the session
-asking and Cargento answering
+for how long. The re-entry command is narrower again: two of the ten, Claude Code and Codex,
+publish a session id their own CLI takes, so a row from the other eight offers no command rather
+than a guessed one, and copying it is as far as Cargento goes. You paste it yourself. Cargento does
+not answer a prompt for you. The one shape it is allowed is the session asking and Cargento
+answering
 ([DEC-2](https://linear.app/recce/issue/DRC-4054/dec-2-decision-let-cargento-act-not-just-observe)).
 
 ### P4. Will I hit the wall before the work finishes?
