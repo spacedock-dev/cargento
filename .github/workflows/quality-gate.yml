@@ -191,7 +191,8 @@ jobs:
             scripts.tests.test_bench_event_latency \
             scripts.tests.test_derive_prompt_shapes \
             scripts.tests.test_capture_team_registry \
-            scripts.tests.test_capture_terminal_identity
+            scripts.tests.test_capture_terminal_identity \
+            scripts.tests.test_capture_focus_raise
 
   test:
     name: Tests + coverage threshold
@@ -227,7 +228,8 @@ jobs:
             scripts.tests.test_bench_event_latency \
             scripts.tests.test_derive_prompt_shapes \
             scripts.tests.test_capture_team_registry \
-            scripts.tests.test_capture_terminal_identity
+            scripts.tests.test_capture_terminal_identity \
+            scripts.tests.test_capture_focus_raise
 
       # No `coverage report` here. It reads `fail_under` from pyproject and
       # exits non-zero, and it ran BEFORE the label check below, so a PR
@@ -365,6 +367,7 @@ jobs:
           scripts.tests.test_bump_version scripts.tests.test_lint_embedded
           scripts.tests.test_bench_collect scripts.tests.test_capture_hook
           scripts.tests.test_capture_terminal_identity
+          scripts.tests.test_capture_focus_raise
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).
