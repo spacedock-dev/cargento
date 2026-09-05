@@ -30,6 +30,15 @@ clause that does not cover it, so the sentence is widened rather than evaded: it
 of two, the git probe and the focus command, and stays a whitelist rather than becoming a general
 permission to execute.
 
+The widening has to be **scoped to the repository clause it sits in**, and this is not a stylistic
+preference. That sentence is about running a program *inside a user's repository*. Rewritten as a
+general clause, of the shape "running any program other than the two named here", it would make
+documented security bugs of three paths Cargento already ships: `notifications.py:148`, where the
+native notifier runs `osascript`; `lifecycle.py:614`, where `--daemon` respawns the server; and
+`quota.py:743` and `:789`, where the Keychain is read. So the exception is added to the repository
+clause and the focus command is named as a separate bound, not folded into a permission to execute
+generally.
+
 Invariant 2's paragraph gains one sentence: the focus command writes nothing anywhere, reads nothing
 back, and touches no harness store.
 
@@ -70,6 +79,27 @@ where they differ, the way Usage quota reads requires a vendor's endpoint to be 
 ships. A section listing commands nobody has run would repeat the failure of documenting bounds the
 code will not accept.
 
+**A tmux raise is two commands in two mechanisms, and the section admits that rather than hiding it.**
+Selecting the pane is socket IPC to the tmux server; bringing the window that hosts the client to
+the front is an Apple Event to the emulator. They fail independently, and the first is worth shipping
+without the second: a selected pane in a client the operator then switches to by hand is the whole
+value on a machine where the terminal is already visible. What the section forbids is reporting the
+second as done when only the first ran.
+
+**The two mechanisms carry very different permission costs, and the difference is measured.** The
+socket path needs no operating-system permission at all. The Apple Event path is checked against the
+Automation privacy permission, which macOS attributes to the *responsible* process rather than the
+caller. Measured on the running daemon: after a double fork, a `setsid`, and three days re-parented
+to `launchd`, its responsible process is still the Terminal window that launched it. So the sixteen
+successful `osascript` calls recorded in DRC-4382 are that application automating itself while its
+launcher is alive, which is an exemption rather than a grant.
+
+The launcher outliving the daemon is not the shipping case; the daemon exists to outlive it. What
+happens then is unmeasured, and the failure it risks is silent: an unbundled, ad-hoc-signed
+interpreter carries no usage description, so a refused Apple Event returns an error the operator
+never sees and cannot grant from the Automation pane. **No Apple Event case may be named until that
+arm has been run**, and the socket case is not blocked behind it.
+
 Linux and Windows are unmeasured, and the capture records them that way. Earlier desk research
 suggested Wayland may not permit a background process to raise a window at all, and that Windows
 Terminal has no documented way to focus a tab. That is research rather than measurement and this
@@ -79,21 +109,52 @@ is not installed on the machine that took the capture.
 
 ### The target, and what makes it safe to pass
 
-The target identifier must match `^[A-Za-z0-9._-]{1,128}$` before it reaches an argv position, which
-is the grammar `GET /api/observe` already applies to a harness key and a session id, and for the
-same reason: the grammar is what bounds the value, not the command that receives it. A target
-beginning with a dash is refused, so no value can be read as a flag. That refusal is not
-theoretical. DRC-4381 shipped a grammar admitting a leading dash, and review reproduced a poisoned
-transcript filename turning a copied command into one that disables a harness's permission checks. A
-raise puts the same class of value in an argv position rather than on a clipboard.
+The target is a **record shaped by its named case, not a single string**, and each field carries its
+own grammar. The first draft of this document required every target to match
+`^[A-Za-z0-9._-]{1,128}$`, the grammar `GET /api/observe` applies to a harness key and a session id.
+That was wrong in a way that mattered: a tmux pane id is `%3`, and `%` is not in that class. The one
+case needing no operating-system permission could not have shipped under it, and re-adding the `%`
+in the argv builder is exactly the concatenation the previous section forbids.
 
-Where a platform path builds a script rather than an argv, the identifier passes through the same
-escaping the native notifier applies, and the grammar still runs first. That path deserves naming:
-`notifications.notify_mac` is already an `osascript` caller and has no bounds section of its own, so
-a macOS focus case would be the second caller and the first whose script text is derived from a
-store Cargento does not control.
+So the grammars are per field, and each is as narrow as its field allows:
 
-The identifier is derived from a session Cargento observed. It is never taken from a request body.
+| Field | Grammar | Refused examples |
+| -- | -- | -- |
+| tmux pane id | `^%[0-9]{1,9}$` | `%3; rm -rf`, `-%3`, `%`, `%3 %4` |
+| tmux socket name | `^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$`, passed as `-L`, a name and never a path | `-L`, `../x`, `/tmp/s`, `.hidden`, an empty string |
+| controlling terminal device | `^/dev/[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` | `--dangerously-skip-permissions`, `; rm -rf ~`, `../../etc/passwd`, `/dev/..` |
+
+Every field is substituted into a fixed argv position and never concatenated, and a field failing
+its grammar is not a raise.
+
+**Each grammar refuses a leading dash in its own first character class rather than in a sentence
+beside it, and that wording is the whole lesson of DRC-4381.** That issue shipped
+`^[A-Za-z0-9._-]{1,64}$`, whose class contains a dash with nothing anchoring position 0, and review
+reproduced a poisoned transcript filename turning a copied command into one that disables a
+harness's permission checks. The first draft of this table repeated the same shape twice, and it was
+caught only by running the patterns against the values the table claimed they refused. A raise puts
+that class of value in an argv position rather than on a clipboard, so a prose promise that the
+grammar does not keep is worse here than nowhere.
+
+The device grammar anchors the literal `/dev/` prefix rather than allowing a path and checking it
+afterwards, so traversal is refused by the shape rather than by a later resolve: no member of the
+class after the prefix is a separator, and a leading dot is refused, which is what excludes
+`/dev/..`.
+
+Where a platform path builds a script rather than an argv, the field passes through the same
+escaping the native notifier applies, and its grammar still runs first. **That is an escaping
+precedent and not a permission one, and the difference decides what may be claimed.**
+`notifications.notify_mac` runs `display notification`, a StandardAdditions command with no
+`tell application` block, so it is never checked against the Automation privacy permission. A macOS
+focus case would be the **first** Automation-checked call in this codebase, not the second, and
+nothing about the notifier working says a raise will.
+
+The record is derived from a session Cargento observed, and reaches the runtime through an
+authenticated event rather than through the focus request. That is the honest statement, and it is
+narrower than the first draft's "never taken from a request body": on the only measured path the
+identity arrives in a hook POST to `/api/events/<harness>`, which is a request body, from a process
+Cargento does not control. What bounds it is the capability on that route, which holds a forger to
+the same operating-system user. The focus request itself names a session and never a target.
 
 ### The lookup is done at raise time, and an ambiguous answer is not a raise
 
@@ -142,9 +203,23 @@ keeps this section from inheriting an optimism that has already been shown to be
 
 ### Who may trigger it
 
-The operator's own action, and nothing else. The route is a POST carrying the per-run capability
-`POST /api/events/<harness>` uses, so a document navigation cannot take this path and a local
-process without the token cannot either.
+The operator's own action, and nothing else. The route is a POST carrying a per-run capability, so a
+document navigation cannot take this path and a local process without the token cannot either.
+
+**The capability is minted for this feature and delivered to the page, and saying so is the point.**
+The first draft said the route carries "the per-run capability `POST /api/events/<harness>` uses",
+and that was unsatisfiable by the caller the same sentence names: nothing under
+`cargento_runtime/web/` knows about tokens, the page makes two `fetch` calls and one `EventSource`
+with no header among them, and the per-run tokens live only in the state file at mode `0600`. It was
+also the wrong token. The per-harness capabilities are derived per harness, so the token that would
+focus a Claude session is byte-identical to the one `POST /api/events/claude` accepts, which is the
+power to forge that harness's lifecycle state. Handing the browser that token to raise a window
+would be a strictly worse trade than the raise is worth.
+
+So focus gets **its own consumer key**, and it is delivered by injecting it into the served document
+where the page bytes are handed to the server rather than by baking it into an asset. That seam
+matters: the frontend's assembled bytes are pinned by digest in two test files, and a token in an
+asset would make them non-deterministic. Injecting after assembly leaves those pins untouched.
 
 Both halves of that matter and neither is decoration. A GET would repeat a gap this repository has
 already been bitten by: an attacker page that gets the browser to open a Cargento URL in a tab reads
@@ -167,8 +242,12 @@ leaves the machine.
 
 ### The off switch
 
-`--no-focus`. The flag disables the feature for a run, and it mirrors `--no-git` at every one of that
-flag's sites, including the branch that forwards flags to a respawned daemon, so a restart cannot
+`--no-focus`, and one other flag turns it off as a side effect. The capability comes from the
+observation coordinator, which does not exist under `--no-events`, so that flag disables focus too.
+A reader of this line would not otherwise have that fact, and a feature with an undocumented second
+off switch is one nobody can reason about.
+
+The flag disables the feature for a run, and it mirrors `--no-git` at every one of that flag's sites, including the branch that forwards flags to a respawned daemon, so a restart cannot
 re-enable a focus command the operator disabled. With the feature off no command runs at all and the
 control does not render.
 
@@ -188,8 +267,10 @@ with a tty" and "an emulator variable is set" are both named here as refused rea
 ### Violation
 
 A violation of any boundary in this section is a security bug: a command other than one of the named
-cases, a target reaching an argv position without passing the grammar, a target beginning with a
-dash, a keystroke sent into any terminal by any path, output read back or published, a working
+cases, a field reaching an argv position without passing its own grammar, any field beginning with a
+dash, a target field concatenated into an argument rather than substituted into a fixed position,
+an Apple Event case named before its arm has been run, a raise reported as done when only the
+socket half of it ran, a keystroke sent into any terminal by any path, output read back or published, a working
 directory set on the command, a focus triggered by anything but an authorized operator action, a
 focus while the feature is off, a respawned daemon that re-enables it, a target resolved once and
 reused rather than resolved at the raise, a raise on a lookup that returned no terminal or more than
