@@ -131,20 +131,21 @@ is a model name attached to one person's plan. Null-valued keys are written down
 than dropped, so a field name that exists and is dead on a plan stays distinguishable from one that
 was never sent — which is the whole finding about `seven_day_opus`.
 
-The two `terminal-identity` files carry a fourth kind of thing: a **verdict record derived from the
-arms committed beside it**. `capture_terminal_identity.py --verdict <file>` recomputes it from those
-arms, and `scripts/tests/test_capture_terminal_identity.py` asserts the reproduction, so no figure in
-either summary is a number a person typed. Run against a file that already carries a verdict, that
-command compares and says so rather than writing — it appended a second copy once, which is how the
-verb documented for checking the derivation broke the check. They also carry a fifth: one
-`terminal_identity_note` record apiece, holding the arrangement the records cannot — how the hook was
-made to fire, which on Codex meant `--dangerously-bypass-hook-trust`, since Codex skips an untrusted
-hook without saying so. It is the only prose in either file and it carries no figure. It also holds every arm to the key set the recorder
-writes, because a reproduction check reads arms as given data and would pass over an arm missing a
-field. Two of its fields exist because the honest answer is `null` rather than `true`: an identifier
+The two `terminal-identity` files take the shape `claude/teammate-board-drive-2.1.259-macos.jsonl`
+set rather than a new one: a **verdict record derived from the arms committed beside it**.
+`capture_terminal_identity.py --verdict <file>` recomputes it from those arms, and
+`scripts/tests/test_capture_terminal_identity.py` asserts the reproduction, so no figure in either
+summary is a number a person typed. Run against a file that already carries a verdict, that command
+compares and says so rather than writing — it appended a second copy once, which is how the verb
+documented for checking the derivation broke the check. A second test holds every arm to the key set
+the recorder writes, because the reproduction reads arms as given data and would pass over an arm
+missing a field. Two verdict fields are `null` where a careless one would read `true`: an identifier
 absent from every reading of an arm compares equal to itself, so a plain stability check would report
 the most useless field in the file as the most reliable one, and a single invocation cannot establish
-stability at all.
+stability at all. Each file also carries one `terminal_identity_note` record, on the `_provenance`
+precedent the rest of this directory already sets, holding the arrangement the records cannot — how
+the hook was made to fire, which on Codex meant `--dangerously-bypass-hook-trust`, since Codex skips
+an untrusted hook without saying so. It is the only prose in either file and it carries no figure.
 
 ## Two shapes measured with no file to capture
 
