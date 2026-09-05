@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -29,19 +31,56 @@ class ShapeTest(unittest.TestCase):
 
     def test_a_hex_identifier_is_masked_whole(self) -> None:
         # A session id is hex, so masking only the digits would leave half of it
-        # readable. Every hex character inside a digit-bearing run goes.
+        # readable. Every hex character goes.
+        #
+        # The second group here has no digit in it ON PURPOSE. The fixture this
+        # replaced carried a digit in all five, so it asserted full masking
+        # against the one input that could not fail: `_RUN` splits a UUID on its
+        # hyphens, a group with no digit was returned verbatim, and four
+        # characters of a real `TERM_SESSION_ID` reached a committed capture
+        # under a green suite.
         # Falsified by: a letter of a UUID surviving.
-        shaped = recorder.shape("9CA2A0AB-1F3D-4E5A-8B7C-D0E1F2A3B4C5")
+        shaped = recorder.shape("9CA2A0AB-FAEB-4E5A-8B7C-D0E1F2A3B4C5")
         self.assertEqual("########-####-####-####-############", shaped)
+        self.assertNotIn("FAEB", shaped or "")
+
+    def test_an_identifier_with_no_digit_anywhere_is_masked_too(self) -> None:
+        # The other half of the same hole: a value that happens to draw only
+        # letters is still an identifier, and the digit-bearing rule cannot see
+        # it at all. A run of nothing but hex is masked on its own account.
+        # Falsified by: an all-letter hex identifier returned unchanged.
+        self.assertEqual(
+            "######-####-####-####-############",
+            recorder.shape("ABCDEF-FEED-DEAD-BEEF-CAFEBABEFACE"),
+        )
+
+    def test_a_shape_is_a_fixed_point_of_the_masker(self) -> None:
+        # What both guards over the committed files now rest on: masking a shape
+        # again must change nothing. A value the masker would still alter is not
+        # a shape, it is residue.
+        # Falsified by: `########-FAEB-####-####-############`.
+        for shaped in ("ttys###", "python#.##", "%#", "#.#.###", "bash", "Apple_Terminal"):
+            with self.subTest(shape=shaped):
+                self.assertEqual(shaped, recorder.shape(shaped))
+        self.assertNotEqual(
+            "########-FAEB-####-####-############",
+            recorder.shape("########-FAEB-####-####-############"),
+        )
 
     def test_a_pane_name_keeps_its_punctuation(self) -> None:
         # `%3` is what tells a reader this is a tmux pane handle at all.
         self.assertEqual("%#", recorder.shape("%3"))
 
     def test_a_word_with_no_digits_survives(self) -> None:
-        # A shape that erased every name would answer no question.
-        self.assertEqual("Apple_Terminal", recorder.shape("Apple_Terminal"))
-        self.assertEqual("tmux", recorder.shape("tmux"))
+        # A shape that erased every name would answer no question. Every name
+        # the committed captures actually carry is here, because the masking
+        # rules were widened twice and a name lost to them is silent.
+        for name in ("bash", "tmux", "launchd", "Apple_Terminal", "Terminal", "login", "zsh"):
+            with self.subTest(name=name):
+                self.assertEqual(name, recorder.shape(name))
+        self.assertEqual("python#.##", recorder.shape("python3.13"))
+        self.assertEqual("ttys###", recorder.shape("ttys006"))
+        self.assertEqual("%#", recorder.shape("%3"))
 
     def test_an_absent_reading_shapes_to_nothing(self) -> None:
         self.assertIsNone(recorder.shape(None))
@@ -58,7 +97,7 @@ class EnvironmentTest(unittest.TestCase):
         "TMUX": "/private/tmp/tmux-501/drc4382,59500,0",
         "TMUX_PANE": "%3",
         "TERM_PROGRAM": "Apple_Terminal",
-        "TERM_SESSION_ID": "9CA2A0AB-1F3D-4E5A-8B7C-D0E1F2A3B4C5",
+        "TERM_SESSION_ID": "9CA2A0AB-FAEB-4E5A-8B7C-D0E1F2A3B4C5",
         "WINDOWID": "12345",
     }
 
@@ -87,6 +126,7 @@ class EnvironmentTest(unittest.TestCase):
         seen = recorder.environment(self.ENVIRON)
         self.assertEqual("Apple_Terminal", seen["emulator"]["TERM_PROGRAM_value"])
         self.assertNotIn("9CA2A0AB", json.dumps(seen))
+        self.assertNotIn("FAEB", json.dumps(seen))
         self.assertEqual(
             "########-####-####-####-############",
             seen["emulator"]["vars"]["TERM_SESSION_ID"]["shape"],
@@ -342,6 +382,44 @@ class TerminalLookupTest(unittest.TestCase):
         # The device is read off `ps`, so it is not trusted to be a device.
         self.assertNotIn('""', recorder.tab_query('ttys0"6'))
 
+    def test_a_process_with_no_controlling_terminal_is_never_looked_up(self) -> None:
+        # `ps` writes `??` for a process with no controlling terminal, `??` is
+        # truthy, and the control arm's reading went straight into an AppleScript
+        # query against `/dev/??` -- which Terminal.app answers 0 rather than
+        # refusing. So the control's tab counts were an artifact 0 sitting in the
+        # same field of the same corpus as the tmux arms' measured 0, with
+        # nothing to tell them apart. The honest answer is null.
+        # Falsified by: a lookup that guards on truthiness alone.
+        for absent in ("??", "?", "  "):
+            with self.subTest(reading=absent):
+                found = recorder.lookup(
+                    harness_tty=absent,
+                    client_tty=None,
+                    count=lambda _device: {"tabs": 0, "busy_tabs": 0},
+                )
+                self.assertIsNone(found["tabs_matching_harness_tty"])
+                self.assertIsNone(found["busy_tabs_matching_harness_tty"])
+
+    def test_an_unaskable_question_is_not_asked_of_the_emulator(self) -> None:
+        # Belt and braces at the other end, and it makes `_terminal_tabs`'s own
+        # docstring true: it promises None when the question is unaskable and
+        # returned a dict of zeroes for `/dev/??` on this machine.
+        # Falsified by: `osascript` being run for a device that does not exist.
+        self.assertIsNone(recorder._terminal_tabs("??"))
+        self.assertIsNone(recorder._terminal_tabs("?"))
+        self.assertIsNone(recorder._terminal_tabs(None))
+
+    def test_a_platform_without_ttyname_reads_as_an_absent_device(self) -> None:
+        # `os.ttyname` is Unix-only. On Windows the attribute lookup raises
+        # `AttributeError`, which the handler did not catch, so the recorder died
+        # inside `capture()` -- and still exited 0, leaving no record at all and
+        # a suite that errors on a missing file rather than a missing attribute.
+        # Falsified by: a handler that catches only OSError and ValueError.
+        with unittest.mock.patch.object(
+            os, "ttyname", side_effect=AttributeError("no ttyname here")
+        ):
+            self.assertIsNone(recorder._fd_tty(0))
+
 
 class VerdictTest(unittest.TestCase):
     def arm(self, **over: Any) -> dict[str, Any]:
@@ -357,17 +435,63 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(1, found["invocations"])
         self.assertEqual(["terminal_app"], sorted(found["per_arm"]))
 
-    def test_an_identifier_that_moved_between_invocations_is_reported_unstable(self) -> None:
-        # THE PROPERTY A RAISE DEPENDS ON. One reading cannot establish it, so
-        # the verdict is computed across invocations of one session.
-        # Falsified by: a moving device reported as held still.
+    def test_a_shape_that_changed_between_invocations_is_reported_unstable(self) -> None:
+        # A change of device FAMILY does survive masking, so this half of the
+        # comparison works. The half that does not is the test below.
+        # Falsified by: a changed shape reported as agreement.
         first = self.arm()
         second = json.loads(json.dumps(first))
         second["tty"]["hook_ps_tty"] = "ttyq###"
-        found = recorder.verdict([first, second], base=recorder.base_of(first))
-        held = found["per_arm"]["terminal_app"]["identifier_held_still"]
+        held = recorder.verdict([first, second], base=recorder.base_of(first))["per_arm"][
+            "terminal_app"
+        ]["identifier_shape_held_still"]
         self.assertFalse(held["hook_ps_tty"])
         self.assertTrue(held["TERM_PROGRAM"])
+
+    def test_a_device_that_moved_inside_its_family_is_not_claimed_to_have_held_still(self) -> None:
+        # THE LIMIT OF THE FIELD, pinned so nobody reads it as more. Stability is
+        # compared after `shape()` has masked the reading and every `ttysNNN`
+        # device serializes to the same `ttys###`, so a tmux client that moved
+        # from one tab to another inside one session -- a detach and a reattach,
+        # which is the move `tmux_client_tty` would be watched for -- cannot be
+        # seen here at all. The claim was withdrawn rather than dressed up: the
+        # field is named for the shapes it compares, and the README says the
+        # shapes agreed rather than that the device held still.
+        #
+        # The predecessor of this test moved the device to `ttyq###`, a different
+        # FAMILY, which masking preserves -- so it passed straight over the one
+        # family every committed reading uses.
+        # Falsified by: a field called `identifier_held_still` over this data.
+        first = self.arm()
+        first["multiplexer"]["tmux_client_tty"] = recorder.shape("ttys006")
+        second = json.loads(json.dumps(first))
+        second["multiplexer"]["tmux_client_tty"] = recorder.shape("ttys011")
+        self.assertEqual(
+            first["multiplexer"]["tmux_client_tty"], second["multiplexer"]["tmux_client_tty"]
+        )
+        summary = recorder.verdict([first, second], base=recorder.base_of(first))["per_arm"][
+            "terminal_app"
+        ]
+        self.assertNotIn("identifier_held_still", summary)
+        self.assertTrue(summary["identifier_shape_held_still"]["tmux_client_tty"])
+
+    def test_a_sighting_in_a_session_of_one_does_not_vouch_for_the_rest(self) -> None:
+        # The presence guard ranged over every row of the arm while the
+        # comparison ranged only over the sessions with two or more invocations.
+        # So a single-invocation session that saw the identifier let two readings
+        # that were both null pass as agreement. The two must range over the same
+        # rows. `docs/captures/README.md` lists a detached pane as unmeasured, so
+        # this is the next capture rather than a hypothetical.
+        # Falsified by: `true` for an identifier the compared rows never carried.
+        blind = self.arm(session="aaaaaaaa")
+        blind["tty"]["hook_ps_tty"] = None
+        again = json.loads(json.dumps(blind))
+        lone = self.arm(session="bbbbbbbb")
+        self.assertIsNotNone(lone["tty"]["hook_ps_tty"])
+        held = recorder.verdict([blind, again, lone], base=recorder.base_of(lone))["per_arm"][
+            "terminal_app"
+        ]["identifier_shape_held_still"]
+        self.assertIsNone(held["hook_ps_tty"])
 
     def test_an_identifier_that_was_never_there_did_not_hold_still(self) -> None:
         # A composed verdict fails toward a confident green: an identifier absent
@@ -378,18 +502,30 @@ class VerdictTest(unittest.TestCase):
         first["multiplexer"]["TMUX_PANE"] = {"present": False, "shape": None}
         second = json.loads(json.dumps(first))
         found = recorder.verdict([first, second], base=recorder.base_of(first))
-        held = found["per_arm"]["terminal_app"]["identifier_held_still"]
+        held = found["per_arm"]["terminal_app"]["identifier_shape_held_still"]
         self.assertIsNone(held["TMUX_PANE"])
         self.assertTrue(held["TERM_PROGRAM"])
+
+    def blind(self) -> dict[str, Any]:
+        """The control arm: no tty of its own, so nothing was looked up either.
+
+        The lookup is all-null on purpose. A record that nulls the device and
+        keeps a tab count is describing a query that could not have happened --
+        the very confusion the `/dev/??` reading put into the committed control.
+        """
+        arm: dict[str, Any] = json.loads(json.dumps(self.arm(arm="no_controlling_terminal")))
+        arm["tty"]["harness_tty"] = None
+        arm["tty"]["hook_ps_tty"] = None
+        arm["multiplexer"]["TMUX_PANE"] = {"present": False, "shape": None}
+        arm["emulator_lookup"] = recorder.lookup(harness_tty=None, client_tty=None)
+        return arm
 
     def test_the_launcher_trap_is_carried_into_the_verdict(self) -> None:
         # The control's whole finding, and it has to be readable without opening
         # the arms: in the detached arm a terminal IS reachable, just not this
         # session's, so a summary that only said "no terminal" would understate
         # what a naive reader would do here.
-        blind = json.loads(json.dumps(self.arm(arm="no_controlling_terminal")))
-        blind["tty"]["harness_tty"] = None
-        blind["tty"]["hook_ps_tty"] = None
+        blind = self.blind()
         blind["ancestry"]["a_terminal_is_reachable_past_the_harness"] = True
         found = recorder.verdict([blind], base=recorder.base_of(blind))
         summary = found["per_arm"]["no_controlling_terminal"]
@@ -398,7 +534,7 @@ class VerdictTest(unittest.TestCase):
 
     def test_stability_is_not_claimed_from_a_single_invocation(self) -> None:
         found = recorder.verdict([self.arm()], base=recorder.base_of(self.arm()))
-        held = found["per_arm"]["terminal_app"]["identifier_held_still"]
+        held = found["per_arm"]["terminal_app"]["identifier_shape_held_still"]
         self.assertIsNone(held["hook_ps_tty"])
         self.assertEqual(1, found["per_arm"]["terminal_app"]["invocations"])
 
@@ -414,9 +550,7 @@ class VerdictTest(unittest.TestCase):
 
     def test_an_arm_with_no_terminal_locates_nothing(self) -> None:
         # The control has to read differently or the instrument proves nothing.
-        blind = json.loads(json.dumps(self.arm(arm="no_controlling_terminal")))
-        blind["tty"]["hook_ps_tty"] = None
-        blind["tty"]["harness_tty"] = None
+        blind = self.blind()
         blind["emulator"]["vars"]["TERM_PROGRAM"] = {"present": False, "shape": None}
         blind["emulator"]["TERM_PROGRAM_value"] = None
         found = recorder.verdict([blind], base=recorder.base_of(blind))
@@ -424,12 +558,60 @@ class VerdictTest(unittest.TestCase):
             "none", found["per_arm"]["no_controlling_terminal"]["locates_a_terminal_by"]
         )
 
-    def test_a_tmux_pane_locates_the_pane_and_says_so(self) -> None:
-        pane = json.loads(json.dumps(self.arm(arm="tmux")))
-        pane["multiplexer"]["TMUX"] = {"present": True, "shape": None}
-        pane["multiplexer"]["TMUX_PANE"] = {"present": True, "shape": "%#"}
+    def pane(self) -> dict[str, Any]:
+        """A tmux arm shaped like the committed ones: 0 tabs on the tty, 1 on the client."""
+        arm: dict[str, Any] = json.loads(json.dumps(self.arm(arm="tmux")))
+        arm["multiplexer"]["TMUX"] = {"present": True, "shape": None}
+        arm["multiplexer"]["TMUX_PANE"] = {"present": True, "shape": "%#"}
+        arm["multiplexer"]["tmux_client_tty"] = "ttys###"
+        arm["emulator_lookup"] = {
+            "method": "terminal_app_applescript_tty",
+            "tabs_matching_harness_tty": 0,
+            "busy_tabs_matching_harness_tty": 0,
+            "tabs_matching_tmux_client_tty": 1,
+            "busy_tabs_matching_tmux_client_tty": 1,
+        }
+        return arm
+
+    def test_an_identifier_that_found_no_tab_is_not_named_as_the_locator(self) -> None:
+        # In a pane the harness HAS a tty and ZERO Terminal tabs sit on it. A
+        # label read off identifier PRESENCE therefore named `tty` as the locator
+        # on exactly the evidence that refutes it, and never named
+        # `tmux_client_tty`, the one measured at a live busy tab. The label is
+        # derived from the lookup instead. `--report`, the documented reading
+        # path, printed the label and hid the counts, so nothing on that path
+        # could catch it.
+        # Falsified by: `tty` in the label for an arm whose tty found no tab.
+        summary = recorder.verdict([self.pane()], base=recorder.base_of(self.pane()))["per_arm"][
+            "tmux"
+        ]
+        self.assertEqual("tmux_client_tty+tmux_pane", summary["locates_a_terminal_by"])
+        self.assertTrue(summary["tmux_client_tty_present"])
+
+    def test_an_arm_whose_only_tty_is_its_client_still_locates_a_terminal(self) -> None:
+        # The same blind spot with a worse consequence: derived from presence, an
+        # arm with a live client tty and no tty of its own rolled all the way up
+        # to `no_terminal_is_locatable`.
+        # Falsified by: `none` for an arm holding a live busy tab.
+        pane = self.pane()
+        pane["tty"]["harness_tty"] = None
+        pane["tty"]["hook_ps_tty"] = None
         found = recorder.verdict([pane], base=recorder.base_of(pane))
-        self.assertEqual("tty+tmux_pane", found["per_arm"]["tmux"]["locates_a_terminal_by"])
+        self.assertEqual(
+            "tmux_client_tty+tmux_pane", found["per_arm"]["tmux"]["locates_a_terminal_by"]
+        )
+        self.assertEqual("a_terminal_is_locatable", found["verdict"])
+
+    def test_a_tty_with_a_live_tab_is_still_named(self) -> None:
+        # The positive control for the change above: the terminal arm's own tty
+        # answers one busy tab, so that arm must still read `tty`. No pane here,
+        # because a plain Terminal tab has no `TMUX_PANE` -- the shared fixture
+        # sets one and the old derivation appended `tmux_pane` to an arm that
+        # never saw a multiplexer.
+        arm = self.arm()
+        arm["multiplexer"]["TMUX_PANE"] = {"present": False, "shape": None}
+        found = recorder.verdict([arm], base=recorder.base_of(arm))
+        self.assertEqual("tty", found["per_arm"]["terminal_app"]["locates_a_terminal_by"])
 
 
 class CommittedCaptureTest(unittest.TestCase):
@@ -446,6 +628,7 @@ class CommittedCaptureTest(unittest.TestCase):
         {
             "terminal_identity",
             "terminal_identity_verdict",
+            "terminal_identity_note",
             "claude",
             "codex",
             "darwin",
@@ -469,7 +652,7 @@ class CommittedCaptureTest(unittest.TestCase):
             "TaskCompleted",
             "Apple_Terminal",
             "tty",
-            "tty+tmux_pane",
+            "tmux_client_tty+tmux_pane",
             "none",
             "terminal_app_applescript_tty",
             "a_terminal_is_locatable",
@@ -483,8 +666,16 @@ class CommittedCaptureTest(unittest.TestCase):
         re.compile(r"^[0-9a-f]{8}$"),
         re.compile(r"^\d+\.\d+\.\d+$"),
         # A shape, and the point of the class is what it EXCLUDES: no digit
-        # survives masking, and no "/" means no path can pass as one.
-        re.compile(r"^[A-Za-z_%+-]*#[#A-Za-z_%+.-]*$"),
+        # survives masking, and no "/" means no path can pass as one. That much
+        # was true and not enough -- the tail class admits letters, `FAEB` is
+        # letters, and `########-FAEB-####-####-############` matched happily
+        # while carrying four characters of a real session id. So a run of
+        # `MIN_HEX_RUN` or more characters that is nothing but hex is refused
+        # too, which still admits `ttys###`, `python#.##` and `%#`.
+        re.compile(
+            rf"^(?!.*(?<![0-9A-Za-z])[0-9a-fA-F]{{{recorder.MIN_HEX_RUN},}}(?![0-9A-Za-z]))"
+            r"[A-Za-z_%+-]*#[#A-Za-z_%+.-]*$"
+        ),
         re.compile(r"^[A-Z_]{3,24}$"),  # an environment variable name
     )
 
@@ -526,8 +717,9 @@ class CommittedCaptureTest(unittest.TestCase):
                 text
                 for path in self.files()
                 for record in self.records(path)
-                for _trail, text in self.strings(record)
-                if not (
+                for trail, text in self.strings(record)
+                if trail != ("note",)
+                and not (
                     text in self.NAMES
                     or text in self.TOKENS
                     or text in recorder.ARM_KEYS
@@ -538,6 +730,37 @@ class CommittedCaptureTest(unittest.TestCase):
             }
         )
         self.assertEqual([], unclassified, "unclassified strings in a capture file")
+
+    def test_a_committed_shape_is_already_fully_masked(self) -> None:
+        # The guard that was blind, at the level the class above cannot reach: a
+        # string the masker would still change is residue, not a shape. Both
+        # oracles missed `########-FAEB-####-####-############` in a committed
+        # file -- the class because it admits letters after the first `#`, and
+        # the unit fixture because it had a digit in every UUID group and so
+        # could not fail.
+        # Falsified by: any surviving all-letter hex run in a masked value.
+        for path in self.files():
+            for record in self.records(path):
+                for trail, text in self.strings(record):
+                    if "#" not in text:
+                        continue
+                    with self.subTest(file=path.name, at=trail, text=text):
+                        self.assertEqual(text, recorder.shape(text))
+
+    def test_a_capture_says_how_its_hook_was_made_to_fire(self) -> None:
+        # `docs/captures/README.md` requires a row to describe its arrangement,
+        # and how the hook was made to fire is arrangement. The Codex arms only
+        # ran because `--dangerously-bypass-hook-trust` was passed -- Codex skips
+        # an untrusted hook silently -- and a reader who does not know the
+        # measurement needed a trust bypass cannot judge the result. The README
+        # row is not enough on its own: the file is what `--report` prints.
+        # Falsified by: a capture whose arrangement lives only in a README row.
+        for path in self.files():
+            notes = [r for r in self.records(path) if r["record"] == recorder.RECORD_NOTE]
+            with self.subTest(file=path.name):
+                self.assertEqual(1, len(notes))
+                if path.parent.name == "codex":
+                    self.assertIn("--dangerously-bypass-hook-trust", notes[0]["note"])
 
     def test_every_arm_carries_the_key_set_the_recorder_writes(self) -> None:
         # The reproduction below reads arms as given data, so it passes over an
@@ -626,6 +849,100 @@ class ReRunnableTest(unittest.TestCase):
             written = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(2, len(written))
             self.assertEqual(recorder.ARM_KEYS, frozenset(written[0]))
+
+    def run_recorder(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "capture_terminal_identity.py"), *args],
+            input=json.dumps(ObserveTest.PAYLOAD),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+
+    def test_a_misregistered_hook_line_still_exits_zero(self) -> None:
+        # The docstring's safety section claimed exit 0 on every path and was
+        # false: argparse exits 2 on a missing `--arm`, an unknown `--mode` and
+        # any mistyped flag, `SystemExit` derives from `BaseException` so the
+        # module's own handler never saw it, and 2 is a harness's BLOCKING code
+        # for a hook. The two tests that claimed to cover this both passed
+        # well-formed arguments. `capture_hook.py`, the sibling this file cites,
+        # keeps argparse off its record path for the same reason.
+        # Falsified by: any argparse rejection reaching a harness as a 2.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(Path(tmp) / "capture.jsonl")
+            for argv in (
+                ["claude", "--arm", "terminal_app"],
+                ["claude", "--out", out],
+                ["gemini", "--arm", "terminal_app", "--out", out],
+                ["claude", "--arm", "terminal_app", "--mode", "exec", "--out", out],
+                ["claude", "--arm", "terminal_app", "--output", out],
+            ):
+                with self.subTest(argv=argv):
+                    self.assertEqual(0, self.run_recorder(*argv).returncode)
+
+    def test_a_second_verdict_over_the_same_file_compares_rather_than_appends(self) -> None:
+        # `--verdict` is the only thing in the tool that recomputes a verdict, so
+        # it is what a reader runs to check the derivation the docstring
+        # promises -- and it appended blindly, leaving two verdict lines in a
+        # git-tracked evidence file, exit 0, no output, and this suite red on
+        # `assertEqual(1, len(committed))`. The sibling recorder refuses its own
+        # re-run for the same reason.
+        # Falsified by: a second run growing the file.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "capture.jsonl"
+            for _ in range(2):
+                self.assertEqual(
+                    0, self.run_recorder("claude", "--arm", "x", "--out", str(out)).returncode
+                )
+            first = self.run_recorder("--verdict", str(out))
+            self.assertEqual(0, first.returncode, first.stderr)
+            self.assertIn("appended", first.stdout)
+            lines = len(out.read_text(encoding="utf-8").splitlines())
+            second = self.run_recorder("--verdict", str(out))
+            self.assertEqual(0, second.returncode, second.stderr)
+            self.assertIn("reproduced", second.stdout)
+            self.assertEqual(lines, len(out.read_text(encoding="utf-8").splitlines()))
+
+    def test_a_verdict_that_no_longer_matches_its_arms_exits_non_zero(self) -> None:
+        # The other half of making the check a check: drift between the arms and
+        # the committed verdict has to be an exit code, not a silent second line.
+        # Falsified by: a mismatching verdict reported as reproduced.
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "capture.jsonl"
+            for _ in range(2):
+                self.run_recorder("claude", "--arm", "x", "--out", str(out))
+            self.run_recorder("--verdict", str(out))
+            records = [json.loads(line) for line in out.read_text().splitlines()]
+            records[-1]["per_arm"]["x"]["invocations"] = 99
+            out.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in records))
+            drifted = self.run_recorder("--verdict", str(out))
+            self.assertEqual(1, drifted.returncode)
+            self.assertIn("DIFFERS", drifted.stderr)
+
+    def test_a_command_run_by_hand_reports_its_own_failure(self) -> None:
+        # The other side of swallowing argparse's 2: the record path must never
+        # block a session, but an operator pointing `--verdict` at a file that
+        # is not there has to hear about it rather than read exit 0.
+        # Falsified by: a blanket exit 0 over the by-hand paths too.
+        self.assertNotEqual(0, self.run_recorder("--verdict", "/nonexistent/nope.jsonl").returncode)
+
+    def test_the_documented_reading_path_prints_the_counts_the_label_rests_on(self) -> None:
+        # `--report` is what `docs/captures/README.md` hands a reader, and it
+        # printed `locates_a_terminal_by` while hiding every `emulator_lookup`
+        # number the label is derived from.
+        # Falsified by: a report that shows the label and not its evidence.
+        printed = self.run_recorder(
+            "--report", str(CAPTURES / "claude" / "terminal-identity-2.1.261-macos.jsonl")
+        )
+        self.assertEqual(0, printed.returncode, printed.stderr)
+        self.assertIn("busy_tabs_matching_tmux_client_tty", printed.stdout)
+        self.assertIn(
+            "--dangerously-bypass-hook-trust",
+            self.run_recorder(
+                "--report", str(CAPTURES / "codex" / "terminal-identity-0.153.4-macos.jsonl")
+            ).stdout,
+        )
 
     def test_a_broken_payload_still_exits_zero(self) -> None:
         # A hook that fails is felt by the human in the session.

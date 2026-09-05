@@ -364,6 +364,7 @@ jobs:
           python -m unittest scripts.tests.test_validate_plugins
           scripts.tests.test_bump_version scripts.tests.test_lint_embedded
           scripts.tests.test_bench_collect scripts.tests.test_capture_hook
+          scripts.tests.test_capture_terminal_identity
 
   # The single required status check. Branch protection requires this job, so
   # every job above must succeed (a skip or failure anywhere fails the gate).

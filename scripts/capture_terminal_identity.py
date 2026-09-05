@@ -13,16 +13,21 @@ Three modes, with the harness named first on the record path exactly as
 
     capture_terminal_identity.py claude --arm tmux --out FILE
                                     read a hook payload on stdin, append a line
-    --verdict FILE                  derive the verdict from the arms in FILE and
-                                    append it, so the file checks itself
+    --verdict FILE                  derive the verdict from the arms in FILE.
+                                    Appends it the first time; on a file that
+                                    already carries one it COMPARES and says so,
+                                    which is how a reader checks the derivation
     --report FILE                   print the arms and the verdict
 
 ## What it records, and what it refuses to
 
 Shapes, presence, depths, roles, and one vendor vocabulary word. A tty device
-names one terminal on one machine, so `ttys006` is written down as `ttys###`;
-every digit and every hex character of a digit-bearing run is masked, because a
-session id is hex and masking only the digits would leave half of it readable.
+names one terminal on one machine, so `ttys006` is written down as `ttys###`.
+Every hex character of a value that contains a digit ANYWHERE is masked, and so
+is any run of four or more characters that is nothing but hex. Both rules are
+needed and the second was learned the hard way: a UUID splits on its hyphens, so
+a group with no digit in it -- `FAEB` -- was written down verbatim, and four
+characters of a real session id reached a committed capture.
 
 The one value kept whole is `TERM_PROGRAM`. It is a vendor vocabulary word the
 emulator picks from rather than text anyone wrote, which is the class
@@ -49,10 +54,15 @@ per arm across an arm that should answer differently.
 
 ## Why it cannot disturb a session, or the machine it runs on
 
-It exits 0 on every path, appends a single line, imports nothing outside the
-standard library, and makes NO network call of any kind -- there is a running
-dashboard on the machine this was measured on, and a recorder that posted to it
-would contaminate the thing being measured. `scripts/tests/` holds it to that.
+The record path exits 0 whatever happens, including on a mistyped flag: argparse
+exits 2 there, 2 is a harness's BLOCKING code for a hook, and a recorder that
+blocks the session it is measuring is worse than one that records nothing. Only
+`--verdict` and `--report`, which are run by hand rather than by a harness,
+return a code that means something. It appends a single line, imports nothing
+outside the standard library, and makes NO network call of any kind -- there is a
+running dashboard on the machine this was measured on, and a recorder that posted
+to it would contaminate the thing being measured. `scripts/tests/` holds it to
+that.
 """
 
 from __future__ import annotations
@@ -73,6 +83,9 @@ if TYPE_CHECKING:
 FORMAT = 1
 RECORD_ARM = "terminal_identity"
 RECORD_VERDICT = "terminal_identity_verdict"
+# One line of arrangement the records themselves cannot carry, on the
+# `_provenance` precedent the rest of `docs/captures/` already sets.
+RECORD_NOTE = "terminal_identity_note"
 
 # Long enough for the vocabulary words emulators actually use, short enough that
 # nothing else fits. `capture_hook.py` bounds its tool name for the same reason.
@@ -80,6 +93,11 @@ MAX_TOKEN_CHARS = 40
 # The chain from a hook to launchd is five or six links. Twelve leaves room for a
 # wrapper without letting a cycle run forever.
 MAX_DEPTH = 12
+# A run of nothing but hex is an identifier even with no digit in it. Four,
+# because every group of a UUID is at least four hex characters, and a shorter
+# all-hex run is likelier to be a name than an id -- `bash` and `tmux` are not
+# all-hex at any length, but a three-letter word can be.
+MIN_HEX_RUN = 4
 PS_TIMEOUT_SEC = 10
 
 EMULATOR_VARS: tuple[str, ...] = (
@@ -190,21 +208,26 @@ RECORD_FIELD_NAMES = frozenset(
         "busy_tabs_matching_tmux_client_tty",
         "sessions",
         "modes",
-        "identifier_held_still",
+        "identifier_shape_held_still",
         "locates_a_terminal_by",
         "harness_tty_present",
         "hook_ps_tty_present",
+        "tmux_client_tty_present",
         "tmux_pane_present",
         "term_program_present",
         "emulator_in_the_ancestry",
         "stability_sessions_with_two_or_more_invocations",
+        "note",
         *EMULATOR_VARS,
         *MULTIPLEXER_VARS,
     }
 )
 
 # The identifiers a raise could be built on. Each one is read out of an arm
-# record by this path, and the verdict says, per arm, whether it held still.
+# record by this path, and the verdict says, per arm, whether its SHAPE held
+# still. Not whether the device did: four of the five paths below point at a
+# field `shape()` has already masked, and two `ttysNNN` devices share one shape,
+# so a comparison made here cannot tell them apart. See `verdict()`.
 IDENTIFIERS: dict[str, tuple[str, ...]] = {
     "hook_ps_tty": ("tty", "hook_ps_tty"),
     "harness_tty": ("tty", "harness_tty"),
@@ -215,27 +238,50 @@ IDENTIFIERS: dict[str, tuple[str, ...]] = {
 
 _RUN = re.compile(r"[0-9A-Za-z]+")
 _HEXISH = re.compile(r"[0-9a-fA-F]")
+_HEX_RUN = re.compile(r"[0-9a-fA-F]+")
+# `ps` writes `??` for a process with no controlling terminal on macOS and `?` on
+# Linux. Both are truthy, which is how one reached an AppleScript query.
+_NO_DEVICE = frozenset({"", "?", "??"})
+
+
+def _device_or_none(reading: str | None) -> str | None:
+    """A `ps` tty reading, or None for the spellings that mean no device.
+
+    The lookup took `??` straight through and asked Terminal.app about
+    `/dev/??`, which answers 0 rather than failing -- an artifact 0 sitting in
+    the same field of the same file as a measured one, with nothing to tell them
+    apart. `shape()` cannot stand in for this: it masks digits, and the lookup
+    needs the device.
+    """
+    if reading is None:
+        return None
+    return None if reading.strip() in _NO_DEVICE else reading
 
 
 def shape(text: str | None) -> str | None:
     """A reading reduced to its shape: `/dev/ttys006` becomes `ttys###`.
 
-    Every hex character of a run that contains a digit is masked, not just the
-    digits. A UUID is all hex, so masking digits alone would leave most of a
-    session id in the file; a word with no digit in it is a name and survives.
+    Two rules, and the second exists because the first leaked. Every hex
+    character of a value that contains a digit ANYWHERE is masked, not just of
+    the run the digit sits in: `_RUN` splits a UUID on its hyphens, so
+    `7A3B9C1D-FAEB-...` made `FAEB` a run with no digit of its own and wrote four
+    characters of a real `TERM_SESSION_ID` into a committed capture. And a run of
+    nothing but hex is an identifier even when the value carries no digit at all,
+    so one of `MIN_HEX_RUN` characters or more is masked on its own account. A
+    run holding a non-hex character is a name and survives.
     """
     if not text:
         return None
     value = text.strip()
-    # `ps` writes `??` for a process with no controlling terminal on macOS and
-    # `?` on Linux. Both are an absence and must not read as a device shape.
-    if not value or value in {"?", "??"}:
+    if _device_or_none(value) is None:
         return None
     value = value.removeprefix("/dev/")
+    digit_anywhere = any(char.isdigit() for char in value)
 
     def mask(match: re.Match[str]) -> str:
         run = match.group(0)
-        if not any(char.isdigit() for char in run):
+        all_hex = len(run) >= MIN_HEX_RUN and _HEX_RUN.fullmatch(run) is not None
+        if not digit_anywhere and not all_hex:
             return run
         return "".join("#" if _HEXISH.fullmatch(char) else char for char in run)
 
@@ -469,11 +515,37 @@ def _dig(record: dict[str, Any], path: tuple[str, ...]) -> Any:
     return node
 
 
+def _highest(rows: list[dict[str, Any]], field: str) -> int | None:
+    """The largest count any invocation of an arm measured, or None if none did.
+
+    The largest rather than the last: the lookup is a live reading and a tab
+    busy at one invocation can be idle at the next, but a tab that was there
+    was there.
+    """
+    seen = [_dig(row, ("emulator_lookup", field)) for row in rows]
+    measured = [value for value in seen if isinstance(value, int)]
+    return max(measured) if measured else None
+
+
 def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, Any]:
     """The verdict, derived from the arm records rather than declared.
 
-    Everything below comes out of the arms committed beside it, so re-running
-    `--verdict` over a committed file reproduces the record in it.
+    Everything below comes out of the arms committed beside it. Re-running
+    `--verdict` over a committed file COMPARES rather than appending, so the
+    reproduction can be checked by hand without writing to the evidence.
+
+    One property this deliberately does NOT claim: that a device held still. The
+    identifiers are read after `shape()` has masked them, every `ttysNNN` device
+    serializes to the same `ttys###`, and nothing in an arm record distinguishes
+    two devices in one family once it is written. So a tmux client that moved
+    from one tab to another inside a session -- a detach and a reattach, which
+    `tmux_client_tty` is exactly the identifier to notice -- is invisible here.
+    The field is named `identifier_shape_held_still` for what it measures, and
+    `docs/captures/README.md` says the shapes agreed rather than that the device
+    did. Carrying a salted digest instead was considered and rejected: a hook is
+    a fresh process per invocation, so the salt would have to be written beside
+    the digest or handed in undisclosed arrangement, and a salt in the file makes
+    the digest reversible in milliseconds against a device space of a few hundred.
     """
     per_arm: dict[str, Any] = {}
     for name in sorted({str(record["arm"]) for record in arms}):
@@ -488,23 +560,43 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
             # a plain equality check would report the most useless field in the
             # file as the most reliable one. `null` is not `true`, and neither is
             # a single reading: one invocation cannot establish stability either.
-            if not repeated or not any(_dig(row, path) for row in rows):
+            #
+            # The presence check ranges over the SAME rows the comparison does,
+            # not over every row of the arm. A session that never saw the
+            # identifier contributes a one-element set of nulls and would read as
+            # agreement -- and a sighting in a single-invocation session would
+            # vouch for it. `docs/captures/README.md` names a detached pane as
+            # unmeasured, so that is the next capture rather than a hypothetical.
+            measured = {
+                sid: rows_
+                for sid, rows_ in repeated.items()
+                if any(_dig(row, path) for row in rows_)
+            }
+            if not measured:
                 held[identifier] = None
                 continue
             held[identifier] = all(
                 len({json.dumps(_dig(row, path)) for row in rows_}) == 1
-                for rows_ in repeated.values()
+                for rows_ in measured.values()
             )
-        has_tty = any(
-            _dig(row, ("tty", "harness_tty")) or _dig(row, ("tty", "hook_ps_tty")) for row in rows
-        )
         has_pane = any(_dig(row, ("multiplexer", "TMUX_PANE", "present")) for row in rows)
-        if has_tty and has_pane:
-            locates = "tty+tmux_pane"
-        elif has_tty:
-            locates = "tty"
-        else:
-            locates = "none"
+        # Taken from the lookup the arms already carry, not from whether an
+        # identifier is present. In a pane the harness HAS a tty and ZERO
+        # Terminal tabs sit on it, so a label read off presence named `tty` as a
+        # locator on exactly the evidence that refutes it -- and an arm with a
+        # live client tty but no tty of its own would have read `none`. The busy
+        # count rather than the total, because macOS recycles the device and a
+        # finished tab keeps the string.
+        busy_harness = _highest(rows, "busy_tabs_matching_harness_tty")
+        busy_client = _highest(rows, "busy_tabs_matching_tmux_client_tty")
+        routes = []
+        if busy_harness:
+            routes.append("tty")
+        if busy_client:
+            routes.append("tmux_client_tty")
+        if routes and has_pane:
+            routes.append("tmux_pane")
+        locates = "+".join(routes) if routes else "none"
         per_arm[name] = {
             "invocations": len(rows),
             "sessions": len(sessions),
@@ -512,6 +604,11 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
             "stability_sessions_with_two_or_more_invocations": len(repeated),
             "harness_tty_present": any(_dig(row, ("tty", "harness_tty")) for row in rows),
             "hook_ps_tty_present": any(_dig(row, ("tty", "hook_ps_tty")) for row in rows),
+            # The identifier that actually finds the window in a pane had no
+            # presence column beside the three that do not.
+            "tmux_client_tty_present": any(
+                _dig(row, ("multiplexer", "tmux_client_tty")) for row in rows
+            ),
             "tmux_pane_present": has_pane,
             "term_program_present": any(
                 _dig(row, ("emulator", "TERM_PROGRAM_value")) for row in rows
@@ -519,7 +616,11 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
             "emulator_in_the_ancestry": any(
                 _dig(row, ("ancestry", "reached_emulator")) for row in rows
             ),
-            "identifier_held_still": held,
+            "identifier_shape_held_still": held,
+            # The counts this is derived from are deliberately not copied up
+            # beside it: the control arm's is an artifact 0 from a query against
+            # a device that did not exist, and a summary is the last place to
+            # repeat one. `--report` prints each arm's own `emulator_lookup`.
             "locates_a_terminal_by": locates,
             # Carried up from the arms because it is the control's whole finding:
             # "no terminal" understates what a naive reader would do here.
@@ -574,7 +675,10 @@ def ps_rows(pid: int) -> list[dict[str, Any]]:
 def _fd_tty(fd: int) -> str | None:
     try:
         return os.ttyname(fd)
-    except (OSError, ValueError):
+    # `os.ttyname` does not exist on Windows, and its absence is an absent
+    # reading rather than a fault. Without `AttributeError` here the whole
+    # recorder died before writing anything and still exited 0.
+    except (AttributeError, OSError, ValueError):
         return None
 
 
@@ -642,11 +746,12 @@ def tab_query(device: str) -> str:
 
 def _terminal_tabs(device: str | None) -> dict[str, int] | None:
     """Tabs on that device, total and busy, or None if the question is unaskable."""
-    if not device:
+    asked = _device_or_none(device)
+    if asked is None:
         return None
     try:
         done = subprocess.run(  # noqa: S603
-            ["osascript", "-e", tab_query(device)],  # noqa: S607
+            ["osascript", "-e", tab_query(asked)],  # noqa: S607
             capture_output=True,
             text=True,
             timeout=PS_TIMEOUT_SEC,
@@ -674,8 +779,13 @@ def lookup(
     the window. Read-only, and it is the difference between holding a string and
     holding a handle: an identifier nothing can look up would not build B5.
     """
-    harness = count(harness_tty) if harness_tty else None
-    client = count(client_tty) if client_tty else None
+    # `_device_or_none` rather than truthiness: `ps` writes `??` for a process
+    # with no controlling terminal, `??` is truthy, and one went straight into an
+    # AppleScript query against `/dev/??` -- which Terminal.app answers 0 rather
+    # than refusing. That put an artifact 0 in the control arm's tab counts, in
+    # the same field of the same corpus as the tmux arms' measured 0.
+    harness = count(harness_tty) if _device_or_none(harness_tty) else None
+    client = count(client_tty) if _device_or_none(client_tty) else None
     return {
         "method": "terminal_app_applescript_tty",
         "tabs_matching_harness_tty": harness["tabs"] if harness else None,
@@ -786,8 +896,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.report:
         for record in read_records(args.report):
-            if record["record"] == RECORD_ARM:
-                print(record["arm"], record["event"], json.dumps(record["tty"], sort_keys=True))
+            if record["record"] == RECORD_NOTE:
+                print(record["record"], record["note"])
+            elif record["record"] == RECORD_ARM:
+                # `emulator_lookup` beside `tty`, because this is the documented
+                # reading path and the label the verdict prints is derived from
+                # these numbers. Printing the label and hiding them is how a
+                # reader was left unable to check it.
+                print(
+                    record["arm"],
+                    record["event"],
+                    json.dumps(record["tty"], sort_keys=True),
+                    json.dumps(record["emulator_lookup"], sort_keys=True),
+                )
             else:
                 print(record["record"], json.dumps(record["per_arm"], indent=2, sort_keys=True))
         return 0
@@ -797,7 +918,21 @@ def main(argv: list[str] | None = None) -> int:
         if not arms:
             print("no arms to derive a verdict from", file=sys.stderr)
             return 0
-        append(args.verdict, verdict(arms, base=base_of(arms[0])))
+        derived = verdict(arms, base=base_of(arms[0]))
+        committed = [record for record in records if record["record"] == RECORD_VERDICT]
+        if committed:
+            # Re-running this over a committed file is how a reader checks the
+            # derivation by hand, and appending blindly turned that into a
+            # second verdict line and a red suite. `capture_team_registry.py`
+            # refuses its own re-run for the same reason: by hand is exactly
+            # when it happens.
+            if committed == [derived]:
+                print(f"verdict reproduced from {len(arms)} arms in {args.verdict}")
+                return 0
+            print(f"verdict DIFFERS from the record in {args.verdict}", file=sys.stderr)
+            return 1
+        append(args.verdict, derived)
+        print(f"appended the verdict to {args.verdict}")
         return 0
     if not args.out or not args.arm:
         parser.error("--out and --arm are required when capturing")
@@ -805,8 +940,34 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+# Run by hand rather than by a harness, so their exit code is an answer and is
+# passed through. Everything else is the record path.
+BY_HAND = frozenset({"--verdict", "--report", "--help", "-h"})
+
+
+def exit_code(argv: list[str] | None = None) -> int:
+    """`main()`'s code, with the record path unable to block the session it measures."""
+    given = sys.argv[1:] if argv is None else argv
+    by_hand = any(arg.split("=", 1)[0] in BY_HAND for arg in given)
     try:
-        sys.exit(main())
-    except Exception:  # noqa: BLE001 - a hook that raises is felt by the human
-        sys.exit(0)
+        return main(argv)
+    except SystemExit as chosen:
+        # argparse exits 2 on a mistyped flag, an unknown `--mode`, or a missing
+        # `--arm`, and 2 is a harness's BLOCKING code for a hook. `SystemExit`
+        # derives from `BaseException`, so the handler below never saw it and the
+        # 2 reached the harness. A recorder that blocks a session is worse than
+        # one that records nothing.
+        if by_hand and isinstance(chosen.code, int):
+            return chosen.code
+        return 0
+    except Exception:
+        # A hook that raises is felt by the human in the session, so the record
+        # path swallows everything. Not by hand, though: an unreadable file is
+        # the operator's likeliest mistake and a silent 0 would hide it.
+        if by_hand:
+            raise
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(exit_code())
