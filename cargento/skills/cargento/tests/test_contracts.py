@@ -1829,6 +1829,25 @@ class HarnessContractTest(HarnessContractTestCase):
                 self.assertEqual(1, len(sessions), f"expected one session, got {sessions}")
                 self.assertEqual("working", sessions[0]["state"])
 
+    def test_only_a_harness_with_a_verified_resume_verb_publishes_a_resume_token(
+        self,
+    ) -> None:
+        # Two harnesses have a re-entry verb read off the installed CLI's own help
+        # rather than off documentation: Claude Code 2.1.261 `--resume <session-id>`
+        # and Codex 0.153.4 `resume <SESSION_ID>`. Every other row publishes None,
+        # which is what keeps the page from offering a guessed command. When one of
+        # the other eight earns a verb, this set is the place that says so.
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                data = self.collect(build, when=self.NOW)
+                row = self.sessions_for(data, key)[0]
+                token = row["resume_id"]
+                if key in {"claude", "codex"}:
+                    self.assertIsNotNone(token)
+                    self.assertEqual(token, runtime_sessions.resume_token(token))
+                else:
+                    self.assertIsNone(token)
+
     def test_no_harness_publishes_a_credential_out_of_a_prompt(self) -> None:
         # DRC-4267. Every row here is built from what the operator typed, and on
         # the machine this was found on that text held seven live Anthropic

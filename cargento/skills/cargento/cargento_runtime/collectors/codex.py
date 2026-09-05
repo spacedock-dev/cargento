@@ -264,6 +264,13 @@ def collect(
         )
         s.update(
             {
+                # Codex publishes the whole rollout id as `sid`, and that is the id
+                # `codex resume <SESSION_ID>` takes. Repeated into its own field
+                # rather than left for the page to infer from the harness key: the
+                # page's rule is "no token, no control", and a harness whose `sid`
+                # happens to be resumable is a fact this collector knows and the
+                # page does not.
+                "resume_id": sessions.resume_token(s["sid"]),
                 "title": asked["title"],
                 "last_prompt": asked["last_prompt"],
                 "instruction": asked["instruction"],

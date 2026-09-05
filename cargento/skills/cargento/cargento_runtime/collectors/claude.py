@@ -868,6 +868,19 @@ def collect(
         s = runtime_sessions.base_session("claude", prefix, project)
         s.update(
             {
+                # The transcript's own stem is the session id `claude --resume`
+                # takes; `prefix` above is its first eight characters and the CLI
+                # refuses those outright. It is the WINNING transcript's stem, so a
+                # prefix two transcripts share resumes the one whose state this row
+                # is showing. A row that reached this loop from the task store alone
+                # has no transcript and therefore no id, which is the None case.
+                "resume_id": (
+                    runtime_sessions.resume_token(
+                        os.path.basename(transcript).removesuffix(".jsonl")
+                    )
+                    if transcript
+                    else None
+                ),
                 "title": (info or {}).get("title"),
                 # Line 1 above is the session's identity — the `ai-title`, fixed
                 # before the second prompt on 200 of 204 long sessions — and this

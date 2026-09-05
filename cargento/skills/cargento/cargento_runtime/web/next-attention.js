@@ -860,6 +860,14 @@ function nextAttentionSubjectHtml(subject, model, hidden = false){
     ? '<p class="next-attention-part" data-next-attention-part="next">' +
       `<span class="next-attention-label">NEXT</span><span>${checkpointRows}</span></p>`
     : "";
+  // The gate queue's rows only. Every section here names a session, so the control
+  // would render on all four, and a small affordance on every row is furniture
+  // rather than an affordance. This one answers "it is waiting on me, get me
+  // there", which is the question only NEEDS YOU NOW asks. It rides the SOURCE
+  // line because that is the row's quietest, and it must not shout.
+  const resume = subject.section === "needs"
+    ? nextSessionResumeControl(subject.session)
+    : "";
   return `<li${hidden ? " hidden" : ""}><article class="next-attention-item" ` +
     `data-next-attention-subject="${nextAttentionEsc(subject.key)}" ` +
     `data-next-attention-kind="${nextAttentionEsc(subject.primaryKind)}">` +
@@ -873,7 +881,8 @@ function nextAttentionSubjectHtml(subject, model, hidden = false){
     `<span class="next-attention-label">NOW</span><span>${nowRows}</span></div>` + next +
     '<p class="next-attention-part" data-next-attention-part="source">' +
     `<span class="next-attention-label">SOURCE</span>` +
-    `<span>${nextAttentionEsc(nextAttentionSubjectSource(subject, model))}</span></p></article></li>`;
+    `<span>${nextAttentionEsc(nextAttentionSubjectSource(subject, model))}${resume}</span>` +
+    "</p></article></li>";
 }
 
 function nextAttentionCoverageHtml(model){

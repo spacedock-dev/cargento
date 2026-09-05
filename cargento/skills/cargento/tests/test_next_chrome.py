@@ -159,7 +159,7 @@ const before = {...nextRoute};
 const target = {
   dataset: {nextCopySession: "shared-id"},
   closest(selector){
-    if(selector === "[data-next-copy-session]") return this;
+    if(selector.includes("data-next-copy-session")) return this;
     if(selector === "[data-next-route]") return {dataset: {nextRoute: "wrong"}};
     return null;
   },
@@ -193,6 +193,117 @@ __els.app = {
         self.assertEqual("Copied session ID shared-id", out["status"])
         self.assertEqual("copied", out["state"])
         self.assertEqual(out["before"], out["after"])
+
+    def test_copy_re_entry_command_uses_the_same_lane_as_the_session_id_control(self) -> None:
+        # One lane, not two: the command control sets the same `data-next-copy-state`
+        # and announces through the same live region the session-id control does, so
+        # a reader who has learned one has learned both.
+        out = self._run_page_js(
+            """
+nextData = {
+  generated: 1000,
+  harnesses: [{key: "claude", label: "Claude Code", reports_needs_input: true}],
+  asks: [], sessions: [{
+    harness: "claude", sid: "shared-id", resume_id: "27d10654-1cb5-481e-8194-6ce868b91bb5",
+    project: "alpha/repo", state: "needs_input", blocked_since: 900,
+    title: "Waiting on you", tasks: [], subagents: []
+  }]
+};
+navigateNext({view: "sessions", project: null, session: null});
+const before = {...nextRoute};
+const target = {
+  dataset: {nextCopyCommand: "claude --resume 27d10654-1cb5-481e-8194-6ce868b91bb5"},
+  closest(selector){
+    if(selector.includes("data-next-copy-command")) return this;
+    if(selector === "[data-next-route]") return {dataset: {nextRoute: "wrong"}};
+    return null;
+  },
+  setAttribute(name, value){ this[name] = value; }
+};
+__fire("click", {target, preventDefault(){}, stopPropagation(){}});
+await __settle();
+console.log(JSON.stringify({
+  before, after: nextRoute, copied: __copied, status: __copyStatus.textContent,
+  state: target.dataset.nextCopyState
+}));
+""",
+            """
+let __copied = [];
+const navigator = {clipboard: {writeText(value){ __copied.push(value); return Promise.resolve(); }}};
+let __copyStatusText = "";
+const __copyStatus = {
+  setAttribute(){},
+  set textContent(value){ __copyStatusText = String(value); },
+  get textContent(){ return __copyStatusText; }
+};
+document.createElement = () => __copyStatus;
+__els.app = {
+  innerHTML: "", querySelectorAll(){ return []; }, querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+""",
+        )
+
+        self.assertEqual(["claude --resume 27d10654-1cb5-481e-8194-6ce868b91bb5"], out["copied"])
+        self.assertEqual(
+            "Copied claude --resume 27d10654-1cb5-481e-8194-6ce868b91bb5", out["status"]
+        )
+        self.assertEqual("copied", out["state"])
+        self.assertEqual(out["before"], out["after"])
+
+    def test_a_context_without_a_clipboard_says_so_and_leaves_the_command_readable(self) -> None:
+        # `navigator.clipboard` is absent over plain HTTP in some browsers, which is
+        # exactly how this page is served. The fallback is the one the session-id
+        # control already uses: announce the failure, and leave the command on the
+        # control's own title for the reader to take by hand.
+        out = self._run_page_js(
+            """
+nextData = {
+  generated: 1000,
+  harnesses: [{key: "codex", label: "Codex", reports_needs_input: true}],
+  asks: [], sessions: [{
+    harness: "codex", sid: "01a06fac-629f-7c40-9c86-f84c55680151",
+    resume_id: "01a06fac-629f-7c40-9c86-f84c55680151",
+    project: "alpha/repo", state: "needs_input", blocked_since: 900,
+    title: "Waiting on you", tasks: [], subagents: []
+  }]
+};
+const html = nextAttentionView(nextAttentionModel(nextData));
+const target = {
+  dataset: {nextCopyCommand: "codex resume 01a06fac-629f-7c40-9c86-f84c55680151"},
+  closest(selector){
+    return selector.includes("data-next-copy-command") ? this : null;
+  },
+  setAttribute(name, value){ this[name] = value; }
+};
+__fire("click", {target, preventDefault(){}, stopPropagation(){}});
+await __settle();
+console.log(JSON.stringify({
+  html, copied: __copied, status: __copyStatus.textContent,
+  state: target.dataset.nextCopyState
+}));
+""",
+            """
+let __copied = [];
+const navigator = {};
+let __copyStatusText = "";
+const __copyStatus = {
+  setAttribute(){},
+  set textContent(value){ __copyStatusText = String(value); },
+  get textContent(){ return __copyStatusText; }
+};
+document.createElement = () => __copyStatus;
+__els.app = {
+  innerHTML: "", querySelectorAll(){ return []; }, querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+""",
+        )
+
+        self.assertEqual([], out["copied"])
+        self.assertEqual("Re-entry command could not be copied", out["status"])
+        self.assertEqual("failed", out["state"])
+        self.assertIn('title="codex resume 01a06fac-629f-7c40-9c86-f84c55680151"', out["html"])
 
     def test_breadcrumb_segments_mark_current_location_and_escape_walks_up(self) -> None:
         out = self._run_page_js(

@@ -512,20 +512,20 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                11_244,
-                "ade573b3cf8db013fc0a57081a29bfb0620369d7348e9a06eddaab05d3d72e68",
+                14_216,
+                "501c2d26b98f85eed7c7bbd8f3174f5081846c6a32620cdbc8924f5e36b74e95",
             ),
             "next-attention.js": (
-                45_388,
-                "ac594989ccf9e1348ce41a82a199e4f78960bb8645f86ae131f164c42338f0c5",
+                45_900,
+                "4720021b6fb1d5d497f94e21b05afe0e0035cf0c67c12857ee3095bf0f91fce3",
             ),
             "next-notify.js": (
                 3_642,
                 "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
             ),
             "next-chrome.js": (
-                17_327,
-                "5101046a31b7f7ccbdb71c88ce0d31a78f7a8ad4b86fa44e6ea8ebc535214d49",
+                18_069,
+                "a6ab75cde88dc1091386378805f63d671657845c3d3f75e4864d16978d8885f8",
             ),
             "next-capacity.js": (
                 25_829,
@@ -580,16 +580,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(44_457, len(styles))
+        self.assertEqual(44_792, len(styles))
         self.assertEqual(
-            "0d5a41f93fd9630a40fa9959e5411cb1cc3f4e280c1fbb5b00ce1aa2ffa1d64c",
+            "00c416c8a3a5ba9aca4c3ecb879f98271e375651c6a40815b989f5c39e252d3f",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(367_730, len(assembled))
+        self.assertEqual(372_291, len(assembled))
         self.assertEqual(
-            "031a0abbc3370e73526aee166391b27f363ea394ac12d6df1db8662b3d67890b",
+            "143f3c3a990919d4e690d472fd8f357e709cea573d1e482f7c7e4e1c4ec13038",
             hashlib.sha256(assembled).hexdigest(),
         )
 

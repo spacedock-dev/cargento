@@ -70,10 +70,14 @@ unmeasured harness as an all-clear.
 
 **Needs you** combines native harness gates with questions registered through `ask_operator`.
 Native permission prompts, plan approvals, and harness questions must still be answered in that
-session's terminal; Cargento does not mark them answered on the session's behalf. The item leaves
-when the harness publishes evidence that the wait ended. A question registered through
-`ask_operator` is different: its offered options are buttons in Attention and in the exact session
-detail, and choosing one returns that option to the waiting agent. Free-form replies are not
+session's terminal; Cargento does not mark them answered on the session's behalf. A Claude Code or
+Codex row therefore carries a control that copies the command that harness's own CLI takes to
+re-enter that session, so reaching the terminal is a paste rather than a hunt. The other eight
+harnesses publish no session id their CLI would accept, and their rows show no control rather than a
+guessed command. The item leaves when the harness publishes evidence that the wait ended. A
+question registered through `ask_operator` is different: its offered options are buttons in
+Attention and in the exact session detail, and choosing one returns that option to the waiting
+agent. Free-form replies are not
 accepted, unanswered questions expire, and `--no-ask` disables this lane.
 
 **At risk** is evidence Cargento can actually support, including detected failed-tool loops,
