@@ -497,6 +497,50 @@ projects keep identity and scope but omit stale operational claims. Project deta
 workflow and grouped activity; session detail owns the exact session's current activity and
 progressive command facts. No level repeats a broader summary merely because it can.
 
+## NUI-17: the gate queue hands over a command, and only where one was measured
+
+A gate-queue row names a session that is waiting and then leaves the reader to find its terminal.
+That is the weakest point of the thing this board is best at: it can tell you a session on this
+machine has been blocked for eleven minutes without telling you where it is.
+
+The row therefore carries one control that copies the command that harness's own CLI takes to
+re-enter that session. It rides the SOURCE line rather than the item's lede, because it must not
+compete with the wait reason, and it reuses the session-ID control's markup, its copied and failed
+states, and its live region, so a reader who has learned one control has learned the other. It is on
+the gate queue's rows alone. Every section of Attention names a session, so a control placed by
+identity would render four times over, and a small affordance on every row is furniture rather than
+an affordance. This one answers "it is waiting on me, get me there", which is the question only
+Needs you asks.
+
+Coverage is two harnesses of the ten, and the table of verbs is measured rather than documented:
+`claude --resume <session-id>` read off Claude Code 2.1.261's help, `codex resume <SESSION_ID>` off
+Codex 0.153.4's. A harness absent from that table gets no control at all, because a guessed verb
+costs the reader a failed command on top of the hunt it was meant to replace. The rule the page
+applies is total: no published token, no control. That is why Codex repeats an id it already
+publishes as `sid` into `resume_id` rather than letting the page infer resumability from the harness
+key, and why Claude publishes the whole transcript stem there. Claude's `sid` is that stem's first
+eight characters, and `claude --resume 27d10654` answers that the argument is not a UUID and matches
+no session title (measured on 2.1.261).
+
+### Re-entering a live session was the question to settle first
+
+The obvious objection is that a reader copies this command while the session is still running and
+puts a second process on one conversation. Both harnesses refuse, and both say so rather than doing
+it quietly. Claude Code declines interactively with
+`Can't open — this session is running in another terminal`, and its background variant starts a copy
+and reports that the original conversation is unchanged. Codex declines with `thread-store conflict: thread <id> already has an active writer`,
+observed by running two `codex exec resume` calls against one id. Both were measured on the
+installed CLIs, not inferred.
+
+So the control carries no warning. A warning would describe a hazard the harnesses already close,
+and the worst case is a refusal that names what to do next. That is also why this is written down:
+re-deriving it means installing two CLIs and deliberately racing them against one conversation, and
+whoever changes this control next will ask the same question first.
+
+The token the command is built from comes off a filename in a store the harness owns, so it is
+untrusted like every other reading here. The grammar that guards it, and the `-`-leading token that
+grammar exists to refuse, are in [SECURITY.md](../SECURITY.md).
+
 ## What this does not decide
 
 Promotion does not create durable event, turn, or UI history. History-backed regions remain
