@@ -415,8 +415,15 @@ class TerminalLookupTest(unittest.TestCase):
         # inside `capture()` -- and still exited 0, leaving no record at all and
         # a suite that errors on a missing file rather than a missing attribute.
         # Falsified by: a handler that catches only OSError and ValueError.
+        #
+        # `create=True` because this test runs on the platform it describes.
+        # `patch.object` refuses an attribute that is not there, so on Windows
+        # the patch itself raised before the handler under test was reached --
+        # the test written to prove the absent case was the one the absent case
+        # broke. With `create=True` the mock stands in on every platform and the
+        # handler is exercised the same way on all three.
         with unittest.mock.patch.object(
-            os, "ttyname", side_effect=AttributeError("no ttyname here")
+            os, "ttyname", side_effect=AttributeError("no ttyname here"), create=True
         ):
             self.assertIsNone(recorder._fd_tty(0))
 
