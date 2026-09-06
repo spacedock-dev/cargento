@@ -868,6 +868,10 @@ function nextAttentionSubjectHtml(subject, model, hidden = false){
   const resume = subject.section === "needs"
     ? nextSessionResumeControl(subject.session)
     : "";
+  // After the copy and never instead of it. The copy is reversible and always
+  // works; the raise is neither, and a reader who has only the raise has lost the
+  // affordance that cannot fail.
+  const raise = subject.section === "needs" ? nextSessionRaiseControl(subject.session) : "";
   return `<li${hidden ? " hidden" : ""}><article class="next-attention-item" ` +
     `data-next-attention-subject="${nextAttentionEsc(subject.key)}" ` +
     `data-next-attention-kind="${nextAttentionEsc(subject.primaryKind)}">` +
@@ -881,8 +885,24 @@ function nextAttentionSubjectHtml(subject, model, hidden = false){
     `<span class="next-attention-label">NOW</span><span>${nowRows}</span></div>` + next +
     '<p class="next-attention-part" data-next-attention-part="source">' +
     `<span class="next-attention-label">SOURCE</span>` +
-    `<span>${nextAttentionEsc(nextAttentionSubjectSource(subject, model))}${resume}</span>` +
+    `<span>${nextAttentionEsc(nextAttentionSubjectSource(subject, model))}${resume}${raise}</span>` +
     "</p></article></li>";
+}
+
+// How far the raise reaches across the queue, said once. The alternative was a
+// per-row "no terminal", which would print on the majority of rows forever: the
+// bit is false for a session outside tmux, one predating this server run, and
+// every Linux and Windows session. It sits with the rest of what the board cannot
+// see rather than beside the rows it is not about.
+function nextAttentionTerminalCoverage(model){
+  const rows = (model && Array.isArray(model.needs) ? model.needs : [])
+    .filter(subject => subject && subject.session);
+  if(!rows.length) return "";
+  if(!nextFocusCapability()) return "<p>Terminal raise: off for this run.</p>";
+  const reached = rows.filter(subject => subject.session.focusable === true).length;
+  const carry = rows.length === 1 ? "waiting row carries" : "waiting rows carry";
+  return `<p>Terminal raise: ${reached} of ${rows.length} ${carry} ` +
+    "a terminal Cargento can reach.</p>";
 }
 
 function nextAttentionCoverageHtml(model){
@@ -914,6 +934,7 @@ function nextAttentionCoverageHtml(model){
     `<p><span class="next-attention-brief-label">COVERAGE</span>${esc(visible)}</p>` +
     '<details class="next-attention-coverage-details"><summary>Coverage details</summary>' +
     `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}` +
+    nextAttentionTerminalCoverage(model) +
     '<p>Termination cause not reported.</p></details></div>';
 }
 

@@ -1510,6 +1510,118 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual(1, len(model["risk"]))
         self.assertNotIn("data-next-copy-command", self.render(payload))
 
+    # The capability the server injects into the served document at
+    # `cli.inject_focus_capability`. Supplied through the prelude rather than
+    # through the payload because that is where the real one arrives: SECURITY.md
+    # keeps it out of `/api/data`, so a page that reads it from anywhere else is
+    # reading something the server never sends.
+    FOCUS_META_PRELUDE = """
+document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
+  ? {getAttribute: name => (name === "content" ? "0a1b2c3d" : null)}
+  : null;
+"""
+
+    def render_with_capability(self, payload: object) -> str:
+        encoded = json.dumps(payload)
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    f"nextData = JSON.parse({json.dumps(encoded)});",
+                    "console.log(JSON.stringify(nextAttentionView(nextAttentionModel(nextData))));",
+                )
+            ),
+            self.FOCUS_META_PRELUDE,
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def raise_payload(self, focusable: object) -> dict[str, Any]:
+        payload = self.gate_queue_payload("claude", "27d10654-1cb5-481e-8194-6ce868b91bb5")
+        if focusable is not None:
+            payload["sessions"][0]["focusable"] = focusable
+        return payload
+
+    def test_a_gate_queue_row_with_a_terminal_raises_beside_the_copy_never_over_it(self) -> None:
+        # The copy always works; the raise resolves its target at the moment of the
+        # raise and so cannot be promised at render. Drawing it in place of the copy
+        # would leave the reader with less than the affordance that always works.
+        html = self.render_with_capability(self.raise_payload(True))
+
+        self.assertIn('data-next-raise-session="sid-published"', html)
+        self.assertIn('data-next-raise-harness="claude"', html)
+        self.assertIn(">RAISE<", html)
+        self.assertIn("COPY COMMAND", html)
+        self.assertLess(html.index("COPY COMMAND"), html.index(">RAISE<"))
+        # Its own class and its own resting look, so the reversible control and the
+        # irreversible one do not differ by label alone.
+        self.assertIn('class="next-session-raise', html)
+        self.assertNotIn('class="next-session-copy next-session-raise', html)
+        # No `title`: the copy control's title carries its own payload as the
+        # clipboard fallback, and the focus contract forbids echoing a target, so
+        # there is nothing a raise could put there.
+        raise_button = html[html.index("data-next-raise-session") : html.index(">RAISE<")]
+        self.assertNotIn("title=", raise_button)
+        self.assertIn("aria-label=", raise_button)
+
+        # The two controls are independent: the event envelope carries the terminal
+        # identity for any harness, so a session whose CLI documents no re-entry
+        # verb can still report one. The raise stands alone there rather than being
+        # withheld for want of a copy to sit beside.
+        alone = self.gate_queue_payload("gemini", None)
+        alone["sessions"][0]["focusable"] = True
+        rendered = self.render_with_capability(alone)
+        self.assertIn(">RAISE<", rendered)
+        self.assertNotIn("data-next-copy-command", rendered)
+
+    def test_no_raise_without_a_reported_terminal_and_none_without_the_run_capability(self) -> None:
+        # Three ways to have nothing to offer. `focusable` false is the majority
+        # answer — a session outside tmux, one predating this server run, or any
+        # Linux or Windows session — and a missing capability is the feature off for
+        # the run, where a request could only ever be refused.
+        for focusable in (None, False, "true"):
+            with self.subTest(focusable=focusable):
+                self.assertNotIn(
+                    "data-next-raise-session",
+                    self.render_with_capability(self.raise_payload(focusable)),
+                )
+        self.assertNotIn("data-next-raise-session", self.render(self.raise_payload(True)))
+
+    def test_the_raise_rides_the_gate_queue_and_no_other_section(self) -> None:
+        payload = self.raise_payload(True)
+        payload["sessions"][0]["state"] = "working"
+        payload["sessions"][0]["active"] = True
+        del payload["sessions"][0]["blocked_since"]
+        payload["sessions"][0]["loop"] = {"errors": 4, "tool": "Bash"}
+        model = self.model(payload)
+        assert isinstance(model, dict)
+        self.assertEqual([], model["needs"])
+        self.assertEqual(1, len(model["risk"]))
+        self.assertNotIn("data-next-raise-session", self.render_with_capability(payload))
+
+    def test_terminal_reach_is_stated_once_in_coverage_rather_than_on_every_row(self) -> None:
+        # A per-row "no terminal" would print on the majority of rows forever. The
+        # queue says how far the feature reaches once, where the rest of what the
+        # board cannot see is already recorded.
+        payload = self.raise_payload(True)
+        payload["sessions"].append(
+            {
+                "harness": "claude",
+                "sid": "sid-elsewhere",
+                "project": "alpha/repo",
+                "state": "needs_input",
+                "blocked_since": 9_300,
+                "title": "Also waiting",
+            }
+        )
+        html = self.render_with_capability(payload)
+        self.assertIn("Terminal raise: 1 of 2 waiting rows carry a terminal", html)
+        self.assertEqual(1, html.count("Terminal raise:"))
+        self.assertEqual(1, html.count("data-next-raise-session"))
+
+        off = self.render(payload)
+        self.assertIn("Terminal raise: off for this run", off)
+        self.assertNotIn("data-next-raise-session", off)
+
     def test_attention_styles_cover_wide_narrow_focus_hit_targets_and_motion(self) -> None:
         self.assertIn("@media(min-width:900px)", NEXT_STYLES)
         self.assertIn("@media(max-width:899px)", NEXT_STYLES)
