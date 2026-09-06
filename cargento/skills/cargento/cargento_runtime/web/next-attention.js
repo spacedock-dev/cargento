@@ -110,8 +110,14 @@ function nextAttentionCompareSubjects(left, right, model){
     if(leftKind === "attribution" && left.sourceIndex !== right.sourceIndex){
       return left.sourceIndex - right.sourceIndex;
     }
-    if(leftKind === "loop" && leftDetail.errors !== rightDetail.errors){
-      return rightDetail.errors - leftDetail.errors;
+    if(leftKind === "loop"){
+      // The turn total ranks these, not the peak run: a turn that failed six
+      // times with a success in the middle is worse off than one that failed
+      // four in a row, and ordering by the peak put it second.
+      const leftTotal = leftDetail.failures == null ? leftDetail.errors : leftDetail.failures;
+      const rightTotal = rightDetail.failures == null ? rightDetail.errors : rightDetail.failures;
+      if(leftTotal !== rightTotal) return rightTotal - leftTotal;
+      if(leftDetail.errors !== rightDetail.errors) return rightDetail.errors - leftDetail.errors;
     }
     if(leftKind === "quota"){
       if(leftDetail.pct !== rightDetail.pct) return rightDetail.pct - leftDetail.pct;
@@ -134,7 +140,13 @@ function nextAttentionLoopSignal(session, sourceIndex){
   const loop = session && session.loop;
   if(!loop || typeof loop !== "object" || Array.isArray(loop) || !Number.isInteger(loop.errors) ||
     loop.errors <= 0) return null;
+  // `errors` is the peak consecutive run and `failures` the turn total, which
+  // no success resets. They differ exactly when a success split the failures,
+  // which is the case the run alone reads as clean (DRC-4021).
   const detail = {errors: loop.errors};
+  const failures = Number.isInteger(loop.failures) ? loop.failures : null;
+  if(failures != null && failures > loop.errors) detail.failures = failures;
+  if(loop.barren === true) detail.barren = true;
   const tool = typeof loop.tool === "string" ? loop.tool.trim() : "";
   if(tool) detail.tool = tool;
   return {kind: "loop", section: "risk", sourceIndex, detail};
@@ -718,9 +730,13 @@ function nextAttentionSignalNow(signal, subject){
   }
   if(signal.kind === "loop"){
     const tool = String(detail.tool == null ? "" : detail.tool).trim();
-    const text = tool
-      ? `${tool} failed ${detail.errors} times`
-      : `Tool failures reported ${detail.errors} times`;
+    // The count said out loud is the turn total wherever it is bigger, because
+    // the peak run understates a turn a success split in two.
+    const count = detail.failures == null ? detail.errors : detail.failures;
+    const subject = tool ? `${tool} failed` : "Tool failures reported";
+    const text = detail.barren === true
+      ? `${subject} ${count} times, nothing succeeded`
+      : `${subject} ${count} times`;
     return {text, note: ""};
   }
   if(signal.kind === "quota"){

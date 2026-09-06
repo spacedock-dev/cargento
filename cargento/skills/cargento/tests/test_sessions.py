@@ -125,6 +125,40 @@ class CargentoServerTest(RuntimeTestCase):
         return out
 
     @staticmethod
+    def _mixed_transcript(pattern: str, *, tool: str = "Bash", minute: int = 0) -> list[Any]:
+        """One turn whose tool calls succeed or fail in the order `pattern` gives.
+
+        `f` is a failed call, `o` a successful one. `_loop_transcript` can only
+        build a run, and every case C2 exists for needs a success partway through.
+        """
+        out: list[Any] = [
+            {
+                "type": "user",
+                "timestamp": f"2026-01-01T00:{minute:02d}:00Z",
+                "message": {"content": "fix the thing"},
+            }
+        ]
+        for i, outcome in enumerate(pattern):
+            out.append(
+                {
+                    "type": "assistant",
+                    "timestamp": f"2026-01-01T00:{minute:02d}:{i * 2 + 1:02d}Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"t{i}", "name": tool}]},
+                }
+            )
+            result: dict[str, Any] = {"type": "tool_result", "tool_use_id": f"t{i}"}
+            if outcome == "f":
+                result["is_error"] = True
+            out.append(
+                {
+                    "type": "user",
+                    "timestamp": f"2026-01-01T00:{minute:02d}:{i * 2 + 2:02d}Z",
+                    "message": {"content": [result]},
+                }
+            )
+        return out
+
+    @staticmethod
     def _scan(written: list[Any], path: Path, **overrides: Any) -> dict[str, Any]:
         path.write_text("\n".join(json.dumps(record) for record in written) + "\n")
         config, state = make_runtime(**overrides)
@@ -170,16 +204,393 @@ class CargentoServerTest(RuntimeTestCase):
         # same 1 of 25 local transcripts, so the extra rung costs no yield and
         # buys distance from the benign runs the sample was full of. A run one
         # short of it publishes nothing at all, not a smaller signal.
+        # Both fixtures bracket the run with a success on purpose. Three
+        # failures and nothing else is a barren turn under its own threshold,
+        # which would answer this test with the wrong signal; a success at each
+        # end isolates the run rung, which is what this test is about.
         config, _ = make_runtime()
         with tempfile.TemporaryDirectory() as tmp:
-            short = self._scan(self._loop_transcript(3), Path(tmp) / "short.jsonl")
-            long_enough = self._scan(self._loop_transcript(4), Path(tmp) / "long.jsonl")
+            short = self._scan(self._mixed_transcript("offfo"), Path(tmp) / "short.jsonl")
+            long_enough = self._scan(self._mixed_transcript("offffo"), Path(tmp) / "long.jsonl")
         self.assertEqual(4, config.loop_error_run_threshold)
+        self.assertEqual(3, short["err_peak"])
         self.assertIsNone(runtime_turns.loop_signal(short, config))
         self.assertEqual(
-            {"errors": 4, "tool": "Bash"}, runtime_turns.loop_signal(long_enough, config)
+            {"errors": 4, "failures": 4, "barren": False, "tool": "Bash"},
+            runtime_turns.loop_signal(long_enough, config),
         )
         self.assertIsNone(runtime_turns.loop_signal(None, config))
+
+    def test_the_failure_total_counts_across_a_success_the_run_forgets(self) -> None:
+        # The whole of C2 in one scan: three failures, a success, three more.
+        # `err_run` resets on the success and `err_peak` therefore tops out at
+        # three, so the turn reads as cleaner than it was. The total does not
+        # reset, because six calls failed however they were spaced.
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(self._mixed_transcript("fffoff" + "f"), Path(tmp) / "loop.jsonl")
+        self.assertEqual(3, scan["err_peak"])
+        self.assertEqual(6, scan["err_total"])
+        self.assertEqual(1, scan["ok_total"])
+
+    def test_the_failure_total_raises_a_signal_the_run_of_four_misses(self) -> None:
+        # The case the issue was filed for. The peak never reaches four, so
+        # today this turn publishes nothing at all.
+        config, _ = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(self._mixed_transcript("fffofff"), Path(tmp) / "loop.jsonl")
+        self.assertEqual(6, config.loop_error_total_threshold)
+        self.assertLess(scan["err_peak"], config.loop_error_run_threshold)
+        signal = runtime_turns.loop_signal(scan, config)
+        assert signal is not None
+        self.assertEqual(3, signal["errors"])
+        self.assertEqual(6, signal["failures"])
+        self.assertFalse(signal["barren"])
+
+    def test_six_failures_among_many_successes_is_a_healthy_turn_and_stays_quiet(self) -> None:
+        # Measured, not reasoned. Replaying 60 real Claude transcripts, three
+        # reached six scattered failures on turns that were plainly healthy: the
+        # worst was 7 failures among 198 successes with a longest run of 2. The
+        # count alone would call that stuck and rank it above a real loop, so the
+        # failures must also outnumber the successes.
+        config, _ = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(
+                self._mixed_transcript("fo" * 6 + "o" * 8), Path(tmp) / "healthy.jsonl"
+            )
+        self.assertEqual(6, scan["err_total"])
+        self.assertEqual(14, scan["ok_total"])
+        self.assertGreaterEqual(scan["err_total"], config.loop_error_total_threshold)
+        self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+        # The same six failures, with the successes that made them ordinary
+        # removed, is the turn this rung exists to catch.
+        with tempfile.TemporaryDirectory() as tmp:
+            stuck = self._scan(self._mixed_transcript("fffofff"), Path(tmp) / "stuck.jsonl")
+        self.assertEqual(6, stuck["err_total"])
+        self.assertEqual(1, stuck["ok_total"])
+        signal = runtime_turns.loop_signal(stuck, config)
+        assert signal is not None
+        self.assertEqual(6, signal["failures"])
+
+    def test_scattered_failures_under_the_total_threshold_stay_quiet(self) -> None:
+        # The false positive the higher threshold buys. Four failures spread
+        # through a productive turn is not a loop, and the peak-run design was
+        # right to ignore it; reusing the run threshold for the total would
+        # have fired here.
+        config, _ = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(self._mixed_transcript("fofofofooo"), Path(tmp) / "loop.jsonl")
+        self.assertEqual(1, scan["err_peak"])
+        self.assertEqual(4, scan["err_total"])
+        self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+    def test_a_turn_where_no_tool_call_succeeded_is_flagged_barren(self) -> None:
+        # Three failures and nothing working, below both other thresholds. The
+        # reader's question is not how long the run is, it is whether anything
+        # in this turn has worked at all.
+        config, _ = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(self._mixed_transcript("fff"), Path(tmp) / "loop.jsonl")
+        self.assertEqual(3, config.loop_barren_failure_threshold)
+        self.assertEqual(0, scan["ok_total"])
+        signal = runtime_turns.loop_signal(scan, config)
+        assert signal is not None
+        self.assertTrue(signal["barren"])
+        self.assertEqual(3, signal["failures"])
+
+    def test_one_success_is_enough_to_clear_barren(self) -> None:
+        # A single success is the whole difference between "nothing works" and
+        # "some things work", and it must not need to be the last call.
+        config, _ = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(self._mixed_transcript("fof"), Path(tmp) / "loop.jsonl")
+        self.assertEqual(1, scan["ok_total"])
+        self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+    def test_two_failures_and_nothing_else_are_too_early_to_call_barren(self) -> None:
+        # A turn is barren for a moment at its start, every time. The floor is
+        # what stops the signal firing on the second call of a healthy turn.
+        config, _ = make_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(self._mixed_transcript("ff"), Path(tmp) / "loop.jsonl")
+        self.assertEqual(0, scan["ok_total"])
+        self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+    def test_the_next_prompt_clears_the_failure_total_and_the_success_count(self) -> None:
+        # Both new counters are turn state, like the run and the peak beside
+        # them. A fresh prompt starts a fresh turn with nothing carried over.
+        written = self._mixed_transcript("fffofff") + self._mixed_transcript("fo", minute=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "loop.jsonl")
+        self.assertEqual(1, scan["err_total"])
+        self.assertEqual(1, scan["ok_total"])
+
+    def test_a_quiet_gap_inside_a_turn_does_not_make_it_look_barren(self) -> None:
+        # A permission wait is exactly what the gap re-anchor exists for, and it
+        # is not a new request. Zeroing the success count there let five
+        # successes, a six-minute pause and three failures publish "none
+        # succeeded" about a request in which five calls had worked.
+        config, _ = make_runtime()
+        written: list[Any] = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"content": "fix the thing"},
+            }
+        ]
+        for i in range(5):
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": f"2026-01-01T00:00:{i * 2 + 1:02d}Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"a{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": f"2026-01-01T00:00:{i * 2 + 2:02d}Z",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": f"a{i}"}]},
+                }
+            )
+        for i in range(3):
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": f"2026-01-01T00:{7 + i:02d}:00Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"b{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": f"2026-01-01T00:{7 + i:02d}:30Z",
+                    "message": {
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": f"b{i}", "is_error": True}
+                        ]
+                    },
+                }
+            )
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "gap.jsonl")
+        # The run and its peak still go with the gap, which is the documented
+        # and correct half: failures either side of six minutes of silence are
+        # not one tight loop.
+        self.assertEqual(3, scan["err_peak"])
+        # The totals do not, because they describe the request.
+        self.assertEqual(5, scan["ok_total"])
+        self.assertEqual(3, scan["err_total"])
+        self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+    def test_a_turn_the_scan_never_saw_open_publishes_no_total_and_no_barren(self) -> None:
+        # The bounded tail cannot see the successes before it, so a request with
+        # twenty successful calls and three failures at the end read as a request
+        # where nothing had worked. `turn_complete` is the flag the module
+        # already uses to withhold the turn token count off this same state.
+        written: list[Any] = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"content": "fix the thing"},
+            }
+        ]
+        for i in range(20):
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": f"2026-01-01T00:{i // 30:02d}:{i % 30 + 1:02d}Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"a{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": f"2026-01-01T00:{i // 30:02d}:{i % 30 + 1:02d}Z",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": f"a{i}"}]},
+                }
+            )
+        for i in range(3):
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": f"2026-01-01T00:01:{i * 2 + 1:02d}Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"b{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": f"2026-01-01T00:01:{i * 2 + 2:02d}Z",
+                    "message": {
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": f"b{i}", "is_error": True}
+                        ]
+                    },
+                }
+            )
+        config, _ = make_runtime(turn_scan_max_bytes=900)
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "tail.jsonl", turn_scan_max_bytes=900)
+        self.assertFalse(scan["turn_complete"])
+        self.assertEqual(0, scan["ok_total"])
+        # Nothing at all is published. The peak run is 3, one short of its own
+        # threshold, and the two request-wide readings are withheld, so the
+        # honest answer to "is this turn stuck" is silence rather than a claim
+        # built on the successes the scan could not see.
+        self.assertEqual(3, scan["err_peak"])
+        self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+        # And once the request is fully in view the same counts do speak.
+        whole = self._scan(written, Path(tempfile.mkdtemp()) / "whole.jsonl")
+        self.assertTrue(whole["turn_complete"])
+        self.assertEqual(20, whole["ok_total"])
+        self.assertIsNone(runtime_turns.loop_signal(whole, config))
+
+    def test_an_incomplete_turn_that_does_fire_still_withholds_both_totals(self) -> None:
+        # The run reaches its threshold inside the bytes read, so a signal is
+        # published. It must carry the run alone: the request-wide readings are
+        # still unknowable, and a partial total presented as the turn's total is
+        # a false number rather than a quiet one.
+        written: list[Any] = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"content": "fix the thing"},
+            }
+        ]
+        for i in range(20):
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:00:01Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"a{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T00:00:02Z",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": f"a{i}"}]},
+                }
+            )
+        for i in range(7):
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:01:01Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"b{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T00:01:02Z",
+                    "message": {
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": f"b{i}", "is_error": True}
+                        ]
+                    },
+                }
+            )
+        config, _ = make_runtime(turn_scan_max_bytes=1600)
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "firing.jsonl", turn_scan_max_bytes=1600)
+        self.assertFalse(scan["turn_complete"])
+        self.assertGreaterEqual(scan["err_peak"], config.loop_error_run_threshold)
+        self.assertGreaterEqual(scan["err_total"], config.loop_error_total_threshold)
+        self.assertEqual(0, scan["ok_total"])
+        signal = runtime_turns.loop_signal(scan, config)
+        assert signal is not None
+        self.assertEqual({"errors", "tool"}, set(signal))
+        self.assertNotIn("failures", signal)
+        self.assertNotIn("barren", signal)
+
+    def test_the_total_rung_will_not_fire_on_a_turn_the_scan_never_saw_open(self) -> None:
+        # The one case where the gate is the only thing keeping the signal
+        # quiet: the tail holds six failures with a success among them, so the
+        # total reaches its threshold while the run stays at three. Firing here
+        # would state a turn total counted from part of the turn.
+        written: list[Any] = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {"content": "fix the thing"},
+            }
+        ]
+        for i in range(20):
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:00:01Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"a{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T00:00:02Z",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": f"a{i}"}]},
+                }
+            )
+        for i, outcome in enumerate("fffofff"):
+            result: dict[str, Any] = {"type": "tool_result", "tool_use_id": f"b{i}"}
+            if outcome == "f":
+                result["is_error"] = True
+            written.append(
+                {
+                    "type": "assistant",
+                    "timestamp": "2026-01-01T00:01:01Z",
+                    "message": {"content": [{"type": "tool_use", "id": f"b{i}", "name": "Bash"}]},
+                }
+            )
+            written.append(
+                {
+                    "type": "user",
+                    "timestamp": "2026-01-01T00:01:02Z",
+                    "message": {"content": [result]},
+                }
+            )
+        config, _ = make_runtime(turn_scan_max_bytes=1900)
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written, Path(tmp) / "partial.jsonl", turn_scan_max_bytes=1900)
+        self.assertFalse(scan["turn_complete"])
+        self.assertLess(scan["err_peak"], config.loop_error_run_threshold)
+        self.assertGreaterEqual(scan["err_total"], config.loop_error_total_threshold)
+        self.assertIsNone(runtime_turns.loop_signal(scan, config))
+
+    def test_the_named_tool_is_the_most_recent_failure_not_the_one_at_the_peak(self) -> None:
+        # `err_tool` was written only when the run set a new peak, so the three
+        # Read failures after a Bash peak published "most recently Bash".
+        written = self._mixed_transcript("fffo", tool="Bash")
+        # Re-key the second half so its ids do not collide with the first, and
+        # keep each call paired with its own result.
+        tail = self._mixed_transcript("fff", tool="Read")[1:]
+        for record in tail:
+            for block in record["message"]["content"]:
+                for key in ("id", "tool_use_id"):
+                    if key in block:
+                        block[key] = "r" + block[key]
+        with tempfile.TemporaryDirectory() as tmp:
+            scan = self._scan(written + tail, Path(tmp) / "tools.jsonl")
+        self.assertEqual(6, scan["err_total"])
+        self.assertEqual("Read", scan["err_tool"])
+
+    def test_only_claude_records_report_a_failure_total(self) -> None:
+        # The same absence the peak already asserts. An unmeasured semantic
+        # must not arrive as a measurement through the new counter either.
+        for harness in ("droid", "codex", "copilot", "gemini"):
+            with self.subTest(harness=harness), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "loop.jsonl"
+                path.write_text(
+                    "\n".join(json.dumps(r) for r in self._mixed_transcript("fffofff")) + "\n"
+                )
+                config, state = make_runtime()
+                scan = runtime_turns.scan_turns(config, state, str(path), harness)
+                assert scan is not None
+                self.assertEqual(0, scan["err_total"])
+                self.assertEqual(0, scan["ok_total"])
+                self.assertIsNone(runtime_turns.loop_signal(scan, config))
 
     def test_only_claude_records_report_a_failed_tool_call(self) -> None:
         # Every other harness gets nothing, and the assertion is the absence:

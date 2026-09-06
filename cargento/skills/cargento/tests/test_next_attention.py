@@ -239,6 +239,65 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             [subject["key"] for subject in model["needs"]],
         )
 
+    def test_the_risk_row_counts_the_turn_total_and_names_a_barren_turn(self) -> None:
+        # The one-liner said the peak run, which understates a turn a success
+        # split in two: six failures read as "failed 3 times" (DRC-4021).
+        def one(sid: str, loop: dict[str, object]) -> dict[str, object]:
+            return {
+                "harness": "claude",
+                "sid": sid,
+                "project": "alpha/repo",
+                "state": "working",
+                "loop": loop,
+            }
+
+        split = self.render({"sessions": [one("s", {"errors": 3, "failures": 6, "tool": "Bash"})]})
+        self.assertIn("Bash failed 6 times", split)
+        self.assertNotIn("Bash failed 3 times", split)
+
+        barren = self.render(
+            {"sessions": [one("s", {"errors": 3, "failures": 3, "barren": True, "tool": "Bash"})]}
+        )
+        self.assertIn("Bash failed 3 times, nothing succeeded", barren)
+
+        # No tool name, and the barren clause still lands on the other subject.
+        anon = self.render({"sessions": [one("s", {"errors": 3, "failures": 4, "barren": True})]})
+        self.assertIn("Tool failures reported 4 times, nothing succeeded", anon)
+
+        # A payload from before this shipped keeps the sentence it had.
+        legacy = self.render({"sessions": [one("s", {"errors": 4, "tool": "Bash"})]})
+        self.assertIn("Bash failed 4 times", legacy)
+        self.assertNotIn("nothing succeeded", legacy)
+
+    def test_the_turn_total_ranks_the_risk_rows_not_the_peak_run(self) -> None:
+        # Ordering by the peak put the worse turn second: six failures split by
+        # one success ranked below four in a row.
+        model = self.model(
+            {
+                "sessions": [
+                    {
+                        "harness": "claude",
+                        "sid": "run-of-four",
+                        "project": "alpha/four",
+                        "state": "working",
+                        "loop": {"errors": 4, "failures": 4, "tool": "Bash"},
+                    },
+                    {
+                        "harness": "claude",
+                        "sid": "six-split",
+                        "project": "beta/six",
+                        "state": "working",
+                        "loop": {"errors": 3, "failures": 6, "tool": "Bash"},
+                    },
+                ]
+            }
+        )
+        assert isinstance(model, dict)
+        self.assertEqual(
+            ['session:["claude","six-split"]', 'session:["claude","run-of-four"]'],
+            [subject["key"] for subject in model["risk"]],
+        )
+
     def test_loop_signal_uses_positive_integer_errors_only(self) -> None:
         loop_model = self.model(
             {

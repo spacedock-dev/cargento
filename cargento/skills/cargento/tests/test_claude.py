@@ -1098,7 +1098,12 @@ class ClaudeCollectorTest(RuntimeTestCase):
 
         self.assertNotEqual("working", session["state"])
         self.assertIsNone(session["turn"])
-        self.assertEqual({"errors": 4, "tool": "Bash"}, session["loop"])
+        # Four failures and no successful call, so the turn is barren as well
+        # as a run of four. Both readings are published; neither replaces the
+        # other (DRC-4021).
+        self.assertEqual(
+            {"errors": 4, "failures": 4, "barren": True, "tool": "Bash"}, session["loop"]
+        )
 
     def test_workflow_agent_activity_holds_a_session_in_the_window(self) -> None:
         # last_activity drives both the freshness window and the "idle 23h"

@@ -35,15 +35,18 @@ def _apply_tool_outcome(st: dict[str, Any], record: Any, harness: str) -> None:
         st["tool_names"] = calls
     for tool_id, failed in results:
         if not failed:
+            st["ok_total"] += 1
             st["err_run"] = 0
             continue
+        st["err_total"] += 1
         st["err_run"] += 1
-        if st["err_run"] > st["err_peak"]:
-            # The peak, not the live run, is what the turn publishes, and the
-            # tool is named at the peak so it is the most recent failure rather
-            # than the one that opened the run.
-            st["err_peak"] = st["err_run"]
-            st["err_tool"] = st["tool_names"].get(tool_id)
+        # Every failure, not just one that sets a new peak. The page says "most
+        # recently", and naming it only at the peak made that false whenever the
+        # failures after the peak used a different tool: three Bash failures, a
+        # success, three Read failures published "most recently Bash".
+        st["err_tool"] = st["tool_names"].get(tool_id)
+        # The peak, not the live run, is what the turn publishes.
+        st["err_peak"] = max(st["err_peak"], st["err_run"])
 
 
 def _apply_usage(st: dict[str, Any], value: int | None) -> None:
@@ -52,7 +55,7 @@ def _apply_usage(st: dict[str, Any], value: int | None) -> None:
         return
     if st["scanned_from_zero"]:
         st["session_output_tokens"] = (st["session_output_tokens"] or 0) + value
-    if st["turn_usage_complete"]:
+    if st["turn_complete"]:
         st["turn_output_tokens"] = (st["turn_output_tokens"] or 0) + value
 
 
@@ -115,7 +118,15 @@ def _apply_turn_record(
             # Quiet-gap re-anchoring above is deliberately not: it changes the
             # duration clock but does not begin a new human turn.
             st["turn_output_tokens"] = None
-            st["turn_usage_complete"] = True
+            st["turn_complete"] = True
+            # The totals reset HERE and not in `_clear_error_run`, because that
+            # is also called at the quiet gap, and a gap re-anchors the clock
+            # without beginning a new request. Zeroing `ok_total` there let a
+            # permission wait manufacture "none succeeded" about a request whose
+            # calls had succeeded before the wait: five successes, a six-minute
+            # pause, three failures, and the page said nothing had worked.
+            st["err_total"] = 0
+            st["ok_total"] = 0
         _clear_error_run(st)
     # After the boundary reset, so a reading on the same record belongs to the
     # turn that record opens rather than to the one it closes.
@@ -211,7 +222,10 @@ _RESULT_FIELDS = (
     "turn_output_tokens",
     "err_run",
     "err_peak",
+    "err_total",
+    "ok_total",
     "err_tool",
+    "turn_complete",
 )
 
 
@@ -275,16 +289,21 @@ def scan_turns(
                 # turns one into 0; merely supporting the harness does not.
                 "session_output_tokens": None,
                 "turn_output_tokens": None,
-                # Private scan state: a bounded tail cannot count a turn until
-                # its opening prompt/start appears in the bytes read forward.
-                "turn_usage_complete": False,
+                # A bounded tail cannot count a turn until its opening
+                # prompt/start appears in the bytes read forward. Two readings
+                # depend on it: the turn token total, and whether `loop_signal`
+                # may say anything about what the request did NOT do.
+                "turn_complete": False,
                 # The failure run inside the current turn: the live count, the
-                # peak it reached, the tool that failed at the peak, and the
-                # id → name map the last tool batch declared. All four are turn
-                # state, so an evicted or rotated file recomputes them on the
-                # way forward rather than carrying a stale count.
+                # peak it reached, the totals that no success resets, the tool
+                # that failed at the peak, and the id → name map the last tool
+                # batch declared. All six are turn state, so an evicted or
+                # rotated file recomputes them on the way forward rather than
+                # carrying a stale count.
                 "err_run": 0,
                 "err_peak": 0,
+                "err_total": 0,
+                "ok_total": 0,
                 "err_tool": None,
                 "tool_names": {},
                 "gemini_seen": {},
@@ -302,7 +321,7 @@ def scan_turns(
             # a partial session total or a smaller current-turn count.
             st["session_output_tokens"] = None
             st["turn_output_tokens"] = None
-            st["turn_usage_complete"] = False
+            st["turn_complete"] = False
             tail_start = size - config.turn_scan_max_bytes
             st.update(_latest_turn_context(config, path, tail_start, harness))
             st["pos"] = tail_start
@@ -361,20 +380,57 @@ def turns_from_events(events: list[tuple[float, bool]]) -> dict[str, Any]:
 
 
 def loop_signal(scan: dict[str, Any] | None, config: RuntimeConfig) -> dict[str, Any] | None:
-    """The failure run inside the current turn, once it is long enough to be
-    worth saying out loud, else None.
+    """What went wrong inside the current turn, once it is worth saying out
+    loud, else None.
 
     Read off the peak rather than the live run, and not gated on the session
     state the way `turn_progress` is: both would retract the signal the instant
     the loop stopped, and a loop that has stopped is what the reader is walking
     back to the machine to find.
+
+    `errors` stays the peak run and keeps its meaning, because the page says
+    "in a row" about it. `failures` is the turn total, which no success resets,
+    and it carries its own higher threshold: four scattered failures through a
+    productive turn is ordinary work, and reusing the run threshold here would
+    have fired on it.
+
+    `failures` and `barren` are absent, rather than false, when the scan never
+    read the turn open. Both describe the whole turn, and `barren` is a claim
+    about what did NOT happen, which no partial view can support.
     """
     if not scan:
         return None
     peak = scan.get("err_peak") or 0
-    if peak < config.loop_error_run_threshold:
+    total = scan.get("err_total") or 0
+    # Both totals are counts of the whole turn, so neither may be spoken from a
+    # partial view of it. `turn_complete` is false when the forward scan never
+    # read the turn open, which is the same state that already withholds
+    # `turn_output_tokens`; the module knew it could not vouch for these numbers
+    # and published them anyway. The run is different and stays ungated: four
+    # consecutive failures actually seen are four consecutive failures, whatever
+    # came before the bytes read.
+    complete = scan.get("turn_complete") is True
+    # Three readings of one turn, not three signals. The run says a loop is
+    # tight, the total says how much of the turn failed however it was spaced,
+    # and barren says nothing in it has worked yet. A turn can trip any of them
+    # alone: 3 fail, 1 ok, 3 fail never reaches a run of four and is the case
+    # this counter was added for.
+    ok_count = scan.get("ok_total") or 0
+    barren = complete and ok_count == 0 and total >= config.loop_barren_failure_threshold
+    # The count alone is not enough, and this was measured rather than reasoned:
+    # replaying 60 real Claude transcripts, 3 reached six scattered failures on
+    # turns that were plainly healthy, the worst being 7 failures among 198
+    # successes with a longest run of 2. So the turn's failures must also
+    # outnumber its successes. The two groups sit about fourteen times apart, and
+    # the shape this rung exists for (3 fail, 1 ok, 3 fail) clears it easily.
+    over_total = complete and total >= config.loop_error_total_threshold and total > ok_count
+    if peak < config.loop_error_run_threshold and not over_total and not barren:
         return None
-    return {"errors": peak, "tool": scan.get("err_tool")}
+    signal: dict[str, Any] = {"errors": peak, "tool": scan.get("err_tool")}
+    if complete:
+        signal["failures"] = total
+        signal["barren"] = barren
+    return signal
 
 
 def turn_progress(

@@ -355,9 +355,17 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 - **Current-turn estimates** compare elapsed generation time with completed turns from the same
   session. They are withheld when there is no defensible sample. A quiet gap longer than five
   minutes re-anchors elapsed time so a permission wait is not counted as generation.
-- **Loop detection** means four consecutive failed Claude tool calls inside one request. Other
-  harnesses do not expose a verified failure field, so Cargento does not infer the signal there. The
-  pattern is evidence, not proof; iterating on a failing test can look the same from outside.
+- **Loop detection** reads one request three ways, and the note says which one fired. Four
+  consecutive failed Claude tool calls is the tight run. Six failed calls in the request however
+  they were spaced, and more failures than successes, is the total, which no success resets, and it
+  catches the request that fails three times, succeeds once, then fails three more, where the run
+  alone reads as clean. Three failed calls with none succeeding at all is a request where nothing
+  has worked yet. The count alone is not enough for the second of those: six scattered failures
+  among two hundred successful calls is ordinary work, so the failures have to outnumber the
+  successes as well. The last two readings are withheld entirely when the scan started partway
+  through a request, since both describe the whole of it. Other harnesses do not expose a verified
+  failure field, so Cargento does not infer any of the three there. The pattern is evidence, not proof; iterating on a failing test can look
+  the same from outside.
 - **Project** is the last two path segments when the working directory is known. This keeps sibling
   repositories distinguishable without printing an entire path. The fallback harness label is not
   treated as proof that two sessions share a directory.

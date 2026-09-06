@@ -345,6 +345,69 @@ console.log(JSON.stringify(variants));
         for html in out.values():
             self.assertNotIn("129m", html)
 
+    def test_the_health_note_says_which_of_the_three_readings_fired(self) -> None:
+        # One turn can be a tight run, a turn that failed six times either side
+        # of a success, or a turn where nothing worked. Saying "in a row" about
+        # a total is false the moment a success splits it, so each reading gets
+        # its own sentence (DRC-4021).
+        out = self.render(
+            """
+const session = nextData.sessions[0];
+const variants = {};
+session.state = "working";
+session.turn = null;
+for(const [name, loop] of Object.entries({
+  run: {errors: 4, failures: 4, barren: false, tool: "Bash"},
+  split: {errors: 3, failures: 6, barren: false, tool: "Bash"},
+  barren: {errors: 3, failures: 3, barren: true, tool: "Bash"},
+  barrenSplit: {errors: 2, failures: 5, barren: true, tool: "Bash"},
+  legacy: {errors: 4, tool: "Bash"},
+  totalNotBigger: {errors: 4, failures: 4, barren: false, tool: "Bash"},
+  totalFractional: {errors: 3, failures: 6.5, barren: false, tool: "Bash"},
+  oneFailure: {errors: 1, failures: 1, barren: false, tool: "Bash"}
+})){
+  session.loop = loop;
+  renderNext();
+  variants[name] = __els.app.innerHTML;
+}
+console.log(JSON.stringify(variants));
+"""
+        )
+        assert isinstance(out, dict)
+
+        # A run of four with nothing split: the shipped sentence, unchanged.
+        self.assertIn("4 tool calls in a row came back as errors", out["run"])
+        # Scoped to the note: the token footer says "this turn" on every render.
+        self.assertNotIn("failed this turn", out["run"])
+
+        # Three in a row, six in the turn. The total leads and the run is named
+        # as a subset of it, because the reader's question is how much failed.
+        self.assertIn("6 tool calls failed this turn, 3 of them consecutive", out["split"])
+        self.assertNotIn("in a row", out["split"])
+
+        # Nothing worked. The count is the total and the claim is the absence.
+        self.assertIn("3 tool calls failed this turn and none succeeded", out["barren"])
+        self.assertNotIn("consecutive", out["barren"])
+        self.assertIn("5 tool calls failed this turn and none succeeded", out["barrenSplit"])
+
+        # A payload from before this shipped carries neither field, and must
+        # still read as the run it is rather than losing its sentence.
+        self.assertIn("4 tool calls in a row came back as errors", out["legacy"])
+        self.assertIn("4 tool calls in a row came back as errors", out["totalNotBigger"])
+
+        # A non-integer total is not a total. It falls back to the run rather
+        # than rendering "6.5 tool calls".
+        self.assertIn("3 tool calls in a row came back as errors", out["totalFractional"])
+        self.assertNotIn("6.5", out["totalFractional"])
+        self.assertNotIn("failed this turn", out["totalFractional"])
+
+        # The singular exists and is reachable.
+        self.assertIn("1 tool call in a row came back as errors", out["oneFailure"])
+
+        for html in out.values():
+            self.assertIn("Check the agent is working the problem", html)
+            self.assertIn("most recently Bash", html)
+
     def test_health_callout_uses_only_measured_long_turns_and_tool_loops(self) -> None:
         out = self.render(
             """
