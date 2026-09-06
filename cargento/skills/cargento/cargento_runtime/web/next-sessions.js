@@ -71,8 +71,19 @@ function nextOperationsIsBlocked(session, asks){
 }
 
 function nextOperationsIsActive(session, asks){
-  return ["working", "needs_input"].includes(String(session.state || "")) ||
-    Boolean(nextOperationsAskFor(session, asks));
+  /* An observed end retires the state word and nothing else. `state` is a
+     collector inference off file recency, and `session_ended` publishes no
+     state of its own — it pops the whole overlay ledger — so the capture's
+     0.565–5.581s gap between the last transcript write and the end leaves
+     `working` standing for the rest of `working_threshold_sec` (90s). Without
+     this the row that just ended sits in the lane whose whole job is "what is
+     still running", for a minute and a half after every ordinary end.
+     An outstanding exact request still holds the row here: the request is a
+     published fact with its own lifecycle, not a reading of this session's
+     recency, and it is answered or withdrawn rather than aged out. */
+  const running = nextSessionEndedAt(session) == null &&
+    ["working", "needs_input"].includes(String(session.state || ""));
+  return running || Boolean(nextOperationsAskFor(session, asks));
 }
 
 function nextOperationsFleetFact(kind, label, value, note = ""){
@@ -120,6 +131,11 @@ function nextOperationsWhere(session){
 }
 
 function nextOperationsNow(session){
+  /* Reached with an end stamped only where something other than `state` kept
+     the row active — an outstanding exact request — and the end still wins
+     the NOW cell, for the reason `nextOperationsIsActive` gives. */
+  const endedAt = nextSessionEndedAt(session);
+  if(endedAt != null) return nextOperationsEndedNow(endedAt);
   const inProgress = nextOperationsTask(session, "in_progress");
   const state = String(session.state || "").replace("_", " ").trim();
   const detail = inProgress
@@ -186,6 +202,24 @@ function nextOperationsIdentity(session, labels, collisions, route, history = fa
     nextSessionCollision(session, collisions) + "</span>";
 }
 
+function nextOperationsEndedNow(endedAt){
+  const since = nextDurationSince(endedAt);
+  return nextOperationsFact(
+    "now", "NOW · ENDED", "Session reported its own end",
+    since ? `ended ${since} ago` : "",
+  );
+}
+
+function nextOperationsHistoryNow(session){
+  /* A history row has always shown "—", because nothing about a quiet session
+     is knowable from recency alone. An observed end is the one exception, and
+     it is an exception because the session reported it rather than because the
+     row went quiet: a row with no stamp keeps the dash. */
+  const endedAt = nextSessionEndedAt(session);
+  if(endedAt == null) return nextOperationsFact("now", "NOW", "—");
+  return nextOperationsEndedNow(endedAt);
+}
+
 function nextOperationsRow(session, labels, collisions, asks, harnesses, history = false){
   const project = String(session.project == null ? "" : session.project);
   const harness = String(session.harness || "");
@@ -194,7 +228,7 @@ function nextOperationsRow(session, labels, collisions, asks, harnesses, history
   const state = String(session.state || "unknown");
   const live = session.active === true && state === "working" ? " next-live" : "";
   const historyAttr = history ? ' data-next-operation-history="true"' : "";
-  const now = history ? nextOperationsFact("now", "NOW", "—") : nextOperationsNow(session);
+  const now = history ? nextOperationsHistoryNow(session) : nextOperationsNow(session);
   const next = history ? nextOperationsFact("next", "NEXT", "—") : nextOperationsNext(session);
   const blocked = history
     ? nextOperationsFact("blocked", "BLOCKED", "—")
@@ -254,7 +288,8 @@ function nextSessionsView(){
       active, renderActive, "No exact session has active evidence right now.",
     ) + nextOperationsGroup(
       "history", "Recent history",
-      "Recently observed is not proof the harness process is still open or closed.",
+      "Recently observed is not proof the harness process is still open or closed; " +
+        "rows marked ENDED reported their own end.",
       history, renderHistory, `No recent-history rows in this ${window}.`,
     ) + "</section>";
 }

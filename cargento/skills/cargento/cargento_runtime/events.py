@@ -118,6 +118,15 @@ ALLOWED_FIELDS: Final = frozenset(
 # `session_ended` pops — and every branch below restates them, because a reading
 # taken when a session ended describes a tree that a resumed session may already
 # have changed.
+#
+# `ended_at` is when the session ID itself was observed to end, and it is a
+# separate member rather than a reading of `finished_at` because the two answer
+# different questions: a turn stopping leaves a session open and typeable, and
+# only an end says the row will never move again (DRC-4036). It is a nullable
+# stamp and not a fourth `state` value because three page sites read `state`
+# against a closed set and fail toward the wrong answer on an unknown member
+# rather than degrading — the Safe-to-close lane silently drops the session, the
+# project activity pill blanks, and the coverage note calls it "unknown state".
 PATCHABLE: Final = frozenset(
     {
         "state",
@@ -126,6 +135,7 @@ PATCHABLE: Final = frozenset(
         "blocked_since",
         "acquisition",
         "finished_at",
+        "ended_at",
         "dirty",
         "changed",
     }
@@ -530,6 +540,19 @@ def retires_overlays(event: Event) -> bool:
     return event.event == "session_ended"
 
 
+def reopens_session(event: Event) -> bool:
+    """Whether this event says the session id is in use again.
+
+    `session_started` alone, and it is a predicate here rather than a branch in
+    the coordinator so the one event name that lifts an end mark is written down
+    beside the one that sets it. It produces no overlay (see `overlay_for`), so
+    without an explicit path it would reach neither the ledger nor the mark, and
+    `claude --resume <id>` — which reuses the id — would leave the row reading
+    ended for the rest of the run.
+    """
+    return event.event == "session_started"
+
+
 def requires_reconcile(event: Event) -> bool:
     """Whether this event invalidates caches rather than describing activity.
 
@@ -542,6 +565,7 @@ def requires_reconcile(event: Event) -> bool:
 def _side_channel_patch(
     *,
     finished_at: float,
+    ended_at: float,
     session_activity: float,
     activity_grace_sec: float,
     git: tuple[bool, int] | None,
@@ -577,6 +601,16 @@ def _side_channel_patch(
         patch["finished_at"] = finished_at
     if git is not None and fresh:
         patch["dirty"], patch["changed"] = git
+    # Deliberately outside that guard, and this is the one place the two marks
+    # differ. A stop is a reading of a moment, so later writing in the tree
+    # invalidates it; an end is a fact about an id, and the id cannot write again
+    # without a `session_started`, which retires the mark at the coordinator. An
+    # end also lands AFTER the last write rather than before it — 5.581 s after
+    # the final Stop in the a1 arm of
+    # docs/captures/claude/session-end-2.1.261-macos.jsonl — so an activity guard
+    # here would be reading a normal ending as a contradiction.
+    if ended_at:
+        patch["ended_at"] = ended_at
     return patch
 
 
@@ -588,6 +622,7 @@ def reduce_overlays(
     session_activity: float = 0.0,
     activity_grace_sec: float = 0.0,
     finished_at: float = 0.0,
+    ended_at: float = 0.0,
     git: tuple[bool, int] | None = None,
 ) -> dict[str, Any]:
     """The field patch a session's live overlays imply, in `arrival_seq` order.
@@ -652,6 +687,15 @@ def reduce_overlays(
     function would survive a session resuming and reintroduce DRC-4101 by
     another door. A live overlay still wins over it — a working or waiting row
     clears the mark, and a live stop restates its own stamp.
+
+    `ended_at` is the same kind of side-channel argument and answers a different
+    question: not "did a turn stop" but "is this session id over" (DRC-4036). A
+    working or waiting overlay clears it for the same reason it clears the stop,
+    since a session doing something has not ended. An idle overlay does not, and
+    that asymmetry is the deliberate part: every tidy ending has a `turn_stopped`
+    in front of it, so nulling here would erase the mark for exactly the sessions
+    it exists to distinguish. It also skips the activity guard the stop takes —
+    `_side_channel_patch` says why.
     """
     ordered = sorted(overlays, key=lambda item: item.arrival_seq)
     # The latest point at which this session was known not to be waiting. Computed
@@ -662,6 +706,7 @@ def reduce_overlays(
     )
     patch: dict[str, Any] = _side_channel_patch(
         finished_at=finished_at,
+        ended_at=ended_at,
         session_activity=session_activity,
         activity_grace_sec=activity_grace_sec,
         git=git,
@@ -684,6 +729,9 @@ def reduce_overlays(
                     "blocked_since": None,
                     "acquisition": ACQUISITION_EVENT,
                     "finished_at": None,
+                    # A session doing something has not ended, whatever this
+                    # process remembers about an id it saw end.
+                    "ended_at": None,
                     # Working again: whatever the probe saw at the last session
                     # end is a reading of a tree this session has since moved on
                     # from, and a stale dirty count is worse than none.
@@ -702,6 +750,9 @@ def reduce_overlays(
                     # A gate is the other kind of idle, so the mark from an
                     # earlier turn must not still be claiming this one ended.
                     "finished_at": None,
+                    # A session holding a question open is alive and somebody is
+                    # expected to answer it, which is the reading an end buries.
+                    "ended_at": None,
                     # Waiting on a person means the session is alive past the end
                     # that produced the reading. Same staleness as Working.
                     "dirty": None,
@@ -717,6 +768,11 @@ def reduce_overlays(
                     "blocked_since": None,
                     "acquisition": ACQUISITION_EVENT,
                     "finished_at": overlay.at,
+                    # `ended_at` is deliberately NOT restated here. A
+                    # `turn_stopped` is not evidence a session reopened: every
+                    # tidy ending has one in front of it, and delivery is
+                    # at-least-once and reorderable, so nulling on idle would
+                    # erase the mark for exactly the endings it exists to show.
                     # A turn stop is not a session end, and only a session end
                     # runs the probe. A live idle overlay therefore means a turn
                     # ran after the reading was taken, so it no longer holds.

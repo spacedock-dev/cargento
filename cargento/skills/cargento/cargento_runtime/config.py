@@ -276,6 +276,15 @@ class RuntimeConfig:
     event_overlay_max_sessions: int
     event_pending_max: int
     event_pending_ttl_sec: float
+    # How long an observed session end outlives the row it belongs to. Not the
+    # row-set prune the completion mark and the git reading use, and the
+    # difference is deliberate: those are re-supplied by the next `turn_stopped`,
+    # so an over-eager prune self-heals, while `session_ended` fires once per
+    # session id and a mark dropped early can never be earned again. Derived from
+    # `window_hours` for `focus_target_ttl_sec`'s reason — a row is produced only
+    # while its activity is inside that window, and an end is the last thing that
+    # happens to an id, so past one window the row cannot come back.
+    ended_mark_ttl_sec: float
     reconcile_interval_sec: float
     # How many recent state disputes to keep. A ring, unlike the two caps above,
     # because a dispute is evidence rather than a live alert: losing the oldest
@@ -290,7 +299,7 @@ class RuntimeConfig:
     # from disk fills it only as fast as it writes.
     usage_samples_max: int
     # Event ingress. The body cap is far below the notification cap because the
-    # envelope is nine short fields and nothing else is read from it. The rate
+    # envelope is twelve short fields and nothing else is read from it. The rate
     # ceiling is independent of the capability: a looping or compromised adapter
     # holds a valid token by definition, so the token cannot be what bounds it.
     # The burst allows one turn's worth of hooks to arrive together.
@@ -623,6 +632,7 @@ def build_runtime_config(
         event_overlay_max_sessions=512,
         event_pending_max=256,
         event_pending_ttl_sec=60.0,
+        ended_mark_ttl_sec=window_hours * 3_600.0,
         reconcile_interval_sec=30.0,
         dispute_log_max=50,
         usage_samples_max=12,

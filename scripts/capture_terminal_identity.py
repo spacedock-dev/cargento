@@ -2,11 +2,13 @@
 """Record what terminal identity a hook can see, as shape only.
 
 B5 (DRC-4017) wants one click in the dashboard to raise the terminal a waiting
-session is sitting in. Nothing Cargento collects today can locate one:
-`events.py`'s `ALLOWED_FIELDS` is nine fields with no pid, no tty and no terminal
-identity, and no collector reads one. But a hook runs as a CHILD of the harness
-process, so it can see things the store never records. This measures exactly
-what, on the two harnesses that matter for that button.
+session is sitting in. Nothing Cargento collected when this was written could
+locate one: `events.py`'s `ALLOWED_FIELDS` was nine fields with no pid, no tty
+and no terminal identity, and no collector read one. B5 then shipped and added
+the three `tmux_*` members, so the set is twelve now — the past tense is the
+record of what this instrument was pointed at, not a stale number. A hook runs
+as a CHILD of the harness process, so it can see things the store never records.
+This measures exactly what, on the two harnesses that matter for that button.
 
 Three modes, with the harness named first on the record path exactly as
 `capture_hook.py` takes it:

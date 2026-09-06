@@ -464,6 +464,11 @@ class _StubOverlays:
         del harness, sid  # this stub remembers no stop
         return 0.0
 
+    def ended_at(self, harness: str, sid: str) -> float:
+        """No end observed: this stub answers only about stops."""
+        del harness, sid
+        return 0.0
+
     def git_for(self, harness: str, sid: str) -> None:
         """Never probed: this stub has no repository behind it."""
         del harness, sid
@@ -663,6 +668,59 @@ class ReduceTest(unittest.TestCase):
         patch = events.reduce_overlays(ledger, now=NOW, finished_at=NOW - 600)
         self.assertEqual("needs_input", patch["state"])
         self.assertIsNone(patch["finished_at"])
+
+    def test_an_observed_end_publishes_its_own_stamp(self) -> None:
+        # DRC-4036. A turn stopping and a session id ending are two facts, and
+        # only the second one means the row will never move again.
+        patch = events.reduce_overlays([], now=NOW, ended_at=NOW - 600)
+        self.assertEqual({"ended_at": NOW - 600}, patch)
+
+    def test_activity_after_an_observed_end_leaves_the_stamp_standing(self) -> None:
+        # Deliberately NOT `finished_at`'s rule, and this is the assertion that
+        # pins the difference. A stop is a reading of a moment that later writing
+        # invalidates; an end is a fact about an id, and the id cannot write again
+        # without a `session_started`, which retires the mark at the coordinator.
+        # An end also arrives AFTER the last write — 5.581 s after the last Stop
+        # in the a1 arm of the session-end capture — so an activity guard here
+        # would be deciding on the wrong side of the very sequence it saw.
+        patch = events.reduce_overlays(
+            [], now=NOW, session_activity=NOW - 5, activity_grace_sec=10.0, ended_at=NOW - 600
+        )
+        self.assertEqual({"ended_at": NOW - 600}, patch)
+
+    def test_a_live_working_overlay_outranks_an_observed_end(self) -> None:
+        # A session doing something is not ended, whatever this process
+        # remembers. `claude --resume <id>` reuses the id, so the row has to be
+        # able to stop reading ended.
+        ledger = [self.overlay(events.OVERLAY_WORKING, seq=2, at=NOW - 5)]
+        patch = events.reduce_overlays(ledger, now=NOW, ended_at=NOW - 600)
+        self.assertEqual("working", patch["state"])
+        self.assertIsNone(patch["ended_at"])
+
+    def test_a_live_gate_outranks_an_observed_end(self) -> None:
+        # A session holding a question open is alive and someone is expected to
+        # answer it, which is the reading an end would suppress.
+        ledger = [self.overlay(events.OVERLAY_NEEDS_INPUT, seq=2, at=NOW - 5)]
+        patch = events.reduce_overlays(ledger, now=NOW, ended_at=NOW - 600)
+        self.assertEqual("needs_input", patch["state"])
+        self.assertIsNone(patch["ended_at"])
+
+    def test_an_idle_overlay_does_not_lift_an_observed_end(self) -> None:
+        # A `turn_stopped` is not evidence a session reopened: every tidy ending
+        # has one in front of it, and delivery is at-least-once and reorderable,
+        # so lifting on idle would erase the mark for exactly the endings this
+        # field exists to show.
+        ledger = [self.overlay(events.OVERLAY_IDLE, seq=1, at=NOW - 610)]
+        patch = events.reduce_overlays(ledger, now=NOW, ended_at=NOW - 600)
+        self.assertEqual("idle", patch["state"])
+        self.assertEqual(NOW - 600, patch["ended_at"])
+
+    def test_no_end_observed_publishes_no_end_key_at_all(self) -> None:
+        # `apply_patch` writes only the keys present, so an absent key leaves the
+        # row's declared None standing. Writing 0.0 or False here would be null's
+        # job done by a value, which is what DRC-4101 cost.
+        patch = events.reduce_overlays([], now=NOW, finished_at=NOW - 600)
+        self.assertNotIn("ended_at", patch)
 
     def test_activity_inside_the_grace_does_not_retire_the_stop(self) -> None:
         # The final flush of the transcript can land just after the Stop hook it
@@ -1003,9 +1061,10 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual("real title", session["title"])
         self.assertEqual(1234, session["tokens"])
 
-    def test_the_patchable_set_is_exactly_the_documented_eight(self) -> None:
-        # Grew by two for the end-of-session git reading. Written out rather than
-        # derived, so adding a key to the module has to be a deliberate edit here.
+    def test_the_patchable_set_is_exactly_the_documented_nine(self) -> None:
+        # Grew by two for the end-of-session git reading, then by one for the
+        # observed session end (DRC-4036). Written out rather than derived, so
+        # adding a key to the module has to be a deliberate edit here.
         self.assertEqual(
             {
                 "state",
@@ -1014,6 +1073,7 @@ class ApplyPatchTest(unittest.TestCase):
                 "blocked_since",
                 "acquisition",
                 "finished_at",
+                "ended_at",
                 "dirty",
                 "changed",
             },

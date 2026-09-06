@@ -500,3 +500,125 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsSessionEndTest(NextPageJsHarness):
+    """DRC-4036: the operations row must separate over from waiting for you."""
+
+    def view(self, session: str, extra: str = "") -> str:
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    (
+                        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+                        '{key: "claude", label: "Claude Code", reports_needs_input: true}],'
+                        f"{extra} sessions: [{session}]}};"
+                    ),
+                    "console.log(JSON.stringify(nextSessionsView()));",
+                )
+            )
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    ENDED = (
+        '{sid: "e1", harness: "claude", project: "a/b", state: "idle", active: false,'
+        ' title: "Ended run", last_activity: 9000, finished_at: 9350, ended_at: 9400,'
+        " tasks: [], subagents: []}"
+    )
+    QUIET = (
+        '{sid: "q1", harness: "claude", project: "a/b", state: "idle", active: false,'
+        ' title: "Quiet run", last_activity: 9000, finished_at: 9350,'
+        " tasks: [], subagents: []}"
+    )
+    # The shape that actually ships. `session_ended` pops the whole overlay
+    # ledger, so it publishes no `state` of its own and the collector's word
+    # stands; the capture puts the end 0.565–5.581s after the last transcript
+    # write, well inside `working_threshold_sec` (90). So `working` beside a
+    # stamped end is the row for roughly the minute and a half after every
+    # ordinary end — the common case, not an edge one.
+    WORKING_ENDED = (
+        '{sid: "w1", harness: "claude", project: "a/b", state: "working", active: false,'
+        ' title: "Just ended", state_detail: "Editing files…",'
+        " last_activity: 9990, ended_at: 9400, tasks: [], subagents: []}"
+    )
+
+    def group(self, html: str, kind: str) -> str:
+        """The one operations group's markup, so membership is asserted not implied."""
+        opened = html.split(f'data-next-operation-group="{kind}"', 1)
+        self.assertEqual(2, len(opened), f"no {kind} group rendered")
+        return opened[1].split("</section>", 1)[0]
+
+    def test_an_ended_row_says_it_ended_and_how_long_ago(self) -> None:
+        html = self.view(self.ENDED)
+
+        self.assertIn("NOW · ENDED", html)
+        self.assertIn("Session reported its own end", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_a_row_with_no_observed_end_keeps_the_em_dash_it_had(self) -> None:
+        # The history row's "—" is what an unread session has always shown, and
+        # it must stay that: an absent end is not evidence the session is alive,
+        # so the page may say nothing rather than say "still running".
+        html = self.view(self.QUIET)
+
+        self.assertNotIn("NOW · ENDED", html)
+        self.assertNotIn("Session reported its own end", html)
+
+    def test_an_ended_session_leaves_active_now_even_while_the_scan_says_working(self) -> None:
+        html = self.view(self.WORKING_ENDED)
+
+        self.assertNotIn("w1", self.group(html, "active"))
+        self.assertIn("w1", self.group(html, "history"))
+
+    def test_an_ended_session_never_renders_the_working_state_word(self) -> None:
+        # The caveat below teaches that an unmarked row reported no end, so a
+        # row that DID report one may not sit unmarked reading NOW · WORKING.
+        html = self.view(self.WORKING_ENDED)
+
+        self.assertNotIn("NOW · WORKING", html)
+        self.assertIn("NOW · ENDED", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_the_fleet_no_longer_counts_an_ended_session_as_active_now(self) -> None:
+        html = self.view(self.WORKING_ENDED)
+        strip = html.split('data-next-fleet-fact="active"', 1)[1].split("</section>", 1)[0]
+
+        self.assertIn("<strong>0</strong>", strip)
+
+    def test_an_outstanding_request_keeps_an_ended_row_active_and_still_marks_it(self) -> None:
+        # The one path that reaches the NOW cell with an end stamped. An exact
+        # request is a published fact with its own lifecycle rather than a
+        # reading of recency, so it still holds the row in Active now — but the
+        # end still owns the NOW cell, because the two answer different
+        # questions and only one of them was observed rather than inferred.
+        html = self.view(
+            self.WORKING_ENDED,
+            ' ask: true, asks: [{session_id: "w1", harness: "claude", question: "Which branch?"}],',
+        )
+
+        self.assertIn("w1", self.group(html, "active"))
+        self.assertIn("NOW · ENDED", html)
+        self.assertNotIn("NOW · WORKING", html)
+
+    def test_a_working_session_with_no_end_still_leads_active_now(self) -> None:
+        # The end is what moves the row, and only the end: an ordinary working
+        # session must keep the lane whose whole job is "what is still running".
+        working = self.WORKING_ENDED.replace(" ended_at: 9400,", "").replace(
+            'sid: "w1"', 'sid: "w2"'
+        )
+        html = self.view(working)
+
+        self.assertIn("w2", self.group(html, "active"))
+        self.assertIn("NOW · WORKING", html)
+        self.assertNotIn("NOW · ENDED", html)
+
+    def test_the_recent_history_caveat_is_qualified_where_an_end_was_observed(self) -> None:
+        # The old sentence was unqualified — "Recently observed is not proof the
+        # harness process is still open or closed" — which was true before any
+        # row could report its own end, and understates the rows that now can.
+        html = self.view(self.ENDED)
+
+        self.assertIn("Recently observed is not proof", html)
+        self.assertIn("ENDED reported their own end", html)

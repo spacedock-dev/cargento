@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import datetime
 import json
 import os
 import tempfile
@@ -243,6 +244,77 @@ class LedgerTest(ObservationTestCase):
         coordinator.submit("claude", self.envelope(event="input_requested"))
         self.assertEqual(0.0, coordinator.finished_at("claude", PREFIX))
 
+    def test_an_end_is_remembered_for_the_session_id_that_ended(self) -> None:
+        # DRC-4036. The ledger is popped by the same event, so this mark cannot
+        # live in it any more than the completion mark can.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.assertEqual([], coordinator.overlays_for("claude", PREFIX))
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+
+    def test_no_end_observed_reads_zero_and_never_a_guess(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_resumed_session_id_stops_reading_ended(self) -> None:
+        # `session_started` produces NO overlay, so it reaches neither `_remember`
+        # nor `_mark_finished`: without an explicit lift, `claude --resume <id>`
+        # would leave the row reading ended for the rest of the run.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="session_started"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_session_working_after_its_end_stops_reading_ended(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="turn_started"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_gate_after_an_end_stops_reading_ended(self) -> None:
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="input_requested"))
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
+
+    def test_a_stop_after_an_end_leaves_the_mark_standing(self) -> None:
+        # A `turn_stopped` says a turn ended, not that the session reopened, and
+        # every clean ending has one in front of it.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="turn_stopped"))
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+
+    def test_an_event_stamped_before_the_end_does_not_lift_the_mark(self) -> None:
+        # At-least-once delivery, reordered. The a1 arm of the session-end capture
+        # had its `SessionEnd` land 5.581 s after the last Stop, which is long
+        # enough for a short headless run's own earlier hook POST to arrive after
+        # it. Arrival order cannot separate those — it is exactly what got
+        # reordered — so the lift compares the EVENT stamps instead.
+        coordinator = self.build()
+        self.now += 60
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        # Stamped a minute before the end and delivered after it. Written through
+        # the envelope rather than poked into the map, so the parse's own
+        # plausibility filter is on the path a real reordered hook would take.
+        older = datetime.datetime.fromtimestamp(NOW, tz=datetime.UTC).isoformat()
+        coordinator.submit("claude", self.envelope(event="turn_started", timestamp=older))
+        self.assertEqual(self.now, coordinator.ended_at("claude", PREFIX))
+
+    def test_an_end_mark_is_capped_like_the_ledger_and_counts_the_refusal(self) -> None:
+        coordinator = self.build(event_overlay_max_sessions=1)
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        coordinator.submit("claude", self.envelope(event="session_ended", session_id=OTHER))
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+        self.assertEqual(0.0, coordinator.ended_at("claude", OTHER_PREFIX))
+        self.assertEqual(1, coordinator.counters["ended.refused"])
+
     def test_a_clear_followed_by_a_prompt_inside_one_window_reads_as_working(self) -> None:
         # Claude fires session_ended on /clear as well as on exit, so this exact
         # order arrives in practice and must not leave the row retired.
@@ -409,6 +481,31 @@ class PendingTest(ObservationTestCase):
         coordinator.submit("claude", self.envelope(event="turn_stopped"))
         coordinator.note_rows(set())
         self.assertEqual(NOW, coordinator.finished_at("claude", PREFIX))
+
+    def test_an_end_mark_survives_the_note_rows_that_follows_it(self) -> None:
+        # The trap `_finished`'s retirement rule walks straight into. Ending pops
+        # `_overlays[key]`, so straight afterwards the key is in neither the
+        # collected set nor the ledger — `_finished`'s two conditions — and a
+        # mark retired there can never be re-earned, because a session fires
+        # `session_ended` exactly once. A stop is re-supplied by the next
+        # `turn_stopped`, so its rule tolerates being wrong; this one does not.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        coordinator.note_rows(set())
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX))
+
+    def test_an_end_mark_is_retired_once_its_row_is_a_whole_window_gone(self) -> None:
+        # Its only bound besides the cap, and it is a time rule rather than a
+        # row-set rule for the reason above. A row is produced only while its
+        # activity is inside the display window, and the end is the last thing
+        # that happened to that id, so past the window the row cannot come back.
+        coordinator = self.build()
+        coordinator.submit("claude", self.envelope(event="session_ended"))
+        self.now += self.config.ended_mark_ttl_sec + 1
+        coordinator.note_rows({("claude", PREFIX)})
+        self.assertEqual(NOW, coordinator.ended_at("claude", PREFIX), "still collected")
+        coordinator.note_rows(set())
+        self.assertEqual(0.0, coordinator.ended_at("claude", PREFIX))
 
     def test_completion_marks_are_capped_like_the_ledger_and_count_the_refusal(self) -> None:
         coordinator = self.build(event_overlay_max_sessions=1)
@@ -934,6 +1031,11 @@ class WaitDetailTest(unittest.TestCase):
             del harness, sid  # this stub remembers no stop
             return 0.0
 
+        def ended_at(self, harness: str, sid: str) -> float:
+            """No end observed: this stub answers only about stops."""
+            del harness, sid
+            return 0.0
+
         def git_for(self, harness: str, sid: str) -> None:
             """Never probed: this stub has no repository behind it."""
             del harness, sid
@@ -1070,6 +1172,11 @@ class StateDisputeTest(unittest.TestCase):
 
         def finished_at(self, harness: str, sid: str) -> float:
             del harness, sid  # this stub remembers no stop
+            return 0.0
+
+        def ended_at(self, harness: str, sid: str) -> float:
+            """No end observed: this stub answers only about stops."""
+            del harness, sid
             return 0.0
 
         def git_for(self, harness: str, sid: str) -> None:
@@ -1456,6 +1563,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid  # this stub remembers no stop
                 return 0.0
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
@@ -1495,6 +1607,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                 del harness, sid  # this stub remembers no stop
                 return 0.0
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
@@ -1525,6 +1642,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                 # that stopped and stayed stopped looks like.
                 return support.SERVER_STARTED - 200
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
@@ -1540,6 +1662,76 @@ class ApplicationOverlayTest(unittest.TestCase):
         row = self._row(self._collect_with(Source()))
         self.assertEqual("idle", row["state"], "the collector still owns the state")
         self.assertEqual(support.SERVER_STARTED - 200, row["finished_at"])
+
+    def test_a_remembered_end_reaches_the_row_with_no_overlay_left(self) -> None:
+        # The other half of the `claude -p` row, and the one DRC-4036 adds:
+        # `session_ended` pops the ledger that would have carried this, so the
+        # only path onto the row is the coordinator's own memory. Activity AFTER
+        # the end is deliberate — a real end lands after the transcript's last
+        # write — and it proves the stop's staleness guard is not applied here.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                if (harness, sid) != ("claude", PREFIX):
+                    return 0.0
+                return support.SERVER_STARTED - 200
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        row = self._row(self._collect_with(Source()))
+        self.assertEqual("idle", row["state"], "the collector still owns the state")
+        self.assertEqual(support.SERVER_STARTED - 200, row["ended_at"])
+        self.assertIsNone(row["finished_at"], "an end is not a stop")
+
+    def test_a_row_with_no_observed_end_publishes_none_rather_than_a_verdict(self) -> None:
+        # The session that predates this server run, which has no mark at all.
+        # None means not observed; it must never read as "did not end", because
+        # an absent end is also what a SIGKILL and every adapter-less harness
+        # look like.
+        class Source:
+            def overlays_for(self, harness: str, sid: str) -> list[events.Overlay]:
+                del harness, sid
+                return []
+
+            def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def git_for(self, harness: str, sid: str) -> None:
+                """Never probed: this stub has no repository behind it."""
+                del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
+
+            def note_rows(self, keys: set[tuple[str, str]]) -> None:
+                pass
+
+        row = self._row(self._collect_with(Source()))
+        self.assertIsNone(row["ended_at"])
 
     def test_a_harness_with_no_event_adapter_publishes_that_it_is_scan_only(self) -> None:
         # DRC-4035 D4: six harnesses can never earn a stop, so their idle rows
@@ -1613,6 +1805,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                     return 0.0
                 return support.SERVER_STARTED - 200
 
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
+                return 0.0
+
             def git_for(self, harness: str, sid: str) -> Any:
                 if (harness, sid) != ("claude", PREFIX):
                     return None
@@ -1645,6 +1842,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                 return []
 
             def finished_at(self, harness: str, sid: str) -> float:
+                del harness, sid
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
                 del harness, sid
                 return 0.0
 
@@ -1687,6 +1889,11 @@ class ApplicationOverlayTest(unittest.TestCase):
 
             def finished_at(self, harness: str, sid: str) -> float:
                 del harness, sid  # this stub remembers no stop
+                return 0.0
+
+            def ended_at(self, harness: str, sid: str) -> float:
+                """No end observed: this stub answers only about stops."""
+                del harness, sid
                 return 0.0
 
             def git_for(self, harness: str, sid: str) -> None:

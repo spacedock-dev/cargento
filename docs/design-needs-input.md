@@ -623,15 +623,23 @@ constant and requires the prose to agree, because otherwise the two can only mat
   something.
 - **Narrowing what `session_ended` retires**, which would have let the mark live in the ledger after
   all. Claude fires that event on `/clear` as well as on exit (N-5), so a cleared session would read
-  finished forever, which is DRC-4101's failure class by another door.
+  finished forever, which is DRC-4101's failure class by another door. *Amended 2026-09-06: the
+  premise is wrong. `/clear` mints a NEW session id, so the cleared id is not the one that carries
+  on (see N-12). The rejection stands anyway, on the second reason rather than the first: retiring
+  the ledger whole is what keeps a retirement coherent under arrival order, and a mark that lives in
+  the ledger cannot outlive the exit it describes, which is the whole of what N-9 needed.*
 - **A third flag.** The two-flag cap is a shipped decision, and finished work is worth collecting
   rather than worth alarming about, so the word sits in the `idle / wait` cell and in the regular
   view's idle row. A chip would also pull the count into the flagged total, the `f` filter and the
   attention ordering, none of which should move because a turn ended tidily.
 - **Clearing the git reading on every `session_ended`** rather than on the resume. It looks like the
   tighter rule and buys nothing measurable: the resume discards the reading before any second end can
-  reach it, so no test could tell the two apart, and two ends with no turn between them, which is how
-  `/clear` followed by an exit arrives, would discard a reading that is still accurate.
+  reach it, so no test could tell the two apart. *Amended 2026-09-06: this bullet carried a second
+  reason, that "two ends with no turn between them, which is how `/clear` followed by an exit
+  arrives, would discard a reading that is still accurate", and that scenario cannot happen.
+  `self._git` is keyed on `SessionKey`, and N-12's measurement is that the prompt after a `/clear`
+  goes to a NEW session id, so the clear's end lands on one key and the exit's on another. The
+  rejection stands on the first reason alone.*
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
   `acquisition`, which was defined for this and rendered nowhere until now. A test holds the
@@ -766,3 +774,72 @@ Pi is not the only blind row where the gap is ours. Antigravity is the other one
 reason: its confirmation-pending flag already reaches `statusline_hook.py`, which reads `agent_state`
 and drops the rest, and using it needs the reducer precedence rule N-4 describes rather than an
 adapter nobody has written. Nothing is wanted from either vendor.
+
+## N-12: a session that ended and one waiting for you both said Idle
+
+N-9 separated a turn that stopped from a session still waiting on a reply. It did not separate either
+of those from a session that is **over**. `finished_at` cannot: it marks a turn stopping, and a
+session whose turn stopped is usually still open, still typeable, and still worth going back to. So a
+`claude -p` run that exited and a session sitting at its prompt rendered identically.
+
+The row now carries `ended_at`, a nullable stamp set when the session id itself is observed to end,
+and Safe to close, the operations row and the session detail all read it (DRC-4036).
+
+**`/clear` was the objection, and it dissolves.** Claude fires `SessionEnd` on `/clear` as well as on
+exit, and the capture that recorded it
+([`claude/session-end-2.1.261-macos.jsonl`](captures/claude/session-end-2.1.261-macos.jsonl), arm
+a7) reports the process surviving and accepting another prompt 0.277 s later. Read from that file
+alone the only thing separating a continuation from an ending is the event's `reason`. A separate
+probe on 2026-09-06, on the same Claude Code 2.1.261, answered the question the capture could not:
+**the prompt after a `/clear` goes to a new session id.** Two prompts either side of one `/clear`
+wrote two different transcripts. So a `session_ended` means "this session id is finished" whatever
+its reason, `reason` never has to cross `events.ALLOWED_FIELDS`, and no adapter has to special-case
+a clear.
+
+**A nullable stamp, not a fourth `state` value.** A new state member was investigated and rejected
+because three page sites read `state` against a closed set and fail toward the *wrong* answer on an
+unknown member rather than degrading: `nextAttentionStopSignal` drops the session out of Safe to
+close, which is the lane this exists to strengthen; the project activity pill blanks; and the
+coverage note reports it as "unknown state", the opposite of what was observed. `None` follows
+`finished_at`'s contract exactly: it means NOT OBSERVED, never "did not end". Only a SIGKILL ends a
+Claude session silently, but an adapter-less harness, a session predating the server run and
+`--no-events` are all absences too, so the page never reads silence as life.
+
+**What lifts the mark, and what deliberately does not.** A `session_started` lifts it, because
+`claude --resume <id>` reuses the id; so does a working or needs-input overlay, because a session
+doing something has not ended. An idle overlay does not: every tidy ending has a `turn_stopped` in
+front of it, and lifting on idle would erase the mark for exactly the endings this exists to show.
+`session_started` needed an explicit path, since `overlay_for` returns None for it and it reaches
+neither `_remember` nor `_mark_finished`. The comparison is on event stamps rather than arrival
+order, because a reordered delivery is precisely one whose arrival order lies about causality, and
+the a1 arm's 5.581 s gap between the last stop and the end is longer than a short headless run.
+
+**Its retirement rule differs from N-9's, and has to.** `session_ended` pops the session's overlays,
+so straight after an end the key is in neither the collected row set nor the ledger, which is
+exactly `_finished`'s prune condition. `_finished` tolerates that because the next `turn_stopped`
+re-supplies it; a session fires `session_ended` once, so a mark pruned early can never be earned
+again. It is therefore retired on two conditions rather than one: the row must have left the
+collected set **and** the end must be a display window old. The clock is there for the reason
+`focus_target_ttl_sec` uses (a row is produced only while its activity is inside that window, and
+an end is the last thing that happens to an id), and the row-set half is there so a session still
+being collected keeps its mark however long ago it ended. Neither alone would do: the clock alone
+would strip a live row's mark at the window, and the row set alone is `_finished`'s condition above,
+which an end satisfies immediately.
+
+### Rejected
+
+- **Carrying the event's `reason` and special-casing `clear`.** An earlier draft of this issue called
+  for it, on the capture's own reading. The new-session-id measurement makes it unnecessary, and it
+  would have cost a member of `events.ALLOWED_FIELDS`, a public compatibility surface with an
+  indefinite tail, to encode a harness-specific vocabulary the server would then have to keep
+  interpreting.
+- **A boolean `ended`.** Null's job done by false: every harness with no adapter would publish a
+  confident "did not end" over no evidence at all, which is the DRC-4101 shape one field over.
+- **Applying `finished_at`'s activity guard to the end.** A stop is a reading of a moment that later
+  writing invalidates. An end is a fact about an id, and the id cannot write again without a
+  `session_started`. An end also lands *after* the last write rather than before it, 5.581 s after
+  the final stop in the a1 arm, so the guard would have read a perfectly ordinary ending as a
+  contradiction.
+- **Reading an absent end as "still running".** The most tempting inference on the page and the one
+  the capture forbids: only a SIGKILL is silent, but that is one of four causes of an absence, and
+  the coverage note says so rather than counting them as live.

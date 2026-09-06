@@ -21,8 +21,12 @@ function nextAttentionHarnessOrder(payload){
 const NEXT_RISK_KIND_ORDER = new Map([
   ["attribution", 0], ["loop", 1], ["quota", 2], ["long-turn", 3], ["collision", 4],
 ]);
+/* What is at stake leads and the end breaks its ties: uncommitted work is the
+   reason to open the row at all, and an ended session's dirty tree is the one
+   nobody is coming back to. */
 const NEXT_STOP_KIND_ORDER = new Map([
-  ["stop-dirty", 0], ["stop-unknown", 1], ["stop-clean", 2],
+  ["end-dirty", 0], ["stop-dirty", 1], ["end-unknown", 2], ["stop-unknown", 3],
+  ["end-clean", 4], ["stop-clean", 5],
 ]);
 
 function nextAttentionRiskKind(signal){
@@ -262,14 +266,23 @@ function nextAttentionAttributionSignal(session, sourceIndex){
 }
 
 function nextAttentionStopSignal(session, sourceIndex){
+  const endedAt = nextSessionEndedAt(session);
   const finished = typeof session.finished_at === "number" &&
     Number.isFinite(session.finished_at) && session.finished_at > 0;
-  if(!finished || session.state !== "idle") return null;
-  let kind = "stop-unknown";
-  if(session.dirty === true) kind = "stop-dirty";
-  if(session.dirty === false) kind = "stop-clean";
+  /* An observed end promotes the row on its own, and deliberately does not have
+     to agree with `state`: `state` is a collector inference off file recency,
+     an end is an event the session reported, and requiring both would let the
+     weaker reading veto the stronger one. A stop still needs the idle state
+     beside it, because a stop leaves the session open and typeable and the
+     state is the only thing that says it stayed that way. */
+  if(endedAt == null && (!finished || session.state !== "idle")) return null;
+  const prefix = endedAt == null ? "stop" : "end";
+  let kind = `${prefix}-unknown`;
+  if(session.dirty === true) kind = `${prefix}-dirty`;
+  if(session.dirty === false) kind = `${prefix}-clean`;
   return {kind, section: "close", sourceIndex, detail: {
-    finishedAt: session.finished_at,
+    finishedAt: finished ? session.finished_at : null,
+    endedAt,
     changedEntries: Number.isInteger(session.changed) && session.changed >= 0 ? session.changed : null,
   }};
 }
@@ -307,7 +320,8 @@ function nextAttentionCoverage(payload){
       typeof session.finished_at === "number" && Number.isFinite(session.finished_at) &&
         session.finished_at > 0
     ).length,
-    ends: "fleet coverage not reported",
+    observedEnds: nextPayloadSessions(payload).filter(
+      session => nextSessionEndedAt(session) != null).length,
   };
 }
 
@@ -625,8 +639,23 @@ const NEXT_ATTENTION_KIND_LABELS = new Map([
   ["stop-dirty", "Stop observed with uncommitted work"],
   ["stop-clean", "Stop observed; git state clean"],
   ["stop-unknown", "Stop observed; git state not measured"],
+  ["end-dirty", "Session ended with uncommitted work"],
+  ["end-clean", "Session ended; git state clean"],
+  ["end-unknown", "Session ended; git state not measured"],
   ["task", "Published task"],
 ]);
+
+/* Shared by the stop and end kinds because the git half of the sentence is the
+   same reading either way; only what happened to the session differs. */
+function nextAttentionCloseText(kind, detail){
+  if(kind.endsWith("-dirty")){
+    return Number.isInteger(detail.changedEntries)
+      ? `${detail.changedEntries} changed entries`
+      : "Uncommitted work observed";
+  }
+  if(kind.endsWith("-clean")) return "Git state reported clean";
+  return "Git state was not measured";
+}
 
 function nextAttentionEsc(value){
   return esc(value).replace(/=/g, "&#61;");
@@ -762,15 +791,18 @@ function nextAttentionSignalNow(signal, subject){
       note: "Identity scope only; shared location is not established",
     };
   }
-  if(signal.kind === "stop-dirty"){
-    const changed = Number.isInteger(detail.changedEntries)
-      ? `${detail.changedEntries} changed entries`
-      : "Uncommitted work observed";
-    return {text: changed, note: ""};
+  if(signal.kind.startsWith("stop-")){
+    return {text: nextAttentionCloseText(signal.kind, detail), note: ""};
   }
-  if(signal.kind === "stop-clean") return {text: "Git state reported clean", note: ""};
-  if(signal.kind === "stop-unknown"){
-    return {text: "Git state was not measured", note: ""};
+  if(signal.kind.startsWith("end-")){
+    /* The age of the END and never of the stop: they are different moments, and
+       an ended row usually carries no stop at all. */
+    const since = nextDurationSince(detail.endedAt);
+    const text = nextAttentionCloseText(signal.kind, detail);
+    return {
+      text: since ? `${text} · ended ${since} ago` : text,
+      note: "This session id reported its own end",
+    };
   }
   if(signal.kind === "task"){
     const status = subject.checkpoint && subject.checkpoint.status;
@@ -926,7 +958,7 @@ function nextAttentionCoverageHtml(model){
   const gates = coverage.gates;
   const failed = gates.failed ? ` · ${gates.failed} failed` : "";
   const visible = `Gates: ${gates.reporting}/${gates.discovered} reporting · ` +
-    `${gates.unknown} unknown${failed} · Ends: ${coverage.ends}`;
+    `${gates.unknown} unknown${failed} · Ends: ${coverage.observedEnds} observed`;
   const rows = gates.rows.map(row => {
     const name = String(row.label == null ? "" : row.label).trim() || String(row.key || "Harness");
     const gate = row.error != null
@@ -946,10 +978,18 @@ function nextAttentionCoverageHtml(model){
     ? `<p>Stops observed on ${coverage.observedStops} ` +
       `session${coverage.observedStops === 1 ? "" : "s"}; fleet coverage not reported.</p>`
     : "";
+  /* Stated whether or not any end was seen, because the useful half is the
+     disclaimer rather than the count: an absent end is what a SIGKILL, an
+     adapter-less harness and --no-events all look like. */
+  const ends = (coverage.observedEnds > 0
+    ? `<p>Ends observed on ${coverage.observedEnds} ` +
+      `session${coverage.observedEnds === 1 ? "" : "s"}; `
+    : "<p>No session ends observed; ") +
+    "a session with no observed end is not known to be running.</p>";
   return '<div class="next-attention-coverage">' +
     `<p><span class="next-attention-brief-label">COVERAGE</span>${esc(visible)}</p>` +
     '<details class="next-attention-coverage-details"><summary>Coverage details</summary>' +
-    `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}` +
+    `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}${ends}` +
     nextAttentionTerminalCoverage(model) +
     '<p>Termination cause not reported.</p></details></div>';
 }

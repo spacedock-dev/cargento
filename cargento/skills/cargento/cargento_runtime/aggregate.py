@@ -148,11 +148,17 @@ class OverlaySource(Protocol):
     `finished_at` is separate from `overlays_for` because it deliberately
     outlives the ledger: `session_ended` retires a session's overlays, and a
     `claude -p` run that finished and exited is exactly the row the mark is for.
+
+    `ended_at` outlives it for the stronger version of that reason: the event
+    that sets it is the event that pops the ledger, so it could never have lived
+    there at all.
     """
 
     def overlays_for(self, harness: str, sid: str) -> list[Overlay]: ...
 
     def finished_at(self, harness: str, sid: str) -> float: ...
+
+    def ended_at(self, harness: str, sid: str) -> float: ...
 
     def git_for(self, harness: str, sid: str) -> GitStatus | None: ...
 
@@ -833,6 +839,7 @@ class Application:
             harness, sid = str(session["harness"]), str(session["sid"])
             overlays = source.overlays_for(harness, sid)
             finished_at = source.finished_at(harness, sid)
+            ended_at = source.ended_at(harness, sid)
             git = source.git_for(harness, sid)
             # Written straight onto the row rather than reduced through the
             # patch: a target is not a display claim that an overlay could
@@ -840,7 +847,7 @@ class Application:
             # untrusted event may write, and the focus contract forbids echoing
             # a target through any of it.
             session["focusable"] = source.focusable(harness, sid)
-            if overlays or finished_at or git is not None:
+            if overlays or finished_at or ended_at or git is not None:
                 patch = runtime_events.reduce_overlays(
                     overlays,
                     now=now,
@@ -859,6 +866,11 @@ class Application:
                     # mark passes the same activity guard the idle overlay does
                     # even though it outlives the ledger that overlay lives in.
                     finished_at=finished_at,
+                    # Reduced rather than written onto the row for the same
+                    # reason, and it is a distinct argument rather than a reading
+                    # of the one above because a turn stopping and a session id
+                    # ending are different facts about a row (DRC-4036).
+                    ended_at=ended_at,
                     # Reduced rather than written onto the row for the reason the
                     # mark above is: a reading taken at a session end must still
                     # lose to any overlay saying the session is alive again.
