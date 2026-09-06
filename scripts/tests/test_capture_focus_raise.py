@@ -1039,8 +1039,18 @@ class ExecutorTest(unittest.TestCase):
     """The real gate body, against targets that move nothing."""
 
     def test_an_authorized_command_runs_and_its_status_is_kept(self) -> None:
-        self.assertEqual(0, recorder._execute(["/usr/bin/true"], allowed=True))
-        self.assertEqual(1, recorder._execute(["/usr/bin/false"], allowed=True))
+        # The interpreter rather than `/usr/bin/true` and `/usr/bin/false`.
+        # Those two are the obvious targets that move nothing, and they moved
+        # nothing on macOS and on Ubuntu and then failed on Windows, where
+        # neither path exists: the executor returned 127 for "could not start"
+        # and the assertion read it as a wrong exit status. `_execute` itself is
+        # platform-neutral, so its test should be too, and the arms that are
+        # genuinely macOS-only are gated by their own flags rather than by a
+        # path that happens not to resolve.
+        self.assertEqual(0, recorder._execute([sys.executable, "-c", ""], allowed=True))
+        self.assertEqual(
+            1, recorder._execute([sys.executable, "-c", "raise SystemExit(1)"], allowed=True)
+        )
 
     def test_a_command_that_cannot_start_is_a_status_rather_than_a_crash(self) -> None:
         # A recorder that raises mid-arm leaves the machine in a state it never
