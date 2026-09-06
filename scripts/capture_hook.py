@@ -22,12 +22,13 @@ bounds one turn.
 
 ## What it records, and what it refuses to
 
-Shape, and one enum. Each line carries the event name, the session prefix, a
+Shape, and two enums. Each line carries the event name, the session prefix, a
 salted digest of the working directory, the sorted top-level keys the payload
 carried, the tool name where there is one, how long this hook itself took, and
--- on `Notification` only -- the `notification_type` value. That one field is a
-closed vocabulary the harness picks from rather than text anyone wrote, which
-puts it in the same class as the tool name: see `shape_of`.
+two values that are recorded only on the event that owns them: the
+`notification_type` of a `Notification`, and the `reason` of a `SessionEnd`. Both
+are closed vocabularies the harness picks from rather than text anyone wrote,
+which puts them in the same class as the tool name: see `shape_of`.
 
 It never records a prompt, a tool argument, a tool result, a message, a file
 path, or a transcript path. Those are the fields the plan's allowlist exists to
@@ -172,6 +173,21 @@ def shape_of(
         candidate = payload.get("notification_type")
         if isinstance(candidate, str):
             notification_type = candidate[:60]
+    # The second, and it is earned on the same three grounds rather than by
+    # analogy. `reason` is a closed vocabulary Claude Code picks from; it is the
+    # only field on a `SessionEnd` that could separate one kind of ending from
+    # another, which is the whole question DRC-4394 was filed to answer; and five
+    # `SessionEnd` records already captured carry its key name with no value, so
+    # the vocabulary is unknown and cannot be looked up.
+    #
+    # `cwd` and `transcript_path` ride the same payload and stay refused. Both are
+    # paths, both name where somebody works, and neither says anything about how
+    # the session ended.
+    reason = ""
+    if event == "SessionEnd":
+        candidate = payload.get("reason")
+        if isinstance(candidate, str):
+            reason = candidate[:60]
     cwd = payload.get("cwd")
     return {
         "v": FORMAT_VERSION,
@@ -191,6 +207,10 @@ def shape_of(
         # Absent rather than empty off the Notification path, so a reader cannot
         # mistake "this event carries no type" for "the type was blank".
         **({"notification_type": notification_type} if event == "Notification" else {}),
+        # Absent off the SessionEnd path for the same reason: an empty string on
+        # another event would read as an ending with no reason rather than as an
+        # event that is not an ending.
+        **({"reason": reason} if event == "SessionEnd" else {}),
         "hook_ms": round(elapsed_ms, 3),
         "os": os.name,
     }
