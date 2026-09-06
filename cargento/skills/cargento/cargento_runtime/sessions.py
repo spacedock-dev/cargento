@@ -388,7 +388,10 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # never the target: SECURITY.md's focus section forbids echoing one, and
         # what a page needs is only enough to render nothing dead. False covers
         # the feature being off, a harness with no adapter, a session that
-        # predates this server run, and a session running outside tmux alike.
+        # predates this server run, a session running outside tmux, and a
+        # platform with no named case — Linux and Windows, where the section's
+        # own device grammar refuses `/dev/pts/N` and so no raise could ever
+        # succeed. A control that does nothing is what that False prevents.
         "focusable": False,
         "rate_per_min": 0,
         # Output-token readings from the transcript scanner. The session count

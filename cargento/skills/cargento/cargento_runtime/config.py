@@ -235,6 +235,15 @@ class RuntimeConfig:
     focus_timeout_sec: float
     focus_floor_sec: float
     focus_body_cap_bytes: int
+    # How long a recorded focus target outlives the last event for its session.
+    # Not a row-set prune the way the completion mark and the git reading are:
+    # those are display state that comes back with the row, while a target is
+    # gathered once on `session_started` and never again, so a collection that
+    # missed the row would kill the control for the session's life. Derived from
+    # `window_hours` rather than chosen: a session silent for a whole row window
+    # is one whose row is no longer produced, so its target can no longer be
+    # clicked either.
+    focus_target_ttl_sec: float
     # Event overlays. The Working deadline is tied to `working_threshold_sec`
     # rather than chosen separately: that value is already what the collectors
     # mean by Working, so an overlay that outlived it would be claiming Working
@@ -582,6 +591,7 @@ def build_runtime_config(
         focus_timeout_sec=2.0,
         focus_floor_sec=1.0,
         focus_body_cap_bytes=1_024,
+        focus_target_ttl_sec=window_hours * 3_600.0,
         usage_credentials_cap_bytes=65_536,
         usage_response_cap_bytes=262_144,
         usage_receipt_cap_bytes=131_072,

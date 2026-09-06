@@ -20,12 +20,27 @@ window forward.
 
 ## Why the target is half stored and half resolved
 
-The stored half is the socket and the pane, which a hook gathered from its own
-environment and posted through an authenticated event. The volatile half — the
-tmux session that pane belongs to, and the device of the client attached to it —
-is asked for at the raise and never cached, because a client device demonstrably
-moves inside one session: detach and reattach from another tab and it is a
-different device, while both readings still mask to `ttys###`.
+The stored half is the socket, the pane, and the pid of the tmux server that
+reported them, which a hook gathered from its own environment and posted through
+an authenticated event. The volatile half — the tmux session that pane belongs
+to, and the device of the client attached to it — is asked for at the raise and
+never cached, because a client device demonstrably moves inside one session:
+detach and reattach from another tab and it is a different device, while both
+readings still mask to `ttys###`.
+
+## Why the server pid is stored beside the pane
+
+A pane id is an ordinal on one tmux server, not a name. Kill that server and
+start another on the same socket name and `%3` is somebody else's pane, in
+somebody else's session, with nothing about the stored target able to tell the
+difference — reproduced on tmux 3.7c, where a second generation re-issued
+`%0..%3` and the raise moved a client onto an unrelated window and returned
+true. `$TMUX` is `<socket path>,<server pid>,<session id>` and the hook already
+has it, so the pid rides along and the first lookup asks for `#{pid}` beside the
+session name. A pid that does not match the one that reported the pane is a
+decline, which costs no extra command. The same check is what makes a `-L` name
+resolving in a directory the hook never validated a decline rather than a raise
+on another server's pane: the name may collide, the pid does not.
 
 ## What the lookups read, and what is never read back
 
@@ -35,7 +50,7 @@ logged: no pane content, no window title and no pathname enters Cargento's state
 and the raise command's own output is discarded unread. The published answer is a
 single boolean, minted by the caller from this function's return value.
 
-## Three declines, and the third is not about the target
+## Three declines on the client lookup, and the third is not about the target
 
 Zero attached clients means nobody is watching. More than one live candidate is
 ambiguous, and picking one would be the misdirected raise DRC-4382 measured from
@@ -79,6 +94,12 @@ TMUX_SESSION_RE: Final = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$")
 # class after the prefix is a separator, and a leading dot is refused, which is
 # what excludes `/dev/..`.
 CLIENT_TTY_RE: Final = re.compile(r"^/dev/[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
+# The tmux server's pid, from `$TMUX`'s second field at the hook and from
+# `#{pid}` at the raise. Digits only, so it holds no dash by construction — the
+# leading-dash rule every grammar above states in its own first class is here
+# satisfied by the class itself. It never reaches an argv position; it is
+# compared against what the server says it is, and a mismatch is a decline.
+TMUX_SERVER_RE: Final = re.compile(r"^[0-9]{1,10}$")
 
 # Slot sentinels. A NUL is in no grammar above, so a legal value can never be
 # mistaken for a slot, and a template that lost a substitution would ship a NUL
@@ -99,7 +120,10 @@ SESSION_NAME_ARGV: Final[tuple[str, ...]] = (
     "-p",
     "-t",
     _PANE,
-    "#{session_name}",
+    # Two readings from one command rather than two commands: the pid is what
+    # decides whether this is the server that reported the pane, and the name is
+    # what the second command is scoped to.
+    "#{pid} #{session_name}",
 )
 LIST_CLIENTS_ARGV: Final[tuple[str, ...]] = (
     "tmux",
@@ -137,21 +161,30 @@ class Target:
 
     socket: str
     pane: str
+    server: str
 
 
 def valid(target: Target) -> bool:
-    """Whether both stored fields still pass their own grammar."""
+    """Whether all three stored fields still pass their own grammar."""
     return bool(
         TMUX_SOCKET_RE.match(target.socket) is not None
         and TMUX_PANE_RE.match(target.pane) is not None
+        and TMUX_SERVER_RE.match(target.server) is not None
     )
 
 
-def target_from(socket: str | None, pane: str | None) -> Target | None:
-    """One target, or None. The only constructor anything upstream should use."""
-    if not socket or not pane:
+def target_from(socket: str | None, pane: str | None, server: str | None) -> Target | None:
+    """One target, or None. The only constructor anything upstream should use.
+
+    An identity posted by a hook too old to send the server pid arrives with
+    `server` unset and yields no target at all. That is a decline rather than a
+    crash, and it is the honest answer for a target nothing can anchor to a
+    server: the socket name alone would raise on whichever server holds the name
+    now.
+    """
+    if not socket or not pane or not server:
         return None
-    candidate = Target(socket=socket, pane=pane)
+    candidate = Target(socket=socket, pane=pane, server=server)
     return candidate if valid(candidate) else None
 
 
@@ -200,8 +233,18 @@ def _run(
         return None
 
 
-def _lines(result: Any) -> list[str]:
-    """The command's readings, bounded and stripped. Nothing else looks at output."""
+def _rows(result: Any) -> list[str]:
+    """Every LINE the command produced, stripped, empties kept.
+
+    One line is one record for both lookups this module runs, so a reader that
+    drops empty lines is a reader that miscounts records. `list-clients` prints
+    one line per attached client and a control-mode client — a `tmux -C attach`,
+    which is what another agent driving the same session looks like — reports an
+    empty `#{client_tty}`. Filtering that line away turns two attached clients
+    into one and raises on a shared session, which is the case the operator ruled
+    on 2026-09-06 must be refused outright. Reproduced on tmux 3.7c: `b"/dev/ttys006\n\n"`
+    is two clients, and a strip-and-filter reader returns one name from it.
+    """
     if getattr(result, "returncode", 1) != 0:
         return []
     raw = getattr(result, "stdout", b"")
@@ -210,7 +253,72 @@ def _lines(result: Any) -> list[str]:
     if not isinstance(raw, (bytes, bytearray)):
         return []
     text = bytes(raw)[:_OUTPUT_CAP].decode("utf-8", "replace")
-    return [line.strip() for line in text.splitlines() if line.strip()]
+    # `splitlines` on a trailing newline adds no phantom record: "a\n" is one
+    # line and "a\n\n" is two, which is exactly the count tmux means.
+    return [line.strip() for line in text.splitlines()]
+
+
+def _session_on_the_recorded_server(
+    target: Target,
+    *,
+    timeout_sec: float,
+    runner: Callable[..., Any],
+) -> str | None:
+    """The tmux session holding this pane, or None if this is not that server.
+
+    tmux exits non-zero for a pane it cannot resolve, so a zero exit proves a
+    pane with that id exists in whatever server holds this socket name now. The
+    pid is what makes that the SAME pane: a restarted server on the same name
+    re-issues `%0` upward, and without this comparison the raise would land on an
+    unrelated pane and report success. The name the second command is scoped to
+    comes back from tmux rather than from a request, and it still reaches an argv
+    position, so it still passes a grammar.
+    """
+    named = _rows(
+        _run(
+            fill(SESSION_NAME_ARGV, socket=target.socket, pane=target.pane),
+            timeout_sec=timeout_sec,
+            runner=runner,
+        )
+    )
+    if len(named) != 1:
+        return None
+    parts = named[0].split(" ", 1)
+    if len(parts) != 2 or parts[0] != target.server:
+        return None
+    return parts[1] if TMUX_SESSION_RE.match(parts[1]) is not None else None
+
+
+def _the_one_client_watching(
+    target: Target,
+    session: str,
+    *,
+    timeout_sec: float,
+    runner: Callable[..., Any],
+) -> str | None:
+    """The device of the single client attached to `session`, or None.
+
+    Counted by LINES, because one line is one attached client whatever it reports
+    as its device. Zero: nobody is watching, so there is nothing to raise. More
+    than one: the shared-session decline — raising takes the view from every
+    other client attached, which on a real machine is another person or another
+    agent, and a control-mode client reports an EMPTY device, so counting values
+    rather than lines would make that second client invisible.
+
+    The device grammar is a separate decision from the count and deliberately
+    after it: a client this raise cannot name is a decline rather than an
+    absence.
+    """
+    clients = _rows(
+        _run(
+            fill(LIST_CLIENTS_ARGV, socket=target.socket, session=session),
+            timeout_sec=timeout_sec,
+            runner=runner,
+        )
+    )
+    if len(clients) != 1:
+        return None
+    return clients[0] if CLIENT_TTY_RE.match(clients[0]) is not None else None
 
 
 def raise_terminal(
@@ -227,31 +335,14 @@ def raise_terminal(
     """
     if not valid(target):
         return False
-    named = _lines(
-        _run(
-            fill(SESSION_NAME_ARGV, socket=target.socket, pane=target.pane),
-            timeout_sec=timeout_sec,
-            runner=runner,
-        )
-    )
-    # This also proves the pane still exists: tmux exits non-zero for a pane it
-    # cannot resolve, so no separate existence check is needed and none is run.
-    if len(named) != 1 or TMUX_SESSION_RE.match(named[0]) is None:
+    session = _session_on_the_recorded_server(target, timeout_sec=timeout_sec, runner=runner)
+    if session is None:
         return False
-    clients = _lines(
-        _run(
-            fill(LIST_CLIENTS_ARGV, socket=target.socket, session=named[0]),
-            timeout_sec=timeout_sec,
-            runner=runner,
-        )
-    )
-    # Zero: nobody is watching, so there is nothing to raise. More than one: the
-    # shared-session decline — raising takes the view from every other client
-    # attached, which on a real machine is another person or another agent.
-    if len(clients) != 1 or CLIENT_TTY_RE.match(clients[0]) is None:
+    client = _the_one_client_watching(target, session, timeout_sec=timeout_sec, runner=runner)
+    if client is None:
         return False
     result = _run(
-        fill(SWITCH_CLIENT_ARGV, socket=target.socket, client=clients[0], pane=target.pane),
+        fill(SWITCH_CLIENT_ARGV, socket=target.socket, client=client, pane=target.pane),
         timeout_sec=timeout_sec,
         runner=runner,
     )

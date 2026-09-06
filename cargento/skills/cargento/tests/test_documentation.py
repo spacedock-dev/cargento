@@ -953,10 +953,116 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
         # codebase, not the second.
         self.assertEqual(["notifications.py"], offenders)
 
-    def test_the_response_the_contract_promises_is_the_one_the_route_sends(self) -> None:
+    def test_the_documented_grammar_table_carries_the_server_pid(self) -> None:
+        # A pane id is an ordinal on ONE server, so the field that anchors a
+        # target to the server that issued it is part of the target's shape and
+        # belongs in the table with the other three.
+        self.assertIn("`^[0-9]{1,10}$`", self.SECURITY)
+        self.assertEqual("^[0-9]{1,10}$", focus.TMUX_SERVER_RE.pattern)
+        self.assertIn("A pane id is an ordinal on one tmux server, not", self.FLAT)
+
+    def test_the_documented_command_is_the_argv_the_module_builds(self) -> None:
+        # The section prints the three commands verbatim, so the format strings
+        # it prints have to be the ones the templates carry — a document naming
+        # `#{session_name}` alone would be describing a lookup that cannot
+        # decline a stale server.
+        self.assertIn("display-message -p -t <pane> '#{pid} #{session_name}'", self.SECURITY)
+        self.assertIn("#{pid} #{session_name}", focus.SESSION_NAME_ARGV)
+        self.assertIn("#{client_tty}", focus.LIST_CLIENTS_ARGV)
+
+    def test_the_clients_are_counted_by_lines_as_the_contract_now_says(self) -> None:
+        # The document says the count is over lines, and the module is what has
+        # to mean it: a control-mode client reports an empty `#{client_tty}`, and
+        # a reader dropping that line counts two attached clients as one.
+        self.assertIn("It is counted by lines, not by values.", self.FLAT)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "focus.py").read_text(encoding="utf-8")
+        self.assertNotIn("if line.strip()]", source)
+
+    def test_the_unmeasured_platforms_record_no_target(self) -> None:
         self.assertIn(
-            "The response is a single boolean saying whether a focus was attempted.", self.FLAT
+            "Not a named case means no target is recorded there, and that is enforced where the "
+            "target is stored",
+            self.FLAT,
         )
+        source = (SERVER_PATH.parent / "cargento_runtime" / "observation.py").read_text(
+            encoding="utf-8"
+        )
+        marker = source.index("def _mark_focus")
+        self.assertIn('self.config.platform_name != "darwin"', source[marker : marker + 3_000])
+
+    def test_the_documented_check_order_is_the_one_the_route_implements(self) -> None:
+        # The promoted section said the focus route used `/api/events/<harness>`'s
+        # order and 404d an unsupported case before the capability. The route
+        # deliberately inverts that first step, and its own comment calls the
+        # inversion the whole security property: a harness name is public and a
+        # session id is not, so a lookup-first route would be an oracle for which
+        # sessions exist. The document is what was wrong, so the document moved.
+        self.assertIn(
+            "The route's check order is deliberately **not** the one "
+            "`POST /api/events/<harness>` uses",
+            self.FLAT,
+        )
+        self.assertIn("**A session id is not.**", self.FLAT)
+        self.assertIn("The focus route emits no 404 on any path", self.FLAT)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
+            encoding="utf-8"
+        )
+        handler = source[source.index("def _focus(self)") : source.index("def do_POST(self)")]
+        # Every status the route can answer with, and 404 is not among them.
+        self.assertEqual(
+            ["503", "403", "413", "429"],
+            sorted(set(re.findall(r"_reject\((\d{3})\)", handler)), key=handler.index),
+        )
+        self.assertLess(handler.index("focus_authorized"), handler.index("claim_focus"))
+        self.assertLess(handler.index("claim_focus"), handler.index("focus_target"))
+
+    def test_the_capability_claim_stops_where_the_scope_section_stops(self) -> None:
+        # The first draft offered the capability as the answer to another local
+        # account, which `GET /` hands the token to. Scope already said so
+        # correctly; the focus section now says the same rather than the reverse,
+        # which is also what makes Scope's back-reference to it true.
+        self.assertIn("against that account this route stands where `/api/dismiss` does", self.FLAT)
+        self.assertIn(
+            "What the capability actually separates is a page from a document navigation and "
+            "from a local process that never fetched the board",
+            self.FLAT,
+        )
+
+    def test_the_shared_session_window_is_named_and_the_clause_measures_the_lookup(self) -> None:
+        # The rule is decided on `list-clients` and enforced by `switch-client`
+        # about six milliseconds later, so the absolute clause was unsatisfiable
+        # by any implementation this contract permits.
+        self.assertIn(
+            "The rule is decided on one command and enforced by the next, and the gap between "
+            "them is named rather than narrowed.",
+            self.FLAT,
+        )
+        self.assertIn("a raise on a lookup that reported more than one attached client", self.FLAT)
+        self.assertNotIn("a raise on a multiplexer session with more than one attached", self.FLAT)
+
+    def test_the_scope_paragraph_counts_the_capability_gates_the_code_has(self) -> None:
+        # Nothing else in the suite pins this, and the paragraph is the one an
+        # auditor of a `--host` bind reads. It said eight of nine had nothing to
+        # authenticate with, which erases the one POST boundary a remote client
+        # genuinely cannot cross.
+        source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
+            encoding="utf-8"
+        )
+        do_post = source[source.index("def do_POST(self)") :]
+        table = do_post[do_post.index("route = {") : do_post.index("}.get(path)")]
+        # The exact-match table, plus the one prefix route matched ahead of it.
+        routes = len(re.findall(r'"(/api/[a-z/]+)":', table)) + int(
+            'path.startswith("/api/events/")' in do_post
+        )
+        gated = len(re.findall(r"\bcoordinator\.(?:focus_)?authorized\(", source))
+        self.assertEqual(9, routes)
+        self.assertEqual(2, gated)
+        self.assertIn("Writing is the nine POST routes", self.FLAT)
+        self.assertIn("There is nothing to authenticate with on seven of them", self.FLAT)
+        self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
+
+    def test_the_response_the_contract_promises_is_the_one_the_route_sends(self) -> None:
+        self.assertIn("The response is a single boolean saying whether a focus happened", self.FLAT)
         source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
             encoding="utf-8"
         )

@@ -113,6 +113,7 @@ class ParseTest(unittest.TestCase):
             "transcript_path",
             "tmux_socket",
             "tmux_pane",
+            "tmux_server",
         }
         self.assertEqual(events.ALLOWED_FIELDS, carried | {"v"})
 

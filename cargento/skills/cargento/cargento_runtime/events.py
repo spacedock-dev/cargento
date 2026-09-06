@@ -95,6 +95,10 @@ ALLOWED_FIELDS: Final = frozenset(
         # `SECURITY.md`'s focus section forbids echoing a target.
         "tmux_socket",
         "tmux_pane",
+        # The pid of the tmux server that reported the pane. A pane id is an
+        # ordinal on one server, so without this a target outlives its server and
+        # names whatever pane inherited the id.
+        "tmux_server",
     }
 )
 
@@ -144,7 +148,7 @@ REJECT_UNMAPPABLE: Final = "unmappable-id"
 # field, so one enormous but legal-looking value cannot be stored or logged.
 MAX_ID_LEN: Final = 200
 MAX_PATH_LEN: Final = 4096
-# The two terminal-identity fields. Bounded here as every other string field is,
+# The three terminal-identity fields. Bounded here as every other string field is,
 # and bounded well above their own grammars, which `focus.py` applies at the
 # raise: this cap stops an enormous but legal-looking value being stored, and the
 # grammar decides whether a command is ever built.
@@ -194,10 +198,11 @@ class Event:
     subagent_id: str | None = None
     transcript_path: str | None = None
     # Set on `session_started` alone, and only by a hook inside tmux. Nothing
-    # published carries either one; the coordinator holds them for the focus
-    # command and the row publishes a boolean saying a target exists.
+    # published carries any of the three; the coordinator holds them for the
+    # focus command and the row publishes a boolean saying a target exists.
     tmux_socket: str | None = None
     tmux_pane: str | None = None
+    tmux_server: str | None = None
 
 
 @dataclass(frozen=True)
@@ -419,6 +424,7 @@ def parse(
         transcript_path=_text(payload, "transcript_path", limit=MAX_PATH_LEN),
         tmux_socket=_text(payload, "tmux_socket", limit=MAX_TERMINAL_ID_LEN),
         tmux_pane=_text(payload, "tmux_pane", limit=MAX_TERMINAL_ID_LEN),
+        tmux_server=_text(payload, "tmux_server", limit=MAX_TERMINAL_ID_LEN),
     )
 
 

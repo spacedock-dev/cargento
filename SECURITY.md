@@ -265,7 +265,17 @@ Linux and Windows are unmeasured, and the capture records them that way. Earlier
 suggested Wayland may not permit a background process to raise a window at all, and that Windows
 Terminal has no documented way to focus a tab. That is research rather than measurement and this
 document does not rely on it: both are simply not named cases, and either becomes one the same way
-the macOS cases do, by being run and recorded. iTerm2 is unmeasured for the plainest reason, that it
+the macOS cases do, by being run and recorded.
+
+**Not a named case means no target is recorded there, and that is enforced where the target is
+stored rather than left to the raise to discover.** The device grammar below anchors `/dev/` and
+admits no separator after it, so it refuses `/dev/pts/N` — which is the client device of every
+terminal emulator, every ssh session and every mux-inside-mux client on Linux and the BSDs. A run
+that recorded targets there would publish a focusable control for the ordinary Linux case and spend
+two subprocesses answering false every time it was clicked, which is precisely what "A session
+matching no named case is not focused, and the reader is told that rather than shown a control that
+does nothing" forbids. So recording is gated on the platform the case was measured on, and
+`focusable` is false on every other one. iTerm2 is unmeasured for the plainest reason, that it
 is not installed on the machine that took the capture.
 
 ### The target, and what makes it safe to pass
@@ -284,6 +294,7 @@ So the grammars are per field, and each is as narrow as its field allows:
 | tmux pane id | `^%[0-9]{1,9}$` | `%3; rm -rf`, `-%3`, `%`, `%3 %4` |
 | tmux socket name | `^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$`, passed as `-L`, a name and never a path | `-L`, `../x`, `/tmp/s`, `.hidden`, an empty string |
 | controlling terminal device | `^/dev/[A-Za-z0-9][A-Za-z0-9._-]{0,119}$` | `--dangerously-skip-permissions`, `; rm -rf ~`, `../../etc/passwd`, `/dev/..` |
+| tmux server pid | `^[0-9]{1,10}$`, compared and never passed as an argument | `-84321`, `84321;x`, `84321,0`, an empty string |
 
 Every field is substituted into a fixed argv position and never concatenated, and a field failing
 its grammar is not a raise.
@@ -347,6 +358,18 @@ attached, and a disclosure they clicked past is not consent from the person whos
 cost is that the shared-session case is not served at all, and the section says so rather than
 leaving a reader to discover it.
 
+**The rule is decided on one command and enforced by the next, and the gap between them is named
+rather than narrowed.** `list-clients` answers, the count is decided, and `switch-client` is spawned
+about six milliseconds later — measured at a 6.1 ms median and a 7.4 ms maximum over ten runs, that
+being server-side client spawn rather than the 0.05 ms of Python between them. A client attaching
+inside that window is raised anyway. tmux offers no conditional switch, and closing the gap would
+mean a fourth command — a server-side `if-shell -F '#{session_attached}'` — which the "a command
+other than one of the named cases" clause forbids outright. So the bound is stated the way the
+`core.fsmonitor` hazard and the Apple Event arm each are, and the violation clause below measures
+what the lookup reported rather than a state of the world this feature cannot hold still. The worst
+outcome in that window is another attached client's view moving; nothing is escalated, disclosed or
+written.
+
 ### What is never done
 
 Nothing is typed into a terminal. No keystroke, no text, no newline, by any path. The ask lane's
@@ -382,13 +405,30 @@ mandates.
 The tmux socket case is three commands on the socket the session reported, in this order, or there is
 no focus:
 
-    tmux -L <socket> display-message -p -t <pane> '#{session_name}'
+    tmux -L <socket> display-message -p -t <pane> '#{pid} #{session_name}'
     tmux -L <socket> list-clients -t <session> -F '#{client_tty}'
     tmux -L <socket> switch-client -c <client tty> -t <pane>
 
-The first proves the pane still exists and names its session. The second is what the two decline
-rules are decided on: no client attached is nobody to raise for, and more than one is the shared
-session this document refuses. Only the third moves anything.
+The first names the session and the server, and an earlier draft claimed less carefully that it
+"proves the pane still exists". It proves that *a* pane with that id exists in whatever server holds
+that socket name now, which is not the same pane. **A pane id is an ordinal on one tmux server, not
+a name.** Kill the server, start another on the same socket name, and `%3` is somebody else's pane
+in somebody else's session — reproduced on tmux 3.7c, where the second generation re-issued `%0`
+upward and a raise on the stale target moved an attached client onto an unrelated window and
+reported success. That is the misdirected raise Known and accepted names, arrived at without any
+lookup failing. So the pid the server reports is compared against the pid that reported the pane,
+and a mismatch is a decline. It costs no extra command, and it is also what makes a socket name that
+resolves on a *different* server of the same user — the hook and the daemon need not share a
+`TMUX_TMPDIR` — a decline rather than a raise on that server's pane.
+
+The second is what the two decline rules are decided on: no client attached is nobody to raise for,
+and more than one is the shared session this document refuses. **It is counted by lines, not by
+values.** `list-clients` prints one line per attached client, and a control-mode client — a
+`tmux -C attach`, which is what another agent driving the same session looks like — reports an empty
+`#{client_tty}`. A reader that dropped empty lines would count two attached clients as one and raise,
+which is the shared-session case this document refuses outright. A client the device grammar cannot
+name is then a separate decline, decided after the count, so such a client is refused rather than
+invisible. Only the third moves anything.
 
 ### What the command can still cause
 
@@ -429,19 +469,39 @@ Both halves of that matter and neither is decoration. A GET would repeat a gap t
 already been bitten by: an attacker page that gets the browser to open a Cargento URL in a tab reads
 nothing back, and the "a cross-origin document cannot be read" reasoning does not cover the side
 effect. On the quota fetch that side effect was a credential read. Here it would be a window
-appearing on the operator's desk. And loopback is not a per-user boundary, so any other account on
-the machine can reach the port; the capability is what separates a focus route from `/api/dismiss`,
-whose worst outcome is a hidden row.
+appearing on the operator's desk.
+
+**What the capability separates, stated exactly, because the first draft claimed more than it
+buys.** Loopback is not a per-user boundary, and the token rides in the served document: any other
+account on the machine can `GET /` and lift it, so against that account this route stands where
+`/api/dismiss` does. What the capability actually separates is a page from a document navigation and
+from a local process that never fetched the board. The absence of per-user isolation is a documented
+exposure of the whole server rather than something this feature introduces or repairs, and Known and
+accepted below says so in the same words.
 
 A rate ceiling and an in-flight gate, so a repeated or looped request cannot repeat the raise. The
-route's checks run in the order `POST /api/events/<harness>` establishes, and for its stated reason:
-an unsupported case is a 404 before the capability is consulted, so the route cannot be used as an
-authentication oracle.
+route's check order is deliberately **not** the one `POST /api/events/<harness>` uses, and the
+difference is the security property rather than an inconsistency. That route answers an unsupported
+harness with a 404 before consulting the capability, because a harness name is public. **A session id
+is not.** So here the capability is checked first, then the ceiling, and the session is looked up
+last: to a caller without the token a live session and one that never existed are byte-identical
+403s, and the route is not an oracle for which sessions the board holds. The focus route emits no
+404 on any path — an unsupported session is the same 200 `{"focused": false}` as any other
+unfocusable one, and the feature being off is a 503 rather than a 404 because it is a run-wide fact
+that leaks nothing about any session, where a 404 would read as a build too old to have the route.
+
+The ceiling is claimed after the body is read rather than before it. The body read is blocking and
+carries no socket timeout, so claiming a process-wide one-slot gate ahead of it let a peer that sent
+a length and then nothing hold focus shut for as long as it kept the socket open. Nothing in the
+body distinguishes one session from another, so reading it first adds no oracle, and the gate still
+precedes the raise, which is what "cannot repeat the raise" asks for.
 
 ### What is published, and what is written to disk
 
-The response is a single boolean saying whether a focus was attempted. No target identifier, no
-pathname and no window title is echoed. Nothing is written to disk by this feature, and nothing
+The response is a single boolean saying whether a focus happened — true only when the raise command
+itself exited zero, and false alike for a raise that was attempted and failed and for one that was
+never attempted at all, so a declined lookup and an unknown session are indistinguishable from a
+failed command. No target identifier, no pathname and no window title is echoed. Nothing is written to disk by this feature, and nothing
 leaves the machine.
 
 ### The off switch
@@ -478,7 +538,7 @@ socket half of it ran, a keystroke sent into any terminal by any path, output re
 directory set on the command, a focus triggered by anything but an authorized operator action, a
 focus while the feature is off, a respawned daemon that re-enables it, a target resolved once and
 reused rather than resolved at the raise, a raise on a lookup that returned no terminal or more than
-one live candidate, a raise on a multiplexer session with more than one attached client, or any read or write inside the user's repository.
+one live candidate, a raise on a lookup that reported more than one attached client, or any read or write inside the user's repository.
 
 ## Usage quota reads (the quota fetcher)
 
@@ -936,12 +996,16 @@ the paragraph below grants another account on the machine, a non-default bind gr
 can reach the port. Reading `/api/data` is the whole board: every session's titles, prompts and
 project paths. Writing is the nine POST routes, `/api/shutdown` and `/api/answer` among them, so a
 reachable dashboard can be killed, and a question a session is waiting on can be answered by
-somebody other than you. There is nothing to authenticate with on eight of them, for the reason the
+somebody other than you. There is nothing to authenticate with on seven of them, for the reason the
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
-The ninth is `POST /api/focus`, and its capability buys less than it looks: the token is injected
-into the served document, so anything that can load the board under a non-default bind can also ask
-for a raise. What that gate actually separates is a page from a document navigation and from a local
-process that never fetched the board, which is the exposure the focus section states.
+Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
+token published only in the state file at mode `0600` and never served to the page, so a client
+holding only the board cannot post events at all — that boundary survives a non-default bind intact,
+and Event ingress below is where it is stated. `POST /api/focus`'s capability buys less: the token is
+injected into the served document, so anything that can load the board under a non-default bind can
+also ask for a raise, and `/api/data` names which rows would answer it. What that second gate
+actually separates is a page from a document navigation and from a local process that never fetched
+the board, which is the exposure the focus section states.
 
 What the non-default bind does *not* spend is the rebinding defense. The Host and Origin gate widens
 to addresses and never to names. Under `0.0.0.0`, that means any address a client could arrive on.

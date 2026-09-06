@@ -34,12 +34,12 @@ guessing would post one harness's events to the other's route.
 
 ## What it sends, and what it refuses to send
 
-Only the eleven allowlisted envelope fields, built field by field from the native
+Only the twelve allowlisted envelope fields, built field by field from the native
 payload. The prompt, the tool name, the tool input and output, and every other
 native field are dropped here rather than at the server, so they are never put
 on a socket at all.
 
-Two of the eleven are terminal identity, and they ride `SessionStart` alone. A
+Three of the twelve are terminal identity, and they ride `SessionStart` alone. A
 hook can see what the dashboard never can: `events.ALLOWED_FIELDS` carries no pid,
 tty or terminal identity and no collector reads one, but a hook is a child of the
 harness and its environment says which tmux pane it is in. What is read is the
@@ -234,6 +234,12 @@ EVENTS_BY_HARNESS = {
 # honest decline rather than a command that cannot work.
 TMUX_PANE_PATTERN = r"^%[0-9]{1,9}$"
 TMUX_SOCKET_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$"
+# The tmux server's pid, `$TMUX`'s second field. Sent because a pane id is an
+# ordinal on ONE server: kill the server, start another on the same socket name,
+# and `%3` is somebody else's pane. The raise asks the server for `#{pid}` and
+# declines a target the answer does not match, so this field is what stops a
+# stale target from naming an unrelated pane.
+TMUX_SERVER_PATTERN = r"^[0-9]{1,10}$"
 
 # The event this identity rides, and the only one. A pane does not change inside
 # a session, and posting it on every hook would put it on the socket hundreds of
@@ -242,14 +248,18 @@ IDENTITY_EVENT = "session_started"
 
 
 def tmux_identity(environ: Any, uid: int | None) -> dict[str, str]:
-    """The tmux socket name and pane for this hook's own process, or {}.
+    """The tmux socket name, pane and server pid for this hook's process, or {}.
 
-    `TMUX` is `<socket path>,<server pid>,<session id>`. The basename is taken
-    only when its directory is the DEFAULT tmux socket directory for this uid
-    (`$TMUX_TMPDIR/tmux-<uid>`, falling back to `/tmp`), because a name passed as
-    `-L` resolves against exactly that directory: a socket living anywhere else
-    cannot be named, and inventing a name for it would build a command aimed at
-    somebody else's server.
+    `TMUX` is `<socket path>,<server pid>,<session id>`, and all three readings
+    come out of it and `TMUX_PANE`. The basename is taken only when its directory
+    is the DEFAULT tmux socket directory for this uid (`$TMUX_TMPDIR/tmux-<uid>`,
+    falling back to `/tmp`), because a name passed as `-L` resolves against that
+    directory *for a process that shares this one's `TMUX_TMPDIR`* — which the
+    dashboard daemon need not, since it may have been launched from a differently
+    configured tmux or from none. So the directory check is a bound on what may
+    be named and never a promise about where the name will resolve later; the
+    server pid is what makes a name resolving elsewhere a decline rather than a
+    raise on an unrelated server's pane.
 
     Reads three environment variables and makes no other call of any kind. There
     is no ancestry walk and no controlling-terminal read here, and their absence
@@ -261,11 +271,16 @@ def tmux_identity(environ: Any, uid: int | None) -> dict[str, str]:
         return {}
     raw = environ.get("TMUX")
     pane = environ.get("TMUX_PANE")
-    if not isinstance(raw, str) or not isinstance(pane, str):
+    if (
+        not isinstance(raw, str)
+        or not isinstance(pane, str)
+        or re.match(TMUX_PANE_PATTERN, pane) is None
+    ):
         return {}
-    if re.match(TMUX_PANE_PATTERN, pane) is None:
+    fields = raw.split(",")
+    if len(fields) < 2 or re.match(TMUX_SERVER_PATTERN, fields[1]) is None:
         return {}
-    path = raw.split(",", 1)[0]
+    path, server = fields[0], fields[1]
     name = os.path.basename(path)
     if re.match(TMUX_SOCKET_PATTERN, name) is None:
         return {}
@@ -280,7 +295,7 @@ def tmux_identity(environ: Any, uid: int | None) -> dict[str, str]:
     # tmux and the environment happened to spell.
     if os.path.realpath(os.path.dirname(path)) != os.path.realpath(expected):
         return {}
-    return {"tmux_socket": name, "tmux_pane": pane}
+    return {"tmux_socket": name, "tmux_pane": pane, "tmux_server": server}
 
 
 def process_uid() -> int | None:
