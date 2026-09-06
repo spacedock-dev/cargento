@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,14 +31,21 @@ class Spy:
     checks, and this one must never move a window from a test.
     """
 
-    def __init__(self, code: int = 0) -> None:
+    def __init__(self, code: int = 0, codes: Sequence[int] = ()) -> None:
         self.calls: list[list[str]] = []
         self.code = code
+        # A status per call, for the arms that run more than one command and
+        # need them to differ: A2's launcher has to succeed for its quit step to
+        # be reached at all, so one status for the whole arm cannot express
+        # "the launcher opened and the close found nothing".
+        self.codes = list(codes)
 
     def __call__(self, argv: Sequence[str], allowed: bool) -> int:
         if not allowed:
             raise AssertionError("an arm command was reached without its flag")
         self.calls.append(list(argv))
+        if self.codes:
+            return self.codes[min(len(self.calls), len(self.codes)) - 1]
         return self.code
 
 
@@ -96,6 +104,49 @@ def patch_devices(case: unittest.TestCase, devices: tuple[str, ...]) -> None:
     patcher = unittest.mock.patch.object(recorder, "_terminal_devices", lambda _r: list(devices))
     patcher.start()
     case.addCleanup(patcher.stop)
+
+
+def mark_moved(record: dict[str, Any]) -> dict[str, Any]:
+    """A record that moved, on the axis this arm's move would show up on.
+
+    Both `moved` and `changed`, never one alone: the two are derived from the
+    same pair of raw readings, so a record carrying one without the other is a
+    shape `run_arm` cannot produce. It matters more since the verdict credits
+    movement to a mechanism by reading WHICH axis changed -- a test that set
+    `moved` alone would be handing the composer a shape no machine can.
+    """
+    on_screen = record["selected"]["source"] == recorder.SOURCE_NONE
+    record["frontmost"]["changed"] = on_screen
+    record["selected"]["changed"] = not on_screen
+    record["moved"] = True
+    record["outcome"] = recorder.outcome_of(record)
+    return record
+
+
+def mark_still(record: dict[str, Any]) -> dict[str, Any]:
+    """The other half of `mark_moved`: nothing changed on either axis."""
+    record["frontmost"]["changed"] = False
+    record["selected"]["changed"] = False
+    record["moved"] = False
+    record["outcome"] = recorder.outcome_of(record)
+    return record
+
+
+class WaitSpy:
+    """The handshake seam. A2 hands off to a daemon this suite must never start.
+
+    Returns a canned payload per handshake suffix and records what was waited
+    for, so a test can drive the whole four-phase orchestration -- launcher,
+    handshake, quit, raise -- without a fork, a window or a real poll.
+    """
+
+    def __init__(self, **payloads: dict[str, Any] | None) -> None:
+        self.waited: list[str] = []
+        self.payloads = payloads
+
+    def __call__(self, path: str) -> dict[str, Any] | None:
+        self.waited.append(path)
+        return self.payloads.get(path.rsplit(".", 1)[-1])
 
 
 class ArmTableTest(unittest.TestCase):
@@ -594,17 +645,25 @@ class RedactionTest(unittest.TestCase):
         # End to end over the arm that actually has the problem.
         # Falsified by: a real home path in the A2 record.
         patch_devices(self, ("ttys006", "ttys009"))
-        record = recorder.run_arm(
-            recorder.ARMS_BY_ID["a2"],
-            allowed=True,
-            readers=readers(),
-            execute=Spy(),
-            out="/Users/someone/captures/focus.jsonl",
-            spawn=SpawnSpy(),
-        )
+        # The minted path stands in for `tempfile.mkdtemp`'s, which on a real
+        # run is under a user's temp directory and on Windows carries no forward
+        # slash at all. Supplied by the test so the assertion measures the
+        # redaction rather than the runner's own filesystem layout.
+        minted = "/Users/someone/scratch/cargento-raise-x9/a2"
+        with unittest.mock.patch.object(recorder, "_mint_handshake", lambda: minted):
+            record = recorder.run_arm(
+                recorder.ARMS_BY_ID["a2"],
+                allowed=True,
+                readers=readers(),
+                execute=Spy(),
+                spawn=SpawnSpy(),
+                wait=WaitSpy(),
+                extra_flags=frozenset({recorder.A2_QUIT_FLAG}),
+            )
         blob = json.dumps(record["commands"])
+        self.assertIn("<path>/a2", blob, "the launcher argv must carry the minted path")
         self.assertNotIn("/Users/", blob)
-        self.assertIn("<path>/", blob)
+        self.assertNotIn("someone", blob)
 
     def test_the_recorder_cannot_reach_the_network(self) -> None:
         # The user has a Cargento running, and a recorder that posted to it
@@ -716,13 +775,10 @@ class VerdictTest(unittest.TestCase):
         # at nothing cannot vouch for the arms that were aimed at something, so
         # this outranks every positive in the file.
         # Falsified by: a green verdict beside a failed control.
-        control = self.arm("a8")
-        control["moved"] = True
-        control["outcome"] = recorder.outcome_of(control)
+        control = mark_moved(self.arm("a8"))
         positive = self.arm("a1")
-        positive["moved"] = True
         positive["frontmost"]["after_is_the_target"] = True
-        positive["outcome"] = recorder.outcome_of(positive)
+        mark_moved(positive)
         found = recorder.verdict([control, positive], base=recorder.base_of(control))
         self.assertEqual(recorder.OUTCOME_CONTROL_FAILED, control["outcome"])
         self.assertFalse(found["controls_held"])
@@ -731,9 +787,7 @@ class VerdictTest(unittest.TestCase):
     def test_a_control_that_held_still_does_not_by_itself_prove_a_raise_works(self) -> None:
         # The other half: a file of nothing but controls holding still says the
         # instrument works and nothing about the question.
-        control = self.arm("a8")
-        control["moved"] = False
-        control["outcome"] = recorder.outcome_of(control)
+        control = mark_still(self.arm("a8"))
         found = recorder.verdict([control], base=recorder.base_of(control))
         self.assertTrue(found["controls_held"])
         # `unmeasured`, not `does_not_work`: this file holds controls and nothing
@@ -749,9 +803,8 @@ class VerdictTest(unittest.TestCase):
         # the same answer an alien identity would give.
         # Falsified by: A1 alone reading as `a_raise_works_from_an_alien_...`.
         a1 = self.arm("a1")
-        a1["moved"] = True
         a1["frontmost"]["after_is_the_target"] = True
-        a1["outcome"] = recorder.outcome_of(a1)
+        mark_moved(a1)
         found = recorder.verdict([a1], base=recorder.base_of(a1))
         self.assertEqual("only_from_the_exempt_responsible_identity", found["apple_event_raise"])
         self.assertEqual("unmeasured", found["socket_raise"])
@@ -762,9 +815,8 @@ class VerdictTest(unittest.TestCase):
         # from A1 by their issuer rather than by a label anyone typed.
         # Falsified by: a disclaimed success reading the same as a same-app one.
         alien = self.arm("a4")
-        alien["moved"] = True
         alien["frontmost"]["after_is_the_target"] = True
-        alien["outcome"] = recorder.outcome_of(alien)
+        mark_moved(alien)
         found = recorder.verdict([alien], base=recorder.base_of(alien))
         self.assertEqual("works_from_an_alien_responsible_identity", found["apple_event_raise"])
         # The arms that ran touched no socket, so the file says so rather than
@@ -1083,6 +1135,12 @@ class SkippedGateTest(unittest.TestCase):
         # Falsified by: `outcome_of` reading only whether something moved.
         record = VerdictTest().arm("a2")
         record["moved"] = True
+        # The OTHER two rules satisfied, so only the gate can produce the
+        # answer below. Both of `_unanswered`'s later rules read `inconclusive`
+        # for a2, and a record that trips both proves neither -- which is what
+        # this test did until a mutation walked through it.
+        record["responsible"]["after_launcher_quit_name"] = "launchd"
+        record["responsible"]["after_launcher_quit_is_self"] = False
         skipped = [c for c in record["commands"] if c.get("requires_flag") and not c["ran"]]
         self.assertTrue(skipped, "a2 must carry a gated step for this to mean anything")
         self.assertEqual(
@@ -1110,6 +1168,11 @@ class RequiredEvidenceTest(unittest.TestCase):
         # Falsified by: `outcome_of` reading movement alone.
         record = VerdictTest().arm("a2")
         record["moved"] = True
+        # Every step ran, so the gated-step rule beside this one cannot answer
+        # and the missing field is the only thing left that can.
+        for step in record["commands"]:
+            step["ran"] = True
+        record["responsible"]["after_launcher_quit_is_self"] = True
         record["responsible"]["after_launcher_quit_name"] = None
         self.assertEqual(
             recorder.OUTCOME_INCONCLUSIVE,
@@ -1332,14 +1395,99 @@ class MechanismVerdictTest(unittest.TestCase):
                 execute=Spy(),
                 spawn=SpawnSpy(),
             )
-        record["moved"] = True
-        record["outcome"] = recorder.OUTCOME_MOVED_TO_TARGET
+        mark_moved(record)
         for key, value in over.items():
             record[key] = value
         return record
 
     def socket_positive(self) -> dict[str, Any]:
         return self.arm("a5")
+
+    def composite(self) -> dict[str, Any]:
+        """A6 as it was actually recorded: the tmux half moved, the raise declined.
+
+        Read off `docs/captures/focus/raise-appleevent-macos.jsonl` line 3 rather
+        than imagined -- `selected.source` tmux with `changed` true, `frontmost`
+        unchanged, tmux step exit 0, `osascript` step exit 1.
+        """
+        record = self.arm("a6")
+        record["frontmost"]["changed"] = False
+        record["selected"]["changed"] = True
+        record["commands"][0]["exit_status"] = 0
+        record["commands"][1]["exit_status"] = 1
+        return record
+
+    def test_an_arms_movement_is_credited_to_the_mechanism_that_caused_it(self) -> None:
+        # DRC-4389, reproduced over the two committed records rather than
+        # imagined: a6 declares BOTH mechanisms, its tmux half moved a pane and
+        # its `osascript` half exited 1, and a3's Apple Event moved nothing.
+        # Recomputing over those two answered
+        # `apple_event_raise=only_from_the_exempt_responsible_identity` -- for a
+        # mechanism that failed in both arms that exercised it -- because the
+        # verdict read one `moved` flag per arm and both findings read it.
+        #
+        # Falsified by: a `_finding` that reads `summary["moved"]`.
+        cross_app = mark_still(self.arm("a3"))
+        found = recorder.verdict([self.composite(), cross_app], base={})
+        self.assertEqual("works", found["socket_raise"])
+        self.assertEqual(
+            "does_not_work",
+            found["apple_event_raise"],
+            "a6's tmux movement may not stand in for the Apple Event that declined",
+        )
+
+    def test_a_mechanism_whose_step_never_ran_contributes_null_rather_than_a_negative(
+        self,
+    ) -> None:
+        # The per-arm null rule, one level down. A step that never ran is not a
+        # raise that failed, so an arm that stopped after its tmux half leaves
+        # the Apple Event finding unmeasured rather than negative -- the same
+        # confident-green failure this file has already had twice, at the
+        # mechanism level.
+        #
+        # Falsified by: attributing a mechanism's answer from the arm's flag
+        # rather than from its own step.
+        stopped = self.composite()
+        del stopped["commands"][1]
+        found = recorder.verdict([stopped], base={})
+        self.assertEqual("works", found["socket_raise"])
+        self.assertEqual("unmeasured", found["apple_event_raise"])
+
+    def test_the_mechanism_of_a_step_is_recoverable_from_a_file_that_predates_the_key(
+        self,
+    ) -> None:
+        # The two committed captures were written before commands declared a
+        # mechanism, and `--verdict` over them has to keep reproducing their
+        # committed answers. So the reader falls back to the binary in `argv[0]`.
+        #
+        # Falsified by: reading `command["mechanism"]` directly.
+        older = self.composite()
+        for command in older["commands"]:
+            command.pop("mechanism", None)
+        found = recorder.verdict([older, mark_still(self.arm("a3"))], base={})
+        self.assertEqual("works", found["socket_raise"])
+        self.assertEqual("does_not_work", found["apple_event_raise"])
+
+    def test_every_step_declares_the_mechanism_its_binary_implies(self) -> None:
+        # The declaration and the argv have to agree, or the fallback above and
+        # the key disagree on the same file. Checked against the arm's own
+        # mechanism tuple as well, so a step added to an arm that does not
+        # declare its mechanism fails here rather than silently widening a
+        # finding.
+        for arm in recorder.ARMS:
+            steps = recorder.plan(arm, recorder.Targets(device="ttys009"))
+            declared: set[str] = set()
+            for step in steps:
+                with self.subTest(arm=arm.id, purpose=step["purpose"]):
+                    self.assertEqual(
+                        recorder.mechanism_of(step["argv"]),
+                        step["mechanism"],
+                        "a step's declared mechanism must match the binary it runs",
+                    )
+                if step["mechanism"]:
+                    declared.add(step["mechanism"])
+            with self.subTest(arm=arm.id):
+                self.assertEqual(set(arm.mechanism), declared)
 
     def test_a_socket_raise_claims_nothing_about_the_responsible_identity(self) -> None:
         out = recorder.verdict([self.socket_positive()], base={})
@@ -1366,10 +1514,7 @@ class MechanismVerdictTest(unittest.TestCase):
         # must-move arm of that mechanism ran. Measured live: a run where the
         # pty clients failed to attach left a5 and a7 at `ran=0`, and the
         # verdict reported `socket_raise=does_not_work` off a8 and a9 alone.
-        controls = [self.arm("a8"), self.arm("a9")]
-        for record in controls:
-            record["moved"] = False
-            record["outcome"] = recorder.OUTCOME_HELD_STILL
+        controls = [mark_still(self.arm("a8")), mark_still(self.arm("a9"))]
         out = recorder.verdict(controls, base={})
         self.assertTrue(out["controls_held"])
         self.assertEqual(
@@ -1383,3 +1528,391 @@ class MechanismVerdictTest(unittest.TestCase):
             self.assertIsInstance(arm.mechanism, tuple, arm.id)
             for name in arm.mechanism:
                 self.assertIn(name, recorder.MECHANISMS, arm.id)
+
+
+class LauncherQuitArmTest(unittest.TestCase):
+    """A2's four phases, driven end to end without a fork, a window or a poll.
+
+    The arm had never worked. Its launcher command carried a literal placeholder
+    where a path belonged, so bash read `<a` as a stdin redirect and the daemon
+    never started; nothing anywhere read the two files the daemon wrote or wrote
+    the one it waited for; the wait step carried an empty argv and the runner's
+    own `continue` dropped it; the raise step declared `issued_by: daemon` and
+    nothing read it, so the parent issued the raise with the launcher window
+    still open -- A1's raise wearing A2's label; the daemon's field names did not
+    match the record's; and the quit step named an unresolvable placeholder
+    device against a script with no error branch, so it exited 0 having closed
+    nothing.
+
+    None of this re-runs the arm. The launcher-quit question is still open, and
+    these hold the instrument that would answer it.
+    """
+
+    READY: ClassVar[dict[str, Any]] = {
+        "pid": 4242,
+        "responsible_name": "osascript",
+        "responsible_is_self": True,
+        "launcher_device": "ttys012",
+    }
+    DONE: ClassVar[dict[str, Any]] = {
+        "raise_issued": True,
+        "after_launcher_quit_name": "launchd",
+        "after_launcher_quit_is_self": False,
+        "exit_status": 0,
+    }
+
+    def setUp(self) -> None:
+        patch_devices(self, ("ttys006", "ttys009"))
+        self.scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.scratch, ignore_errors=True)
+        self.handshake = str(Path(self.scratch) / "a2")
+        # The scratch directory is removed when the arm finishes, so what the
+        # parent wrote into it has to be captured as it is written rather than
+        # read back afterwards.
+        self.written: list[tuple[str, dict[str, Any]]] = []
+        original = recorder._write_json
+
+        def watched(path: str, payload: dict[str, Any]) -> None:
+            self.written.append((path, payload))
+            original(path, payload)
+
+        patcher = unittest.mock.patch.object(recorder, "_write_json", watched)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_a2(
+        self,
+        *,
+        ready: Any = ...,
+        done: Any = ...,
+        codes: Sequence[int] = (),
+        flags: frozenset[str] = frozenset({recorder.A2_QUIT_FLAG}),
+    ) -> tuple[dict[str, Any], Spy, WaitSpy]:
+        spy = Spy(codes=codes)
+        waiter = WaitSpy(
+            ready=self.READY if ready is ... else ready,
+            done=self.DONE if done is ... else done,
+        )
+        with unittest.mock.patch.object(recorder, "_mint_handshake", lambda: self.handshake):
+            record = recorder.run_arm(
+                recorder.ARMS_BY_ID["a2"],
+                allowed=True,
+                readers=readers(),
+                execute=spy,
+                spawn=SpawnSpy(),
+                wait=waiter,
+                extra_flags=flags,
+            )
+        return record, spy, waiter
+
+    def test_the_launcher_command_carries_a_path_rather_than_a_placeholder(self) -> None:
+        # Defect 1. `<a scratch handshake file this recorder mints>` went
+        # verbatim into a shell command, where bash reads `<a` as a stdin
+        # redirect: `a: No such file or directory`, and the daemon never ran.
+        # The committed capture carries that literal in its recorded argv.
+        #
+        # Falsified by: a placeholder reaching a command that runs.
+        record, spy, _ = self.run_a2()
+        launcher = " ".join(spy.calls[0])
+        self.assertIn("--a2-handshake", launcher)
+        self.assertNotIn(recorder.PLACEHOLDER["handshake"], launcher)
+        for metacharacter in ("<", ">", "|", ";", "&"):
+            with self.subTest(metacharacter=metacharacter):
+                self.assertNotIn(
+                    metacharacter,
+                    launcher.split("do script ")[1],
+                    "the launcher is read by a shell, so a metacharacter in it is a command",
+                )
+        self.assertIn(self.handshake, launcher)
+        del record
+
+    def test_a_minted_handshake_names_a_directory_that_exists(self) -> None:
+        # The other half: a path the daemon can actually write to, and one the
+        # parent removes rather than leaving behind per invocation.
+        minted = recorder._mint_handshake()
+        self.addCleanup(shutil.rmtree, os.path.dirname(minted), ignore_errors=True)
+        self.assertTrue(os.path.isdir(os.path.dirname(minted)))
+        recorder._write_json(minted + recorder.READY_SUFFIX, {"pid": 1})
+        self.assertEqual({"pid": 1}, recorder._read_json(minted + recorder.READY_SUFFIX))
+
+    def test_the_wait_for_the_daemon_is_recorded_rather_than_dropped(self) -> None:
+        # Defect 3. The step carried `"argv": []` and the runner's
+        # `if not step["argv"]: continue` dropped it, so an arm that stalled
+        # waiting for a daemon left no trace of having waited at all.
+        #
+        # Falsified by: a4 commands where three ran.
+        record, _, waiter = self.run_a2()
+        waits = [c for c in record["commands"] if not c["argv"]]
+        self.assertEqual(1, len(waits), "the wait is a step and belongs in the record")
+        self.assertTrue(waits[0]["ran"])
+        self.assertEqual(0, waits[0]["exit_status"])
+        self.assertEqual(4, len(record["commands"]))
+        self.assertIn(self.handshake + recorder.READY_SUFFIX, waiter.waited)
+        self.assertIn(
+            (self.handshake + recorder.RELEASE_SUFFIX, {"launcher_quit": True}), self.written
+        )
+        self.assertFalse(
+            os.path.isdir(self.scratch), "the scratch handshake is removed rather than accumulated"
+        )
+
+    def test_a_daemon_that_never_reports_is_a_status_rather_than_a_silence(self) -> None:
+        # The same step on the unhappy path. A wait that timed out has to be
+        # readable as one, and the two steps behind it must not run.
+        record, spy, _ = self.run_a2(ready=None)
+        waits = [c for c in record["commands"] if not c["argv"]]
+        self.assertEqual(recorder.EXIT_TIMED_OUT, waits[0]["exit_status"])
+        self.assertEqual([False, False], [c["ran"] for c in record["commands"][2:]])
+        self.assertEqual(1, len(spy.calls), "only the launcher may have run")
+        self.assertEqual(recorder.OUTCOME_INCONCLUSIVE, record["outcome"])
+
+    def test_the_raise_is_issued_by_the_daemon_and_never_by_the_parent(self) -> None:
+        # Defect 4, and the reason the arm could never answer its question. The
+        # step declared `issued_by: detached_daemon_past_its_launcher` and
+        # `run_arm` branched only on `spawned`, so the raise went through the
+        # ordinary runner with the launcher window still open. That is A1's
+        # measurement recorded under A2's name.
+        #
+        # Falsified by: the parent's executor seeing the raise script.
+        record, spy, _ = self.run_a2()
+        self.assertEqual(2, len(spy.calls), "the launcher and the quit, and nothing else")
+        for call in spy.calls:
+            with self.subTest(call=call[-1][:40]):
+                self.assertNotIn("focus declined", " ".join(call))
+        raised = record["commands"][3]
+        self.assertTrue(raised["ran"])
+        self.assertEqual(self.DONE["exit_status"], raised["exit_status"])
+        self.assertIn("focus declined", " ".join(raised["argv"]))
+
+    def test_the_daemons_exit_status_is_the_one_recorded(self) -> None:
+        # Not the parent's, which never ran anything for that step. A daemon
+        # whose raise declined has to read as a decline.
+        record, _, _ = self.run_a2(done={**self.DONE, "exit_status": 1})
+        self.assertEqual(1, record["commands"][3]["exit_status"])
+
+    def test_the_record_carries_the_responsible_identity_the_daemon_measured(self) -> None:
+        # Defect 5, both halves. The daemon wrote `responsible_after_quit_name`
+        # while the record read `after_launcher_quit_name`, so the field that is
+        # the entire difference between A2 and A1 was null in the committed
+        # capture; and the `responsible` block that WAS filled came from the
+        # recorder's own pid, which every arm shares and which answers Terminal
+        # regardless of what the daemon is.
+        #
+        # Falsified by: a2 reporting the recorder's responsible process.
+        record, _, _ = self.run_a2()
+        found = record["responsible"]
+        self.assertEqual(self.READY["responsible_name"], found["name"])
+        self.assertTrue(found["is_self"])
+        self.assertEqual(self.DONE["after_launcher_quit_name"], found["after_launcher_quit_name"])
+        self.assertIs(False, found["after_launcher_quit_is_self"])
+        self.assertNotEqual(recorder.OUTCOME_INCONCLUSIVE, record["outcome"])
+
+    def test_the_quit_step_names_the_device_the_daemon_reported(self) -> None:
+        # Defect 6, first half. `_plan_a2` passed the literal
+        # `<the launcher's device>`, which no tab can hold, so the step could
+        # never have closed the launcher window. The device is not knowable
+        # until the daemon reports it, which is why the plan prints a
+        # placeholder and the runner rebuilds the argv.
+        #
+        # Falsified by: a quit argv that survives the handshake unchanged.
+        record, spy, _ = self.run_a2()
+        quit_argv = " ".join(spy.calls[1])
+        self.assertIn(f"/dev/{self.READY['launcher_device']}", quit_argv)
+        self.assertNotIn(recorder.PLACEHOLDER["launcher"], quit_argv)
+        self.assertIn(
+            f"/dev/{self.READY['launcher_device']}", " ".join(record["commands"][2]["argv"])
+        )
+
+    def test_a_close_that_finds_no_window_declines_rather_than_succeeding(self) -> None:
+        # Defect 6, second half. The script had no `else` and no `error`, unlike
+        # the raise script beside it, so `exit_status: 0` did not separate
+        # closing the launcher window from finding nothing to close -- and the
+        # committed capture records that step at 0 having provably closed
+        # nothing, because the device it named cannot exist.
+        script = recorder.close_window_on_device("ttys012")
+        self.assertIn("error ", script)
+        self.assertIn("number 1", script)
+
+    def test_a_quit_that_did_not_close_leaves_the_daemon_unreleased(self) -> None:
+        # What the decline above buys. A parent that cannot prove the launcher
+        # window is gone must not let the daemon raise, because a raise with the
+        # launcher alive is the case three other arms already cover.
+        #
+        # Falsified by: releasing the daemon on any quit status.
+        record, spy, waiter = self.run_a2(codes=(0, 1))
+        self.assertEqual(2, len(spy.calls))
+        self.assertNotIn(self.handshake + recorder.DONE_SUFFIX, waiter.waited)
+        self.assertFalse(record["commands"][3]["ran"])
+        self.assertEqual(recorder.OUTCOME_INCONCLUSIVE, record["outcome"])
+        self.assertIn(
+            (self.handshake + recorder.RELEASE_SUFFIX, {"launcher_quit": False}), self.written
+        )
+
+    def test_a2_opens_no_window_without_the_flag_that_closes_it(self) -> None:
+        # The leak, and the reason it is a leak: an arm whose gated step is
+        # unauthorised is already `inconclusive`, so opening a window it may not
+        # close buys no evidence and leaves one on the operator's desk per run.
+        #
+        # Falsified by: any command running on `--allow-a2` alone.
+        record, spy, waiter = self.run_a2(flags=frozenset())
+        self.assertEqual([], spy.calls)
+        self.assertEqual([], waiter.waited)
+        self.assertTrue(all(c["ran"] is False for c in record["commands"]))
+        self.assertEqual(recorder.OUTCOME_INCONCLUSIVE, record["outcome"])
+
+    def test_the_daemon_reads_its_controlling_terminal_before_it_detaches(self) -> None:
+        # After `setsid` there is no controlling terminal to read, so the order
+        # is the whole of it: read late and the launcher's device is null and
+        # the quit step has no window it can name.
+        #
+        # Falsified by: the read moved below the detach.
+        source = SCRIPT.read_text(encoding="utf-8")
+        body = source.split("def a2_daemon(")[1].split("\ndef ")[0]
+        self.assertLess(
+            body.index("_controlling_device()"),
+            body.index("os.setsid()"),
+            "the controlling terminal must be read before the daemon detaches",
+        )
+
+
+class DaemonCoreTest(unittest.TestCase):
+    """The daemon's own half, with the fork left out of it.
+
+    `a2_daemon` fused a double fork, a poll, a raise and two file writes into one
+    function, which is why it was the only block in the recorder with no test at
+    all -- coverage reported its entire body missing -- and why five of the six
+    defects lived in it or on the read side it never had. The fork is now a
+    wrapper and everything measured is below it.
+    """
+
+    def setUp(self) -> None:
+        self.scratch = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.scratch, ignore_errors=True)
+        self.handshake = str(Path(self.scratch) / "a2")
+
+    def test_the_daemon_reports_what_it_is_before_it_waits(self) -> None:
+        # The parent cannot name the launcher window, and cannot tell the
+        # daemon's identity from its own, unless this file arrives first.
+        spy = Spy()
+        recorder.a2_daemon_core(
+            self.handshake,
+            "ttys009",
+            launcher_device="ttys012",
+            readers=readers(responsible=4242, name="osascript"),
+            execute=spy,
+            wait=lambda _path: {"launcher_quit": True},
+            pid=4242,
+        )
+        ready = recorder._read_json(self.handshake + recorder.READY_SUFFIX)
+        self.assertEqual(
+            {
+                "pid": 4242,
+                "responsible_name": "osascript",
+                "responsible_is_self": True,
+                "launcher_device": "ttys012",
+            },
+            ready,
+        )
+
+    def test_a_released_daemon_raises_and_reports_the_fields_the_record_reads(self) -> None:
+        # The field names are the defect: the daemon wrote
+        # `responsible_after_quit_*` and the record read `after_launcher_quit_*`,
+        # with no reader anywhere to notice they had never met.
+        #
+        # Falsified by: a rename on either side alone.
+        spy = Spy(code=0)
+        done = recorder.a2_daemon_core(
+            self.handshake,
+            "ttys009",
+            launcher_device="ttys012",
+            readers=readers(responsible=4242, name="launchd"),
+            execute=spy,
+            wait=lambda _path: {"launcher_quit": True},
+            pid=4242,
+        )
+        self.assertEqual(1, len(spy.calls))
+        self.assertIn("/dev/ttys009", " ".join(spy.calls[0]))
+        self.assertEqual(recorder._read_json(self.handshake + recorder.DONE_SUFFIX), done)
+        self.assertTrue(done["raise_issued"])
+        self.assertEqual("launchd", done["after_launcher_quit_name"])
+        self.assertTrue(done["after_launcher_quit_is_self"])
+        self.assertEqual(0, done["exit_status"])
+        for field in ("after_launcher_quit_name", "after_launcher_quit_is_self"):
+            with self.subTest(field=field):
+                self.assertIn(("responsible", field), recorder.ARMS_BY_ID["a2"].requires_evidence)
+
+    def test_the_daemon_issues_no_raise_while_its_launcher_is_alive(self) -> None:
+        # The condition that makes A2 a different question from A1. A daemon the
+        # parent could not release, or released with the window still standing,
+        # raises nothing rather than answering A1's question under A2's name.
+        #
+        # Falsified by: a raise on any release, or on none.
+        for release, why in (
+            (None, recorder.A2_NOT_RELEASED),
+            ({"launcher_quit": False}, recorder.A2_LAUNCHER_ALIVE),
+        ):
+            with self.subTest(why=why):
+                spy = Spy()
+                done = recorder.a2_daemon_core(
+                    self.handshake,
+                    "ttys009",
+                    launcher_device="ttys012",
+                    readers=readers(),
+                    execute=spy,
+                    wait=lambda _path, answer=release: answer,  # type: ignore[misc]
+                    pid=4242,
+                )
+                self.assertEqual([], spy.calls)
+                self.assertFalse(done["raise_issued"])
+                self.assertEqual(why, done["why"])
+                self.assertIsNone(done.get("after_launcher_quit_name"))
+
+    def test_the_wait_gives_up_rather_than_polling_forever(self) -> None:
+        # The parent's side of the same handshake, against a file that never
+        # arrives. A recorder that blocks here holds an operator's terminal.
+        self.assertIsNone(
+            recorder._await_json(self.handshake + recorder.DONE_SUFFIX, timeout=0.05, poll=0.01)
+        )
+        recorder._write_json(self.handshake + recorder.DONE_SUFFIX, {"raise_issued": False})
+        self.assertEqual(
+            {"raise_issued": False},
+            recorder._await_json(self.handshake + recorder.DONE_SUFFIX, timeout=0.05, poll=0.01),
+        )
+
+    def test_a_partial_handshake_file_reads_as_not_there_yet(self) -> None:
+        # Both sides poll, so a reader can open a file between the writer's
+        # `open` and its flush. That is the ordinary case, not an error.
+        Path(self.handshake + recorder.READY_SUFFIX).write_text('{"pid": 4', encoding="utf-8")
+        self.assertIsNone(recorder._read_json(self.handshake + recorder.READY_SUFFIX))
+        Path(self.handshake + recorder.READY_SUFFIX).write_text("[1, 2]", encoding="utf-8")
+        self.assertIsNone(recorder._read_json(self.handshake + recorder.READY_SUFFIX))
+
+    def test_the_controlling_terminal_read_answers_a_bare_device_or_nothing(self) -> None:
+        # What the daemon reports as its launcher's device, so the parent's quit
+        # step can name a window. Read here in whatever this suite runs in: a
+        # terminal, or a runner with none. Both are legitimate answers; a
+        # `/dev/` prefix or `ps`'s own `??` is not, because the close script
+        # builds `/dev/<device>` itself.
+        found = recorder._controlling_device()
+        if found is not None:
+            self.assertNotIn("/", found)
+            self.assertNotIn("?", found)
+
+    def test_the_daemon_is_gated_on_the_arms_own_flags(self) -> None:
+        # It issues a raise through `_execute`, so it is a way to move a window,
+        # so it is gated like every other. A hidden flag is not a gate.
+        done = subprocess.run(
+            [sys.executable, str(SCRIPT), "--a2-daemon", "--a2-handshake", self.handshake],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        self.assertEqual(3, done.returncode)
+        self.assertIn("Nothing ran", done.stderr)
+        self.assertFalse(Path(self.handshake + recorder.READY_SUFFIX).exists())
+        # And the launcher passes what the gate demands. The two have to agree
+        # or the arm's own daemon refuses itself, which is a gate that measures
+        # nothing wearing the clothes of one that does.
+        launcher = " ".join(recorder._a2_launcher_argv(self.handshake, "ttys009"))
+        self.assertIn(recorder.flag_for("a2"), launcher)
+        self.assertIn(recorder.A2_QUIT_FLAG, launcher)

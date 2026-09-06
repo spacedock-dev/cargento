@@ -116,8 +116,10 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -150,10 +152,23 @@ BASE_KEYS: tuple[str, ...] = ("format", "record", "os", "at")
 # long is waiting on a TCC prompt, which is an operator decision rather than a
 # measurement.
 COMMAND_TIMEOUT_SEC = 20
-# How long the parent waits for the A2 daemon at each handshake. Generous
-# because the operator has to close a window by hand in the middle of it.
+# How long either side of A2's handshake waits for the other. Generous because
+# opening a Terminal window with an Apple Event can raise a TCC prompt, and an
+# operator answering one is not a measurement. Not because a window is closed by
+# hand: the recorder's own quit step closes it, behind its own flag.
 HANDSHAKE_TIMEOUT_SEC = 120
 HANDSHAKE_POLL_SEC = 0.25
+
+# A2's handshake is three files beside one minted path. Files rather than the
+# obvious pipe or loopback pair: the recorder may not import a networking module
+# at all, a test greps the source to keep it that way, and the daemon is not the
+# parent's child after its double fork, so there is no descriptor to inherit and
+# nothing to wait on. `.ready` is the daemon saying what it is, `.release` the
+# parent saying whether the launcher window is gone, and `.done` the daemon
+# saying what it did.
+READY_SUFFIX = ".ready"
+RELEASE_SUFFIX = ".release"
+DONE_SUFFIX = ".done"
 
 # The applications an arm targets, and the only ones whose identity is written
 # down. Everything else the operator happens to have in front is `other`.
@@ -229,8 +244,8 @@ PLACEHOLDER: dict[str, str] = {
     "no_client_device": NO_CLIENT_DEVICE,
     "socket": TMUX_SOCKET,
     "session": TMUX_SESSION,
-    "out": "<the capture file given to --out>",
     "handshake": "<a scratch handshake file this recorder mints>",
+    "launcher": "<the launcher window's device, reported by the daemon>",
 }
 
 
@@ -272,6 +287,29 @@ class Arm:
 MECHANISM_SOCKET = "socket_ipc"
 MECHANISM_APPLE_EVENT = "apple_event"
 MECHANISMS = (MECHANISM_SOCKET, MECHANISM_APPLE_EVENT)
+
+# Which mechanism a command exercises, by the binary it runs. `lsappinfo` is
+# deliberately absent: a LaunchServices read exercises neither, and the baseline
+# arm that runs it declares no mechanism either.
+MECHANISM_BY_BINARY: dict[str, str] = {
+    "osascript": MECHANISM_APPLE_EVENT,
+    "tmux": MECHANISM_SOCKET,
+}
+
+
+def mechanism_of(argv: Sequence[str]) -> str | None:
+    """The mechanism a command exercises, or `None` for one that exercises neither.
+
+    Every step declares this, and a step's declaration is checked against this
+    function by a test. It exists separately because the two committed captures
+    were written before commands carried the key, and `--verdict` over them has
+    to keep reproducing their committed answers -- so the verdict reads the
+    declaration when it is there and falls back to the binary when it is not.
+    """
+    if not argv:
+        return None
+    return MECHANISM_BY_BINARY.get(os.path.basename(argv[0]))
+
 
 NEED_TERMINAL_TABS = "two_or_more_terminal_tabs"
 NEED_TMUX_SERVER = "a_tmux_server_on_this_recorders_own_socket"
@@ -492,6 +530,7 @@ PRECONDITION_KEYS: tuple[str, ...] = (
 COMMAND_KEYS: tuple[str, ...] = (
     "argv",
     "purpose",
+    "mechanism",
     "ran",
     "exit_status",
     "requires_flag",
@@ -626,24 +665,43 @@ def open_launcher_window(command: str) -> str:
 
 
 def close_window_on_device(device: str) -> str:
-    """AppleScript closing the window holding a device, saving nothing.
+    """AppleScript closing the window holding a device, saving nothing, or DECLINING.
 
     Iterated rather than filtered with `whose`: DRC-4382 measured that
     `every tab of every window whose tty is X` binds the filter to the WINDOW
     and then takes all of its tabs, which counted 2 for a device exactly one tab
     sits on. A close built on that shape would close the wrong window.
+
+    The error branch is the same decline `raise_terminal_tab` carries, and A2 is
+    why it had to exist: without it the script exited 0 whether it closed the
+    launcher window or found nothing to close, and the arm's committed capture
+    records exactly that -- `exit_status: 0` on a step that named an unresolvable
+    placeholder device and provably closed nothing. A2's whole question is
+    whether the launcher is GONE, so a quit that cannot say it closed something
+    is a quit the daemon must not be released on.
+
+    Matches are collected before anything is closed. Closing inside
+    `repeat with w in windows` mutates the collection being walked, which is how
+    the same loop shape could skip a window or act on a stale reference.
     """
     quoted = identity._bare(device).replace('"', "")  # noqa: SLF001
     return "\n".join(
         (
             'tell application "Terminal"',
+            "set doomed to {}",
             "repeat with w in windows",
             "repeat with t in tabs of w",
             f'if tty of t is "/dev/{quoted}" then',
-            "close w saving no",
+            "set end of doomed to w",
             "exit repeat",
             "end if",
             "end repeat",
+            "end repeat",
+            "if (count of doomed) is 0 then",
+            'error "close declined: no window on that device" number 1',
+            "end if",
+            "repeat with w in doomed",
+            "close w saving no",
             "end repeat",
             "end tell",
         )
@@ -989,9 +1047,15 @@ def _first_pane(readers: Readers, socket: str) -> str | None:
 
 
 def plan(
-    arm: Arm, targets: Targets, *, socket: str = TMUX_SOCKET, out: str = ""
+    arm: Arm, targets: Targets, *, socket: str = TMUX_SOCKET, handshake: str = ""
 ) -> list[dict[str, Any]]:
-    """Every command the arm would run, in order, as argv lists."""
+    """Every command the arm would run, in order, as argv lists.
+
+    Every step declares its `mechanism`, checked against the binary in its argv
+    by a test. Declared rather than derived because the verdict attributes
+    movement per mechanism, and a step that runs `osascript` to READ something
+    would have to say so rather than have it inferred.
+    """
     device = targets.device or PLACEHOLDER["device"]
     client = targets.client or PLACEHOLDER["client"]
     pane = targets.pane or PLACEHOLDER["pane"]
@@ -1001,10 +1065,12 @@ def plan(
             {
                 "purpose": "a Terminal raise naming a device no live tab holds",
                 "argv": ["/usr/bin/osascript", "-e", raise_terminal_tab(NO_MATCH_DEVICE)],
+                "mechanism": MECHANISM_APPLE_EVENT,
             },
             {
                 "purpose": "a tmux switch naming a client that is not attached",
                 "argv": ["tmux", "-L", socket, "switch-client", "-c", NO_CLIENT_DEVICE, "-t", pane],
+                "mechanism": MECHANISM_SOCKET,
             },
         ]
     elif arm.id == "a0":
@@ -1012,6 +1078,7 @@ def plan(
             {
                 "purpose": "the LaunchServices frontmost read",
                 "argv": ["/usr/bin/lsappinfo", "front"],
+                "mechanism": None,
             }
         ]
     elif arm.id in {"a5", "a7"}:
@@ -1019,6 +1086,7 @@ def plan(
             {
                 "purpose": "steer the named client to the target pane",
                 "argv": ["tmux", "-L", socket, "switch-client", "-c", client, "-t", pane],
+                "mechanism": MECHANISM_SOCKET,
             }
         ]
     elif arm.id == "a9":
@@ -1026,6 +1094,7 @@ def plan(
             {
                 "purpose": "A5 with `-L` omitted, so it reaches the default socket",
                 "argv": ["tmux", "switch-client", "-c", client, "-t", pane],
+                "mechanism": MECHANISM_SOCKET,
             }
         ]
     elif arm.id == "a1":
@@ -1033,6 +1102,7 @@ def plan(
             {
                 "purpose": "raise the Terminal tab on the target device",
                 "argv": ["/usr/bin/osascript", "-e", raise_terminal_tab(device)],
+                "mechanism": MECHANISM_APPLE_EVENT,
             }
         ]
     elif arm.id == "a6":
@@ -1040,10 +1110,12 @@ def plan(
             {
                 "purpose": "steer the named client to the target pane",
                 "argv": ["tmux", "-L", socket, "switch-client", "-c", client, "-t", pane],
+                "mechanism": MECHANISM_SOCKET,
             },
             {
                 "purpose": "raise the Terminal window the client sits in",
                 "argv": ["/usr/bin/osascript", "-e", raise_terminal_tab(device)],
+                "mechanism": MECHANISM_APPLE_EVENT,
             },
         ]
     elif arm.id == "a4":
@@ -1053,6 +1125,7 @@ def plan(
                 "responsibility_spawnattrs_setdisclaim so it is its own "
                 "responsible process",
                 "argv": ["/usr/bin/osascript", "-e", raise_terminal_tab(device)],
+                "mechanism": MECHANISM_APPLE_EVENT,
                 "spawned": "posix_spawn with disclaim",
             }
         ]
@@ -1061,39 +1134,70 @@ def plan(
             {
                 "purpose": "activate Finder, which is not this process's responsible process",
                 "argv": ["/usr/bin/osascript", "-e", activate_app("Finder")],
+                "mechanism": MECHANISM_APPLE_EVENT,
             }
         ]
     elif arm.id == "a2":
-        steps = _plan_a2(device, out or PLACEHOLDER["out"])
+        steps = _plan_a2(device, handshake)
     return steps
 
 
-def _plan_a2(device: str, out: str) -> list[dict[str, Any]]:
-    """A2's orchestration, with the window-quitting step named as its own gate."""
-    handshake = PLACEHOLDER["handshake"]
+def _a2_launcher_argv(handshake: str, device: str) -> list[str]:
+    """The command the throwaway Terminal window runs.
+
+    It carries A2's own two flags rather than relying on `--a2-daemon` being
+    hidden: the daemon issues a raise through `_execute`, which is the module's
+    single gate, and a gate reachable from a flag nobody has to pass is not one.
+    """
     launcher = (
         f"{sys.executable} {os.path.abspath(__file__)} --a2-daemon "
-        f"--a2-handshake {handshake} --a2-target {device} --out {out}"
+        f"{flag_for('a2')} {A2_QUIT_FLAG} "
+        f"--a2-handshake {handshake} --a2-target {device}"
     )
+    return ["/usr/bin/osascript", "-e", open_launcher_window(launcher)]
+
+
+def _a2_quit_argv(device: str) -> list[str]:
+    """The close, against whichever device holds the launcher window."""
+    return ["/usr/bin/osascript", "-e", close_window_on_device(device)]
+
+
+def _plan_a2(device: str, handshake: str) -> list[dict[str, Any]]:
+    """A2's orchestration, with the window-quitting step named as its own gate.
+
+    Two of its four argvs cannot be final here. The handshake path is minted by
+    `run_arm` at the moment the arm runs, and the launcher's own device is not
+    knowable until the daemon reports it -- so both print as placeholders on a
+    dry run and are rebuilt from real values by `_run_a2`. The placeholder that
+    shipped went into the command rather than only into the print: bash read
+    `<a` as a redirect, the launcher died before it started, and the arm's
+    committed capture carries that literal in its recorded argv.
+    """
+    handshake = handshake or PLACEHOLDER["handshake"]
     return [
         {
             "purpose": "open a throwaway Terminal window running the daemon launcher",
-            "argv": ["/usr/bin/osascript", "-e", open_launcher_window(launcher)],
+            "argv": _a2_launcher_argv(handshake, device),
+            "mechanism": MECHANISM_APPLE_EVENT,
         },
         {
-            "purpose": "wait for the daemon to report its pid and its responsible process",
+            "purpose": "wait for the daemon to report its pid, its responsible "
+            "process and the device its launcher window sits on",
             "argv": [],
-            "waits_for": handshake,
+            "mechanism": None,
+            "waits_for": handshake + READY_SUFFIX,
         },
         {
             "purpose": "QUIT the launcher window",
-            "argv": ["/usr/bin/osascript", "-e", close_window_on_device("<the launcher's device>")],
+            "argv": _a2_quit_argv(PLACEHOLDER["launcher"]),
+            "mechanism": MECHANISM_APPLE_EVENT,
             "requires_flag": A2_QUIT_FLAG,
         },
         {
             "purpose": "the daemon, now past its launcher, re-reads its responsible "
             "process and issues the raise",
             "argv": ["/usr/bin/osascript", "-e", raise_terminal_tab(device)],
+            "mechanism": MECHANISM_APPLE_EVENT,
             "issued_by": ISSUER_DAEMON,
         },
     ]
@@ -1350,6 +1454,178 @@ def _ancestry_of(pid: int) -> dict[str, Any]:
     return identity.ancestry(identity.walk(identity.ps_rows(pid), harness=""))
 
 
+# The exit status a wait step carries when the file it waits for never arrived.
+# `_execute`'s own code for a command that timed out, reused rather than
+# invented: both mean the same thing to a reader of `exit_status`.
+EXIT_TIMED_OUT = 124
+
+
+def _recorded(step: dict[str, Any], *, ran: bool, exit_status: int | None) -> dict[str, Any]:
+    """One step as the record carries it. The only place a command dict is built.
+
+    Built here rather than at each of the four call sites, because the four
+    copies it replaces are how A2's wait step came to have no shape at all: the
+    loop that would have written it skipped anything with an empty argv, so the
+    step vanished from `commands` and left no trace of why the arm stalled.
+    """
+    return {
+        "argv": redact_argv(step["argv"]),
+        "purpose": step["purpose"],
+        "mechanism": step.get("mechanism"),
+        "ran": ran,
+        "exit_status": exit_status,
+        "requires_flag": step.get("requires_flag"),
+        "output_discarded": True,
+    }
+
+
+def _run_steps(
+    steps: list[dict[str, Any]],
+    *,
+    runner: Callable[[Sequence[str], bool], int],
+    spawner: Callable[[Sequence[str], bool], tuple[int | None, int]],
+    readers: Readers,
+    responsible: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Every arm but A2: a list of commands, run in order."""
+    commands: list[dict[str, Any]] = []
+    for step in steps:
+        if step.get("spawned"):
+            child, code = spawner(step["argv"], True)
+            if child is not None:
+                # Read while the child is alive: once it has exited there is no
+                # responsible process to ask about, and this reading is the
+                # entire point of the arm.
+                child_responsible = readers.responsible(child)
+                responsible["name"] = readers.name_of(child_responsible)
+                responsible["is_self"] = child_responsible == child
+                # The child's own status, not `posix_spawn`'s: a spawn succeeds
+                # long before the raise it started has an answer.
+                code = _reap(child)
+        else:
+            code = runner(list(step["argv"]), True)
+        commands.append(_recorded(step, ran=True, exit_status=code))
+    return commands
+
+
+def _run_a2(
+    steps: list[dict[str, Any]],
+    *,
+    handshake: str,
+    runner: Callable[[Sequence[str], bool], int],
+    waiter: Callable[[str], dict[str, Any] | None],
+    responsible: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """A2's four phases, which are a handshake rather than a list of commands.
+
+    Kept out of the ordinary loop because every one of DRC-4388's defects came
+    from pretending it was one. The wait carried an empty argv and the loop's
+    `if not step["argv"]: continue` dropped it. The raise carried
+    `issued_by: detached_daemon`, which nothing read, so it went through the
+    ordinary runner with the launcher window still open -- A2's raise was A1's
+    raise wearing A2's label, which is why the arm could never answer its
+    question.
+
+    Each phase gives up rather than pressing on, and the two later steps then
+    record as not-run. There is nothing honest to do with a launcher that never
+    started or a window this recorder cannot prove it closed: the daemon is told
+    the launcher is still alive and issues no raise, so the arm reports
+    `inconclusive` instead of A1's answer under A2's name.
+    """
+    launch, hold, quit_step, raise_step = steps
+    unrun = [_recorded(step, ran=False, exit_status=None) for step in steps]
+
+    code = runner(launch["argv"], True)
+    commands = [_recorded(launch, ran=True, exit_status=code)]
+    if code != 0:
+        return commands + unrun[1:]
+
+    ready = waiter(handshake + READY_SUFFIX)
+    commands.append(_recorded(hold, ran=True, exit_status=0 if ready else EXIT_TIMED_OUT))
+    if ready is None:
+        return commands + unrun[2:]
+    # The daemon's own identity, not this recorder's. The `responsible` block
+    # every other arm fills comes from the recorder's pid, which is the same
+    # process for all of them and answers Terminal regardless -- so on A2, the
+    # one arm whose subject is a different process, it described the wrong one.
+    responsible["name"] = ready.get("responsible_name")
+    responsible["is_self"] = bool(ready.get("responsible_is_self"))
+
+    device = ready.get("launcher_device")
+    if not device:
+        # No device, no window this recorder can name. Closing on a guess is the
+        # one thing worse than not closing.
+        _release(handshake, launcher_quit=False)
+        return commands + unrun[2:]
+    quit_step = {**quit_step, "argv": _a2_quit_argv(str(device))}
+    code = runner(quit_step["argv"], True)
+    commands.append(_recorded(quit_step, ran=True, exit_status=code))
+    _release(handshake, launcher_quit=code == 0)
+    if code != 0:
+        return commands + unrun[3:]
+
+    done = waiter(handshake + DONE_SUFFIX)
+    if done is None or not done.get("raise_issued"):
+        return commands + unrun[3:]
+    responsible["after_launcher_quit_name"] = done.get("after_launcher_quit_name")
+    responsible["after_launcher_quit_is_self"] = done.get("after_launcher_quit_is_self")
+    return [*commands, _recorded(raise_step, ran=True, exit_status=done.get("exit_status"))]
+
+
+def _release(handshake: str, *, launcher_quit: bool) -> None:
+    """Tell the daemon whether its launcher window is gone. The only signal it gets."""
+    _write_json(handshake + RELEASE_SUFFIX, {"launcher_quit": launcher_quit})
+
+
+def _mint_handshake() -> str:
+    """A scratch path for one A2 run. Minted, never taken from a flag.
+
+    A real path rather than the literal placeholder that shipped: it went
+    verbatim into the launcher's shell command, where bash read `<a` as a stdin
+    redirect and killed the launcher before it started. `redact_argv` reduces
+    this to `<path>/basename` on the way into the record.
+    """
+    return os.path.join(tempfile.mkdtemp(prefix="cargento-raise-"), "a2")
+
+
+def _read_json(path: str) -> dict[str, Any] | None:
+    """One handshake file, or `None` if it is absent, partial or not an object.
+
+    A partial read is the ordinary case rather than the exception here: the two
+    sides poll, so a file can be opened between `open` and the writer's flush.
+    That reads as "not there yet", which is what the caller does with `None`.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            found = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return found if isinstance(found, dict) else None
+
+
+def _await_json(
+    path: str,
+    *,
+    timeout: float = HANDSHAKE_TIMEOUT_SEC,
+    poll: float = HANDSHAKE_POLL_SEC,
+) -> dict[str, Any] | None:
+    """Wait for a handshake file to appear and parse, or give up and say so.
+
+    The read side that did not exist. The daemon wrote `.ready` and `.done` and
+    polled for a `.quit` nobody wrote; nothing anywhere read any of the three,
+    so the post-quit responsible identity -- the whole difference between A2 and
+    A1 -- never reached a record.
+    """
+    deadline = time.time() + timeout
+    while True:
+        found = _read_json(path)
+        if found is not None:
+            return found
+        if time.time() >= deadline:
+            return None
+        time.sleep(poll)
+
+
 def run_arm(
     arm: Arm,
     *,
@@ -1360,8 +1636,11 @@ def run_arm(
     # second seam. Without one the injected executor above reported that nothing
     # had run while A4 spawned a real raise past it.
     spawn: Callable[[Sequence[str], bool], tuple[int | None, int]] | None = None,
+    # The THIRD seam, and the one A2 needed. A2's raise is issued by a daemon
+    # this recorder must not wait on in a test, so the wait for each handshake
+    # file is injected rather than polled directly.
+    wait: Callable[[str], dict[str, Any] | None] | None = None,
     socket: str = TMUX_SOCKET,
-    out: str = "",
     at: str = "",
     # Flags beyond the arm's own `--allow-<id>`. Empty by default, so a step
     # behind a second flag stays unreachable unless a caller names it.
@@ -1376,6 +1655,7 @@ def run_arm(
     readers = readers or Readers()
     runner = execute or (lambda argv, ok: _execute(argv, allowed=ok))
     spawner = spawn or (lambda argv, ok: _spawn_disclaimed(argv, allowed=ok))
+    waiter = wait or _await_json
     targets, before, precondition = resolve(arm, readers=readers, socket=socket)
 
     issuer_pid = os.getpid()
@@ -1391,64 +1671,35 @@ def run_arm(
         "after_launcher_quit_is_self": None,
     }
 
+    # An arm whose gated step is unauthorised has already answered nothing --
+    # `_unanswered` says so -- so running the rest of it buys no evidence and
+    # costs whatever those steps leave behind. A2 is the measured case: it opens
+    # a Terminal window in order to close it, and opening without the flag that
+    # closes leaves one on the operator's desk per invocation.
+    gates = {step["requires_flag"] for step in plan(arm, targets) if step.get("requires_flag")}
+    ran = allowed and precondition["satisfied"] and gates <= extra_flags
+    handshake = _mint_handshake() if ran and arm.issuer == ISSUER_DAEMON else ""
+    steps = plan(arm, targets, socket=socket, handshake=handshake)
+
     commands: list[dict[str, Any]] = []
-    ran = allowed and precondition["satisfied"]
-    if ran:
-        for step in plan(arm, targets, socket=socket, out=out):
-            if not step["argv"]:
-                continue
-            if step.get("requires_flag") and step["requires_flag"] not in extra_flags:
-                # The window-quitting step, gated on its own flag because it
-                # closes something an operator opened. Passing that flag is the
-                # only way it runs.
-                commands.append(
-                    {
-                        "argv": redact_argv(step["argv"]),
-                        "purpose": step["purpose"],
-                        "ran": False,
-                        "exit_status": None,
-                        "requires_flag": step["requires_flag"],
-                        "output_discarded": True,
-                    }
-                )
-                continue
-            spawned = step.get("spawned")
-            if spawned:
-                child, code = spawner(step["argv"], True)
-                if child is not None:
-                    # Read while the child is alive: once it has exited there is
-                    # no responsible process to ask about, and this reading is
-                    # the entire point of the arm.
-                    child_responsible = readers.responsible(child)
-                    responsible["name"] = readers.name_of(child_responsible)
-                    responsible["is_self"] = child_responsible == child
-                    # The child's own status, not `posix_spawn`'s: a spawn
-                    # succeeds long before the raise it started has an answer.
-                    code = _reap(child)
-            else:
-                code = runner(list(step["argv"]), True)
-            commands.append(
-                {
-                    "argv": redact_argv(step["argv"]),
-                    "purpose": step["purpose"],
-                    "ran": True,
-                    "exit_status": code,
-                    "requires_flag": None,
-                    "output_discarded": True,
-                }
+    try:
+        if ran and arm.issuer == ISSUER_DAEMON:
+            commands = _run_a2(
+                steps,
+                handshake=handshake,
+                runner=runner,
+                waiter=waiter,
+                responsible=responsible,
             )
-    else:
-        commands = [
-            {
-                "argv": redact_argv(step["argv"]),
-                "purpose": step["purpose"],
-                "ran": False,
-                "exit_status": None,
-                "requires_flag": step.get("requires_flag"),
-                "output_discarded": True,
-            }
-            for step in plan(arm, targets, socket=socket, out=out)
-        ]
+        elif ran:
+            commands = _run_steps(
+                steps, runner=runner, spawner=spawner, readers=readers, responsible=responsible
+            )
+        else:
+            commands = [_recorded(step, ran=False, exit_status=None) for step in steps]
+    finally:
+        if handshake:
+            shutil.rmtree(os.path.dirname(handshake), ignore_errors=True)
 
     after = observe_state(arm, targets, readers, socket) if ran else Snapshot()
     record: dict[str, Any] = {
@@ -1521,6 +1772,81 @@ VERDICT_ALIEN_WORKS = "a_raise_works_from_an_alien_responsible_identity"
 UNMEASURED = "unmeasured"
 
 
+def _moved_axes(record: dict[str, Any]) -> set[str]:
+    """Which mechanisms the axes that changed can be attributed to.
+
+    `changed` and never `after_is_the_target`: the second is true whenever the
+    target is where it was already, which on this machine is the operator's own
+    desktop rather than a move. The module docstring names that trap and this is
+    where it would have got in.
+
+    Only an `activate` brings an application forward, so `frontmost` belongs to
+    the Apple Event. `selected` belongs to whichever mechanism took the reading,
+    which is the arm's own source: a pane read over the tmux socket moved
+    because the socket moved it.
+    """
+    axes: set[str] = set()
+    if record["frontmost"]["changed"]:
+        axes.add(MECHANISM_APPLE_EVENT)
+    if record["selected"]["changed"]:
+        source = record["selected"]["source"]
+        if source == SOURCE_TMUX:
+            axes.add(MECHANISM_SOCKET)
+        elif source == SOURCE_TERMINAL:
+            axes.add(MECHANISM_APPLE_EVENT)
+    return axes
+
+
+def _mechanism_moved(record: dict[str, Any]) -> dict[str, bool | None]:
+    """Whether each mechanism moved something in this one invocation.
+
+    `None` for a mechanism no step of this arm ran, never `False`. The two
+    committed captures predate `mechanism` on a command, so a step that does not
+    declare one is read from the binary in its argv -- both survive redaction,
+    which is why that fallback can be trusted rather than merely tolerated.
+    """
+    axes = _moved_axes(record)
+    answer: dict[str, bool | None] = {}
+    for mechanism in MECHANISMS:
+        exercised = any(
+            command["ran"]
+            and (command.get("mechanism") or mechanism_of(command["argv"])) == mechanism
+            for command in record["commands"]
+        )
+        answer[mechanism] = (mechanism in axes) if exercised else None
+    return answer
+
+
+def _agree(values: list[bool | None]) -> bool | None:
+    """Several invocations of one arm, as one answer. Null only if all of them are."""
+    known = [value for value in values if value is not None]
+    return any(known) if known else None
+
+
+def _moved_per_mechanism(
+    arms: list[dict[str, Any]], names: list[str]
+) -> dict[str, dict[str, bool | None]]:
+    """Each arm's movement, split by mechanism and aggregated over its invocations."""
+    found: dict[str, dict[str, bool | None]] = {}
+    for name in names:
+        rows = [_mechanism_moved(row) for row in arms if row["arm"] == name]
+        found[name] = {
+            mechanism: _agree([row[mechanism] for row in rows]) for mechanism in MECHANISMS
+        }
+    return found
+
+
+def _is_alien(summary: dict[str, Any]) -> bool:
+    """Whether this arm's raise came from something other than the exempt identity.
+
+    Read off the arm's issuer and its measured responsible process, never off a
+    label. Applied to the arms whose APPLE EVENT moved rather than to the arms
+    that moved: an arm whose socket half steered a pane says nothing about which
+    identity macOS would have consulted, because it consulted none.
+    """
+    return bool(summary["issuer"] != ISSUER_RECORDER or summary["responsible_is_self"] == [True])
+
+
 def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, Any]:
     """The verdict, computed from the arms committed beside it.
 
@@ -1584,16 +1910,13 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
     ]
     controls_held = all(summary["moved"] is False for summary in controls) if controls else None
 
-    positives = [
-        (name, summary)
-        for name, summary in per_arm.items()
-        if summary["expectation"] == EXPECT_MOVE and summary["ran"] and summary["moved"]
-    ]
-    alien = [
-        name
-        for name, summary in positives
-        if summary["issuer"] != ISSUER_RECORDER or summary["responsible_is_self"] == [True]
-    ]
+    # Movement per mechanism rather than per arm. An arm may exercise both, and
+    # `moved` is one flag: a6 steered a pane over a socket while its `osascript`
+    # half exited 1, and the single flag was read under BOTH findings, so the
+    # Apple Event answer came off a mechanism that failed in both arms that
+    # exercised it. Aggregated with the same three-way rule the per-arm summary
+    # uses -- true, false, or null for a mechanism no step exercised.
+    by_mechanism = _moved_per_mechanism(arms, list(per_arm))
 
     # Two findings, not one. A socket raise steers a multiplexer over a UNIX
     # socket and macOS consults no responsible process for it, so such an arm
@@ -1619,20 +1942,19 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
         asked = [
             (arm_name, summary)
             for arm_name, summary in exercised
-            if summary["expectation"] == EXPECT_MOVE
+            if summary["expectation"] == EXPECT_MOVE and by_mechanism[arm_name][name] is not None
         ]
         if not asked:
             return UNMEASURED
-        moved = [(arm_name, summary) for arm_name, summary in asked if summary["moved"]]
+        moved = [summary for arm_name, summary in asked if by_mechanism[arm_name][name]]
         if not moved:
             return "does_not_work"
         if name == MECHANISM_SOCKET:
             return "works"
-        if any(arm_name in dict(alien_by_name) for arm_name, _ in moved):
+        if any(_is_alien(summary) for summary in moved):
             return "works_from_an_alien_responsible_identity"
         return "only_from_the_exempt_responsible_identity"
 
-    alien_by_name = [(name, per_arm[name]) for name in alien]
     socket_raise = _finding(MECHANISM_SOCKET)
     apple_event_raise = _finding(MECHANISM_APPLE_EVENT)
 
@@ -1661,43 +1983,104 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
 # --------------------------------------------------------------------------
 
 
-def a2_daemon(handshake: str, target: str, out: str) -> None:
-    """Double-fork past the launcher window, then raise once it is gone.
+# Why the daemon issued no raise, from a closed set, so a reader can tell a
+# daemon that was never released from one whose launcher was still standing.
+A2_NOT_RELEASED = "the_parent_never_released_the_daemon"
+A2_LAUNCHER_ALIVE = "the_launcher_window_was_not_quit"
+
+
+def _controlling_device() -> str | None:
+    """This process's controlling terminal, which for the daemon is its launcher's.
+
+    Must be read BEFORE `setsid`. After it there is no controlling terminal to
+    read, and the parent's quit step then has no window it can name -- which is
+    how that step came to name a literal `<the launcher's device>` and close
+    nothing at exit 0.
+    """
+    rows = identity.ps_rows(os.getpid())
+    device = identity._device_or_none(str(rows[0]["tty"]) if rows else None)  # noqa: SLF001
+    return identity._bare(device) if device else None  # noqa: SLF001
+
+
+def a2_daemon(handshake: str, target: str) -> None:
+    """Double-fork past the launcher window, then hand off to the core below.
+
+    Only the fork lives here. Everything the arm measures is in
+    `a2_daemon_core`, because a function that fuses a fork, a poll, a raise and
+    two file writes is one no test can reach: this was the only block in the
+    recorder with no coverage at all, and five of DRC-4388's six defects were
+    inside it or on the read side it never had.
+    """
+    if os.fork() > 0:
+        return
+    launcher = _controlling_device()
+    os.setsid()
+    if os.fork() > 0:
+        os._exit(0)
+    a2_daemon_core(handshake, target, launcher_device=launcher)
+    os._exit(0)
+
+
+def a2_daemon_core(
+    handshake: str,
+    target: str,
+    *,
+    launcher_device: str | None,
+    readers: Readers | None = None,
+    execute: Callable[[Sequence[str], bool], int] | None = None,
+    wait: Callable[[str], dict[str, Any] | None] | None = None,
+    pid: int | None = None,
+) -> dict[str, Any]:
+    """Report what this process is, wait to be released, and raise only if it was.
 
     Two readings of `responsibility_get_pid_responsible_for_pid` bracket the
     quit, because the whole arm is the difference between them. On this machine
     the first is Terminal even after the fork; whether the second still is, is
-    the finding.
+    the finding -- and it is a finding only if the launcher window is really
+    gone, so the raise is conditional on the parent SAYING so. A parent that
+    could not close the window, or was never given the flag to try, releases the
+    daemon with `launcher_quit` false and gets no raise at all: A1's answer
+    under A2's name is the exact composition this recorder exists to refuse.
     """
-    if os.fork() > 0:
-        return
-    os.setsid()
-    if os.fork() > 0:
-        os._exit(0)
-    readers = Readers()
-    pid = os.getpid()
+    readers = readers or Readers()
+    runner = execute or (lambda argv, ok: _execute(argv, allowed=ok))
+    waiter = wait or _await_json
+    pid = os.getpid() if pid is None else pid
+
     started = readers.responsible(pid)
-    _write_json(handshake + ".ready", {"pid": pid, "responsible_name": readers.name_of(started)})
-    deadline = time.time() + HANDSHAKE_TIMEOUT_SEC
-    while time.time() < deadline and not os.path.exists(handshake + ".quit"):
-        time.sleep(HANDSHAKE_POLL_SEC)
-    after = readers.responsible(pid)
-    before_state = readers.terminal_selected()
-    code = _execute(["/usr/bin/osascript", "-e", raise_terminal_tab(target)], allowed=True)
-    after_state = readers.terminal_selected()
     _write_json(
-        handshake + ".done",
+        handshake + READY_SUFFIX,
         {
-            "responsible_before_quit_name": readers.name_of(started),
-            "responsible_after_quit_name": readers.name_of(after),
-            "responsible_after_quit_is_self": after == pid,
-            "exit_status": code,
-            "selected_before": before_state,
-            "selected_after": after_state,
+            "pid": pid,
+            "responsible_name": readers.name_of(started),
+            "responsible_is_self": started == pid,
+            "launcher_device": launcher_device,
         },
     )
-    del out
-    os._exit(0)
+    release = waiter(handshake + RELEASE_SUFFIX)
+    done: dict[str, Any]
+    if release is None or not release.get("launcher_quit"):
+        done = {
+            "raise_issued": False,
+            "why": A2_NOT_RELEASED if release is None else A2_LAUNCHER_ALIVE,
+        }
+        _write_json(handshake + DONE_SUFFIX, done)
+        return done
+
+    after = readers.responsible(pid)
+    code = runner(["/usr/bin/osascript", "-e", raise_terminal_tab(target)], True)
+    # The field names the record carries, written by the side that measures
+    # them. The daemon used to write `responsible_after_quit_*` while the record
+    # read `after_launcher_quit_*`, which is a rename away from a reader that
+    # never existed to notice.
+    done = {
+        "raise_issued": True,
+        "after_launcher_quit_name": readers.name_of(after),
+        "after_launcher_quit_is_self": after == pid,
+        "exit_status": code,
+    }
+    _write_json(handshake + DONE_SUFFIX, done)
+    return done
 
 
 def _write_json(path: str, payload: dict[str, Any]) -> None:
@@ -1731,7 +2114,10 @@ def dry_run(arms: Iterable[Arm] = ARMS) -> list[str]:
         "  " + ", ".join(sorted(ARM_KEYS)),
         "",
         "  precondition:  " + ", ".join(PRECONDITION_KEYS),
-        "  commands[]:    argv, purpose, ran, exit_status, requires_flag, output_discarded",
+        # Joined rather than spelled out: the literal that used to sit here
+        # disagreed with `COMMAND_KEYS` the moment a key was added, and the test
+        # that catches it asserts the join rather than the words.
+        "  commands[]:    " + ", ".join(COMMAND_KEYS),
         "  frontmost:     before, after, changed, after_is_the_target",
         "  selected:      source, before, after, changed, after_is_the_target,",
         "                 other_client_before, other_client_after, other_client_changed",
@@ -1757,14 +2143,18 @@ def dry_run(arms: Iterable[Arm] = ARMS) -> list[str]:
             f"    note          {arm.note}",
             "    would run:",
         ]
-        steps = plan(arm, Targets(), out=PLACEHOLDER["out"])
+        steps = plan(arm, Targets())
         if not steps:
             lines.append("      (nothing)")
         for index, step in enumerate(steps, start=1):
             gate = f"  [needs {step['requires_flag']}]" if step.get("requires_flag") else ""
             spawn = f"  [{step['spawned']}]" if step.get("spawned") else ""
             wait = f"  [waits for {step['waits_for']}]" if step.get("waits_for") else ""
-            lines.append(f"      {index}. {step['purpose']}{gate}{spawn}{wait}")
+            # `issued_by` printed rather than only declared. An operator reading
+            # this has to be able to see that A2's raise is issued by a detached
+            # daemon and not by the recorder, which is the whole of the arm.
+            issued = f"  [issued by {step['issued_by']}]" if step.get("issued_by") else ""
+            lines.append(f"      {index}. {step['purpose']}{gate}{spawn}{wait}{issued}")
             lines.append(f"         {json.dumps(step['argv'])}")
         lines.append("")
     return lines
@@ -1841,7 +2231,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912
     args = build_parser().parse_args(argv)
 
     if args.a2_daemon:
-        a2_daemon(args.a2_handshake, args.a2_target, args.out)
+        # The daemon issues a raise through `_execute`, so it is a way to move a
+        # window, so it is gated on A2's own two flags like every other. The
+        # launcher argv carries them; a hidden flag is not a gate.
+        if not authorized("a2", args) or not args.allow_a2_quit_window:
+            print(
+                f"the a2 daemon needs {flag_for('a2')} and {A2_QUIT_FLAG}. Nothing ran.",
+                file=sys.stderr,
+            )
+            return 3
+        a2_daemon(args.a2_handshake, args.a2_target)
         return 0
     if args.dry_run:
         for line in dry_run():
@@ -1904,7 +2303,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912
     extra = frozenset({A2_QUIT_FLAG}) if args.allow_a2_quit_window else frozenset()
     identity.append(
         args.out,
-        run_arm(arm, allowed=True, socket=args.socket, out=args.out, extra_flags=extra),
+        run_arm(arm, allowed=True, socket=args.socket, extra_flags=extra),
     )
     return 0
 
