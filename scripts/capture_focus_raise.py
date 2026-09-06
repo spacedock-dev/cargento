@@ -249,12 +249,23 @@ class Arm:
     target_app: str | None
     # The arrangement an operator has to have set up, in a closed vocabulary the
     # recorder can check rather than prose it cannot.
+    # Which of the two mechanisms the arm exercises. Both, for an arm that
+    # steers a multiplexer and then asks an emulator to come forward.
+    mechanism: tuple[str, ...] = ()
     needs: tuple[str, ...] = ()
     # A cost the arm leaves behind after it finishes. Named in the row because a
     # reader deciding whether to authorise it needs it before, not after.
     durable_side_effect: str | None = None
     note: str = ""
 
+
+# What macOS is asked to do, which is not the same question as what moved.
+# A socket raise never causes a responsible process to be consulted, so an arm
+# that only steers tmux can say nothing about the Automation permission in
+# either direction. Keeping the two apart is the whole reason this field exists.
+MECHANISM_SOCKET = "socket_ipc"
+MECHANISM_APPLE_EVENT = "apple_event"
+MECHANISMS = (MECHANISM_SOCKET, MECHANISM_APPLE_EVENT)
 
 NEED_TERMINAL_TABS = "two_or_more_terminal_tabs"
 NEED_TMUX_SERVER = "a_tmux_server_on_this_recorders_own_socket"
@@ -263,6 +274,7 @@ NEED_TWO_CLIENTS = "two_clients_attached_to_one_session"
 ARMS: tuple[Arm, ...] = (
     Arm(
         id="a8",
+        mechanism=(MECHANISM_APPLE_EVENT, MECHANISM_SOCKET),
         what="negative control: a raise naming a device no live tab holds, and a "
         "tmux target whose client is not attached",
         expectation=EXPECT_HOLD,
@@ -276,6 +288,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a0",
+        mechanism=(),
         what="baseline: `lsappinfo front` only, which is a LaunchServices read "
         "rather than an Apple Event",
         expectation=EXPECT_OBSERVE,
@@ -288,6 +301,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a5",
+        mechanism=(MECHANISM_SOCKET,),
         what="one `tmux switch-client` on this recorder's own socket",
         expectation=EXPECT_MOVE,
         issuer=ISSUER_RECORDER,
@@ -300,6 +314,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a9",
+        mechanism=(MECHANISM_SOCKET,),
         what="wrong-socket control: A5 with `-L` omitted, so the command reaches "
         "the default socket rather than the one holding the target",
         expectation=EXPECT_HOLD,
@@ -313,6 +328,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a7",
+        mechanism=(MECHANISM_SOCKET,),
         what="ambiguity: two clients attached to one session, A5 naming one of them",
         expectation=EXPECT_MOVE,
         issuer=ISSUER_RECORDER,
@@ -325,6 +341,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a1",
+        mechanism=(MECHANISM_APPLE_EVENT,),
         what="same-app Apple Event: `osascript` telling Terminal to select a tab and activate",
         expectation=EXPECT_MOVE,
         issuer=ISSUER_RECORDER,
@@ -339,6 +356,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a6",
+        mechanism=(MECHANISM_SOCKET, MECHANISM_APPLE_EVENT),
         what="A5 then A1 on the client device: steer the multiplexer, then raise "
         "the window the client sits in",
         expectation=EXPECT_MOVE,
@@ -353,6 +371,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a2",
+        mechanism=(MECHANISM_APPLE_EVENT,),
         what="launcher-quit: a daemon started from a throwaway Terminal window, "
         "that window quit, then a raise from the surviving daemon",
         expectation=EXPECT_MOVE,
@@ -370,6 +389,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a4",
+        mechanism=(MECHANISM_APPLE_EVENT,),
         what="alien responsible identity: the same raise issued by a child spawned "
         "with `responsibility_spawnattrs_setdisclaim`, so it is its own "
         "responsible process rather than Terminal's",
@@ -386,6 +406,7 @@ ARMS: tuple[Arm, ...] = (
     ),
     Arm(
         id="a3",
+        mechanism=(MECHANISM_APPLE_EVENT,),
         what="cross-app: responsible to Terminal, target Finder",
         expectation=EXPECT_MOVE,
         issuer=ISSUER_RECORDER,
@@ -407,6 +428,7 @@ ARM_KEYS = frozenset(
     {
         *BASE_KEYS,
         "arm",
+        "mechanism",
         "what",
         "expectation",
         "issuer",
@@ -426,7 +448,17 @@ ARM_KEYS = frozenset(
     }
 )
 VERDICT_KEYS = frozenset(
-    {*BASE_KEYS, "invocations", "arms", "per_arm", "controls_ran", "controls_held", "verdict"}
+    {
+        *BASE_KEYS,
+        "invocations",
+        "arms",
+        "per_arm",
+        "controls_ran",
+        "controls_held",
+        "socket_raise",
+        "apple_event_raise",
+        "verdict",
+    }
 )
 # What `resolve` writes, declared once. `--dry-run` prints this list as the
 # promise of what an arm would record, and a test holds `resolve` to it: a
@@ -1390,6 +1422,7 @@ def run_arm(
         "issuer": arm.issuer,
         "flag": flag_for(arm.id),
         "authorized": allowed,
+        "mechanism": list(arm.mechanism),
         "precondition": precondition,
         "commands": commands,
         "frontmost": {
@@ -1444,6 +1477,8 @@ VERDICT_CONTROLS_FAILED = "controls_failed"
 VERDICT_NO_RAISE_WORKS = "no_raise_works"
 VERDICT_ONLY_EXEMPT = "only_the_exempt_responsible_identity_raises"
 VERDICT_ALIEN_WORKS = "a_raise_works_from_an_alien_responsible_identity"
+# An arm that never ran contributes this rather than a negative, per mechanism.
+UNMEASURED = "unmeasured"
 
 
 def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, Any]:
@@ -1499,6 +1534,7 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
             ),
             "responsible_is_self": sorted({bool(row["responsible"]["is_self"]) for row in rows}),
             "durable_side_effect": rows[0]["durable_side_effect"],
+            "mechanism": rows[0].get("mechanism", []),
         }
 
     controls = [
@@ -1518,16 +1554,54 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
         for name, summary in positives
         if summary["issuer"] != ISSUER_RECORDER or summary["responsible_is_self"] == [True]
     ]
+
+    # Two findings, not one. A socket raise steers a multiplexer over a UNIX
+    # socket and macOS consults no responsible process for it, so such an arm
+    # is silent about the Automation permission rather than reassuring about
+    # it. Composing them into a single string is how the first version of this
+    # function read five tmux arms and answered a question about TCC.
+    def _ran_mechanism(name: str) -> list[tuple[str, dict[str, Any]]]:
+        return [
+            (arm_name, summary)
+            for arm_name, summary in per_arm.items()
+            if summary["ran"] and name in summary["mechanism"]
+        ]
+
+    def _finding(name: str) -> str:
+        exercised = _ran_mechanism(name)
+        # Only a must-move arm can answer this. A control that held still says
+        # nothing about whether a raise works, because nobody asked it to move,
+        # and a file of controls alone is unmeasured rather than negative. This
+        # is the per-arm null rule applied to the mechanism, and it is the level
+        # it was first missed on: a run whose pty clients failed to attach left
+        # both socket must-move arms at `ran: 0`, and an earlier draft read the
+        # two surviving controls as `does_not_work`.
+        asked = [
+            (arm_name, summary)
+            for arm_name, summary in exercised
+            if summary["expectation"] == EXPECT_MOVE
+        ]
+        if not asked:
+            return UNMEASURED
+        moved = [(arm_name, summary) for arm_name, summary in asked if summary["moved"]]
+        if not moved:
+            return "does_not_work"
+        if name == MECHANISM_SOCKET:
+            return "works"
+        if any(arm_name in dict(alien_by_name) for arm_name, _ in moved):
+            return "works_from_an_alien_responsible_identity"
+        return "only_from_the_exempt_responsible_identity"
+
+    alien_by_name = [(name, per_arm[name]) for name in alien]
+    socket_raise = _finding(MECHANISM_SOCKET)
+    apple_event_raise = _finding(MECHANISM_APPLE_EVENT)
+
     if not any(summary["ran"] for summary in per_arm.values()):
         answer = VERDICT_NO_ARM_RAN
     elif controls_held is False:
         answer = VERDICT_CONTROLS_FAILED
-    elif alien:
-        answer = VERDICT_ALIEN_WORKS
-    elif positives:
-        answer = VERDICT_ONLY_EXEMPT
     else:
-        answer = VERDICT_NO_RAISE_WORKS
+        answer = f"socket_raise={socket_raise} apple_event_raise={apple_event_raise}"
     return {
         **base,
         "record": RECORD_VERDICT,
@@ -1536,6 +1610,8 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
         "per_arm": per_arm,
         "controls_ran": len(controls),
         "controls_held": controls_held,
+        "socket_raise": socket_raise,
+        "apple_event_raise": apple_event_raise,
         "verdict": answer,
     }
 

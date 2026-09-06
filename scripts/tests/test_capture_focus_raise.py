@@ -736,7 +736,11 @@ class VerdictTest(unittest.TestCase):
         control["outcome"] = recorder.outcome_of(control)
         found = recorder.verdict([control], base=recorder.base_of(control))
         self.assertTrue(found["controls_held"])
-        self.assertEqual(recorder.VERDICT_NO_RAISE_WORKS, found["verdict"])
+        # `unmeasured`, not `does_not_work`: this file holds controls and nothing
+        # else, so it cannot say either way. The distinction is the whole point
+        # of the test whose name is above it.
+        self.assertEqual("unmeasured", found["socket_raise"])
+        self.assertEqual("unmeasured", found["apple_event_raise"])
 
     def test_a_success_under_the_exempt_identity_is_not_read_as_a_general_grant(self) -> None:
         # The finding this whole capture exists for. A raise from a process
@@ -749,7 +753,8 @@ class VerdictTest(unittest.TestCase):
         a1["frontmost"]["after_is_the_target"] = True
         a1["outcome"] = recorder.outcome_of(a1)
         found = recorder.verdict([a1], base=recorder.base_of(a1))
-        self.assertEqual(recorder.VERDICT_ONLY_EXEMPT, found["verdict"])
+        self.assertEqual("only_from_the_exempt_responsible_identity", found["apple_event_raise"])
+        self.assertEqual("unmeasured", found["socket_raise"])
         self.assertEqual(["Terminal"], found["per_arm"]["a1"]["responsible_names"])
 
     def test_a_success_from_an_alien_responsible_identity_is_the_stronger_answer(self) -> None:
@@ -761,7 +766,10 @@ class VerdictTest(unittest.TestCase):
         alien["frontmost"]["after_is_the_target"] = True
         alien["outcome"] = recorder.outcome_of(alien)
         found = recorder.verdict([alien], base=recorder.base_of(alien))
-        self.assertEqual(recorder.VERDICT_ALIEN_WORKS, found["verdict"])
+        self.assertEqual("works_from_an_alien_responsible_identity", found["apple_event_raise"])
+        # The arms that ran touched no socket, so the file says so rather than
+        # letting an Apple Event answer stand in for one.
+        self.assertEqual("unmeasured", found["socket_raise"])
         self.assertEqual(recorder.ISSUER_DISCLAIMED, found["per_arm"]["a4"]["issuer"])
 
     def test_an_inconclusive_arm_is_not_counted_as_having_run(self) -> None:
@@ -1133,3 +1141,81 @@ class DisclaimedSpawnTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MechanismVerdictTest(unittest.TestCase):
+    """A socket raise and an Apple Event raise answer different questions.
+
+    Falsified by: the first version of `verdict`, which reduced every positive
+    to a statement about the responsible identity. Five tmux arms, none of which
+    causes macOS to consult a responsible process at all, composed to
+    `only_the_exempt_responsible_identity_raises` -- a causal claim about TCC
+    read off arms that never touched it. That is the shape this repository has
+    twice shipped and twice had to withdraw, and the instrument built to avoid
+    it had it.
+    """
+
+    def arm(self, arm_id: str, **over: Any) -> dict[str, Any]:
+        # Built through `run_arm` rather than hand-written, so a record that
+        # drifts from what the recorder writes fails here too.
+        with unittest.mock.patch.object(
+            recorder, "_terminal_devices", lambda _r: ["ttys006", "ttys009"]
+        ):
+            record = recorder.run_arm(
+                recorder.ARMS_BY_ID[arm_id],
+                allowed=True,
+                readers=readers(),
+                execute=Spy(),
+                spawn=SpawnSpy(),
+            )
+        record["moved"] = True
+        record["outcome"] = recorder.OUTCOME_MOVED_TO_TARGET
+        for key, value in over.items():
+            record[key] = value
+        return record
+
+    def socket_positive(self) -> dict[str, Any]:
+        return self.arm("a5")
+
+    def test_a_socket_raise_claims_nothing_about_the_responsible_identity(self) -> None:
+        out = recorder.verdict([self.socket_positive()], base={})
+        self.assertEqual("works", out["socket_raise"])
+        self.assertEqual(
+            "unmeasured",
+            out["apple_event_raise"],
+            "no arm consulted a responsible identity, so the file may not report one",
+        )
+
+    def test_an_apple_event_raise_is_reported_separately_from_a_socket_one(self) -> None:
+        apple = self.arm("a1")
+        out = recorder.verdict([self.socket_positive(), apple], base={})
+        self.assertEqual("works", out["socket_raise"])
+        self.assertEqual("only_from_the_exempt_responsible_identity", out["apple_event_raise"])
+
+    def test_controls_alone_do_not_read_as_a_failed_raise(self) -> None:
+        # The per-arm rule applied one level up, and the level it was missed on.
+        # A control that held still is not a raise that failed: nobody asked it
+        # to move. Reading a file of controls as `does_not_work` is the same
+        # confident-green failure as reading an unauthorised arm as a negative.
+        #
+        # Falsified by: a `_finding` that returns `does_not_work` when no
+        # must-move arm of that mechanism ran. Measured live: a run where the
+        # pty clients failed to attach left a5 and a7 at `ran=0`, and the
+        # verdict reported `socket_raise=does_not_work` off a8 and a9 alone.
+        controls = [self.arm("a8"), self.arm("a9")]
+        for record in controls:
+            record["moved"] = False
+            record["outcome"] = recorder.OUTCOME_HELD_STILL
+        out = recorder.verdict(controls, base={})
+        self.assertTrue(out["controls_held"])
+        self.assertEqual(
+            "unmeasured",
+            out["socket_raise"],
+            "two controls holding still say nothing about whether a raise works",
+        )
+
+    def test_every_arm_declares_its_mechanism(self) -> None:
+        for arm in recorder.ARMS:
+            self.assertIsInstance(arm.mechanism, tuple, arm.id)
+            for name in arm.mechanism:
+                self.assertIn(name, recorder.MECHANISMS, arm.id)
