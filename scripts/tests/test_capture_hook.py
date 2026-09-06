@@ -118,6 +118,60 @@ class ShapeTest(unittest.TestCase):
         )
         self.assertEqual("", line["notification_type"])
 
+    def test_a_session_end_keeps_its_reason_and_still_refuses_the_paths_beside_it(self) -> None:
+        """The second recorded value, earned the same way the first was.
+
+        `reason` is a closed vocabulary Claude Code picks from, never text a
+        person or a model wrote, which is the same class of fact as `tool` and
+        `notification_type`. It is the only field on a `SessionEnd` that could
+        separate one kind of ending from another, and DRC-4394 exists because
+        five captured `SessionEnd` records carry its key name and no value, so
+        the vocabulary is still unknown. `cwd` and `transcript_path` sit beside
+        it on the same payload and stay refused.
+        """
+        line = capture_hook.shape_of(
+            {
+                "reason": "prompt_input_exit",
+                "cwd": f"/Users/someone/{self.SECRET}",
+                "transcript_path": f"/Users/someone/{self.SECRET}.jsonl",
+                "session_id": "aaaabbbbcccc",
+            },
+            event="SessionEnd",
+            salt="s",
+            elapsed_ms=0,
+        )
+        self.assertEqual("prompt_input_exit", line["reason"])
+        self.assertNotIn(self.SECRET, json.dumps(line))
+        self.assertIn("transcript_path", line["keys"], "its presence is still part of the shape")
+
+    def test_only_a_session_end_carries_the_reason_key_at_all(self) -> None:
+        """Absent rather than empty off that path, for `notification_type`'s reason.
+
+        `reason` is not unique to `SessionEnd` in general: an empty string on
+        another event would read as "this ending had no reason" rather than
+        "this event is not an ending".
+        """
+        other = capture_hook.shape_of(
+            {"reason": "prompt_input_exit"}, event="PreToolUse", salt="s", elapsed_ms=0
+        )
+        self.assertNotIn("reason", other)
+
+    def test_a_session_end_reason_that_is_not_a_string_is_dropped_not_coerced(self) -> None:
+        """The payload is untrusted, so a non-string is empty rather than "None"."""
+        line = capture_hook.shape_of(
+            {"reason": ["clear"]}, event="SessionEnd", salt="s", elapsed_ms=0
+        )
+        self.assertEqual("", line["reason"])
+
+    def test_a_session_end_reason_is_capped_like_every_other_recorded_value(self) -> None:
+        """A closed vocabulary should be short. A payload that says otherwise is
+        not trusted to be, and an unbounded value would be the leak this recorder
+        exists to avoid."""
+        line = capture_hook.shape_of(
+            {"reason": "x" * 500}, event="SessionEnd", salt="s", elapsed_ms=0
+        )
+        self.assertEqual(60, len(line["reason"]))
+
     def test_the_hook_records_its_own_cost(self) -> None:
         """The p99 budget the adapter-semantics gate asks for."""
         self.assertEqual(1.25, self._line()["hook_ms"])
