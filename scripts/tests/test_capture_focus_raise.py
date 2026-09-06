@@ -1158,8 +1158,41 @@ class ReadScriptTest(unittest.TestCase):
     #: raise script can never be swept into a test that executes what it finds.
     READS = ("SELECTED_TERMINAL_TTY", "EVERY_TERMINAL_TAB_TTY")
 
-    @unittest.skipUnless(sys.platform == "darwin", "AppleScript is macOS only")
+    @staticmethod
+    def terminal_is_running() -> bool:
+        """Whether Terminal is ALREADY up, without launching it to find out.
+
+        `darwin` is not the condition, and asking AppleScript is not the probe.
+        A `tell application "Terminal"` on a headless runner launches Terminal
+        and then waits for an app that never becomes ready, so the first version
+        of this guard did not fail on CI, it HUNG: two scripts, twenty seconds
+        each, forty seconds added to the macOS job before the timeout fired.
+        `pgrep` answers the same question and starts nothing.
+        """
+        if sys.platform != "darwin":
+            return False
+        # `ps` rather than `pgrep`: on the machine this was written on, pgrep
+        # matches nothing for Terminal by name OR by path while `ps -eo comm`
+        # lists it plainly, so a pgrep probe skipped everywhere and the test
+        # could never have failed. That is the defect it exists to catch,
+        # wearing the guard's clothes.
+        listed = subprocess.run(
+            ["/bin/ps", "-eo", "comm="],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        return any(
+            line.strip().endswith("/Terminal.app/Contents/MacOS/Terminal")
+            for line in listed.stdout.splitlines()
+        )
+
     def test_every_read_script_runs(self) -> None:
+        if not self.terminal_is_running():
+            raise unittest.SkipTest(
+                "Terminal is not running; nothing to read and nothing to launch"
+            )
         for name in self.READS:
             script = getattr(recorder, name)
             with self.subTest(script=name):
