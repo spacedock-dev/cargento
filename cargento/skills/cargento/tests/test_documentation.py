@@ -565,15 +565,20 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
 
 
 class EventEnvelopeEnumerationTest(unittest.TestCase):
-    """SECURITY.md's two envelope enumerations, held to the sets they describe.
+    """Every prose count of the envelope, held to the sets those counts describe.
 
-    Both had drifted, silently, because nothing read the prose and the code
-    together: the document said the envelope carries "the nine permitted fields"
-    after `ALLOWED_FIELDS` reached twelve (the three `tmux_*` members arrived with
-    DRC-4017), and it named six writable overlay fields while `PATCHABLE` held
-    eight. A number in prose is a claim about a set, and an unchecked claim is
-    how the security contract comes to describe a narrower system than the one
-    that shipped — which is the direction that matters here.
+    Both SECURITY.md enumerations had drifted, silently, because nothing read the
+    prose and the code together: the document said the envelope carries "the nine
+    permitted fields" after `ALLOWED_FIELDS` reached twelve (the three `tmux_*`
+    members arrived with DRC-4017), and it named six writable overlay fields
+    while `PATCHABLE` held eight. A number in prose is a claim about a set, and
+    an unchecked claim is how the security contract comes to describe a narrower
+    system than the one that shipped — which is the direction that matters here.
+
+    `config.py` is checked here too, and it is why: reading SECURITY.md alone let
+    a third copy of the same stale nine survive the pass that fixed the other
+    two. The cap it justifies is a security bound, so its stated reason is worth
+    the same guard as the contract's.
     """
 
     ROOT = SERVER_PATH.parents[3]
@@ -594,6 +599,14 @@ class EventEnvelopeEnumerationTest(unittest.TestCase):
     def test_the_documented_envelope_width_is_the_allowlist_the_code_enforces(self) -> None:
         word = self.NUMBER_WORDS[len(runtime_events.ALLOWED_FIELDS)]
         self.assertIn(f"builds the {word} permitted fields one at a time", self.FLAT)
+
+    def test_the_body_caps_stated_reason_is_the_allowlist_the_code_enforces(self) -> None:
+        # `event_body_cap_bytes` is justified by the envelope's width, so a stale
+        # width there is a security bound resting on a number that is no longer
+        # true.
+        word = self.NUMBER_WORDS[len(runtime_events.ALLOWED_FIELDS)]
+        source = (SERVER_PATH.parent / "cargento_runtime" / "config.py").read_text(encoding="utf-8")
+        self.assertIn(f"envelope is {word} short fields", " ".join(source.split()))
 
     def test_the_documented_overlay_writes_are_exactly_the_patchable_set(self) -> None:
         # Set equality against the backticked names in that one sentence, which is

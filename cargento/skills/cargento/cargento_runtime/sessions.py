@@ -382,9 +382,10 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         #
         # None means NOT OBSERVED and never "did not end", which is the whole
         # reason this is nullable rather than a boolean or a fourth `state`
-        # value. Only a SIGKILL ends a Claude session silently — a SIGTERM, a
-        # closed terminal and both clean exits all delivered `SessionEnd` within
-        # 0.687s (docs/captures/claude/session-end-2.1.261-macos.jsonl) — but an
+        # value. Only a SIGKILL ends a Claude session silently — a SIGTERM and
+        # a closed terminal delivered `SessionEnd` within 0.687s, and both clean
+        # exits delivered one too, the headless completion slowest at 5.581s
+        # (docs/captures/claude/session-end-2.1.261-macos.jsonl) — but an
         # absent end still covers the six harnesses with no event adapter, a run
         # that predates this server process, and `--no-events`. A boolean here
         # would do null's job with false, which is the DRC-4101 failure the

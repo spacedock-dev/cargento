@@ -1744,7 +1744,7 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
         return session
 
     def test_an_ended_session_reaches_safe_to_close_with_no_stop_beside_it(self) -> None:
-        # The lane E3 exists to strengthen. `nextAttentionStopSignal` used to
+        # The lane N-12 exists to strengthen. `nextAttentionStopSignal` used to
         # require a stop AND the idle state, so a session that reported its own
         # end and had no observed stop dropped out of Safe to close entirely —
         # the strongest evidence the section has, discarded for want of a weaker
@@ -1849,3 +1849,21 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
         html = self.render([self.row(sid="quiet-1")])
         self.assertIn("No session ends observed", html)
         self.assertIn("a session with no observed end is not known to be running", html)
+
+    def test_the_always_visible_coverage_line_carries_the_end_count(self) -> None:
+        # The summary sentence renders above the collapsed details on every
+        # payload, so a key that does not exist shows every reader `undefined`
+        # rather than only the one who expands coverage. Asserted on the half
+        # before the `<details>` for exactly that reason.
+        html = self.render([self.row(ended_at=9_400), self.row(sid="quiet-1")])
+        visible = html.split('<details class="next-attention-coverage-details">')[0]
+
+        self.assertIn("Ends: 1 observed", visible)
+        self.assertNotIn("undefined", visible)
+
+    def test_the_visible_coverage_line_counts_no_end_as_none_not_undefined(self) -> None:
+        html = self.render([self.row(sid="quiet-1")])
+        visible = html.split('<details class="next-attention-coverage-details">')[0]
+
+        self.assertIn("Ends: 0 observed", visible)
+        self.assertNotIn("undefined", visible)

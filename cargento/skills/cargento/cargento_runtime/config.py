@@ -299,7 +299,7 @@ class RuntimeConfig:
     # from disk fills it only as fast as it writes.
     usage_samples_max: int
     # Event ingress. The body cap is far below the notification cap because the
-    # envelope is nine short fields and nothing else is read from it. The rate
+    # envelope is twelve short fields and nothing else is read from it. The rate
     # ceiling is independent of the capability: a looping or compromised adapter
     # holds a valid token by definition, so the token cannot be what bounds it.
     # The burst allows one turn's worth of hooks to arrive together.

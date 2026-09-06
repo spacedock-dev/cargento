@@ -196,8 +196,8 @@ class RouteTest(IngressTestCase):
         self.assertEqual(413, handler_code)
 
     def test_the_event_body_cap_is_far_below_the_notification_cap(self) -> None:
-        # Nine short fields. A cap sized for a whole notification payload would
-        # let an adapter push kilobytes the server then throws away.
+        # Every envelope field is short. A cap sized for a whole notification
+        # payload would let an adapter push kilobytes the server throws away.
         self.assertLess(self.config.event_body_cap_bytes, self.config.notification_body_cap_bytes)
 
     def test_a_rejected_envelope_still_answers_200(self) -> None:

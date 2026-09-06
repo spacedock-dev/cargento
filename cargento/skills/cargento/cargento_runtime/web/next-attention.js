@@ -958,7 +958,7 @@ function nextAttentionCoverageHtml(model){
   const gates = coverage.gates;
   const failed = gates.failed ? ` · ${gates.failed} failed` : "";
   const visible = `Gates: ${gates.reporting}/${gates.discovered} reporting · ` +
-    `${gates.unknown} unknown${failed} · Ends: ${coverage.ends}`;
+    `${gates.unknown} unknown${failed} · Ends: ${coverage.observedEnds} observed`;
   const rows = gates.rows.map(row => {
     const name = String(row.label == null ? "" : row.label).trim() || String(row.key || "Harness");
     const gate = row.error != null

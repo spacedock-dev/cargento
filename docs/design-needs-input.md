@@ -634,8 +634,12 @@ constant and requires the prose to agree, because otherwise the two can only mat
   attention ordering, none of which should move because a turn ended tidily.
 - **Clearing the git reading on every `session_ended`** rather than on the resume. It looks like the
   tighter rule and buys nothing measurable: the resume discards the reading before any second end can
-  reach it, so no test could tell the two apart, and two ends with no turn between them, which is how
-  `/clear` followed by an exit arrives, would discard a reading that is still accurate.
+  reach it, so no test could tell the two apart. *Amended 2026-09-06: this bullet carried a second
+  reason — that "two ends with no turn between them, which is how `/clear` followed by an exit
+  arrives, would discard a reading that is still accurate" — and that scenario cannot happen.
+  `self._git` is keyed on `SessionKey`, and N-12's measurement is that the prompt after a `/clear`
+  goes to a NEW session id, so the clear's end lands on one key and the exit's on another. The
+  rejection stands on the first reason alone.*
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
   `acquisition`, which was defined for this and rendered nowhere until now. A test holds the
@@ -814,9 +818,13 @@ the a1 arm's 5.581 s gap between the last stop and the end is longer than a shor
 so straight after an end the key is in neither the collected row set nor the ledger — which is
 exactly `_finished`'s prune condition. `_finished` tolerates that because the next `turn_stopped`
 re-supplies it; a session fires `session_ended` once, so a mark pruned early can never be earned
-again. It is therefore retired by a clock, at one display window past the end, for the reason
-`focus_target_ttl_sec` uses: a row is produced only while its activity is inside that window, and an
-end is the last thing that happens to an id.
+again. It is therefore retired on two conditions rather than one: the row must have left the
+collected set **and** the end must be a display window old. The clock is there for the reason
+`focus_target_ttl_sec` uses — a row is produced only while its activity is inside that window, and
+an end is the last thing that happens to an id — and the row-set half is there so a session still
+being collected keeps its mark however long ago it ended. Neither alone would do: the clock alone
+would strip a live row's mark at the window, and the row set alone is `_finished`'s condition above,
+which an end satisfies immediately.
 
 ### Rejected
 
@@ -833,5 +841,5 @@ end is the last thing that happens to an id.
   the final stop in the a1 arm — so the guard would have read a perfectly ordinary ending as a
   contradiction.
 - **Reading an absent end as "still running".** The most tempting inference on the page and the one
-  the capture forbids: only a SIGKILL is silent, but that is one of five causes of an absence, and
+  the capture forbids: only a SIGKILL is silent, but that is one of four causes of an absence, and
   the coverage note says so rather than counting them as live.

@@ -515,10 +515,10 @@ def clear_session(state: RuntimeState, config: RuntimeConfig, prefix: str) -> No
     Not quite "this session is gone", which is what this said until the a7 arm of
     docs/captures/claude/session-end-2.1.261-macos.jsonl drove `/clear`: the
     SessionEnd fires, the process survives, and it accepts another prompt. What
-    saves this path is that the hook state is keyed on the transcript prefix and
-    the prompt after a `/clear` goes to a NEW session id (measured 2026-09-06),
-    so the state retired here belongs to the id that really did finish. The
-    events path publishes the same fact as `ended_at` (DRC-4036).
+    saves this path is that the hook state is keyed on the 8-char session prefix
+    and the prompt after a `/clear` goes to a NEW session id (measured
+    2026-09-06), so the state retired here belongs to the id that really did
+    finish. The events path publishes the same fact as `ended_at` (DRC-4036).
     """
     with state.hook_lock:
         state.hook_notifications.pop(prefix, None)
