@@ -111,6 +111,9 @@ class ParseTest(unittest.TestCase):
             "cwd",
             "subagent_id",
             "transcript_path",
+            "tmux_socket",
+            "tmux_pane",
+            "tmux_server",
         }
         self.assertEqual(events.ALLOWED_FIELDS, carried | {"v"})
 
@@ -464,6 +467,11 @@ class _StubOverlays:
     def git_for(self, harness: str, sid: str) -> None:
         """Never probed: this stub has no repository behind it."""
         del harness, sid
+
+    def focusable(self, harness: str, sid: str) -> bool:
+        """No terminal identity: this stub observed no session start."""
+        del harness, sid
+        return False
 
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         del keys  # the real coordinator ages unmatched overlays here; a stub has none

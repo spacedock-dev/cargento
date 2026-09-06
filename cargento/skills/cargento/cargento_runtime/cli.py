@@ -173,6 +173,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--no-focus",
+        action="store_true",
+        help=(
+            "do not raise a session's terminal for this run: no focus command "
+            "runs, no terminal identity is recorded, and the page is handed no "
+            "capability to ask with. --no-events turns it off as well"
+        ),
+    )
+    parser.add_argument(
         "--no-history",
         action="store_true",
         help=(
@@ -288,6 +297,7 @@ def build_runtime(
         spacedock_enabled=not args.no_spacedock,
         usage_fetch_enabled=not args.no_usage,
         git_probe_enabled=not args.no_git,
+        focus_enabled=not args.no_focus,
         dismissals_enabled=not args.no_dismiss,
         ask_enabled=not args.no_ask,
         history_enabled=not args.no_history,
@@ -355,6 +365,36 @@ def load_frontend_page() -> bytes | None:
             file=sys.stderr,
         )
         return None
+
+
+FOCUS_META_NAME = "cargento-focus"
+# The focus consumer key is hex, so nothing legitimate is turned away and nothing
+# that could close the attribute or open a tag gets in. Checked rather than
+# escaped: an escape would make an unexpected token renderable, and a token this
+# server did not mint is a bug rather than a value to accommodate.
+_FOCUS_TOKEN_CHARS = frozenset("0123456789abcdefABCDEF")
+
+
+def inject_focus_capability(page: bytes, token: str) -> bytes:
+    """Put this run's focus capability into the served document.
+
+    Injected here rather than baked into an asset, and the seam matters: the
+    frontend's assembled bytes are pinned by digest in two test files, so a token
+    inside `cargento_runtime/web/` would make them non-deterministic. This runs
+    between `load_frontend_page()` and the server construction, which leaves
+    `frontend_page.load_page()` byte-identical and both pins untouched.
+
+    Returns the page unchanged when there is nothing safe to inject, because a
+    page with no control is the documented off state rather than an error.
+    """
+    if not token or not set(token) <= _FOCUS_TOKEN_CHARS:
+        return page
+    marker = b"</head>"
+    index = page.find(marker)
+    if index < 0:
+        return page
+    meta = f'<meta name="{FOCUS_META_NAME}" content="{token}">'.encode()
+    return page[:index] + meta + page[index:]
 
 
 def run_one_shot(
@@ -488,6 +528,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.no_events:
             coordinator = observation.Observation(application)
             application.overlays = coordinator
+        if coordinator is not None and config.focus_enabled:
+            # The page is served as fixed bytes with no per-run secret in it, so
+            # the capability has to be put there. `--no-events` leaves no
+            # coordinator to mint one, which is the second off switch the focus
+            # contract names.
+            page_bytes = inject_focus_capability(page_bytes, coordinator.focus_capability())
         server = http_api.CargentoHTTPServer(
             (args.host, args.port),
             application,

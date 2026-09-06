@@ -156,6 +156,8 @@ class OverlaySource(Protocol):
 
     def git_for(self, harness: str, sid: str) -> GitStatus | None: ...
 
+    def focusable(self, harness: str, sid: str) -> bool: ...
+
     def note_rows(self, keys: set[tuple[str, str]]) -> None: ...
 
     def drop_counters(self) -> dict[str, int]: ...
@@ -832,6 +834,12 @@ class Application:
             overlays = source.overlays_for(harness, sid)
             finished_at = source.finished_at(harness, sid)
             git = source.git_for(harness, sid)
+            # Written straight onto the row rather than reduced through the
+            # patch: a target is not a display claim that an overlay could
+            # dispute, and it must not become one — `PATCHABLE` is the set an
+            # untrusted event may write, and the focus contract forbids echoing
+            # a target through any of it.
+            session["focusable"] = source.focusable(harness, sid)
             if overlays or finished_at or git is not None:
                 patch = runtime_events.reduce_overlays(
                     overlays,

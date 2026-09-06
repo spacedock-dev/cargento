@@ -1758,6 +1758,11 @@ class _StubOverlays:
         """Never probed: this stub has no repository behind it."""
         del harness, sid
 
+    def focusable(self, harness: str, sid: str) -> bool:
+        """No terminal identity: this stub observed no session start."""
+        del harness, sid
+        return False
+
     def note_rows(self, keys: set[tuple[str, str]]) -> None:
         self.noted = set(keys)
 

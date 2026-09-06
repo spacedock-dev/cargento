@@ -321,6 +321,7 @@ class CargentoServerTest(RuntimeTestCase):
             "finished_at",
             "dirty",
             "changed",
+            "focusable",
             "rate_per_min",
             "session_output_tokens",
             "turn_output_tokens",

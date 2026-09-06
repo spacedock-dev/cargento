@@ -580,6 +580,14 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         argv.append("--no-usage")
     if args.no_git:
         argv.append("--no-git")
+    if args.no_focus:
+        # SECURITY.md's focus off switch. Read off the namespace directly, like
+        # every branch around it, so a flag added to the parser and forgotten
+        # here raises rather than silently re-enabling a command the operator
+        # disabled: a respawned daemon that re-enables it is a security bug by
+        # the contract's own terms, and the two exact-set assertions in
+        # `test_lifecycle` are blind to an omitted branch.
+        argv.append("--no-focus")
     if args.no_events:
         argv.append("--no-events")
     if args.no_dismiss:

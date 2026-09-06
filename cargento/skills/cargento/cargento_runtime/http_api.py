@@ -848,6 +848,79 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "application/json",
         )
 
+    def _focus(self) -> None:
+        """Raise the terminal one session is running in. Answers one boolean.
+
+        The check order differs from `/api/events/<harness>` deliberately, and
+        the difference is the whole security property. That route 404s an unknown
+        harness BEFORE consulting the capability, because a harness name is
+        public and an unsupported one is not an authentication oracle. **A
+        session id is not public.** So here the capability comes first, then the
+        rate ceiling, then the session lookup — getting it backwards would turn
+        this route into an oracle for which sessions exist.
+
+        The ceiling is claimed AFTER the body is read rather than before it, and
+        that ordering is load-bearing too: `_read_body` is a blocking read with
+        no socket timeout, so claiming the one-slot gate first let a peer that
+        sent a `Content-Length` and then nothing hold focus shut for as long as
+        it kept the socket open. Reading first takes no process-wide state on a
+        request that may never finish, and the gate still precedes the raise,
+        which is what "a repeated or looped request cannot repeat the raise"
+        actually asks for. Nothing about the body distinguishes one session from
+        another, so moving it ahead of the ceiling adds no oracle.
+
+        The body names a session and a harness and never a target: the target
+        comes from an authenticated event, and nothing in this body reaches an
+        argv position. The answer is a single boolean, so an unknown session, a
+        session with no terminal, a declined lookup and a failed command are all
+        the same answer to a caller.
+        """
+        application = self.server.application
+        config = application.config
+        coordinator = self.server.observation
+        if coordinator is None or not config.focus_enabled:
+            # 503 rather than 404, for `/api/dismiss`'s reason: under `--no-focus`
+            # or `--no-events` the route exists and the feature does not, and a
+            # 404 would read as a build too old to have it. It leaks nothing
+            # about sessions, being a run-wide fact.
+            self._reject(503)
+            return
+        if not coordinator.focus_authorized(self.headers.get("X-Cargento-Capability")):
+            self._reject(403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if not 0 <= length <= config.focus_body_cap_bytes:
+            self._reject(413)
+            return
+        try:
+            payload = json.loads(self._read_body(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if not coordinator.claim_focus():
+            # The floor and the in-flight gate together: a repeated or looped
+            # request cannot repeat the raise.
+            self._reject(429)
+            return
+        try:
+            target = (
+                coordinator.focus_target(harness, sid)
+                if isinstance(harness, str) and isinstance(sid, str)
+                else None
+            )
+            focused = target is not None and coordinator.raise_focus(target)
+        finally:
+            coordinator.release_focus()
+        self._send(
+            json.dumps({"focused": focused}, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
     def do_POST(self) -> None:
         self._body_consumed = 0
         if not self._local_ok():
@@ -865,6 +938,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/shutdown": self._shutdown,
             "/api/usage": self._usage_receipt,
             "/api/dismiss": self._dismiss,
+            "/api/focus": self._focus,
             "/api/ask": self._ask,
             "/api/ask/withdraw": self._withdraw,
             "/api/answer": self._answer,

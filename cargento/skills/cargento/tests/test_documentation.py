@@ -8,7 +8,7 @@ import re
 import unittest
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from cargento_runtime import cli, git_status, history
+from cargento_runtime import cli, focus, git_status, history
 from cargento_runtime import config as runtime_config
 
 from .support import (
@@ -822,3 +822,252 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
         # signed-in harness instead.
         self.assertIn("never a Cargento credential", self.FLAT)
         self.assertIn("adds no endpoint to the list in Usage quota reads", self.FLAT)
+
+
+class FocusCommandContractDocumentationTest(unittest.TestCase):
+    """SECURITY.md's focus section is a contract, so the code must still meet it.
+
+    The direct analogue of `GitProbeContractDocumentationTest` above: the section
+    was written and reviewed on its own cycle before this code existed (DRC-4383,
+    promoted here from `docs/plans/session-focus-security-scope.md` and that file
+    deleted, with the deep dive beside it, in the same commit). Prose and code can
+    only agree by accident unless something compares them.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    # Whitespace-collapsed, so a reflow that changes no words does not fail these.
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+
+    def test_the_contract_section_survived_the_promotion(self) -> None:
+        self.assertIn("## Reaching a session's terminal (the focus command)", self.SECURITY)
+        # The two intro amendments that had to ride with it. Without the first,
+        # the section sits under a Scope clause about running a program inside a
+        # repository, which the focus command does not do — the technicality
+        # DRC-4274 warned about, of a promoted section landing under a clause
+        # that does not cover it.
+        self.assertIn(
+            "running a program to reach a session's terminal other than the focus command "
+            "described in Reaching a session's terminal (the focus command),",
+            self.FLAT,
+        )
+        self.assertIn(
+            "The focus command writes nothing anywhere, reads nothing back, and touches no "
+            "harness store;",
+            self.FLAT,
+        )
+
+    def test_the_widening_stayed_scoped_to_its_own_clause(self) -> None:
+        # Written generally, the sentence would make documented security bugs of
+        # three paths Cargento already ships. The whitelist has to stay a
+        # whitelist of scoped clauses.
+        self.assertIn(
+            "a whitelist of two scoped clauses and not a general permission to execute",
+            self.FLAT,
+        )
+        for shipped in (
+            "cargento_runtime/notifications.py",
+            "cargento_runtime/lifecycle.py",
+            "cargento_runtime/quota.py",
+        ):
+            source = (SERVER_PATH.parent / shipped).read_text(encoding="utf-8")
+            with self.subTest(module=shipped):
+                self.assertIn("subprocess", source)
+
+    def test_the_plan_documents_died_with_their_promotion(self) -> None:
+        # Leaving either in place states the contract in two places and lets them
+        # drift.
+        plans = self.ROOT / "docs" / "plans"
+        self.assertFalse((plans / "session-focus-security-scope.md").exists())
+        self.assertFalse((plans / "2026-09-05-drc-4383-deep-dive.md").exists())
+
+    def test_the_documented_off_switch_is_the_flag_the_parser_accepts(self) -> None:
+        # The prose half is bound to a parser call, so it is not a grep over our
+        # own words: until `--no-focus` parses, this assertion would be one.
+        self.assertIn("`--no-focus`, and one other flag turns it off", self.FLAT)
+        args = cli.build_parser().parse_args(["--no-focus"])
+        self.assertTrue(args.no_focus)
+
+    def test_the_second_off_switch_the_contract_names_is_also_a_flag(self) -> None:
+        self.assertIn(
+            "The capability comes from the observation coordinator, which does not exist under "
+            "`--no-events`, so that flag disables focus too.",
+            self.FLAT,
+        )
+        self.assertTrue(cli.build_parser().parse_args(["--no-events"]).no_events)
+
+    def test_the_documented_grammars_are_the_patterns_the_code_applies(self) -> None:
+        # The contract's table, bound to the compiled patterns rather than
+        # restated. The table was itself corrected after being executed against
+        # its own claimed refusals, so a prose promise the pattern does not keep
+        # is the exact failure this guards.
+        for documented, pattern in (
+            ("^%[0-9]{1,9}$", focus.TMUX_PANE_RE),
+            ("^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$", focus.TMUX_SOCKET_RE),
+            ("^/dev/[A-Za-z0-9][A-Za-z0-9._-]{0,119}$", focus.CLIENT_TTY_RE),
+        ):
+            with self.subTest(grammar=documented):
+                self.assertIn(f"`{documented}`", self.SECURITY)
+                self.assertEqual(documented, pattern.pattern)
+
+    def test_the_refused_examples_in_the_table_are_refused(self) -> None:
+        # Every value the table names as refused, run against the pattern the
+        # same row names. The document's own examples, not examples chosen here.
+        for pattern, refused in (
+            (focus.TMUX_PANE_RE, ("%3; rm -rf", "-%3", "%", "%3 %4")),
+            (focus.TMUX_SOCKET_RE, ("-L", "../x", "/tmp/s", ".hidden", "")),
+            (
+                focus.CLIENT_TTY_RE,
+                (
+                    "--dangerously-skip-permissions",
+                    "; rm -rf ~",
+                    "../../etc/passwd",
+                    "/dev/..",
+                ),
+            ),
+        ):
+            for value in refused:
+                with self.subTest(value=value):
+                    self.assertIn(value, self.SECURITY)
+                    self.assertIsNone(pattern.match(value))
+
+    def test_no_apple_event_case_is_named_while_its_arm_is_unmeasured(self) -> None:
+        # The contract permits one only once that arm has been run, and A2 is
+        # inconclusive. The bound is on the code rather than on the prose,
+        # because the prose is what grants the permission.
+        self.assertIn("**No Apple Event case may be named until that arm has been run**", self.FLAT)
+        runtime = SERVER_PATH.parent / "cargento_runtime"
+        pattern = re.compile(r"""["']osascript["']""")
+        offenders = sorted(
+            path.name
+            for path in runtime.rglob("*.py")
+            if pattern.search(path.read_text(encoding="utf-8"))
+        )
+        # Quoted, so the one prose mention in `http_api.py` is not counted as a
+        # call site. `notifications.py` is the only one, and it runs
+        # `display notification` — a StandardAdditions command with no
+        # `tell application` block, so it is never checked against the Automation
+        # privacy permission. That is an escaping precedent and not a permission
+        # one, which is why it is named here rather than counted as a focus case:
+        # a macOS focus case would be the FIRST Automation-checked call in this
+        # codebase, not the second.
+        self.assertEqual(["notifications.py"], offenders)
+
+    def test_the_documented_grammar_table_carries_the_server_pid(self) -> None:
+        # A pane id is an ordinal on ONE server, so the field that anchors a
+        # target to the server that issued it is part of the target's shape and
+        # belongs in the table with the other three.
+        self.assertIn("`^[0-9]{1,10}$`", self.SECURITY)
+        self.assertEqual("^[0-9]{1,10}$", focus.TMUX_SERVER_RE.pattern)
+        self.assertIn("A pane id is an ordinal on one tmux server, not", self.FLAT)
+
+    def test_the_documented_command_is_the_argv_the_module_builds(self) -> None:
+        # The section prints the three commands verbatim, so the format strings
+        # it prints have to be the ones the templates carry — a document naming
+        # `#{session_name}` alone would be describing a lookup that cannot
+        # decline a stale server.
+        self.assertIn("display-message -p -t <pane> '#{pid} #{session_name}'", self.SECURITY)
+        self.assertIn("#{pid} #{session_name}", focus.SESSION_NAME_ARGV)
+        self.assertIn("#{client_tty}", focus.LIST_CLIENTS_ARGV)
+
+    def test_the_clients_are_counted_by_lines_as_the_contract_now_says(self) -> None:
+        # The document says the count is over lines, and the module is what has
+        # to mean it: a control-mode client reports an empty `#{client_tty}`, and
+        # a reader dropping that line counts two attached clients as one.
+        self.assertIn("It is counted by lines, not by values.", self.FLAT)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "focus.py").read_text(encoding="utf-8")
+        self.assertNotIn("if line.strip()]", source)
+
+    def test_the_unmeasured_platforms_record_no_target(self) -> None:
+        self.assertIn(
+            "Not a named case means no target is recorded there, and that is enforced where the "
+            "target is stored",
+            self.FLAT,
+        )
+        source = (SERVER_PATH.parent / "cargento_runtime" / "observation.py").read_text(
+            encoding="utf-8"
+        )
+        marker = source.index("def _mark_focus")
+        self.assertIn('self.config.platform_name != "darwin"', source[marker : marker + 3_000])
+
+    def test_the_documented_check_order_is_the_one_the_route_implements(self) -> None:
+        # The promoted section said the focus route used `/api/events/<harness>`'s
+        # order and 404d an unsupported case before the capability. The route
+        # deliberately inverts that first step, and its own comment calls the
+        # inversion the whole security property: a harness name is public and a
+        # session id is not, so a lookup-first route would be an oracle for which
+        # sessions exist. The document is what was wrong, so the document moved.
+        self.assertIn(
+            "The route's check order is deliberately **not** the one "
+            "`POST /api/events/<harness>` uses",
+            self.FLAT,
+        )
+        self.assertIn("**A session id is not.**", self.FLAT)
+        self.assertIn("The focus route emits no 404 on any path", self.FLAT)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
+            encoding="utf-8"
+        )
+        handler = source[source.index("def _focus(self)") : source.index("def do_POST(self)")]
+        # Every status the route can answer with, and 404 is not among them.
+        self.assertEqual(
+            ["503", "403", "413", "429"],
+            sorted(set(re.findall(r"_reject\((\d{3})\)", handler)), key=handler.index),
+        )
+        self.assertLess(handler.index("focus_authorized"), handler.index("claim_focus"))
+        self.assertLess(handler.index("claim_focus"), handler.index("focus_target"))
+
+    def test_the_capability_claim_stops_where_the_scope_section_stops(self) -> None:
+        # The first draft offered the capability as the answer to another local
+        # account, which `GET /` hands the token to. Scope already said so
+        # correctly; the focus section now says the same rather than the reverse,
+        # which is also what makes Scope's back-reference to it true.
+        self.assertIn("against that account this route stands where `/api/dismiss` does", self.FLAT)
+        self.assertIn(
+            "What the capability actually separates is a page from a document navigation and "
+            "from a local process that never fetched the board",
+            self.FLAT,
+        )
+
+    def test_the_shared_session_window_is_named_and_the_clause_measures_the_lookup(self) -> None:
+        # The rule is decided on `list-clients` and enforced by `switch-client`
+        # about six milliseconds later, so the absolute clause was unsatisfiable
+        # by any implementation this contract permits.
+        self.assertIn(
+            "The rule is decided on one command and enforced by the next, and the gap between "
+            "them is named rather than narrowed.",
+            self.FLAT,
+        )
+        self.assertIn("a raise on a lookup that reported more than one attached client", self.FLAT)
+        self.assertNotIn("a raise on a multiplexer session with more than one attached", self.FLAT)
+
+    def test_the_scope_paragraph_counts_the_capability_gates_the_code_has(self) -> None:
+        # Nothing else in the suite pins this, and the paragraph is the one an
+        # auditor of a `--host` bind reads. It said eight of nine had nothing to
+        # authenticate with, which erases the one POST boundary a remote client
+        # genuinely cannot cross.
+        source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
+            encoding="utf-8"
+        )
+        do_post = source[source.index("def do_POST(self)") :]
+        table = do_post[do_post.index("route = {") : do_post.index("}.get(path)")]
+        # The exact-match table, plus the one prefix route matched ahead of it.
+        routes = len(re.findall(r'"(/api/[a-z/]+)":', table)) + int(
+            'path.startswith("/api/events/")' in do_post
+        )
+        gated = len(re.findall(r"\bcoordinator\.(?:focus_)?authorized\(", source))
+        self.assertEqual(9, routes)
+        self.assertEqual(2, gated)
+        self.assertIn("Writing is the nine POST routes", self.FLAT)
+        self.assertIn("There is nothing to authenticate with on seven of them", self.FLAT)
+        self.assertIn("Two carry a capability and they are not worth the same.", self.FLAT)
+
+    def test_the_response_the_contract_promises_is_the_one_the_route_sends(self) -> None:
+        self.assertIn("The response is a single boolean saying whether a focus happened", self.FLAT)
+        source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
+            encoding="utf-8"
+        )
+        handler = source[source.index("def _focus(self)") : source.index("def do_POST(self)")]
+        self.assertIn('{"focused": focused}', handler)
+        for echoed in ("target", "tty", "pane", "socket", "reason"):
+            with self.subTest(field=echoed):
+                self.assertNotIn(f'"{echoed}":', handler)

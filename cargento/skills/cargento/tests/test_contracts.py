@@ -1316,6 +1316,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "cargento_runtime.aggregate",
             "cargento_runtime.config",
             "cargento_runtime.events",
+            "cargento_runtime.focus",
             "cargento_runtime.git_status",
             "cargento_runtime.io",
             "cargento_runtime.probe",
@@ -1335,6 +1336,10 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # The end-of-session git probe. A leaf on purpose: it imports no runtime
         # module, holds no state and takes no lock, which is what lets the
         # coordinator call it from a thread of its own without ordering concerns.
+        # The focus command. A leaf for `git_status`'s reason and with the same
+        # consequence: the coordinator runs it from a request thread with no
+        # ordering to think about, and nothing it does can reach back into state.
+        "cargento_runtime.focus": set(),
         "cargento_runtime.git_status": set(),
         # `history` imports `config` and nothing else, which is the shape
         # `git_status` above took rather than the shape `dismissals` took. A

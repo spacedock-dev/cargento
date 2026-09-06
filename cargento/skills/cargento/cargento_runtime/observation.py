@@ -111,11 +111,13 @@ from __future__ import annotations
 
 import hmac
 import secrets
+import subprocess
 import threading
 import time
 from typing import TYPE_CHECKING, Any
 
 from cargento_runtime import events as runtime_events
+from cargento_runtime import focus as runtime_focus
 from cargento_runtime import git_status as runtime_git
 from cargento_runtime import io as runtime_io
 from cargento_runtime import probe as runtime_probe
@@ -213,6 +215,43 @@ class Observation:
         # describes, and the reducer's own clears lapse with the overlay that
         # carries them while a reading does not.
         self._git: dict[SessionKey, runtime_git.GitStatus] = {}
+        # (harness, sid) -> the terminal a raise would name. Held beside `_git`
+        # but NOT bounded the same way (see `_focus_at`), and not in the overlay
+        # ledger either: an overlay is a display claim that lapses, while a pane
+        # is a durable fact about where the session runs. Not the observer sidecar
+        # either — that writes to disk, and SECURITY.md's focus section says
+        # nothing is written.
+        #
+        # In-process, which is a limitation rather than an implementation detail:
+        # only a session that posted an event to THIS server run can carry a
+        # target, so a session predating the run is unfocusable until it emits
+        # another one. There is no store behind this map by design.
+        self._focus: dict[SessionKey, runtime_focus.Target] = {}
+        # (harness, sid) -> when this run last saw an event for that session.
+        # This is the target map's bound, and it is a CLOCK rather than a row
+        # set. `_finished` and `_git` are pruned by `note_rows` because both are
+        # display state: a mark for a row no collection produces can never
+        # render, so dropping it costs nothing and it comes back with the row.
+        # A target is not display state. It is a durable fact about where the
+        # session runs, gathered once on `session_started` and re-gathered never,
+        # so a collection that misses the row — the transcript not yet on disk,
+        # or a row aged past `window_hours` and used again — would destroy it
+        # permanently and leave the control dead for the rest of the session.
+        self._focus_at: dict[SessionKey, float] = {}
+        # The focus command's floor and in-flight gate, on `quota`'s pattern:
+        # `usage_poll_floor_sec` beside `usage_fetch_inflight`. A raise is the
+        # one thing Cargento does that it cannot undo and that is visible outside
+        # Cargento, so a looped request must not be able to repeat it.
+        self._focus_last_at = 0.0
+        self._focus_inflight = False
+        # This run's focus consumer key. Its own secret rather than a derived
+        # per-harness token: those are byte-identical to the ones
+        # `POST /api/events/<harness>` accepts, so handing the browser one to
+        # raise a window would hand it the power to forge that harness's
+        # lifecycle state.
+        self._focus_secret = secrets.token_hex(32)
+        # Injected so the tests can drive a raise without a tmux server.
+        self._focus_runner: Callable[..., Any] = subprocess.run
         # Injected so the tests can drive the edge without a repository, and so a
         # probe can be made to block on demand: AC3's oracle is that `submit`
         # returns while this is still running.
@@ -335,6 +374,14 @@ class Observation:
                 if self.config.git_probe_enabled and event.cwd:
                     # Noted here and dispatched below, once the lock is released.
                     probe_cwd = event.cwd
+                # The session is over, so the pane it ran in is nobody's target.
+                # Retired here rather than in `_mark_finished`, which is where
+                # the git reading goes: that method pops on a WORKING overlay,
+                # and the hook sends terminal identity on `session_started`
+                # alone, so retiring there would drop every target at the first
+                # `turn_started` and leave the feature unable to focus anything.
+                self._focus.pop(key, None)
+                self._focus_at.pop(key, None)
             elif overlay is not None:
                 self._remember(key, overlay)
                 self._mark_finished(key, overlay)
@@ -344,6 +391,7 @@ class Observation:
                 # replaying overlays over a cached read.
                 self._last_reconcile_at = 0.0
                 self._probe_stamp = None
+            self._mark_focus(key, event)
             self._dirty[event.harness] = self._dirty.get(event.harness, 0) + 1
             if overlay is not None and overlay.kind == runtime_events.OVERLAY_NEEDS_INPUT:
                 # The exemption this module's docstring has always claimed, and
@@ -421,6 +469,102 @@ class Observation:
         # max, not assignment: delivery is at-least-once and possibly reordered,
         # so a redelivered older stop must not pull the mark backwards.
         self._finished[key] = max(self._finished.get(key, 0.0), overlay.at)
+
+    def _mark_focus(self, key: SessionKey, event: runtime_events.Event) -> None:
+        """Record where this session's terminal is, if the event carried it.
+
+        Refused rather than evicted at the same cap `_remember` uses, for the
+        same reason: evicting somebody else's target to make room would drop
+        whichever happened to be oldest, and a target does not get to cost an
+        alert. The grammar runs here as well as at the raise, so a value that
+        could never build a command is never stored either.
+
+        Every event for a session already holding a target refreshes its stamp,
+        which is what bounds the map: a session still emitting events is still
+        running in the pane it named, and one that has gone silent for a whole
+        row window can no longer be clicked because its row is no longer
+        produced. That is the only bound besides `session_ended`, because Codex's
+        adapter has no `SessionEnd` mapping at all and would otherwise never
+        retire a target.
+
+        Recording is gated on the platform the case was measured on. The named
+        case is macOS, and the device grammar `SECURITY.md` states admits no
+        separator after `/dev/`, so `/dev/pts/N` — the client device of every
+        terminal emulator and ssh session on Linux — can never pass it. Recording
+        a target there would publish `focusable: true` for a control that spends
+        two subprocesses and returns false every time, which is exactly what the
+        section forbids: "A session matching no named case is not focused, and
+        the reader is told that rather than shown a control that does nothing."
+        Read off the config rather than `sys.platform` for `notify_mac`'s reason,
+        so both branches run on every CI runner.
+        """
+        if not self.config.focus_enabled or self.config.platform_name != "darwin":
+            return
+        now = self.clock()
+        if key in self._focus:
+            self._focus_at[key] = now
+        target = runtime_focus.target_from(event.tmux_socket, event.tmux_pane, event.tmux_server)
+        if target is None:
+            return
+        if key not in self._focus and len(self._focus) >= self.config.event_overlay_max_sessions:
+            self._bump("focus.refused")
+            return
+        self._focus[key] = target
+        self._focus_at[key] = now
+
+    def focus_target(self, harness: str, sid: str) -> runtime_focus.Target | None:
+        """This row's terminal, or None if this run never observed one."""
+        with self._lock:
+            return self._focus.get((harness, sid))
+
+    def focusable(self, harness: str, sid: str) -> bool:
+        """Whether a target exists. A bit, never the target itself."""
+        return self.focus_target(harness, sid) is not None
+
+    def focus_capability(self) -> str:
+        """This run's focus consumer key. Never a harness token."""
+        return self._focus_secret
+
+    def focus_authorized(self, presented: str | None) -> bool:
+        """Whether a caller proved it holds the focus capability.
+
+        `compare_digest` and the `isascii` guard for `authorized`'s reasons: a
+        short-circuiting comparison leaks the shared prefix, and `http.client`
+        decodes header bytes as latin-1, so a single high byte would otherwise
+        raise inside the handler rather than being refused.
+        """
+        if not presented or not presented.isascii():
+            return False
+        return hmac.compare_digest(self._focus_secret, presented)
+
+    def claim_focus(self) -> bool:
+        """Take the one focus slot, or refuse. Release it with `release_focus`."""
+        now = self.clock()
+        with self._lock:
+            if self._focus_inflight or now - self._focus_last_at < self.config.focus_floor_sec:
+                self._bump("focus.rate")
+                return False
+            self._focus_inflight = True
+            self._focus_last_at = now
+            return True
+
+    def release_focus(self) -> None:
+        with self._lock:
+            self._focus_inflight = False
+
+    def raise_focus(self, target: runtime_focus.Target, *, runner: Any = None) -> bool:
+        """Run the raise, outside the lock. Returns whether it happened.
+
+        Outside the lock for `_probe_and_mark`'s reason one feature over: this
+        spawns processes, and holding the coordinator lock across them would
+        stall every arriving event and the collection loop behind a command whose
+        whole budget belongs to somebody else's multiplexer.
+        """
+        return runtime_focus.raise_terminal(
+            target,
+            timeout_sec=self.config.focus_timeout_sec,
+            runner=self._focus_runner if runner is None else runner,
+        )
 
     def _probe_git(self, cwd: str) -> runtime_git.GitStatus | None:
         """The real probe, bound to this run's timeout. Replaced wholesale in tests."""
@@ -594,6 +738,14 @@ class Observation:
                 del self._finished[key]
             for key in [k for k in self._git if k not in keys and k not in self._overlays]:
                 del self._git[key]
+            # A target is retired by time and never by a row set — see
+            # `_focus_at`. `session_ended` is the ordinary retirement; this
+            # covers the session that dies without one, which for Codex is every
+            # session, its adapter having no `SessionEnd` mapping.
+            ttl = self.config.focus_target_ttl_sec
+            for key in [k for k, at in self._focus_at.items() if now - at >= ttl]:
+                del self._focus[key]
+                del self._focus_at[key]
             for key in list(self._overlays):
                 if key in keys:
                     self._pending.pop(key, None)

@@ -80,7 +80,7 @@ Refused, and each for a reason the sibling did not have to weigh:
 - **Operator-supplied strings in an argv.** The socket label and the session
   name are MINTED by this recorder rather than taken from a flag, so there is no
   user string in a command line to redact and the recorded argv is verbatim.
-- **The output of an arm's command.** `docs/plans/session-focus-security-scope.md`
+- **The output of an arm's command.** `SECURITY.md`'s focus section
   says a raise reads nothing back, so stdout and stderr of an arm command are
   discarded and only the exit status is kept. Whether the window moved is
   established by the recorder's own before-and-after probes instead, which is
@@ -553,7 +553,7 @@ return out as text"""
 def raise_terminal_tab(device: str) -> str:
     """AppleScript that raises the one tab on a device, and DECLINES otherwise.
 
-    The decline is not politeness. `docs/plans/session-focus-security-scope.md`
+    The decline is not politeness. `SECURITY.md`'s focus section
     makes a raise on a lookup returning no terminal or more than one live
     candidate a violation, and DRC-4382 measured why: macOS recycles the device,
     and three Terminal tabs matched one device with a single one of them busy,
@@ -1109,7 +1109,7 @@ def _execute(argv: Sequence[str], *, allowed: bool) -> int:
 
     The single gate. Every path that could move a window comes through here, and
     `allowed` is the arm's own flag rather than anything derived. Output is
-    discarded because `docs/plans/session-focus-security-scope.md` says a raise
+    discarded because `SECURITY.md`'s focus section says a raise
     reads nothing back -- and because a command claiming success is not evidence
     that a window moved. The before-and-after probes are.
     """
