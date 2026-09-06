@@ -252,6 +252,12 @@ class Arm:
     # Which of the two mechanisms the arm exercises. Both, for an arm that
     # steers a multiplexer and then asks an emulator to come forward.
     mechanism: tuple[str, ...] = ()
+    # Paths into the arm's own record that must be non-null for it to have
+    # answered its question. Movement is not always the evidence: A2 moved a tab
+    # and still answered nothing, because the fields saying WHO issued the raise
+    # once the launcher was gone came back null, and those are the entire
+    # difference between A2 and A1.
+    requires_evidence: tuple[tuple[str, ...], ...] = ()
     needs: tuple[str, ...] = ()
     # A cost the arm leaves behind after it finishes. Named in the row because a
     # reader deciding whether to authorise it needs it before, not after.
@@ -372,6 +378,10 @@ ARMS: tuple[Arm, ...] = (
     Arm(
         id="a2",
         mechanism=(MECHANISM_APPLE_EVENT,),
+        requires_evidence=(
+            ("responsible", "after_launcher_quit_name"),
+            ("responsible", "after_launcher_quit_is_self"),
+        ),
         what="launcher-quit: a daemon started from a throwaway Terminal window, "
         "that window quit, then a raise from the surviving daemon",
         expectation=EXPECT_MOVE,
@@ -528,16 +538,16 @@ end tell"""
 
 # Every device a Terminal tab sits on. There is no `lsappinfo` equivalent:
 # LaunchServices knows applications, not tabs, so this one costs an Apple Event.
-EVERY_TERMINAL_TAB_TTY = """tell application "Terminal"
-set out to {}
+EVERY_TERMINAL_TAB_TTY = """set out to {}
+tell application "Terminal"
 repeat with w in windows
 repeat with t in tabs of w
 set end of out to tty of t
 end repeat
 end repeat
+end tell
 set text item delimiters to linefeed
-return out as text
-end tell"""
+return out as text"""
 
 
 def raise_terminal_tab(device: str) -> str:
@@ -1267,12 +1277,38 @@ def _reached(arm: Arm, targets: Targets, after: Snapshot) -> bool | None:
     return all(hits)
 
 
-def outcome_of(record: dict[str, Any]) -> str:
-    """The arm's own answer, DERIVED from what it recorded."""
+def _unanswered(record: dict[str, Any]) -> str | None:
+    """Why the arm answered nothing, or `None` if it did answer.
+
+    Three ways an arm can fail to ask its question, kept together because they
+    are one idea. The third is the one that was missing: a step behind its own
+    flag is the step that MAKES the arm the question it is. A2's is quitting the
+    window that launched the daemon, and without it the raise runs with the
+    launcher alive, which is the case three other arms already cover. Skipping
+    it and still reporting a positive is a verdict composed over evidence the
+    arm did not gather, and it read `moved_to_target` for an arm that answered
+    nothing at all.
+    """
     if not record["authorized"]:
         return OUTCOME_NOT_AUTHORIZED
     if not record["precondition"]["satisfied"]:
         return OUTCOME_INCONCLUSIVE
+    if any(step.get("requires_flag") and not step["ran"] for step in record["commands"]):
+        return OUTCOME_INCONCLUSIVE
+    for path in ARMS_BY_ID[str(record["arm"])].requires_evidence:
+        cursor: Any = record
+        for key in path:
+            cursor = cursor.get(key) if isinstance(cursor, dict) else None
+        if cursor is None:
+            return OUTCOME_INCONCLUSIVE
+    return None
+
+
+def outcome_of(record: dict[str, Any]) -> str:
+    """The arm's own answer, DERIVED from what it recorded."""
+    unanswered = _unanswered(record)
+    if unanswered:
+        return unanswered
     moved = record["moved"]
     if record["expectation"] == EXPECT_OBSERVE:
         return OUTCOME_OBSERVED
@@ -1327,6 +1363,9 @@ def run_arm(
     socket: str = TMUX_SOCKET,
     out: str = "",
     at: str = "",
+    # Flags beyond the arm's own `--allow-<id>`. Empty by default, so a step
+    # behind a second flag stays unreachable unless a caller names it.
+    extra_flags: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """One arm, run or refused, as a record.
 
@@ -1358,9 +1397,10 @@ def run_arm(
         for step in plan(arm, targets, socket=socket, out=out):
             if not step["argv"]:
                 continue
-            if step.get("requires_flag"):
-                # The window-quitting step. It is planned, printed and gated
-                # separately, and this recorder never reaches it on its own.
+            if step.get("requires_flag") and step["requires_flag"] not in extra_flags:
+                # The window-quitting step, gated on its own flag because it
+                # closes something an operator opened. Passing that flag is the
+                # only way it runs.
                 commands.append(
                     {
                         "argv": redact_argv(step["argv"]),
@@ -1861,7 +1901,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912
             file=sys.stderr,
         )
         return 3
-    identity.append(args.out, run_arm(arm, allowed=True, socket=args.socket, out=args.out))
+    extra = frozenset({A2_QUIT_FLAG}) if args.allow_a2_quit_window else frozenset()
+    identity.append(
+        args.out,
+        run_arm(arm, allowed=True, socket=args.socket, out=args.out, extra_flags=extra),
+    )
     return 0
 
 

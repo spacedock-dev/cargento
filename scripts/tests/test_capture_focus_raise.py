@@ -1065,6 +1065,127 @@ class ExecutorTest(unittest.TestCase):
         recorder._write_json("/nonexistent/dir/x.json", {"pid": 1})
 
 
+class SkippedGateTest(unittest.TestCase):
+    """An arm whose defining step was skipped is inconclusive, not a positive.
+
+    A2 exists to answer one question: does a raise still work once the terminal
+    that launched the daemon is gone. Quitting that window is the step that makes
+    it that question. `--allow-a2-quit-window` was parsed and never consumed, so
+    the step was skipped unconditionally, the raise ran with the launcher still
+    alive, and the arm reported `moved_to_target`. The verdict then counted it
+    as an Apple Event positive.
+
+    That is the same failure as reading an unauthorised arm as a negative, from
+    the other end: a positive composed over evidence the arm did not gather.
+    """
+
+    def test_an_arm_with_a_skipped_gated_step_is_inconclusive(self) -> None:
+        # Falsified by: `outcome_of` reading only whether something moved.
+        record = VerdictTest().arm("a2")
+        record["moved"] = True
+        skipped = [c for c in record["commands"] if c.get("requires_flag") and not c["ran"]]
+        self.assertTrue(skipped, "a2 must carry a gated step for this to mean anything")
+        self.assertEqual(
+            recorder.OUTCOME_INCONCLUSIVE,
+            recorder.outcome_of(record),
+            "an arm that skipped its defining step has not answered its question",
+        )
+
+
+class RequiredEvidenceTest(unittest.TestCase):
+    """An arm that did not gather its own defining evidence answered nothing.
+
+    A2 ran all three steps, quit the launcher window and moved a Terminal tab,
+    and reported `moved_to_target`. But the two fields that say WHO issued the
+    raise once the launcher was gone came back null, and those fields are the
+    entire difference between A2 and A1. Without them the record is consistent
+    with the launcher still being alive, which is the case three other arms
+    already cover.
+
+    Movement is not the evidence here. The responsible identity is, and an arm
+    may declare the fields it cannot answer without.
+    """
+
+    def test_an_arm_missing_its_declared_evidence_is_inconclusive(self) -> None:
+        # Falsified by: `outcome_of` reading movement alone.
+        record = VerdictTest().arm("a2")
+        record["moved"] = True
+        record["responsible"]["after_launcher_quit_name"] = None
+        self.assertEqual(
+            recorder.OUTCOME_INCONCLUSIVE,
+            recorder.outcome_of(record),
+            "a2 without its post-quit responsible identity has not answered its question",
+        )
+
+    def test_the_same_arm_with_its_evidence_is_read_normally(self) -> None:
+        record = VerdictTest().arm("a2")
+        record["moved"] = True
+        record["responsible"]["after_launcher_quit_name"] = "python3"
+        record["responsible"]["after_launcher_quit_is_self"] = True
+        record["frontmost"]["after_is_the_target"] = True
+        for step in record["commands"]:
+            step["ran"] = True
+        self.assertEqual(recorder.OUTCOME_MOVED_TO_TARGET, recorder.outcome_of(record))
+
+    def test_every_arm_that_declares_evidence_names_a_real_field(self) -> None:
+        blank = VerdictTest().arm("a2")
+        for arm in recorder.ARMS:
+            for path in arm.requires_evidence:
+                with self.subTest(arm=arm.id, path=path):
+                    cursor: Any = blank
+                    for key in path:
+                        self.assertIn(key, cursor, f"{arm.id} declares a field no record carries")
+                        cursor = cursor[key]
+
+
+class ReadScriptTest(unittest.TestCase):
+    """The read scripts are run, not mocked.
+
+    `EVERY_TERMINAL_TAB_TTY` shipped broken and nothing noticed, because every
+    test that needed it patched `_terminal_devices` and every arm that ran took
+    a path around it: the controls aim at a constructed device, the tmux arms
+    read tmux, and the baseline observes. It set `text item delimiters` inside
+    a `tell application "Terminal"` block, which asks Terminal for a property it
+    does not have, so the read returned `-10006` and `_terminal_devices` gave
+    back an empty list on every call. Every Apple Event arm then declined with
+    `no_target_distinct_from_the_current_state`, which reads exactly like an
+    arrangement the operator failed to set up.
+
+    A mock cannot catch that. Only running the script can, so this does.
+    """
+
+    #: The READ scripts. Deliberately named rather than discovered, so that a
+    #: raise script can never be swept into a test that executes what it finds.
+    READS = ("SELECTED_TERMINAL_TTY", "EVERY_TERMINAL_TAB_TTY")
+
+    @unittest.skipUnless(sys.platform == "darwin", "AppleScript is macOS only")
+    def test_every_read_script_runs(self) -> None:
+        for name in self.READS:
+            script = getattr(recorder, name)
+            with self.subTest(script=name):
+                done = subprocess.run(
+                    ["/usr/bin/osascript", "-e", script],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    check=False,
+                )
+                self.assertEqual(0, done.returncode, f"{name}: {done.stderr.strip()}")
+
+    def test_no_script_sets_a_global_property_inside_a_tell_block(self) -> None:
+        # The shape rather than the instance, so it holds on a machine that
+        # cannot run AppleScript at all.
+        source = SCRIPT.read_text(encoding="utf-8")
+        for block in source.split('tell application "Terminal"')[1:]:
+            body = block.split("end tell")[0]
+            with self.subTest(block=body[:40]):
+                self.assertNotIn(
+                    "set text item delimiters",
+                    body,
+                    "text item delimiters belongs to the script, not to Terminal",
+                )
+
+
 class NoteAndReportTest(unittest.TestCase):
     def test_a_capture_can_carry_the_arrangement_its_records_cannot(self) -> None:
         # The `_provenance` precedent the rest of `docs/captures/` sets: how the
