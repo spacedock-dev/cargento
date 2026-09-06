@@ -545,8 +545,15 @@ def build_runtime_config(
         # Higher than the run threshold, deliberately. The run of four is a
         # tight loop; a total is failures however they were spaced, and four
         # scattered failures through a long productive turn is ordinary work
-        # rather than a session stuck. Six is the first count that cannot be
-        # reached by the run trigger staying silent on a healthy turn.
+        # rather than a session stuck.
+        #
+        # Six is not on its own enough, and the first draft of this comment
+        # claimed it was. Replaying 60 real Claude transcripts, 3 reached six
+        # scattered failures on turns that were plainly healthy, the worst being
+        # 7 failures among 198 successes with a longest run of 2. So `loop_signal`
+        # pairs this count with a share test: the failures must also outnumber the
+        # successes. Raising the number instead does not work, because silencing
+        # that worst case needs 8 and the shape the rung exists for has 6.
         loop_error_total_threshold=6,
         # Lower than both, because the reading is different: not how long the
         # run is, but whether anything in this turn has worked at all. The
