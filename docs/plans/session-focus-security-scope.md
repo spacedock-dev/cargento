@@ -173,6 +173,19 @@ held a device macOS had handed out again. A lookup returning more than one live 
 ambiguous, and an ambiguous lookup does not raise. Picking one would be the same failure as the
 naive readings below, arrived at from the other direction.
 
+A session with more than one attached client is refused. This is the third decline rule and the one
+no lookup prevents: a target can be correctly resolved, unambiguous, and the only live candidate,
+and raising it still takes the view away from every other client attached to that session. On a real
+machine that is another person, or another agent. The rule is therefore about who else is watching
+rather than about whether the target was found, which is why it sits beside the ambiguity bound and
+not inside it.
+
+Refusing is the operator's ruling of 2026-09-06, taken over the alternative of raising anyway and
+disclosing it on the control. The reasoning recorded with it: a reader often cannot know who else is
+attached, and a disclosure they clicked past is not consent from the person whose view moved. The
+cost is that the shared-session case is not served at all, and the section says so rather than
+leaving a reader to discover it.
+
 ### What is never done
 
 Nothing is typed into a terminal. No keystroke, no text, no newline, by any path. The ask lane's
@@ -180,8 +193,16 @@ direction invariant is unchanged by this feature, and any implementation reachin
 contradicts it outright.
 
 No harness store is written. No file inside the user's repository is read or written. No native
-permission prompt is answered and no session's state is altered: the window moves, the session does
-not.
+permission prompt is answered, and no agent session's state is altered: the conversation is
+untouched, no turn is started or stopped, and nothing is typed.
+
+**What a socket raise does change is the multiplexer session, and an earlier draft of this document
+denied it.** It read "the window moves, the session does not", which is false of the only mechanism
+this feature ships. `tmux switch-client` resolves the pane to its window and moves the tmux
+session's current window; every client attached to that session displays the change. DRC-4385
+measured it in both positive arms, and reproduced it outside them by steering one client and
+watching the other follow. The sentence is corrected rather than softened, because the bound below
+rests on the mechanism being described accurately.
 
 Nothing is read back. Standard output is discarded rather than parsed, so no pane content, no window
 title and no pathname enters Cargento.
@@ -274,4 +295,4 @@ socket half of it ran, a keystroke sent into any terminal by any path, output re
 directory set on the command, a focus triggered by anything but an authorized operator action, a
 focus while the feature is off, a respawned daemon that re-enables it, a target resolved once and
 reused rather than resolved at the raise, a raise on a lookup that returned no terminal or more than
-one live candidate, or any read or write inside the user's repository.
+one live candidate, a raise on a multiplexer session with more than one attached client, or any read or write inside the user's repository.
