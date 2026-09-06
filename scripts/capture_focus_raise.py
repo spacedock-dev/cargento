@@ -672,13 +672,20 @@ def close_window_on_device(device: str) -> str:
     and then takes all of its tabs, which counted 2 for a device exactly one tab
     sits on. A close built on that shape would close the wrong window.
 
-    The error branch is the same decline `raise_terminal_tab` carries, and A2 is
-    why it had to exist: without it the script exited 0 whether it closed the
-    launcher window or found nothing to close, and the arm's committed capture
-    records exactly that -- `exit_status: 0` on a step that named an unresolvable
-    placeholder device and provably closed nothing. A2's whole question is
-    whether the launcher is GONE, so a quit that cannot say it closed something
-    is a quit the daemon must not be released on.
+    It declines on ABSENCE only, and then closes every window it matched --
+    narrower than `raise_terminal_tab`, which refuses on ambiguity too, because
+    DRC-4382 measured three tabs on one recycled device and a raise cannot pick
+    between them. A close can: every window holding the launcher's device is a
+    window the launcher opened, and leaving one standing is the failure this
+    step exists to prevent.
+
+    The decline is why the error branch had to exist at all: without it the
+    script exited 0 whether it closed the launcher window or found nothing to
+    close, and the arm's committed capture records exactly that --
+    `exit_status: 0` on a step that named an unresolvable placeholder device and
+    provably closed nothing. A2's whole question is whether the launcher is
+    GONE, so a quit that cannot say it closed something is a quit the daemon
+    must not be released on.
 
     Matches are collected before anything is closed. Closing inside
     `repeat with w in windows` mutates the collection being walked, which is how
@@ -1051,10 +1058,12 @@ def plan(
 ) -> list[dict[str, Any]]:
     """Every command the arm would run, in order, as argv lists.
 
-    Every step declares its `mechanism`, checked against the binary in its argv
-    by a test. Declared rather than derived because the verdict attributes
-    movement per mechanism, and a step that runs `osascript` to READ something
-    would have to say so rather than have it inferred.
+    Every step declares its `mechanism`, and a test pins the declaration equal
+    to what the binary in its argv implies -- so the declaration is not an
+    override. It exists because the declared value is what a RECORD carries: a
+    reader of a committed file gets the attribution without re-deriving it from
+    a redacted argv. Derivation stays as the fallback for the two captures
+    written before commands carried the key.
     """
     device = targets.device or PLACEHOLDER["device"]
     client = targets.client or PLACEHOLDER["client"]
@@ -1702,6 +1711,17 @@ def run_arm(
             shutil.rmtree(os.path.dirname(handshake), ignore_errors=True)
 
     after = observe_state(arm, targets, readers, socket) if ran else Snapshot()
+    # `changed`, `after_is_the_target` and `moved` are EVIDENCE; `before` and
+    # `after` are observations and stay whole. A2 may not read evidence off a
+    # world its own steps moved: step 1 opens a Terminal window, so Terminal is
+    # frontmost at the after-probe whatever the daemon did, and a declined raise
+    # read `moved_to_target` off that -- the file's strongest finding, since
+    # `_is_alien` is true for a2 by issuer.
+    #
+    # Refusing the frontmost axis for this issuer instead was rejected: it
+    # leaves a genuinely successful a2 with nothing to move on, and turns the
+    # arm the whole Apple Event case is gated on into a permanent negative.
+    attributable = ran and not _declined(arm, commands)
     record: dict[str, Any] = {
         "format": FORMAT,
         "record": RECORD_ARM,
@@ -1719,17 +1739,19 @@ def run_arm(
         "frontmost": {
             "before": app_label(before.frontmost),
             "after": app_label(after.frontmost) if ran else None,
-            "changed": (before.frontmost != after.frontmost) if ran else None,
+            "changed": (before.frontmost != after.frontmost) if attributable else None,
             "after_is_the_target": (
-                app_label(after.frontmost) == arm.target_app if ran and arm.target_app else None
+                app_label(after.frontmost) == arm.target_app
+                if attributable and arm.target_app
+                else None
             ),
         },
         "selected": {
             "source": arm.source,
             "before": before.selected,
             "after": after.selected if ran else None,
-            "changed": (before.selected != after.selected) if ran else None,
-            "after_is_the_target": _reached(arm, targets, after) if ran else None,
+            "changed": (before.selected != after.selected) if attributable else None,
+            "after_is_the_target": _reached(arm, targets, after) if attributable else None,
             "other_client_before": before.other_client_pane,
             "other_client_after": after.other_client_pane if ran else None,
             "other_client_changed": (
@@ -1739,13 +1761,31 @@ def run_arm(
         "responsible": responsible,
         "issuer_terminal": _issuer_terminal(),
         "ancestry": _ancestry_of(issuer_pid),
-        "moved": _moved(before, after) if ran else None,
+        "moved": _moved(before, after) if attributable else None,
         "durable_side_effect": arm.durable_side_effect,
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
         "outcome": "",
     }
     record["outcome"] = outcome_of(record)
     return record
+
+
+def _declined(arm: Arm, commands: list[dict[str, Any]]) -> bool:
+    """Whether a raise this recorder did not issue reported that it refused.
+
+    Only the daemon-issued arm can answer this, and it answers with a status
+    rather than a label: `raise_terminal_tab` ends in
+    `error "focus declined: ambiguous or absent"`, so a decline arrives as a
+    non-zero exit status through the `.done` handshake.
+
+    `any` over the whole list rather than the raise step alone, because every
+    other non-zero status a2 can record -- a launcher that never opened, a quit
+    that closed nothing, a wait that timed out -- stops the arm before the raise
+    and leaves nothing attributable on either axis either way.
+    """
+    if arm.issuer != ISSUER_DAEMON:
+        return False
+    return any(command["ran"] and command["exit_status"] not in (0, None) for command in commands)
 
 
 def _reap(pid: int) -> int:
@@ -1770,6 +1810,12 @@ VERDICT_ONLY_EXEMPT = "only_the_exempt_responsible_identity_raises"
 VERDICT_ALIEN_WORKS = "a_raise_works_from_an_alien_responsible_identity"
 # An arm that never ran contributes this rather than a negative, per mechanism.
 UNMEASURED = "unmeasured"
+
+# The outcomes that mean the invocation never asked its question. Named once
+# because `per_arm`'s `ran` and `moved` and the per-mechanism aggregation beside
+# them have to be computed over the SAME rows: they were not, and one discarded
+# invocation published the file's strongest positive.
+OUTCOMES_THAT_DID_NOT_RUN = frozenset({OUTCOME_NOT_AUTHORIZED, OUTCOME_INCONCLUSIVE})
 
 
 def _moved_axes(record: dict[str, Any]) -> set[str]:
@@ -1824,14 +1870,21 @@ def _agree(values: list[bool | None]) -> bool | None:
 
 
 def _moved_per_mechanism(
-    arms: list[dict[str, Any]], names: list[str]
+    ran: dict[str, list[dict[str, Any]]],
 ) -> dict[str, dict[str, bool | None]]:
-    """Each arm's movement, split by mechanism and aggregated over its invocations."""
+    """Each arm's movement, split by mechanism, over the invocations that RAN.
+
+    The rows the per-arm summary keeps, and not one row more. Walking every
+    invocation of the arm let a DISCARDED one carry the finding, because
+    `_agree` is `any(known)`: one `inconclusive` a2 whose raise had run was
+    enough to publish `works_from_an_alien_responsible_identity` beside
+    `per_arm.a2.moved: false` and `outcomes: ["did_not_move", "inconclusive"]`.
+    """
     found: dict[str, dict[str, bool | None]] = {}
-    for name in names:
-        rows = [_mechanism_moved(row) for row in arms if row["arm"] == name]
+    for name, rows in ran.items():
+        moved = [_mechanism_moved(row) for row in rows]
         found[name] = {
-            mechanism: _agree([row[mechanism] for row in rows]) for mechanism in MECHANISMS
+            mechanism: _agree([row[mechanism] for row in moved]) for mechanism in MECHANISMS
         }
     return found
 
@@ -1859,10 +1912,11 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
     at something.
     """
     per_arm: dict[str, Any] = {}
+    ran_rows: dict[str, list[dict[str, Any]]] = {}
     for name in sorted({str(record["arm"]) for record in arms}):
         rows = [record for record in arms if record["arm"] == name]
-        did_not_run = {OUTCOME_NOT_AUTHORIZED, OUTCOME_INCONCLUSIVE}
-        ran = [row for row in rows if row["outcome"] not in did_not_run]
+        ran = [row for row in rows if row["outcome"] not in OUTCOMES_THAT_DID_NOT_RUN]
+        ran_rows[name] = ran
         moved = [row["moved"] for row in ran if row["moved"] is not None]
         per_arm[name] = {
             "invocations": len(rows),
@@ -1916,7 +1970,7 @@ def verdict(arms: list[dict[str, Any]], *, base: dict[str, Any]) -> dict[str, An
     # Apple Event answer came off a mechanism that failed in both arms that
     # exercised it. Aggregated with the same three-way rule the per-arm summary
     # uses -- true, false, or null for a mechanism no step exercised.
-    by_mechanism = _moved_per_mechanism(arms, list(per_arm))
+    by_mechanism = _moved_per_mechanism(ran_rows)
 
     # Two findings, not one. A socket raise steers a multiplexer over a UNIX
     # socket and macOS consults no responsible process for it, so such an arm
