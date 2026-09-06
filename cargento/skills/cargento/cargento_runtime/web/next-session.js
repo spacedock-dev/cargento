@@ -192,11 +192,24 @@ function nextSessionLoopNote(loop){
   if(!loop || typeof loop !== "object" || Array.isArray(loop)) return "";
   const errors = nextNumber(loop.errors);
   if(errors == null || !Number.isInteger(errors) || errors <= 0) return "";
-  const calls = errors === 1 ? "tool call" : "tool calls";
   const rawTool = typeof loop.tool === "string" ? loop.tool.trim() : "";
   const tool = rawTool ? ` (most recently ${nextSessionHumanTool(rawTool)})` : "";
-  return `${errors} ${calls} in a row came back as errors${tool}. ` +
-    "Check the agent is working the problem rather than repeating the failure.";
+  const failures = nextNumber(loop.failures);
+  const total = failures != null && Number.isInteger(failures) && failures > errors
+    ? failures
+    : errors;
+  const calls = total === 1 ? "tool call" : "tool calls";
+  const advice = "Check the agent is working the problem rather than repeating the failure.";
+  // Three readings of one turn, and each sentence says which one fired. Saying
+  // "in a row" about a total would be false the moment a success split it,
+  // which is the whole reason the total exists (DRC-4021).
+  if(loop.barren === true){
+    return `${total} ${calls} failed this turn and none succeeded${tool}. ${advice}`;
+  }
+  if(total > errors){
+    return `${total} ${calls} failed this turn, ${errors} of them consecutive${tool}. ${advice}`;
+  }
+  return `${errors} ${calls} in a row came back as errors${tool}. ${advice}`;
 }
 
 function nextSessionHealth(session){

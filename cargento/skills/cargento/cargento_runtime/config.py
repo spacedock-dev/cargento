@@ -111,6 +111,8 @@ class RuntimeConfig:
     # still calling it healthy.
     pi_tool_in_flight_max_sec: float
     loop_error_run_threshold: int
+    loop_error_total_threshold: int
+    loop_barren_failure_threshold: int
     future_skew_tolerance_sec: float
     sql_message_limit: int
     max_cache_entries: int
@@ -540,6 +542,18 @@ def build_runtime_config(
         # on a failing test looks like, and a flag a reader learns to ignore
         # costs more than no flag.
         loop_error_run_threshold=4,
+        # Higher than the run threshold, deliberately. The run of four is a
+        # tight loop; a total is failures however they were spaced, and four
+        # scattered failures through a long productive turn is ordinary work
+        # rather than a session stuck. Six is the first count that cannot be
+        # reached by the run trigger staying silent on a healthy turn.
+        loop_error_total_threshold=6,
+        # Lower than both, because the reading is different: not how long the
+        # run is, but whether anything in this turn has worked at all. The
+        # floor exists because every turn is barren for a moment at its start,
+        # and a signal that fires on the second call of a healthy turn is the
+        # flag a reader learns to ignore.
+        loop_barren_failure_threshold=3,
         future_skew_tolerance_sec=120,
         sql_message_limit=400,
         max_cache_entries=8192,

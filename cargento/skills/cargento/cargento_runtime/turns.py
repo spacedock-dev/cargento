@@ -21,6 +21,8 @@ def _clear_error_run(st: dict[str, Any]) -> None:
     is the only thing this count is for."""
     st["err_run"] = 0
     st["err_peak"] = 0
+    st["err_total"] = 0
+    st["ok_total"] = 0
     st["err_tool"] = None
 
 
@@ -35,8 +37,10 @@ def _apply_tool_outcome(st: dict[str, Any], record: Any, harness: str) -> None:
         st["tool_names"] = calls
     for tool_id, failed in results:
         if not failed:
+            st["ok_total"] += 1
             st["err_run"] = 0
             continue
+        st["err_total"] += 1
         st["err_run"] += 1
         if st["err_run"] > st["err_peak"]:
             # The peak, not the live run, is what the turn publishes, and the
@@ -211,6 +215,8 @@ _RESULT_FIELDS = (
     "turn_output_tokens",
     "err_run",
     "err_peak",
+    "err_total",
+    "ok_total",
     "err_tool",
 )
 
@@ -279,12 +285,15 @@ def scan_turns(
                 # its opening prompt/start appears in the bytes read forward.
                 "turn_usage_complete": False,
                 # The failure run inside the current turn: the live count, the
-                # peak it reached, the tool that failed at the peak, and the
-                # id → name map the last tool batch declared. All four are turn
-                # state, so an evicted or rotated file recomputes them on the
-                # way forward rather than carrying a stale count.
+                # peak it reached, the totals that no success resets, the tool
+                # that failed at the peak, and the id → name map the last tool
+                # batch declared. All six are turn state, so an evicted or
+                # rotated file recomputes them on the way forward rather than
+                # carrying a stale count.
                 "err_run": 0,
                 "err_peak": 0,
+                "err_total": 0,
+                "ok_total": 0,
                 "err_tool": None,
                 "tool_names": {},
                 "gemini_seen": {},
@@ -361,20 +370,42 @@ def turns_from_events(events: list[tuple[float, bool]]) -> dict[str, Any]:
 
 
 def loop_signal(scan: dict[str, Any] | None, config: RuntimeConfig) -> dict[str, Any] | None:
-    """The failure run inside the current turn, once it is long enough to be
-    worth saying out loud, else None.
+    """What went wrong inside the current turn, once it is worth saying out
+    loud, else None.
 
     Read off the peak rather than the live run, and not gated on the session
     state the way `turn_progress` is: both would retract the signal the instant
     the loop stopped, and a loop that has stopped is what the reader is walking
     back to the machine to find.
+
+    `errors` stays the peak run and keeps its meaning, because the page says
+    "in a row" about it. `failures` is the turn total, which no success resets,
+    and it carries its own higher threshold: four scattered failures through a
+    productive turn is ordinary work, and reusing the run threshold here would
+    have fired on it.
     """
     if not scan:
         return None
     peak = scan.get("err_peak") or 0
-    if peak < config.loop_error_run_threshold:
+    total = scan.get("err_total") or 0
+    # Three readings of one turn, not three signals. The run says a loop is
+    # tight, the total says how much of the turn failed however it was spaced,
+    # and barren says nothing in it has worked yet. A turn can trip any of them
+    # alone: 3 fail, 1 ok, 3 fail never reaches a run of four and is the case
+    # this counter was added for.
+    barren = (scan.get("ok_total") or 0) == 0 and total >= config.loop_barren_failure_threshold
+    if (
+        peak < config.loop_error_run_threshold
+        and total < config.loop_error_total_threshold
+        and not barren
+    ):
         return None
-    return {"errors": peak, "tool": scan.get("err_tool")}
+    return {
+        "errors": peak,
+        "failures": total,
+        "barren": barren,
+        "tool": scan.get("err_tool"),
+    }
 
 
 def turn_progress(
