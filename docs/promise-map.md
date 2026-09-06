@@ -85,7 +85,8 @@ has waited. A session can also ask you a question directly and wait for your ans
 
 Backed by the merged gate queue with a keyboard pass over it, the wait reason surfaced without
 opening the session, the standing wait duration, a control on the row that copies the command which
-puts you back in the waiting session, and the ask lane: a session calls one tool, the question lands
+puts you back in the waiting session, a second one that raises that session's terminal where
+Cargento can reach it, and the ask lane: a session calls one tool, the question lands
 on the dashboard, the answer goes back, and the session continues. An arriving
 question raises a notification rather than sitting there unseen.
 
@@ -96,8 +97,13 @@ differs: Claude names the gate, Codex says one is open without naming it, Copilo
 command or a URL is being asked about, Cursor says only that a permission request is standing and
 for how long. The re-entry command is narrower again: two of the ten, Claude Code and Codex,
 publish a session id their own CLI takes, so a row from the other eight offers no command rather
-than a guessed one, and copying it is as far as Cargento goes. You paste it yourself. Cargento does
-not answer a prompt for you. The one shape it is allowed is the session asking and Cargento
+than a guessed one. Raising the terminal is narrower still, and on most rows it is not offered at
+all: the session has to be running under tmux, to have started while this server has been up, and
+to have exactly one terminal attached, or Cargento declines rather than guessing which window you
+meant. A raise moves what that terminal displays and does not bring its window to the front of your
+desk. Where no raise is offered the queue says how far the feature reached rather than repeating
+the absence on every row, and the copy control is what remains. Cargento does not answer a prompt
+for you. The one shape it is allowed is the session asking and Cargento
 answering
 ([DEC-2](https://linear.app/recce/issue/DRC-4054/dec-2-decision-let-cargento-act-not-just-observe)).
 
