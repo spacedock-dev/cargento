@@ -186,6 +186,20 @@ function nextOperationsIdentity(session, labels, collisions, route, history = fa
     nextSessionCollision(session, collisions) + "</span>";
 }
 
+function nextOperationsHistoryNow(session){
+  /* A history row has always shown "—", because nothing about a quiet session
+     is knowable from recency alone. An observed end is the one exception, and
+     it is an exception because the session reported it rather than because the
+     row went quiet: a row with no stamp keeps the dash. */
+  const endedAt = nextSessionEndedAt(session);
+  if(endedAt == null) return nextOperationsFact("now", "NOW", "—");
+  const since = nextDurationSince(endedAt);
+  return nextOperationsFact(
+    "now", "NOW · ENDED", "Session reported its own end",
+    since ? `ended ${since} ago` : "",
+  );
+}
+
 function nextOperationsRow(session, labels, collisions, asks, harnesses, history = false){
   const project = String(session.project == null ? "" : session.project);
   const harness = String(session.harness || "");
@@ -194,7 +208,7 @@ function nextOperationsRow(session, labels, collisions, asks, harnesses, history
   const state = String(session.state || "unknown");
   const live = session.active === true && state === "working" ? " next-live" : "";
   const historyAttr = history ? ' data-next-operation-history="true"' : "";
-  const now = history ? nextOperationsFact("now", "NOW", "—") : nextOperationsNow(session);
+  const now = history ? nextOperationsHistoryNow(session) : nextOperationsNow(session);
   const next = history ? nextOperationsFact("next", "NEXT", "—") : nextOperationsNext(session);
   const blocked = history
     ? nextOperationsFact("blocked", "BLOCKED", "—")
@@ -254,7 +268,8 @@ function nextSessionsView(){
       active, renderActive, "No exact session has active evidence right now.",
     ) + nextOperationsGroup(
       "history", "Recent history",
-      "Recently observed is not proof the harness process is still open or closed.",
+      "Recently observed is not proof the harness process is still open or closed; " +
+        "rows marked ENDED reported their own end.",
       history, renderHistory, `No recent-history rows in this ${window}.`,
     ) + "</section>";
 }

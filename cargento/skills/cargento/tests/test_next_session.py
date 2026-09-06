@@ -1094,3 +1094,40 @@ __fetchImpl = async () => ({{ok: true, json: async () => __nextPayload}});
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionDetailEndTest(NextPageJsHarness):
+    """DRC-4036: the detail must not call an ended session idle."""
+
+    def detail(self, extra: str) -> str:
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    (
+                        "nextData = {generated: 10000, sessions: [{"
+                        'sid: "e1", harness: "claude", project: "a/b", state: "idle",'
+                        ' active: false, title: "Ended run", state_detail: null,'
+                        f" started_at: 8000, last_activity: 9000, {extra}"
+                        " tasks: [], subagents: []}]};"
+                    ),
+                    'console.log(JSON.stringify(nextSessionView("a/b", "claude", "e1")));',
+                )
+            )
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def test_an_ended_session_reads_ended_rather_than_idle(self) -> None:
+        html = self.detail("finished_at: 9350, ended_at: 9400,")
+
+        self.assertIn("session ended", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_a_session_with_no_observed_end_still_reads_idle(self) -> None:
+        # Absence is not a verdict: a SIGKILL, an adapter-less harness and
+        # --no-events all look like this, and none of them means still running.
+        html = self.detail("finished_at: 9350,")
+
+        self.assertNotIn("session ended", html)
+        self.assertIn("idle", html)

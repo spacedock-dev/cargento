@@ -730,6 +730,7 @@ class CargentoServerTest(RuntimeTestCase):
             "own_activity",
             "started_at",
             "finished_at",
+            "ended_at",
             "dirty",
             "changed",
             "focusable",

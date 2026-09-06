@@ -202,9 +202,24 @@ class Observation:
         # `claude -p` the stop and the exit arrive back to back, so a mark held
         # there is destroyed milliseconds after the only sessions this answers
         # for have finished (DRC-4035). Narrowing what `session_ended` retires
-        # was the alternative, and it is worse: the event covers `/clear` as well
-        # as exit, so a cleared session would read finished forever.
+        # was the alternative and was rejected on a premise since measured wrong
+        # — see `_ended` below; it stays rejected because retiring the ledger
+        # whole is what keeps a retirement coherent under arrival order.
         self._finished: dict[SessionKey, float] = {}
+        # (harness, sid) -> the stamp of the end observed for that session ID.
+        # Outside `_overlays` for `_finished`'s reason, and set by the very event
+        # that pops the ledger. A different fact from the stop above: that one
+        # marks a turn ending, and a session whose turn stopped is usually still
+        # open and typeable (DRC-4036).
+        #
+        # `/clear` is not a counter-example even though it fires `session_ended`
+        # while the process keeps running. Measured on Claude Code 2.1.261
+        # (2026-09-06): the prompt after a `/clear` goes to a NEW session id, and
+        # two prompts either side of one `/clear` wrote two different
+        # transcripts. So the id this is keyed on really is finished, and nothing
+        # here needs the event's `reason` — which is why `ALLOWED_FIELDS` does
+        # not carry one.
+        self._ended: dict[SessionKey, float] = {}
         # (harness, sid) -> the last end-of-session git reading for it. Outside
         # `_overlays` for the same reason `_finished` is: `session_ended` pops that
         # ledger whole, and `session_ended` is the only edge that produces one of
@@ -371,6 +386,7 @@ class Observation:
                 self._overlays.pop(key, None)
                 self._pending.pop(key, None)
                 self._bump("retired")
+                self._mark_ended(key, event.timestamp)
                 if self.config.git_probe_enabled and event.cwd:
                     # Noted here and dispatched below, once the lock is released.
                     probe_cwd = event.cwd
@@ -391,6 +407,7 @@ class Observation:
                 # replaying overlays over a cached read.
                 self._last_reconcile_at = 0.0
                 self._probe_stamp = None
+            self._lift_ended(key, event, overlay)
             self._mark_focus(key, event)
             self._dirty[event.harness] = self._dirty.get(event.harness, 0) + 1
             if overlay is not None and overlay.kind == runtime_events.OVERLAY_NEEDS_INPUT:
@@ -469,6 +486,57 @@ class Observation:
         # max, not assignment: delivery is at-least-once and possibly reordered,
         # so a redelivered older stop must not pull the mark backwards.
         self._finished[key] = max(self._finished.get(key, 0.0), overlay.at)
+
+    def _mark_ended(self, key: SessionKey, at: float) -> None:
+        """Remember that this session id ended.
+
+        Refused rather than evicted at the same cap `_remember` uses, and `max`
+        rather than assignment for `_mark_finished`'s reason: delivery is
+        at-least-once and possibly reordered, so a redelivered end must not pull
+        the stamp backwards.
+        """
+        if key not in self._ended and len(self._ended) >= self.config.event_overlay_max_sessions:
+            self._bump("ended.refused")
+            return
+        self._ended[key] = max(self._ended.get(key, 0.0), at)
+
+    def _lift_ended(
+        self,
+        key: SessionKey,
+        event: runtime_events.Event,
+        overlay: runtime_events.Overlay | None,
+    ) -> None:
+        """Forget an end once the session id is observed in use again.
+
+        Three things say that: a `session_started`, which `claude --resume <id>`
+        emits for the id it reuses, and a working or needs-input overlay, which
+        is a session doing something. A `turn_stopped` is deliberately not one of
+        them — every tidy ending has one in front of it, so lifting on idle would
+        erase the mark for exactly the endings this exists to show.
+
+        `session_started` needs the explicit path because `overlay_for` returns
+        None for it, so it reaches neither `_remember` nor `_mark_finished`.
+
+        The comparison is on EVENT stamps rather than arrival order, and that is
+        the half arrival order cannot do: a reordered delivery is precisely one
+        whose arrival order lies about causality. The a1 arm of
+        docs/captures/claude/session-end-2.1.261-macos.jsonl had its `SessionEnd`
+        land 5.581 s after the last Stop, which is longer than a short headless
+        run, so one of that run's own earlier hook POSTs arriving after the end
+        is a real ordering rather than a hypothetical.
+        """
+        if runtime_events.reopens_session(event):
+            at = event.timestamp
+        elif overlay is not None and overlay.kind in {
+            runtime_events.OVERLAY_WORKING,
+            runtime_events.OVERLAY_NEEDS_INPUT,
+        }:
+            at = overlay.at
+        else:
+            return
+        recorded = self._ended.get(key)
+        if recorded is not None and at >= recorded:
+            del self._ended[key]
 
     def _mark_focus(self, key: SessionKey, event: runtime_events.Event) -> None:
         """Record where this session's terminal is, if the event carried it.
@@ -626,6 +694,17 @@ class Observation:
         with self._lock:
             return self._finished.get((harness, sid), 0.0)
 
+    def ended_at(self, harness: str, sid: str) -> float:
+        """When this session id was observed to end, or 0.0 if it never was.
+
+        0.0 means NOT OBSERVED and never "did not end". Only a SIGKILL ends a
+        Claude session silently, but the six harnesses with no event adapter, a
+        session that predates this server run and `--no-events` all land here
+        too, so an absent end is never evidence a session is still alive.
+        """
+        with self._lock:
+            return self._ended.get((harness, sid), 0.0)
+
     def note_ask(self) -> None:
         """A session registered a question. Bring the next collection forward.
 
@@ -738,6 +817,20 @@ class Observation:
                 del self._finished[key]
             for key in [k for k in self._git if k not in keys and k not in self._overlays]:
                 del self._git[key]
+            # NOT the rule above, and the difference is the point. `session_ended`
+            # pops this session's overlays, so straight after an end the key is in
+            # neither the collected set nor the ledger — exactly the two
+            # conditions above — and a mark retired there can never be re-earned,
+            # because a session fires `session_ended` once. `_finished` tolerates
+            # an over-eager prune only because the next `turn_stopped` re-supplies
+            # it. So this retires by time instead: past one display window the row
+            # is no longer produced from that id's activity and cannot come back.
+            for key in [
+                k
+                for k, at in self._ended.items()
+                if k not in keys and now - at >= self.config.ended_mark_ttl_sec
+            ]:
+                del self._ended[key]
             # A target is retired by time and never by a row set — see
             # `_focus_at`. `session_ended` is the ordinary retirement; this
             # covers the session that dies without one, which for Codex is every

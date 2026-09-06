@@ -500,3 +500,60 @@ console.log(JSON.stringify(__els.app.innerHTML));
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsSessionEndTest(NextPageJsHarness):
+    """DRC-4036: the operations row must separate over from waiting for you."""
+
+    def view(self, session: str) -> str:
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    (
+                        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+                        '{key: "claude", label: "Claude Code", reports_needs_input: true}],'
+                        f" sessions: [{session}]}};"
+                    ),
+                    "console.log(JSON.stringify(nextSessionsView()));",
+                )
+            )
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    ENDED = (
+        '{sid: "e1", harness: "claude", project: "a/b", state: "idle", active: false,'
+        ' title: "Ended run", last_activity: 9000, finished_at: 9350, ended_at: 9400,'
+        " tasks: [], subagents: []}"
+    )
+    QUIET = (
+        '{sid: "q1", harness: "claude", project: "a/b", state: "idle", active: false,'
+        ' title: "Quiet run", last_activity: 9000, finished_at: 9350,'
+        " tasks: [], subagents: []}"
+    )
+
+    def test_an_ended_row_says_it_ended_and_how_long_ago(self) -> None:
+        html = self.view(self.ENDED)
+
+        self.assertIn("NOW · ENDED", html)
+        self.assertIn("Session reported its own end", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_a_row_with_no_observed_end_keeps_the_em_dash_it_had(self) -> None:
+        # The history row's "—" is what an unread session has always shown, and
+        # it must stay that: an absent end is not evidence the session is alive,
+        # so the page may say nothing rather than say "still running".
+        html = self.view(self.QUIET)
+
+        self.assertNotIn("NOW · ENDED", html)
+        self.assertNotIn("Session reported its own end", html)
+
+    def test_the_recent_history_caveat_is_qualified_where_an_end_was_observed(self) -> None:
+        # The old sentence was unqualified — "Recently observed is not proof the
+        # harness process is still open or closed" — which was true before any
+        # row could report its own end, and understates the rows that now can.
+        html = self.view(self.ENDED)
+
+        self.assertIn("Recently observed is not proof", html)
+        self.assertIn("ENDED reported their own end", html)

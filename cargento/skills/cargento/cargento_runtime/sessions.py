@@ -373,6 +373,30 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # guessed completion renders identically to a measured one. A row that
         # cannot ever carry it says so through `acquisition` instead.
         "finished_at": None,
+        # When this session id was observed to END, which is a different fact
+        # from `finished_at` above: that one marks a TURN stopping, and a session
+        # whose turn stopped is usually still open and typeable. Without this the
+        # two render identically — both say Idle — and the reader cannot tell a
+        # session that is over from one sitting at its prompt waiting for them
+        # (DRC-4036).
+        #
+        # None means NOT OBSERVED and never "did not end", which is the whole
+        # reason this is nullable rather than a boolean or a fourth `state`
+        # value. Only a SIGKILL ends a Claude session silently — a SIGTERM, a
+        # closed terminal and both clean exits all delivered `SessionEnd` within
+        # 0.687s (docs/captures/claude/session-end-2.1.261-macos.jsonl) — but an
+        # absent end still covers the six harnesses with no event adapter, a run
+        # that predates this server process, and `--no-events`. A boolean here
+        # would do null's job with false, which is the DRC-4101 failure the
+        # comments above and `events.py` both name.
+        #
+        # `/clear` is not the exception it looks like. It emits `SessionEnd` and
+        # the process keeps accepting prompts, but the prompt after it goes to a
+        # NEW session id: measured 2026-09-06 on Claude Code 2.1.261, two prompts
+        # either side of one `/clear` wrote two different transcripts. So the id
+        # this mark is attached to really is finished, whatever the reason was,
+        # and no collector or adapter needs to read `reason` to know it.
+        "ended_at": None,
         # What one end-of-session `git status` observed in this session's working
         # repository, or None for both. None means NOT PROBED and never "clean":
         # only a harness whose adapter maps a session-end event can be probed at
