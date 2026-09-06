@@ -426,7 +426,13 @@ class HookIdentityTest(unittest.TestCase):
     """What `event_hook` gathers, and the far larger set it refuses to gather."""
 
     def env(self, **overrides: str) -> dict[str, str]:
-        base = {"TMUX": "/private/tmp/tmux-501/default,84321,0", "TMUX_PANE": "%3"}
+        # `/tmp`, not `/private/tmp`. The identity check compares `realpath` on
+        # both sides, and `/tmp` resolves the same way on each platform while
+        # `/private/tmp` is macOS's own resolution of it: spelling it that way
+        # made every one of these fixtures match on macOS and fail on Linux,
+        # which is the macOS-shaped-fixture defect the review caught in the
+        # device grammar, hiding a second time in the socket path.
+        base = {"TMUX": "/tmp/tmux-501/default,84321,0", "TMUX_PANE": "%3"}
         base.update(overrides)
         return base
 
@@ -440,13 +446,13 @@ class HookIdentityTest(unittest.TestCase):
         )
 
     def test_a_tmux_variable_with_no_server_pid_yields_no_target(self) -> None:
-        for raw in ("/private/tmp/tmux-501/default", "/private/tmp/tmux-501/default,,0"):
+        for raw in ("/tmp/tmux-501/default", "/tmp/tmux-501/default,,0"):
             with self.subTest(tmux=raw):
                 self.assertEqual({}, event_hook.tmux_identity(self.env(TMUX=raw), 501))
 
     def test_a_server_pid_outside_its_grammar_yields_no_target(self) -> None:
         self.assertEqual(
-            {}, event_hook.tmux_identity(self.env(TMUX="/private/tmp/tmux-501/default,-1,0"), 501)
+            {}, event_hook.tmux_identity(self.env(TMUX="/tmp/tmux-501/default,-1,0"), 501)
         )
 
     def test_a_custom_socket_path_yields_no_target(self) -> None:
@@ -455,7 +461,7 @@ class HookIdentityTest(unittest.TestCase):
 
     def test_another_users_socket_directory_yields_no_target(self) -> None:
         self.assertEqual(
-            {}, event_hook.tmux_identity(self.env(TMUX="/private/tmp/tmux-0/default,1,0"), 501)
+            {}, event_hook.tmux_identity(self.env(TMUX="/tmp/tmux-0/default,1,0"), 501)
         )
 
     def test_the_socket_directory_override_is_honoured(self) -> None:
