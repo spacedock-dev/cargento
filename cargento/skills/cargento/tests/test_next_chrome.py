@@ -432,12 +432,18 @@ console.log(JSON.stringify({
 
         self.assertEqual(1, out["calls"])
         self.assertEqual("sending", out["state"])
+        self.assertEqual("Raise requested", out["status"])
 
     def test_the_irreversible_control_has_its_own_look_and_a_focus_ring(self) -> None:
         # `.next-session-copy` has no `:focus-visible` rule, which DRC-4381 left
         # standing; the irreversible control is not going to be the third to inherit
         # that gap.
-        self.assertIn(".next-session-raise:focus-visible{outline:", NEXT_STYLES)
+        # The whole declaration, not the property name: stopping at the colon let
+        # `outline:none` satisfy a test named for the ring (DRC-4017 review).
+        self.assertIn(
+            ".next-session-raise:focus-visible{outline:2px solid var(--accent);outline-offset:2px}",
+            NEXT_STYLES,
+        )
         copy = re.search(r"\.next-session-copy\{([^}]*)\}", NEXT_STYLES)
         raised = re.search(r"\.next-session-raise\{([^}]*)\}", NEXT_STYLES)
         self.assertIsNotNone(copy)

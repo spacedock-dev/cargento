@@ -1561,7 +1561,9 @@ document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
         # there is nothing a raise could put there.
         raise_button = html[html.index("data-next-raise-session") : html.index(">RAISE<")]
         self.assertNotIn("title=", raise_button)
-        self.assertIn("aria-label=", raise_button)
+        # The whole name. `aria-label=` alone admitted one naming the target,
+        # which is the clause SECURITY.md governs (DRC-4017 review).
+        self.assertIn('aria-label="Raise the terminal this session is running in"', raise_button)
 
         # The two controls are independent: the event envelope carries the terminal
         # identity for any harness, so a session whose CLI documents no re-entry
@@ -1613,6 +1615,10 @@ document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
                 "title": "Also waiting",
             }
         )
+        # One row first, so the singular branch is rendered rather than assumed.
+        lone = self.render_with_capability(self.raise_payload(True))
+        self.assertIn("Terminal raise: 1 of 1 waiting row carries a terminal", lone)
+
         html = self.render_with_capability(payload)
         self.assertIn("Terminal raise: 1 of 2 waiting rows carry a terminal", html)
         self.assertEqual(1, html.count("Terminal raise:"))
