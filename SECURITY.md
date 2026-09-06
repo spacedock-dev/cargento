@@ -205,10 +205,11 @@ ends in one move.
 The command is a literal argv per named case, or there is no focus. A session matching no named case
 is not focused, and the reader is told that rather than shown a control that does nothing.
 
-The argv is constant except for one field, the target identifier, and that field is substituted into
-a fixed position rather than concatenated. No shell, no interpolation, and nothing from a request
-body reaches any position. Every command runs with stdin closed, under a timeout, with its output
-discarded. A failure is reported to the reader as a focus that did not happen, and never retried.
+Each argv is constant except for its target fields, and every one of those is substituted into a
+fixed position rather than concatenated. No shell, no interpolation, and nothing from a request body
+reaches any position. The tmux case carries three such fields, not one, and the grammars section
+below states each one separately. Every command runs with stdin closed and under a timeout. A
+failure is reported to the reader as a focus that did not happen, and never retried.
 
 No working directory is set. The command does not run inside the user's repository, which is what
 keeps Scope's repository-execution sentence meaningful rather than sidestepped.
@@ -222,7 +223,16 @@ directly; a Claude hook does not, because its stdin is the payload pipe, so the 
 read one level up off the harness process. In a pane neither works and tmux's own client device is
 what finds the window.
 
-Neither arrangement is a named case yet, and this is the part most easily read too generously.
+**One arrangement is now a named case and the other is not, and the difference is what was run.**
+DRC-4385 ran the socket raise and recorded it: `switch-client` on a named socket moved the client it
+was told to, with a negative control that held still recorded first. So the tmux socket case is
+named, and it is what ships. The Apple Event case is not. DRC-4387 ran its arms and the one that
+decides it, a daemon whose launching window has been quit, came back inconclusive: it moved a tab
+but its two responsible-identity fields were null, so the record cannot say who issued the raise.
+Until that is answered no Apple Event case may be named, and the paragraph below is why the bar is
+set there.
+
+This is the part most easily read too generously.
 **DRC-4382 measured which identifier finds a terminal. It did not raise one.** The capture says so in
 its own words: the lookup counts a tab and never activates one. So a raise command becomes a named
 case only once it has been run and recorded, one case per platform, per multiplexer and per harness
@@ -355,8 +365,30 @@ measured it in both positive arms, and reproduced it outside them by steering on
 watching the other follow. The sentence is corrected rather than softened, because the bound below
 rests on the mechanism being described accurately.
 
-Nothing is read back. Standard output is discarded rather than parsed, so no pane content, no window
+The raise reads nothing back: its standard output is discarded unread, so no pane content, no window
 title and no pathname enters Cargento.
+
+**The two lookups that precede it do read, and saying so is the point.** The shared-session rule and
+the ambiguity rule cannot be enforced without asking tmux which session a pane belongs to and which
+clients are attached to it, so a section forbidding all reading would forbid its own bounds. What
+those two commands return is bounded, held to the same grammars as any other field before it reaches
+an argv position, used only to build the next command, and then dropped: none of it is stored,
+published, logged or echoed to the reader. An earlier draft of this section said output was discarded
+rather than parsed without qualification, which was false of the mechanism the same document
+mandates.
+
+### What the named case runs
+
+The tmux socket case is three commands on the socket the session reported, in this order, or there is
+no focus:
+
+    tmux -L <socket> display-message -p -t <pane> '#{session_name}'
+    tmux -L <socket> list-clients -t <session> -F '#{client_tty}'
+    tmux -L <socket> switch-client -c <client tty> -t <pane>
+
+The first proves the pane still exists and names its session. The second is what the two decline
+rules are decided on: no client attached is nobody to raise for, and more than one is the shared
+session this document refuses. Only the third moves anything.
 
 ### What the command can still cause
 
