@@ -154,9 +154,21 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-copy:hover{border-color:var(--accent);color:var(--ink)}
 .next-session-copy[data-next-copy-state="copied"]{border-color:var(--accent);color:var(--accent-ink)}
 .next-session-copy[data-next-copy-state="failed"]{border-color:var(--warn);color:var(--ink2)}
+/* The irreversible control, and it must not read as the copy beside it: a raise
+   moves a window on somebody's desk and cannot be taken back, where an unwanted
+   copy can simply be ignored. So it rests filled and on the warn line rather than
+   flat and on the quiet one, and it carries the :focus-visible ring
+   .next-session-copy never got — DRC-4381 left that gap and the irreversible
+   control is not going to be the third to inherit it. */
+.next-session-raise{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;margin-top:8px;padding:4px 7px;border:1px solid var(--warn);border-radius:3px;background:var(--sunk);color:var(--warnink);font-family:var(--mono);font-size:var(--fs-2xs);cursor:pointer}
+.next-session-raise:hover{border-color:var(--warnink);color:var(--ink)}
+.next-session-raise:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.next-session-raise[data-next-raise-state="sending"]{color:var(--ink3)}
+.next-session-raise[data-next-raise-state="sent"]{border-color:var(--accent);color:var(--accent-ink)}
+.next-session-raise[data-next-raise-state="declined"],.next-session-raise[data-next-raise-state="throttled"],.next-session-raise[data-next-raise-state="failed"]{border-color:var(--line2);color:var(--ink2)}
 /* On the SOURCE line the control sits beside running text rather than under a
    heading, so it loses the block margin and takes an inline one instead. */
-.next-attention-resume{margin-top:0;margin-inline-start:8px;vertical-align:baseline}
+.next-attention-resume,.next-attention-raise{margin-top:0;margin-inline-start:8px;vertical-align:baseline}
 .next-operation-assignment{margin-top:8px;color:var(--ink2);font-size:var(--fs-2xs);line-height:1.4}
 .next-operation-collision{margin-top:8px;color:var(--warnink);font-size:var(--fs-2xs);line-height:1.4}
 .next-operation-fact em{margin-top:6px;color:var(--ink3);font-family:var(--mono);font-size:var(--fs-2xs);font-style:normal;line-height:1.4}

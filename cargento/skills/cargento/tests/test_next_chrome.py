@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import unittest
+from typing import Any
 
 from .next_harness import NEXT_STYLES, NextPageJsHarness
 
@@ -304,6 +307,152 @@ __els.app = {
         self.assertEqual("Re-entry command could not be copied", out["status"])
         self.assertEqual("failed", out["state"])
         self.assertIn('title="codex resume 01a06fac-629f-7c40-9c86-f84c55680151"', out["html"])
+
+    # The raise lane's stubs: the injected capability meta, a status element the
+    # test can read back, and a fetch a test replaces per case. `__raiseTarget` is
+    # the button the click listener would have found, shaped the way the copy
+    # tests shape theirs.
+    RAISE_PRELUDE = """
+document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
+  ? {getAttribute: name => (name === "content" ? "0a1b2c3d" : null)}
+  : null;
+let __raiseStatusText = "";
+const __raiseStatus = {
+  setAttribute(){},
+  set textContent(value){ __raiseStatusText = String(value); },
+  get textContent(){ return __raiseStatusText; }
+};
+document.createElement = () => __raiseStatus;
+__els.app = {
+  innerHTML: "", querySelectorAll(){ return []; }, querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+// The page's own boot refresh of `/api/data` is in `__fetchCalls` too; only the
+// focus route is this lane's.
+const __raiseCalls = () => __fetchCalls.filter(call => call[0] === "/api/focus");
+const __raiseTarget = () => ({
+  dataset: {nextRaiseSession: "sid-published", nextRaiseHarness: "claude"},
+  closest(selector){
+    return selector.includes("data-next-raise-session") ? this : null;
+  },
+  setAttribute(name, value){ this[name] = value; }
+});
+"""
+
+    def raise_click(self, fetch_impl: str, *, prelude: str = "") -> dict[str, Any]:
+        out = self._run_page_js(
+            f"""
+__fetchImpl = {fetch_impl};
+const target = __raiseTarget();
+__fire("click", {{target, preventDefault(){{}}, stopPropagation(){{}}}});
+await __settle();
+await __settle();
+await __settle();
+console.log(JSON.stringify({{
+  calls: __raiseCalls(), status: __raiseStatus.textContent,
+  state: target.dataset.nextRaiseState || null
+}}));
+""",
+            self.RAISE_PRELUDE + prelude,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def test_a_raise_posts_the_run_capability_and_says_only_what_the_boolean_says(self) -> None:
+        # The label is SENT, never RAISED. The published boolean is the raise
+        # command's exit status, and DRC-4387 recorded one exiting zero with nothing
+        # coming forward, so a window arriving in front of the reader is a claim this
+        # page cannot make.
+        out = self.raise_click(
+            "async () => ({ok: true, status: 200, json: async () => ({focused: true})})"
+        )
+
+        self.assertEqual(1, len(out["calls"]))
+        self.assertEqual("/api/focus", out["calls"][0][0])
+        options = out["calls"][0][1]
+        self.assertEqual("POST", options["method"])
+        self.assertEqual("0a1b2c3d", options["headers"]["X-Cargento-Capability"])
+        self.assertEqual({"harness": "claude", "sid": "sid-published"}, json.loads(options["body"]))
+        self.assertEqual("sent", out["state"])
+        self.assertIn("Raise sent", out["status"])
+        self.assertNotIn("Raised", out["status"])
+
+    def test_the_boolean_false_is_one_answer_and_never_named_as_a_reason(self) -> None:
+        # A declined lookup, an unknown session and a failed command are the same
+        # false to a caller, by contract, so the wording must cover all three.
+        out = self.raise_click(
+            "async () => ({ok: true, status: 200, json: async () => ({focused: false})})"
+        )
+
+        self.assertEqual("declined", out["state"])
+        self.assertEqual("No terminal was raised", out["status"])
+
+    def test_the_rate_ceiling_and_a_transport_failure_read_apart(self) -> None:
+        throttled = self.raise_click(
+            "async () => ({ok: false, status: 429, json: async () => ({})})"
+        )
+        self.assertEqual("throttled", throttled["state"])
+        self.assertIn("already in flight", throttled["status"])
+
+        for impl in (
+            "async () => ({ok: false, status: 503, json: async () => ({})})",
+            "async () => { throw new Error('offline'); }",
+        ):
+            with self.subTest(impl=impl):
+                failed = self.raise_click(impl)
+                self.assertEqual("failed", failed["state"])
+                self.assertEqual("Raise could not be sent", failed["status"])
+
+    def test_no_capability_sends_no_request_that_could_only_be_refused(self) -> None:
+        out = self.raise_click(
+            "async () => ({ok: true, status: 200, json: async () => ({focused: true})})",
+            prelude="document.querySelector = () => null;\n",
+        )
+
+        self.assertEqual([], out["calls"])
+        self.assertIsNone(out["state"])
+
+    def test_a_second_click_while_one_raise_is_in_flight_does_not_repeat_it(self) -> None:
+        out = self._run_page_js(
+            """
+__fetchImpl = () => new Promise(() => {});
+const target = __raiseTarget();
+__fire("click", {target, preventDefault(){}, stopPropagation(){}});
+await __settle();
+__fire("click", {target: __raiseTarget(), preventDefault(){}, stopPropagation(){}});
+await __settle();
+console.log(JSON.stringify({
+  calls: __raiseCalls().length, status: __raiseStatus.textContent,
+  state: target.dataset.nextRaiseState || null
+}));
+""",
+            self.RAISE_PRELUDE,
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(1, out["calls"])
+        self.assertEqual("sending", out["state"])
+        self.assertEqual("Raise requested", out["status"])
+
+    def test_the_irreversible_control_has_its_own_look_and_a_focus_ring(self) -> None:
+        # `.next-session-copy` has no `:focus-visible` rule, which DRC-4381 left
+        # standing; the irreversible control is not going to be the third to inherit
+        # that gap.
+        # The whole declaration, not the property name: stopping at the colon let
+        # `outline:none` satisfy a test named for the ring (DRC-4017 review).
+        self.assertIn(
+            ".next-session-raise:focus-visible{outline:2px solid var(--accent);outline-offset:2px}",
+            NEXT_STYLES,
+        )
+        copy = re.search(r"\.next-session-copy\{([^}]*)\}", NEXT_STYLES)
+        raised = re.search(r"\.next-session-raise\{([^}]*)\}", NEXT_STYLES)
+        self.assertIsNotNone(copy)
+        self.assertIsNotNone(raised)
+        assert copy is not None
+        assert raised is not None
+        self.assertNotEqual(copy.group(1), raised.group(1))
+        self.assertIn("background:transparent", copy.group(1))
+        self.assertNotIn("background:transparent", raised.group(1))
 
     def test_breadcrumb_segments_mark_current_location_and_escape_walks_up(self) -> None:
         out = self._run_page_js(

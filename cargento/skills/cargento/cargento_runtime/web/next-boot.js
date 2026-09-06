@@ -154,6 +154,57 @@ function nextSessionResumeControl(session){
     '<span aria-hidden="true">COPY COMMAND</span></button>';
 }
 
+// The capability this run minted for the focus route, injected into the served
+// document at `cli.inject_focus_capability` rather than baked into an asset,
+// which is what keeps this file's bytes deterministic. Read from the document
+// because that is the only place it arrives: SECURITY.md keeps it out of
+// `/api/data`, so a page reading it from the payload is reading something the
+// server does not send. Absent means the feature is off for the run — `--no-focus`,
+// or `--no-events` taking the coordinator that mints it — and an absent capability
+// renders no control rather than one whose request could only be refused.
+const NEXT_FOCUS_META = 'meta[name="cargento-focus"]';
+
+function nextFocusCapability(){
+  if(typeof document === "undefined" || typeof document.querySelector !== "function") return "";
+  let meta = null;
+  try{
+    meta = document.querySelector(NEXT_FOCUS_META);
+  }catch(_error){
+    return "";
+  }
+  const value = meta && typeof meta.getAttribute === "function"
+    ? meta.getAttribute("content")
+    : null;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+// Beside the copy control and never in place of it. The copy always works. This
+// one's target is resolved at the moment of the raise and never at render, so at
+// render the page cannot know whether it will work, and drawing it optimistically
+// over the copy would leave a reader whose raise is declined with less than the
+// affordance that always works.
+//
+// `focusable` is a bit and never a target, so there is nothing for a `title` to
+// carry: the copy control's title holds its own payload as the no-clipboard
+// fallback, and the focus contract forbids echoing a target. The accessible name
+// is the `aria-label`, and it names the act rather than the terminal.
+//
+// A row with no reported terminal renders nothing at all. False is the majority
+// answer and will stay so — a session outside tmux, one that predates this server
+// run, and every Linux and Windows session, where the contract's own device
+// grammar refuses `/dev/pts/N` — so the coverage line says how far the feature
+// reaches once, where a per-row note would print forever and say nothing.
+function nextSessionRaiseControl(session){
+  if(!session || session.focusable !== true) return "";
+  const sid = String(session.sid == null ? "" : session.sid).trim();
+  const harness = String(session.harness == null ? "" : session.harness).trim();
+  if(!sid || !harness || !nextFocusCapability()) return "";
+  return '<button type="button" class="next-session-raise next-attention-raise" ' +
+    `data-next-raise-session="${esc(sid)}" data-next-raise-harness="${esc(harness)}" ` +
+    'aria-label="Raise the terminal this session is running in">' +
+    '<span aria-hidden="true">RAISE</span></button>';
+}
+
 function nextAskResponsibility(payload, ask){
   const owner = nextExactAskOwner(payload, ask);
   const spacedock = owner && owner.spacedock;

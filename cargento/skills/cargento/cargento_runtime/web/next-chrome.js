@@ -6,6 +6,8 @@ let nextRefreshRequest = 0;
 let nextLastRefreshSuccessAt = null;
 let nextAttentionStatusElement = null;
 let nextSessionCopyStatusElement = null;
+let nextSessionRaiseStatusElement = null;
+let nextRaiseInFlight = false;
 const nextAttentionExpandedSections = new Set();
 
 function nextCaptureFocus(){
@@ -163,6 +165,88 @@ async function nextCopyToClipboard(target){
         ? "Re-entry command could not be copied"
         : "Session ID could not be copied";
     }
+  }
+}
+
+function nextSessionRaiseStatus(app){
+  if(nextSessionRaiseStatusElement) return nextSessionRaiseStatusElement;
+  if(!app || typeof app.insertAdjacentElement !== "function") return null;
+  const status = document.createElement("p");
+  status.id = "next-session-raise-status";
+  status.className = "next-visually-hidden";
+  if(typeof status.setAttribute === "function"){
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    status.setAttribute("aria-atomic", "true");
+  }
+  app.insertAdjacentElement("afterend", status);
+  nextSessionRaiseStatusElement = status;
+  return status;
+}
+
+// The five states the page can honestly tell apart, because the response is one
+// boolean and nothing else: in flight, the boolean true, the boolean false, the
+// rate ceiling, and a transport failure. There is no sixth. A declined lookup, an
+// unknown session and a command that failed are the same false to a caller by
+// contract, so the false wording covers all three rather than picking one.
+//
+// SENT and not RAISED. The boolean is the raise command's own exit status —
+// `focus.raise_terminal` returns `switch-client`'s return code, and SECURITY.md
+// says "true only when the raise command itself exited zero". DRC-4387 recorded a
+// raise command exiting zero with nothing coming forward, and `focus.py` says a
+// socket raise changes what a tmux client displays without bringing a GUI window
+// forward. So the strong reading is unavailable and the announcement takes the
+// weaker one.
+const NEXT_RAISE_ANNOUNCEMENTS = new Map([
+  ["sending", "Raise requested"],
+  ["sent", "Raise sent; the terminal switched to this session. Its window may still be behind others."],
+  ["declined", "No terminal was raised"],
+  ["throttled", "Raise refused: one is already in flight"],
+  ["failed", "Raise could not be sent"],
+]);
+
+function nextRaiseState(target, state){
+  if(target && target.dataset) target.dataset.nextRaiseState = state;
+  const status = nextSessionRaiseStatus(document.getElementById("app"));
+  const message = NEXT_RAISE_ANNOUNCEMENTS.get(state);
+  if(status && message) status.textContent = message;
+}
+
+// The copy lane's shape, one route further: a state attribute on the control and
+// one live region, so a reader who has learned the copy has learned this too. What
+// differs is that this one leaves the machine, so it carries the capability the
+// route demands and refuses to send a request without it.
+async function nextRaiseTerminal(target){
+  const dataset = target && target.dataset || {};
+  const sid = String(dataset.nextRaiseSession || "");
+  const harness = String(dataset.nextRaiseHarness || "");
+  const capability = nextFocusCapability();
+  // No capability is the feature off for this run, and no control renders then.
+  // Reaching here means the document changed under the page, and a request that
+  // could only be refused is not one to send.
+  if(!sid || !harness || !capability || nextRaiseInFlight) return;
+  nextRaiseInFlight = true;
+  nextRaiseState(target, "sending");
+  try{
+    const response = await fetch("/api/focus", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Cargento-Capability": capability},
+      body: JSON.stringify({harness, sid}),
+    });
+    // The ceiling is read before `ok`, and it is the one status worth naming: it
+    // says try again, where every other refusal says something the reader cannot
+    // act on from here.
+    if(response && response.status === 429){
+      nextRaiseState(target, "throttled");
+      return;
+    }
+    if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);
+    const body = await response.json();
+    nextRaiseState(target, body && body.focused === true ? "sent" : "declined");
+  }catch(_error){
+    nextRaiseState(target, "failed");
+  }finally{
+    nextRaiseInFlight = false;
   }
 }
 
@@ -330,6 +414,15 @@ document.addEventListener("click", event => {
     event.preventDefault();
     if(typeof event.stopPropagation === "function") event.stopPropagation();
     void nextCopyToClipboard(copyTarget);
+    return;
+  }
+  const raiseTarget = event.target && event.target.closest
+    ? event.target.closest("[data-next-raise-session]")
+    : null;
+  if(raiseTarget){
+    event.preventDefault();
+    if(typeof event.stopPropagation === "function") event.stopPropagation();
+    void nextRaiseTerminal(raiseTarget);
     return;
   }
   const routeTarget = event.target && event.target.closest

@@ -74,7 +74,13 @@ session's terminal; Cargento does not mark them answered on the session's behalf
 Codex row therefore carries a control that copies the command that harness's own CLI takes to
 re-enter that session, so reaching the terminal is a paste rather than a hunt. The other eight
 harnesses publish no session id their CLI would accept, and their rows show no control rather than a
-guessed command. The item leaves when the harness publishes evidence that the wait ended. A
+guessed command. Where Cargento can reach the terminal a session is running in, the row carries a
+second control that raises it, so the hunt across tabs ends in a click rather than a paste. That
+reach is narrow: macOS, tmux, a session that started while this dashboard has been up, and exactly
+one terminal attached to it. Rows outside it carry no raise control at all, and the queue's coverage
+details say how far the feature reached rather than repeating the absence on every row. A raise
+changes what that terminal displays; it does not bring the window in front of other applications,
+and nothing is ever typed into the session. The item leaves when the harness publishes evidence that the wait ended. A
 question registered through `ask_operator` is different: its offered options are buttons in
 Attention and in the exact session detail, and choosing one returns that option to the waiting
 agent. Free-form replies are not
@@ -319,6 +325,7 @@ Paths 2 and 3 are complementary and can both be installed. Keep `Notification` o
 | `--no-git` | For this run, do not run the end-of-session git probe in any session's working repository. No git command runs at all, and every row's `dirty` and `changed` stay empty — which is what they already read for a session that was never probed. |
 | `--no-dismiss` | For this run, do not read or write the store of sessions marked handled: every marked session comes back onto the board. The rollback switch for the dismissal store Cargento writes on your behalf. |
 | `--no-ask` | For this run, do not let a session ask the reader a question: the register, poll and answer routes refuse and the page offers no control. The rollback switch for the ask lane. |
+| `--no-focus` | For this run, do not raise a session's terminal: no focus command runs, no terminal identity is recorded, and the page is handed no capability to ask with, so it offers no raise control. `--no-events` turns it off as well. The rollback switch for the terminal raise. |
 | `--no-history` | For this run, keep no local history of what the server observed: nothing is written and an existing store is not read back, so the board opens with no memory of earlier sessions. |
 | `--history-days N` | How long the local history keeps an observation, in days (default 14). Eviction is age first, so narrowing this drops what falls outside the window and widening it again brings nothing back. Zero or negative is refused. |
 | `--history-max-bytes N` | The size cap on the local history store, in bytes (default 1048576). It is the read cap too: a file larger than it is discarded unread rather than parsed. Zero or negative is refused. |

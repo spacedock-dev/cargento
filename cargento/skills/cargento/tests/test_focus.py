@@ -999,13 +999,17 @@ class CapabilityDeliveryTest(unittest.TestCase):
     def test_the_pinned_assembly_is_untouched(self) -> None:
         # The injection happens between `load_frontend_page()` and the server
         # construction, so `frontend_page.load_page()` stays byte-identical and
-        # the two pinned digests do not move.
+        # the pinned digests do not move.
         import cargento_runtime.web.page as frontend_page  # noqa: PLC0415
 
         assembled = frontend_page.load_page()
-        self.assertNotIn(b"cargento-focus", assembled)
+        # The TAG, not the name. DRC-4017's control reads the capability back out
+        # of the document, so the bundle now carries the selector
+        # `meta[name="cargento-focus"]` as a literal and a bare-name assertion
+        # would fail on the reader rather than on an injected token.
+        self.assertNotIn(b'<meta name="cargento-focus"', assembled)
         self.assertEqual(
-            "143f3c3a990919d4e690d472fd8f357e709cea573d1e482f7c7e4e1c4ec13038",
+            "9169b17d400030598b591344d1aeba1f4065b30af8212cef4366adca2c157dad",
             hashlib.sha256(assembled).hexdigest(),
         )
 

@@ -512,20 +512,20 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                14_216,
-                "501c2d26b98f85eed7c7bbd8f3174f5081846c6a32620cdbc8924f5e36b74e95",
+                17_008,
+                "10636cb6829b82a8a8f985f92a5971ef06dcc56623626f77ef54cca865a932cc",
             ),
             "next-attention.js": (
-                45_900,
-                "4720021b6fb1d5d497f94e21b05afe0e0035cf0c67c12857ee3095bf0f91fce3",
+                47_179,
+                "a66dd410bb9c1475654d3fabfe101df9b7f8fd9371d4864c5d73fc6cd5e77c9c",
             ),
             "next-notify.js": (
                 3_642,
                 "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
             ),
             "next-chrome.js": (
-                18_069,
-                "a6ab75cde88dc1091386378805f63d671657845c3d3f75e4864d16978d8885f8",
+                22_332,
+                "85cc88ec3dc38ad0beee1c0b01c1e67903ba44e08e076ec72f029bc858f77701",
             ),
             "next-capacity.js": (
                 25_829,
@@ -580,16 +580,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest())
 
         styles = frontend_page.asset_path("styles.css").read_bytes()
-        self.assertEqual(44_792, len(styles))
+        self.assertEqual(46_100, len(styles))
         self.assertEqual(
-            "00c416c8a3a5ba9aca4c3ecb879f98271e375651c6a40815b989f5c39e252d3f",
+            "82391f5fed9a16ecee6ef9bf831423b0808304575f12bf0d4518cc3196195b9f",
             hashlib.sha256(styles).hexdigest(),
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(372_291, len(assembled))
+        self.assertEqual(381_933, len(assembled))
         self.assertEqual(
-            "143f3c3a990919d4e690d472fd8f357e709cea573d1e482f7c7e4e1c4ec13038",
+            "9169b17d400030598b591344d1aeba1f4065b30af8212cef4366adca2c157dad",
             hashlib.sha256(assembled).hexdigest(),
         )
 
