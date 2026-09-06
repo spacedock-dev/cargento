@@ -384,6 +384,12 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # directory into one entry, so every rendering must say entries.
         "dirty": None,
         "changed": None,
+        # Whether this run holds a terminal a focus command could name. A BIT and
+        # never the target: SECURITY.md's focus section forbids echoing one, and
+        # what a page needs is only enough to render nothing dead. False covers
+        # the feature being off, a harness with no adapter, a session that
+        # predates this server run, and a session running outside tmux alike.
+        "focusable": False,
         "rate_per_min": 0,
         # Output-token readings from the transcript scanner. The session count
         # is present only after a byte-zero scan; the turn count only after that

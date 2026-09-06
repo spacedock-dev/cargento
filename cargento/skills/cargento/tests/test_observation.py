@@ -938,6 +938,11 @@ class WaitDetailTest(unittest.TestCase):
             """Never probed: this stub has no repository behind it."""
             del harness, sid
 
+        def focusable(self, harness: str, sid: str) -> bool:
+            """No terminal identity: this stub observed no session start."""
+            del harness, sid
+            return False
+
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
 
@@ -1070,6 +1075,11 @@ class StateDisputeTest(unittest.TestCase):
         def git_for(self, harness: str, sid: str) -> None:
             """Never probed: this stub has no repository behind it."""
             del harness, sid
+
+        def focusable(self, harness: str, sid: str) -> bool:
+            """No terminal identity: this stub observed no session start."""
+            del harness, sid
+            return False
 
         def note_rows(self, keys: set[tuple[str, str]]) -> None:
             pass
@@ -1450,6 +1460,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
 
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
+
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 self.noted = keys
 
@@ -1484,6 +1499,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
 
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
+
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
 
@@ -1508,6 +1528,11 @@ class ApplicationOverlayTest(unittest.TestCase):
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1593,6 +1618,11 @@ class ApplicationOverlayTest(unittest.TestCase):
                     return None
                 return reading
 
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
+
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
 
@@ -1621,6 +1651,11 @@ class ApplicationOverlayTest(unittest.TestCase):
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass
@@ -1657,6 +1692,11 @@ class ApplicationOverlayTest(unittest.TestCase):
             def git_for(self, harness: str, sid: str) -> None:
                 """Never probed: this stub has no repository behind it."""
                 del harness, sid
+
+            def focusable(self, harness: str, sid: str) -> bool:
+                """No terminal identity: this stub observed no session start."""
+                del harness, sid
+                return False
 
             def note_rows(self, keys: set[tuple[str, str]]) -> None:
                 pass

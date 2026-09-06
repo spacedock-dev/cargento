@@ -40,6 +40,7 @@ from .support import (
     poll_fast,
     serve_until_closed,
     state_of,
+    without_focus_meta,
 )
 
 if TYPE_CHECKING:
@@ -249,6 +250,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
             no_history=False,
             history_days=14.0,
             history_max_bytes=1_048_576,
@@ -358,7 +360,13 @@ print(json.dumps({{
                 code, headers, body = self._response(port, "GET", "/")
                 self.assertEqual(200, code)
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
-                self.assertEqual(frontend_page.load_page(), body)
+                # The copy's own assembly, plus the focus capability `cli.main`
+                # injects after it. Compared with that element stripped, because
+                # the subject here is whether the copied installation assembles
+                # its page from its own files — the token is per run and cannot
+                # be known from outside the process that minted it.
+                self.assertEqual(frontend_page.load_page(), without_focus_meta(body))
+                self.assertIn(b'<meta name="cargento-focus" content="', body)
                 code, headers, body = self._response(port, "GET", "/?next=true")
                 self.assertEqual(404, code)
                 self.assertNotEqual(frontend_page.load_page(), body)
@@ -433,6 +441,7 @@ print(json.dumps({{
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
             no_history=False,
             history_days=14.0,
             history_max_bytes=1_048_576,
@@ -1223,6 +1232,7 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
             no_history=False,
             history_days=14.0,
             history_max_bytes=1_048_576,
@@ -1256,6 +1266,7 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=False,
                 no_ask=False,
                 no_git=False,
+                no_focus=False,
                 no_history=False,
                 history_days=14.0,
                 history_max_bytes=1_048_576,
@@ -1287,6 +1298,7 @@ class CargentoServerTest(PageJsHarness):
                 no_dismiss=True,
                 no_ask=False,
                 no_git=True,
+                no_focus=True,
                 no_history=True,
                 history_days=14.0,
                 history_max_bytes=1_048_576,
@@ -1299,6 +1311,7 @@ class CargentoServerTest(PageJsHarness):
             "--no-events",
             "--no-dismiss",
             "--no-git",
+            "--no-focus",
             "--no-history",
         ):
             self.assertIn(flag, argv)
@@ -1313,6 +1326,7 @@ class CargentoServerTest(PageJsHarness):
             no_dismiss=False,
             no_ask=False,
             no_git=False,
+            no_focus=False,
             no_history=False,
             history_days=14.0,
             history_max_bytes=1_048_576,
@@ -1521,6 +1535,7 @@ class SpawnArgvOptOutTest(unittest.TestCase):
             "no_dismiss": False,
             "no_ask": False,
             "no_git": False,
+            "no_focus": False,
             "no_history": False,
             "history_days": 14.0,
             "history_max_bytes": 1_048_576,
@@ -1551,6 +1566,21 @@ class SpawnArgvOptOutTest(unittest.TestCase):
         config = cfg()
         argv = lifecycle.spawn_argv(config, self._args(no_git=False))
         self.assertNotIn("--no-git", argv)
+
+    def test_no_focus_is_forwarded(self) -> None:
+        # SECURITY.md's focus off switch. A respawned daemon that re-enables it
+        # is a security bug in as many words, and the branch reads
+        # `args.no_focus` directly, so the hand-written namespaces here raise
+        # AttributeError rather than quietly passing — which is the mechanism
+        # that forces the branch to exist at all.
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_focus=True))
+        self.assertIn("--no-focus", argv)
+
+    def test_no_focus_is_absent_when_not_requested(self) -> None:
+        config = cfg()
+        argv = lifecycle.spawn_argv(config, self._args(no_focus=False))
+        self.assertNotIn("--no-focus", argv)
 
     def test_no_history_is_forwarded(self) -> None:
         # DEC-6's off switch. Without the `spawn_argv` branch a user who turned

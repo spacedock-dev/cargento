@@ -34,10 +34,19 @@ guessing would post one harness's events to the other's route.
 
 ## What it sends, and what it refuses to send
 
-Only the nine allowlisted envelope fields, built field by field from the native
+Only the eleven allowlisted envelope fields, built field by field from the native
 payload. The prompt, the tool name, the tool input and output, and every other
 native field are dropped here rather than at the server, so they are never put
 on a socket at all.
+
+Two of the eleven are terminal identity, and they ride `SessionStart` alone. A
+hook can see what the dashboard never can: `events.ALLOWED_FIELDS` carries no pid,
+tty or terminal identity and no collector reads one, but a hook is a child of the
+harness and its environment says which tmux pane it is in. What is read is the
+tmux socket NAME and `TMUX_PANE`, from the environment, and nothing else. No
+ancestry walk, no controlling terminal, no `ps`: those belong to the Apple Event
+case `SECURITY.md` does not name yet, and `docs/captures/README.md` measured
+`hook_ms` at 200.8 to 524.8 ms dominated by exactly those calls.
 
 `Notification` is deliberately **not** mapped. A generic or actionable Claude
 notification stays standing hook state under today's precedence via
@@ -61,8 +70,13 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import sys
 from typing import Any
+
+# A sentinel for "read it from this process", so a caller may pass an explicit
+# None meaning "there is no uid" without that being read as "go and look".
+_UNSET = object()
 
 # The envelope version this adapter writes. An adapter lives in user-owned
 # configuration and is not upgraded when Cargento is, so a server may see this
@@ -209,6 +223,71 @@ EVENTS_BY_HARNESS = {
     "gemini": GEMINI_EVENTS,
 }
 
+# The two terminal-identity fields, and the grammars that decide whether either
+# is sent at all. They are the same patterns `cargento_runtime/focus.py` applies
+# again at the raise; duplicated rather than imported because this file ships
+# into a user's harness configuration with no runtime package beside it, and a
+# hook that cannot import is a hook that does not run.
+#
+# The socket is a NAME and never a path, because the raise passes it as `-L`. A
+# session on a custom `-S /path` socket therefore yields no target, which is an
+# honest decline rather than a command that cannot work.
+TMUX_PANE_PATTERN = r"^%[0-9]{1,9}$"
+TMUX_SOCKET_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$"
+
+# The event this identity rides, and the only one. A pane does not change inside
+# a session, and posting it on every hook would put it on the socket hundreds of
+# times per session for no reading the first one did not already give.
+IDENTITY_EVENT = "session_started"
+
+
+def tmux_identity(environ: Any, uid: int | None) -> dict[str, str]:
+    """The tmux socket name and pane for this hook's own process, or {}.
+
+    `TMUX` is `<socket path>,<server pid>,<session id>`. The basename is taken
+    only when its directory is the DEFAULT tmux socket directory for this uid
+    (`$TMUX_TMPDIR/tmux-<uid>`, falling back to `/tmp`), because a name passed as
+    `-L` resolves against exactly that directory: a socket living anywhere else
+    cannot be named, and inventing a name for it would build a command aimed at
+    somebody else's server.
+
+    Reads three environment variables and makes no other call of any kind. There
+    is no ancestry walk and no controlling-terminal read here, and their absence
+    is asserted rather than assumed: DRC-4382 measured that for a session with no
+    controlling terminal at all, both obvious readings report a terminal, and it
+    is somebody else's.
+    """
+    if uid is None:
+        return {}
+    raw = environ.get("TMUX")
+    pane = environ.get("TMUX_PANE")
+    if not isinstance(raw, str) or not isinstance(pane, str):
+        return {}
+    if re.match(TMUX_PANE_PATTERN, pane) is None:
+        return {}
+    path = raw.split(",", 1)[0]
+    name = os.path.basename(path)
+    if re.match(TMUX_SOCKET_PATTERN, name) is None:
+        return {}
+    # The default tmux socket directory, which is the only one a `-L` name can
+    # resolve against. Not a temporary file this process creates or trusts: it is
+    # the path tmux itself already bound its socket in, and the comparison below
+    # is what decides whether the name may be used at all.
+    tmpdir = environ.get("TMUX_TMPDIR") or "/tmp"  # noqa: S108
+    expected = os.path.join(tmpdir, "tmux-{}".format(uid))  # noqa: UP032
+    # realpath on both sides: macOS resolves /tmp to /private/tmp, so the honest
+    # comparison is between resolved directories rather than between the strings
+    # tmux and the environment happened to spell.
+    if os.path.realpath(os.path.dirname(path)) != os.path.realpath(expected):
+        return {}
+    return {"tmux_socket": name, "tmux_pane": pane}
+
+
+def process_uid() -> int | None:
+    """This process's uid, or None where the platform has none (Windows)."""
+    getuid = getattr(os, "getuid", None)
+    return None if getuid is None else getuid()
+
 
 def _shared() -> Any:
     """The transport guards from `notify_hook`, which ships beside this file.
@@ -254,7 +333,13 @@ def capability(port: int, harness: str) -> str | None:
     return token if isinstance(token, str) and token else None
 
 
-def envelope(payload: dict[str, Any], harness: str = "claude") -> dict[str, Any] | None:
+def envelope(
+    payload: dict[str, Any],
+    harness: str = "claude",
+    *,
+    environ: Any = None,
+    uid: Any = _UNSET,
+) -> dict[str, Any] | None:
     """Build the allowlisted envelope, or None if this hook is not forwarded.
 
     Built field by field from an allowlist rather than by deleting known-bad keys
@@ -286,6 +371,13 @@ def envelope(payload: dict[str, Any], harness: str = "claude") -> dict[str, Any]
         value = payload.get(source)
         if isinstance(value, str) and value.strip():
             event[field] = value.strip()
+    if name == IDENTITY_EVENT:
+        event.update(
+            tmux_identity(
+                os.environ if environ is None else environ,
+                process_uid() if uid is _UNSET else uid,
+            )
+        )
     return event
 
 

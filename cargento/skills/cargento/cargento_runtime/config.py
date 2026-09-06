@@ -59,6 +59,13 @@ class RuntimeConfig:
     # switch DEC-3 made part of its ruling, and off means no git command runs and
     # both published fields stay `None` — never a confident clean.
     git_probe_enabled: bool
+    # Whether the focus command may run at all. `--no-focus` is the off switch
+    # SECURITY.md's focus section made part of the feature, and off means no
+    # command runs, no target is recorded, and the page is handed no capability
+    # to ask with. `--no-events` turns it off as a side effect, because the
+    # capability and the target both come from the observation coordinator, which
+    # does not exist under that flag.
+    focus_enabled: bool
     # Whether the dismissal store is read and written at all. `--no-dismiss` is
     # the rollback switch, and off means off in both directions: the file is
     # neither consulted during a collection nor created by a request, so a run
@@ -218,6 +225,16 @@ class RuntimeConfig:
     # probe already runs off the event thread, so a slow repository costs a late
     # reading rather than a stalled ingress.
     git_probe_timeout_sec: float
+    # The focus command's three bounds. The timeout is well under the git
+    # probe's because a tmux command answers over a UNIX socket rather than by
+    # walking a tree, and this one runs on the request thread the reader is
+    # waiting on rather than off it. The floor and the in-flight gate are the
+    # `usage_poll_floor_sec` pair one feature over: a repeated or looped request
+    # must not be able to repeat the raise. The body cap matches the dismissal
+    # route's, whose body is the same two fields.
+    focus_timeout_sec: float
+    focus_floor_sec: float
+    focus_body_cap_bytes: int
     # Event overlays. The Working deadline is tied to `working_threshold_sec`
     # rather than chosen separately: that value is already what the collectors
     # mean by Working, so an overlay that outlived it would be claiming Working
@@ -437,6 +454,7 @@ def build_runtime_config(
     spacedock_enabled: bool = True,
     usage_fetch_enabled: bool = True,
     git_probe_enabled: bool = True,
+    focus_enabled: bool = True,
     dismissals_enabled: bool = True,
     ask_enabled: bool = True,
     history_enabled: bool = True,
@@ -481,6 +499,7 @@ def build_runtime_config(
         spacedock_enabled=spacedock_enabled,
         usage_fetch_enabled=usage_fetch_enabled,
         git_probe_enabled=git_probe_enabled,
+        focus_enabled=focus_enabled,
         dismissals_enabled=dismissals_enabled,
         ask_enabled=ask_enabled,
         history_enabled=history_enabled,
@@ -560,6 +579,9 @@ def build_runtime_config(
         usage_poll_floor_sec=300,
         usage_fetch_timeout_sec=10,
         git_probe_timeout_sec=10.0,
+        focus_timeout_sec=2.0,
+        focus_floor_sec=1.0,
+        focus_body_cap_bytes=1_024,
         usage_credentials_cap_bytes=65_536,
         usage_response_cap_bytes=262_144,
         usage_receipt_cap_bytes=131_072,

@@ -39,6 +39,7 @@ from .support import (
     serve_until_closed,
     state_of,
     store_patch,
+    without_focus_meta,
 )
 
 
@@ -2384,7 +2385,16 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # regression to 0.0.0.0 cannot pass merely because this test chose 127.
         serve("--port", "4553")
         self.assertEqual([("127.0.0.1", 4553)], captured_addresses)
-        self.assertEqual([PAGE_BYTES], captured_pages)
+        # The assembled page plus this run's focus capability, which `cli.main`
+        # injects between `load_frontend_page()` and this constructor. Compared
+        # against the assembly rather than against a pinned byte count, so the
+        # subject stays the bind address and the page identity: `test_next_page`
+        # owns the digests, and a second pin here would red this module on any
+        # frontend edit.
+        self.assertEqual(1, len(captured_pages))
+        served = captured_pages[0]
+        self.assertEqual(PAGE_BYTES, without_focus_meta(served))
+        self.assertIn(b'<meta name="cargento-focus" content="', served)
 
         # And the other direction, through the same launcher: `--host` has to
         # reach the bind tuple. Nothing pinned that, so reverting cli.py's
@@ -2394,6 +2404,17 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         captured_pages.clear()
         serve("--port", "4553", "--host", "0.0.0.0")
         self.assertEqual([("0.0.0.0", 4553)], captured_addresses)
+
+        # And with the feature off there is no secret in the served bytes at all,
+        # which is the whole of "the control does not render".
+        captured_addresses.clear()
+        captured_pages.clear()
+        serve("--port", "4553", "--no-focus")
+        self.assertEqual([PAGE_BYTES], captured_pages)
+        captured_addresses.clear()
+        captured_pages.clear()
+        serve("--port", "4553", "--no-events")
+        self.assertEqual([PAGE_BYTES], captured_pages)
 
         httpd = make_server()
         thread = serve_until_closed(httpd)

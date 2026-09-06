@@ -339,7 +339,7 @@ class AlreadyThereTrapTest(unittest.TestCase):
         self.assertEqual(recorder.OUTCOME_INCONCLUSIVE, record["outcome"])
 
     def test_an_arm_that_cannot_establish_a_before_state_is_not_an_arm(self) -> None:
-        # `docs/plans/session-focus-security-scope.md` makes a raise on a lookup
+        # `SECURITY.md`'s focus section makes a raise on a lookup
         # that found nothing a violation, and the same reasoning applies to the
         # measurement: with no before there is no after to compare it to.
         # Falsified by: a command running with `frontmost` unreadable.

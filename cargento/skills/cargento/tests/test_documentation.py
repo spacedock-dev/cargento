@@ -8,7 +8,7 @@ import re
 import unittest
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from cargento_runtime import cli, git_status, history
+from cargento_runtime import cli, focus, git_status, history
 from cargento_runtime import config as runtime_config
 
 from .support import (
@@ -822,3 +822,146 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
         # signed-in harness instead.
         self.assertIn("never a Cargento credential", self.FLAT)
         self.assertIn("adds no endpoint to the list in Usage quota reads", self.FLAT)
+
+
+class FocusCommandContractDocumentationTest(unittest.TestCase):
+    """SECURITY.md's focus section is a contract, so the code must still meet it.
+
+    The direct analogue of `GitProbeContractDocumentationTest` above: the section
+    was written and reviewed on its own cycle before this code existed (DRC-4383,
+    promoted here from `docs/plans/session-focus-security-scope.md` and that file
+    deleted, with the deep dive beside it, in the same commit). Prose and code can
+    only agree by accident unless something compares them.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    # Whitespace-collapsed, so a reflow that changes no words does not fail these.
+    FLAT = re.sub(r"\s+", " ", SECURITY)
+
+    def test_the_contract_section_survived_the_promotion(self) -> None:
+        self.assertIn("## Reaching a session's terminal (the focus command)", self.SECURITY)
+        # The two intro amendments that had to ride with it. Without the first,
+        # the section sits under a Scope clause about running a program inside a
+        # repository, which the focus command does not do — the technicality
+        # DRC-4274 warned about, of a promoted section landing under a clause
+        # that does not cover it.
+        self.assertIn(
+            "running a program to reach a session's terminal other than the focus command "
+            "described in Reaching a session's terminal (the focus command),",
+            self.FLAT,
+        )
+        self.assertIn(
+            "The focus command writes nothing anywhere, reads nothing back, and touches no "
+            "harness store;",
+            self.FLAT,
+        )
+
+    def test_the_widening_stayed_scoped_to_its_own_clause(self) -> None:
+        # Written generally, the sentence would make documented security bugs of
+        # three paths Cargento already ships. The whitelist has to stay a
+        # whitelist of scoped clauses.
+        self.assertIn(
+            "a whitelist of two scoped clauses and not a general permission to execute",
+            self.FLAT,
+        )
+        for shipped in (
+            "cargento_runtime/notifications.py",
+            "cargento_runtime/lifecycle.py",
+            "cargento_runtime/quota.py",
+        ):
+            source = (SERVER_PATH.parent / shipped).read_text(encoding="utf-8")
+            with self.subTest(module=shipped):
+                self.assertIn("subprocess", source)
+
+    def test_the_plan_documents_died_with_their_promotion(self) -> None:
+        # Leaving either in place states the contract in two places and lets them
+        # drift.
+        plans = self.ROOT / "docs" / "plans"
+        self.assertFalse((plans / "session-focus-security-scope.md").exists())
+        self.assertFalse((plans / "2026-09-05-drc-4383-deep-dive.md").exists())
+
+    def test_the_documented_off_switch_is_the_flag_the_parser_accepts(self) -> None:
+        # The prose half is bound to a parser call, so it is not a grep over our
+        # own words: until `--no-focus` parses, this assertion would be one.
+        self.assertIn("`--no-focus`, and one other flag turns it off", self.FLAT)
+        args = cli.build_parser().parse_args(["--no-focus"])
+        self.assertTrue(args.no_focus)
+
+    def test_the_second_off_switch_the_contract_names_is_also_a_flag(self) -> None:
+        self.assertIn(
+            "The capability comes from the observation coordinator, which does not exist under "
+            "`--no-events`, so that flag disables focus too.",
+            self.FLAT,
+        )
+        self.assertTrue(cli.build_parser().parse_args(["--no-events"]).no_events)
+
+    def test_the_documented_grammars_are_the_patterns_the_code_applies(self) -> None:
+        # The contract's table, bound to the compiled patterns rather than
+        # restated. The table was itself corrected after being executed against
+        # its own claimed refusals, so a prose promise the pattern does not keep
+        # is the exact failure this guards.
+        for documented, pattern in (
+            ("^%[0-9]{1,9}$", focus.TMUX_PANE_RE),
+            ("^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$", focus.TMUX_SOCKET_RE),
+            ("^/dev/[A-Za-z0-9][A-Za-z0-9._-]{0,119}$", focus.CLIENT_TTY_RE),
+        ):
+            with self.subTest(grammar=documented):
+                self.assertIn(f"`{documented}`", self.SECURITY)
+                self.assertEqual(documented, pattern.pattern)
+
+    def test_the_refused_examples_in_the_table_are_refused(self) -> None:
+        # Every value the table names as refused, run against the pattern the
+        # same row names. The document's own examples, not examples chosen here.
+        for pattern, refused in (
+            (focus.TMUX_PANE_RE, ("%3; rm -rf", "-%3", "%", "%3 %4")),
+            (focus.TMUX_SOCKET_RE, ("-L", "../x", "/tmp/s", ".hidden", "")),
+            (
+                focus.CLIENT_TTY_RE,
+                (
+                    "--dangerously-skip-permissions",
+                    "; rm -rf ~",
+                    "../../etc/passwd",
+                    "/dev/..",
+                ),
+            ),
+        ):
+            for value in refused:
+                with self.subTest(value=value):
+                    self.assertIn(value, self.SECURITY)
+                    self.assertIsNone(pattern.match(value))
+
+    def test_no_apple_event_case_is_named_while_its_arm_is_unmeasured(self) -> None:
+        # The contract permits one only once that arm has been run, and A2 is
+        # inconclusive. The bound is on the code rather than on the prose,
+        # because the prose is what grants the permission.
+        self.assertIn("**No Apple Event case may be named until that arm has been run**", self.FLAT)
+        runtime = SERVER_PATH.parent / "cargento_runtime"
+        pattern = re.compile(r"""["']osascript["']""")
+        offenders = sorted(
+            path.name
+            for path in runtime.rglob("*.py")
+            if pattern.search(path.read_text(encoding="utf-8"))
+        )
+        # Quoted, so the one prose mention in `http_api.py` is not counted as a
+        # call site. `notifications.py` is the only one, and it runs
+        # `display notification` — a StandardAdditions command with no
+        # `tell application` block, so it is never checked against the Automation
+        # privacy permission. That is an escaping precedent and not a permission
+        # one, which is why it is named here rather than counted as a focus case:
+        # a macOS focus case would be the FIRST Automation-checked call in this
+        # codebase, not the second.
+        self.assertEqual(["notifications.py"], offenders)
+
+    def test_the_response_the_contract_promises_is_the_one_the_route_sends(self) -> None:
+        self.assertIn(
+            "The response is a single boolean saying whether a focus was attempted.", self.FLAT
+        )
+        source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
+            encoding="utf-8"
+        )
+        handler = source[source.index("def _focus(self)") : source.index("def do_POST(self)")]
+        self.assertIn('{"focused": focused}', handler)
+        for echoed in ("target", "tty", "pane", "socket", "reason"):
+            with self.subTest(field=echoed):
+                self.assertNotIn(f'"{echoed}":', handler)
