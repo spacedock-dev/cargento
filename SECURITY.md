@@ -1035,11 +1035,12 @@ It does not apply to a directory that already exists, Windows ignores it, and ro
 way. Any process running as the same user can read the token and post events, and that stays inside
 the trust boundary for the same reason the rest of this section does, since such a process can read
 the user's secret material directly. An overlay may also only ever patch a row a collector produced;
-it can never create or delete one, and it can only write `state`, `state_detail`, `active`,
-`blocked_since`, the acquisition marker and `finished_at`, the stamp of the turn's last observed
-stop. `--no-events` turns the whole path off for a run.
+it can never create or delete one, and it can only write these nine fields: `state`,
+`state_detail`, `active`, `blocked_since`, `acquisition`, `finished_at` (the stamp of the turn's last
+observed stop), `ended_at` (the stamp of the session id's own end), and `dirty` with `changed` (the
+end-of-session git reading). `--no-events` turns the whole path off for a run.
 
-The event envelope is allowlisted at both ends. Each adapter builds the nine permitted fields one at
+The event envelope is allowlisted at both ends. Each adapter builds the twelve permitted fields one at
 a time from the native payload, so the prompt, the tool name, the tool input and the tool output are
 dropped in the hook and never put on a socket; the server then validates independently, because a
 hook's output is untrusted regardless of who wrote it. Codex's payloads carry `prompt`, `tool_input`,

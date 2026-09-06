@@ -93,7 +93,10 @@ function nextSessionCommandSurface(session, asks, identity){
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
   const state = nextSessionDetailState(session.state);
   const current = nextSessionNowFact(session) || String(session.state_detail || "").trim();
-  const executionText = [state && state.label, current]
+  /* An observed end replaces the state word rather than sitting beside it: for a
+     session that is over, "idle" is the misreading this field exists to end. */
+  const ended = nextSessionEndedAt(session);
+  const executionText = [ended == null ? state && state.label : "session ended", current]
     .filter(Boolean).join(" · ") || "Activity unavailable";
   const contextLine = context ? nextInstructionLine(session, "", "next-session-command-context") : "";
   const next = asks.length ? null : nextSessionNextFact(session, []);
@@ -138,6 +141,11 @@ function nextSessionMeta(session){
   const harness = nextSessionRegistryLabel(session);
   if(harness) parts.push(harness);
   if(session.state_detail) parts.push(String(session.state_detail));
+  /* Outside the state chain below, on purpose. An end is a fact about the
+     session id; `state` is a reading of file recency that a session which ended
+     seconds ago can still make say "working". */
+  const ended = nextDurationSince(nextSessionEndedAt(session));
+  if(ended != null) parts.push(`ended ${ended} ago`);
   if(session.state === "needs_input"){
     const blocked = nextDurationSince(session.blocked_since);
     if(blocked != null) parts.push(`blocked ${blocked}`);

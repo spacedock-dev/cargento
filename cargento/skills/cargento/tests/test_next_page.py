@@ -512,12 +512,12 @@ class NextPageAssetContractTest(unittest.TestCase):
         # is the more useful failure of the two.
         expected_parts = {
             "next-boot.js": (
-                17_008,
-                "10636cb6829b82a8a8f985f92a5971ef06dcc56623626f77ef54cca865a932cc",
+                17_538,
+                "50f9c44dd4ada842b62ebefe265c995dd722e3ae9adf8031b75e0785583ac719",
             ),
             "next-attention.js": (
-                48_380,
-                "5596e5bf8e0290f7ac94ec2f2e7a3b998f1dbb9d6dc6f442988272d97eb51ff6",
+                50_602,
+                "6e58922bb67620810be87d0b98b6498ea9d6253d97591a20e74c1b24eaa38c01",
             ),
             "next-notify.js": (
                 3_642,
@@ -532,8 +532,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "cd568c13fb0e7bf224ba00d8aa7c29032ed4a3f3988853c5d79668fe2c948ec3",
             ),
             "next-sessions.js": (
-                11_898,
-                "222e2f170f74efacb0bb477ff9d14301edbc5b8a3194ce4aa6e76defa633fad8",
+                13_837,
+                "a13e0c6fbb8f1be389c99285524572ecfe5056cbec56db4e792486d9c4715fb5",
             ),
             "next-projects.js": (
                 10_277,
@@ -548,8 +548,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "6ef68e1321e586622a8543527f3a3bce56176d2efaa87553e8360dae82ad0a61",
             ),
             "next-session.js": (
-                18_263,
-                "0f8ce8e3177b8abea72137b975ec6a24b88a321fe6ef417d4080992a52eb7447",
+                18_829,
+                "d00e868b17ce5e7081d2631c3b753f0be895a21135b3ab863d05c08e84c798ec",
             ),
             "next-workstream.js": (
                 17_492,
@@ -587,9 +587,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(383_771, len(assembled))
+        self.assertEqual(389_028, len(assembled))
         self.assertEqual(
-            "ff17fc0444fee25d8387e653a9f789b2d2c53d9bf87e3fc7cad23cec9be47613",
+            "52335e5a28de713c1df7cf706633f56117f21266cae11bb4eb075c3c960e394c",
             hashlib.sha256(assembled).hexdigest(),
         )
 

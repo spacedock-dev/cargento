@@ -78,6 +78,16 @@ function nextPayloadAsks(payload){
   return payload.asks.filter(ask => ask && typeof ask === "object" && !Array.isArray(ask));
 }
 
+/* When a session id was observed to end, or null. Null is the whole of what the
+   page may say: absence covers a SIGKILL, a harness with no event adapter, a
+   session that predates this server run, and --no-events, so a row without a
+   stamp is NOT known to be running and must never be rendered as though it
+   were. Every end-aware surface goes through here so that rule lives once. */
+function nextSessionEndedAt(session){
+  const at = nextNumber(session && session.ended_at);
+  return at != null && at > 0 ? at : null;
+}
+
 function nextSessionKey(session){
   return `session:${JSON.stringify([String(session && session.harness || ""), String(session && session.sid || "")])}`;
 }

@@ -1754,6 +1754,11 @@ class _StubOverlays:
         del harness, sid
         return 0.0
 
+    def ended_at(self, harness: str, sid: str) -> float:
+        """No end observed: this stub answers only about stops."""
+        del harness, sid
+        return 0.0
+
     def git_for(self, harness: str, sid: str) -> None:
         """Never probed: this stub has no repository behind it."""
         del harness, sid

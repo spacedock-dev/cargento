@@ -791,7 +791,13 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual(1, len(model["close"]))
         close = model["close"][0]
         self.assertEqual("stop-dirty", close["primaryKind"])
-        self.assertEqual({"finishedAt": 7_000, "changedEntries": 3}, close["signals"][0]["detail"])
+        # `endedAt: None` joined the detail with DRC-4036, and None is the claim:
+        # these rows carry a stop and no observed end, which is not the same as
+        # a session known to still be running.
+        self.assertEqual(
+            {"finishedAt": 7_000, "endedAt": None, "changedEntries": 3},
+            close["signals"][0]["detail"],
+        )
         self.assertEqual("alpha/first", close["session"]["project"])
         self.assertEqual(0, close["sourceIndex"])
 
@@ -1696,3 +1702,168 @@ document.querySelector = selector => selector === 'meta[name="cargento-focus"]'
         self.assertIn(".next-attention a:focus-visible", NEXT_STYLES)
         self.assertIn("prefers-reduced-motion:reduce", NEXT_STYLES)
         self.assertIsNone(re.search(r"(?:^|[;{])order:", NEXT_STYLES))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextAttentionSessionEndTest(NextPageJsHarness):
+    """DRC-4036: a session that is over must not render as one waiting for you."""
+
+    def model(self, sessions: list[dict[str, Any]]) -> Any:
+        payload = {"generated": 10_000, "sessions": sessions}
+        return self._run_page_js(
+            "\n".join(
+                (
+                    f"nextData = JSON.parse({json.dumps(json.dumps(payload))});",
+                    "console.log(JSON.stringify(nextAttentionModel(nextData)));",
+                )
+            )
+        )
+
+    def render(self, sessions: list[dict[str, Any]]) -> str:
+        payload = {"generated": 10_000, "sessions": sessions}
+        rendered = self._run_page_js(
+            "\n".join(
+                (
+                    f"nextData = JSON.parse({json.dumps(json.dumps(payload))});",
+                    "console.log(JSON.stringify(nextAttentionView(nextAttentionModel(nextData))));",
+                )
+            )
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def row(self, **overrides: Any) -> dict[str, Any]:
+        session = {
+            "harness": "claude",
+            "sid": "ended-1",
+            "project": "alpha/repo",
+            "state": "idle",
+            "last_activity": 9_000,
+        }
+        session.update(overrides)
+        return session
+
+    def test_an_ended_session_reaches_safe_to_close_with_no_stop_beside_it(self) -> None:
+        # The lane N-12 exists to strengthen. `nextAttentionStopSignal` used to
+        # require a stop AND the idle state, so a session that reported its own
+        # end and had no observed stop dropped out of Safe to close entirely —
+        # the strongest evidence the section has, discarded for want of a weaker
+        # one.
+        model = self.model([self.row(ended_at=9_400)])
+        assert isinstance(model, dict)
+        self.assertEqual(1, len(model["close"]))
+        self.assertEqual("end-unknown", model["close"][0]["primaryKind"])
+        self.assertEqual(9_400, model["close"][0]["signals"][0]["detail"]["endedAt"])
+
+    def test_an_end_promotes_the_row_whatever_the_scan_says_the_state_is(self) -> None:
+        # An end is an observed event and `state` is a collector inference off
+        # file recency, so requiring the two to agree would let the weaker
+        # reading veto the stronger one.
+        model = self.model([self.row(state="working", ended_at=9_400)])
+        assert isinstance(model, dict)
+        self.assertEqual(["end-unknown"], [item["primaryKind"] for item in model["close"]])
+
+    def test_the_git_reading_still_separates_the_three_endings(self) -> None:
+        # Every row carrying a git reading carries a stop too, because
+        # `events._side_channel_patch` publishes the reading only alongside a
+        # fresh `finished_at`. Distinct projects so the identity-collision
+        # subject does not take these rows over.
+        model = self.model(
+            [
+                self.row(
+                    sid="e-dirty",
+                    project="a/one",
+                    finished_at=9_350,
+                    ended_at=9_400,
+                    dirty=True,
+                    changed=3,
+                ),
+                self.row(
+                    sid="e-clean",
+                    project="a/two",
+                    finished_at=9_250,
+                    ended_at=9_300,
+                    dirty=False,
+                    changed=0,
+                ),
+                self.row(sid="e-none", project="a/three", ended_at=9_200),
+            ]
+        )
+        assert isinstance(model, dict)
+        self.assertEqual(
+            ["end-dirty", "end-unknown", "end-clean"],
+            [item["primaryKind"] for item in model["close"]],
+        )
+
+    def test_uncommitted_work_outranks_an_end_that_left_nothing_behind(self) -> None:
+        # Ordering inside Safe to close is by what is at stake, so the git
+        # reading leads and the end breaks its ties. An ended dirty tree is the
+        # one nobody is coming back to.
+        model = self.model(
+            [
+                self.row(
+                    sid="e-clean",
+                    project="a/one",
+                    finished_at=9_250,
+                    ended_at=9_300,
+                    dirty=False,
+                    changed=0,
+                ),
+                self.row(sid="s-dirty", project="a/two", finished_at=9_100, dirty=True, changed=2),
+                self.row(
+                    sid="e-dirty",
+                    project="a/three",
+                    finished_at=9_350,
+                    ended_at=9_400,
+                    dirty=True,
+                    changed=3,
+                ),
+            ]
+        )
+        assert isinstance(model, dict)
+        self.assertEqual(
+            ["end-dirty", "stop-dirty", "end-clean"],
+            [item["primaryKind"] for item in model["close"]],
+        )
+
+    def test_a_session_with_no_observed_end_is_never_called_ended(self) -> None:
+        # Absence covers a SIGKILL, an adapter-less harness, a session predating
+        # this server run and `--no-events`, so it may never be read as an end.
+        model = self.model([self.row(finished_at=9_100, dirty=False, changed=0)])
+        assert isinstance(model, dict)
+        self.assertEqual("stop-clean", model["close"][0]["primaryKind"])
+        self.assertIsNone(model["close"][0]["signals"][0]["detail"]["endedAt"])
+
+    def test_the_rendered_card_says_the_session_ended_and_when(self) -> None:
+        html = self.render([self.row(finished_at=9_350, ended_at=9_400, dirty=True, changed=3)])
+        self.assertIn("Session ended with uncommitted work", html)
+        self.assertIn("3 changed entries", html)
+        self.assertIn("ended 10m ago", html)
+
+    def test_coverage_counts_ends_and_refuses_to_read_silence_as_life(self) -> None:
+        html = self.render([self.row(ended_at=9_400), self.row(sid="quiet-1")])
+        self.assertIn("Ends observed on 1 session", html)
+        self.assertIn("a session with no observed end is not known to be running", html)
+
+    def test_coverage_says_so_when_no_end_was_observed_at_all(self) -> None:
+        html = self.render([self.row(sid="quiet-1")])
+        self.assertIn("No session ends observed", html)
+        self.assertIn("a session with no observed end is not known to be running", html)
+
+    def test_the_always_visible_coverage_line_carries_the_end_count(self) -> None:
+        # The summary sentence renders above the collapsed details on every
+        # payload, so a key that does not exist shows every reader `undefined`
+        # rather than only the one who expands coverage. Asserted on the half
+        # before the `<details>` for exactly that reason.
+        html = self.render([self.row(ended_at=9_400), self.row(sid="quiet-1")])
+        visible = html.split('<details class="next-attention-coverage-details">')[0]
+
+        self.assertIn("Ends: 1 observed", visible)
+        self.assertNotIn("undefined", visible)
+
+    def test_the_visible_coverage_line_counts_no_end_as_none_not_undefined(self) -> None:
+        html = self.render([self.row(sid="quiet-1")])
+        visible = html.split('<details class="next-attention-coverage-details">')[0]
+
+        self.assertIn("Ends: 0 observed", visible)
+        self.assertNotIn("undefined", visible)

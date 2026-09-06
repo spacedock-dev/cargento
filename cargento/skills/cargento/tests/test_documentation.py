@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from cargento_runtime import cli, focus, git_status, history
 from cargento_runtime import config as runtime_config
+from cargento_runtime import events as runtime_events
 
 from .support import (
     SERVER_PATH,
@@ -561,6 +562,63 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         ):
             with self.subTest(source=relative):
                 self.assertIn(claim, self.unwrapped(relative))
+
+
+class EventEnvelopeEnumerationTest(unittest.TestCase):
+    """Every prose count of the envelope, held to the sets those counts describe.
+
+    Both SECURITY.md enumerations had drifted, silently, because nothing read the
+    prose and the code together: the document said the envelope carries "the nine
+    permitted fields" after `ALLOWED_FIELDS` reached twelve (the three `tmux_*`
+    members arrived with DRC-4017), and it named six writable overlay fields
+    while `PATCHABLE` held eight. A number in prose is a claim about a set, and
+    an unchecked claim is how the security contract comes to describe a narrower
+    system than the one that shipped — which is the direction that matters here.
+
+    `config.py` is checked here too, and it is why: reading SECURITY.md alone let
+    a third copy of the same stale nine survive the pass that fixed the other
+    two. The cap it justifies is a security bound, so its stated reason is worth
+    the same guard as the contract's.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    FLAT: ClassVar[str] = re.sub(r"\s+", " ", SECURITY)
+    NUMBER_WORDS: ClassVar[dict[int, str]] = {
+        6: "six",
+        7: "seven",
+        8: "eight",
+        9: "nine",
+        10: "ten",
+        11: "eleven",
+        12: "twelve",
+        13: "thirteen",
+        14: "fourteen",
+    }
+
+    def test_the_documented_envelope_width_is_the_allowlist_the_code_enforces(self) -> None:
+        word = self.NUMBER_WORDS[len(runtime_events.ALLOWED_FIELDS)]
+        self.assertIn(f"builds the {word} permitted fields one at a time", self.FLAT)
+
+    def test_the_body_caps_stated_reason_is_the_allowlist_the_code_enforces(self) -> None:
+        # `event_body_cap_bytes` is justified by the envelope's width, so a stale
+        # width there is a security bound resting on a number that is no longer
+        # true.
+        word = self.NUMBER_WORDS[len(runtime_events.ALLOWED_FIELDS)]
+        source = (SERVER_PATH.parent / "cargento_runtime" / "config.py").read_text(encoding="utf-8")
+        self.assertIn(f"envelope is {word} short fields", " ".join(source.split()))
+
+    def test_the_documented_overlay_writes_are_exactly_the_patchable_set(self) -> None:
+        # Set equality against the backticked names in that one sentence, which is
+        # why the sentence names every field rather than glossing one as "the
+        # acquisition marker": a prose alias is a name this test cannot check.
+        match = re.search(r"it can only write these (\w+) fields: (.*?)\. `--no-events`", self.FLAT)
+        assert match is not None, "SECURITY.md no longer enumerates the overlay writes"
+        self.assertEqual(self.NUMBER_WORDS[len(runtime_events.PATCHABLE)], match.group(1))
+        self.assertEqual(
+            set(runtime_events.PATCHABLE),
+            set(re.findall(r"`([a-z_]+)`", match.group(2))),
+        )
 
 
 class GitProbeContractDocumentationTest(unittest.TestCase):
