@@ -125,6 +125,10 @@ max-args = 8
 # that cannot be built on a machine -- the launcher-inherited terminal, which is
 # the control the capture rests on.
 "scripts/capture_terminal_identity.py" = ["PLR0913"]
+# Same rationale as its sibling above: `run_arm` takes one injectable seam per
+# way of starting a process, and collapsing them into a config object would
+# hide the very thing the tests need to substitute.
+"scripts/capture_focus_raise.py" = ["PLR0913"]
 # Tests: assert usage, subprocess invocations of node, and long fixture lines.
 "**/tests/*.py" = ["S101", "S603", "S108", "S311", "E501", "SLF001", "INP001", "S104"]
 
