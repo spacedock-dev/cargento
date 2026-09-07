@@ -642,6 +642,33 @@ console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}
         # Session c's working record is its last, so nothing observed its end.
         self.assertIn("from 2 observed", out["html"])
         self.assertIn("1 more session has no closed working interval", out["html"])
+        # One unmeasured session is the only count this sentence used to agree
+        # with: the plural verb was picked for the subject and the verb after
+        # "and" was left singular, so every count but 1 read "sessions have ...
+        # and is not in that figure". Observed on a live board at 5.
+        self.assertIn("and is not in that figure", out["html"])
+
+    def test_the_unmeasured_aside_agrees_with_its_own_count(self) -> None:
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+const g = nextData.generated;
+nextData.history = [
+  {harness: "claude", sid: "a", project: "p", state: "working", last_activity: g - 3600},
+  {harness: "claude", sid: "a", project: "p", state: "idle", last_activity: g - 1800},
+  {harness: "claude", sid: "b", project: "p", state: "working", last_activity: g - 3600},
+  {harness: "claude", sid: "b", project: "p", state: "idle", last_activity: g - 900},
+  {harness: "claude", sid: "c", project: "p", state: "working", last_activity: g - 300},
+  {harness: "claude", sid: "d", project: "p", state: "working", last_activity: g - 280},
+  {harness: "claude", sid: "e", project: "p", state: "working", last_activity: g - 260}
+];
+console.log(JSON.stringify({html: nextCapacityProjectSpread(nextData, "claude")}));
+""",
+            storage_prelude({}),
+        )
+        self.assertIn("3 more sessions have no closed working interval", out["html"])
+        self.assertIn("and are not in that figure", out["html"])
+        self.assertNotIn("and is not in that figure", out["html"])
 
     def test_two_sessions_do_not_report_their_maximum_as_a_median(self) -> None:
         out = self._run_page_js(

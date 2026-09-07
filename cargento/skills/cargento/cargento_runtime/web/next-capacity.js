@@ -533,7 +533,7 @@ function nextCapacityProjectSpread(payload, harness){
   const held = unmeasured.get(best.project) || 0;
   const aside = held
     ? ` ${held} more ${held === 1 ? "session has" : "sessions have"} no closed working interval ` +
-      "in the retained window and is not in that figure."
+      `in the retained window and ${held === 1 ? "is" : "are"} not in that figure.`
     : "";
   return `Sessions in <b>${esc(best.project)}</b> have worked ` +
     `${esc(nextCapacityDuration(sorted[0]))} to ` +
