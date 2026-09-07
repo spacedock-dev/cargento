@@ -18,7 +18,9 @@ arm now skips with its reason rather than passing.
 
 from __future__ import annotations
 
+import ast
 import contextlib
+import io
 import os
 import re
 import shutil
@@ -26,6 +28,7 @@ import stat
 import subprocess
 import tempfile
 import time
+import tokenize
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -61,6 +64,166 @@ WITHOUT_HOOKS_PATH_OFF = (
 
 LFS = shutil.which("git-lfs")
 
+# Every shipped module a git call could be added to, not just the package. The
+# AC1 oracle used to read `cargento_runtime/**/*.py` alone, and the five hook
+# adapters plus the launcher and the MCP server sit outside that glob —
+# `event_hook.py` most of all, because it is the file that runs inside a user's
+# harness lifecycle and so the likeliest place a second git call gets written.
+_SHIPPED_SIBLINGS: tuple[str, ...] = (
+    "server.py",
+    "notify_hook.py",
+    "event_hook.py",
+    "agy_hook.py",
+    "statusline_hook.py",
+    "mcp_server.py",
+)
+
+# Anything shipped here that can put a program on the CPU, plus `runner`: the
+# repository's injected-runner seam is how `git_status.probe` and `quota` both
+# spawn, so an oracle that does not follow it cannot see the one call site that
+# exists and would be vacuous rather than strict.
+_SPAWNERS = frozenset(
+    {
+        "run",
+        "runner",
+        "Popen",
+        "call",
+        "check_call",
+        "check_output",
+        "getoutput",
+        "getstatusoutput",
+        "system",
+        "popen",
+        "execv",
+        "execve",
+        "execvp",
+        "execvpe",
+        "execl",
+        "execle",
+        "execlp",
+        "execlpe",
+        "spawnv",
+        "spawnve",
+        "spawnvp",
+        "spawnvpe",
+        "spawnl",
+        "spawnle",
+        "spawnlp",
+        "spawnlpe",
+        "create_subprocess_exec",
+        "create_subprocess_shell",
+    }
+)
+
+# `git`, `/usr/bin/git`, `...\git.exe`, or `git` as a word in a shell string.
+# Anchored on a separator at both ends, so `git_status`, `git.failed`,
+# `cargento-git-probe` and `.git/index` are names rather than programs.
+_PROGRAM = re.compile(
+    r"(?:^|[\s;|&()<>])(?:[^\s;|&()<>]*[/\\])?git(?:\.exe)?(?:$|[\s;|&()<>])",
+    re.IGNORECASE,
+)
+
+
+def _shipped_sources() -> list[Path]:
+    """The shipped Python the oracles below read: the package and its siblings."""
+    skill = Path(__file__).resolve().parent.parent
+    return sorted((skill / "cargento_runtime").rglob("*.py")) + [
+        skill / name for name in _SHIPPED_SIBLINGS
+    ]
+
+
+def _module_constants(tree: ast.Module) -> dict[str, ast.expr]:
+    """Module-level bindings, so a name standing for an argv resolves to it.
+
+    Without this the walker below cannot see `GIT_STATUS_ARGV`, which is the one
+    real call site: the argv is a constant and the call passes the name.
+    """
+    bound: dict[str, ast.expr] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    bound[target.id] = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.value is not None
+        ):
+            bound[node.target.id] = node.value
+    return bound
+
+
+def _argument_strings(node: ast.AST, bound: dict[str, ast.expr], seen: set[str]) -> list[str]:
+    """Every string this expression could hand a spawner, folded where it is built.
+
+    Walking the whole subtree is what reaches a list, a tuple, an f-string's
+    literal parts, the receiver of a `.split()` and an `os.environ.get` default
+    without a case for each. The two special cases are what a plain walk misses:
+    a name that stands for a module constant, and a literal split across a `+`.
+    """
+    out: list[str] = []
+    for child in ast.walk(node):
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            out.append(child.value)
+        elif isinstance(child, ast.BinOp) and isinstance(child.op, ast.Add):
+            left, right = child.left, child.right
+            if (
+                isinstance(left, ast.Constant)
+                and isinstance(left.value, str)
+                and isinstance(right, ast.Constant)
+                and isinstance(right.value, str)
+            ):
+                out.append(left.value + right.value)
+        elif isinstance(child, ast.Name) and child.id in bound and child.id not in seen:
+            # `seen` is a cycle guard, not a cache: a self-referential module
+            # constant would otherwise recurse until the interpreter gives up.
+            seen.add(child.id)
+            out.extend(_argument_strings(bound[child.id], bound, seen))
+    return out
+
+
+def _spawned_programs(source: str) -> list[str]:
+    """Program-shaped strings reaching a spawn call in this source."""
+    tree = ast.parse(source)
+    bound = _module_constants(tree)
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute):
+            name = func.attr
+        elif isinstance(func, ast.Name):
+            name = func.id
+        else:
+            continue
+        if name not in _SPAWNERS:
+            continue
+        found.extend(
+            text for text in _argument_strings(node, bound, set()) if _PROGRAM.search(text)
+        )
+    return found
+
+
+def _quotes_git(source: str) -> bool:
+    """The text grep, with comments removed first.
+
+    The comment strip is the fix for its one measured false positive: a comment
+    containing a quoted `git` used to make the file an offender, so the grep
+    could be tripped by prose that spawns nothing.
+    """
+    try:
+        body = "\n".join(
+            token.string
+            for token in tokenize.generate_tokens(io.StringIO(source).readline)
+            if token.type != tokenize.COMMENT
+        )
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        # A source this cannot tokenize is scanned raw rather than skipped: a
+        # file the oracle cannot read must not become a file it approves.
+        body = source
+    return bool(re.search(r"""["']git["']""", body))
+
 
 @contextlib.contextmanager
 def _environment(environ: dict[str, str], *, cwd: Path | None = None) -> Iterator[None]:
@@ -81,6 +244,34 @@ def _environment(environ: dict[str, str], *, cwd: Path | None = None) -> Iterato
         os.chdir(saved_cwd)
         os.environ.clear()
         os.environ.update(saved_environ)
+
+
+# `.bat` on Windows because `shutil.which` resolves a bare name through PATHEXT
+# there, and a stub with no extension is not a program it will hand back.
+_STUB_NAME = "git.bat" if os.name == "nt" else "git"
+
+
+def _write_stub(path: Path, body: str = "") -> Path:
+    """An executable file named as git, doing nothing unless a body says otherwise."""
+    path.write_text(body, newline="")
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+    return path
+
+
+@contextlib.contextmanager
+def _git_on_path() -> Iterator[str]:
+    """A PATH holding exactly one directory, holding exactly one stub git.
+
+    What this buys is the property `GitProbeCallSiteTest`'s docstring claims and
+    #293 took away: `probe` now returns before it reaches `runner` when nothing
+    resolves, so on a host with no git the spy tests recorded nothing and read
+    `seen[0]`. A stub `which` can find restores them without giving the runtime a
+    second seam to bypass the resolution guard through.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        _write_stub(Path(tmp) / _STUB_NAME)
+        with _environment({**os.environ, "PATH": tmp}):
+            yield tmp
 
 
 def _run(*argv: str, cwd: Path) -> None:
@@ -386,8 +577,54 @@ class GitProbeEnvironmentTest(unittest.TestCase):
                 ):
                     self.assertIsNone(git_status.probe(str(probed), timeout_sec=10.0))
 
+    def test_a_bare_relative_path_element_cannot_supply_the_executable(self) -> None:
+        # DRC-4454, and it is a confusion of deputy rather than only a scrub gap:
+        # `shutil.which` validates the binary against the DASHBOARD's working
+        # directory and the child then resolves the SAME relative string against
+        # the directory being probed, which is session-supplied. Measured at
+        # 6de8f0a: `which` returned the decoy's two entries and the reading
+        # published seven, from a directory that is not a repository at all.
+        #
+        # The sibling above covers `.` and empty elements only, which is exactly
+        # the pair the old scrub dropped, so it could not have caught this.
+        with tempfile.TemporaryDirectory() as tmp:
+            dash = Path(tmp) / "dash"
+            probed = Path(tmp) / "probed"
+            (dash / "relbin").mkdir(parents=True)
+            (probed / "relbin").mkdir(parents=True)
+            # Two entries where `which` looks, seven where the child resolves.
+            # Seven is a count no repository here produces, and `probed` is
+            # deliberately not a repository, so any reading means a stub ran.
+            _write_stub(dash / "relbin" / "git", '#!/bin/sh\necho " M a"\necho " M b"\n')
+            _write_stub(
+                probed / "relbin" / "git",
+                '#!/bin/sh\nfor i in 1 2 3 4 5 6 7; do echo " M f$i"; done\n',
+            )
+            real = str(Path(GIT or "/usr/bin/git").parent)
 
-@unittest.skipIf(GIT is None, "git is not on PATH")
+            hijack = f"relbin{os.pathsep}{real}"
+            with _environment({**os.environ, "PATH": hijack}, cwd=dash):
+                decoy = shutil.which("git", path="relbin")
+                if decoy is None or os.path.isabs(decoy):
+                    # The mechanism could not be armed here — `which` resolved
+                    # nothing, or resolved it absolutely — so a null below would
+                    # prove nothing. Recorded rather than passed silently, per
+                    # this file's rule. Windows reaches this: `which` resolves a
+                    # bare name through PATHEXT, which this stub does not carry.
+                    self.skipTest("a relative PATH element resolves to no git here")
+                reading = git_status.probe(str(probed), timeout_sec=10.0)
+            self.assertIsNone(
+                reading,
+                "the probed directory's own `git` supplied the executable (bare relative)",
+            )
+            # And the control, so this cannot pass by resolving nothing at all:
+            # the same probe with an absolute-only PATH reaches real git, which
+            # refuses a directory that is not a repository.
+            with _environment({**os.environ, "PATH": real}, cwd=dash):
+                self.assertIsNone(git_status.probe(str(probed), timeout_sec=10.0))
+                self.assertTrue(os.path.isabs(git_status._executable({"PATH": real}) or ""))
+
+
 class SingleInvocationTest(unittest.TestCase):
     """AC1's other half: the runtime builds a git subprocess at exactly one site.
 
@@ -397,17 +634,84 @@ class SingleInvocationTest(unittest.TestCase):
     is a `rev-parse` to answer "is this a repository?", and it must be folded into
     the one invocation instead: a non-repository is already distinguishable from
     the single command's exit status.
+
+    Undecorated, for `GitProbeCallSiteTest`'s reason and measured the same way:
+    every test here reads source text and spawns nothing, and with PATH pointed at
+    an empty directory the `skipIf(GIT is None)` this class used to carry made the
+    whole of AC1's second half disappear on exactly the host where a reviewer
+    checking the boundary is most likely to be looking.
+
+    Why a linter is not the oracle: `ruff check --select S6 .` is clean repo-wide
+    and always was. `S607` (partial-executable-path) is syntactic, and argv[0] at
+    the one call site is a variable — the resolved path — so the rule can never
+    see it. That is the whole of what survives the cancelled DRC-4437.
+
+    Two oracles, because neither subsumes the other. The shape walker reads the
+    invocation and so sees `shell=`, an absolute path, `os.system`, a folded
+    concatenation, an `os.environ.get` default and an f-string; the grep reads the
+    text and so still sees a quoted `git` handed to something the walker cannot
+    recognise as a spawner. Measured against ten evasion shapes introduced one at
+    a time: the walker caught ten of ten, the grep three.
     """
 
-    def test_only_git_status_constructs_a_git_subprocess(self) -> None:
-        runtime = Path(__file__).resolve().parent.parent / "cargento_runtime"
-        pattern = re.compile(r"""["']git["']""")
+    def test_the_oracles_read_the_shipped_siblings_too(self) -> None:
+        # The widening is the load-bearing half of R14 and it can go vacuous
+        # silently: a renamed hook adapter would leave the glob reading the
+        # package alone again, which is the state in which `event_hook.py` — the
+        # file that runs inside a user's harness lifecycle — is unwatched.
+        names = {path.name for path in _shipped_sources()}
+        self.assertIn("git_status.py", names)
+        for sibling in _SHIPPED_SIBLINGS:
+            self.assertIn(sibling, names)
+
+    def test_only_git_status_spawns_a_program_named_git(self) -> None:
+        # The invocation-shape oracle. `git_status.py` must be the ONE offender:
+        # an empty result here would mean the walker stopped following the
+        # injected-runner seam, not that the runtime got safer.
         offenders = sorted(
             path.name
-            for path in runtime.rglob("*.py")
-            if pattern.search(path.read_text(encoding="utf-8"))
+            for path in _shipped_sources()
+            if _spawned_programs(path.read_text(encoding="utf-8"))
         )
         self.assertEqual(["git_status.py"], offenders)
+
+    def test_only_git_status_quotes_the_program_name(self) -> None:
+        offenders = sorted(
+            path.name
+            for path in _shipped_sources()
+            if _quotes_git(path.read_text(encoding="utf-8"))
+        )
+        self.assertEqual(["git_status.py"], offenders)
+
+    def test_the_shape_oracle_sees_the_evasions_the_grep_cannot(self) -> None:
+        # Each of these was introduced into a real shipped file one at a time and
+        # measured; they are held here as source fragments so the measurement is
+        # repeatable without editing the runtime. The first three are the only
+        # ones the grep alone caught.
+        for label, source in (
+            ("list literal", 'subprocess.run(["git", "status"], check=False)'),
+            ("tuple literal", 'subprocess.run(("git", "status"), check=False)'),
+            ("os.execvp", 'os.execvp("git", ["git", "status"])'),
+            ("shell string", 'subprocess.run("git status --porcelain", shell=True, check=False)'),
+            ("absolute path", 'subprocess.run(["/usr/bin/git", "status"], check=False)'),
+            ("os.system", 'os.system("git status --porcelain")'),
+            ("concatenated name", 'subprocess.run(["gi" + "t", "status"], check=False)'),
+            ("env default", 'subprocess.run(os.environ.get("P", "git s").split(), check=False)'),
+            ("f-string name", 'd = "/usr/bin"\nsubprocess.run([f"{d}/git", "s"], check=False)'),
+            ("injected runner", 'runner(("git", "status"), check=False)'),
+        ):
+            with self.subTest(shape=label):
+                self.assertTrue(_spawned_programs(source), f"{label} evaded the shape oracle")
+
+    def test_neither_oracle_fires_on_prose(self) -> None:
+        # The grep's one measured false positive, and the shape walker's own
+        # exposure to the same class. A file that only TALKS about git is not an
+        # offender, or the oracles cost more to keep green than they are worth.
+        comment = "# a comment mentioning 'git' on purpose\nx = 1\n"
+        self.assertFalse(_quotes_git(comment))
+        self.assertFalse(_spawned_programs(comment))
+        docstring = '"""What `git` does, and a git word in prose."""\nx = 1\n'
+        self.assertFalse(_spawned_programs(docstring))
 
     def test_the_argv_is_a_tuple_a_caller_cannot_extend(self) -> None:
         # A list would let a caller append to the argv it was handed, which is the
@@ -459,6 +763,13 @@ class GitProbeCallSiteTest(unittest.TestCase):
     stripping BOTH flags from the `runner(...)` call left
     `test_the_probe_is_exactly_the_one_bounded_command` green, because that test
     reads the constant and nothing read the call.
+
+    That claim stopped being true when #293 taught `probe` to resolve its own
+    executable and return before `runner` if it finds none: measured with PATH
+    pointed at an empty directory, one failure and two errors here, all three
+    reading `seen[0]` of an empty list. `_git_on_path` is what restores it — a
+    stub the resolver can find, rather than a second injection seam past the
+    resolution guard.
     """
 
     def _spy(self) -> tuple[Any, list[tuple[Any, dict[str, Any]]]]:
@@ -472,7 +783,7 @@ class GitProbeCallSiteTest(unittest.TestCase):
 
     def test_the_probe_passes_the_bounded_argv_and_nothing_else(self) -> None:
         runner, seen = self._spy()
-        with tempfile.TemporaryDirectory() as tmp:
+        with _git_on_path(), tempfile.TemporaryDirectory() as tmp:
             # A real directory, because `probe` returns before spawning anything
             # when `isdir` is false — which is how this test would go vacuous.
             git_status.probe(tmp, timeout_sec=3.5, runner=runner)
@@ -492,42 +803,124 @@ class GitProbeCallSiteTest(unittest.TestCase):
         # The scrub is asserted here as well as behaviourally above, because this
         # one runs on a host with no git and pins the exact keys.
         runner, seen = self._spy()
-        hostile = {
-            **os.environ,
-            "GIT_DIR": "/elsewhere/.git",
-            "GIT_WORK_TREE": "/elsewhere",
-        }
-        with tempfile.TemporaryDirectory() as tmp, _environment(hostile):
-            git_status.probe(tmp, timeout_sec=3.5, runner=runner)
+        with _git_on_path() as bindir:
+            hostile = {
+                **os.environ,
+                "PATH": bindir,
+                "GIT_DIR": "/elsewhere/.git",
+                "GIT_WORK_TREE": "/elsewhere",
+            }
+            with tempfile.TemporaryDirectory() as tmp, _environment(hostile):
+                git_status.probe(tmp, timeout_sec=3.5, runner=runner)
         _argv, kwargs = seen[0]
         self.assertNotIn("GIT_DIR", kwargs["env"])
         self.assertNotIn("GIT_WORK_TREE", kwargs["env"])
         # And the child gets an environment at all, rather than inheriting.
         self.assertIsNotNone(kwargs.get("env"))
 
-    def test_the_scrub_drops_relative_and_empty_path_elements(self) -> None:
+    def test_the_scrub_drops_every_non_absolute_path_element(self) -> None:
         # A unit assertion on the helper, so the rule is stated once where it can
-        # be read: ORDER is what matters, and dropping is what makes order safe.
+        # be read: nothing the resolver would resolve against a working directory
+        # survives, which is what makes the order of what remains irrelevant.
+        #
+        # DRC-4454. The predecessor of this test carried this name and exercised
+        # `.` and `""` alone, so it passed while every other relative form was
+        # kept: a bare `relbin`, `./bin`, `..` and `sub/bin` all survived, and one
+        # of them supplied the executable from the directory being probed.
+        absolute = os.path.abspath(os.sep + "usr" + os.sep + "bin")
+        for element in ("", ".", "..", "relbin", "." + os.sep + "bin", "sub" + os.sep + "bin"):
+            with self.subTest(element=element):
+                path = os.pathsep.join([element, absolute])
+                self.assertEqual(
+                    absolute,
+                    git_status.probe_environment({"PATH": path})["PATH"],
+                    f"a non-absolute PATH element survived the scrub: {element!r}",
+                )
         scrubbed = git_status.probe_environment(
-            {"PATH": f".{os.pathsep}{os.pathsep}/usr/bin{os.pathsep}.{os.pathsep}/bin"}
+            {"PATH": f".{os.pathsep}{os.pathsep}{absolute}{os.pathsep}.{os.pathsep}/bin"}
         )
-        self.assertEqual(f"/usr/bin{os.pathsep}/bin", scrubbed["PATH"])
+        self.assertEqual(f"{absolute}{os.pathsep}/bin", scrubbed["PATH"])
         # An entirely untrusted PATH leaves nothing, and `which` then finds no
         # git, which publishes None rather than falling back to the ambient PATH.
         self.assertEqual("", git_status.probe_environment({"PATH": f".{os.pathsep}"})["PATH"])
+
+    def test_the_resolver_refuses_a_git_it_could_only_resolve_relatively(self) -> None:
+        # The OTHER end of the same guard, asserted where the scrub cannot reach
+        # it: `_executable` is handed a PATH the scrub never saw. The scrub filter
+        # has already been wrong once — it named this property and enforced two
+        # elements of it — so a future change to that one list cannot reopen the
+        # hijack while this end also refuses.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "relbin").mkdir()
+            _write_stub(root / "relbin" / _STUB_NAME)
+            with _environment(dict(os.environ), cwd=root):
+                # The arm is armed: `which` really does resolve this, relatively.
+                self.assertIsNotNone(shutil.which("git", path="relbin"))
+                self.assertIsNone(git_status._executable({"PATH": "relbin"}))
 
     def test_the_probe_passes_the_bounds_the_contract_names(self) -> None:
         # The cwd it was asked about, the caller's timeout, and a closed stdin so
         # a repository configured to ask for a credential cannot stall the probe.
         # No `shell=`, which is AC1's evasion shape the argv assertion cannot see.
         runner, seen = self._spy()
-        with tempfile.TemporaryDirectory() as tmp:
+        with _git_on_path(), tempfile.TemporaryDirectory() as tmp:
             git_status.probe(tmp, timeout_sec=3.5, runner=runner)
         _argv, kwargs = seen[0]
         self.assertEqual(tmp, kwargs["cwd"])
         self.assertEqual(3.5, kwargs["timeout"])
         self.assertEqual(subprocess.DEVNULL, kwargs["stdin"])
         self.assertNotIn("shell", kwargs)
+
+
+class PorcelainCountTest(unittest.TestCase):
+    """The count, against the expression it replaced. Needs no git and spawns nothing.
+
+    DRC-4444. `_reading` used to build the whole list of lines to count them; it
+    now walks one line at a time, and this class exists because a counting
+    refactor that changes an edge case is indistinguishable from one that does
+    not until something compares them. The parity oracle below is that
+    comparison: the old expression, held here as the specification.
+    """
+
+    @staticmethod
+    def _former(raw: bytes) -> int:
+        """What `_reading` counted before the streaming rewrite."""
+        return sum(1 for line in raw.split(b"\n") if line.strip())
+
+    def test_the_count_agrees_with_the_expression_it_replaced(self) -> None:
+        for raw in (
+            b"",
+            b"\n",
+            b" M a\n",
+            # No trailing newline, which is what a truncated read looks like.
+            b" M a\n M b",
+            # A blank line and a whitespace-only line are entries in neither.
+            b" M a\n\n M b\n",
+            b"   \n\t\n",
+            b"?? new/\n M a\nR  b -> c\n",
+            b" M \xff\xfe\n",
+            b"\r\n M a\r\n",
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(
+                    self._former(raw),
+                    git_status._reading(raw).changed,
+                    "the streaming count disagrees with the expression it replaced",
+                )
+
+    def test_dirty_is_the_count_being_nonzero_and_nothing_else(self) -> None:
+        self.assertEqual(git_status.GitStatus(dirty=False, changed=0), git_status._reading(b"\n"))
+        self.assertEqual(
+            git_status.GitStatus(dirty=True, changed=2), git_status._reading(b" M a\n?? b\n")
+        )
+
+    def test_a_stdout_that_is_neither_bytes_nor_text_reads_clean(self) -> None:
+        # `runner` is injectable, so `stdout` is whatever the seam returned. A
+        # None here must publish "no entries" rather than raise on a thread
+        # nobody joins.
+        self.assertEqual(git_status.GitStatus(dirty=False, changed=0), git_status._reading(None))
+        self.assertEqual(git_status.GitStatus(dirty=True, changed=1), git_status._reading(" M a\n"))
 
 
 class GitProbeRefusalTest(unittest.TestCase):

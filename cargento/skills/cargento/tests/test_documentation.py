@@ -769,6 +769,17 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         # The rule that both the register and its verifier stated wrongly, in
         # opposite directions. Stated here so the document carries the correction.
         self.assertIn("The rule is order rather than position", self.FLAT)
+        # DRC-4454. The section used to say "Empty and relative elements are now
+        # dropped rather than reordered", and the code dropped a named pair — the
+        # empty element and `.` — so a bare `relbin` survived and supplied the
+        # binary from the directory being probed. The replacement names both ends
+        # of the guard, because one end has already been wrong once.
+        self.assertIn(
+            "Every non-absolute PATH element is dropped, and the resolution refuses a relative "
+            "answer as well.",
+            self.FLAT,
+        )
+        self.assertNotIn("Empty and relative elements are now dropped", self.FLAT)
         # And the violation clause has to name them, or they are documented
         # behaviour rather than boundaries.
         self.assertIn("an executable taken from anywhere but the resolved absolute path", self.FLAT)
