@@ -139,6 +139,13 @@ more than one:
   address documented in `SKILL.md` are asserted against the implementation, so doc drift fails the
   build. Documenting a path the code does not support is therefore a test failure.
 
+Derive a test class from `support.RuntimeTestCase` unless there is a reason not to. It patches the
+native notifier, and the suite refuses a notification spawn outright, so a test that reaches
+`notifications.notify_mac` for real fails with an `AssertionError` from `support.py` naming the argv
+it tried to send. Four unit tests used to send audible macOS banners about sessions that never
+existed, which is what the refusal is there to stop. The three classes that need the composition to
+run and only the process suppressed call `support.short_circuit_native_notifications` instead.
+
 Before trusting a new contract, mutation-check it: break the behaviour deliberately and confirm the
 targeted test actually fails. This is the only way to tell a test from a decoration, and skipping it
 has shipped hollow tests here more than once. Two failure modes worth knowing:
