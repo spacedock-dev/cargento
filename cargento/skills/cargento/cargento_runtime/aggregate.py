@@ -841,6 +841,11 @@ class Application:
         message and a comment held the measurement and neither is where a reader
         looks.
 
+        Where the disclosure lands is `docs/design-scan-only-rows.md`. From
+        39eb6fd (2026-08-21) to DRC-4473 it reached no pixel, which made both
+        halves above true of the payload and false of the screen; the page now
+        prints it on the row and on the session page.
+
         A property of the harness, not of this process, so it is stated whether or
         not a coordinator is attached. Written before `_apply_overlays` on
         purpose: an adapter harness's own overlay owns this field, and the two

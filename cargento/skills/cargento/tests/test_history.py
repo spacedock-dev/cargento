@@ -315,9 +315,9 @@ class EveryStoredFieldIsAPublishedFieldTest(HistoryStoreTestCase):
     )
 
     def published_fields(self) -> frozenset[str]:
-        from .test_sessions import CargentoServerTest  # noqa: PLC0415
+        from .test_sessions import DECLARED_SESSION_FIELDS  # noqa: PLC0415
 
-        return frozenset(CargentoServerTest.DECLARED_SESSION_FIELDS)
+        return frozenset(DECLARED_SESSION_FIELDS)
 
     def test_the_record_keeps_only_fields_the_board_already_publishes(self) -> None:
         record = history.observation(loaded_row())

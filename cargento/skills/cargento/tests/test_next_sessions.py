@@ -753,3 +753,146 @@ class NextSessionsUnreadSourceTest(NextPageJsHarness):
 
         self.assertNotIn("not fully read", self.row(self.view(junk), "agy-junk"))
         self.assertNotIn("not fully read", self.row(self.view(member), "agy-member"))
+
+
+@unittest.skipUnless(shutil.which("node"), "node not available")
+class NextSessionsScanOnlyTest(NextPageJsHarness):
+    """DRC-4473: an idle row that could never have carried a stop must say so.
+
+    Measured on the board at 5bca94b before this shipped: a Goose idle row and a
+    Claude idle row with no stop observed rendered the same five cells, character
+    for character, down to the three em dashes. For the Claude row the absent
+    stop means "did not finish"; for the Goose row it means "cannot be seen from
+    here", and the reader had nothing to separate them by.
+    """
+
+    HARNESSES = (
+        "nextData = {generated: 10000, window_hours: 24, harnesses: ["
+        '{key: "claude", label: "Claude Code", reports_needs_input: true},'
+        '{key: "goose", label: "Goose", reports_needs_input: false}],'
+    )
+
+    SCANNED = (
+        '{sid: "goose-1", harness: "goose", project: "solo/app", state: "idle",'
+        ' active: false, title: "Rebuild the index", state_detail: null,'
+        " last_activity: 9600, started_at: 9000, tasks: [], subagents: [],"
+        ' source_gaps: [], acquisition: "scan-only"}'
+    )
+    EVENTED = (
+        '{sid: "claude-1", harness: "claude", project: "solo/app", state: "idle",'
+        ' active: false, title: "Rebuild the index", state_detail: null,'
+        " last_activity: 9600, started_at: 9000, tasks: [], subagents: [],"
+        " source_gaps: [], acquisition: null}"
+    )
+    STOPPED = SCANNED.replace('sid: "goose-1"', 'sid: "goose-stopped"').replace(
+        "last_activity: 9600", "last_activity: 9600, finished_at: 9600"
+    )
+    WORKING = SCANNED.replace('sid: "goose-1"', 'sid: "goose-working"').replace(
+        'state: "idle", active: false', 'state: "working", active: true'
+    )
+
+    def view(self, sessions: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{sessions}]}};\n"
+            "console.log(JSON.stringify(nextSessionsView()));"
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def detail(self, session: str, project: str, harness: str, sid: str) -> str:
+        rendered = self._run_page_js(
+            f"{self.HARNESSES} sessions: [{session}]}};\n"
+            "console.log(JSON.stringify(nextSessionView("
+            f'"{project}", "{harness}", "{sid}")));'
+        )
+        assert isinstance(rendered, str)
+        return rendered
+
+    def row(self, html: str, sid: str) -> str:
+        match = re.search(
+            rf'<article[^>]*data-next-session="{re.escape(sid)}"[\s\S]*?</article>', html
+        )
+        if match is None:
+            raise AssertionError(f"no operation row for {sid!r} in {html}")
+        return match.group(0)
+
+    def test_a_row_no_event_can_reach_says_no_turn_end_can_be_observed_on_it(self) -> None:
+        row = self.row(self.view(self.SCANNED), "goose-1")
+
+        self.assertIn("Read by scanning: no turn end can be observed here", row)
+
+    def test_an_event_backed_idle_row_keeps_the_em_dash_and_adds_nothing(self) -> None:
+        # The other half of the distinction. Without this the sentence could be
+        # on every idle row, which is Idle restated rather than qualified.
+        row = self.row(self.view(self.EVENTED), "claude-1")
+
+        self.assertIn("<small>NOW</small><strong>—</strong>", row)
+        self.assertNotIn("Read by scanning", row)
+
+    def test_the_sentence_is_the_only_thing_the_two_idle_rows_differ_by(self) -> None:
+        # The measured before-state, pinned so it cannot come back. Both rows are
+        # idle with no stop published, so all three of their reading cells are the
+        # em dash on either side of the fix, and the note is the whole difference.
+        cells = r'<span class="next-operation-fact"[\s\S]*$'
+        scanned = re.search(cells, self.row(self.view(self.SCANNED), "goose-1"))
+        evented = re.search(cells, self.row(self.view(self.EVENTED), "claude-1"))
+        assert scanned is not None
+        assert evented is not None
+
+        self.assertEqual(scanned.group(0), evented.group(0))
+        self.assertEqual(3, scanned.group(0).count("<strong>—</strong>"))
+
+    def test_the_sentence_explains_itself_without_leaving_the_row(self) -> None:
+        # Not a `<details>`, on #302's ground: it qualifies a claim already on
+        # screen beside it, and one a reader can leave shut cannot do that.
+        row = self.row(self.view(self.SCANNED), "goose-1")
+
+        self.assertNotIn("<details", row)
+        self.assertIn("no event from its harness can reach it", row)
+
+    def test_a_working_row_that_no_event_can_reach_says_it_too(self) -> None:
+        # The field is a property of the row's source, not of its state, and the
+        # working arm is where the reader most needs it: this one will stop, and
+        # nothing will tell them that it did.
+        row = self.row(self.view(self.WORKING), "goose-working")
+
+        self.assertIn("Read by scanning: no turn end can be observed here", row)
+
+    def test_a_row_that_somehow_published_a_stop_drops_the_sentence(self) -> None:
+        # Unreachable from this server — `events.parse` refuses the six
+        # harnesses' envelopes outright — so this is the untrusted-payload arm.
+        # The sentence says a stop could not be observed, and a published stamp
+        # beside it would make that false on the reader's screen.
+        row = self.row(self.view(self.STOPPED), "goose-stopped")
+
+        self.assertNotIn("Read by scanning", row)
+
+    def test_the_session_page_repeats_what_the_row_disclosed(self) -> None:
+        html = self.detail(self.SCANNED, "solo/app", "goose", "goose-1")
+
+        self.assertIn("read by scanning: no turn end can be observed here", html)
+
+    def test_the_session_page_of_an_event_backed_row_adds_nothing(self) -> None:
+        html = self.detail(self.EVENTED, "solo/app", "claude", "claude-1")
+
+        self.assertNotIn("read by scanning", html)
+
+    def test_a_row_carrying_junk_where_the_provenance_goes_renders_none_of_it(self) -> None:
+        # One exact string, and everything else is nothing: the value is
+        # published and therefore untrusted, and a truthy-check here would print
+        # the sentence for `acquisition: "event"` as readily as for a hostile one.
+        for value in (
+            '"event"',
+            '"SCAN-ONLY"',
+            '" scan-only "',
+            "true",
+            "7",
+            "{}",
+            '["scan-only"]',
+        ):
+            with self.subTest(acquisition=value):
+                junk = self.SCANNED.replace(
+                    'acquisition: "scan-only"', f"acquisition: {value}"
+                ).replace('sid: "goose-1"', 'sid: "goose-junk"')
+
+                self.assertNotIn("Read by scanning", self.row(self.view(junk), "goose-junk"))

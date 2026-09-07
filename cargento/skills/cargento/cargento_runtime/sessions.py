@@ -383,8 +383,29 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         # only the four harnesses in the event vocabulary can supply one at all,
         # and no collector may infer it, for the reason `model` above may not: a
         # guessed completion renders identically to a measured one. A row that
-        # cannot ever carry it says so through `acquisition` instead.
+        # cannot ever carry it says so through `acquisition` below, and the page
+        # prints that on the row rather than leaving the reader to infer it
+        # (docs/design-scan-only-rows.md).
         "finished_at": None,
+        # How this row was reached, which is the qualifier on `finished_at`
+        # above. None means the harness has an event adapter and no event has
+        # landed on this row; `events.ACQUISITION_EVENT` means one has;
+        # `events.ACQUISITION_SCAN` means no event can ever reach it, because the
+        # harness is absent from `events.IDENTITY_NORMALIZERS`. That third value
+        # is stamped by `Application._mark_unreachable_by_events`, not here.
+        #
+        # Declared here at None for the same reason `provider` and `model` are:
+        # it arrives for six of the ten harnesses, and a key present on only some
+        # rows makes every consumer test for presence rather than for a value. It
+        # went undeclared until the declared-field-set check reached a published
+        # row rather than this function's return value (DRC-4473).
+        "acquisition": None,
+        # When the standing wait began, for the row_order gate queue and the
+        # waited-for duration the page prints. Only the Claude, Copilot and
+        # Cursor collectors and the event overlays ever fill it; declared here at
+        # None on the rule above, and because it is in `events.PATCHABLE`, which
+        # means an untrusted envelope can write it onto any row.
+        "blocked_since": None,
         # When this session id was observed to END, which is a different fact
         # from `finished_at` above: that one marks a TURN stopping, and a session
         # whose turn stopped is usually still open and typeable. Without this the
