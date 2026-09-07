@@ -8,9 +8,13 @@ residual exposure live in [`SECURITY.md`](../SECURITY.md).
 ## The problem
 
 A harness transcript records what the operator typed, verbatim. Cargento reads those transcripts and
-publishes prompt text: the session title, the line beneath it, `last_prompt`, the observer goal, and
-a Codex title, which comes from a prompt because Codex writes no generated title at all. If a key was
-ever pasted into a prompt, the store holds it and the dashboard shows it.
+publishes prompt text. As fields rather than as prose, since a prose alias is a name no test can
+check, the carriers that reach the page raw are these seven: `title`, `last_prompt`, `state_detail`,
+`tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and `subagents[].parent`. More reaches
+the page through `records.safe_text`, including the observer's derived goal and a Codex `title`,
+which comes from a prompt because Codex writes no generated title at all. The swept set below adds
+the instruction line's own `text` to those seven. If a key was ever pasted into a prompt, the store
+holds it and the dashboard shows it.
 
 This is not hypothetical on the machine the feature was built on. A sweep of the local Claude store
 found seven distinct live Anthropic credentials sitting in ordinary prompt history, in three formats
