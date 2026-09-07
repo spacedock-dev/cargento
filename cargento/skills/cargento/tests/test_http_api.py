@@ -11,7 +11,6 @@ import json
 import os
 import shutil
 import socket
-import subprocess
 import sys
 import tempfile
 import threading
@@ -37,6 +36,7 @@ from .support import (
     make_server,
     poll_fast,
     serve_until_closed,
+    short_circuit_native_notifications,
     state_of,
     store_patch,
     without_focus_meta,
@@ -1714,8 +1714,14 @@ class HostAndSocketTest(unittest.TestCase):
             thread.join(timeout=2)
 
 
-class ReviewFixTest(unittest.TestCase):
-    """Regressions found by the adversarial review passes on PR #7."""
+class ReviewFixTest(RuntimeTestCase):
+    """Regressions found by the adversarial review passes on PR #7.
+
+    `RuntimeTestCase` rather than a bare `TestCase`, because the origin cases
+    below POST to `/api/notify`, whose accepted requests run the real notifier:
+    the one that passed sent an audible banner to the machine running the suite
+    (DRC-4431).
+    """
 
     NOW = 1_700_000_000.0
 
@@ -2320,23 +2326,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # Route-shape tests exercise successful /api/notify requests, but do
         # not assert native delivery. Execute the notification code while
         # keeping its osascript process off the host.
-        original_run = subprocess.run
-
-        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
-            command = args[0] if args else kwargs.get("args")
-            if (
-                isinstance(command, (list, tuple))
-                and command
-                and command[0] == "/usr/bin/osascript"
-            ):
-                return subprocess.CompletedProcess(command, 0)
-            return original_run(*args, **kwargs)
-
-        notify_patcher = mock.patch.object(
-            subprocess, "run", side_effect=run_without_native_delivery
-        )
-        notify_patcher.start()
-        self.addCleanup(notify_patcher.stop)
+        short_circuit_native_notifications(self)
 
     def tearDown(self) -> None:
         with state_of().collect_memo_lock:

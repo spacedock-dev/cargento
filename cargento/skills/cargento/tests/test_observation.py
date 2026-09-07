@@ -1486,11 +1486,14 @@ class StateDisputeTest(unittest.TestCase):
         self.assertEqual(6, self.state.dispute_total)
 
 
-class ApplicationOverlayTest(unittest.TestCase):
-    """The other half: what a collection does with the ledger."""
+class ApplicationOverlayTest(support.RuntimeTestCase):
+    """The other half: what a collection does with the ledger.
 
-    def setUp(self) -> None:
-        support.reset_runtime()
+    `RuntimeTestCase` rather than a bare `TestCase` and a bare `reset_runtime`,
+    because `_collect_with` runs a full `aggregate.collect`, whose `_notify_waits`
+    reaches the real notifier: these three tests sent three audible banners to
+    the machine running the suite (DRC-4431).
+    """
 
     @contextlib.contextmanager
     def _seeded(self, overlays: Any) -> Iterator[aggregate.Application]:
