@@ -53,10 +53,10 @@ detail. Reload, pasted links, and browser back therefore preserve the selected v
 that belonged to the retired dashboard normalize to Sessions. Open the dashboard at its bare URL;
 the retired `next` query is no longer a dashboard route.
 
-The header reports running sessions and subagents. When work needs intervention, a **needs input**
-button opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention, Projects, and
-Sessions unless focus is in a form control or a modifier key is held. Breadcrumbs return from a
-session to its project and from a project to the overview.
+The header reports running sessions and subagents. When work needs intervention, a button counting
+the reported blocks opens **Attention**. Keyboard shortcuts `a`, `p`, and `s` open Attention,
+Projects, and Sessions unless focus is in a form control or a modifier key is held. Breadcrumbs
+return from a session to its project and from a project to the overview.
 
 MCP tools appear under the service being called rather than their wire name, for example
 `Linear · list issues`. The full recorded string remains available in the row tooltip.
@@ -64,11 +64,12 @@ MCP tools appear under the service being called rather than their wire name, for
 ## Attention
 
 Attention is a triage view, not a second copy of every session. It divides current evidence into
-**Needs you**, **At risk**, **Safe to close**, and **What's next**. Items retain stable ordering while
-their evidence is unchanged, and each section explains missing coverage instead of treating an
-unmeasured harness as an all-clear.
+**NEEDS YOU NOW**, **AT RISK**, **CLOSE THE LOOP**, and **COMING NEXT**, then closes with
+**NO PUBLISHED EXCEPTION** for every session none of those four claimed, tallied by state as moving,
+quiet, or unknown. Items retain stable ordering while their evidence is unchanged, and each section
+explains missing coverage instead of treating an unmeasured harness as an all-clear.
 
-**Needs you** combines native harness gates with questions registered through `ask_operator`.
+**NEEDS YOU NOW** combines native harness gates with questions registered through `ask_operator`.
 Native permission prompts, plan approvals, and harness questions must still be answered in that
 session's terminal; Cargento does not mark them answered on the session's behalf. A Claude Code or
 Codex row therefore carries a control that copies the command that harness's own CLI takes to
@@ -86,14 +87,14 @@ Attention and in the exact session detail, and choosing one returns that option 
 agent. Free-form replies are not
 accepted, unanswered questions expire, and `--no-ask` disables this lane.
 
-**At risk** is evidence Cargento can actually support, including detected failed-tool loops,
+**AT RISK** is evidence Cargento can actually support, including detected failed-tool loops,
 long-running turns, quota windows at or above 70 percent, and attribution or coverage gaps. A quiet
 row is never promoted into proof that nothing is waiting. Only Claude, Codex, Copilot, and Cursor
 currently expose a gate signal Cargento can read; the other harnesses remain explicitly unmeasured
 for that question.
 
-**Safe to close** identifies sessions whose published state and freshness support that conclusion.
-**What's next** groups the strongest available next action by project. Both are advisory views of
+**CLOSE THE LOOP** identifies sessions whose published state and freshness support that conclusion.
+**COMING NEXT** groups the strongest available next action by project. Both are advisory views of
 observed records, not commands sent to a harness.
 
 ## Usage and rate limits

@@ -102,6 +102,14 @@ MAX_DEPTH = 12
 MIN_HEX_RUN = 4
 PS_TIMEOUT_SEC = 10
 
+#: Set to "1" to stop the emulator lookup asking Terminal.app anything. The
+#: recorder's own test module sets it on every subprocess it starts, because
+#: those 15 invocations were measured sending 91 `tell application "Terminal"`
+#: events on a desk with Terminal open, as a side effect of the canonical pre-PR
+#: suite naming this module. A real capture never sets it, so what an operator
+#: records is unchanged and no arm silently becomes a null.
+NO_TERMINAL_QUERY_ENV = "CARGENTO_NO_TERMINAL_QUERY"
+
 EMULATOR_VARS: tuple[str, ...] = (
     "TERM_PROGRAM",
     "TERM_SESSION_ID",
@@ -746,10 +754,51 @@ def tab_query(device: str) -> str:
     )
 
 
+def _terminal_is_running() -> bool:
+    """Whether Terminal is ALREADY up, without launching it to find out.
+
+    Copied in shape from the same probe in the focus-raise recorder's tests,
+    where its docstring records what the obvious alternative costs: a
+    `tell application "Terminal"` on a machine where Terminal is down launches
+    it and then waits for an app that never becomes ready, which did not fail on
+    CI, it HUNG for twenty seconds a script. `ps` starts nothing. It is `ps`
+    rather than `pgrep` because pgrep matched nothing for Terminal by name or by
+    path on the machine this was measured on while `ps -eo comm` listed it
+    plainly, so a pgrep probe would refuse everywhere and look like a pass.
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        listed = subprocess.run(
+            ["/bin/ps", "-eo", "comm="],
+            capture_output=True,
+            text=True,
+            timeout=PS_TIMEOUT_SEC,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(
+        line.strip().endswith("/Terminal.app/Contents/MacOS/Terminal")
+        for line in listed.stdout.splitlines()
+    )
+
+
 def _terminal_tabs(device: str | None) -> dict[str, int] | None:
     """Tabs on that device, total and busy, or None if the question is unaskable."""
     asked = _device_or_none(device)
     if asked is None:
+        return None
+    if os.environ.get(NO_TERMINAL_QUERY_ENV) == "1":
+        return None
+    # A Terminal that is not running has no tabs, so refusing here answers the
+    # question rather than suppressing it -- and asking anyway would LAUNCH
+    # Terminal, which is the artifact `_device_or_none` above exists to keep out
+    # of the corpus, one field over: a 0 from a Terminal this recorder started
+    # sits in the same column as a measured 0 with nothing to tell them apart.
+    # It also puts an Apple Event on the desk of anyone running the documented
+    # pre-PR suite, which nothing told them about.
+    if not _terminal_is_running():
         return None
     try:
         done = subprocess.run(  # noqa: S603

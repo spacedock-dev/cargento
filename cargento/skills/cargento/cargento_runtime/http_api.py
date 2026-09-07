@@ -343,6 +343,35 @@ class _RequestHandler(BaseHTTPRequestHandler):
             self.headers.get("Sec-Fetch-Dest") or ""
         ).lower() == "document"
 
+    def _is_frame_navigation(self) -> bool:
+        """Whether a browser is navigating a FRAME to us rather than a tab.
+
+        The routes that hold a socket open refuse this, and the reason is the
+        browser's connection pool rather than this server's own budget. Measured
+        2026-09-07, Chrome, eight frames on `/api/stream` from a page on another
+        loopback port: the frames took SIX sockets, not eight, because a browser
+        caps concurrent HTTP/1.1 connections per origin at six, so the eight-slot
+        stream budget was never drained and a seventh client still got a 200.
+        What the six frames did drain was Chrome's own pool for that origin, and
+        the board then would not load AT ALL in the same browser -- the
+        navigation sat pending and committed the instant the frames were removed.
+        `stream_max_clients` being above the browser's six is why the budget was
+        never the vulnerable resource; see the note in `config`.
+
+        So this buys exactly one thing: the framed request is refused before it
+        can hold a socket, instead of holding one for as long as the framer likes.
+        It is worth what `frame-ancestors` is worth and no more, since a local
+        process the attacker controls sends no `Sec-Fetch` headers at all and a
+        `curl` caller sends none either. SECURITY.md's disclaimer paragraph owns
+        that reasoning.
+
+        Every port on this machine is the same site, so `Sec-Fetch-Site` reads
+        `same-site` for a frame from another local port and never reaches the
+        cross-site check, and a frame navigation carries no `Origin` for the
+        check below it. `Sec-Fetch-Dest` is the header that distinguishes it.
+        """
+        return (self.headers.get("Sec-Fetch-Dest") or "").lower() in {"iframe", "frame"}
+
     def _send(
         self,
         body: bytes,
@@ -590,9 +619,11 @@ class _RequestHandler(BaseHTTPRequestHandler):
         Strictly same-origin. `do_GET` relaxes its check for document
         navigations so a link to the dashboard works, and a long-lived data
         stream is not a document navigation, so re-checking here with the
-        strict form is what keeps that relaxation off this route.
+        strict form is what keeps that relaxation off this route. A FRAME
+        navigation is refused on top of that: it holds a socket the browser
+        will not then give the real board. See `_is_frame_navigation`.
         """
-        if not self._local_ok():
+        if not self._local_ok() or self._is_frame_navigation():
             self.send_error(403)
             return
         application = self.server.application
@@ -692,7 +723,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         takes, with nothing to join it at shutdown; docs/design-ask-lane.md
         records why that was rejected in favour of a repeated short poll.
         """
-        if not self._local_ok():
+        if not self._local_ok() or self._is_frame_navigation():
             self.send_error(403)
             return
         application = self.server.application

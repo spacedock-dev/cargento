@@ -168,6 +168,37 @@ class CargentoServerTest(RuntimeTestCase):
                 200,
                 "framed from another local port",
             ),
+            # The two routes that hold a socket open refuse the same framed
+            # request `/` above is answered on, and the resource being defended
+            # is the BROWSER's connection pool rather than this server's budget.
+            # Measured 2026-09-07 in Chrome: eight frames on `/api/stream` took
+            # six sockets, not eight, because a browser caps HTTP/1.1
+            # connections per origin at six -- so the eight-slot stream budget
+            # was never drained and a seventh client still got a 200. What those
+            # six frames did drain was Chrome's own pool, and the real board then
+            # would not load at all until they were removed.
+            (
+                "GET",
+                "/api/stream",
+                {
+                    "Sec-Fetch-Site": "same-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "iframe",
+                },
+                403,
+                "a frame may not hold a stream socket",
+            ),
+            (
+                "GET",
+                "/api/ask/nothing-here",
+                {
+                    "Sec-Fetch-Site": "same-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "iframe",
+                },
+                403,
+                "a frame may not hold the ask long poll",
+            ),
             (
                 "GET",
                 "/api/data",

@@ -17,10 +17,9 @@ Three top-level views, and the fragment is the address:
   was built first and buried the reader's opening questions in live review (NUI-16 in
   [`docs/design-next-ui.md`](../../../../docs/design-next-ui.md)).
 - `#n=projects` is the complete map.
-- `#n=attention` is the gate queue and the coverage disclosure. It has **no link in the nav.** A
-  reader reaches it with the `a` key, or by clicking the reported-blocks chip in the header, which
-  appears only when a block is reported. Check that chip exists before concluding the route is
-  unreachable: it is a real button and it navigates.
+- `#n=attention` is the gate queue and the coverage disclosure. It has a nav entry as of #287, last
+  of the three, and the `a` key and the reported-blocks chip in the header still reach it. That chip
+  appears only while a block is reported, which is why it was never a nav entry's substitute.
 
 `p` and `s` reach the other two. Fragment changes alone do not reload the document.
 
@@ -143,10 +142,11 @@ on an ended session.
 - A session that went quiet without reporting. It must render exactly as one waiting at its prompt,
   because those two are indistinguishable and the board may not guess.
 - An ended session. It leaves Active now and is promoted into `CLOSE THE LOOP` rather than
-  dropped. That heading is read off the page, not off a document: the shipped skill body calls
-  the same section "Safe to close", which appears nowhere on screen (DRC-4421). This file said
-  "Safe to close" too, having been written from a milestone record instead of from the board,
-  which is the mistake the skill's own step 3 exists to prevent.
+  dropped. Read that heading off the page, not off a document. For two months the shipped skill
+  body called the same section "Safe to close", a name that appeared nowhere on screen, and this
+  file said it too, having been written from a milestone record instead of from the board
+  (DRC-4421). A test now holds the body's section names to the ones the page renders, which is the
+  kind of oracle a walk should leave behind rather than a corrected sentence.
 - A harness with no event adapter, and a run under `--no-events`. An absent end is not evidence of
   anything and the row must say so.
 - A session whose git state was not measured, against one measured clean, against one dirty. Three

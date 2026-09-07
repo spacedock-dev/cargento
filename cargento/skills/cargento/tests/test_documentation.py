@@ -118,6 +118,36 @@ class DocumentationMatchesCodeTest(unittest.TestCase):
         self.assertNotIn("http://localhost:4553", self.SKILL)
         self.assertIn("http://127.0.0.1:4553", self.SKILL)
 
+    def test_every_attention_section_the_skill_names_is_one_the_board_renders(self) -> None:
+        # The promotion in 8d2585c renamed the page's groups and updated the
+        # skill body with DIFFERENT names in the same change, and nothing
+        # compared them, so a reader searching the board for "Safe to close"
+        # found nothing for weeks. The headings are inline arguments rather than
+        # a table, so read them out of the source the way the store-path
+        # assertions above read `config`: there is no JS engine here and this
+        # needs none.
+        attention = (
+            SERVER_PATH.parent / "cargento_runtime" / "web" / "next-attention.js"
+        ).read_text(encoding="utf-8")
+        rendered = set(re.findall(r'nextAttentionSectionHtml\("[a-z]+", "([A-Z ]+)"', attention))
+        rendered |= set(re.findall(r'<h2 tabindex="-1">([A-Z ]+) \(', attention))
+        self.assertEqual(
+            {"NEEDS YOU NOW", "AT RISK", "CLOSE THE LOOP", "COMING NEXT", "NO PUBLISHED EXCEPTION"},
+            rendered,
+            "the Attention headings moved; the skill body has to move with them",
+        )
+        for title in rendered:
+            self.assertIn(
+                f"**{title}**",
+                self.SKILL,
+                f"the board renders {title} and the skill body never names it",
+            )
+        # The names the body used to carry. Asserted as absent by name rather
+        # than derived, because the failure was a body claiming a name the page
+        # had stopped rendering, and only a literal catches a return to it.
+        for dead in ("Safe to close", "What's next"):
+            self.assertNotIn(dead, self.SKILL, f"{dead} is not a heading the board renders")
+
 
 class DocumentedCaptureFiguresTest(unittest.TestCase):
     """Prose that cites a capture file must still agree with the file.
