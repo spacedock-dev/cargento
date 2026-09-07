@@ -140,9 +140,45 @@ function nextSessionCopyStatus(app){
   return status;
 }
 
+// The node the click found is not reliably the node the reader is looking at.
+// `renderNext` replaces `#app` wholesale on every revision and on a bare interval,
+// so a render landing while the action was outstanding orphans the target, and
+// writing the answer only there leaves the live row still painting what it was
+// painting when the render happened — until the next one, up to
+// NEXT_FALLBACK_POLL_MS later, while the live region beside it already said the
+// answer. So the state goes to the map, and the controls on the page are re-read
+// from it: the same source, and the same result, as the next render (DRC-4392).
+function nextStampControlStates(selector, attribute, keyOf){
+  const app = document.getElementById("app");
+  if(!app || typeof app.querySelectorAll !== "function") return;
+  for(const control of app.querySelectorAll(selector)){
+    const state = nextControlState(keyOf(control && control.dataset || {}));
+    if(state){
+      if(typeof control.setAttribute === "function") control.setAttribute(attribute, state);
+    }else if(typeof control.removeAttribute === "function"){
+      control.removeAttribute(attribute);
+    }
+  }
+}
+
+// One key for the click and for the render, derived from the control's own
+// dataset either way. Two spellings of it would agree until one of them changed.
+function nextCopyStateKey(dataset){
+  return nextControlStateKey(
+    dataset.nextCopyCommand ? "command" : "copy",
+    dataset.nextCopyHarness,
+    dataset.nextCopySession,
+  );
+}
+
+function nextRaiseStateKey(dataset){
+  return nextControlStateKey("raise", dataset.nextRaiseHarness, dataset.nextRaiseSession);
+}
+
 function nextCopyState(target, key, state){
   if(target && target.dataset) target.dataset.nextCopyState = state;
   nextRememberControlState(key, state);
+  nextStampControlStates("[data-next-copy-session]", "data-next-copy-state", nextCopyStateKey);
 }
 
 // One copy lane for both controls. The re-entry command reuses the session-id
@@ -160,9 +196,7 @@ async function nextCopyToClipboard(target){
   // Written to the element for the reader looking at it now, and to the module
   // map for the render that is about to replace it (DRC-4392). The two controls
   // share the lane and the live region but not the cue.
-  const key = nextControlStateKey(
-    command ? "command" : "copy", dataset.nextCopyHarness, sid,
-  );
+  const key = nextCopyStateKey(dataset);
   try{
     if(!value || typeof navigator === "undefined" || !navigator.clipboard ||
       typeof navigator.clipboard.writeText !== "function") throw new Error("clipboard unavailable");
@@ -205,11 +239,13 @@ function nextSessionRaiseStatus(app){
 // the page cannot tell which: `claim_focus` refuses while `_focus_inflight` is
 // set OR when the last raise landed inside `focus_floor_sec`, and
 // `release_focus` clears only the first. So a completed raise still holds the
-// floor. It is the arm the old wording did not name that fires in practice: a
-// raise is three tmux commands, and SECURITY.md measures a 6.1 ms median for the
-// gap between two of them, so the whole of it clears in tens of milliseconds and
-// a double-click lands inside the floor rather than inside the in-flight window
-// (DRC-4390). Neither is the floor named: its length is
+// floor, and it is the arm the old wording did not name that fires in practice.
+// Not because a raise is quick: nobody has measured `raise_terminal`'s total, and
+// SECURITY.md's 6.1 ms median is one gap inside it — `list-clients` answering to
+// `switch-client` being spawned — rather than the whole. It is because
+// `nextRaiseInFlight` below refuses a same-tab repeat before it reaches the wire
+// at all, so the in-flight arm needs a second tab while the floor is what an
+// ordinary double-click hits (DRC-4390). Neither is the floor named: its length is
 // `config.focus_floor_sec`'s to change.
 //
 // SENT and not RAISED. The boolean is the raise command's own exit status —
@@ -230,10 +266,8 @@ const NEXT_RAISE_ANNOUNCEMENTS = new Map([
 function nextRaiseState(target, state){
   const dataset = target && target.dataset || {};
   if(target && target.dataset) target.dataset.nextRaiseState = state;
-  nextRememberControlState(
-    nextControlStateKey("raise", dataset.nextRaiseHarness, dataset.nextRaiseSession),
-    state,
-  );
+  nextRememberControlState(nextRaiseStateKey(dataset), state);
+  nextStampControlStates("[data-next-raise-session]", "data-next-raise-state", nextRaiseStateKey);
   const status = nextSessionRaiseStatus(document.getElementById("app"));
   const message = NEXT_RAISE_ANNOUNCEMENTS.get(state);
   if(status && message) status.textContent = message;
