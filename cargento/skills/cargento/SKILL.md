@@ -67,7 +67,10 @@ Attention is a triage view, not a second copy of every session. It divides curre
 **NEEDS YOU NOW**, **AT RISK**, **CLOSE THE LOOP**, and **COMING NEXT**, then closes with
 **NO PUBLISHED EXCEPTION** for every session none of those four claimed, tallied by state as moving,
 quiet, or unknown. Items retain stable ordering while their evidence is unchanged, and each section
-explains missing coverage instead of treating an unmeasured harness as an all-clear.
+explains missing coverage instead of treating an unmeasured harness as an all-clear. On a board
+where none of the four has anything to report, the summary line above them says the four queues
+were checked and are empty, with a tally of what the sessions are doing, rather than counting out
+four zeros.
 
 **NEEDS YOU NOW** combines native harness gates with questions registered through `ask_operator`.
 Native permission prompts, plan approvals, and harness questions must still be answered in that

@@ -337,6 +337,11 @@ function nextAttentionProjectSummary(model, sessions){
     exactRequests: sessionSubjects.reduce((total, item) => total + item.asks.length, 0),
     risk: sessionSubjects.filter(item => item.section === "risk").length + collisionSubjects.length,
     close: sessionSubjects.filter(item => item.section === "close").length,
+    /* The three published states, all of them, so the project row can account
+       for every session it was handed. `needs_input` used to be counted by
+       nothing here, which put a blocked session in the row's leading total and
+       in no word at all (DRC-4453). */
+    blocked: rows.filter(session => session.state === "needs_input").length,
     working: rows.filter(session => session.state === "working").length,
     quiet: rows.filter(session => session.state === "idle").length,
   };
@@ -1079,6 +1084,15 @@ function nextAttentionView(model, expandedSections = new Set(), openDisclosures 
       ? ` · The other ${model.healthy.sessions.length} ` +
         `session${model.healthy.sessions.length === 1 ? "" : "s"}: ${rest}`
       : "");
+  /* What the healthy board says instead. Each state names sessions rather than
+     leaning on a shared total, so the tail reads the same with one entry or
+     three, and a zero-count state stays out: a line whose whole point is that
+     nothing needs you has no business printing a zero. */
+  const clear = [
+    [counts.moving, "moving"], [counts.quiet, "quiet"],
+    [counts.unknown, "in no counted state"],
+  ].filter(([count]) => count).map(([count, word]) =>
+    `${count} session${count === 1 ? "" : "s"} ${word}`);
   const empty = model.sessionCount === 0
     ? `<p class="next-attention-empty">No sessions in this ` +
       `${model.windowHours == null ? "payload" : `${esc(model.windowHours)}h payload`}</p>`
@@ -1086,10 +1100,21 @@ function nextAttentionView(model, expandedSections = new Set(), openDisclosures 
   /* No brief on an empty payload. The two clauses are a longer sentence than the
      six numbers they replaced, and on nothing at all they read as "0 subjects
      across 0 of 0 sessions: 0 need you · ..." directly above a notice that
-     already says there is nothing. The notice is the better sentence. */
+     already says there is nothing. The notice is the better sentence.
+
+     The healthy board is the neighbouring case and gets a different answer,
+     because there IS something beneath it and it is silent: measured, the four
+     category sections render nothing at zero, so standing down entirely would
+     leave NO PUBLISHED EXCEPTION as the only heading on screen and no sign
+     anywhere that the queues had been looked at (DRC-4452). Two conditions
+     rather than one widened condition: `sessionCount` is a test of the payload's
+     shape and `subjectTotal` is a test of its content. */
   const brief = model.sessionCount === 0
     ? ""
-    : `<p><span class="next-attention-brief-label">OBSERVED NOW</span>${observed}</p>`;
+    : `<p><span class="next-attention-brief-label">OBSERVED NOW</span>` +
+      `${subjectTotal === 0
+        ? ["All four queues checked and empty"].concat(clear).join(" · ")
+        : observed}</p>`;
   return '<section class="next-attention" data-next-view-body="attention"><h1 tabindex="-1">' +
     "Attention</h1><div class=\"next-attention-brief\">" +
     brief +

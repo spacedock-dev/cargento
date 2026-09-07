@@ -36,14 +36,11 @@ function nextControlsProjectState(project){
       adding: false,
       rules: nextControlsReadRules(project),
       steers: [],
-      // What the reader has typed and not yet sent. Held here and NOT in
-      // localStorage, unlike `rules` beside it: a rule was added on purpose and
-      // a half-typed sentence is not a decision, so reviving one in a new tab
-      // hours later is a different feature from surviving a render.
+      // What the reader has typed and not yet sent, and where the caret was in
+      // it. Two rows of the inventory in docs/design-reader-state.md, which
+      // carries why neither is persisted beside `rules` above and why the
+      // offset travels with the text rather than after it.
       drafts: {steer: "", guardrail: ""},
-      // Where the caret was, per draft. Restoring the text without the offset
-      // is a worse failure than losing both: the reader carries on typing at
-      // the start of their own sentence and cannot see why.
       carets: {steer: null, guardrail: null},
     });
   }
@@ -52,7 +49,7 @@ function nextControlsProjectState(project){
 
 // Read back what the reader typed, before the render that is about to discard
 // it. One fixed selector, and the kind and project come from the dataset rather
-// than from a selector built out of them.
+// than from a selector built out of them (docs/design-reader-state.md).
 function nextControlsCaptureDrafts(){
   const app = document.getElementById("app");
   if(!app || typeof app.querySelectorAll !== "function") return;
