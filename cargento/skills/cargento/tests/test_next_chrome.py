@@ -413,6 +413,19 @@ console.log(JSON.stringify({{
                 self.assertEqual("failed", failed["state"])
                 self.assertEqual("Raise could not be sent", failed["status"])
 
+    def test_a_stale_capability_names_the_restart_and_the_remedy(self) -> None:
+        # Observed: the daemon was restarted under an open tab. `/api/data` needs no
+        # capability, so the board kept rendering fresh rows and the control kept
+        # rendering with them, while every click posted the previous run's
+        # capability and came back 403 forever. The generic failure named neither
+        # the cause nor the one-keystroke remedy (DRC-4396).
+        stale = self.raise_click("async () => ({ok: false, status: 403, json: async () => ({})})")
+
+        self.assertEqual("stale", stale["state"])
+        self.assertNotEqual("Raise could not be sent", stale["status"])
+        self.assertIn("restarted", stale["status"])
+        self.assertIn("Reload", stale["status"])
+
     def test_no_capability_sends_no_request_that_could_only_be_refused(self) -> None:
         out = self.raise_click(
             "async () => ({ok: true, status: 200, json: async () => ({focused: true})})",
@@ -946,7 +959,8 @@ console.log(JSON.stringify(Object.assign(held, {
             NEXT_STYLES,
         )
         throttled = re.search(
-            r'\.next-session-raise\[data-next-raise-state="throttled"\]\{([^}]*)\}',
+            r'\.next-session-raise\[data-next-raise-state="throttled"\],'
+            r'\.next-session-raise\[data-next-raise-state="stale"\]\{([^}]*)\}',
             NEXT_STYLES,
         )
         busy = re.search(
@@ -981,6 +995,12 @@ console.log(JSON.stringify(Object.assign(held, {
         # one, and a raise underway is the only state that says work is happening.
         self.assertIn("border-color:var(--warn)", throttled.group(1))
         self.assertIn("border-color:var(--line2)", answered.group(1))
+        # `stale` shares that rule rather than bringing a fourth look, and appears
+        # in no other: a second rule would win by order and quietly reclassify a
+        # refusal the reader can act on as one they cannot. The announcement is
+        # what says which of the two it is — a border cannot carry "reload the
+        # page" (DRC-4396).
+        self.assertEqual(1, NEXT_STYLES.count('data-next-raise-state="stale"'))
         self.assertIn("cursor:progress", sending.group(1))
         self.assertIn("border-color:var(--warn)", sending.group(1))
         # Same specificity, so the later rule wins: the row that is actually raising
@@ -1228,6 +1248,12 @@ __els.app = {
             all(
                 selector
                 in {
+                    # The row controls are swept by the same fixed selectors the
+                    # render and the state stamp use, and the key is compared
+                    # against a dataset rather than interpolated into a selector —
+                    # which is what the hostile key above is here to prove.
+                    "[data-next-raise-session]",
+                    "[data-next-copy-session]",
                     "[data-next-session]",
                     "[data-next-subject-key]",
                     "[data-next-attention-toggle]",
@@ -1284,6 +1310,94 @@ __els.app = {
 
         self.assertIn('data-next-session="owner-2"', out["html"])
         self.assertEqual(["session:owner-2"], out["focusCalls"])
+
+    def test_focused_row_control_survives_refresh(self) -> None:
+        # DRC-4392 made the cue survive a render; focus did not. Observed: focus on
+        # a RAISE, then a refresh, and `document.activeElement` was the row's route
+        # link — the session branch's fallback, reached because nothing re-targeted
+        # the control. The live lane fires a revision whenever anything on the
+        # machine moves, so a keyboard reader working the queue was displaced
+        # continuously (DRC-4396).
+        out = self._run_page_js(
+            """
+const payload = generated => ({
+  generated,
+  sessions: [0, 1].map(index => ({
+    harness: "claude", sid: `owner-${index}`, project: `project-${index}`,
+    state: "needs_input"
+  }))
+});
+nextData = payload(1000);
+nextAttention = nextAttentionModel(nextData);
+const focusCallsFor = active => {
+  __focusCalls = [];
+  document.activeElement = active;
+  renderNext();
+  return [...__focusCalls];
+};
+console.log(JSON.stringify({
+  raise: focusCallsFor({controlKey: "raise\\u0000claude\\u0000owner-1"}),
+  copy: focusCallsFor({controlKey: "copy\\u0000claude\\u0000owner-1"}),
+  command: focusCallsFor({controlKey: "command\\u0000claude\\u0000owner-1"}),
+  row: focusCallsFor({sessionId: "owner-1"})
+}));
+""",
+            """
+let __focusCalls = [];
+// Each row carries its three controls, keyed the way the control-state map keys
+// them, plus the route link the session branch falls back to.
+const __control = (lane, sid, dataset) => ({
+  dataset,
+  key: `${lane}\\u0000claude\\u0000${sid}`,
+  contains(active){ return Boolean(active) && active.controlKey === this.key; },
+  focus(){ __focusCalls.push(`${lane}:${sid}`); document.activeElement = this; }
+});
+const __controls = sid => [
+  __control("raise", sid, {nextRaiseSession: sid, nextRaiseHarness: "claude"}),
+  __control("copy", sid, {nextCopySession: sid, nextCopyHarness: "claude"}),
+  __control("command", sid, {
+    nextCopySession: sid, nextCopyHarness: "claude", nextCopyCommand: `claude --resume ${sid}`
+  })
+];
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    if(selector === "[data-next-raise-session]"){
+      return ["owner-0", "owner-1"].flatMap(sid =>
+        __controls(sid).filter(control => control.dataset.nextRaiseSession));
+    }
+    if(selector === "[data-next-copy-session]"){
+      return ["owner-0", "owner-1"].flatMap(sid =>
+        __controls(sid).filter(control => control.dataset.nextCopySession));
+    }
+    if(selector === "[data-next-session]") return ["owner-0", "owner-1"].map(sid => ({
+      dataset: {nextSession: sid, nextHarness: "claude"},
+      contains(active){
+        return Boolean(active) &&
+          (active.sessionId === sid || String(active.controlKey || "").endsWith(sid));
+      },
+      querySelector(inner){
+        return inner === ".next-operation-route"
+          ? {focus(){ __focusCalls.push(`route:${sid}`); }}
+          : null;
+      },
+      focus(){ __focusCalls.push(`session:${sid}`); }
+    }));
+    return [];
+  },
+  querySelector(){ return null; },
+  insertAdjacentElement(){}
+};
+""",
+        )
+        assert isinstance(out, dict)
+
+        # The control the reader was on, not the row it sits in.
+        self.assertEqual(["raise:owner-1"], out["raise"])
+        self.assertEqual(["copy:owner-1"], out["copy"])
+        self.assertEqual(["command:owner-1"], out["command"])
+        # And the row branch is untouched where no control held focus.
+        self.assertEqual(["route:owner-1"], out["row"])
 
     def test_attention_announces_successful_count_changes_only(self) -> None:
         out = self._run_page_js(

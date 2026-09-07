@@ -10,34 +10,78 @@ let nextSessionRaiseStatusElement = null;
 let nextRaiseInFlight = false;
 const nextAttentionExpandedSections = new Set();
 
+// The row's own controls, keyed the way the control-state map keys them, so a
+// snapshot outlives the node being replaced for the same reason the cue does.
+// The selector and the key function are the same pair the render and the stamp
+// use; a third spelling would agree until one of them changed.
+const NEXT_ROW_CONTROL_LANES = [
+  ["[data-next-raise-session]", "nextRaiseSession", nextRaiseStateKey],
+  ["[data-next-copy-session]", "nextCopySession", nextCopyStateKey],
+];
+
+function nextRowControlKey(app, active){
+  for(const [selector, idKey, keyOf] of NEXT_ROW_CONTROL_LANES){
+    for(const control of app.querySelectorAll(selector)){
+      const dataset = control && control.dataset || {};
+      if(!dataset[idKey]) continue;
+      const inside = control === active ||
+        (typeof control.contains === "function" && control.contains(active));
+      if(inside) return keyOf(dataset);
+    }
+  }
+  return "";
+}
+
+function nextFocusRowControl(app, key){
+  for(const [selector, idKey, keyOf] of NEXT_ROW_CONTROL_LANES){
+    for(const control of app.querySelectorAll(selector)){
+      const dataset = control && control.dataset || {};
+      if(!dataset[idKey] || keyOf(dataset) !== key) continue;
+      if(typeof control.focus !== "function") return false;
+      control.focus();
+      return true;
+    }
+  }
+  return false;
+}
+
 function nextCaptureFocus(){
   const app = document.getElementById("app");
   const active = document.activeElement;
   if(!app || !active || typeof app.querySelectorAll !== "function") return null;
+  // Carried alongside whichever container the reader was in rather than instead
+  // of it, so a control whose row has ended still falls back to the row's own
+  // restoration (DRC-4396).
+  const control = nextRowControlKey(app, active);
   for(const session of app.querySelectorAll("[data-next-session]")){
     if(typeof session.contains !== "function" || !session.contains(active)) continue;
     const sid = String(session.dataset && session.dataset.nextSession || "");
       const harness = String(session.dataset && session.dataset.nextHarness || "");
-      if(sid) return {session: sid, harness};
+      if(sid) return control ? {session: sid, harness, control} : {session: sid, harness};
   }
   for(const subject of app.querySelectorAll("[data-next-subject-key]")){
     if(typeof subject.contains !== "function" || !subject.contains(active)) continue;
     const key = String(subject.dataset && subject.dataset.nextSubjectKey || "");
     const section = nextAttentionSectionForKey(nextAttention, key);
-    if(key && section) return {key, section};
+    if(key && section) return control ? {key, section, control} : {key, section};
   }
   for(const toggle of app.querySelectorAll("[data-next-attention-toggle]")){
     if(typeof toggle.contains !== "function" || !toggle.contains(active)) continue;
     const section = String(toggle.dataset && toggle.dataset.nextAttentionToggle || "");
     if(section) return {section, disclosure: true};
   }
-  return null;
+  return control ? {control} : null;
 }
 
 function nextRestoreFocus(snapshot, model){
   if(!snapshot) return;
   const app = document.getElementById("app");
   if(!app || typeof app.querySelectorAll !== "function") return;
+  // Tried first and never last. The row branch below lands on the route link,
+  // which is where a keyboard reader on a RAISE was being dropped on every
+  // revision — and the live lane raises one whenever anything on the machine
+  // moves (DRC-4396).
+  if(snapshot.control && nextFocusRowControl(app, snapshot.control)) return;
   if(snapshot.session){
     for(const session of app.querySelectorAll("[data-next-session]")){
       if(String(session.dataset && session.dataset.nextSession || "") !== snapshot.session ||
@@ -229,11 +273,12 @@ function nextSessionRaiseStatus(app){
   return status;
 }
 
-// The five states the page can honestly tell apart, because the response is one
+// The six states the page can honestly tell apart, because the response is one
 // boolean and nothing else: in flight, the boolean true, the boolean false, the
-// rate ceiling, and a transport failure. There is no sixth. A declined lookup, an
-// unknown session and a command that failed are the same false to a caller by
-// contract, so the false wording covers all three rather than picking one.
+// rate ceiling, a stale capability, and a transport failure. There is no seventh.
+// A declined lookup, an unknown session and a command that failed are the same
+// false to a caller by contract, so the false wording covers all three rather
+// than picking one.
 //
 // The ceiling wording names neither arm, because the server refuses on two and
 // the page cannot tell which: `claim_focus` refuses while `_focus_inflight` is
@@ -260,6 +305,11 @@ const NEXT_RAISE_ANNOUNCEMENTS = new Map([
   ["sent", "Raise sent; the terminal switched to this session. Its window may still be behind others."],
   ["declined", "No terminal was raised"],
   ["throttled", "Raise refused: another raise was too recent. Try again in a moment."],
+  // The capability is minted per run and `/api/data` needs none, so a restart
+  // leaves a board rendering fresh rows above a control that can only be refused,
+  // and a reload is the whole remedy. Observed: page `1a6c12…` against server
+  // `823939…`, 403 on every click until the tab was reloaded (DRC-4396).
+  ["stale", "Raise refused: the dashboard restarted. Reload the page."],
   ["failed", "Raise could not be sent"],
 ]);
 
@@ -321,11 +371,16 @@ async function nextRaiseTerminal(target){
       headers: {"Content-Type": "application/json", "X-Cargento-Capability": capability},
       body: JSON.stringify({harness, sid}),
     });
-    // The ceiling is read before `ok`, and it is the one status worth naming: it
-    // says try again, where every other refusal says something the reader cannot
-    // act on from here.
+    // Two statuses are read before `ok`, and they are the two the reader can act
+    // on from here: the ceiling says wait, and a refused capability says reload.
+    // Every other refusal says something they cannot act on and takes the generic
+    // wording.
     if(response && response.status === 429){
       nextRaiseState(target, "throttled");
+      return;
+    }
+    if(response && response.status === 403){
+      nextRaiseState(target, "stale");
       return;
     }
     if(!response || !response.ok) throw new Error(`HTTP ${response && response.status}`);

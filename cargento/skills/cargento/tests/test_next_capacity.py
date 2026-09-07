@@ -270,7 +270,7 @@ console.log(JSON.stringify({html: nextCapacityView(nextData)}));
 nextData.usage[0].fiveH.recent = {pctPerMin: 0.2667, samples: 4, spanSec: 1800};
 const rows = nextCapacityRows(nextData);
 const row = rows.find(entry => entry.harness === "claude");
-console.log(JSON.stringify({html: nextCapacityProspect(row, 3, "")}));
+console.log(JSON.stringify({html: nextCapacityProspect(row, "")}));
 """,
             storage_prelude({}),
         )
@@ -279,7 +279,6 @@ console.log(JSON.stringify({html: nextCapacityProspect(row, 3, "")}));
         # they disagree, that disagreement is the uncertainty.
         self.assertIn("at this window's average pace", html)
         self.assertIn("at the recent pace", html)
-        self.assertIn("Measured while 3 agents were working", html)
 
     def test_the_prospect_says_so_when_the_recent_pace_is_unmeasured(self) -> None:
         out = self._run_page_js(
@@ -287,12 +286,43 @@ console.log(JSON.stringify({html: nextCapacityProspect(row, 3, "")}));
             + """
 const rows = nextCapacityRows(nextData);
 const row = rows.find(entry => entry.harness === "claude");
-console.log(JSON.stringify({html: nextCapacityProspect(row, 1, "")}));
+console.log(JSON.stringify({html: nextCapacityProspect(row, "")}));
 """,
             storage_prelude({}),
         )
         self.assertIn("Recent pace not measured", out["html"])
-        self.assertIn("1 agent was working", out["html"])
+
+    def test_the_prospect_claims_no_concurrency_beside_a_historical_average(self) -> None:
+        # Observed live: "Measured while 3 agents were working." under the CODEX
+        # WEEKLY row, while the three working sessions were Claude, Antigravity and
+        # Codex — two of which never touched Codex quota. Wrong harness, and wrong
+        # time: the count is read now and the pace it explained was averaged over
+        # the window's whole elapsed span. Scoping the count to this row's harness
+        # would fix only the first half, so the claim goes rather than narrows —
+        # the same rule this panel already follows for the recent pace it cannot
+        # measure (DRC-4396).
+        out = self._run_page_js(
+            PAYLOAD
+            + """
+nextData.sessions = [
+  {harness: "claude", sid: "a", project: "p", state: "working"},
+  {harness: "antigravity", sid: "b", project: "p", state: "working"},
+  {harness: "codex", sid: "c", project: "p", state: "working"}
+];
+const rows = nextCapacityRows(nextData);
+const row = rows.find(entry => entry.harness === "codex" && entry.slot === "week");
+console.log(JSON.stringify({
+  prospect: nextCapacityProspect(row, ""),
+  view: nextCapacityView(nextData)
+}));
+""",
+            storage_prelude({CONSENT_KEY: "granted"}),
+        )
+        for surface, html in (("prospect", out["prospect"]), ("view", out["view"])):
+            with self.subTest(surface=surface):
+                self.assertNotIn("Measured while", html)
+                self.assertNotIn("agents were working", html)
+                self.assertNotIn("agent was working", html)
 
     def test_the_project_spread_comes_from_observed_spans(self) -> None:
         # A6's shape-match, keyed on project and duration rather than on prompt

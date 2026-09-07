@@ -310,12 +310,21 @@ function nextCapacityRow(row, generated){
     "</div>";
 }
 
-function nextCapacityProspect(row, workingCount, projectSpread){
+function nextCapacityProspect(row, projectSpread){
   /* What the remaining budget buys, in the unit the decision is made in. Two
      measured paces rather than one fitted rate with a synthetic band: both ends
      are observations, and where they disagree that disagreement IS the
      uncertainty. Where only one is measured, one is stated and the other is
-     named as absent. */
+     named as absent.
+
+     No concurrency beside it. "Measured while N agents were working" counted
+     every working session on the machine, read at render, and stood as the
+     provenance of one vendor's historical window average: observed reading 3 on
+     the CODEX WEEKLY row while the three were Claude, Antigravity and Codex.
+     Scoping the count to the row's harness fixes the vendor and not the clock —
+     a count read now cannot describe a span already averaged — so the claim is
+     withdrawn rather than narrowed, on the same rule as the recent pace below
+     (DRC-4396). */
   const parts = [];
   if(row.windowMinutesLeft != null){
     parts.push(`<b>${esc(nextCapacityDuration(row.windowMinutesLeft * 60))}</b> at this window's ` +
@@ -330,9 +339,6 @@ function nextCapacityProspect(row, workingCount, projectSpread){
   const resets = row.remainingSec == null
     ? ""
     : ` Resets in <b>${esc(nextCapacityDuration(Math.max(0, row.remainingSec)))}</b>.`;
-  const measuredWith = workingCount > 0
-    ? ` Measured while ${workingCount} ${workingCount === 1 ? "agent was" : "agents were"} working.`
-    : "";
   const spread = projectSpread ? `<p>${projectSpread}</p>` : "";
   /* Three states, because two of them are evidence and only one is absence.
      Keying the caption on the derived minutes collapsed a measured zero into
@@ -351,7 +357,7 @@ function nextCapacityProspect(row, workingCount, projectSpread){
     `&middot; ${esc(NEXT_CAPACITY_SLOT_LABELS[row.slot] || row.slot)}</span></p>` +
     `<p>The remaining ${row.left}% buys ${parts.join(", or ")}.${resets}</p>` +
     spread +
-    `<small>${esc(measuredWith.trim())}</small>${stale}` +
+    stale +
     "</div>";
 }
 
@@ -375,7 +381,6 @@ function nextCapacityView(payload){
       `${rest} more ${rest === 1 ? "window" : "windows"}` +
       `${untimed ? `, ${untimed} of them not timed` : ""}</i></div>`
     : "";
-  const working = nextCapacityWorkingCount();
   const generated = nextNumber(payload && payload.generated);
   /* Scoped to the harness whose budget the paragraph is about. Drawn across
      every harness it invited a division nobody measured: "the budget buys 50
@@ -390,14 +395,9 @@ function nextCapacityView(payload){
     '<span>BUDGET AGAINST CLOCK</span><span>PACE</span><span>BUDGET ENDS</span>' +
     '<span>RESETS</span></div>' +
     shown.map(row => nextCapacityRow(row, generated)).join("") + more +
-    nextCapacityProspect(shown[0], working, spread) +
+    nextCapacityProspect(shown[0], spread) +
     "</section>" +
     nextUsageSwitch(payload);
-}
-
-function nextCapacityWorkingCount(){
-  const rows = nextRows();
-  return rows.filter(session => session && session.state === "working").length;
 }
 
 function nextCapacityProjectSpread(payload, harness){

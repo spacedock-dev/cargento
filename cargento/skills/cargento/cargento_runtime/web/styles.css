@@ -167,10 +167,12 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 /* The raise was attempted and the daemon answered, and there is nothing more to
    do from here: both drop to the quiet line. */
 .next-session-raise[data-next-raise-state="declined"],.next-session-raise[data-next-raise-state="failed"]{border-color:var(--line2);color:var(--ink2)}
-/* Refused before anything was attempted, and it says try again — so it keeps the
-   warn line rather than joining the two states above, which shared this rule and
-   drew "wait a second" as "nothing more to do here" (DRC-4390). */
-.next-session-raise[data-next-raise-state="throttled"]{border-color:var(--warn);color:var(--ink2)}
+/* Refused before anything was attempted, and both say do something and try again
+   — so they keep the warn line rather than joining the two states above, which
+   shared this rule and drew "wait a second" as "nothing more to do here"
+   (DRC-4390). `stale` gets no fourth look: a border cannot carry which of the two
+   it is, and the announcement beside it can (DRC-4396). */
+.next-session-raise[data-next-raise-state="throttled"],.next-session-raise[data-next-raise-state="stale"]{border-color:var(--warn);color:var(--ink2)}
 /* Unavailable because a raise is in flight somewhere on the page, which is not
    the same fact as a raise of this row's own coming back refused: it lands on
    every RAISE at once and it lifts on its own. Flat and inert, and the cursor
