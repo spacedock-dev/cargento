@@ -3,8 +3,8 @@
 Owner for the fourth state of a store read: **opened, and nothing in it recognised.** The module
 map, including which file owns each collector and which owns the read-only SQLite helpers, belongs
 to [design-runtime-architecture.md](design-runtime-architecture.md); this document owns the decision
-to publish that state on the row, the two branches that were rejected, and how far the disclosure
-reaches per collector.
+to publish that state on the row, the two branches that were rejected, how far the disclosure
+reaches per collector, and (since U-5) what a raise inside a collector costs.
 
 ## U-1: there were four states and the page rendered three
 
@@ -15,7 +15,7 @@ rendering:
 |---|---|
 | Opened, everything recognised | The readings, as measured |
 | Would not open | The collector's own `return []` or `return None`, so no row or a bare one |
-| Opened, a reading raised | Swallowed per reading, so the row keeps the rest |
+| Opened, a reading raised | Swallowed per reading, so the row keeps the rest. True of every collector only since U-5 |
 | **Opened, nothing recognised** | **Identical to the third, and silent** |
 
 The reader's version of that fourth row is sharper than a missing value. Measured on the board with
@@ -101,3 +101,68 @@ mtime, which is precisely as long as the wrong row is on screen. The gap text ri
 of the model cache key, which was unused (`""`). A fifth key would have been the tidier layout and
 is the wrong trade: `state.cursor_metadata_cache`'s value type lives in a module the collector does
 not own, and the disclosure has to travel with the reading it is about.
+
+## U-5: a raise costs the smallest unit it invalidates, and rows already read survive
+
+Owner for the third row of U-1's table, which was a generalisation two collectors did not honour.
+`cursor.py` kept the row and emptied the reading, `copilot.py` kept every row and emptied only the
+consumption, and `goose.py` returned nothing at all. Three answers to one question, tracking the
+order the three were written rather than anything about their stores.
+
+The rule, now the same in all five:
+
+| Where the raise happens | What it costs | What it never costs |
+|---|---|---|
+| Inside one row's build | That row | The rows already built, this store's or a sibling's |
+| Outside a row's build (the connection, the session select, the classification pass) | That store | Every other candidate store for the harness |
+| Anywhere | Nothing | The harness. `harness["error"]` is not a rendering of a bad row |
+
+### What the two escapes cost, measured
+
+Against `origin/main` at `5bca94b`, driving a full payload collection with `sessions.base_session`
+raising on the fourth row of a six-session store, and reading the counts off the payload rather
+than off the collector:
+
+| Arm | Before | After |
+|---|---|---|
+| Goose, `ValueError` on one row, two stores (3 + 6 sessions) | 0 rows published, harness badged `ValueError: ...`, **no store error recorded** | 8 rows, no badge, one store error against the damaged store only |
+| Goose, SQLite error on one row | 0 rows, no badge, one store error | 5 rows, no badge, one store error |
+| OpenCode, `ValueError` on one row | 0 rows, harness badged | 5 rows, no badge, one store error |
+| OpenCode, SQLite error outside the message guard | 0 rows, harness badged | 5 rows, no badge, one store error |
+
+The first arm is the one that shows why the harness must never be the unit. An exception escaping
+`collect` is the only thing that sets `harness["error"]`, and `collect` accumulates across candidate
+stores, so one malformed row in one store took a healthy store's three sessions with it *and* left
+nothing recorded anywhere. A badge is a claim about the harness; one row is not evidence for it.
+
+### Why the row, and not a field
+
+`cursor.py` and `copilot.py` withdraw a *reading* because their reads are separable and they know
+which one raised: `_meta` can name the model read as the failure and keep the title and the
+workspace, and `_usage_rows` is a read no row's identity depends on. `goose.py`'s and
+`opencode.py`'s per-row bodies are one straight-line build, where an exception says nothing about
+which published field is wrong. So the granularity differs because the code differs, and the two
+collectors are not being reshaped into their siblings. The four now answer the same question at the
+finest grain each can honestly name.
+
+### Why the disclosure is a store error and not a `source_gaps` name
+
+The row is gone, so there is no row to carry a gap. `io.record_store_error` is what is left, and
+U-2 measures how thin that is: `--diagnose` is its only reader. It is recorded anyway because the
+alternative is a session that vanishes from the board with nothing said anywhere, and retention
+bought with silence is the failure mode the fix was supposed to remove. Closing the gap between
+"recorded" and "on a screen" is not done here and is not pretended to be.
+
+### Rejected
+
+- **Publishing a thin row in place of the one that raised.** Nothing survives the raise to identify
+  it (`sessions.base_session` is the last call in both bodies, so the harness, id and project
+  fields would be invented), and U-1 already measured what an invented row renders as:
+  `NOW · WORKING` and `generating…`, a positive claim about work nobody observed.
+- **Keeping the three collectors deliberately different.** Defensible only if the difference tracked
+  something about each harness's store. It tracked authorship order.
+- **A narrow `except (ValueError, TypeError)`, matching the class the issues name.** That list was
+  measured to be the wrong shape of answer: `opencode.py`'s loop `try` carried no `except` at all,
+  so a SQLite error raised outside its one inner guard escaped too. Enumerating what a row body can
+  raise produces a list that goes stale the first time a callee changes, and the cost of being wrong
+  is a badged harness. The catch is broad and the scope is narrow instead.

@@ -165,119 +165,139 @@ def collect(
                 else:
                     tops.append((r, upd))
             for r, upd in tops:
-                agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
-                activity_sources = (upd, *(m for _, m, _ in agents))
-                last_activity = sessions.newest_plausible(config, now, activity_sources)
-                active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
-                if not (active or show_all):
-                    continue
-                # A child session keeps its own `session` row, so its model is
-                # the same read done twice rather than the parent's attributed
-                # downwards — the shape `collectors/cursor.py` already uses.
-                subagents = [
-                    {
-                        "name": label,
-                        "model": child_model,
-                        "started_at": None,
-                        "active": None,
-                        "parent": None,
-                    }
-                    for label, _, child_model in agents
-                ]
-                session_state, state_detail = "idle", "awaiting your message"
-                if sessions.is_fresh(config, now, last_activity, config.working_threshold_sec):
-                    session_state = "working"
-                    state_detail = sessions.working_detail(None, subagents)
+                # One row's cost, and never the store's or the harness's. Same
+                # rule and same reason as `collectors/goose.py`: this body is a
+                # straight-line build, so an exception in it does not say which
+                # published field is wrong and the row is the smallest unit it
+                # invalidates. docs/design-unread-sources.md, U-5.
+                try:
+                    agents = sorted(children.get(r["id"], []), key=lambda a: -a[1])
+                    activity_sources = (upd, *(m for _, m, _ in agents))
+                    last_activity = sessions.newest_plausible(config, now, activity_sources)
+                    active = sessions.is_fresh(config, now, last_activity, window_hours * 3600)
+                    if not (active or show_all):
+                        continue
+                    # A child session keeps its own `session` row, so its model is
+                    # the same read done twice rather than the parent's attributed
+                    # downwards — the shape `collectors/cursor.py` already uses.
+                    subagents = [
+                        {
+                            "name": label,
+                            "model": child_model,
+                            "started_at": None,
+                            "active": None,
+                            "parent": None,
+                        }
+                        for label, _, child_model in agents
+                    ]
+                    session_state, state_detail = "idle", "awaiting your message"
+                    if sessions.is_fresh(config, now, last_activity, config.working_threshold_sec):
+                        session_state = "working"
+                        state_detail = sessions.working_detail(None, subagents)
 
-                turn = None
-                last_prompt = ""
-                gaps: set[str] = set()
-                # Read off the session row, so an idle session outside the
-                # window still names its model; the message fallback below needs
-                # the transcript read and is therefore gated with it.
-                model = _session_model(r["model"])
-                if active:
-                    events = []
-                    newest_user: Any = None
-                    from_message: str | None = None
-                    try:
-                        # Turns and prompts live in `message` and `part`, not in
-                        # `session_message`. Measured on OpenCode 1.18.20:
-                        # `opencode db` ran the migrations and `opencode import`
-                        # wrote one session, and `session_message` came back
-                        # with 0 rows against 2 messages and 2 parts; the
-                        # capture at docs/captures/opencode/ records the same
-                        # store with 0 against 23 and 58. `message` has no
-                        # `type` column — the role is inside `data` — and the
-                        # text is inside `part.data`, so both halves of the read
-                        # this replaced were wrong, not just the table name.
-                        msgs = con.execute(
-                            "SELECT id, time_created, data FROM message "
-                            "WHERE session_id = ? ORDER BY time_created DESC LIMIT ?",
-                            (r["id"], config.sql_message_limit),
-                        ).fetchall()
-                        for m in reversed(msgs):
-                            data = _json(m["data"])
-                            role = data.get("role")
-                            is_user = role == "user"
-                            events.append((records.norm_epoch(m["time_created"]), is_user))
-                            if is_user:
-                                newest_user = m["id"]  # oldest-first, so the last wins
-                            elif role == "assistant":
-                                # `modelID` on the newest assistant message,
-                                # measured populated on a real 1.18.20 store.
-                                # It stands behind `session.model` rather than
-                                # in front of it, because that column is what
-                                # the next turn will run on — but it is
-                                # optional in OpenCode's own session schema, so
-                                # a row can carry none while its transcript
-                                # still names what ran.
-                                from_message = (
-                                    records.safe_text(
-                                        data.get("modelID"), sessions.MODEL_CAP_CHARS
-                                    ).strip()
-                                    or from_message
-                                )
-                    except sqlite3.Error:
-                        # The turn, the prompt and the model fallback all ride
-                        # this one read, so the row that survives it is thinner
-                        # than a quiet session's and looks identical to one.
-                        gaps.add(sessions.UNREAD_HISTORY)
-                    model = model or from_message
-                    if newest_user is not None:
-                        last_prompt = _prompt_from_parts(con, config, newest_user, gaps)
-                    turn = turns.turn_progress(
-                        turns.turns_from_events(events), session_state, now, config
-                    )
-
-                s = sessions.base_session(
-                    "opencode",
-                    r["id"],
-                    sessions.project_from_cwd(config, r["directory"] or "") or "opencode",
-                )
-                s.update(
-                    {
-                        "title": records.redact_clip(
-                            (r["title"] or "").strip(), records.PROMPT_TITLE_CAP_CHARS
+                    turn = None
+                    last_prompt = ""
+                    gaps: set[str] = set()
+                    # Read off the session row, so an idle session outside the
+                    # window still names its model; the message fallback below needs
+                    # the transcript read and is therefore gated with it.
+                    model = _session_model(r["model"])
+                    if active:
+                        events = []
+                        newest_user: Any = None
+                        from_message: str | None = None
+                        try:
+                            # Turns and prompts live in `message` and `part`, not in
+                            # `session_message`. Measured on OpenCode 1.18.20:
+                            # `opencode db` ran the migrations and `opencode import`
+                            # wrote one session, and `session_message` came back
+                            # with 0 rows against 2 messages and 2 parts; the
+                            # capture at docs/captures/opencode/ records the same
+                            # store with 0 against 23 and 58. `message` has no
+                            # `type` column — the role is inside `data` — and the
+                            # text is inside `part.data`, so both halves of the read
+                            # this replaced were wrong, not just the table name.
+                            msgs = con.execute(
+                                "SELECT id, time_created, data FROM message "
+                                "WHERE session_id = ? ORDER BY time_created DESC LIMIT ?",
+                                (r["id"], config.sql_message_limit),
+                            ).fetchall()
+                            for m in reversed(msgs):
+                                data = _json(m["data"])
+                                role = data.get("role")
+                                is_user = role == "user"
+                                events.append((records.norm_epoch(m["time_created"]), is_user))
+                                if is_user:
+                                    newest_user = m["id"]  # oldest-first, so the last wins
+                                elif role == "assistant":
+                                    # `modelID` on the newest assistant message,
+                                    # measured populated on a real 1.18.20 store.
+                                    # It stands behind `session.model` rather than
+                                    # in front of it, because that column is what
+                                    # the next turn will run on — but it is
+                                    # optional in OpenCode's own session schema, so
+                                    # a row can carry none while its transcript
+                                    # still names what ran.
+                                    from_message = (
+                                        records.safe_text(
+                                            data.get("modelID"), sessions.MODEL_CAP_CHARS
+                                        ).strip()
+                                        or from_message
+                                    )
+                        except sqlite3.Error:
+                            # The turn, the prompt and the model fallback all ride
+                            # this one read, so the row that survives it is thinner
+                            # than a quiet session's and looks identical to one.
+                            gaps.add(sessions.UNREAD_HISTORY)
+                        model = model or from_message
+                        if newest_user is not None:
+                            last_prompt = _prompt_from_parts(con, config, newest_user, gaps)
+                        turn = turns.turn_progress(
+                            turns.turns_from_events(events), session_state, now, config
                         )
-                        or None,
-                        # Redacted here rather than where it is assigned, for
-                        # the reason `collectors/goose.py` gives: once, on what
-                        # is published, not on every prompt the loop walks past.
-                        "last_prompt": records.redact_clip(
-                            last_prompt, records.LAST_PROMPT_CAP_CHARS
-                        ),
-                        "model": model,
-                        "state": session_state,
-                        "state_detail": state_detail,
-                        "active": active,
-                        "last_activity": last_activity,
-                        "turn": turn,
-                        "subagents": subagents,
-                        "source_gaps": sorted(gaps),
-                    }
-                )
-                out.append(s)
+
+                    s = sessions.base_session(
+                        "opencode",
+                        r["id"],
+                        sessions.project_from_cwd(config, r["directory"] or "") or "opencode",
+                    )
+                    s.update(
+                        {
+                            "title": records.redact_clip(
+                                (r["title"] or "").strip(), records.PROMPT_TITLE_CAP_CHARS
+                            )
+                            or None,
+                            # Redacted here rather than where it is assigned, for
+                            # the reason `collectors/goose.py` gives: once, on what
+                            # is published, not on every prompt the loop walks past.
+                            "last_prompt": records.redact_clip(
+                                last_prompt, records.LAST_PROMPT_CAP_CHARS
+                            ),
+                            "model": model,
+                            "state": session_state,
+                            "state_detail": state_detail,
+                            "active": active,
+                            "last_activity": last_activity,
+                            "turn": turn,
+                            "subagents": subagents,
+                            "source_gaps": sorted(gaps),
+                        }
+                    )
+                    out.append(s)
+                except Exception as exc:  # noqa: BLE001 — one bad row, not the harness
+                    # Recorded rather than swallowed, for the reason
+                    # `goose.py`'s matching handler gives: `--diagnose` is
+                    # the only reader `state.store_errors` has, and going
+                    # silent here would buy row retention with silence.
+                    runtime_io.record_store_error(state, db, exc)
+                    continue
+        except Exception as exc:  # noqa: BLE001 — one bad store, not the harness
+            # The `except` this `try` never had. Everything the loop raises is
+            # already caught per row above, so what lands here was raised
+            # outside a row body and costs this store only: `out` is the
+            # accumulator across candidate stores, and the rows in it — this
+            # store's earlier rows included — publish.
+            runtime_io.record_store_error(state, db, exc)
         finally:
             con.close()
     return out

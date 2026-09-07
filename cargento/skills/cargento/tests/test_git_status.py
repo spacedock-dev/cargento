@@ -21,11 +21,13 @@ from __future__ import annotations
 import ast
 import contextlib
 import io
+import ntpath
 import os
 import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import tokenize
@@ -34,6 +36,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
+from unittest import mock
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -111,6 +114,14 @@ _SPAWNERS = frozenset(
         "spawnle",
         "spawnlp",
         "spawnlpe",
+        # DRC-4465. `os.posix_spawn` is the one spawner in the standard library
+        # that takes the program as its FIRST argument and an argv beside it, so
+        # a call built from a resolved path names `git` nowhere the grep can see
+        # it. `spawn` is here for a helper named after the family rather than for
+        # an `os` attribute; there is no `os.spawn`.
+        "spawn",
+        "posix_spawn",
+        "posix_spawnp",
         "create_subprocess_exec",
         "create_subprocess_shell",
     }
@@ -135,28 +146,37 @@ def _shipped_sources() -> list[Path]:
     ]
 
 
-def _module_constants(tree: ast.Module) -> dict[str, ast.expr]:
-    """Module-level bindings, so a name standing for an argv resolves to it.
+def _bound_names(tree: ast.Module) -> dict[str, list[ast.expr]]:
+    """Every name assigned anywhere in this module, so a name standing for an argv resolves.
 
     Without this the walker below cannot see `GIT_STATUS_ARGV`, which is the one
     real call site: the argv is a constant and the call passes the name.
+
+    DRC-4465. This read `tree.body` alone, which binds module scope only, so
+    `exe = "/usr/bin/git"` INSIDE a function was opaque to the walker and the
+    grep had no quote adjacent to `git` either — ordinary code, missed by both.
+    Scopes are deliberately flattened rather than tracked: this is an oracle that
+    must not go silent, so over-reaching on a shadowed name costs a false
+    offender that a reader can see, where under-reaching costs a second git call
+    site nobody sees. A name bound more than once keeps every value for the same
+    reason — the last write winning would drop a candidate rather than add one.
     """
-    bound: dict[str, ast.expr] = {}
-    for node in tree.body:
+    bound: dict[str, list[ast.expr]] = {}
+    for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    bound[target.id] = node.value
+                    bound.setdefault(target.id, []).append(node.value)
         elif (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and node.value is not None
         ):
-            bound[node.target.id] = node.value
+            bound.setdefault(node.target.id, []).append(node.value)
     return bound
 
 
-def _argument_strings(node: ast.AST, bound: dict[str, ast.expr], seen: set[str]) -> list[str]:
+def _argument_strings(node: ast.AST, bound: dict[str, list[ast.expr]], seen: set[str]) -> list[str]:
     """Every string this expression could hand a spawner, folded where it is built.
 
     Walking the whole subtree is what reaches a list, a tuple, an f-string's
@@ -181,26 +201,64 @@ def _argument_strings(node: ast.AST, bound: dict[str, ast.expr], seen: set[str])
             # `seen` is a cycle guard, not a cache: a self-referential module
             # constant would otherwise recurse until the interpreter gives up.
             seen.add(child.id)
-            out.extend(_argument_strings(bound[child.id], bound, seen))
+            for value in bound[child.id]:
+                out.extend(_argument_strings(value, bound, seen))
     return out
+
+
+def _called_name(node: ast.Call) -> str | None:
+    """The bare name this call names, whether it is called plainly or on a receiver."""
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return None
+
+
+def _spawners_in(tree: ast.Module) -> frozenset[str]:
+    """`_SPAWNERS`, plus every function in this module that reaches one.
+
+    DRC-4465. A call to a private helper — `self._spawn(["/usr/bin/git", ...])`
+    where `_spawn` calls `subprocess.run` — was invisible to both oracles: the
+    walker never looked inside a call it did not recognise as a spawner, and the
+    absolute path gives the grep no quote adjacent to `git`. A helper that
+    spawns IS a spawner, so it is resolved here rather than added to the literal
+    set, which would mean guessing at every name a helper might be given.
+
+    To a fixpoint rather than one pass, because a helper calling a helper is one
+    hop further out and a module this size costs nothing to walk again.
+    """
+    names = set(_SPAWNERS)
+    functions = [
+        node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    growing = True
+    while growing:
+        growing = False
+        for node in functions:
+            if node.name in names:
+                continue
+            if any(
+                _called_name(inner) in names
+                for inner in ast.walk(node)
+                if isinstance(inner, ast.Call)
+            ):
+                names.add(node.name)
+                growing = True
+    return frozenset(names)
 
 
 def _spawned_programs(source: str) -> list[str]:
     """Program-shaped strings reaching a spawn call in this source."""
     tree = ast.parse(source)
-    bound = _module_constants(tree)
+    bound = _bound_names(tree)
+    spawners = _spawners_in(tree)
     found: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        func = node.func
-        if isinstance(func, ast.Attribute):
-            name = func.attr
-        elif isinstance(func, ast.Name):
-            name = func.id
-        else:
-            continue
-        if name not in _SPAWNERS:
+        if _called_name(node) not in spawners:
             continue
         found.extend(
             text for text in _argument_strings(node, bound, set()) if _PROGRAM.search(text)
@@ -557,12 +615,39 @@ class GitProbeEnvironmentTest(unittest.TestCase):
                 "trailing relative": f"{real}:.",
                 "unmodified": real,
             }
+            # The negative controls run FIRST and unconditionally, so they cannot
+            # be stranded behind a skip the arming decides (DRC-4466 AC2).
+            for label, path in harmless.items():
+                with (
+                    self.subTest(arm=label),
+                    _environment({**os.environ, "PATH": path}, cwd=probed),
+                ):
+                    self.assertIsNone(git_status.probe(str(probed), timeout_sec=10.0))
+
+            # DRC-4466. The arming used to ask the code under test whether the
+            # hijack had worked: `armed` was set only where `probe` returned
+            # `changed == 7`, so a guard that holds disarmed the test's own
+            # report. `44525c0` (#293) added this test and, in the same commit, a
+            # scrub over `frozenset({"", "."})` — precisely the two forms all
+            # four arms below are built from — so the arms were neutralised on
+            # the commit that introduced them and this skipped on every green
+            # tree since, stranding the three controls above behind the skip.
+            #
+            # Narrower than "it could never fail", which was measured and is not
+            # true: with BOTH ends of the guard reverted the old arming failed
+            # here too, on all four arms. What it could never do is RUN.
+            #
+            # So the arm is armed by the HOST's resolver instead, the way the
+            # sibling below does it: if `shutil.which` hands back a non-absolute
+            # answer for this PATH from the probed directory, a probe that
+            # trusted PATH would run that file and the assertion means something.
             armed = False
             for label, path in hijacks.items():
                 with self.subTest(arm=label):
                     with _environment({**os.environ, "PATH": path}, cwd=probed):
+                        hijacked = shutil.which("git", path=path)
                         reading = git_status.probe(str(probed), timeout_sec=10.0)
-                    if reading is not None and reading.changed == 7:
+                    if hijacked is not None and not os.path.isabs(hijacked):
                         armed = True
                     self.assertNotEqual(
                         7,
@@ -570,15 +655,11 @@ class GitProbeEnvironmentTest(unittest.TestCase):
                         f"the probed directory's own `git` supplied the executable ({label})",
                     )
             if not armed:
-                # Nothing to prove if no arm could hijack even before the fix.
-                # Recorded rather than passed silently, per this file's rule.
-                self.skipTest("no PATH shape hijacked on this host")
-            for label, path in harmless.items():
-                with (
-                    self.subTest(arm=label),
-                    _environment({**os.environ, "PATH": path}, cwd=probed),
-                ):
-                    self.assertIsNone(git_status.probe(str(probed), timeout_sec=10.0))
+                # No arm's mechanism could be armed here, so a pass above would
+                # prove nothing. Recorded rather than passed silently, per this
+                # file's rule. Windows reaches this: `which` resolves a bare name
+                # through PATHEXT, which the stub written here does not carry.
+                self.skipTest("no PATH shape resolves to a relative git on this host")
 
     def test_a_bare_relative_path_element_cannot_supply_the_executable(self) -> None:
         # DRC-4454, and it is a confusion of deputy rather than only a scrub gap:
@@ -713,9 +794,64 @@ class SingleInvocationTest(unittest.TestCase):
             ("env default", 'subprocess.run(os.environ.get("P", "git s").split(), check=False)'),
             ("f-string name", 'd = "/usr/bin"\nsubprocess.run([f"{d}/git", "s"], check=False)'),
             ("injected runner", 'runner(("git", "status"), check=False)'),
+            # DRC-4465's three, each measured missed by BOTH oracles before this
+            # commit. The first is the one that matters: it is ordinary code
+            # rather than obfuscation, so a second call site written this way
+            # would have left the whole suite green.
+            (
+                "function-local absolute name",
+                'def f():\n    exe = "/usr/bin/git"\n    subprocess.run([exe, "s"], check=False)',
+            ),
+            (
+                "private spawn helper",
+                (
+                    "def _spawn(argv):\n"
+                    "    return subprocess.run(argv, check=False)\n"
+                    'def go():\n    return _spawn(["/usr/bin/git", "status"])'
+                ),
+            ),
+            (
+                "os.posix_spawn, non-literal program",
+                (
+                    'def f():\n    exe = "/usr/bin/git"\n'
+                    '    os.posix_spawn(exe, ["git", "s"], os.environ)'
+                ),
+            ),
+            # And a fourth found while measuring those: the argv never binds to a
+            # name at all, it is passed as an argument to a helper that spawns.
+            (
+                "argv handed to a helper that spawns",
+                (
+                    "def _go(argv):\n"
+                    "    subprocess.run(argv, check=False)\n"
+                    'def f():\n    _go(["/usr/bin/git", "status"])'
+                ),
+            ),
         ):
             with self.subTest(shape=label):
                 self.assertTrue(_spawned_programs(source), f"{label} evaded the shape oracle")
+
+    def test_the_oracles_do_not_claim_to_see_a_name_computed_at_runtime(self) -> None:
+        # The boundary, recorded so the class above is not read as complete.
+        # These four evade BOTH oracles and are left evading on purpose: each
+        # computes the spawner or the program name at runtime, so catching them
+        # means interpreting the module rather than reading it, and none is a
+        # shape a second git call site gets written in by accident. What the
+        # oracles guard is ordinary Python, which is why DRC-4465's three are
+        # asserted above and these are only named.
+        #
+        # Measured 2026-09-08 against the widened walker: all four still missed.
+        for label, source in (
+            ("getattr spawner", 'getattr(subprocess, "run")(["/usr/bin/git", "s"], check=False)'),
+            ("functools.partial", 'functools.partial(subprocess.run, ["/usr/bin/git"])()'),
+            ("exec of a source string", "exec(\"subprocess.run(['/usr/bin/git'])\")"),
+            ("hex-decoded name", 'n = bytes.fromhex("676974").decode()\nsubprocess.run([n])'),
+        ):
+            with self.subTest(shape=label):
+                self.assertFalse(
+                    _spawned_programs(source) or _quotes_git(source),
+                    f"{label} is now caught; move it into the table above",
+                )
 
     def test_neither_oracle_fires_on_prose(self) -> None:
         # The grep's one measured false positive, and the shape walker's own
@@ -832,31 +968,107 @@ class GitProbeCallSiteTest(unittest.TestCase):
         # And the child gets an environment at all, rather than inheriting.
         self.assertIsNotNone(kwargs.get("env"))
 
-    def test_the_scrub_drops_every_non_absolute_path_element(self) -> None:
+    def test_the_scrub_drops_every_element_a_working_directory_could_resolve(self) -> None:
         # A unit assertion on the helper, so the rule is stated once where it can
         # be read: nothing the resolver would resolve against a working directory
         # survives, which is what makes the order of what remains irrelevant.
         #
-        # DRC-4454. The predecessor of this test carried this name and exercised
-        # `.` and `""` alone, so it passed while every other relative form was
-        # kept: a bare `relbin`, `./bin`, `..` and `sub/bin` all survived, and one
-        # of them supplied the executable from the directory being probed.
+        # DRC-4454. The predecessor of this test exercised `.` and `""` alone, so
+        # it passed while every other relative form was kept: a bare `relbin`,
+        # `./bin`, `..` and `sub/bin` all survived, and one of them supplied the
+        # executable from the directory being probed.
+        #
+        # DRC-4469 renamed it off "non-absolute", which was the wrong property to
+        # name: `ntpath.isabs(r"\bin")` is True at the 3.11 and 3.12 the gate
+        # runs, so the last two elements below are ones Windows calls absolute
+        # and this filter must drop anyway. On this POSIX host they are dropped
+        # for the ordinary reason and prove nothing; the arm that bites runs on
+        # the `platform-tests` Windows runner, and the sibling below arms the
+        # Windows predicate here.
         absolute = os.path.abspath(os.sep + "usr" + os.sep + "bin")
-        for element in ("", ".", "..", "relbin", "." + os.sep + "bin", "sub" + os.sep + "bin"):
+        for element in (
+            "",
+            ".",
+            "..",
+            "relbin",
+            "." + os.sep + "bin",
+            "sub" + os.sep + "bin",
+            "\\bin",
+            "C:bin",
+        ):
             with self.subTest(element=element):
                 path = os.pathsep.join([element, absolute])
                 self.assertEqual(
                     absolute,
                     git_status.probe_environment({"PATH": path})["PATH"],
-                    f"a non-absolute PATH element survived the scrub: {element!r}",
+                    f"an element a working directory could resolve survived: {element!r}",
                 )
+        # The second trusted element is built with `abspath` like the first rather
+        # than written as `/bin`. A literal `/bin` is a driveless root on Windows,
+        # so it is one of the elements DRC-4469 makes the filter DROP there, and
+        # asserting it survives would fail the Windows runner. `abspath` gains the
+        # current drive there and changes nothing on POSIX.
+        second = os.path.abspath(os.sep + "bin")
         scrubbed = git_status.probe_environment(
-            {"PATH": f".{os.pathsep}{os.pathsep}{absolute}{os.pathsep}.{os.pathsep}/bin"}
+            {"PATH": f".{os.pathsep}{os.pathsep}{absolute}{os.pathsep}.{os.pathsep}{second}"}
         )
-        self.assertEqual(f"{absolute}{os.pathsep}/bin", scrubbed["PATH"])
+        self.assertEqual(f"{absolute}{os.pathsep}{second}", scrubbed["PATH"])
         # An entirely untrusted PATH leaves nothing, and `which` then finds no
         # git, which publishes None rather than falling back to the ambient PATH.
         self.assertEqual("", git_status.probe_environment({"PATH": f".{os.pathsep}"})["PATH"])
+
+    def test_a_driveless_root_is_untrusted_under_the_windows_flavour(self) -> None:
+        # DRC-4469, armed HERE rather than only on the Windows runner. The element
+        # list above cannot bite off Windows — `\bin` is plainly relative to
+        # `posixpath`, so it is dropped there for the ordinary reason and proves
+        # nothing about the predicate this test is for. Swapping the flavour runs
+        # the real `_rooted` against real `ntpath` semantics on any host.
+        #
+        # The three calls are made inside the patched window and asserted outside
+        # it, so nothing but a pure predicate ever sees a mismatched `os.name` and
+        # `os.path`.
+        if sys.version_info < (3, 13):
+            # The reason the guard exists, pinned rather than left in a comment:
+            # measured 2026-09-08, `ntpath.isabs(r"\bin")` is True on 3.11.9 and
+            # 3.12.13 and False on 3.13.13 and 3.14.7. The gate runs 3.11 and
+            # 3.12, so this is the reading that ships. If CPython ever backports
+            # the change, this says so instead of the comment going stale.
+            self.assertTrue(
+                ntpath.isabs("\\bin"),
+                "`os.path.isabs` no longer keeps a driveless root; re-read DRC-4469",
+            )
+        with mock.patch.object(os, "name", "nt"), mock.patch.object(os, "path", ntpath):
+            driveless = git_status._rooted("\\bin")
+            drive_relative = git_status._rooted("C:bin")
+            fully_qualified = git_status._rooted("C:\\bin")
+        # A driveless root resolves against the process's current drive, which is
+        # part of its working directory, so it is exactly what the filter claims
+        # to drop — and what `os.path.isabs` alone kept at the 3.11/3.12 floor.
+        self.assertFalse(driveless, "a driveless root survived the Windows predicate")
+        # The drive-relative form `isabs` already refused. Kept as a control, so
+        # this test cannot pass by refusing everything.
+        self.assertFalse(drive_relative, "a drive-relative element survived")
+        self.assertTrue(fully_qualified, "a fully qualified Windows path was refused")
+
+    def test_the_resolver_refuses_a_driveless_root_under_the_windows_flavour(self) -> None:
+        # The OTHER end, under the same flavour. `_executable`'s docstring claims
+        # the duplication holds if the scrub is ever wrong again, and DRC-4469 is
+        # the second time it was, so the claim gets a check rather than a
+        # sentence. On Windows `shutil.which` answers with a path built from the
+        # PATH element it matched, so a `\bin` element yields `\bin\git.exe` —
+        # which `os.path.isabs` alone calls absolute at the 3.11/3.12 floor and
+        # would hand straight to the child. `which` is stubbed because a real one
+        # cannot be made to answer that way off Windows.
+        with (
+            mock.patch.object(os, "name", "nt"),
+            mock.patch.object(os, "path", ntpath),
+            # The module object this test imported, which is the same one
+            # `git_status` imported; reaching it through `git_status.shutil`
+            # instead is a re-export `mypy --strict` refuses.
+            mock.patch.object(shutil, "which", return_value="\\bin\\git.exe"),
+        ):
+            resolved = git_status._executable({"PATH": "\\bin"})
+        self.assertIsNone(resolved, "the resolver accepted a driveless-root answer")
 
     def test_the_resolver_refuses_a_git_it_could_only_resolve_relatively(self) -> None:
         # The OTHER end of the same guard, asserted where the scrub cannot reach
