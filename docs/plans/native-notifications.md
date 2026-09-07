@@ -20,7 +20,7 @@ Deliver `notify-send` on Linux, `wsl-notify-send.exe` (falling back to `powershe
 a PowerShell toast on Windows. Each sits behind `--notify` and is written as a pure selector
 function per design decision D-4, so the Ubuntu runner can exercise it.
 
-Three constraints on code that does not exist yet:
+Four constraints on code that does not exist yet:
 
 - Toast XML is an injection surface. `notification_text` strips control characters but not `<`, `>`
   or `&`. Any XML-shaped backend must XML-escape the message and pass arguments via argv, never
@@ -35,6 +35,12 @@ Three constraints on code that does not exist yet:
   releasing `_lock`. Never call a backend while holding it. Probing for an available backend at
   startup is therefore an optimization rather than a correctness requirement. An earlier revision of
   this plan had that backwards.
+- The test suite already refuses it. `support.forbid_native_notifications` reads the refused set off
+  `native_notifier`, so a new backend is covered the moment the selector names it, and a test that
+  spawns it for real fails with an `AssertionError` instead of notifying whoever ran the suite. A
+  test that needs the composition to run has to suppress only the process, through
+  `support.short_circuit_native_notifications`. Four tests sent real macOS banners before that
+  refusal existed, which is why it is not keyed to `osascript`.
 
 Per D-3, `--notify` must state which owner it disables.
 

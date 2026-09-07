@@ -39,6 +39,7 @@ from .support import (
     make_server,
     poll_fast,
     serve_until_closed,
+    short_circuit_native_notifications,
     state_of,
     without_focus_meta,
 )
@@ -63,23 +64,7 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             state_of().snapshot.clear()
         # Route-shape tests run the notification code but do not assert native
         # delivery, so keep its osascript process off the host.
-        original_run = subprocess.run
-
-        def run_without_native_delivery(*args: Any, **kwargs: Any) -> Any:
-            command = args[0] if args else kwargs.get("args")
-            if (
-                isinstance(command, (list, tuple))
-                and command
-                and command[0] == "/usr/bin/osascript"
-            ):
-                return subprocess.CompletedProcess(command, 0)
-            return original_run(*args, **kwargs)
-
-        notify_patcher = mock.patch.object(
-            subprocess, "run", side_effect=run_without_native_delivery
-        )
-        notify_patcher.start()
-        self.addCleanup(notify_patcher.stop)
+        short_circuit_native_notifications(self)
 
     def tearDown(self) -> None:
         with state_of().collect_memo_lock:
