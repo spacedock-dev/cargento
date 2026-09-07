@@ -118,9 +118,10 @@ disclosure, Codex and Copilot are read from files they already write to disk, an
 forwards its own figures through a status-line receipt. Each window shows how much of its allowance
 is spent against how much of its time is gone, the pace that comparison implies, when the budget
 runs out at that pace, and when the window resets. Beneath it, what the remaining budget buys in
-minutes at both paces Cargento has measured, and how long sessions have actually worked in the project
-that consumed the most measured working time on this machine. On top of that sit per-model sub-limits, per-session cost, and a ranking of which session is
-burning fastest right now.
+minutes at both paces Cargento has measured, and how long sessions have actually worked in the
+project that consumed the most measured working time on this machine. On top of that sit
+per-model sub-limits, per-session cost, and a ranking of which session is burning fastest right
+now.
 
 Where it stops: what a vendor exposes is what you get. Claude, Codex and Antigravity publish
 five-hour and weekly windows, Cursor publishes its monthly billing cycle, and Copilot contributes

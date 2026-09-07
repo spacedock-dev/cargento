@@ -638,8 +638,8 @@ Every authority drops out once its newest reading is older than `window_hours`, 
 `quota.cached_entries` tests the fetched entry's, and Copilot's sum only counts rows inside the
 window. The gate is quiet on the fetched two rather than absent, which is why it was missing until
 DRC-4402: while the poll runs a fetched reading is minutes old and can never reach the window, so
-the gate bites only where the poll has stopped — the disclosure answered and then switched off, or a
-vendor that stopped answering — and until then the cache republished a reading of any age as
+the gate bites only where the poll has stopped (the disclosure answered and then switched off, or
+a vendor that stopped answering), and until then the cache republished a reading of any age as
 current.
 
 Put that beside A4's example. The harness at 95% is the one being used, which is the one that
