@@ -168,14 +168,17 @@ Not a generic checklist. Every one of these has happened here:
   agents on a row where two of the three had never touched that vendor.
 - **A universal claim over a set nobody enumerated.** Count the members before writing "every" or
   "the two exceptions". This blocked a merge here over a third carve-out that existed and was unnamed.
-- **A capability whose reach the operator's own configuration silently removes.**
+- **A capability whose reach the operator's own configuration silently removes.** A harness that
+  reports a gate through a hook cannot report one where the operator has approvals off, so the
+  coverage line counts it as reporting, truthfully, while its silence reads as an all-clear.
 - **Agreement between the number and the words around it.** A sentence picked its verb from a count
   in one place and hardcoded it in the next, so every count but one read wrongly.
 
 ### 4. Hold the tests to behaviour
 
-See the next section. If the change shipped without a behavioural test for the property a reader
-sees, that is a Mode 2 finding about the change, not a suggestion.
+Apply "Behavioural testing first" below to the tests the change added. If it shipped without a
+behavioural test for the property a reader sees, that is a Mode 2 finding about the change
+rather than a suggestion for later.
 
 ### 5. Dispose
 
