@@ -76,10 +76,11 @@ function nextSessionNowFact(session){
   return task ? String(task.subject).trim() : "";
 }
 
-function nextSessionSourceCoverage(owner, next, asks){
+function nextSessionSourceCoverage(owner, next, asks, openDisclosures){
   if(asks.length || next) return "";
-  return '<details class="next-session-source-coverage">' +
-    '<summary>SOURCE COVERAGE</summary>' +
+  return '<details class="next-session-source-coverage"' +
+    `${nextDisclosureAttr("session-source-coverage", openDisclosures)}>` +
+    '<summary data-next-disclosure="session-source-coverage">SOURCE COVERAGE</summary>' +
     `<p>${esc(owner)} did not publish a next action.</p></details>`;
 }
 
@@ -87,7 +88,7 @@ function nextSessionCommandFact(kind, label, body){
   return `<section data-next-session-command-fact="${kind}"><h2>${label}</h2>${body}</section>`;
 }
 
-function nextSessionCommandSurface(session, asks, identity){
+function nextSessionCommandSurface(session, asks, identity, openDisclosures){
   const owner = nextSessionSourceOwner(session);
   const assignment = nextSessionInstruction(session, "asked");
   const context = nextSessionInstruction(session, "agent") || nextSessionInstruction(session, "earlier");
@@ -125,7 +126,7 @@ function nextSessionCommandSurface(session, asks, identity){
     '<span class="next-session-current-label">CURRENT ACTIVITY</span>' +
     `<strong>${esc(executionText)}</strong>${contextLine}` +
     nextSessionSubagents(session) + `</section>${identity}` + factBlock +
-    nextSessionSourceCoverage(owner, next, asks) + "</div>";
+    nextSessionSourceCoverage(owner, next, asks, openDisclosures) + "</div>";
 }
 
 function nextSessionTitle(session, asks){
@@ -343,7 +344,7 @@ function nextSessionDetailState(state){
   return null;
 }
 
-function nextSessionView(project, harness, sid){
+function nextSessionView(project, harness, sid, openDisclosures = new Set()){
   const session = nextSessionFind(project, harness, sid);
   if(!session){
     return '<section class="next-session-detail-empty" ' +
@@ -364,7 +365,8 @@ function nextSessionView(project, harness, sid){
     `<h1>${esc(title)}</h1>${nextSessionCopyControl(session)}${metaLine}</header>`;
   return `<article class="next-session-detail${blocked}" data-next-session-detail="${esc(session.sid)}"` +
     `${stateAttr}>` +
-    nextSessionCommandSurface(session, asks, identity) + nextSessionHealth(session) +
+    nextSessionCommandSurface(session, asks, identity, openDisclosures) +
+    nextSessionHealth(session) +
     nextSessionAskBlock(session, asks) + nextSessionTasks(session) +
     nextSessionFooter(session) + "</article>";
 }

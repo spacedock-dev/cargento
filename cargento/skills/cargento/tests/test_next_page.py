@@ -516,16 +516,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "de523a2adbc7cfb5ff949cce205c71ee0c2ec0b9eaba2329722fa92f9b6220f6",
             ),
             "next-attention.js": (
-                51_380,
-                "b415cea4a21a1f1c04628bf251a3024fca733a57fc74006bf041c0f5952d2f6f",
+                51_563,
+                "94db5d566d6eaf139907c802e6d6fbfeec98747d272c273beb029c3f5ab48a16",
             ),
             "next-notify.js": (
                 3_642,
                 "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
             ),
             "next-chrome.js": (
-                30_164,
-                "71be7713a6a3ea3e9a4ead8a22b5f2a38a2bf5840f0fe1f945f1f35fdf54771d",
+                32_122,
+                "032156d772b7fc15cf9d764b74c09028a9515757b6d0cff11c4612e7f446247b",
             ),
             "next-capacity.js": (
                 30_472,
@@ -548,8 +548,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "6ef68e1321e586622a8543527f3a3bce56176d2efaa87553e8360dae82ad0a61",
             ),
             "next-session.js": (
-                18_829,
-                "d00e868b17ce5e7081d2631c3b753f0be895a21135b3ab863d05c08e84c798ec",
+                19_051,
+                "58b14f9ab0f0496dd299da2fd1505db7de19c29f4931573b681448731259334f",
             ),
             "next-workstream.js": (
                 17_492,
@@ -564,8 +564,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "fb1f51b940a9e29122a6b689beb6ec6c31fe71652c45bc2dffa32f8250084018",
             ),
             "next-render.js": (
-                2_930,
-                "01ba6981527cb099cfa221499ff7345fd477b5fcdb7513fb4575ceaea5177ec3",
+                3_028,
+                "dc5f8c812e94bbf902fdbb7090d2a4e2a32fc9324384b6239b763f538951000e",
             ),
             "next-live.js": (
                 3_375,
@@ -587,9 +587,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(407_785, len(assembled))
+        self.assertEqual(410_246, len(assembled))
         self.assertEqual(
-            "e495b37603bad61ab97b8e08416cfcb7060d986e3db0069e4d4bf3d9a3f0e035",
+            "30a0548fe54a1365487ab440e6d11e43725aa634d39690a2392ed6443aa71307",
             hashlib.sha256(assembled).hexdigest(),
         )
 
