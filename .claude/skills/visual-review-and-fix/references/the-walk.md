@@ -24,6 +24,22 @@ Three top-level views, and the fragment is the address:
 
 `p` and `s` reach the other two. Fragment changes alone do not reload the document.
 
+**Walk the routes before you walk the stages, with the mouse only.** From each top-level view, check
+that every other one is offered and that the one you are standing on is marked. Put the keyboard
+down to do it: a shortcut nothing advertises is not a way a reader finds a screen.
+
+This is the reachability check, and it is distinct from the disclosure check further down. A path
+existing is not a path a reader can find, and the two questions have different answers: Attention
+shipped as a whole view with no entry in the header, reachable only by typing a fragment, pressing a
+key nothing mentions, or clicking a status chip that exists only while a block is reported. A first
+pass here confirmed a path existed and stopped, which was the wrong question. The operator found it
+by opening the board and looking at the header.
+
+Two tests were pinning it in place, both by naming the two views they knew about, so the suite
+reported the gap as correct. Derive a nav assertion from the router's own view set rather than from a
+list you type, and assert the current one is marked on **every** view, which is the assertion a test
+that never navigates to a view cannot make about it.
+
 ## P1. Which of my agents are running?
 
 > every session on this machine, across ten harnesses, on one screen, with what is active now kept
