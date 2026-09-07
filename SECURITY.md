@@ -1022,10 +1022,13 @@ absent from the allowlist is banned exactly as firmly as tool input is, and the 
 of decisions rather than a category.
 
 The reason the ban became an allowlist is that it was stricter than the product around it and the
-asymmetry was doing no work. The dashboard already publishes prompt text: the session title, the
-line beneath it, `last_prompt`, the observer goal, and Codex's title, which is a prompt because
-Codex writes no generated title. And `GET /api/observe` already writes prompt-derived text to disk
-as a sidecar under `~/.cargento/observer/`, redacted on the way in and written owner-only. Prompt
+asymmetry was doing no work. The dashboard already publishes prompt text. Published text below owns
+the enumeration, and the carriers that reach the page raw are these seven: `title`, `last_prompt`,
+`state_detail`, `tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and
+`subagents[].parent`. More reaches the page through `records.safe_text`, including the observer's
+derived goal and Codex's `title`, which is a prompt because Codex writes no generated title. And
+`GET /api/observe` already writes prompt-derived text to disk as a sidecar under
+`~/.cargento/observer/`, redacted on the way in and written owner-only. Prompt
 text on disk in Cargento's own state was therefore already a shipped pattern with a review behind
 it, and the history store was the one place holding a harder line than the surface it records.
 
@@ -1138,7 +1141,10 @@ tool Cargento owns rather than one it observed, and The ask lane states its boun
   nothing.
 - `transcripts.codex_plan` reads Codex's `update_plan` payload, in both shapes Codex writes: the
   `arguments` of a `function_call` and the `input` of a `custom_tool_call`. What is kept is the plan
-  steps and their statuses.
+  steps and their statuses, bounded at `transcripts.CODEX_PLAN_MAX_STEPS` steps, 64, with each
+  step's text through `records.safe_text` and bounded at `transcripts.CODEX_PLAN_STEP_CAP_CHARS`,
+  160 characters. Codex caps its own plan well below both, and the record is untrusted input, so the
+  bound is against a malformed one rather than against ordinary use.
 
 Nothing else in the runtime reads a tool call's input. That is a claim about a set rather than a
 sentiment, so it is worth saying how it was established: three expressions in `cargento_runtime`
@@ -1411,12 +1417,20 @@ already accepts on loopback.
 ## Published text (credential redaction)
 
 A harness transcript records what the operator typed, verbatim, so if a key was ever pasted into a
-prompt the store holds it. The dashboard reads those stores and publishes prompt text: the session
-title, the line beneath it, `last_prompt`, the observer goal, and a Codex title, which is a prompt
-because Codex writes no generated title. A sweep of the local Claude store on the machine this was
-built on found seven distinct live Anthropic credentials in ordinary prompt history. Loopback is no
-help against it: the dashboard is what someone opens to show a colleague what their agents are doing,
-so the exposure is the screen and the screenshot.
+prompt the store holds it. The dashboard reads those stores and publishes prompt text. Named as
+fields rather than glossed, because a prose alias is a name no test can check, the carriers that
+reach the page raw are these seven: `title`, `last_prompt`, `state_detail`, `tasks[].subject`,
+`tasks[].activeForm`, `subagents[].name` and `subagents[].parent`. Those are the two tables in
+`aggregate`, and the instruction line's own `text` passes the same sweep beside them. It is a list
+of carriers rather than a list of every published string that could hold what the operator typed:
+more prompt text reaches the page through `records.safe_text` on the way, including the observer's
+derived goal, the ask question and its options, and a Codex `title`, which is a prompt because Codex
+writes no generated title. Some of what those carriers hold came from a tool call's input rather
+than from a prompt directly: a Claude plan's first line, an `AskUserQuestion` question, and a Codex
+plan's steps, each under the bounds Irreversible actions states. A sweep of the local Claude store
+on the machine this was built on found seven distinct live Anthropic credentials in ordinary prompt
+history. Loopback is no help against it: the dashboard is what someone opens to show a colleague
+what their agents are doing, so the exposure is the screen and the screenshot.
 
 Credential-shaped runs are replaced before publication, in place, by a visible marker that keeps the
 prefix naming the kind: `sk-ant-…REDACTED`, `AKIA…REDACTED`, `ghp_…REDACTED`. The words around it
