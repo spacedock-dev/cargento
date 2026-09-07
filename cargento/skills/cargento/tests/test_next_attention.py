@@ -940,7 +940,21 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         self.assertEqual([], eta_only_model["close"])
         self.assertEqual(1, model["healthy"]["moving"])
         self.assertEqual(1, model["healthy"]["quiet"])
+        # `"other"` above is fabricated, and deliberately so. No collector can
+        # publish it: the only `session_state =` assignments in the runtime are
+        # "needs_input" and "working", aggregate.py's _STATE_RANK admits those
+        # two plus "idle", and sessions.py publishes "idle" directly. So this
+        # asserts the ARITHMETIC — that moving, quiet and unknown partition the
+        # healthy set exactly — and not that a third state is reachable. It is
+        # kept because the brief's two clauses now have to sum to sessionCount,
+        # and unknown is the residue that keeps them summing if the vocabulary
+        # ever widens. Read this as a partition oracle, not as evidence of a
+        # state anything emits.
         self.assertEqual(1, model["healthy"]["unknown"])
+        self.assertEqual(
+            len(model["healthy"]["sessions"]),
+            model["healthy"]["moving"] + model["healthy"]["quiet"] + model["healthy"]["unknown"],
+        )
 
     def test_discovered_harness_capabilities_bound_coverage_and_failures(self) -> None:
         agy_payload = {
@@ -1604,6 +1618,130 @@ nextData = {
 nextAttention = nextAttentionModel(nextData);
 nextRoute = {view: "attention", project: null, session: null};
 """
+
+    def test_the_brief_does_not_say_nothing_is_moving_while_two_sessions_work(self) -> None:
+        # The reachable half of the mismatch, and the repository's own everyday
+        # shape. Two agents in ONE project become a single `collision` subject,
+        # which makes both sessions `represented`, which excludes them from
+        # `healthy` — and `moving` counts healthy sessions only. So the line read
+        # `0 moving` with two agents actively working, six numbers totalling 1
+        # against 2 sessions, and nothing on screen said what the numbers were of.
+        out = self._run_page_js(
+            """
+__els.app = {innerHTML: ""};
+nextData = {
+  generated: 10000,
+  sessions: [0, 1].map(index => ({
+    harness: "claude", sid: `owner-${index}`, project: "acme/api", state: "working"
+  })),
+  asks: []
+};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "attention", project: null, session: null};
+renderNext();
+console.log(JSON.stringify({
+  html: __els.app.innerHTML,
+  sessionCount: nextAttention.sessionCount,
+  counts: nextAttention.counts
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(2, out["sessionCount"])
+        self.assertEqual(0, out["counts"]["moving"])
+        # The model is right; the sentence was not. What the reader must not be
+        # told is that nothing is moving.
+        self.assertNotIn("0 moving", out["html"])
+        # And the subject clause must carry its own denominator, the way the
+        # fleet strip's coverage line does (next-sessions.js:99-104).
+        self.assertIn("across 2 of 2 sessions", out["html"])
+
+    def test_an_empty_payload_does_not_get_a_line_of_zeroes(self) -> None:
+        # Found on a real board during the after-walk, and introduced by the
+        # change above: the two-clause sentence is longer than the six numbers it
+        # replaced, so on an empty payload it read "0 subjects across 0 of 0
+        # sessions: 0 need you · 0 at risk · ..." directly above the notice that
+        # already says there is nothing. The notice is the better sentence, so
+        # the brief stands down rather than competing with it.
+        out = self._run_page_js(
+            """
+__els.app = {innerHTML: ""};
+nextData = {generated: 10000, sessions: [], asks: [], window_hours: 6};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "attention", project: null, session: null};
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("No sessions in this 6h payload", out["html"])
+        self.assertNotIn("0 need you", out["html"])
+        self.assertNotIn("of 0 sessions", out["html"])
+        # The label goes with it; an OBSERVED NOW with nothing after it is worse.
+        self.assertNotIn("OBSERVED NOW", out["html"])
+
+    def test_the_brief_accounts_for_every_session_in_stated_units(self) -> None:
+        # Payload (D): two colliding, one working, one idle. Six numbers totalled
+        # 3 against 4 sessions, because four of them count SUBJECTS and two count
+        # SESSIONS. Both halves now name their denominator, so the two add up.
+        out = self._run_page_js(
+            """
+__els.app = {innerHTML: ""};
+nextData = {
+  generated: 10000,
+  sessions: [
+    {harness: "claude", sid: "a", project: "acme/api", state: "working"},
+    {harness: "claude", sid: "b", project: "acme/api", state: "working"},
+    {harness: "claude", sid: "c", project: "acme/web", state: "working"},
+    {harness: "claude", sid: "d", project: "acme/ops", state: "idle"}
+  ],
+  asks: []
+};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "attention", project: null, session: null};
+renderNext();
+console.log(JSON.stringify({
+  html: __els.app.innerHTML,
+  sessionCount: nextAttention.sessionCount,
+  healthy: nextAttention.healthy.sessions.length
+}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertEqual(4, out["sessionCount"])
+        self.assertEqual(2, out["healthy"])
+        self.assertIn("across 2 of 4 sessions", out["html"])
+        self.assertIn("The other 2 sessions", out["html"])
+
+    def test_the_project_row_names_the_unit_of_its_subject_counts(self) -> None:
+        # The same two units, in a milder form: here `working` and `quiet` count
+        # ALL of the project's sessions rather than only unrepresented ones, so
+        # no number is wrong. But `risk` and `close` are still subject counts
+        # sitting unlabelled in a list that opens with a session total, so
+        # "2 sessions · 1 at risk · 2 working" invites the reader to subtract.
+        out = self._run_page_js(
+            """
+__els.app = {innerHTML: ""};
+nextData = {
+  generated: 10000,
+  sessions: [0, 1].map(index => ({
+    harness: "claude", sid: `owner-${index}`, project: "acme/api",
+    state: "working", active: true, last_activity: 9999
+  })),
+  asks: []
+};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "projects", project: null, session: null};
+renderNext();
+console.log(JSON.stringify({html: __els.app.innerHTML}));
+"""
+        )
+        assert isinstance(out, dict)
+        self.assertIn("2 sessions", out["html"])
+        self.assertIn("2 working", out["html"])
+        # The collision is one subject over two sessions. Say so.
+        self.assertIn("1 subject at risk", out["html"])
+        self.assertNotIn(">1 at risk<", out["html"])
 
     def test_a_section_the_reader_expanded_is_still_expanded_after_a_render(self) -> None:
         # The pair above hands the view a set; this one earns the set from a

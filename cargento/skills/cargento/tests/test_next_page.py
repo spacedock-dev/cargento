@@ -516,16 +516,16 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "de523a2adbc7cfb5ff949cce205c71ee0c2ec0b9eaba2329722fa92f9b6220f6",
             ),
             "next-attention.js": (
-                51_563,
-                "94db5d566d6eaf139907c802e6d6fbfeec98747d272c273beb029c3f5ab48a16",
+                53_569,
+                "457e1ead9a9389d71b0700e834b370c890b592f4627c8d8f1a0e00880335336e",
             ),
             "next-notify.js": (
                 3_642,
                 "3310256e0548294dfc93ba1bffb8bc59b57b40c57fa3ce8973e2cb634bec02f8",
             ),
             "next-chrome.js": (
-                32_122,
-                "032156d772b7fc15cf9d764b74c09028a9515757b6d0cff11c4612e7f446247b",
+                34_736,
+                "f73c4195ffcc6f7c40375af14e5855a8824299ff6df2b844deeb9ae2c32fa61a",
             ),
             "next-capacity.js": (
                 30_472,
@@ -536,8 +536,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "a13e0c6fbb8f1be389c99285524572ecfe5056cbec56db4e792486d9c4715fb5",
             ),
             "next-projects.js": (
-                10_277,
-                "031c077b56a4115b59b064967d6e751bc3f8a475e4633f1b7ffebe5d24e76174",
+                11_161,
+                "7062b3105eba50abe98d7af62321950a4b961ed762dda4c6a792d85d25abce3f",
             ),
             "next-project.js": (
                 8_512,
@@ -548,8 +548,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "6ef68e1321e586622a8543527f3a3bce56176d2efaa87553e8360dae82ad0a61",
             ),
             "next-session.js": (
-                19_051,
-                "58b14f9ab0f0496dd299da2fd1505db7de19c29f4931573b681448731259334f",
+                19_102,
+                "b94b3696c6bbd0a6c46c72d34ae8156491a165611f65ba510e93a3d97190776a",
             ),
             "next-workstream.js": (
                 17_492,
@@ -560,8 +560,8 @@ class NextPageAssetContractTest(unittest.TestCase):
                 "e526ce96d25ef9c6347d6cbac903aa4c0da9b6399ecdbe0056ce3c119dcc9fdb",
             ),
             "next-controls.js": (
-                6_768,
-                "fb1f51b940a9e29122a6b689beb6ec6c31fe71652c45bc2dffa32f8250084018",
+                10_774,
+                "7daa12d483458ad42b1196ce206eb55f44bb2dbd8523327e1b84c33dae929681",
             ),
             "next-render.js": (
                 3_028,
@@ -587,9 +587,9 @@ class NextPageAssetContractTest(unittest.TestCase):
         )
 
         assembled = frontend_page.load_page()
-        self.assertEqual(410_246, len(assembled))
+        self.assertEqual(419_807, len(assembled))
         self.assertEqual(
-            "30a0548fe54a1365487ab440e6d11e43725aa634d39690a2392ed6443aa71307",
+            "25e4cefb6a02d8892b90b92d2fa6bcd52b1fa33c022c700b454c2069599756a5",
             hashlib.sha256(assembled).hexdigest(),
         )
 

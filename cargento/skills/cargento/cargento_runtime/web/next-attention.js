@@ -1003,7 +1003,8 @@ function nextAttentionCoverageHtml(model, openDisclosures){
     `<p><span class="next-attention-brief-label">COVERAGE</span>${esc(visible)}</p>` +
     '<details class="next-attention-coverage-details"' +
     `${nextDisclosureAttr("attention-coverage", openDisclosures)}>` +
-    '<summary data-next-disclosure="attention-coverage">Coverage details</summary>' +
+    '<summary data-next-disclosure="attention-coverage" ' +
+    'data-next-focus="attention-coverage">Coverage details</summary>' +
     `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}${ends}` +
     nextAttentionTerminalCoverage(model) +
     '<p>Termination cause not reported.</p></details></div>';
@@ -1050,17 +1051,48 @@ function nextAttentionHealthyHtml(model){
 
 function nextAttentionView(model, expandedSections = new Set(), openDisclosures = new Set()){
   const counts = model.counts;
-  const observed = [
-    `${counts.needs} need you`, `${counts.risk} at risk`, `${counts.close} close the loop`,
-    `${counts.next} coming next`, `${counts.moving} moving`, `${counts.quiet} quiet`,
+  /* Two clauses, because there are two units and one sentence could not hold
+     both. `needs`, `risk`, `close` and `next` count SUBJECTS, which group
+     sessions: two agents in one project are a single `collision`, which is the
+     point of a subject. `moving` and `quiet` count SESSIONS, and only the ones
+     no subject already represents. Joined into one list they read as six
+     comparable numbers, and on the repository's own everyday shape the result
+     was "0 moving" beside two agents actively working. Each clause now names
+     its own denominator, the way the fleet strip's coverage line does. */
+  const subjectTotal = counts.needs + counts.risk + counts.close + counts.next;
+  const grouped = model.sessionCount - model.healthy.sessions.length;
+  const subjects = [
+    `${counts.needs} need you`, `${counts.risk} at risk`,
+    `${counts.close} close the loop`, `${counts.next} coming next`,
   ].join(" · ");
+  const rest = [`${counts.moving} moving`, `${counts.quiet} quiet`]
+    /* Included only when non-zero, and it is the arithmetic residue rather than
+       a state any collector publishes: the vocabulary is closed to needs_input,
+       working and idle. It is here so the two clauses sum to sessionCount even
+       if that ever stops being true, which is the property the old line lacked. */
+    .concat(counts.unknown ? [`${counts.unknown} in no counted state`] : [])
+    .join(" · ");
+  const observed = `${subjectTotal} subject${subjectTotal === 1 ? "" : "s"} ` +
+    `across ${grouped} of ${model.sessionCount} session${model.sessionCount === 1 ? "" : "s"}: ` +
+    subjects +
+    (model.healthy.sessions.length
+      ? ` · The other ${model.healthy.sessions.length} ` +
+        `session${model.healthy.sessions.length === 1 ? "" : "s"}: ${rest}`
+      : "");
   const empty = model.sessionCount === 0
     ? `<p class="next-attention-empty">No sessions in this ` +
       `${model.windowHours == null ? "payload" : `${esc(model.windowHours)}h payload`}</p>`
     : "";
+  /* No brief on an empty payload. The two clauses are a longer sentence than the
+     six numbers they replaced, and on nothing at all they read as "0 subjects
+     across 0 of 0 sessions: 0 need you · ..." directly above a notice that
+     already says there is nothing. The notice is the better sentence. */
+  const brief = model.sessionCount === 0
+    ? ""
+    : `<p><span class="next-attention-brief-label">OBSERVED NOW</span>${observed}</p>`;
   return '<section class="next-attention" data-next-view-body="attention"><h1 tabindex="-1">' +
     "Attention</h1><div class=\"next-attention-brief\">" +
-    `<p><span class="next-attention-brief-label">OBSERVED NOW</span>${observed}</p>` +
+    brief +
     `${nextAttentionCoverageHtml(model, openDisclosures)}</div>${empty}` +
     nextAttentionSectionHtml("needs", "NEEDS YOU NOW", model.needs, model, expandedSections) +
     nextAttentionSectionHtml("risk", "AT RISK", model.risk, model, expandedSections) +

@@ -1276,10 +1276,86 @@ __els.app = {
                     "[data-next-attention-toggle]",
                     "[data-next-attention-section]",
                     ".next-attention h1",
+                    # One entry for every named control, rather than a new one
+                    # per rescue. The key it compares comes off the dataset.
+                    "[data-next-focus]",
+                    # Read before the render discards it, same discipline.
+                    "[data-next-draft]",
                 }
                 for selector in out["selectors"]
             )
         )
+
+    def test_focus_on_a_disclosure_summary_survives_a_render(self) -> None:
+        # The fourth and last container the render used to drop. #288 kept the
+        # <details> OPEN across a render but not the focus on its summary, and
+        # avoided introducing the loss at click time only by declining to
+        # re-render in that handler. An interval render still displaced it, and
+        # the live lane fires one whenever anything on the machine moves.
+        out = self._run_page_js(
+            """
+nextData = {generated: 1000, sessions: [], asks: []};
+nextAttention = nextAttentionModel(nextData);
+document.activeElement = {focusKey: "attention-coverage"};
+renderNext();
+console.log(JSON.stringify({focusCalls: __focusCalls, selectors: __selectors}));
+""",
+            """
+let __focusCalls = [];
+let __selectors = [];
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    __selectors.push(selector);
+    if(selector === "[data-next-focus]") return ["attention-coverage", "session-source-coverage"].map(id => ({
+      dataset: {nextFocus: id},
+      contains(active){ return active && active.focusKey === id; },
+      focus(){ __focusCalls.push(`focus:${id}`); document.activeElement = this; }
+    }));
+    return [];
+  },
+  querySelector(){ return null; }
+};
+""",
+        )
+        self.assertEqual(["focus:attention-coverage"], out["focusCalls"])
+        # One fixed selector for every family, compared against a dataset. The
+        # allowlist test above is what stops this becoming a fifth bespoke lane.
+        self.assertIn("[data-next-focus]", out["selectors"])
+
+    def test_the_generic_focus_lane_never_interpolates_the_key(self) -> None:
+        # Same proof the row-control lane carries: a hostile identity must reach
+        # a dataset comparison and never a querySelectorAll argument.
+        hostile = 'attention"] , [data-next-route] "'
+        out = self._run_page_js(
+            """
+nextData = {generated: 1000, sessions: [], asks: []};
+nextAttention = nextAttentionModel(nextData);
+document.activeElement = {focusKey: __hostile};
+renderNext();
+console.log(JSON.stringify({focusCalls: __focusCalls, selectors: __selectors}));
+""",
+            """
+const __hostile = __HOSTILE__;
+let __focusCalls = [];
+let __selectors = [];
+__els.app = {
+  innerHTML: "",
+  querySelectorAll(selector){
+    __selectors.push(selector);
+    if(selector === "[data-next-focus]") return [{
+      dataset: {nextFocus: __hostile},
+      contains(active){ return active && active.focusKey === __hostile; },
+      focus(){ __focusCalls.push("focus:hostile"); document.activeElement = this; }
+    }];
+    return [];
+  },
+  querySelector(){ return null; }
+};
+""".replace("__HOSTILE__", json.dumps(hostile)),
+        )
+        self.assertEqual(["focus:hostile"], out["focusCalls"])
+        self.assertNotIn(hostile, "".join(out["selectors"]))
 
     def test_focused_session_row_survives_refresh(self) -> None:
         out = self._run_page_js(
