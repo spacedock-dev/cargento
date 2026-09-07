@@ -150,6 +150,22 @@ The probe is exactly this command, or there is no probe:
 
     git -c core.fsmonitor= -c core.hooksPath=/dev/null --no-optional-locks status --porcelain
 
+Two things about how it is spawned are part of the boundary rather than details of it.
+
+**The executable is resolved, not looked up by the child.** `git` above is the name the contract
+prints; what runs is an absolute path resolved once against a PATH the probe controls. Measured
+2026-09-07: with the bare name, any empty or relative element ahead of the first element holding a
+real `git` supplied the binary instead, and it resolved from the session's own directory, which is
+the one directory whose contents must not be trusted to supply a program. The rule is order rather
+than position: a leading `.`, a leading empty element, an interior empty element and an interior `.`
+all hijacked, and trailing forms did not. Empty and relative elements are now dropped rather than
+reordered, and a PATH holding nothing else publishes no reading at all rather than falling back.
+
+**The child's environment is scrubbed of `GIT_DIR` and `GIT_WORK_TREE`.** Either one points git at a
+different repository entirely. Measured the same day: a probe of a clean repository published a
+dirty reading belonging to another one, and a directory that is not a repository at all published it
+too, so the check that the path is a directory does not help.
+
 The mechanism is subprocess execution rather than a file open. That is what separates this feature from
 every other read Cargento performs, and all three flags are load-bearing. The first two were measured
 2026-08-28 at git 2.55.0 across four fresh repositories, one probe each, from an identical racy-clean
@@ -241,8 +257,10 @@ git command runs at all, and both fields stay `null`.
 
 A violation of any boundary in this section is a security bug: a git command other than the one
 above, any of the three flags dropped, a read of file contents or diffs or branch state, a pathname
-reaching a response, a probe on any edge but session end, a probe while the feature is off, or any
-write inside the user's repository that Cargento's own argv could have prevented.
+reaching a response, a probe on any edge but session end, a probe while the feature is off, an
+executable taken from anywhere but the resolved absolute path, a reading published about any
+directory but the one it names, or any write inside the user's repository that Cargento's own argv
+could have prevented.
 
 That last clause is narrower than it was, and the narrowing is the residual above rather than a
 relaxation. A filter driver the inspected repository configured for itself may write where it
