@@ -425,7 +425,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    #    The per-file loop keeps the filename in the output; piping every doc through one sed
    #    would report a line number with nothing to open.
    if for f in $(git ls-files -- README.md HOW_TO_USE.md CONTRIBUTING.md COMPATIBILITY.md \
-        SECURITY.md 'docs/design-*.md' 'docs/plans/*.md'); do
+        SECURITY.md docs/promise-map.md 'docs/design-*.md' 'docs/plans/*.md'); do
         sed 's/`[^`]*`//g' "$f" | grep -n '—\|–\|[“”‘’]' | sed "s|^|$f:|"
       done | grep .; then
      echo "TONE DRIFT: reapply Voice and tone to the files listed above"

@@ -151,6 +151,23 @@ class CargentoServerTest(RuntimeTestCase):
                 403,
                 "framed by another site",
             ),
+            # Served, and that is the hole the `frame-ancestors` header covers
+            # rather than this gate: every port on this machine is the *same
+            # site*, so a page on another local port frames the board with a
+            # `same-site` label that never reaches the cross-site branch, and a
+            # frame navigation carries no `Origin` for the check below it. The
+            # request is answered; the browser is what refuses to render it.
+            (
+                "GET",
+                "/",
+                {
+                    "Sec-Fetch-Site": "same-site",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Dest": "iframe",
+                },
+                200,
+                "framed from another local port",
+            ),
             (
                 "GET",
                 "/api/data",
@@ -180,6 +197,48 @@ class CargentoServerTest(RuntimeTestCase):
                     conn.request(method, path, body=body, headers=headers)
                     response = conn.getresponse()
                     self.assertEqual(expected, response.status)
+                    response.read()
+                    conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+
+    def test_every_sent_response_forbids_being_framed(self) -> None:
+        # The request gate cannot close this: the case above is answered 200,
+        # and the served document carries the focus capability, so a framed
+        # board is one lured click from raising a terminal. The header is the
+        # whole defense, and it has to be a header — CSP ignores
+        # `frame-ancestors` delivered in a `<meta http-equiv>`, and no version
+        # of `X-Frame-Options` was ever honoured in one.
+        httpd = make_server()
+        thread = threading.Thread(target=poll_fast(httpd), daemon=True)
+        thread.start()
+        try:
+            # A POST among them, and that is the case this loop was missing.
+            # The header is unconditional today, but wrapping the `send_header`
+            # in `if self.command == "GET":` was applied in a scratch copy and
+            # the whole suite stayed green while every POST reply -- answer,
+            # notify, ask, focus, events, shutdown -- lost it over the socket.
+            for method, path, body in (
+                ("GET", "/", None),
+                ("GET", "/api/data", None),
+                ("POST", "/api/notify", b"{}"),
+            ):
+                with self.subTest(path=path, method=method):
+                    conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+                    conn.request(method, path, body=body, headers={"Sec-Fetch-Site": "same-origin"})
+                    response = conn.getresponse()
+                    self.assertEqual(200, response.status)
+                    # Equality, not a substring: `frame-ancestors` has no
+                    # fallback to `default-src`, so it is the one directive that
+                    # can ride here without restricting anything else. A second
+                    # one added to this policy blanks the page, and this is what
+                    # says so before it ships.
+                    self.assertEqual(
+                        "frame-ancestors 'none'",
+                        response.getheader("Content-Security-Policy"),
+                    )
                     response.read()
                     conn.close()
         finally:

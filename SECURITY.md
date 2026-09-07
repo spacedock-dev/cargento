@@ -269,7 +269,7 @@ the macOS cases do, by being run and recorded.
 
 **Not a named case means no target is recorded there, and that is enforced where the target is
 stored rather than left to the raise to discover.** The device grammar below anchors `/dev/` and
-admits no separator after it, so it refuses `/dev/pts/N` — which is the client device of every
+admits no separator after it, so it refuses `/dev/pts/N`, which is the client device of every
 terminal emulator, every ssh session and every mux-inside-mux client on Linux and the BSDs. A run
 that recorded targets there would publish a focusable control for the ordinary Linux case and spend
 two subprocesses answering false every time it was clicked, which is precisely what "A session
@@ -360,10 +360,10 @@ leaving a reader to discover it.
 
 **The rule is decided on one command and enforced by the next, and the gap between them is named
 rather than narrowed.** `list-clients` answers, the count is decided, and `switch-client` is spawned
-about six milliseconds later — measured at a 6.1 ms median and a 7.4 ms maximum over ten runs, that
+about six milliseconds later: measured at a 6.1 ms median and a 7.4 ms maximum over ten runs, that
 being server-side client spawn rather than the 0.05 ms of Python between them. A client attaching
 inside that window is raised anyway. tmux offers no conditional switch, and closing the gap would
-mean a fourth command — a server-side `if-shell -F '#{session_attached}'` — which the "a command
+mean a fourth command (a server-side `if-shell -F '#{session_attached}'`), which the "a command
 other than one of the named cases" clause forbids outright. So the bound is stated the way the
 `core.fsmonitor` hazard and the Apple Event arm each are, and the violation clause below measures
 what the lookup reported rather than a state of the world this feature cannot hold still. The worst
@@ -413,18 +413,18 @@ The first names the session and the server, and an earlier draft claimed less ca
 "proves the pane still exists". It proves that *a* pane with that id exists in whatever server holds
 that socket name now, which is not the same pane. **A pane id is an ordinal on one tmux server, not
 a name.** Kill the server, start another on the same socket name, and `%3` is somebody else's pane
-in somebody else's session — reproduced on tmux 3.7c, where the second generation re-issued `%0`
+in somebody else's session: reproduced on tmux 3.7c, where the second generation re-issued `%0`
 upward and a raise on the stale target moved an attached client onto an unrelated window and
 reported success. That is the misdirected raise Known and accepted names, arrived at without any
 lookup failing. So the pid the server reports is compared against the pid that reported the pane,
 and a mismatch is a decline. It costs no extra command, and it is also what makes a socket name that
-resolves on a *different* server of the same user — the hook and the daemon need not share a
-`TMUX_TMPDIR` — a decline rather than a raise on that server's pane.
+resolves on a *different* server of the same user (the hook and the daemon need not share a
+`TMUX_TMPDIR`) a decline rather than a raise on that server's pane.
 
 The second is what the two decline rules are decided on: no client attached is nobody to raise for,
 and more than one is the shared session this document refuses. **It is counted by lines, not by
-values.** `list-clients` prints one line per attached client, and a control-mode client — a
-`tmux -C attach`, which is what another agent driving the same session looks like — reports an empty
+values.** `list-clients` prints one line per attached client, and a control-mode client (a
+`tmux -C attach`, which is what another agent driving the same session looks like) reports an empty
 `#{client_tty}`. A reader that dropped empty lines would count two attached clients as one and raise,
 which is the shared-session case this document refuses outright. A client the device grammar cannot
 name is then a separate decline, decided after the count, so such a client is refused rather than
@@ -486,7 +486,7 @@ harness with a 404 before consulting the capability, because a harness name is p
 is not.** So here the capability is checked first, then the ceiling, and the session is looked up
 last: to a caller without the token a live session and one that never existed are byte-identical
 403s, and the route is not an oracle for which sessions the board holds. The focus route emits no
-404 on any path — an unsupported session is the same 200 `{"focused": false}` as any other
+404 on any path: an unsupported session is the same 200 `{"focused": false}` as any other
 unfocusable one, and the feature being off is a 503 rather than a 404 because it is a run-wide fact
 that leaks nothing about any session, where a 404 would read as a build too old to have the route.
 
@@ -498,7 +498,7 @@ precedes the raise, which is what "cannot repeat the raise" asks for.
 
 ### What is published, and what is written to disk
 
-The response is a single boolean saying whether a focus happened — true only when the raise command
+The response is a single boolean saying whether a focus happened: true only when the raise command
 itself exited zero, and false alike for a raise that was attempted and failed and for one that was
 never attempted at all, so a declined lookup and an unknown session are indistinguishable from a
 failed command. No target identifier, no pathname and no window title is echoed. Nothing is written to disk by this feature, and nothing
@@ -1000,7 +1000,7 @@ somebody other than you. There is nothing to authenticate with on seven of them,
 ask-lane paragraph below gives: the page is served as fixed bytes with no per-run secret in them.
 Two carry a capability and they are not worth the same. `POST /api/events/<harness>` takes a per-run
 token published only in the state file at mode `0600` and never served to the page, so a client
-holding only the board cannot post events at all — that boundary survives a non-default bind intact,
+holding only the board cannot post events at all; that boundary survives a non-default bind intact,
 and Event ingress below is where it is stated. `POST /api/focus`'s capability buys less: the token is
 injected into the served document, so anything that can load the board under a non-default bind can
 also ask for a raise, and `/api/data` names which rows would answer it. What that second gate
@@ -1020,6 +1020,33 @@ Origin checks defeat browser-based DNS rebinding, but they do not defeat a local
 matters more on a shared Linux host than on a personal laptop. Please report a *bypass* of the checks
 that do exist. The absence of per-user isolation is documented here rather than treated as a new
 finding.
+
+A browser will not frame the board, and the header that stops it is narrower than it looks. Every
+response the server composes carries `Content-Security-Policy: frame-ancestors 'none'`, with the
+three exceptions named below, because the request gate does not close framing on its own: every port
+on this machine is the same site, so a page served from another local port frames the board under a
+`same-site` label that never reaches the cross-site check, and a frame navigation carries no `Origin`
+for the check below it. That is worth closing because the served document holds the focus capability,
+so a framed board is one lured click from raising a terminal, and `/api/data` names which rows would
+answer. The attack it stops is blind: the framer cannot read the frame, since a fetch from another
+local port carries an `Origin` and is refused, and no `Access-Control-Allow-Origin` is ever sent, so
+the framer must guess that a question is outstanding and where its control landed.
+
+What the header does not buy is the local-process exposure above. A local process the attacker
+controls can open a socket to the port carrying no `Origin` and no `Sec-Fetch` headers at all, pass
+every check, and answer or raise directly. `frame-ancestors` is not a defense against that attacker
+and does not narrow what this section already accepts. The one case it does defend is a loopback page
+whose process the attacker does not control: a stored cross-site scripting flaw, or an
+HTML-rendering endpoint, in some other local development server the operator already runs. It is
+delivered as a header rather than in the document because CSP ignores `frame-ancestors` in a
+`<meta http-equiv>`, and it is the only directive in that policy because `frame-ancestors` has no
+fallback to `default-src`, so it restricts framing and nothing else. Three responses are outside it,
+deliberately, and none of them is a page: `/api/stream` writes its own headers and an event stream
+has nothing to click; a `send_error` body is the standard library's error template, which carries no
+control and no capability; and the `204` a poll of `/api/ask/<id>` returns while no answer has
+arrived carries no body at all, so a frame navigated to it renders nothing. That last one is
+reachable from a frame on the same terms the board is, because the route takes the plain local check,
+and it is counted here for that reason rather than because it exposes anything.
 
 Event ingress is the exception, and it is narrow. `POST /api/events/<harness>` requires a per-run
 capability, because a general lifecycle overlay is more powerful than the side state `/api/notify`
