@@ -63,13 +63,17 @@ bug green.
 This is the correction that reframed the decision, and it is the most useful fact in this file.
 
 `tests/test_harness_registry.py` derives gate coverage from two routes: a collector that names
-`needs_input` in its own module, or a harness in `EVENTS_BY_HARNESS` mapping `input_requested`.
-Declaring `reports_needs_input=True` for a harness with neither turns the suite red.
+`needs_input` in its own module, or an adapter mapping `input_requested`. Declaring
+`reports_needs_input=True` for a harness with neither turns the suite red. When this was written the
+adapter route read `EVENTS_BY_HARNESS` and nothing else.
 
 But the **server** admits on neither. `events.py` refuses any harness absent from
 `IDENTITY_NORMALIZERS`, and states the policy in place: one normalizer per harness whose adapter has
 shipped, because the design requires the identity mapping to be established per harness before its
-adapter ships.
+adapter ships. The two tables differ by exactly one key today, and that key is `antigravity`:
+`EVENTS_BY_HARNESS` holds Claude, Codex and Gemini, `IDENTITY_NORMALIZERS` holds those three plus
+Antigravity. One key is the whole of the divergence, and it is the harness whose adapters are not
+hook-shaped.
 
 So an adapter POSTing to `/api/events/<harness>` is refused today whatever language it is written
 in, and however the test oracle is widened. **Every new adapter therefore requires a Python edit to
@@ -77,10 +81,30 @@ in, and however the test oracle is widened. **Every new adapter therefore requir
 `reports_needs_input=True` for a harness with no route fails three tests, not one, and the third is
 a prose count in a docstring.
 
-That the coverage oracle checks a different table from the one the server admits on is a defect in
-its own right, tracked as Linear DRC-4440. A-1 makes it reachable rather than masked, because a
-truthful `input_requested` mapping from an adapter that is not hook-shaped would now be refused by
-the server while the oracle reports the harness as covered.
+That the coverage oracle checked a different table from the one the server admits on was a defect in
+its own right, tracked as Linear DRC-4440 and **fixed**. The direction that mattered is the opposite
+of the one first written here, and the correction is worth keeping because the wrong one reads
+plausibly: it described the oracle reporting a harness as covered while the server refused it, which
+needs a harness inside `EVENTS_BY_HARNESS` and absent from `IDENTITY_NORMALIZERS`. No such harness
+exists, and reaching that state means adding an `EVENTS_BY_HARNESS` row for a harness that never
+invokes `event_hook.py`, which is exactly what A-1 forbids above.
+
+The reachable direction runs the other way. Antigravity is *admitted* by the server and ships two
+adapters outside `EVENTS_BY_HARNESS` (`agy_hook.py`, `statusline_hook.py`), so a truthful
+`input_requested` mapping in either was refused by the **oracle** while the server would have
+accepted the envelope. Measured by mutation: a truthful `"tool_use": "input_requested"` row in
+`statusline_hook.AGENT_STATES` plus `reports_needs_input=True` on the Antigravity spec turned three
+assertions red, one of them the derived oracle whose whole job is to *demand* the flag. With the fix
+in place the same mutation leaves two red, and they are the right two: the hand-written literal set,
+and the prose count in `HarnessSpec`'s docstring, which drops from "Six of the ten" to five. A real
+Antigravity gate build moves both by hand, and that is what they are for.
+
+The oracle now reads adapter source across both shapes (`EVENTS_BY_HARNESS` for the hook-shaped
+adapters, a module-level `HARNESS` plus its own map for the one-harness adapters) and intersects
+the result with `IDENTITY_NORMALIZERS`, which is authoritative for admission. So it now covers the
+unreachable direction as well, and neither table stands alone. It still reads Python, which is where
+A-1 leaves it: a gate mapped in a JavaScript adapter is invisible to it, recorded as a limit in the
+derivation's own docstring.
 
 ## A-3: four checks are blind to a non-Python adapter, and each is blind differently
 
