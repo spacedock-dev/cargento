@@ -140,6 +140,11 @@ function nextSessionCopyStatus(app){
   return status;
 }
 
+function nextCopyState(target, key, state){
+  if(target && target.dataset) target.dataset.nextCopyState = state;
+  nextRememberControlState(key, state);
+}
+
 // One copy lane for both controls. The re-entry command reuses the session-id
 // control's state attribute and its live region rather than bringing its own, so
 // a reader who has learned one control has learned the other; the only thing that
@@ -152,14 +157,20 @@ async function nextCopyToClipboard(target){
   const sid = String(dataset.nextCopySession || "");
   const value = command || sid;
   const status = nextSessionCopyStatus(document.getElementById("app"));
+  // Written to the element for the reader looking at it now, and to the module
+  // map for the render that is about to replace it (DRC-4392). The two controls
+  // share the lane and the live region but not the cue.
+  const key = nextControlStateKey(
+    command ? "command" : "copy", dataset.nextCopyHarness, sid,
+  );
   try{
     if(!value || typeof navigator === "undefined" || !navigator.clipboard ||
       typeof navigator.clipboard.writeText !== "function") throw new Error("clipboard unavailable");
     await navigator.clipboard.writeText(value);
-    target.dataset.nextCopyState = "copied";
+    nextCopyState(target, key, "copied");
     if(status) status.textContent = command ? `Copied ${command}` : `Copied session ID ${sid}`;
   }catch(_error){
-    target.dataset.nextCopyState = "failed";
+    nextCopyState(target, key, "failed");
     if(status){
       status.textContent = command
         ? "Re-entry command could not be copied"
@@ -190,6 +201,17 @@ function nextSessionRaiseStatus(app){
 // unknown session and a command that failed are the same false to a caller by
 // contract, so the false wording covers all three rather than picking one.
 //
+// The ceiling wording names neither arm, because the server refuses on two and
+// the page cannot tell which: `claim_focus` refuses while `_focus_inflight` is
+// set OR when the last raise landed inside `focus_floor_sec`, and
+// `release_focus` clears only the first. So a completed raise still holds the
+// floor. It is the arm the old wording did not name that fires in practice: a
+// raise is three tmux commands, and SECURITY.md measures a 6.1 ms median for the
+// gap between two of them, so the whole of it clears in tens of milliseconds and
+// a double-click lands inside the floor rather than inside the in-flight window
+// (DRC-4390). Neither is the floor named: its length is
+// `config.focus_floor_sec`'s to change.
+//
 // SENT and not RAISED. The boolean is the raise command's own exit status —
 // `focus.raise_terminal` returns `switch-client`'s return code, and SECURITY.md
 // says "true only when the raise command itself exited zero". DRC-4387 recorded a
@@ -201,15 +223,36 @@ const NEXT_RAISE_ANNOUNCEMENTS = new Map([
   ["sending", "Raise requested"],
   ["sent", "Raise sent; the terminal switched to this session. Its window may still be behind others."],
   ["declined", "No terminal was raised"],
-  ["throttled", "Raise refused: one is already in flight"],
+  ["throttled", "Raise refused: another raise was too recent. Try again in a moment."],
   ["failed", "Raise could not be sent"],
 ]);
 
 function nextRaiseState(target, state){
+  const dataset = target && target.dataset || {};
   if(target && target.dataset) target.dataset.nextRaiseState = state;
+  nextRememberControlState(
+    nextControlStateKey("raise", dataset.nextRaiseHarness, dataset.nextRaiseSession),
+    state,
+  );
   const status = nextSessionRaiseStatus(document.getElementById("app"));
   const message = NEXT_RAISE_ANNOUNCEMENTS.get(state);
   if(status && message) status.textContent = message;
+}
+
+// The controls already in the document when the click landed. The render
+// functions read the same flag, so a revision arriving mid-raise draws them
+// unavailable too; this is the arm no render covers, because a raise that
+// completes between two renders would otherwise show nothing at all.
+function nextRaiseControlsBusy(busy){
+  const app = document.getElementById("app");
+  if(!app || typeof app.querySelectorAll !== "function") return;
+  for(const control of app.querySelectorAll("[data-next-raise-session]")){
+    if(busy){
+      if(typeof control.setAttribute === "function") control.setAttribute("aria-disabled", "true");
+    }else if(typeof control.removeAttribute === "function"){
+      control.removeAttribute("aria-disabled");
+    }
+  }
 }
 
 // The copy lane's shape, one route further: a state attribute on the control and
@@ -223,9 +266,20 @@ async function nextRaiseTerminal(target){
   const capability = nextFocusCapability();
   // No capability is the feature off for this run, and no control renders then.
   // Reaching here means the document changed under the page, and a request that
-  // could only be refused is not one to send.
-  if(!sid || !harness || !capability || nextRaiseInFlight) return;
+  // could only be refused is not one to send — nor one to explain, because there
+  // is no control the reader can have clicked to explain it on.
+  if(!sid || !harness || !capability) return;
+  // Split from those three deliberately. This arm is a control that did render,
+  // that the reader did click, and that the page is refusing; silence there is
+  // indistinguishable from a dead button. Folding it into the guard above wrote a
+  // state on the no-capability path too, which is the regression the silent arm
+  // exists to prevent (DRC-4390).
+  if(nextRaiseInFlight){
+    nextRaiseState(target, "throttled");
+    return;
+  }
   nextRaiseInFlight = true;
+  nextRaiseControlsBusy(true);
   nextRaiseState(target, "sending");
   try{
     const response = await fetch("/api/focus", {
@@ -247,6 +301,7 @@ async function nextRaiseTerminal(target){
     nextRaiseState(target, "failed");
   }finally{
     nextRaiseInFlight = false;
+    nextRaiseControlsBusy(false);
   }
 }
 

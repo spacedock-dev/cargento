@@ -163,9 +163,21 @@ body{font-family:var(--sans);-webkit-font-smoothing:antialiased;text-rendering:o
 .next-session-raise{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;margin-top:8px;padding:4px 7px;border:1px solid var(--warn);border-radius:3px;background:var(--sunk);color:var(--warnink);font-family:var(--mono);font-size:var(--fs-2xs);cursor:pointer}
 .next-session-raise:hover{border-color:var(--warnink);color:var(--ink)}
 .next-session-raise:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.next-session-raise[data-next-raise-state="sending"]{color:var(--ink3)}
 .next-session-raise[data-next-raise-state="sent"]{border-color:var(--accent);color:var(--accent-ink)}
-.next-session-raise[data-next-raise-state="declined"],.next-session-raise[data-next-raise-state="throttled"],.next-session-raise[data-next-raise-state="failed"]{border-color:var(--line2);color:var(--ink2)}
+/* The raise was attempted and the daemon answered, and there is nothing more to
+   do from here: both drop to the quiet line. */
+.next-session-raise[data-next-raise-state="declined"],.next-session-raise[data-next-raise-state="failed"]{border-color:var(--line2);color:var(--ink2)}
+/* Refused before anything was attempted, and it says try again — so it keeps the
+   warn line rather than joining the two states above, which shared this rule and
+   drew "wait a second" as "nothing more to do here" (DRC-4390). */
+.next-session-raise[data-next-raise-state="throttled"]{border-color:var(--warn);color:var(--ink2)}
+/* Unavailable because a raise is in flight somewhere on the page, which is not
+   the same fact as a raise of this row's own coming back refused: it lands on
+   every RAISE at once and it lifts on its own. Flat and inert, and the cursor
+   carries it as well as the border does. Ordered before `sending` so the row that
+   is actually raising keeps its own look. */
+.next-session-raise[aria-disabled="true"]{border-color:var(--line2);background:transparent;color:var(--ink3);cursor:not-allowed}
+.next-session-raise[data-next-raise-state="sending"]{border-color:var(--warn);background:var(--sunk);color:var(--ink3);cursor:progress}
 /* On the SOURCE line the control sits beside running text rather than under a
    heading, so it loses the block margin and takes an inline one instead. */
 .next-attention-resume,.next-attention-raise{margin-top:0;margin-inline-start:8px;vertical-align:baseline}

@@ -102,10 +102,71 @@ function nextExactAskOwner(payload, ask){
   return matches.length === 1 ? matches[0] : null;
 }
 
+// What a row control last said, held outside the DOM. `renderNext` replaces
+// `#app` wholesale on every revision and on a bare interval — 20 s with an
+// EventSource, 5 s without — so a cue written onto the element died of a clock
+// rather than of anything the reader did, and asymmetrically: the live region is
+// a sibling of `#app` and survived, so the screen-reader cue outlived the
+// coloured one (DRC-4392). The render functions below re-emit from here.
+//
+// One map for all three controls, because they are one lane in every other
+// respect and three maps would be three places for the same expiry rule to
+// drift. The lane is part of the key: copying a session id is not proof the
+// re-entry command was copied.
+//
+// Stamped, because never expiring is the worse lie of the two. A row would read
+// SENT for the rest of the run, including after `ended_at` marks the session
+// over. 30 s is longer than the 20 s idle render (next-live.js's
+// NEXT_FALLBACK_POLL_MS), so the cue's life is not decided by when the next
+// render happens to land, and short enough that nobody reads it as a property of
+// the session.
+const NEXT_CONTROL_STATE_TTL_MS = 30_000;
+// Bounded like every other module-level map here. A board carries hundreds of
+// rows and a tab stays open for hours, so the clock drops what is stale and the
+// cap drops what is oldest rather than letting the map grow with the session.
+const NEXT_CONTROL_STATE_LIMIT = 32;
+const nextControlStates = new Map();
+
+function nextControlStateKey(lane, harness, sid){
+  return `${lane}\u0000${String(harness == null ? "" : harness)}` +
+    `\u0000${String(sid == null ? "" : sid)}`;
+}
+
+function nextRememberControlState(key, state){
+  // Deleted before set so the Map's insertion order stays recency order, which
+  // is what makes the first key the right one to evict.
+  nextControlStates.delete(key);
+  nextControlStates.set(key, {state, at: Date.now()});
+  while(nextControlStates.size > NEXT_CONTROL_STATE_LIMIT){
+    nextControlStates.delete(nextControlStates.keys().next().value);
+  }
+}
+
+function nextControlState(key){
+  const held = nextControlStates.get(key);
+  if(!held) return "";
+  if(Date.now() - held.at >= NEXT_CONTROL_STATE_TTL_MS){
+    nextControlStates.delete(key);
+    return "";
+  }
+  return held.state;
+}
+
+function nextControlStateAttr(attribute, lane, harness, sid){
+  const state = nextControlState(nextControlStateKey(lane, harness, sid));
+  return state ? ` ${attribute}="${esc(state)}"` : "";
+}
+
 function nextSessionCopyControl(session){
   const sid = String(session && session.sid || "").trim();
   if(!sid) return "";
+  // The harness rides the control because the cue is keyed on both, as every
+  // other session-keyed structure here is (`nextSessionKey`): a sid is unique
+  // within a harness and nowhere else.
+  const harness = String(session && session.harness || "");
   return `<button type="button" class="next-session-copy" data-next-copy-session="${esc(sid)}" ` +
+    `data-next-copy-harness="${esc(harness)}"` +
+    `${nextControlStateAttr("data-next-copy-state", "copy", harness, sid)} ` +
     `aria-label="Copy session ID ${esc(sid)}" title="${esc(sid)}">` +
     '<span aria-hidden="true">COPY ID</span></button>';
 }
@@ -158,8 +219,12 @@ function nextSessionResumeControl(session){
   // `title` carries the command as well as the clipboard does, which is the
   // fallback: a context with no `navigator.clipboard` still shows the reader what
   // to type. Same lane as the session-id control beside it, deliberately.
+  const sid = String(session && session.sid || "");
+  const harness = String(session && session.harness || "");
   return `<button type="button" class="next-session-copy next-attention-resume" ` +
-    `data-next-copy-command="${esc(command)}" ` +
+    `data-next-copy-command="${esc(command)}" data-next-copy-session="${esc(sid)}" ` +
+    `data-next-copy-harness="${esc(harness)}"` +
+    `${nextControlStateAttr("data-next-copy-state", "command", harness, sid)} ` +
     `aria-label="Copy re-entry command ${esc(command)}" title="${esc(command)}">` +
     '<span aria-hidden="true">COPY COMMAND</span></button>';
 }
@@ -209,8 +274,17 @@ function nextSessionRaiseControl(session){
   const sid = String(session.sid == null ? "" : session.sid).trim();
   const harness = String(session.harness == null ? "" : session.harness).trim();
   if(!sid || !harness || !nextFocusCapability()) return "";
+  // Every RAISE on the page, not the one that was clicked. The refusal is the
+  // daemon's — one `_focus_inflight` and one `_focus_last_at` for the whole
+  // process — and the page's own gate is one module-level flag, so painting the
+  // clicked row alone attributes a page-wide condition to whichever row was
+  // clicked while every other RAISE is equally unavailable and says nothing
+  // (DRC-4390). `aria-disabled` rather than `disabled`: the control keeps its
+  // place in the tab order, and the click still reaches the handler that says why.
+  const busy = nextRaiseInFlight ? ' aria-disabled="true"' : "";
   return '<button type="button" class="next-session-raise next-attention-raise" ' +
-    `data-next-raise-session="${esc(sid)}" data-next-raise-harness="${esc(harness)}" ` +
+    `data-next-raise-session="${esc(sid)}" data-next-raise-harness="${esc(harness)}"` +
+    `${nextControlStateAttr("data-next-raise-state", "raise", harness, sid)}${busy} ` +
     'aria-label="Raise the terminal this session is running in">' +
     '<span aria-hidden="true">RAISE</span></button>';
 }
