@@ -1776,9 +1776,10 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         self.assertIsNone(row["ended_at"])
 
     def test_a_harness_with_no_event_adapter_publishes_that_it_is_scan_only(self) -> None:
-        # DRC-4035 D4: six harnesses can never earn a stop, so their idle rows
-        # must say the answer is unknowable here rather than share the silence of
-        # a Claude row that simply has not finished.
+        # N-9 in `docs/design-needs-input.md`, "Letting a collector infer
+        # completion" (DRC-4035): six harnesses can never earn a stop, so their
+        # idle rows must say the answer is unknowable here rather than share the
+        # silence of a Claude row that simply has not finished.
         config, state = support.runtime()
 
         def collect_one(harness: str) -> Any:
