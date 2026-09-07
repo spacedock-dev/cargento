@@ -68,13 +68,18 @@ jobs:
           # already covers `docs/plans/x.md` at any depth — a second
           # `docs/*/*.md` alternative is dead and actionlint (SC2222) says so.
           #
-          # Prose that no test reads and no linter parses. SKILL.md is NOT here:
-          # tests/test_documentation.py asserts its store paths against
-          # config.resolve_store_roots.
+          # Prose that no test reads and no linter parses. Three root documents
+          # are NOT here, because tests/test_documentation.py opens all three by
+          # literal path: SKILL.md (its store paths against
+          # config.resolve_store_roots), SECURITY.md (whole sections pinned
+          # sentence by sentence, as the contract the code must still meet), and
+          # README.md (one clause read off the file to keep it agreeing with
+          # SECURITY.md's scope count). Listing any of them here skips the only
+          # job that runs that module.
           is_prose() {
             case "$1" in
-              README.md|HOW_TO_USE.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md) return 0 ;;
-              COMPATIBILITY.md|SECURITY.md|CODE_OF_CONDUCT.md) return 0 ;;
+              HOW_TO_USE.md|AGENTS.md|CLAUDE.md|CONTRIBUTING.md) return 0 ;;
+              COMPATIBILITY.md|CODE_OF_CONDUCT.md) return 0 ;;
               .github/PULL_REQUEST_TEMPLATE.md|.github/ISSUE_TEMPLATE/*) return 0 ;;
               # THIS file is code: it is the gate, and the only honest way to
               # know the gate still works is to run it. Every other workflow is
