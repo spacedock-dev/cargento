@@ -316,9 +316,17 @@ The cadence is not a bound on how many probes run at once, and that took a secon
 session at most once each still allowed 240 live probes per harness and 960 across the four event
 sources, because the event budget refills for the whole of a probe's ten seconds, and each one is a
 real `git status` in a real repository. So a session already being probed is refused a second probe,
-and the process holds at most 32 in flight across every harness. The accepted cost is that a refused
-probe leaves the reading the first one produced in place, which can be up to ten seconds old and
-stays until another session end arrives.
+and the process holds at most 32 in flight across every harness.
+
+The two gates cost different things, and only one of them costs a stale reading. A session refused
+because its own probe is already running keeps the reading that probe produces, which can be up to
+ten seconds old and stays until another session end arrives. A session refused by the ceiling
+publishes no reading at all: no first probe ran for it, releasing a slot re-dispatches nothing, and a
+session sends `session_ended` once
+([`docs/design-needs-input.md`](docs/design-needs-input.md#n-12-a-session-that-ended-and-one-waiting-for-you-both-said-idle)
+N-12), so that row stays null for the life of the process. Measured with the ceiling set to 2 and
+four distinct ends: with every in-flight probe drained, the two probed sessions read
+`dirty=True, changed=5`, both refused ones read null, and the dispatch count stayed at 2.
 
 The off switch is `--no-git`. The probe is on by default and that flag turns it off. It mirrors
 `--no-spacedock` at every one of that flag's sites, including the branch that forwards flags to a
