@@ -29,6 +29,7 @@ import subprocess
 import tempfile
 import time
 import tokenize
+import tracemalloc
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -124,11 +125,13 @@ _PROGRAM = re.compile(
 )
 
 
+_SKILL = Path(__file__).resolve().parent.parent
+
+
 def _shipped_sources() -> list[Path]:
     """The shipped Python the oracles below read: the package and its siblings."""
-    skill = Path(__file__).resolve().parent.parent
-    return sorted((skill / "cargento_runtime").rglob("*.py")) + [
-        skill / name for name in _SHIPPED_SIBLINGS
+    return sorted((_SKILL / "cargento_runtime").rglob("*.py")) + [
+        _SKILL / name for name in _SHIPPED_SIBLINGS
     ]
 
 
@@ -655,14 +658,25 @@ class SingleInvocationTest(unittest.TestCase):
     """
 
     def test_the_oracles_read_the_shipped_siblings_too(self) -> None:
-        # The widening is the load-bearing half of R14 and it can go vacuous
-        # silently: a renamed hook adapter would leave the glob reading the
-        # package alone again, which is the state in which `event_hook.py` — the
-        # file that runs inside a user's harness lifecycle — is unwatched.
-        names = {path.name for path in _shipped_sources()}
-        self.assertIn("git_status.py", names)
-        for sibling in _SHIPPED_SIBLINGS:
-            self.assertIn(sibling, names)
+        # The widening is the load-bearing half of R14, and the guard written for
+        # it could not see it go vacuous. `_shipped_sources` builds the sibling
+        # half FROM `_SHIPPED_SIBLINGS` with no existence check, so asserting the
+        # tuple's own names appear in that list compared a tuple against a set
+        # derived from the same tuple. Measured: the tuple emptied and
+        # `os.system("git status --porcelain")` planted in `event_hook.py` left
+        # this class at 6 tests OK with both oracles blind.
+        #
+        # So the expectation comes off the filesystem, through the same
+        # non-recursive glob `scripts/tests/test_validate_plugins.py` already pins
+        # `CARGENTO_RUNTIME_FILES` against. A hook adapter renamed, added or
+        # dropped fails here, and the two inventories agree by construction
+        # rather than by two people remembering the same list.
+        self.assertEqual(
+            sorted(path.name for path in _SKILL.glob("*.py")), sorted(_SHIPPED_SIBLINGS)
+        )
+        # The package half is an rglob and cannot go vacuous the same way, but an
+        # empty scan set would still pass every oracle below.
+        self.assertIn("git_status.py", {path.name for path in _shipped_sources()})
 
     def test_only_git_status_spawns_a_program_named_git(self) -> None:
         # The invocation-shape oracle. `git_status.py` must be the ONE offender:
@@ -881,6 +895,11 @@ class PorcelainCountTest(unittest.TestCase):
     refactor that changes an edge case is indistinguishable from one that does
     not until something compares them. The parity oracle below is that
     comparison: the old expression, held here as the specification.
+
+    Which is exactly why the parity oracle cannot also guard the memory property
+    the rewrite was FOR: `_former` is the specification, so restoring the old
+    expression satisfies it by construction. The two oracles are therefore
+    independent, and the second one measures rather than compares.
     """
 
     @staticmethod
@@ -908,6 +927,35 @@ class PorcelainCountTest(unittest.TestCase):
                     git_status._reading(raw).changed,
                     "the streaming count disagrees with the expression it replaced",
                 )
+
+    def test_the_count_does_not_materialise_the_whole_output(self) -> None:
+        # AC1's stated second half, and the only oracle over the property the
+        # rewrite exists for. Measured with the streaming loop replaced by the
+        # `raw.split(b"\n")` expression it replaced: `test_git_status`,
+        # `test_observation` and `test_documentation` were all green.
+        #
+        # The payload is built before the trace starts, so the peak is the count's
+        # own allocation rather than the output's. The bound has three orders of
+        # magnitude of headroom on purpose: the split peaks around 1.3 MB at this
+        # N against a few hundred bytes streaming, and a tight pin would flake
+        # across the 3.11/3.12 by three-platform matrix for no extra strictness.
+        entries = 20000
+        raw = b"".join(b" M src/module/file%05d.py\n" % index for index in range(entries))
+        tracemalloc.start()
+        try:
+            tracemalloc.reset_peak()
+            reading = git_status._reading(raw)
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        # Counted correctly, or a loop that allocates nothing because it walks
+        # nothing would pass the bound below.
+        self.assertEqual(entries, reading.changed)
+        self.assertLess(
+            peak,
+            64 * 1024,
+            f"the count allocated {peak} bytes over a {len(raw)}-byte output; it must stream",
+        )
 
     def test_dirty_is_the_count_being_nonzero_and_nothing_else(self) -> None:
         self.assertEqual(git_status.GitStatus(dirty=False, changed=0), git_status._reading(b"\n"))

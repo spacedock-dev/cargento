@@ -2484,6 +2484,48 @@ class GitProbeConcurrencyTest(ObservationTestCase):
         coordinator.submit("claude", self.end_envelope())
         self.assertEqual(2, len(dispatched), "the raised probe kept its claim")
 
+    def test_a_spawn_that_cannot_start_a_thread_releases_its_claim(self) -> None:
+        # `Thread.start` raises RuntimeError when the interpreter can start no
+        # more threads, and nothing in the repository injected a raising `_spawn`:
+        # deleting that release branch wholesale left this module at 150 tests OK.
+        # What it costs is not one lost reading. The claim is taken under the lock
+        # and released by `_probe_and_mark`, which never runs if the spawn raised,
+        # so the session is unprobeable for the life of the process.
+        coordinator = self.build()
+        coordinator._git_prober = lambda _cwd: None
+
+        def exhausted(_run: Callable[[], None]) -> None:
+            raise RuntimeError("can't start new thread")
+
+        coordinator._spawn = exhausted
+        self.assertEqual("accepted", coordinator.submit("claude", self.end_envelope()))
+        self.assertEqual(1, coordinator.counters["git.failed"])
+        self.assertEqual(set(), coordinator._git_inflight)
+        # The claim released, so the next end for the SAME key dispatches rather
+        # than meeting a gate holding a slot nothing will ever free.
+        dispatched = self._collector(coordinator)
+        self.assertEqual("accepted", coordinator.submit("claude", self.end_envelope()))
+        self.assertEqual(1, len(dispatched), "the exhausted spawn kept its claim")
+        self.assertNotIn("git.inflight", coordinator.counters)
+
+    def test_the_probe_switched_off_claims_no_slot_for_the_ends_it_ignores(self) -> None:
+        # The conjunction's order is load-bearing and no assertion could see it:
+        # reordering to `self._claim_git(key) and self.config.git_probe_enabled
+        # and event.cwd` also left this module at 150 tests OK. `_claim_git` has
+        # an effect and the two flag checks do not, so under that ordering every
+        # end claims a slot and nothing releases one. Measured with the probe off:
+        # two ends left both keys in `_git_inflight` permanently with nothing
+        # dispatched, which saturates the ceiling after
+        # `git_probe_max_inflight` ends and makes `--no-git` a one-way switch.
+        coordinator = self.build(git_probe_enabled=False)
+        dispatched = self._collector(coordinator)
+        for index in range(2):
+            payload = self.end_envelope(session_id=f"{index:08x}-3456-7890-abcd-ef1234567890")
+            self.assertEqual("accepted", coordinator.submit("claude", payload))
+        self.assertEqual([], dispatched)
+        self.assertEqual(set(), coordinator._git_inflight)
+        self.assertEqual([], sorted(n for n in coordinator.counters if n.startswith("git.")))
+
     def test_five_hundred_session_ends_leave_a_bounded_number_in_flight(self) -> None:
         # The shape the ceiling was measured with, and the per-key gate alone does
         # not bound it: every submit here carries a DIFFERENT session id, which is
@@ -2528,9 +2570,10 @@ class GitProbeConcurrencyTest(ObservationTestCase):
         #
         # Last completion wins is the right rule for a reading whose freshness IS
         # its completion time — an arrival-order guard, of the kind `_finished`
-        # and `_remember` use for event-carried values, would let an
-        # earlier-arriving event pin an older tree reading. So the fix is not a
-        # guard on the write: it is that the second probe never runs.
+        # and `_remember` use for event-carried values, would let the LATER
+        # arrival win, which here is the seq-2 event whose fast probe finished
+        # first and so read the tree earlier. So the fix is not a guard on the
+        # write: it is that the second probe never runs.
         # Keyed on cwd, not on call order: which probe answers which number must
         # not depend on the order the probes are RUN in, or the reproduction reads
         # backwards, which it did once here.
