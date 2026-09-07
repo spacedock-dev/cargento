@@ -285,3 +285,56 @@ class HarnessGateCoverageTest(RuntimeTestCase):
             {spec.key: spec.reports_needs_input for spec in REGISTRY},
             {h["key"]: h["reports_needs_input"] for h in data["harnesses"]},
         )
+
+    def test_a_gate_mechanism_that_can_be_switched_off_names_its_condition(self) -> None:
+        # `reports_needs_input` answers "can a gate on this harness reach the
+        # board", and for Codex the honest answer is "where the operator has
+        # approvals on". Its mechanism is the bundled `PermissionRequest` hook,
+        # which cannot fire in a session that never asks, so for an operator
+        # running with approvals off a quiet Codex row is the all-clear the flag
+        # exists to prevent -- the same inversion as a lying chip, arriving as
+        # silence instead.
+        #
+        # Declared here rather than derived from a harness config, and that was
+        # investigated rather than assumed: `approval_policy` is overridable per
+        # invocation (`codex exec -c approval_policy=...`) and per project, so a
+        # global read cannot say whether a given session will ask, and acting on
+        # one would publish "no gate observable here" while a session sat at a
+        # prompt. A condition that qualifies the capability is a property of the
+        # mechanism, which is what this registry already declares.
+        #
+        # A literal, for the same reason the capability set above is a literal:
+        # re-reading the field would agree with whatever it was set to.
+        self.assertEqual(
+            {"codex": "where approvals are enabled"},
+            {
+                spec.key: spec.reports_needs_input_when
+                for spec in REGISTRY
+                if spec.reports_needs_input_when is not None
+            },
+        )
+        # A condition on a row that reports no gate qualifies nothing. The page
+        # drops it, so a spec that set one would be silently inert here.
+        self.assertEqual(
+            [],
+            [
+                spec.key
+                for spec in REGISTRY
+                if spec.reports_needs_input_when is not None and not spec.reports_needs_input
+            ],
+        )
+
+    def test_the_payload_publishes_the_gate_condition_beside_the_capability(self) -> None:
+        # Same argument as the flag above: the page cannot derive the condition,
+        # and every page-side test feeds a synthetic payload, so the server could
+        # stop publishing it and nothing else would go red.
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            store_patch(**dict.fromkeys(STORE_KEYS, tmp)),
+        ):
+            data = collect()
+
+        self.assertEqual(
+            {spec.key: spec.reports_needs_input_when for spec in REGISTRY},
+            {h["key"]: h["reports_needs_input_when"] for h in data["harnesses"]},
+        )

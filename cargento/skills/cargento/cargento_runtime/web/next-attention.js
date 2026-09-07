@@ -961,9 +961,22 @@ function nextAttentionCoverageHtml(model){
     `${gates.unknown} unknown${failed} · Ends: ${coverage.observedEnds} observed`;
   const rows = gates.rows.map(row => {
     const name = String(row.label == null ? "" : row.label).trim() || String(row.key || "Harness");
+    /* The condition qualifies a capability the label has just claimed, so the
+       reporting branch below is the only one that takes it: on "unknown" or
+       "failed" there is nothing to qualify and a caveat would read as detail
+       about a gap. That branch is the whole guard, deliberately -- repeating
+       the capability and error checks here as well left a second copy of the
+       rule that no mutation could reach, so neither copy was load-bearing.
+       Escaped like the label beside it, because a registry constant today is
+       still a payload string here. */
+    const when = typeof row.reports_needs_input_when === "string" && row.reports_needs_input_when
+      ? `, ${nextAttentionEsc(row.reports_needs_input_when)}`
+      : "";
     const gate = row.error != null
       ? "needs-input reporting failed"
-      : row.reports_needs_input === true ? "needs-input reporting" : "needs-input reporting unknown";
+      : row.reports_needs_input === true
+        ? `needs-input reporting${when}`
+        : "needs-input reporting unknown";
     const rate = row.error != null
       ? "token-rate reporting failed"
       : row.reports_rate === true

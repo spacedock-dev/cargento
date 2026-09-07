@@ -214,6 +214,19 @@ class HarnessSpec:
     dash on, which is why the disclosure has to be per harness rather than per
     row.
 
+    ``reports_needs_input_when`` qualifies that capability on a row whose
+    mechanism can be switched off, and Codex is the one such row: its gate
+    arrives through a permission hook, so an operator running with approvals
+    disabled has a harness that reports a gate in principle and never will in
+    practice. That is the all-clear reading the flag above exists to prevent,
+    reaching the reader as silence rather than as a chip. Declared here rather
+    than read off the harness's own config, which was tried and ruled out:
+    `approval_policy` is overridable per invocation and per project, so a global
+    read cannot say whether a given session will ask, and being wrong publishes
+    "no gate observable here" over a session sitting at a prompt. It stays None
+    everywhere else, because a condition is a property of a mechanism and the
+    other mechanisms have none.
+
     It answers "can a gate on this harness reach the board", by ANY path -- not
     "can this collector detect one". The distinction is the whole of what the
     first review of this field caught: Codex reports a gate through the event
@@ -236,6 +249,7 @@ class HarnessSpec:
     collect: Collector
     reports_rate: bool = False
     reports_needs_input: bool = False
+    reports_needs_input_when: str | None = None
     usage: UsageProvider | None = None
     usage_is_fetch: bool = False
 
@@ -293,8 +307,12 @@ def default_harnesses(*, usage_fetch_enabled: bool = True) -> tuple[HarnessSpec,
             # Through the event overlay, not the collector: its bundled
             # `PermissionRequest` hook maps to `input_requested`. Measured on
             # 0.149.0 -- the hook fires with the prompt open, and a hook that
-            # prints nothing lets that prompt reach the human.
+            # prints nothing lets that prompt reach the human. A hook on a
+            # prompt that never opens never fires, so the same measurement
+            # bounds the capability: it holds where the operator asks to be
+            # asked, and nowhere else.
             reports_needs_input=True,
+            reports_needs_input_when="where approvals are enabled",
             usage=codex.usage,
         ),
         HarnessSpec("pi", "Pi", pi.discover, pi.collect, reports_rate=True),
@@ -419,6 +437,10 @@ def _harness_row(spec: HarnessSpec, *, found: bool) -> dict[str, Any]:
         # `reports_rate` is here: the page cannot derive it, and the absence of a
         # needs-input row is not evidence of quiet.
         "reports_needs_input": spec.reports_needs_input,
+        # What that capability depends on, where it depends on anything. Null on
+        # every row whose gate mechanism cannot be turned off, which is all but
+        # one; the page cannot derive either half.
+        "reports_needs_input_when": spec.reports_needs_input_when,
         "error": None,
     }
 
