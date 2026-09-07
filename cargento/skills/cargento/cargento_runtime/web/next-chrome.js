@@ -10,6 +10,27 @@ let nextSessionRaiseStatusElement = null;
 let nextRaiseInFlight = false;
 const nextAttentionExpandedSections = new Set();
 
+/* Which disclosures the reader has opened. `renderNext` replaces the app's
+   whole innerHTML on every revision and on a bare interval, so the open state a
+   `<details>` holds for itself dies with the node -- a panel opened to read
+   closed under the reader seconds later (DRC-4410). Kept per tab and dropped on
+   reload, like the expansion set above, rather than in `localStorage`: the two
+   stored preferences there are answers a reader gave deliberately, and a panel
+   opened to read once is not one of those.
+
+   The list is closed, so an attribute the page never wrote cannot grow the
+   set -- the same guard the section keys beside it get. */
+const NEXT_DISCLOSURE_KEYS = ["attention-coverage", "session-source-coverage"];
+const nextOpenDisclosures = new Set();
+
+function nextDisclosureAttr(key, open){
+  /* Emitted after the `class` attribute, never before it: two oracles slice the
+     rendered page on the exact `<details class="...">` opening tag, and an
+     attribute ahead of the class would hand them a wrong slice instead of
+     failing (test_next_attention.py). */
+  return open && typeof open.has === "function" && open.has(key) ? " open" : "";
+}
+
 // The row's own controls, keyed the way the control-state map keys them, so a
 // snapshot outlives the node being replaced for the same reason the cue does.
 // The selector and the key function are the same pair the render and the stamp
@@ -599,6 +620,22 @@ document.addEventListener("click", event => {
         nextAttentionExpandedSections.add(section);
       }
       renderNext({section, disclosure: true});
+    }
+    return;
+  }
+  const summaryTarget = event.target && event.target.closest
+    ? event.target.closest("[data-next-disclosure]")
+    : null;
+  if(summaryTarget){
+    const key = String(summaryTarget.dataset && summaryTarget.dataset.nextDisclosure || "");
+    if(NEXT_DISCLOSURE_KEYS.includes(key)){
+      /* Deliberately not prevented and deliberately not re-rendered. The
+         browser's own toggle is what the reader sees, and it runs after this
+         handler; recording the flip only teaches the next render what to
+         re-emit. Re-rendering here instead would replace the summary under a
+         keyboard reader's focus, which nothing restores. */
+      if(nextOpenDisclosures.has(key)) nextOpenDisclosures.delete(key);
+      else nextOpenDisclosures.add(key);
     }
     return;
   }

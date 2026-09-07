@@ -264,7 +264,9 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
         anon = self.render({"sessions": [one("s", {"errors": 3, "failures": 4, "barren": True})]})
         self.assertIn("Tool failures reported 4 times, nothing succeeded", anon)
 
-        # A payload from before this shipped keeps the sentence it had.
+        # Two producers reach this shape now: a payload from before DRC-4021, and
+        # a turn the scanner could not finish, which withholds both readings
+        # (turns.py). Rendering them alike is deliberate.
         legacy = self.render({"sessions": [one("s", {"errors": 4, "tool": "Bash"})]})
         self.assertIn("Bash failed 4 times", legacy)
         self.assertNotIn("nothing succeeded", legacy)
@@ -1576,6 +1578,100 @@ class NextAttentionBehaviorTest(NextPageJsHarness):
             for key in out["keys"]:
                 self.assertEqual(1, html.count(key.replace('"', "&quot;")))
 
+    # Fires the real click at the real listener, so the target answers only the
+    # selector the branch under test asks for and every earlier branch in the
+    # handler sees the null it would see in a browser.
+    CLICK_HELPER = """
+const __clickOn = (selector, dataset) => __fire("click", {
+  target: {closest(candidate){ return candidate === selector ? {dataset} : null; }},
+  preventDefault(){}, stopPropagation(){}
+});
+"""
+
+    QUEUE_OF_FOUR = """
+__els.app = {innerHTML: ""};
+nextData = {
+  generated: 10000,
+  sessions: [0, 1, 2, 3].map(index => ({
+    harness: "claude", sid: `owner-${index}`, project: `project-${index}`,
+    state: "needs_input"
+  })),
+  asks: [0, 1, 2, 3].map(index => ({
+    id: `ask-${index}`, session_id: `owner-${index}`, project: `project-${index}`,
+    question: `Question ${index}`, age_sec: 400 - index
+  }))
+};
+nextAttention = nextAttentionModel(nextData);
+nextRoute = {view: "attention", project: null, session: null};
+"""
+
+    def test_a_section_the_reader_expanded_is_still_expanded_after_a_render(self) -> None:
+        # The pair above hands the view a set; this one earns the set from a
+        # click, which nothing did before — the handler that owns
+        # `nextAttentionExpandedSections` had no test on it at all.
+        out = self._run_page_js(
+            self.CLICK_HELPER
+            + self.QUEUE_OF_FOUR
+            + """
+const expand = () => __clickOn("[data-next-attention-toggle]", {nextAttentionToggle: "needs"});
+renderNext();
+const collapsed = __els.app.innerHTML;
+expand();
+const expanded = __els.app.innerHTML;
+renderNext();
+const survived = __els.app.innerHTML;
+expand();
+const recollapsed = __els.app.innerHTML;
+console.log(JSON.stringify({collapsed, expanded, survived, recollapsed}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        self.assertEqual(1, out["collapsed"].count("<li hidden>"))
+        self.assertIn("Show 1 more", out["collapsed"])
+        # The click renders for itself, and the render after it — the revision or
+        # the bare interval — must reach the same markup rather than collapsing
+        # the reader's section under them.
+        for html in (out["expanded"], out["survived"]):
+            self.assertNotIn("<li hidden>", html)
+            self.assertIn('aria-expanded="true"', html)
+            self.assertIn("Show fewer (hide 1)", html)
+        self.assertEqual(out["expanded"], out["survived"])
+        self.assertEqual(out["collapsed"], out["recollapsed"])
+
+    def test_the_coverage_panel_the_reader_opened_is_still_open_after_a_render(self) -> None:
+        # `renderNext` assigns the app's whole innerHTML, so the open state the
+        # browser keeps on a `<details>` node dies with the node: the panel
+        # closed itself under the reader on the next revision, or within 20
+        # seconds on the bare interval (DRC-4410). The page has to own it.
+        out = self._run_page_js(
+            self.CLICK_HELPER
+            + self.QUEUE_OF_FOUR
+            + """
+const summary = () => __clickOn("[data-next-disclosure]", {nextDisclosure: "attention-coverage"});
+renderNext();
+const closed = __els.app.innerHTML;
+summary();
+renderNext();
+const opened = __els.app.innerHTML;
+renderNext();
+const survived = __els.app.innerHTML;
+summary();
+renderNext();
+const reclosed = __els.app.innerHTML;
+console.log(JSON.stringify({closed, opened, survived, reclosed}));
+"""
+        )
+        assert isinstance(out, dict)
+
+        tag = '<details class="next-attention-coverage-details"'
+        for html in (out["closed"], out["reclosed"]):
+            self.assertIn(f"{tag}>", html)
+            self.assertNotIn(f"{tag} open", html)
+        for html in (out["opened"], out["survived"]):
+            self.assertIn(f"{tag} open>", html)
+        self.assertEqual(out["closed"], out["reclosed"])
+
     def gate_queue_payload(self, harness: str, resume_id: object) -> dict[str, Any]:
         session: dict[str, Any] = {
             "harness": harness,
@@ -1819,10 +1915,10 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
         session.update(overrides)
         return session
 
-    def test_an_ended_session_reaches_safe_to_close_with_no_stop_beside_it(self) -> None:
+    def test_an_ended_session_reaches_close_the_loop_with_no_stop_beside_it(self) -> None:
         # The lane N-12 exists to strengthen. `nextAttentionStopSignal` used to
         # require a stop AND the idle state, so a session that reported its own
-        # end and had no observed stop dropped out of Safe to close entirely —
+        # end and had no observed stop dropped out of CLOSE THE LOOP entirely —
         # the strongest evidence the section has, discarded for want of a weaker
         # one.
         model = self.model([self.row(ended_at=9_400)])
@@ -1872,7 +1968,7 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
         )
 
     def test_uncommitted_work_outranks_an_end_that_left_nothing_behind(self) -> None:
-        # Ordering inside Safe to close is by what is at stake, so the git
+        # Ordering inside CLOSE THE LOOP is by what is at stake, so the git
         # reading leads and the end breaks its ties. An ended dirty tree is the
         # one nobody is coming back to.
         model = self.model(
@@ -1932,14 +2028,14 @@ class NextAttentionSessionEndTest(NextPageJsHarness):
         # rather than only the one who expands coverage. Asserted on the half
         # before the `<details>` for exactly that reason.
         html = self.render([self.row(ended_at=9_400), self.row(sid="quiet-1")])
-        visible = html.split('<details class="next-attention-coverage-details">')[0]
+        visible = html.split('<details class="next-attention-coverage-details"')[0]
 
         self.assertIn("Ends: 1 observed", visible)
         self.assertNotIn("undefined", visible)
 
     def test_the_visible_coverage_line_counts_no_end_as_none_not_undefined(self) -> None:
         html = self.render([self.row(sid="quiet-1")])
-        visible = html.split('<details class="next-attention-coverage-details">')[0]
+        visible = html.split('<details class="next-attention-coverage-details"')[0]
 
         self.assertIn("Ends: 0 observed", visible)
         self.assertNotIn("undefined", visible)

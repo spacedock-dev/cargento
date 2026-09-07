@@ -953,7 +953,7 @@ function nextAttentionTerminalCoverage(model){
     "a terminal Cargento can reach.</p>";
 }
 
-function nextAttentionCoverageHtml(model){
+function nextAttentionCoverageHtml(model, openDisclosures){
   const coverage = model.coverage;
   const gates = coverage.gates;
   const failed = gates.failed ? ` · ${gates.failed} failed` : "";
@@ -1001,7 +1001,9 @@ function nextAttentionCoverageHtml(model){
     "a session with no observed end is not known to be running.</p>";
   return '<div class="next-attention-coverage">' +
     `<p><span class="next-attention-brief-label">COVERAGE</span>${esc(visible)}</p>` +
-    '<details class="next-attention-coverage-details"><summary>Coverage details</summary>' +
+    '<details class="next-attention-coverage-details"' +
+    `${nextDisclosureAttr("attention-coverage", openDisclosures)}>` +
+    '<summary data-next-disclosure="attention-coverage">Coverage details</summary>' +
     `${rows ? `<ul>${rows}</ul>` : ""}${exact}${stops}${ends}` +
     nextAttentionTerminalCoverage(model) +
     '<p>Termination cause not reported.</p></details></div>';
@@ -1046,7 +1048,7 @@ function nextAttentionHealthyHtml(model){
     '<a href="#n=projects" data-next-route="projects">View all projects</a></section>';
 }
 
-function nextAttentionView(model, expandedSections = new Set()){
+function nextAttentionView(model, expandedSections = new Set(), openDisclosures = new Set()){
   const counts = model.counts;
   const observed = [
     `${counts.needs} need you`, `${counts.risk} at risk`, `${counts.close} close the loop`,
@@ -1059,7 +1061,7 @@ function nextAttentionView(model, expandedSections = new Set()){
   return '<section class="next-attention" data-next-view-body="attention"><h1 tabindex="-1">' +
     "Attention</h1><div class=\"next-attention-brief\">" +
     `<p><span class="next-attention-brief-label">OBSERVED NOW</span>${observed}</p>` +
-    `${nextAttentionCoverageHtml(model)}</div>${empty}` +
+    `${nextAttentionCoverageHtml(model, openDisclosures)}</div>${empty}` +
     nextAttentionSectionHtml("needs", "NEEDS YOU NOW", model.needs, model, expandedSections) +
     nextAttentionSectionHtml("risk", "AT RISK", model.risk, model, expandedSections) +
     nextAttentionSectionHtml("close", "CLOSE THE LOOP", model.close, model, expandedSections) +

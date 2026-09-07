@@ -1,12 +1,16 @@
-function nextDetailBody(route){
+function nextDetailBody(route, openDisclosures){
   if(route.view === "project") return nextProjectView(route.project);
-  if(route.view === "session") return nextSessionView(route.project, route.harness, route.session);
+  if(route.view === "session"){
+    return nextSessionView(route.project, route.harness, route.session, openDisclosures);
+  }
   return "";
 }
 
 function nextViewBody(){
   if(nextRoute.view === "attention"){
-    return nextAttentionView(nextAttention, nextAttentionExpandedSections).replace(
+    return nextAttentionView(
+      nextAttention, nextAttentionExpandedSections, nextOpenDisclosures,
+    ).replace(
       /data-next-attention-subject="([^"]*)"/g,
       'data-next-attention-subject="$1" data-next-subject-key="$1"',
     );
@@ -17,7 +21,7 @@ function nextViewBody(){
   if(nextRoute.view === "sessions"){
     return nextSessionsView();
   }
-  return `<section data-next-view-body="${esc(nextRoute.view)}">${nextDetailBody(nextRoute)}</section>`;
+  return `<section data-next-view-body="${esc(nextRoute.view)}">${nextDetailBody(nextRoute, nextOpenDisclosures)}</section>`;
 }
 
 function nextDataUrl(){
