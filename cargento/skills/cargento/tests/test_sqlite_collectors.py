@@ -12,15 +12,19 @@ import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from unittest import mock
 
 from cargento_runtime import aggregate, diagnostics
 from cargento_runtime import io as runtime_io
+from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.collectors import antigravity as agy_collector
 from cargento_runtime.collectors import cursor as cursor_collector
 from cargento_runtime.collectors import goose as goose_collector
 from cargento_runtime.collectors import opencode as opencode_collector
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from .support import (
     SERVER_PATH,
@@ -2069,6 +2073,187 @@ class SqliteCollectorTest(RuntimeTestCase):
 
         self.assertEqual(["block state"], rows[0]["source_gaps"])
         self.assertEqual("Ship it", rows[0]["title"], "the good fields must survive")
+
+
+class CollectorFailureBoundaryTest(RuntimeTestCase):
+    """What one unreadable row costs, in the two collectors that got it wrong.
+
+    Every count here is read off the published payload rather than off the
+    collector's return, because the fact under test is what a person sees on the
+    board: `harness["error"]` is set only by an exception escaping `collect`, and
+    a collector's own return value cannot show that it was set.
+
+    The scope decision these tests pin, and the argument for it, are in
+    docs/design-unread-sources.md, section U-5.
+    """
+
+    SESSIONS = 6
+
+    @staticmethod
+    def _goose_store(path: Path, sids: list[str], stamp: str) -> None:
+        con = sqlite3.connect(path)
+        con.execute(
+            "CREATE TABLE sessions (id TEXT, description TEXT,"
+            " working_dir TEXT, updated_at TEXT, session_type TEXT,"
+            " parent_session_id TEXT, archived_at TEXT)"
+        )
+        con.executemany(
+            "INSERT INTO sessions VALUES (?,?,?,?,NULL,NULL,NULL)",
+            [(sid, f"Session {sid}", "/w/proj", stamp) for sid in sids],
+        )
+        con.execute(
+            "CREATE TABLE messages (session_id TEXT, role TEXT,"
+            " created_timestamp INTEGER, content_json TEXT)"
+        )
+        con.execute(
+            "CREATE TABLE usage_ledger (session_id TEXT,"
+            " created_timestamp INTEGER, output_tokens INTEGER)"
+        )
+        con.commit()
+        con.close()
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _row_raises(harness: str, sid: str, exc: Exception) -> Iterator[None]:
+        """Make one named row's build raise, and leave every other row alone.
+
+        Patched on `runtime_sessions.base_session` because it is the last call in both
+        collectors' per-row bodies, so a raise there proves the whole body is
+        covered rather than one guarded read inside it. Keyed by harness and sid
+        because a full payload collection runs every collector, and the other
+        nine must still see the real function.
+        """
+        real = runtime_sessions.base_session
+
+        def one_bad_row(harness_key: str, session_id: Any, *args: Any, **kwargs: Any) -> Any:
+            if harness_key == harness and session_id == sid:
+                raise exc
+            return real(harness_key, session_id, *args, **kwargs)
+
+        with mock.patch.object(runtime_sessions, "base_session", one_bad_row):
+            yield
+
+    def _published(self, harness: str) -> tuple[list[str], Any]:
+        """(session ids published for one harness, that harness's error badge)."""
+        payload = collect(window_hours=24, show_all=True)
+        badge = next(h for h in payload["harnesses"] if h["key"] == harness)["error"]
+        return [s["sid"] for s in payload["sessions"] if s["harness"] == harness], badge
+
+    def test_goose_loses_one_row_to_a_non_sqlite_raise_and_no_other_store(self) -> None:
+        # DRC-4471 arm B, the live half: the handler caught only
+        # `sqlite_module.Error`, so a ValueError escaped `_collect_db`, then
+        # `collect`, and reached the boundary in aggregate.py that writes
+        # `harness["error"]`. Two stores rather than one because `collect`
+        # accumulates across candidates, so the escape took the healthy store's
+        # rows with it — the part a one-store reproduction cannot show.
+        stamp = datetime.fromtimestamp(time.time() - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
+        with tempfile.TemporaryDirectory() as tmp:
+            healthy, damaged = Path(tmp) / "one.db", Path(tmp) / "two.db"
+            self._goose_store(healthy, ["h1", "h2", "h3"], stamp)
+            self._goose_store(damaged, [f"g{i}" for i in range(1, self.SESSIONS + 1)], stamp)
+            with (
+                store_patch(GOOSE_DB=str(healthy)),
+                mock.patch.dict(STORE_OVERRIDES, {"goose.db": [str(healthy), str(damaged)]}),
+                self._row_raises("goose", "g4", ValueError("simulated malformed goose row")),
+            ):
+                sids, badge = self._published("goose")
+                errors = dict(state_of().store_errors)
+
+        self.assertIsNone(badge, "one bad row must not badge the harness")
+        self.assertEqual(
+            ["g1", "g2", "g3", "g5", "g6", "h1", "h2", "h3"],
+            sorted(sids),  # the payload orders rows by activity, not by store
+            "the failing row costs itself, and neither its store nor the sibling store",
+        )
+        self.assertIn(str(damaged), errors, "a lost row must still be disclosed somewhere")
+        self.assertNotIn(str(healthy), errors, "the store that read whole stays clean")
+
+    def test_goose_loses_one_row_to_a_sqlite_raise_and_not_the_rows_before_it(self) -> None:
+        # DRC-4471 arm A, latent when it was filed and pinned here so it stays
+        # that way: the outer handler unwound the session loop and its
+        # `return []` threw away every row already appended. Six became zero.
+        stamp = datetime.fromtimestamp(time.time() - 10, UTC).strftime("%Y-%m-%d %H:%M:%S")
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "goose.db"
+            self._goose_store(db, [f"g{i}" for i in range(1, self.SESSIONS + 1)], stamp)
+            with (
+                store_patch(GOOSE_DB=str(db)),
+                self._row_raises("goose", "g4", sqlite3.DatabaseError("row 4 is unreadable")),
+            ):
+                sids, badge = self._published("goose")
+                errors = dict(state_of().store_errors)
+
+        self.assertIsNone(badge)
+        self.assertEqual(["g1", "g2", "g3", "g5", "g6"], sids)
+        self.assertIn(str(db), errors)
+
+    def test_goose_records_a_store_whose_session_table_it_cannot_read(self) -> None:
+        # The store-level arm, kept beside the row-level ones because it is what
+        # the row-level guard must not quietly absorb: a failure before any row
+        # exists still costs the store, and still has to be recorded.
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "goose.db"
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE unrelated (x INTEGER)")  # no sessions table
+            con.commit()
+            con.close()
+            with store_patch(GOOSE_DB=str(db)):
+                sids, badge = self._published("goose")
+                errors = dict(state_of().store_errors)
+
+        self.assertIsNone(badge, "an unreadable store is a miss, never a harness error")
+        self.assertEqual([], sids)
+        self.assertIn(str(db), errors)
+
+    def test_opencode_loses_one_row_to_a_non_sqlite_raise_and_nothing_else(self) -> None:
+        # DRC-4470: the `try` around the session loop carried only a `finally`,
+        # so nothing raised between it and the loop's end was caught at all, and
+        # the escape reached the boundary that badges the harness.
+        millis = int((time.time() - 10) * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "opencode.db"
+            SqliteCollectorTest._opencode_db(
+                db,
+                [
+                    (f"s{i}", None, "/w/proj", f"Session {i}", millis - i, None)
+                    for i in range(1, self.SESSIONS + 1)
+                ],
+            )
+            with (
+                store_patch(OPENCODE_DATA=str(tmp)),
+                self._row_raises("opencode", "s4", ValueError("simulated malformed opencode row")),
+            ):
+                sids, badge = self._published("opencode")
+                errors = dict(state_of().store_errors)
+
+        self.assertIsNone(badge, "one bad row must not badge the harness")
+        self.assertEqual(["s1", "s2", "s3", "s5", "s6"], sids)
+        self.assertIn(str(db), errors, "a lost row must still be disclosed somewhere")
+
+    def test_opencode_handles_a_sqlite_raise_outside_its_one_inner_guard(self) -> None:
+        # The inner `except sqlite3.Error` covers only the message read, so a
+        # SQLite error anywhere else in the loop escaped too. The escape was
+        # never limited to the non-SQLite classes the issue title names.
+        millis = int((time.time() - 10) * 1000)
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "opencode.db"
+            SqliteCollectorTest._opencode_db(
+                db,
+                [
+                    (f"s{i}", None, "/w/proj", f"Session {i}", millis - i, None)
+                    for i in range(1, self.SESSIONS + 1)
+                ],
+            )
+            with (
+                store_patch(OPENCODE_DATA=str(tmp)),
+                self._row_raises("opencode", "s4", sqlite3.DatabaseError("row 4 is unreadable")),
+            ):
+                sids, badge = self._published("opencode")
+                errors = dict(state_of().store_errors)
+
+        self.assertIsNone(badge)
+        self.assertEqual(["s1", "s2", "s3", "s5", "s6"], sids)
+        self.assertIn(str(db), errors)
 
 
 class SqliteDiagnosticTest(unittest.TestCase):
