@@ -77,8 +77,12 @@ measured elapsed, its own model and its own liveness, with a teammate that has f
 quiet still listed rather than dropped, session detail that leads with current activity, the recent token output rate, the model each
 session is running on, and desktop notifications on a state change.
 
-Where it stops: Cargento reads a tool call's name and whether it failed, never what it contained.
-That boundary is a decision rather than a gap, and DEC-5 settled it on 2026-09-02.
+Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
+contained only at the few places
+[SECURITY.md](../SECURITY.md#irreversible-actions-hook-side-destructive-shape-matching) names, each
+reduced to a short summary as it is read. A plan title and a question are the two that reach the
+board. DEC-5 lifted that boundary in part on 2026-09-02 rather than confirming it, and SECURITY.md
+is where the current line is drawn.
 An ETA is an estimate, and it says so.
 
 ### P3. Is anything waiting on me?

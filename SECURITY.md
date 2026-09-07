@@ -15,10 +15,14 @@ events for Claude and Codex, `agy_hook.py` posts Antigravity's hook events, and
 `statusline_hook.py` posts Antigravity's status-line state. All four share one transport, so the
 loopback check, the proxy suppression and the redirect refusal have a single implementation.
 
-One of them runs somewhere it could do harm. Antigravity's `PreToolUse` hook may return a `decision`
-that allows, denies or re-prompts a tool call, so a reporting hook there can block the user's work.
-`agy_hook.py` prints exactly `{}` and nothing else, on every path including every failure path, and a
-test asserts that for malformed, empty and valid input alike.
+One of them could do harm if it were registered in the wrong place. Antigravity's `PreToolUse` hook
+may return a `decision` that allows, denies or re-prompts a tool call, and there is no harmless
+output at that position: an empty object there reads as a DENY, so a reporting hook would block the
+user's work rather than pass it through. The safety property is that `agy_hook.py` is never
+registered at `PreToolUse`. Where it is registered, after a tool call and after an invocation, it
+prints exactly `{}` and nothing else on every path including every failure path, and a test asserts
+that for malformed, empty and valid input alike. Irreversible actions below carries the same rule
+for the hook that matches destructive shapes.
 
 The third kind is one stdio MCP server, `mcp_server.py`, described under The ask lane below. It is
 not a forwarder and shares none of the four's transport: a harness spawns it, it speaks JSON-RPC on
@@ -861,11 +865,14 @@ The bounds, all of which hold together:
   prompt text and no request text. A person who gets a nudge opens the dashboard to find out which
   session it was, and the count is the whole message.
 - Two counts, not three, and the missing one is deliberate. DEC-4's own wording offered a third,
-  how many sessions went quiet, and there is nothing to put in it: `config.py` holds no idle
-  duration threshold, and `events.py`'s `stale` is a finish stamp contradicted by later activity
-  rather than a session that went quiet. A quiet session is published as idle with nothing elapsed
-  behind it. A payload field for a reading the runtime does not take would be the first thing in
-  this document to describe a measurement nobody makes.
+  how many sessions went quiet, and what is missing is not the elapsed reading but the threshold.
+  `last_activity` is published on every row and the board renders an idle duration from it, so
+  `now - last_activity` is a reading the runtime already takes. What nothing decides is when quiet
+  becomes worth a nudge: `config.py` holds no such threshold, and `events.py`'s `stale` is a
+  different fact, a finish stamp contradicted by later activity rather than a session that went
+  quiet. A third count would therefore have to name its own threshold, and naming one is a product
+  decision this section is not the place to make. If DEC-4's third count is wanted, that threshold
+  is the work, and it is smaller than it looks.
 - Throttled, and a change is what triggers it. At most one post per configured interval, with a
   change in the counts as the trigger rather than a timer, so a board that is not changing sends
   nothing and a flapping one cannot turn into a stream.
@@ -1091,8 +1098,11 @@ report means no match was observed, never that a session ran nothing irreversibl
 The rule here is an allowlist rather than a prohibition, for the reason DEC-13 gave the history
 store: a flat "never" the code already breaks is a contract narrower than the system, and a reader
 who finds the counter-example stops believing the rest of the document. So the honest form is a list
-of named reads. Cargento parses no tool-call input except at the two places below, and each reduces
-what it read to a bounded summary at parse time rather than keeping anything raw:
+of named reads. Of an observed session's tool calls, the runtime parses the input at exactly the
+places below and nowhere else, and each reduces what it read to a bounded summary at parse time
+rather than keeping anything raw. One further read exists and is governed elsewhere: the ask lane's
+own `ask_operator` tool parses the arguments of the call a session makes to Cargento, which is a
+tool Cargento owns rather than one it observed, and The ask lane states its bounds:
 
 - `claude_data.input_summary` reads two fields of two Claude tools. `ExitPlanMode` carries `plan`,
   and what is kept is its first usable line, which is the plan's own title in practice.
@@ -1363,9 +1373,11 @@ presented, the token or its containing path reaching a log, a `--diagnose` line 
 response, a retry, a socket read from a location the store roots do not document, or a request that
 blocks rather than declines.
 
-What is accepted rather than solved: the socket directory is per-user, which keeps other accounts
-out and does nothing about other processes of the same account. Anything running as the operator can
-send the same verb to the same session without going through Cargento at all. That stays inside the
+What is accepted rather than solved: as far as the harness's own documentation goes, the socket
+directory is per-user, so other accounts are held out only as well as that documented shape holds,
+and E7's capture is what settles it rather than this paragraph. What is certain either way is that
+the directory does nothing about other processes of the same account. Anything running as the
+operator can send the same verb to the same session without going through Cargento at all. That stays inside the
 trust boundary for the reason Known and accepted gives for the rest of this document, since such a
 process can read the operator's secret material directly, and it is the same limit the ask lane
 already accepts on loopback.

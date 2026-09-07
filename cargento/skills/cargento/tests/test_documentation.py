@@ -22,6 +22,27 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def _flat_section(security: str, heading: str) -> str:
+    """The whitespace-collapsed text of ONE `## ` section of SECURITY.md.
+
+    Four of the contract classes below assert clauses that now appear in several
+    sections at once, because the groundwork sections deliberately reuse the
+    unshipped-flag wording. An `assertIn` over the whole document then passes on
+    a sibling's copy: measured, inverting the off-machine URL credential rule
+    left its own class green, and inverting the light-harness flag claim went
+    from red to green the moment a second copy existed. Slicing first is what
+    makes each assertion about its own section again.
+
+    Raises rather than returning an empty string if the heading is missing, so a
+    renamed section fails loudly instead of making every assertion vacuous.
+    """
+    start = security.index(heading)
+    rest = security[start + len(heading) :]
+    end = rest.find("\n## ")
+    body = rest if end == -1 else rest[:end]
+    return re.sub(r"\s+", " ", heading + body)
+
+
 def handler_methods(source: str) -> dict[str, str]:
     """Every method of `http_api._RequestHandler`, keyed by name.
 
@@ -833,11 +854,17 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
         # Never a claim of impossibility, however phrased. Scoped to this residual
         # rather than to the whole file: a legitimate "is impossible" elsewhere in
         # the document is not this defect, and a whole-file ban would fail on it.
-        block = self.FLAT[
-            self.FLAT.index("The residual: the reading is about the repository") : self.FLAT.index(
-                "What is published, per session"
-            )
-        ]
+        opens = self.FLAT.index("The residual: the reading is about the repository")
+        closes = self.FLAT.index("What is published, per session")
+        # Ordering asserted before slicing. A slice whose end precedes its start
+        # is the empty string, and every assertNotIn below then passes on nothing:
+        # reproduced by moving the residual after its own closing marker, which
+        # left all four subTests green with "This hazard is impossible in
+        # practice." sitting in the section. This is the same trap the
+        # `handler_methods` helper at the top of this file was written to avoid.
+        self.assertLess(opens, closes, "the residual no longer precedes its closing marker")
+        block = self.FLAT[opens:closes]
+        self.assertGreater(len(block), 200, "the residual slice is too short to be the section")
         for overclaim in ("cannot happen", "is impossible", "cannot occur", "never happens"):
             with self.subTest(overclaim=overclaim):
                 self.assertNotIn(overclaim, block.lower())
@@ -1027,6 +1054,11 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
     ROOT = SERVER_PATH.parents[3]
     SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     FLAT = re.sub(r"\s+", " ", SECURITY)
+    # This section alone, so a clause a sibling section also carries
+    # cannot satisfy an assertion made here.
+    SECTION = _flat_section(
+        SECURITY, "## Light harness usage (asking a harness a bounded question)"
+    )
 
     def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
         self.assertIn("## Light harness usage (asking a harness a bounded question)", self.SECURITY)
@@ -1038,8 +1070,8 @@ class LightHarnessUsageContractDocumentationTest(unittest.TestCase):
         # failed here until they amend the section. The reverse does not hold and
         # is not claimed: nothing in this suite can see a feature that uses the
         # pathway while shipping no flag, so that half is held by review.
-        self.assertIn("No shipped feature uses this pathway today", self.FLAT)
-        self.assertIn("That flag does not exist yet", self.FLAT)
+        self.assertIn("No shipped feature uses this pathway today", self.SECTION)
+        self.assertIn("That flag does not exist yet", self.SECTION)
         # argparse prints its usage to stderr before exiting, and that banner in
         # a passing run reads like a failure to anyone watching the suite.
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
@@ -1085,6 +1117,9 @@ class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
     ROOT = SERVER_PATH.parents[3]
     SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     FLAT = re.sub(r"\s+", " ", SECURITY)
+    # This section alone, so a clause a sibling section also carries
+    # cannot satisfy an assertion made here.
+    SECTION = _flat_section(SECURITY, "## Off-machine nudges")
 
     def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
         self.assertIn(
@@ -1093,18 +1128,21 @@ class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
 
     def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
         self.assertIn("No shipped feature posts to an endpoint the operator supplies", self.FLAT)
-        self.assertIn("That flag does not exist yet", self.FLAT)
+        self.assertIn("That flag does not exist yet", self.SECTION)
         # argparse prints usage to stderr before exiting, and that banner in a
         # passing run reads like a failure to anyone watching the suite.
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--no-reach"])
 
     def test_the_payload_omits_the_count_no_threshold_backs(self) -> None:
-        # The section says `config.py` holds no idle duration threshold, which is
-        # why the payload carries two counts and not DEC-4's three. The one
-        # `idle` field there is the overlay's dwell, a render delay rather than a
-        # staleness reading, so a genuine threshold arriving fails this and sends
-        # whoever added it back to the section.
+        # The payload carries two counts and not DEC-4's three because no
+        # threshold decides when quiet becomes notable. The ELAPSED reading is
+        # not what is missing, and an earlier draft of the section said it was:
+        # `last_activity` is published on every row and the board renders an idle
+        # duration from it. So this asserts the true premise, that the only
+        # `idle` field in `config.py` is the overlay's dwell, a render delay
+        # rather than a nudge threshold. A genuine threshold arriving fails this
+        # and sends whoever added it back to the section.
         fields = {
             name
             for name in re.findall(
@@ -1115,11 +1153,19 @@ class OffMachineNudgeContractDocumentationTest(unittest.TestCase):
             if "idle" in name
         }
         self.assertEqual({"overlay_idle_dwell_sec"}, fields)
-        self.assertIn("holds no idle duration threshold", self.FLAT)
+        self.assertIn("what is missing is not the elapsed reading but the threshold", self.SECTION)
+        # And the retracted premise must not come back.
+        self.assertNotIn("with nothing elapsed behind it", self.FLAT)
+        # `last_activity` really is published, which is what makes the above true
+        # rather than a second guess. Derived from the template, not a literal.
+        template = (SERVER_PATH.parent / "cargento_runtime" / "sessions.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"last_activity"', template)
 
     def test_the_url_is_held_to_the_credential_rules_the_quota_section_sets(self) -> None:
         self.assertIn("The URL is a credential", self.FLAT)
-        self.assertIn("never printed by `--diagnose`", self.FLAT)
+        self.assertIn("never printed by `--diagnose`", self.SECTION)
 
 
 class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
@@ -1137,6 +1183,11 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
     ROOT = SERVER_PATH.parents[3]
     SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     FLAT = re.sub(r"\s+", " ", SECURITY)
+    # This section alone, so a clause a sibling section also carries
+    # cannot satisfy an assertion made here.
+    SECTION = _flat_section(
+        SECURITY, "## Irreversible actions (hook-side destructive-shape matching)"
+    )
     RUNTIME = SERVER_PATH.parent / "cargento_runtime"
 
     def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
@@ -1146,7 +1197,7 @@ class IrreversibleActionsContractDocumentationTest(unittest.TestCase):
 
     def test_the_pathway_is_documented_as_unused_and_the_parser_agrees(self) -> None:
         self.assertIn("No shipped adapter matches a command shape", self.FLAT)
-        self.assertIn("That flag does not exist yet", self.FLAT)
+        self.assertIn("That flag does not exist yet", self.SECTION)
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--no-irreversible"])
 
@@ -1261,13 +1312,16 @@ class HandOffRequestContractDocumentationTest(unittest.TestCase):
     ROOT = SERVER_PATH.parents[3]
     SECURITY = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     FLAT = re.sub(r"\s+", " ", SECURITY)
+    # This section alone, so a clause a sibling section also carries
+    # cannot satisfy an assertion made here.
+    SECTION = _flat_section(SECURITY, "## Hand-off requests")
 
     def test_the_section_exists_under_a_heading_other_documents_can_anchor(self) -> None:
         self.assertIn("## Hand-off requests (one verb into a session)", self.SECURITY)
 
     def test_the_verb_is_documented_as_unsent_and_the_parser_agrees(self) -> None:
         self.assertIn("No shipped feature sends anything into a session", self.FLAT)
-        self.assertIn("That flag does not exist yet", self.FLAT)
+        self.assertIn("That flag does not exist yet", self.SECTION)
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--no-handoff"])
 
