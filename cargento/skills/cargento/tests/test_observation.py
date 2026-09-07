@@ -2495,9 +2495,13 @@ class GitProbeConcurrencyTest(ObservationTestCase):
             payload = self.end_envelope(session_id=f"{index:08x}-3456-7890-abcd-ef1234567890")
             self.assertEqual("accepted", coordinator.submit("claude", payload))
         self.assertEqual(self.config.git_probe_max_inflight, len(dispatched))
+        # `git.saturated`, not `git.inflight`: every key here is distinct, so the
+        # per-key gate turned none of them away and the ceiling turned away all
+        # 468. One counter for both causes could not tell those apart.
         self.assertEqual(
-            500 - self.config.git_probe_max_inflight, coordinator.counters["git.inflight"]
+            500 - self.config.git_probe_max_inflight, coordinator.counters["git.saturated"]
         )
+        self.assertNotIn("git.inflight", coordinator.counters)
 
     def test_the_ceiling_recovers_as_probes_finish(self) -> None:
         # A ceiling that never refilled would turn a burst into a permanently

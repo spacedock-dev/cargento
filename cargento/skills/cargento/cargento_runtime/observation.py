@@ -412,15 +412,14 @@ class Observation:
                 self._pending.pop(key, None)
                 self._bump("retired")
                 self._mark_ended(key, event.timestamp)
-                if self.config.git_probe_enabled and event.cwd:
-                    # Claimed here and dispatched below, once the lock is
-                    # released. The claim has to happen under the lock even though
-                    # the dispatch must not: two handler threads reaching this
-                    # with the same key is exactly the case being refused.
-                    if self._claim_git(key):
-                        probe_cwd = event.cwd
-                    else:
-                        self._bump("git.inflight")
+                # Claimed here and dispatched below, once the lock is released.
+                # The claim has to happen under the lock even though the dispatch
+                # must not: two handler threads reaching this with the same key is
+                # exactly the case being refused. `_claim_git` is last in the
+                # conjunction because it has an effect, so the two flag checks
+                # have to be what short-circuits it away.
+                if self.config.git_probe_enabled and event.cwd and self._claim_git(key):
+                    probe_cwd = event.cwd
                 # The session is over, so the pane it ran in is nobody's target.
                 # Retired here rather than in `_mark_finished`, which is where
                 # the git reading goes: that method pops on a WORKING overlay,
@@ -684,10 +683,17 @@ class Observation:
 
         Two gates on one set: this key is not already being probed, and the
         process is under its ceiling. `_git_inflight`'s comment carries why both.
+
+        A counter each, rather than one refusal count for both, because they read
+        differently to whoever is looking: an overlapping end for one session is
+        ordinary under at-least-once delivery, while a saturated ceiling says the
+        process is turning away sessions that have nothing wrong with them.
         """
         if key in self._git_inflight:
+            self._bump("git.inflight")
             return False
         if len(self._git_inflight) >= self.config.git_probe_max_inflight:
+            self._bump("git.saturated")
             return False
         self._git_inflight.add(key)
         return True
