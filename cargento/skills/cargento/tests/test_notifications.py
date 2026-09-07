@@ -1360,7 +1360,13 @@ class NoNativeNotificationTest(RuntimeTestCase):
     def test_an_unrelated_spawn_still_runs(self) -> None:
         # test_lifecycle subprocesses server.py --diagnose; a blanket subprocess
         # ban would take the suite with it.
-        done = subprocess.run(["/bin/echo", "ok"], capture_output=True, text=True, check=True)
+        #
+        # `sys.executable` rather than a shell utility: this class runs on the
+        # windows-latest leg of `platform-tests` too, and an earlier `/bin/echo`
+        # here failed there with WinError 2 while passing on both POSIX legs.
+        done = subprocess.run(
+            [sys.executable, "-c", "print('ok')"], capture_output=True, text=True, check=True
+        )
         self.assertEqual("ok", done.stdout.strip())
 
     def test_the_refusal_widens_with_a_future_backend(self) -> None:
