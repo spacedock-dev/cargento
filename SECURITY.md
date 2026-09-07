@@ -1022,9 +1022,9 @@ that do exist. The absence of per-user isolation is documented here rather than 
 finding.
 
 A browser will not frame the board, and the header that stops it is narrower than it looks. Every
-response the server composes carries `Content-Security-Policy: frame-ancestors 'none'`, with the two
-exceptions named below, because the request gate does not close framing on its own: every port on
-this machine is the same site, so a page served from another local port frames the board under a
+response the server composes carries `Content-Security-Policy: frame-ancestors 'none'`, with the
+three exceptions named below, because the request gate does not close framing on its own: every port
+on this machine is the same site, so a page served from another local port frames the board under a
 `same-site` label that never reaches the cross-site check, and a frame navigation carries no `Origin`
 for the check below it. That is worth closing because the served document holds the focus capability,
 so a framed board is one lured click from raising a terminal, and `/api/data` names which rows would
@@ -1040,10 +1040,13 @@ whose process the attacker does not control: a stored cross-site scripting flaw,
 HTML-rendering endpoint, in some other local development server the operator already runs. It is
 delivered as a header rather than in the document because CSP ignores `frame-ancestors` in a
 `<meta http-equiv>`, and it is the only directive in that policy because `frame-ancestors` has no
-fallback to `default-src`, so it restricts framing and nothing else. Two responses are outside it,
-deliberately: `/api/stream` writes its own headers and an event stream has nothing to click, and a
-`send_error` body is the standard library's error template, which carries no control and no
-capability.
+fallback to `default-src`, so it restricts framing and nothing else. Three responses are outside it,
+deliberately, and none of them is a page: `/api/stream` writes its own headers and an event stream
+has nothing to click; a `send_error` body is the standard library's error template, which carries no
+control and no capability; and the `204` a poll of `/api/ask/<id>` returns while no answer has
+arrived carries no body at all, so a frame navigated to it renders nothing. That last one is
+reachable from a frame on the same terms the board is, because the route takes the plain local check,
+and it is counted here for that reason rather than because it exposes anything.
 
 Event ingress is the exception, and it is narrow. `POST /api/events/<harness>` requires a per-run
 capability, because a general lifecycle overlay is more powerful than the side state `/api/notify`

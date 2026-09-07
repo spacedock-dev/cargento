@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import contextlib
 import io
 import json
@@ -19,6 +20,26 @@ from .support import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def handler_methods(source: str) -> dict[str, str]:
+    """Every method of `http_api._RequestHandler`, keyed by name.
+
+    From the parse's line ranges rather than by slicing between two `def`
+    markers. A slice inverts to the empty string the moment the two markers
+    are reordered, and every `assertNotIn` against an empty string then passes
+    without having read anything.
+    """
+    lines = source.splitlines(keepends=True)
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ClassDef) and node.name == "_RequestHandler":
+            return {
+                item.name: "".join(lines[item.lineno - 1 : item.end_lineno])
+                for item in node.body
+                if isinstance(item, ast.FunctionDef)
+            }
+    msg = "http_api._RequestHandler is gone; the pins below read its methods"
+    raise AssertionError(msg)
 
 
 class DocumentationMatchesCodeTest(unittest.TestCase):
@@ -1124,27 +1145,55 @@ class FocusCommandContractDocumentationTest(unittest.TestCase):
         # this class already pins, and it is bound here because its motivation
         # is this section's: the served document carries the focus capability,
         # so a framed board is a raise one lured click away.
-        self.assertIn("carries `Content-Security-Policy: frame-ancestors 'none'`", self.FLAT)
+        #
+        # The quantifier rides with the sentence it qualifies rather than as the
+        # trailing fragment this first pinned. "carries `Content-Security-Policy:
+        # ...`" on its own survives a rewrite to "The page response carries ...",
+        # which is a far smaller promise passing for the one made here.
+        self.assertIn(
+            "Every response the server composes carries "
+            "`Content-Security-Policy: frame-ancestors 'none'`, with the three "
+            "exceptions named below",
+            self.FLAT,
+        )
         source = (SERVER_PATH.parent / "cargento_runtime" / "http_api.py").read_text(
             encoding="utf-8"
         )
-        send = source[source.index("    def _send(") : source.index("    def _health(")]
+        methods = handler_methods(source)
+        csp = 'self.send_header("Content-Security-Policy", "frame-ancestors \'none\'")'
         # The whole value, not a substring. `frame-ancestors` has no fallback to
         # `default-src`, so it is the only directive that can ride here without
         # restricting the page; a second one in this policy blanks a board built
         # from one inline script, one inline style and nine `data:` font URIs.
-        self.assertIn(
-            'self.send_header("Content-Security-Policy", "frame-ancestors \'none\'")',
-            send,
+        self.assertIn(csp, methods["_send"])
+        # The count, not just the names. The prose shipped claiming two carve-outs
+        # while the code had three, because `_ask_poll` composes its own 204 and
+        # nothing named it. Three methods write a status line; `_send` is the one
+        # that adds the header, so the two that do not, plus every `send_error`
+        # body, are the three the sentence above names. A fourth `send_response`
+        # anywhere in the handler falsifies that sentence, and this is where it
+        # fails instead -- in the test that also reads the sentence.
+        #
+        # Named rather than narrowed to "every response `_send` composes": a
+        # reader of this section can count responses over the socket with curl,
+        # and cannot check the reach of a private helper without the source. The
+        # neighbouring promises in this section are counts earned the same way.
+        self.assertEqual(
+            {"_send", "_stream_forever", "_ask_poll"},
+            {name for name, body in methods.items() if "self.send_response(" in body},
         )
-        # And the carve-out the document commits to. If the stream ever routes
-        # through `_send`, the prose below is what goes stale, not the code.
-        self.assertIn(
+        self.assertEqual({"_send"}, {name for name, body in methods.items() if csp in body})
+        self.assertIn("Three responses are outside it, deliberately", self.FLAT)
+        for carve_out in (
             "`/api/stream` writes its own headers and an event stream has nothing to click",
-            self.FLAT,
-        )
-        stream = source[source.index("def _stream_forever(") : source.index("def _emit(")]
-        self.assertNotIn("self._send(", stream)
+            "a `send_error` body is the standard library's error template",
+            "the `204` a poll of `/api/ask/<id>` returns while no answer has arrived",
+        ):
+            with self.subTest(carve_out=carve_out):
+                self.assertIn(carve_out, self.FLAT)
+        # If the stream ever routes through `_send`, the prose is what goes
+        # stale, not the code.
+        self.assertNotIn("self._send(", methods["_stream_forever"])
 
     def test_the_response_the_contract_promises_is_the_one_the_route_sends(self) -> None:
         self.assertIn("The response is a single boolean saying whether a focus happened", self.FLAT)

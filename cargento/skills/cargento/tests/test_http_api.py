@@ -215,10 +215,19 @@ class CargentoServerTest(RuntimeTestCase):
         thread = threading.Thread(target=poll_fast(httpd), daemon=True)
         thread.start()
         try:
-            for path in ("/", "/api/data"):
-                with self.subTest(path=path):
+            # A POST among them, and that is the case this loop was missing.
+            # The header is unconditional today, but wrapping the `send_header`
+            # in `if self.command == "GET":` was applied in a scratch copy and
+            # the whole suite stayed green while every POST reply -- answer,
+            # notify, ask, focus, events, shutdown -- lost it over the socket.
+            for method, path, body in (
+                ("GET", "/", None),
+                ("GET", "/api/data", None),
+                ("POST", "/api/notify", b"{}"),
+            ):
+                with self.subTest(path=path, method=method):
                     conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
-                    conn.request("GET", path, headers={"Sec-Fetch-Site": "same-origin"})
+                    conn.request(method, path, body=body, headers={"Sec-Fetch-Site": "same-origin"})
                     response = conn.getresponse()
                     self.assertEqual(200, response.status)
                     # Equality, not a substring: `frame-ancestors` has no
