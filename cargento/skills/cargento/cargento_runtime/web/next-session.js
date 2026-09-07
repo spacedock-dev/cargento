@@ -80,7 +80,8 @@ function nextSessionSourceCoverage(owner, next, asks, openDisclosures){
   if(asks.length || next) return "";
   return '<details class="next-session-source-coverage"' +
     `${nextDisclosureAttr("session-source-coverage", openDisclosures)}>` +
-    '<summary data-next-disclosure="session-source-coverage">SOURCE COVERAGE</summary>' +
+    '<summary data-next-disclosure="session-source-coverage" ' +
+    'data-next-focus="session-source-coverage">SOURCE COVERAGE</summary>' +
     `<p>${esc(owner)} did not publish a next action.</p></details>`;
 }
 

@@ -117,8 +117,22 @@ function nextProjectSummaryHtml(summary, sessionCount){
   if(summary.exactRequests){
     values.push(`${summary.exactRequests} exact request${summary.exactRequests === 1 ? "" : "s"}`);
   }
-  if(summary.risk) values.push(`${summary.risk} at risk`);
-  if(summary.close) values.push(`${summary.close} close the loop`);
+  /* `risk` and `close` count SUBJECTS and the two below them count SESSIONS, in
+     a list that opens with a session total. Unlabelled, that invites the reader
+     to subtract one from the other: a collision is one subject over two
+     sessions, so "2 sessions · 1 at risk · 2 working" looks like it is missing a
+     session. Naming the unit is enough here rather than restating a denominator,
+     because unlike the brief on Attention these two are not filtered to the
+     sessions no subject represents. They are still not the leading total: that
+     counts every session in the group while these count the ACTIVE subset, so a
+     group holding an inactive session renders "3 sessions ... 1 working"
+     (measured). That second gap is filed rather than fixed here. */
+  if(summary.risk){
+    values.push(`${summary.risk} subject${summary.risk === 1 ? "" : "s"} at risk`);
+  }
+  if(summary.close){
+    values.push(`${summary.close} subject${summary.close === 1 ? "" : "s"} to close the loop`);
+  }
   if(summary.working) values.push(`${summary.working} working`);
   if(summary.quiet) values.push(`${summary.quiet} quiet`);
   return `<div class="next-project-summary">${values.map(value => `<span>${esc(value)}</span>`).join("")}</div>`;
