@@ -20,7 +20,11 @@ Picking requires an authenticated Linear capability with read access to the `DRC
 projects, issues, relations, labels and milestones. A full run also requires:
 
 - Linear write access to update issues, relations, milestones and the project overview after merge.
-- The `recce-dev:linear-deep-dive`, `superpowers:test-driven-development` and `sync-docs` skills.
+- The `recce-dev:linear-deep-dive`, `superpowers:test-driven-development`, `sync-docs` and
+  `visual-review-and-fix` skills.
+- A browser automation capability, for the two `visual-review-and-fix` passes. Without one, say
+  so in the report and name the stages that went unwalked rather than treating the issue as
+  reviewed.
 - A Git checkout that can create one branch per issue, run the canonical pre-PR suite, make
   DCO-signed commits and push to `origin`.
 - GitHub access that can inspect mirrored issues, open a pull request and confirm its merge.
@@ -59,6 +63,21 @@ skill's own workflow.
 
 Use what it returns: classification, key files, acceptance criteria, risks. Do not repeat its exploration, and do not restate its rules here; issue lifecycle, branch handling and the read-skeptically discipline are all its.
 
+**REQUIRED SUB-SKILL:** Invoke the `visual-review-and-fix` skill in its **before** mode. Open the
+surface this issue touches and use it as the reader does, before any code is written. Its own
+calibration table decides how deep the walk goes and says plainly when the answer is to skip it, so
+invoke it for every issue and let it choose; do not pre-judge that an issue has nothing visible.
+
+It returns two things this step needs. The acceptance criteria below come out of that walk rather
+than out of the issue text, because a criterion written from source states the wrong thing about
+what the reader is told: that has happened twice here, once producing a criterion no
+implementation could satisfy. And anything it finds that predates this issue is filed, never folded
+into the branch you are about to open.
+
+If the walk contradicts the issue's plan, that is not a defect to file. Correct the issue before any
+code is written. Two issues in this project had their plan overturned that way by one cheap
+observation, and both times the observation was worth more than the feature.
+
 Then write the issue's **User value** brief, two sentences as its first section: who notices this and when in their day, then the promise ID and the move, in the vocabulary of [the promise map](../../../docs/promise-map.md#how-work-links-to-a-promise). Set the `journey:*` and `move:*` labels to match. At least one acceptance criterion must be a property a user can see, with its own `Verified by:` clause; when the move is `none`, the brief says instead why no user sees this change. Inside the roadmap-burndown workflow these are triage outputs and the gate approves them before Linear is written.
 
 If it finds the issue needs a decision nobody filed, stop. File the decision issue, link it as a blocker, and pick again. Guessing a product-identity call is how this project ended up with two issues reading as ready to build behind an unwritten policy.
@@ -71,6 +90,15 @@ and watch it fail. If a test passes the moment you write it, you are testing wha
 Then run the canonical pre-PR suite from **AGENTS.md, "Pre-PR Checks"**. Run it from there rather than from a copy. A short local copy of that list is how someone passes locally and then fails the required check.
 
 Then invoke the `sync-docs` skill, which is a step of that gate and not optional.
+
+**REQUIRED SUB-SKILL:** Invoke the `visual-review-and-fix` skill in its **after** mode, in the
+worktree, **before you push**. It re-walks what it walked in step 2 and checks the regression
+classes this repository has actually shipped, including the ones a green suite cannot see. Anything
+your change introduced is fixed here; anything that predates it is filed with the base comparison
+that proves so.
+
+Before the push rather than after, because reviewing an open PR costs a second full CI cycle:
+green, blocked, fixed, green again, measured at about fifteen minutes of waiting per PR.
 
 PR body: open with the Linear link, `Implements [DRC-####](url) — <issue title>`, and include a `## Verification` section naming what you ran and what it said. Add `Closes #NNNN` only if a mirrored GitHub issue actually exists, one line per issue, never comma separated.
 
