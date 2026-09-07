@@ -16,6 +16,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import capture_terminal_identity as recorder
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def recorder_env() -> dict[str, str]:
+    """The environment every recorder subprocess in this module starts with.
+
+    The switch is the whole point. These 15 invocations were measured sending 91
+    `tell application "Terminal"` Apple Events on a desk with Terminal open,
+    because the canonical pre-PR suite names this module and the emulator lookup
+    asks Terminal about whatever tty resolves. Nothing here needs a real answer
+    from Terminal: the lookup itself is covered in-process, where `count` is
+    injected. A real capture does not set this, so what an operator records is
+    unchanged.
+    """
+    return {**os.environ, recorder.NO_TERMINAL_QUERY_ENV: "1"}
+
+
 CAPTURES = ROOT / "docs" / "captures"
 
 
@@ -851,6 +867,7 @@ class ReRunnableTest(unittest.TestCase):
                     text=True,
                     timeout=60,
                     check=False,
+                    env=recorder_env(),
                 )
                 self.assertEqual(0, done.returncode, done.stderr)
             written = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines()]
@@ -865,6 +882,7 @@ class ReRunnableTest(unittest.TestCase):
             text=True,
             timeout=60,
             check=False,
+            env=recorder_env(),
         )
 
     def test_a_misregistered_hook_line_still_exits_zero(self) -> None:
@@ -969,6 +987,7 @@ class ReRunnableTest(unittest.TestCase):
                 text=True,
                 timeout=60,
                 check=False,
+                env=recorder_env(),
             )
             self.assertEqual(0, done.returncode, done.stderr)
 

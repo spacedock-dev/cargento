@@ -20,6 +20,10 @@ import capture_terminal_identity as identity
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "capture_focus_raise.py"
 
+#: Opt-in for the one test that sends real Apple Events. Unset is the default
+#: everywhere, including on CI, so the canonical pre-PR suite automates nothing.
+ALLOW_APPLE_EVENTS_ENV = "CARGENTO_ALLOW_APPLE_EVENTS"
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -1302,6 +1306,25 @@ class ReadScriptTest(unittest.TestCase):
         )
 
     def test_every_read_script_runs(self) -> None:
+        # Opt-in, and the flag is the point rather than the probe below it. This
+        # leg is named in the canonical pre-PR list, so on any macOS desk with
+        # Terminal open it used to send two Apple Events to a running third-party
+        # application as a side effect of running the documented gate, and
+        # nothing said so. The reads themselves are harmless -- they read `tty`
+        # of tabs and select, activate and launch nothing -- but an undisclosed
+        # side effect on someone's desk is not the gate's to take.
+        #
+        # A flag rather than a platform skip: skipping off darwin was tried and
+        # it removed the coverage everywhere, and the coverage is the whole value
+        # here, because a mock cannot catch an AppleScript that stopped
+        # compiling. Note what this costs: GitHub's macOS runner does not set the
+        # flag either, so the live check now runs nowhere in CI and
+        # `test_no_script_sets_a_global_property_inside_a_tell_block` below is
+        # the falsifier that remains there.
+        if os.environ.get(ALLOW_APPLE_EVENTS_ENV) != "1":
+            raise unittest.SkipTest(
+                f"set {ALLOW_APPLE_EVENTS_ENV}=1 to send the read scripts to Terminal for real"
+            )
         if not self.terminal_is_running():
             raise unittest.SkipTest(
                 "Terminal is not running; nothing to read and nothing to launch"
@@ -1317,6 +1340,25 @@ class ReadScriptTest(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(0, done.returncode, f"{name}: {done.stderr.strip()}")
+
+    def test_the_live_read_stays_off_until_the_operator_asks_for_it(self) -> None:
+        # The assertion is on the guard, not on an Apple Event: this test must
+        # never send one itself. `mock.patch.dict` with the flag cleared is the
+        # state a contributor's shell is in, and the skip is what they should get.
+        with (
+            unittest.mock.patch.dict(os.environ, {}, clear=True),
+            self.assertRaises(unittest.SkipTest) as raised,
+        ):
+            self.test_every_read_script_runs()
+        self.assertIn(ALLOW_APPLE_EVENTS_ENV, str(raised.exception))
+
+    def test_the_identity_recorder_will_not_launch_terminal_to_count_its_tabs(self) -> None:
+        # The sibling recorder reaches `tell application "Terminal"` with no
+        # guard at all, and its own tests drive it as a subprocess. A Terminal
+        # that is down has no tabs, so the honest answer is None rather than a
+        # count from an application this recorder started.
+        with unittest.mock.patch.object(identity, "_terminal_is_running", return_value=False):
+            self.assertIsNone(identity._terminal_tabs("ttys006"))
 
     def test_no_script_sets_a_global_property_inside_a_tell_block(self) -> None:
         # The shape rather than the instance, so it holds on a machine that

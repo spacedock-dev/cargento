@@ -1044,9 +1044,29 @@ fallback to `default-src`, so it restricts framing and nothing else. Three respo
 deliberately, and none of them is a page: `/api/stream` writes its own headers and an event stream
 has nothing to click; a `send_error` body is the standard library's error template, which carries no
 control and no capability; and the `204` a poll of `/api/ask/<id>` returns while no answer has
-arrived carries no body at all, so a frame navigated to it renders nothing. That last one is
-reachable from a frame on the same terms the board is, because the route takes the plain local check,
-and it is counted here for that reason rather than because it exposes anything.
+arrived carries no body at all, so a frame navigated to it renders nothing. The stream and that poll
+are both reachable from a frame on the same terms the board is, because each route takes the plain
+local check.
+
+Having nothing to click is not the whole question for those two, because both hold a socket open,
+and that half was measured on 2026-09-07 in Chrome. Eight frames pointed at `/api/stream` from a
+page on another loopback port took **six** sockets, not eight: a browser caps concurrent HTTP/1.1
+connections per origin at six, so the eight-slot stream budget was never drained and a seventh
+client still received a 200. `stream_max_clients` sitting above the browser's six is why, and the
+reason it was chosen that way is recorded beside it in `config`. What the six frames did drain was
+Chrome's own connection pool for that origin, and the board then would not load at all in the same
+browser: the navigation sat pending and committed the instant the frames were removed. So the
+resource a framed long-lived route can deny is the browser's, not this server's, and the server
+cannot arbitrate it.
+
+Both routes therefore refuse a frame navigation outright, on `Sec-Fetch-Dest`, which the same
+measurement confirmed a framed request carries: `iframe`, alongside `Sec-Fetch-Site: same-site` and
+no `Origin` at all, which is how such a request passed the checks above. That buys one thing, which
+is that the request is refused before it can hold a socket rather than holding one for as long as
+the framer likes. It is worth exactly what `frame-ancestors` is worth and no more, and for the same
+reason stated above: a local process the attacker controls sends no `Sec-Fetch` headers at all. A
+`curl` caller sends none either and is unaffected, since the refusal fires only on a header a
+browser sets.
 
 Event ingress is the exception, and it is narrow. `POST /api/events/<harness>` requires a per-run
 capability, because a general lifecycle overlay is more powerful than the side state `/api/notify`

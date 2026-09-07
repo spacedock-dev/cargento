@@ -7,9 +7,13 @@ leaves your machine that you cannot switch off.
 This file is the user-facing half of the roadmap. It says what Cargento answers today, what backs
 each answer, and where each answer stops. The internal half, the scored candidate signals and the
 build order, lives on the [Visibility 2x2 board](visibility-2x2/README.md), whose journey view
-carries the same five promises in a **Promise** row. The wording is identical in both places on
+carries the same five promises in a **Promise** row. The wording is the same in both places on
 purpose: one of them faces users and the other faces the build queue, and they should never say
-different things.
+different things. The same rather than byte-identical, and the exception is exactly one character:
+each sentence here continues from the promise lead-in and so opens lowercase, while the board
+renders it standing alone after a promise label and so opens with a capital. `scripts/validate_plugins.py`
+holds those two copies to each other on that rule. The Linear project overview carries a third copy
+that no check can reach, so that one is read by hand.
 
 It is written for someone who runs several coding agents at once and cannot see most of them.
 Nine or ten terminal tabs, three of them waiting on a question nobody noticed, one burning the
@@ -120,16 +124,18 @@ is spent against how much of its time is gone, the pace that comparison implies,
 runs out at that pace, and when the window resets. Beneath it, what the remaining budget buys in
 minutes at both paces Cargento has measured, and how long sessions have actually worked in the
 project that consumed the most measured working time on this machine. On top of that sit
-per-model sub-limits, per-session cost, and a ranking of which session is burning fastest right
-now.
+per-model sub-limits.
 
 Where it stops: what a vendor exposes is what you get. Claude, Codex and Antigravity publish
 five-hour and weekly windows, Cursor publishes its monthly billing cycle, and Copilot contributes
 per-session AI Units with no percentage because its entitlement is not stored locally. Cursor
 fetching is macOS only, and Cursor's cycle has no published start, so its row shows a level and no
-clock. Credential-backed fetching happens only once the disclosure is answered, `--no-usage`
-refuses it for a run, and the token is never written, logged, or served. Quota that is expired,
-rejected, missing, or stale is withheld rather than rendered as zero.
+clock. There is no per-session cost figure anywhere on the board, and no ranking of which session is
+burning fastest right now: every rate the board publishes is a mean over one ten-minute window, and
+it names that window rather than claiming an immediacy the arithmetic does not have.
+Credential-backed fetching happens only once the disclosure is answered, `--no-usage` refuses it for
+a run, and the token is never written, logged, or served. Quota that is expired, rejected, missing,
+or stale is withheld rather than rendered as zero.
 
 **Cargento never tells you that you are going to overrun.** It puts the budget's end time beside
 the window's reset time and leaves the comparison to you, including on the day they are ninety
@@ -142,14 +148,20 @@ can see nothing.
 **We promise:** nothing finishes invisibly. Work that finished and was never read is flagged,
 sessions that went quiet go stale, and a session that ends leaving uncommitted changes says so.
 
-Backed by the stale reading at two hours idle, the finished-and-unread flag, the distinction between
-a finished session and one still waiting, a way to mark a session handled so it leaves the board,
-and the end-of-session git probe that shipped in 0.19.
+Backed by the finished-and-unread flag, the mark that separates a turn that stopped from a session
+still waiting on a reply that never came, the mark that a session is over so it stops reading as one
+waiting at its prompt, a way to mark a session handled so it leaves the board, and the
+end-of-session git probe that shipped in 0.19.
 
-Where it stops: the git probe runs one bounded, read-only, non-executing command as a session ends
-and publishes two numbers, whether the tree is dirty and how many porcelain entries changed. It
-never publishes a pathname, and `--no-git` turns it off entirely. Telling a session that died from
-one that finished is not shipped yet.
+Where it stops: both of those marks reach only the harnesses whose adapter maps the event that
+carries them. An absent mark means no end was observed, never that a session is alive, so it covers
+the harnesses with no adapter, a session that predates this server process, and a run under
+`--no-events` alike. The session-end mark also lapses one row window after the row it belongs to.
+A quiet session is published as idle with nothing elapsed behind it: there is no duration threshold,
+so going quiet is a state here and not a reading. The git probe runs one bounded, read-only,
+non-executing command as a session ends and publishes two numbers, whether the tree is dirty and how
+many porcelain entries changed. It never publishes a pathname, and `--no-git` turns it off entirely.
+Telling a session that died from one that finished is not shipped yet.
 
 ## What we do not promise yet
 

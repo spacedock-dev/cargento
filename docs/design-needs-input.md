@@ -783,7 +783,7 @@ session whose turn stopped is usually still open, still typeable, and still wort
 `claude -p` run that exited and a session sitting at its prompt rendered identically.
 
 The row now carries `ended_at`, a nullable stamp set when the session id itself is observed to end,
-and Safe to close, the operations row and the session detail all read it (DRC-4036).
+and `CLOSE THE LOOP`, the operations row and the session detail all read it (DRC-4036).
 
 **`/clear` was the objection, and it dissolves.** Claude fires `SessionEnd` on `/clear` as well as on
 exit, and the capture that recorded it

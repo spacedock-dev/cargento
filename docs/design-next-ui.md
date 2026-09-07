@@ -146,11 +146,11 @@ sessions overview were both right, because both read `state`. A payload has one 
 going on, and a block that derives its own from a different field will eventually contradict the
 rest of the page.
 
-DONE is deliberately narrower. It walks each project session and its Claude task list in payload
-order, selecting only tasks whose published status is `completed`. It does not sort by task times or
-deduplicate subjects. Task identity is local to a session, and the same subject can represent two
-real pieces of work. Spacedock entities are not a completion source: terminal entities do not reach
-this payload, and the remaining plan rows carry no completed marker.
+DONE is deliberately narrower. It walks each project session and whatever task list that session
+published, in payload order, selecting only tasks whose published status is `completed`. It does not
+sort by task times or deduplicate subjects. Task identity is local to a session, and the same
+subject can represent two real pieces of work. Spacedock entities are not a completion source:
+terminal entities do not reach this payload, and the remaining plan rows carry no completed marker.
 
 Both blocks render an explicit empty sentence. DONE names the payload because it is a view of the
 latest snapshot, not a retained history or a claim that a project has never completed work. A
@@ -229,16 +229,19 @@ numeric index to the existing `/api/answer` endpoint. Only `answered: true` conf
 otherwise the question stays put with a failure note keyed to its ask ID. There is no optimistic
 removal.
 
-Task provenance stays Claude-only because no other collector publishes that list. The count is
-derived from the rows being rendered, and their payload order is unchanged. Subagents also keep
-payload order. Their live dot pulses unless reduced motion disables animation, and elapsed time
-appears only when `started_at` was measured, using the NUI-5 duration grammar; model names are
-outside this view. For working sessions,
-the footer prefers measured turn output tokens. For waiting and idle sessions, it prefers the
-measured session total. Either state falls back to the other measured source and labels the visible
-number `this turn` or `this session` from the source it actually chose. An absent reading stays
-absent and a real zero stays visible, so a lifetime total cannot read as if it described the current
-request.
+Task provenance is whichever collectors fill the list, not a harness allowlist. Two do today,
+`collectors/claude.py` and `collectors/codex.py`, and both readers gate on the published field
+rather than on the harness name so a third needs no edit here. The gate was once written against the
+harness name, while Claude was the only collector filling the field, and that spelling hid a Codex
+plan the moment one arrived; the comments in `next-session.js` and `next-activity.js` record the
+change. The count is derived from the rows being rendered, and their payload order is unchanged.
+Subagents also keep payload order. Their live dot pulses unless reduced motion disables animation,
+and elapsed time appears only when `started_at` was measured, using the NUI-5 duration grammar;
+model names are outside this view. For working sessions, the footer prefers measured turn output
+tokens. For waiting and idle sessions, it prefers the measured session total. Either state falls
+back to the other measured source and labels the visible number `this turn` or `this session` from
+the source it actually chose. An absent reading stays absent and a real zero stays visible, so a
+lifetime total cannot read as if it described the current request.
 
 A new session endpoint would duplicate the current payload and expand the HTTP surface without
 supplying new evidence. The `next-session.js` part renders from the canonical payload and adds no

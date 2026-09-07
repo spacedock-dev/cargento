@@ -150,10 +150,11 @@ mypy
 python3 scripts/lint_embedded.py   # needs node; add --allow-missing-node to degrade
 python3 scripts/validate_plugins.py
 python3 scripts/bump_version.py --current   # version-field parity across all owned locations
-# `--current` proves the five fields AGREE; `version-guard` additionally proves they have not
-# MOVED since the merge base. Check that half yourself — nothing local does:
+# `--current` proves the three version fields AGREE; `version-guard` additionally proves they
+# have not MOVED since the merge base. Check that half yourself — nothing local does. No
+# `*marketplace.json` pathspec: the one marketplace file left carries no `version` key at all.
 git diff "$(git merge-base origin/main HEAD)"..HEAD \
-  -- '*plugin.json' '*marketplace.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
+  -- '*plugin.json' '*gemini-extension.json' | grep -E '^[+-].*"version"'
 coverage erase
 coverage run -m unittest discover -s cargento/skills/cargento/tests -t .
 coverage run -a -m unittest \
@@ -164,6 +165,19 @@ coverage run -a -m unittest \
   scripts.tests.test_capture_terminal_identity \
   scripts.tests.test_capture_focus_raise
 coverage report   # enforces the fail_under threshold from pyproject.toml
+# Those last two modules exercise AppleScript against Terminal.app, and this
+# suite now sends nothing. It used to: measured on a macOS desk with Terminal
+# open, `test_capture_terminal_identity` sent 91 `tell application "Terminal"`
+# events and `test_capture_focus_raise` sent 2, none of it disclosed anywhere.
+# Both are read-only property reads that select nothing, activate nothing and
+# open no window, but they are still automation of someone else's application.
+# Two switches hold it shut, with different audiences: the test module sets
+# `CARGENTO_NO_TERMINAL_QUERY=1` on every recorder subprocess it starts, which a
+# real capture never sets, so what an operator records is unchanged; and the one
+# test that talks to a live Terminal on purpose is behind
+# `CARGENTO_ALLOW_APPLE_EVENTS=1` and skips without it. CI never sets that flag,
+# so the live read runs on an operator's desk or nowhere, and the static shape
+# test beside it is what still guards those scripts in CI.
 # Native validators, if the CLIs are installed (they are not available on stock runners):
 claude plugin validate ./cargento --strict
 agy plugin validate ./cargento
@@ -197,17 +211,24 @@ another worktree is mid-flight. `git worktree list` answers it.
 produced errors that look like regressions and are not:
 
 - `test_http_api` fails on loopback port binds, because two servers want the same port.
-- `test_page.FrontendAssetContractTest` and `test_lifecycle.InstalledContractCharacterizationTest`
-  hit `subprocess.TimeoutExpired` on `server.py --diagnose`, which is a real subprocess racing for
-  CPU rather than a broken launcher.
+- `test_lifecycle.InstalledContractCharacterizationTest` hits `subprocess.TimeoutExpired` on
+  `server.py --diagnose`, which is a real subprocess racing for CPU rather than a broken launcher.
+  It is today the only class in the dashboard suite that subprocesses that command. A second name
+  stood here, `test_page.FrontendAssetContractTest`, and was measured: it existed when this bullet
+  was written and `8d2585c` (#247) deleted the whole module as collateral when the next UI replaced
+  the old one. Its `--diagnose` coverage was not carried forward, so the name is removed rather than
+  repointed. Do not substitute a plausible successor: the sibling that looks closest asserts against
+  a live server, where the deleted one asserted against none with the web assets unlinked.
 - `test_quota` times out on socket reads.
 
 Run the full suite **once**, and confirm any failure in those modules by running that module alone
 before believing it. Report both results rather than the convenient one. A load average above about
 10 makes this near-certain.
 
-**Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes and
-digests plus the assembled page. Two branches that both change a web asset produce a conflict where
+**Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
+and digests plus the assembled page, and it is not the only file that pins it: `tests/test_next_flag.py`
+holds the same size and digest pair, and `tests/test_focus.py` holds a digest of the assembled page
+too. Recompute all three. Recomputing only the first leaves CI red on the other two. Two branches that both change a web asset produce a conflict where
 **each side is correct for a tree that no longer exists**, so a textual resolution ships a number
 wrong for both. Recompute from the assets. If only one side changed the page the existing figures
 may still be right, but prove that by running the oracles rather than reasoning about it.

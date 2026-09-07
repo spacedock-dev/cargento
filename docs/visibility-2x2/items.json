@@ -64,7 +64,7 @@
       "id": "mid",
       "name": "Mid-flight",
       "question": "What is it doing, and when should I come back?",
-      "promise": "For each live session: what it is doing now, what it plans next, how far into the current turn it is, and an estimate of when that turn ends. It tells you when that changes instead of making you poll."
+      "promise": "For each live session, what it is doing now, what it plans next, how far into the current turn it is, and an estimate of when that turn ends. It tells you when that changes instead of making you poll."
     },
     {
       "id": "gate",
@@ -76,7 +76,7 @@
       "id": "usage",
       "name": "Usage",
       "question": "Will I hit the wall before the work finishes?",
-      "promise": "Your quota in one place across vendors: the windows that reset, per-model sub-limits, cost per session, and the burn rate projected to the wall."
+      "promise": "Your quota in one place across vendors, with each window's budget shown against its own clock, so you can see whether there is room before you start rather than partway through."
     },
     {
       "id": "end",
