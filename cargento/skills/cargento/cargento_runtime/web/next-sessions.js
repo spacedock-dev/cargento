@@ -66,6 +66,39 @@ function nextSessionUnread(session){
     `Source not fully read: ${esc(names.join(", "))}</span>`;
 }
 
+/* Whether no event can ever reach this row, so an absent stop on it says
+   nothing about whether the turn ended. `acquisition` is published, and
+   therefore untrusted: one exact string and nothing else, because a truthy
+   check would print the sentence for "event" — the value that means the
+   opposite — as readily as for a hostile one.
+
+   A published stop takes precedence, and that arm is unreachable from this
+   server rather than dead code: `events.parse` refuses the six harnesses'
+   envelopes outright, so the two cannot disagree on a row Cargento built. It is
+   here because the sentence says a stop could not be observed, and a stamp
+   beside it would make that false on the reader's screen. */
+function nextSessionIsScanOnly(session){
+  if(!session || session.acquisition !== "scan-only") return false;
+  const finished = Number(session.finished_at);
+  return !(Number.isFinite(finished) && finished > 0);
+}
+
+const NEXT_SCAN_ONLY_NOTE = "Cargento reads this session off disk and no event from its " +
+  "harness can reach it, so an idle row here means nothing has changed recently rather " +
+  "than that the turn ended. The rest of the row was read normally.";
+
+/* Beside the unread-source sentence and styled with it, because both are facts
+   about the row's source qualifying a reading already on screen. Not a
+   `<details>` for #302's reason, recorded in docs/design-unread-sources.md.
+   Unconditional on `state`: the field is a property of the harness, and the
+   working arm is where the reader most needs it — that row will stop, and
+   nothing will tell them it did. See docs/design-scan-only-rows.md. */
+function nextSessionScanOnly(session){
+  if(!nextSessionIsScanOnly(session)) return "";
+  return `<span class="next-operation-scan-only" title="${esc(NEXT_SCAN_ONLY_NOTE)}">` +
+    "Read by scanning: no turn end can be observed here</span>";
+}
+
 function nextOperationsAsks(rows){
   if(!nextData || nextData.ask !== true) return [];
   const identities = new Set(rows.map(nextSessionKey));
@@ -232,7 +265,7 @@ function nextOperationsIdentity(session, labels, collisions, route, history = fa
        row as well as the live one: the fact is about the whole row's source, and
        the two lanes are the row's two arms — a store that would not read renders
        here as quiet and there as working. */
-    nextSessionUnread(session) + "</span>";
+    nextSessionScanOnly(session) + nextSessionUnread(session) + "</span>";
 }
 
 function nextOperationsEndedNow(endedAt){

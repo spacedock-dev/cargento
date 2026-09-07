@@ -11,19 +11,79 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from cargento_runtime import events as runtime_events
 from cargento_runtime import records
 from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime import turns as runtime_turns
 from cargento_runtime.collectors import claude as claude_collector
 
+from .fixtures import HARNESSES
 from .support import (
     STORE_OVERRIDES,
+    HarnessContractTestCase,
     RuntimeTestCase,
     collect,
     collect_claude,
     make_config,
     make_runtime,
     store_patch,
+)
+
+# The payload's declared field set, written out here rather than derived from
+# base_session(), so the two sides cannot move together. Comparing a function
+# against the table it reads from holds no matter how wrong the table is.
+#
+# Module level rather than a class attribute because two tests read it: the
+# constructor's key set, and a published payload row's. One table, or the weaker
+# of the two checks becomes the one a new field gets declared against.
+DECLARED_SESSION_FIELDS = frozenset(
+    {
+        "session",
+        "sid",
+        "harness",
+        "project",
+        "provider",
+        "model",
+        "consumption",
+        "title",
+        "last_prompt",
+        "instruction",
+        "state",
+        "state_detail",
+        "active",
+        "last_activity",
+        "own_activity",
+        "started_at",
+        "finished_at",
+        "ended_at",
+        "dirty",
+        "changed",
+        "focusable",
+        "rate_per_min",
+        "session_output_tokens",
+        "turn_output_tokens",
+        "total",
+        "done",
+        "open",
+        "progress_pct",
+        "eta_h",
+        "turn",
+        "loop",
+        "resume_id",
+        "subagents",
+        "tasks",
+        "spacedock",
+        "source_gaps",
+        # The two below are written onto the row after `base_session` returns,
+        # which is why they went undeclared until the check reached the payload
+        # (DRC-4473). `acquisition` is stamped by
+        # `Application._mark_unreachable_by_events` for the six harnesses absent
+        # from `events.IDENTITY_NORMALIZERS`; `blocked_since` is published by the
+        # Claude, Copilot and Cursor collectors. Both are also in
+        # `events.PATCHABLE`, so an event envelope can write either onto any row.
+        "acquisition",
+        "blocked_since",
+    }
 )
 
 
@@ -708,59 +768,21 @@ class CargentoServerTest(RuntimeTestCase):
         self.assertEqual("session-", s["session"])  # display stays 8 chars
         self.assertEqual("session-abcdef123", s["sid"])  # identity stays full
 
-    # The payload's declared field set, written out here rather than derived from
-    # base_session(), so the two sides cannot move together. Comparing a function
-    # against the table it reads from holds no matter how wrong the table is.
-    DECLARED_SESSION_FIELDS = frozenset(
-        {
-            "session",
-            "sid",
-            "harness",
-            "project",
-            "provider",
-            "model",
-            "consumption",
-            "title",
-            "last_prompt",
-            "instruction",
-            "state",
-            "state_detail",
-            "active",
-            "last_activity",
-            "own_activity",
-            "started_at",
-            "finished_at",
-            "ended_at",
-            "dirty",
-            "changed",
-            "focusable",
-            "rate_per_min",
-            "session_output_tokens",
-            "turn_output_tokens",
-            "total",
-            "done",
-            "open",
-            "progress_pct",
-            "eta_h",
-            "turn",
-            "loop",
-            "resume_id",
-            "subagents",
-            "tasks",
-            "spacedock",
-            "source_gaps",
-        }
-    )
-
-    def test_every_session_row_declares_the_same_field_set(self) -> None:
+    def test_every_constructed_session_row_declares_the_same_field_set(self) -> None:
         # Why the set is fixed at all: a key that appears for only some harnesses
         # makes every consumer test for presence rather than for a value. So a
         # field arriving for one harness is declared for all of them, and this
         # test is the place that has to be edited to say so.
+        #
+        # The constructor's half. It cannot be the whole guarantee, because every
+        # field written onto a row after construction is outside its reach:
+        # measured, an undeclared key added to a published row left all 2,325
+        # tests green. PublishedSessionFieldSetTest below is the half that reaches
+        # the payload, and it is the one that catches that.
         for harness in ("claude", "copilot", "goose", "pi"):
             with self.subTest(harness=harness):
                 row = runtime_sessions.base_session(harness, f"{harness}-1", "proj")
-                self.assertEqual(self.DECLARED_SESSION_FIELDS, set(row))
+                self.assertSetEqual(set(DECLARED_SESSION_FIELDS), set(row))
 
     def test_a_resume_token_is_admitted_only_in_a_shape_a_shell_reads_as_one_word(
         self,
@@ -1270,3 +1292,38 @@ class VerificationFixTest(unittest.TestCase):
         for order in ([good, skewed], [skewed, good]):
             with self.subTest(order=[s["state"] for s in order]):
                 self.assertEqual("working", runtime_sessions.dedupe_sessions(order)[0]["state"])
+
+
+class PublishedSessionFieldSetTest(HarnessContractTestCase):
+    """The declared field set, held against the rows a reader's page receives.
+
+    The constructor's half of this lives in `CargentoServerTest` above and cannot
+    stand alone: it inspects `base_session()`'s return value, so every field
+    written onto a row after construction is outside its reach. Measured at
+    5bca94b — an undeclared key added to every published row in
+    `Application.collect` left all 2,325 tests green (DRC-4473). `acquisition`
+    and `blocked_since` had been sitting in exactly that blind spot.
+    """
+
+    def test_every_published_session_row_declares_the_same_field_set(self) -> None:
+        # Ten real stores, one at a time, through a full collection: the payload
+        # rather than the constructor, because the constructor is not where the
+        # last writer is. Equality and not a subset — a name declared for some
+        # rows and absent from others is what makes every consumer test for
+        # presence rather than for a value, which is the whole point of the table.
+        for key, build in HARNESSES:
+            with self.subTest(harness=key, fixture=build.__name__):
+                rows = self.sessions_for(self.collect(build, when=self.NOW), key)
+                self.assertEqual(1, len(rows), f"expected one session, got {rows}")
+                # Both sides `set` and not a frozenset against a set, so
+                # unittest dispatches assertSetEqual and the failure NAMES the
+                # offending key. Compared as mismatched types it reports two
+                # truncated reprs instead, which leaves whoever hit it grepping.
+                self.assertSetEqual(set(DECLARED_SESSION_FIELDS), set(rows[0]))
+
+    def test_every_field_an_event_may_patch_is_a_declared_field(self) -> None:
+        # The reachable-by-an-envelope half, which no store fixture can produce:
+        # an overlay writes any member of `events.PATCHABLE` onto a row it
+        # matched, so an undeclared name there is a key an untrusted POST can add
+        # to a published row. `blocked_since` was one of them.
+        self.assertLessEqual(set(runtime_events.PATCHABLE), DECLARED_SESSION_FIELDS)

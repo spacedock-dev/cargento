@@ -1542,7 +1542,10 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         # exactly rather than a variant of the new one.
         row = self._row(self._collect_with(None))
         self.assertEqual("idle", row["state"])
-        self.assertNotIn("acquisition", row)
+        # Present and None, not absent. Since DRC-4473 `base_session` declares
+        # the key for every harness, so the reading is the value: None is "no
+        # provenance stated", and the assertion is that nothing claimed one.
+        self.assertIsNone(row["acquisition"])
 
     def test_a_live_overlay_patches_the_matching_row(self) -> None:
         class Source:
@@ -1806,9 +1809,8 @@ class ApplicationOverlayTest(support.RuntimeTestCase):
         )
         rows = {str(row["harness"]): row for row in application.collect(show_all=True)["sessions"]}
         self.assertEqual(events.ACQUISITION_SCAN, rows["goose"]["acquisition"])
-        self.assertNotIn(
-            "acquisition",
-            rows["claude"],
+        self.assertIsNone(
+            rows["claude"]["acquisition"],
             "a harness that can earn a stop must not be marked unknowable",
         )
 

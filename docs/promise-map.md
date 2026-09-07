@@ -154,13 +154,16 @@ session that ends leaving uncommitted changes says so.
 
 Backed by the finished-and-unread flag, the mark that separates a turn that stopped from a session
 still waiting on a reply that never came, the mark that a session is over so it stops reading as one
-waiting at its prompt, a way to mark a session handled so it leaves the board, and the
+waiting at its prompt, the note on a row read off disk saying that no turn end can be observed
+there, a way to mark a session handled so it leaves the board, and the
 end-of-session git probe that shipped in 0.19.
 
 Where it stops: both of those marks reach only the harnesses whose adapter maps the event that
 carries them. An absent mark means no end was observed, never that a session is alive, so it covers
 the harnesses with no adapter, a session that predates this server process, and a run under
-`--no-events` alike. The session-end mark also lapses one row window after the row it belongs to.
+`--no-events` alike. Of those three, only the first is named on the row: the note is a fact about
+the harness, so a Claude row under `--no-events` carries no mark and no note either. The
+session-end mark also lapses one row window after the row it belongs to.
 A quiet session is published as idle with nothing elapsed behind it: there is no duration threshold,
 so going quiet is a state here and not a reading. The git probe runs one bounded command as a
 session ends and publishes two numbers, whether the tree is dirty and how many porcelain entries

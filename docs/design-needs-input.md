@@ -657,8 +657,12 @@ constant and requires the prose to agree, because otherwise the two can only mat
   maps beside it already make.
 - **Letting a collector infer completion** for the six harnesses with no event adapter. A guessed
   completion renders identically to a measured one, so those rows disclose `scan-only` through
-  `acquisition`, which was defined for this and rendered nowhere until now. A test holds the
-  collectors to it.
+  `acquisition`, which was defined for this. A test holds the collectors to it. *Amended
+  2026-09-08: this bullet said the field "rendered nowhere until now", written when the stamping
+  site landed, and it stayed false for two and a half weeks. Nothing under
+  `cargento_runtime/web/` read the name at all, so the disclosure the rejection rests on was
+  published and never shown. DRC-4473 put it on the row; where and in what words is
+  [design-scan-only-rows.md](design-scan-only-rows.md).*
 
 ## N-10: a Cursor gate needs a liveness gate, and a time limit cannot be it
 
