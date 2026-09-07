@@ -18,6 +18,7 @@ arm now skips with its reason rather than passing.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -28,7 +29,10 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from cargento_runtime import git_status
 
@@ -56,6 +60,27 @@ WITHOUT_HOOKS_PATH_OFF = (
 )
 
 LFS = shutil.which("git-lfs")
+
+
+@contextlib.contextmanager
+def _environment(environ: dict[str, str], *, cwd: Path | None = None) -> Iterator[None]:
+    """Swap `os.environ`, and optionally the process cwd, for the duration.
+
+    The probe reads neither directly, which is the point: what it must not do is
+    hand either to the subprocess it spawns.
+    """
+    saved_environ = dict(os.environ)
+    saved_cwd = Path.cwd()
+    os.environ.clear()
+    os.environ.update(environ)
+    if cwd is not None:
+        os.chdir(cwd)
+    try:
+        yield
+    finally:
+        os.chdir(saved_cwd)
+        os.environ.clear()
+        os.environ.update(saved_environ)
 
 
 def _run(*argv: str, cwd: Path) -> None:
@@ -261,6 +286,108 @@ class GitProbeContractTest(unittest.TestCase):
 
 
 @unittest.skipIf(GIT is None, "git is not on PATH")
+class GitProbeEnvironmentTest(unittest.TestCase):
+    """The reading is about the directory it names, and about no other.
+
+    Both tests here run a POSITIVE CONTROL first, for the same reason the three
+    hazard tests above do: without it neither can tell "the scrub worked" from
+    "the mechanism was never armed here".
+    """
+
+    def test_an_inherited_git_dir_cannot_point_the_reading_elsewhere(self) -> None:
+        # R16. Measured before the fix: probe() on a CLEAN repository returned
+        # a dirty reading belonging to a different repository, because the
+        # subprocess inherited GIT_DIR and GIT_WORK_TREE from the environment.
+        # `isdir` does not help — a directory that is not a repository at all
+        # returned the other repository's reading too.
+        with tempfile.TemporaryDirectory() as tmp:
+            outer = _fresh(Path(tmp), "outer")
+            (outer / "one.txt").write_text("changed\n")
+            (outer / "two.txt").write_text("new\n")
+            (outer / "three.txt").write_text("new\n")
+            inner = _fresh(Path(tmp), "inner")
+            clean = git_status.probe(str(inner), timeout_sec=10.0)
+            self.assertEqual(git_status.GitStatus(dirty=False, changed=0), clean)
+
+            environ = {
+                **os.environ,
+                "GIT_DIR": str(outer / ".git"),
+                "GIT_WORK_TREE": str(outer),
+            }
+            control = subprocess.run(
+                git_status.GIT_STATUS_ARGV,
+                cwd=inner,
+                capture_output=True,
+                env=environ,
+                check=False,
+            )
+            leaked = sum(1 for line in control.stdout.split(b"\n") if line.strip())
+            if leaked == 0:
+                # The environment did not redirect git on this host, so an equal
+                # reading below would prove nothing about the scrub.
+                self.skipTest("GIT_DIR did not redirect git on this host")
+
+            with _environment(environ):
+                self.assertEqual(clean, git_status.probe(str(inner), timeout_sec=10.0))
+
+    def test_a_relative_path_element_cannot_supply_the_executable(self) -> None:
+        # R12. The rule is ORDER, not position: ANY empty or relative PATH
+        # element before the first element holding a real `git` hijacks. The
+        # register and its verifier both stated this wrongly, in opposite
+        # directions, because /usr/bin/git exists on macOS and contaminated
+        # both readings. The trailing arms are asserted NEGATIVE so this test
+        # cannot pass by resolving nothing at all.
+        with tempfile.TemporaryDirectory() as tmp:
+            probed = Path(tmp) / "probed"
+            probed.mkdir()
+            fake = probed / "git"
+            # Seven entries, a count no real repository here produces, and the
+            # probed directory is deliberately NOT a repository so real git
+            # returns None and any reading at all means the fake ran.
+            fake.write_text(
+                '#!/bin/sh\nfor i in 1 2 3 4 5 6 7; do echo " M f$i"; done\n', newline=""
+            )
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+            git_free = Path(tmp) / "git-free"
+            git_free.mkdir()
+            real = str(Path(GIT or "/usr/bin/git").parent)
+
+            hijacks = {
+                "leading relative": f".:{real}",
+                "leading empty": f":{real}",
+                "interior empty": f"{git_free}::{real}",
+                "interior relative": f"{git_free}:.:{real}",
+            }
+            harmless = {
+                "trailing empty": f"{real}:",
+                "trailing relative": f"{real}:.",
+                "unmodified": real,
+            }
+            armed = False
+            for label, path in hijacks.items():
+                with self.subTest(arm=label):
+                    with _environment({**os.environ, "PATH": path}, cwd=probed):
+                        reading = git_status.probe(str(probed), timeout_sec=10.0)
+                    if reading is not None and reading.changed == 7:
+                        armed = True
+                    self.assertNotEqual(
+                        7,
+                        getattr(reading, "changed", None),
+                        f"the probed directory's own `git` supplied the executable ({label})",
+                    )
+            if not armed:
+                # Nothing to prove if no arm could hijack even before the fix.
+                # Recorded rather than passed silently, per this file's rule.
+                self.skipTest("no PATH shape hijacked on this host")
+            for label, path in harmless.items():
+                with (
+                    self.subTest(arm=label),
+                    _environment({**os.environ, "PATH": path}, cwd=probed),
+                ):
+                    self.assertIsNone(git_status.probe(str(probed), timeout_sec=10.0))
+
+
+@unittest.skipIf(GIT is None, "git is not on PATH")
 class SingleInvocationTest(unittest.TestCase):
     """AC1's other half: the runtime builds a git subprocess at exactly one site.
 
@@ -351,7 +478,43 @@ class GitProbeCallSiteTest(unittest.TestCase):
             git_status.probe(tmp, timeout_sec=3.5, runner=runner)
         self.assertEqual(1, len(seen), "the probe ran other than exactly one command")
         argv, _kwargs = seen[0]
-        self.assertEqual(git_status.GIT_STATUS_ARGV, tuple(argv))
+        # argv[0] is the RESOLVED path, not the bare name the constant prints.
+        # Asserting absoluteness is the point: a bare name is resolved by the
+        # child against a PATH the probe does not control, and that is how an
+        # empty or relative element ahead of the first real `git` supplied the
+        # binary from the session's own directory.
+        self.assertTrue(os.path.isabs(argv[0]), f"argv[0] is not an absolute path: {argv[0]!r}")
+        self.assertEqual("git", Path(argv[0]).stem)
+        # Everything after argv[0] is the constant, unchanged.
+        self.assertEqual(git_status.GIT_STATUS_ARGV[1:], tuple(argv[1:]))
+
+    def test_the_probe_scrubs_the_environment_it_hands_the_child(self) -> None:
+        # The scrub is asserted here as well as behaviourally above, because this
+        # one runs on a host with no git and pins the exact keys.
+        runner, seen = self._spy()
+        hostile = {
+            **os.environ,
+            "GIT_DIR": "/elsewhere/.git",
+            "GIT_WORK_TREE": "/elsewhere",
+        }
+        with tempfile.TemporaryDirectory() as tmp, _environment(hostile):
+            git_status.probe(tmp, timeout_sec=3.5, runner=runner)
+        _argv, kwargs = seen[0]
+        self.assertNotIn("GIT_DIR", kwargs["env"])
+        self.assertNotIn("GIT_WORK_TREE", kwargs["env"])
+        # And the child gets an environment at all, rather than inheriting.
+        self.assertIsNotNone(kwargs.get("env"))
+
+    def test_the_scrub_drops_relative_and_empty_path_elements(self) -> None:
+        # A unit assertion on the helper, so the rule is stated once where it can
+        # be read: ORDER is what matters, and dropping is what makes order safe.
+        scrubbed = git_status.probe_environment(
+            {"PATH": f".{os.pathsep}{os.pathsep}/usr/bin{os.pathsep}.{os.pathsep}/bin"}
+        )
+        self.assertEqual(f"/usr/bin{os.pathsep}/bin", scrubbed["PATH"])
+        # An entirely untrusted PATH leaves nothing, and `which` then finds no
+        # git, which publishes None rather than falling back to the ambient PATH.
+        self.assertEqual("", git_status.probe_environment({"PATH": f".{os.pathsep}"})["PATH"])
 
     def test_the_probe_passes_the_bounds_the_contract_names(self) -> None:
         # The cwd it was asked about, the caller's timeout, and a closed stdin so

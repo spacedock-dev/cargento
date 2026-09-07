@@ -47,15 +47,22 @@ here, and no caller is ever given a way to reach them.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 # Bound 1 of DEC-3, as amended. A tuple rather than a list so a caller cannot
 # append to the argv it was handed.
+#
+# `GIT_STATUS_ARGV[0]` stays the bare name because it is what the contract prints
+# and what the oracles compare. What actually spawns is `_executable()` below,
+# resolved once against a PATH the probe controls: measured 2026-09-07, a bare
+# name let ANY empty or relative PATH element before the first real `git` supply
+# the binary, and it resolved from the session-supplied directory being probed.
 GIT_STATUS_ARGV: Final[tuple[str, ...]] = (
     "git",
     "-c",
@@ -66,6 +73,44 @@ GIT_STATUS_ARGV: Final[tuple[str, ...]] = (
     "status",
     "--porcelain",
 )
+
+
+# Removed from the child's environment, not merely ignored by this module. Either
+# one redirects git at a different repository entirely: measured 2026-09-07, a
+# probe of a CLEAN repository published a dirty reading belonging to another one,
+# and a directory that is not a repository at all published it too, so the
+# `isdir` gate below does not help.
+DETACHING_ENV: Final = ("GIT_DIR", "GIT_WORK_TREE")
+
+# Relative and empty elements are dropped rather than reordered. An empty element
+# means "the current directory" to the resolver, and the current directory during
+# a probe is the session's own, which is exactly the directory whose contents
+# must not be trusted to supply a program.
+_UNTRUSTED_PATH_ELEMENTS: Final = frozenset({"", "."})
+
+
+def probe_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """The child's environment: the caller's, minus what detaches the reading.
+
+    Kept public and separate so a test can assert the scrub without spawning
+    anything, and so the two names above have exactly one place that drops them.
+    """
+    scrubbed = {key: value for key, value in environ.items() if key not in DETACHING_ENV}
+    path = scrubbed.get("PATH", "")
+    if path:
+        kept = [part for part in path.split(os.pathsep) if part not in _UNTRUSTED_PATH_ELEMENTS]
+        scrubbed["PATH"] = os.pathsep.join(kept)
+    return scrubbed
+
+
+def _executable(environ: Mapping[str, str]) -> str | None:
+    """Where `git` is, resolved once against the scrubbed PATH, or None.
+
+    None means the same published thing as every other refusal in this module:
+    not probed. `shutil.which` is given the scrubbed PATH explicitly rather than
+    reading the ambient one, because the ambient one is what the hijack uses.
+    """
+    return shutil.which("git", path=environ.get("PATH"))
 
 
 @dataclass(frozen=True)
@@ -100,15 +145,21 @@ def probe(
     """
     if not os.path.isdir(cwd):
         return None
+    environ = probe_environment(os.environ)
+    resolved = _executable(environ)
+    if resolved is None:
+        return None
     try:
         result = runner(
-            # The fixed argv above: no shell, no interpolation, nothing from the payload.
-            GIT_STATUS_ARGV,
+            # The fixed argv above, with argv[0] replaced by the resolved absolute
+            # path: no shell, no interpolation, nothing from the payload.
+            (resolved, *GIT_STATUS_ARGV[1:]),
             cwd=cwd,
             capture_output=True,
             stdin=subprocess.DEVNULL,
             timeout=timeout_sec,
             check=False,
+            env=environ,
         )
     except (OSError, ValueError, subprocess.SubprocessError):
         # OSError covers git absent from PATH and a cwd that vanished between the
