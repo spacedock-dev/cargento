@@ -432,9 +432,12 @@ accepted alongside a bare path since it is the canonical serialization in that f
 
 A miss is not a fault. One live agent directory, the subagent's, has no `meta.json` at all,
 so an absent, unparseable or truncated file means *this session has no workspace* and never
-*this store is broken*: routing it through `record_store_error` would badge the harness and
-withdraw the title, the model and the workspace of every other Cursor row, which is the same
-argument that keeps a store with no `blobs` table from losing its title.
+*this store is broken*: taking the store-error path here would withdraw the title, the model and
+the workspace of every other Cursor row, which is the same argument that keeps a store with no
+`blobs` table from losing its title. What it would not do is badge the harness, which this
+paragraph used to claim it would. Only an exception escaping `collect` sets `harness["error"]`, and
+`record_store_error` is not one: see
+[design-unread-sources.md](design-unread-sources.md#u-2-store_errors-reaches-no-reader-so-a-published-field-was-required-either-way).
 
 ### Folding a subagent onto its parent
 
