@@ -118,8 +118,9 @@ for another address with `--host`, which has no authentication behind it. Your s
 the machine: the one request that leaves it is the quota poll, which carries a vendor token out and
 quota numbers back and no session content, and `--no-usage` turns it off. A second pathway is
 documented and unused: Cargento asking a harness a bounded question, which would carry
-session-derived text and is opt-in for that reason. See [SECURITY.md](SECURITY.md) for both, and
-before you use `--host`.
+session-derived text and is opt-in for that reason. A third is documented and unused too: a nudge to
+an endpoint you supply, carrying counts and nothing that names a session. See
+[SECURITY.md](SECURITY.md) for all three, and before you use `--host`.
 
 The dashboard opens on Sessions, which puts the work that is active now above the work that is only
 recent history and gives each active session the same four facts: where it is, what it is doing now,

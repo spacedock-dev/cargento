@@ -15,10 +15,14 @@ events for Claude and Codex, `agy_hook.py` posts Antigravity's hook events, and
 `statusline_hook.py` posts Antigravity's status-line state. All four share one transport, so the
 loopback check, the proxy suppression and the redirect refusal have a single implementation.
 
-One of them runs somewhere it could do harm. Antigravity's `PreToolUse` hook may return a `decision`
-that allows, denies or re-prompts a tool call, so a reporting hook there can block the user's work.
-`agy_hook.py` prints exactly `{}` and nothing else, on every path including every failure path, and a
-test asserts that for malformed, empty and valid input alike.
+One of them could do harm if it were registered in the wrong place. Antigravity's `PreToolUse` hook
+may return a `decision` that allows, denies or re-prompts a tool call, and there is no harmless
+output at that position: an empty object there reads as a DENY, so a reporting hook would block the
+user's work rather than pass it through. The safety property is that `agy_hook.py` is never
+registered at `PreToolUse`. Where it is registered, after a tool call and after an invocation, it
+prints exactly `{}` and nothing else on every path including every failure path, and a test asserts
+that for malformed, empty and valid input alike. Irreversible actions below carries the same rule
+for the hook that matches destructive shapes.
 
 The third kind is one stdio MCP server, `mcp_server.py`, described under The ask lane below. It is
 not a forwarder and shares none of the four's transport: a harness spawns it, it speaks JSON-RPC on
@@ -30,14 +34,19 @@ The posture rests on two invariants:
    and the MCP server refuse to reach anywhere but loopback, ignore proxy environment variables, and
    do not follow redirects. `--host` is the one way that first clause moves, it is an explicit
    argument nothing sets for you, and what it costs is under Known and accepted.
-   Two kinds of outbound request are in scope, one shipped and one written down before it exists,
-   and they are named apart rather than counted together because they are not the same exposure.
-   The quota poll carries a vendor token out and quota numbers back, and no session content
-   whatever. A harness invocation, described in Light harness usage below, would carry
+   Three kinds of outbound request are in scope, one shipped and two written down before they
+   exist, and they are named apart rather than counted together because they are not the same
+   exposure. The quota poll carries a vendor token out and quota numbers back, and no session
+   content whatever. A harness invocation, described in Light harness usage below, would carry
    session-derived text: it is the one pathway by which the operator's own words may leave this
-   machine. No shipped feature uses it, so nothing travels by it today, and that section is the
-   contract the first one has to satisfy, `--no-harness-usage` included. Nothing else Cargento does
-   reaches the network.
+   machine. A nudge to an endpoint the operator supplies, described in Off-machine nudges below,
+   would carry two counts and nothing that names a session. Neither of the second two is used by
+   any shipped feature, so nothing travels by either today, and those sections are the contracts the
+   first feature to use each has to satisfy, `--no-harness-usage` and `--no-reach` included.
+   Nothing else Cargento does reaches the network. One further pathway is written down and reaches
+   no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
+   line to a socket on this machine, and what travels afterwards travels on the receiving session's
+   own connection, which is why it is named here rather than counted above.
 2. Read-only against harness stores. They are opened read-only and never written. Seven endpoints
    mutate, and six of them only in memory: `POST /api/notify` updates needs-input state, and
    `POST /api/usage` stores a quota figure a harness published to its own status-line command.
@@ -227,6 +236,49 @@ rather than fixed.
 any supported platform, and `tests/test_git_status.py` skips rather than passes where the mechanism
 cannot be armed, so the Linux and Windows arms are unmeasured rather than verified.
 
+### The residual: the reading is about the repository, not about the directory
+
+`git status` answers about the repository containing the directory it runs in, because git walks
+upward from that directory until it finds one. The probe passes the session's own working directory
+as cwd and passes nothing that bounds the walk, so the walk is what decides which repository gets
+measured. That is one behaviour with two outcomes, and only one of them is what a reader wants.
+
+The common outcome is the right one, and it is why the feature is useful at all. A session working
+in `repo/src/components` gets `repo`'s reading, which is the answer to whether that session left
+work behind. Measured 2026-09-07 against this tree: a probe at a dirty repository's root and a probe
+three levels inside it published an identical `dirty=True, changed=3`, while a directory with no
+repository above it published `null`.
+
+The wrong outcome is a `$HOME` that is itself a repository. A session working somewhere under such a
+`$HOME`, in no project repository of its own, gets `$HOME`'s reading, and its row then reports a
+dirty tree that has nothing to do with that session. Anyone who keeps dotfiles as a repository
+checked out at `$HOME` can reach this. It is not reachable on the machine these measurements were
+taken on, where `git -C "$HOME" rev-parse --show-toplevel` finds no repository at all, and that is a
+fact about one machine rather than a property of the design.
+
+Decided 2026-09-07, and recorded rather than fixed (DRC-4442). Three measurements settled it, and
+the first is the one to read before proposing anything here:
+
+- The confinement this was originally filed with does not work. `GIT_CEILING_DIRECTORIES` set to the
+  probed directory changed nothing in either arm: the probe three levels inside the repository still
+  published the parent's `dirty=True, changed=3`, identical to the same probe with no ceiling set.
+  Only a ceiling at the probed directory's parent changes the outcome, and that publishes `null` for
+  any session not sitting exactly at a repository root. So this is not a fix that was weighed and
+  declined on cost. It was measured not to do the thing it was proposed to do.
+- Confining the walk costs a reading people rely on. Of 48 recorded session directories still
+  present on the machine measured, 30 sat at a repository root, 10 inside a repository below its
+  root, and 8 in no repository at all. A parent ceiling would blank one in four of the
+  repository-backed ones, and `null` means not probed, so such a row could not even say why.
+- The targeted alternative reopens DEC-3. Refusing only when the resolved repository root is `$HOME`
+  keeps the subdirectory case and closes the dotfiles case, but learning that root needs a second git
+  command, and this section's first bound is that the probe is exactly the one command above or there
+  is no probe.
+
+So the trade was a common correct reading against a hazard nobody here can currently reach, and the
+ruling keeps the reading. What it costs a reader is written down rather than left to be discovered: a
+git reading names a session's directory and is about that directory's repository, and those are the
+same thing right up until `$HOME` is one.
+
 What is published, per session, is two fields and nothing else:
 
     {dirty: bool | None, changed: int | None}
@@ -259,13 +311,17 @@ A violation of any boundary in this section is a security bug: a git command oth
 above, any of the three flags dropped, a read of file contents or diffs or branch state, a pathname
 reaching a response, a probe on any edge but session end, a probe while the feature is off, an
 executable taken from anywhere but the resolved absolute path, a reading published about any
-directory but the one it names, or any write inside the user's repository that Cargento's own argv
-could have prevented.
+repository but the one containing the directory it names, or any write inside the user's repository
+that Cargento's own argv could have prevented.
 
-That last clause is narrower than it was, and the narrowing is the residual above rather than a
-relaxation. A filter driver the inspected repository configured for itself may write where it
+Two of those clauses are narrower than they read, and both narrowings are the residuals above rather
+than relaxations. A filter driver the inspected repository configured for itself may write where it
 likes, and no argv Cargento can pass stops it; what the argv must prevent, and now does, is git
-writing on the probe's behalf.
+writing on the probe's behalf. And the reading clause says repository rather than directory on
+purpose: the containing repository is what git answers about, which is the correct answer for a
+session in a subdirectory and the wrong one for a session under a `$HOME` that is a repository.
+Writing that clause about the directory would make a documented security bug of the subdirectory
+case, which is the common one and the one people rely on.
 
 ## Reaching a session's terminal (the focus command)
 
@@ -775,6 +831,75 @@ its own retention, and what it does with a prompt is outside Cargento's control.
 trust the operator already extends to that harness by running it, but it is a real transfer and it is
 stated here rather than implied.
 
+## Off-machine nudges (reaching the operator away from the desk)
+
+Every signal Cargento sends today needs somebody in front of the machine: the macOS popup, the
+browser notification in a tab that is open, the board itself. DEC-4 ruled on 2026-09-02 that
+Cargento may reach further, in one shape and no other. The operator supplies one endpoint, and
+Cargento posts a count to it.
+
+This is the section to read before building that, and it grants nothing on its own. No shipped
+feature posts to an endpoint the operator supplies; H2 (DRC-4034) is the first one that would.
+Until it lands, the outbound surface is the quota poll and nothing else.
+
+Why this needs its own section rather than an entry under Usage quota reads: that section's
+endpoint list is closed, and every entry on it is a vendor Cargento chose and verified. Here the
+endpoint is one the operator pastes in, so the list cannot be closed and there is no vendor to
+vouch for. What bounds the exposure is the payload rather than the destination, which is the
+opposite way round from the quota poll and is why the two are not one rule.
+
+The bounds, all of which hold together:
+
+- Off until a URL exists. There is no default endpoint and no provider Cargento picked. With no URL
+  configured nothing is posted, which is the shipped state today. DEC-4 refused a first-class push
+  through a provider Cargento chooses, so an endpoint the operator already uses, ntfy, Pushover or
+  a Slack webhook being the common ones, is the whole mechanism.
+- One destination, and it is the operator's. Cargento posts to that URL and nowhere else, follows
+  no redirect, and ignores proxy environment variables. Those last two are the rules the four
+  forwarders and the MCP server already hold to; the loopback check beside them is the one rule
+  that cannot carry over, since the whole point here is a destination that is not this machine. So
+  a redirect cannot move the destination after the operator chose it, and that is what replaces the
+  loopback guard rather than sitting beside it.
+- Counts and states, never a session. The payload carries how many sessions need a human and how
+  many finished and were never read. It carries no session name, no project, no title, no path, no
+  prompt text and no request text. A person who gets a nudge opens the dashboard to find out which
+  session it was, and the count is the whole message.
+- Two counts, not three, and the missing one is deliberate. DEC-4's own wording offered a third,
+  how many sessions went quiet, and what is missing is not the elapsed reading but the threshold.
+  `last_activity` is published on every row and the board renders an idle duration from it, so
+  `now - last_activity` is a reading the runtime already takes. What nothing decides is when quiet
+  becomes worth a nudge: `config.py` holds no such threshold, and `events.py`'s `stale` is a
+  different fact, a finish stamp contradicted by later activity rather than a session that went
+  quiet. A third count would therefore have to name its own threshold, and naming one is a product
+  decision this section is not the place to make. If DEC-4's third count is wanted, that threshold
+  is the work, and it is smaller than it looks.
+- Throttled, and a change is what triggers it. At most one post per configured interval, with a
+  change in the counts as the trigger rather than a timer, so a board that is not changing sends
+  nothing and a flapping one cannot turn into a stream.
+- The URL is a credential. A webhook URL is a bearer token wearing a path: whoever holds it can
+  post to the operator's own phone. It is never logged, never echoed, never served on the loopback
+  port, and never printed by `--diagnose`, which is the handling Usage quota reads gives a vendor
+  token. Redaction has to cover the whole URL and not only a query string, because these providers
+  put the secret in the path.
+- Off switch. The feature ships `--no-reach` with it: a flag that disables the pathway for a run
+  regardless of the stored setting, mirroring `--no-usage` and `--no-history` at every one of their
+  sites, including the branch that forwards flags to a respawned daemon, so a restart cannot
+  re-enable what the operator disabled. That flag does not exist yet, and this document does not
+  claim it does. Nothing posts, so there is nothing to switch off. A test holds those two statements
+  together: it asserts this section still says nothing posts and that the parser still has no such
+  flag, so whoever adds the flag is failed here until they amend this section too.
+
+A violation of any of those is a security bug: a post with no URL configured, a post to any
+destination but the configured one, a redirect followed, a payload carrying any field beyond the
+counts named above, the URL reaching a log line, a `--diagnose` line or a loopback response, or a
+post rate above the configured interval.
+
+What is accepted rather than solved: the endpoint is a third party, and what it does with a count
+is outside Cargento's control. That is the same trust the operator extends to that provider by
+using it, and it is a real transfer. A count is a small thing to leak and it is not nothing. How
+many sessions on this machine need a human, and when, says that the operator is working and roughly
+how hard, to anyone who can read the notification stream. That is stated here rather than implied.
+
 ## Process lifecycle: written paths, and `/api/shutdown`
 
 The server writes five files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
@@ -954,18 +1079,137 @@ evicted by anything but age first, a store still written while the feature is of
 that re-enables it, a history file reachable over the port, or any part of the store leaving the
 machine.
 
+## Irreversible actions (hook-side destructive-shape matching)
+
+The board can say a tool call failed. It cannot say the call deleted a branch. C6 (DRC-4025) would
+report the handful of shapes a person wants told about after the fact, and the design that makes it
+safe puts the matching in the hook rather than in the server. The hook already holds the payload its
+own harness handed it; it decides whether that payload matches one of a named set of shapes and
+posts an identifier for the shape it matched, with the tool's name. The command does not travel.
+
+This is the section to read before building that, and it grants nothing on its own. No shipped
+adapter matches a command shape, and the event envelope has no field that could carry the answer.
+Coverage is Claude Code and Codex with the hooks installed, which is the scope DEC-5 set. That is a
+limit rather than a phase, and it has to be read the way the session-end marks are read: an absent
+report means no match was observed, never that a session ran nothing irreversible.
+
+### What Cargento reads of a tool call today, exactly
+
+The rule here is an allowlist rather than a prohibition, for the reason DEC-13 gave the history
+store: a flat "never" the code already breaks is a contract narrower than the system, and a reader
+who finds the counter-example stops believing the rest of the document. So the honest form is a list
+of named reads. Of an observed session's tool calls, the runtime parses the input at exactly the
+places below and nowhere else, and each reduces what it read to a bounded summary at parse time
+rather than keeping anything raw. One further read exists and is governed elsewhere: the ask lane's
+own `ask_operator` tool parses the arguments of the call a session makes to Cargento, which is a
+tool Cargento owns rather than one it observed, and The ask lane states its bounds:
+
+- `claude_data.input_summary` reads two fields of two Claude tools. `ExitPlanMode` carries `plan`,
+  and what is kept is its first usable line, which is the plan's own title in practice.
+  `AskUserQuestion` carries `questions`, and what is kept is each item's `question`. Both go through
+  `records.safe_text` and are bounded at `config.input_summary_cap_chars`, 160 characters. The pair
+  of tool names is `claude_data.INPUT_TOOLS`, and a tool absent from it has its input read by
+  nothing.
+- `transcripts.codex_plan` reads Codex's `update_plan` payload, in both shapes Codex writes: the
+  `arguments` of a `function_call` and the `input` of a `custom_tool_call`. What is kept is the plan
+  steps and their statuses.
+
+Nothing else in the runtime reads a tool call's input. That is a claim about a set rather than a
+sentiment, so it is worth saying how it was established: three expressions in `cargento_runtime`
+reach an input payload, and all three are named above.
+
+A shape match would be a different kind of read from either of those. It happens in the hook, inside
+the operator's own harness process, against a payload that process already has, and what it keeps is
+a verdict rather than a summary. It changes nothing about what the server or the collectors read from
+a transcript, and it adds no store, no path and no subprocess.
+
+### The bounds a shape match has to hold to
+
+- The hook decides and the server never sees the command. What is posted is an identifier for a
+  shape from the named set, the tool name, and a timestamp, which is the shape DEC-5 allowed. The
+  command, its arguments and its output stay in the harness's process and are not put on a socket,
+  and neither is any substring of them, any path or any file's content.
+- The set of shapes is written into this document before it ships, one line each, the way the quota
+  endpoints are. A shape is a decision rather than something an operator configures: a
+  user-supplied pattern would be a small language running against their own commands, and the
+  result of running it would go on the wire.
+- The match cannot delay or block the call. It is time-bounded and fails open, so a shape the
+  matcher cannot decide in its budget is no report rather than a held tool call.
+- Report after, never before. This reports what happened, so it hangs off the after-the-fact event
+  rather than the gate in front of it, and a matcher may never be registered at a hook position
+  whose output gates a tool call. Antigravity is why that is a rule and not a preference. Its
+  `PreToolUse` output decides the call, and an empty object there is a deny rather than an
+  abstention, measured on 1.1.19: `{"decision": "allow"}` permits and exactly `{}` refuses. So
+  there is no harmless output at that position, `agy_hook.py` prints `{}` on every path including
+  every failure path, and the safety property is that the hook is never registered there rather than
+  that its output is safe. A matcher inherits that rule unchanged.
+- Off switch. The feature ships `--no-irreversible` with it, mirroring `--no-events` at every one of
+  that flag's sites, including the branch that forwards flags to a respawned daemon. That flag does
+  not exist yet, and this document does not claim it does. Nothing matches a shape, so there is
+  nothing to switch off, and a test asserts both halves: this section still says no adapter matches,
+  and the parser still has no such flag.
+
+### The envelope has to widen, and one dropped thing has to come back
+
+Known and accepted describes the event envelope as an allowlist at both ends, and its sentence says
+the prompt, the tool name, the tool input and the tool output are dropped in the hook and never put
+on a socket. Every word of that is true today and stays true until this feature lands. Then two
+things change, and this is where they are settled rather than discovered: the envelope gains a
+shape identifier, and the tool name stops being dropped. DEC-14 amended invariant 1 the same way
+during its own groundwork pass, which is why amending is the established answer here rather than a
+novel one.
+
+The tool name is the one of those four that can come back, and the reason is not that it is the
+shortest. The board already publishes it: a failing tool's name reaches the page through the loop
+signal and is rendered on both the session and the attention surfaces. So the envelope was dropping
+a value the snapshot serves anyway, for want of a use rather than for secrecy, and a hook that posts
+it tells the server nothing the server could not already say. The prompt, the tool input and the
+tool output are the three that stay dropped, and they are the three where that reasoning does not
+hold.
+
+Three places carry the envelope's width and they move together in one commit. This document's own
+sentence spells it as a word, `config.py`'s stated reason for `event_body_cap_bytes` spells it as a
+word too because the cap is justified by that width, and `events.ALLOWED_FIELDS` is the set itself.
+`test_documentation.EventEnvelopeEnumerationTest` reads both prose copies against
+`len(events.ALLOWED_FIELDS)`, so a field added without the words moving is a red test rather than a
+document that has quietly drifted.
+
+### Whether a shape identifier may enter the history store
+
+This turns on one thing, and the thing is already written down. Local history bans tool input "under
+any circumstances and with no exception available", and it bans any substring of a command with it.
+A shape identifier is neither: it is a fixed label from the set this document names, and it carries
+no part of what was typed. So the ban does not reach it, and the second of that section's rules
+decides the question instead. A field the live board does not publish is not a field history may
+keep. If C6 publishes the identifier on the row, the identifier becomes admissible and needs its own
+line in that section's kept-list in the same change. If C6 renders it only in a panel the board does
+not publish, history may not keep it, and C6's cross-session list cannot be built out of the store.
+Either way the answer is settled here rather than discovered during the build.
+
+A violation of any boundary in this section is a security bug: a command, an argument or a tool
+output reaching a socket, an input read the allowlist above does not name, an operator-configurable
+pattern, a hook that returns anything but its harness's no-opinion answer, an envelope field this
+document has not named, or a shape identifier in the history store with no published field behind
+it.
+
 ## The ask lane (`ask_operator`)
 
 Cargento ships one MCP tool. A session that wants a human decision calls `ask_operator`, and the
 question appears in the dashboard for the reader to answer. This is the only path by which anything
-a reader does in Cargento reaches a running session, and it exists because the session asked.
+a reader does in Cargento reaches a running session, and it exists because the session asked. One
+other direction is written down and unbuilt: Hand-off requests (one verb into a session) below is
+Cargento starting the exchange rather than a reader, it carries one fixed verb and nothing a reader
+typed, and no shipped feature uses it.
 
 What it is, precisely. Cargento ships a stdio MCP server beside the dashboard. It is not one of the
 four forwarders and shares none of their transport. A harness spawns it, it speaks JSON-RPC on stdin
 and stdout, and it holds the agent's tool call open while the question is outstanding. It registers
 the question with the dashboard over loopback and polls for the answer.
 
-The direction is the invariant. Cargento never reaches into a session. A session can only ever be
+The direction is the invariant for everything shipped. Cargento reaches into no session today, and
+the one written-down exception is the hand-off request below, which DEC-2 allowed as a single verb
+into a session that consents and which nothing ships. It weakens no other sentence in this section.
+A session can only ever be
 waiting because it asked to be, and a session that never calls the tool is untouched by all of this.
 Nothing is typed into a terminal, no harness store is written, and the tool cannot answer a native
 permission prompt. That last point is not a limitation to be lifted later: answering a harness's own
@@ -1006,6 +1250,137 @@ Answering is a real decision. Every other click in the dashboard changes what yo
 changes what an agent does next, with your credentials, in your repository. The exposure that follows
 is recorded under Known and accepted rather than solved here, because loopback is not a per-user
 boundary.
+
+## Hand-off requests (one verb into a session)
+
+The ask lane runs one way. A session asks, a reader answers, and Cargento starts nothing. DEC-2
+ruled on 2026-09-02 that Cargento may also start the exchange, in one shape and no other: when a
+quota window is about to close on a session that is mid-task, Cargento may send that session one
+request for a hand-off summary, so the operator gets the state of the work written down instead of
+writing it from memory before the cutoff. E7 (DRC-4040) is the feature. This is the boundary it has
+to respect, and it is written before the code exists for the same reason the quota, git-probe,
+history and light-harness boundaries were.
+
+This section grants nothing on its own. No shipped feature sends anything into a session, and the
+ask lane's direction claim is amended for this section and for nothing else.
+
+### One verb, and what makes it one
+
+What may be sent is a request for a hand-off summary. Not a prompt the reader composed, not a line
+off the board, not a retry of the operator's last instruction: one fixed request Cargento authored,
+in plain text, whose content does not vary with what the reader typed or with what the session
+holds. That is what keeps this out of the general write path into terminals that DEC-2 refused as a
+standing answer, and it is the same property the ask lane relies on in the other direction, where an
+answer can only ever select one of the options the asking agent itself wrote. A reader cannot
+introduce text through either.
+
+The verb is also not a permission answer. DEC-2 confirmed the refusal of native-gate answering
+rather than lifting it, so nothing here reaches a harness's own prompt, and the ask lane's sentence
+on that stands unchanged.
+
+### The session's own consent, and what is documented rather than measured
+
+The receiving side decides whether to accept, and the mechanism is the harness's rather than
+Cargento's. What follows is read off Claude Code's own documentation and has not been measured on a
+machine here, which is stated plainly because this repository's standing lesson is that desk
+research got the field, the unit or the rendering wrong five times out of five. Four facts are
+documented, not measured:
+
+- that the inbound setting, `crossSessionInbound`, has values that refuse an inbound message or hold
+  it for the session to accept;
+- that a held message lapses after a `dialogExpiry` of five minutes;
+- that a delivered message counts toward usage the way a prompt the operator types does;
+- that the socket lives in a per-user directory under the system temporary directory, of the shape
+  `/tmp/cc-socks-<uid>`.
+
+The build that lands E7 measures all four first, records the capture under `docs/captures/` the way
+every other harness vocabulary here was earned, and replaces this list with the measurement. Until
+then no sentence in this section rests on any of them being exactly right. What the section does
+assert is the rule Cargento sets for itself: a session that refuses inbound messages is not reached,
+and a request that lapses unread is a request that was not delivered.
+
+Cargento sends no authentication line, on any platform. The socket protocol documents one, and the
+reason to leave it unused is not convenience. Verifying that a session is Cargento's own child is
+one permission class. Presenting a credential that would reach any session on the machine is
+another, and sending the line asserts the second. So the verb reaches a session that already accepts
+inbound messages, and it reaches nothing else.
+
+### The token, and the path that contains it
+
+The per-session token is never logged, never echoed, never served on the loopback port, and never
+printed by `--diagnose`. Neither is any path that contains it. That second half is not a flourish:
+the token is documented as part of the socket's filename rather than as a separate field, so a
+redaction covering the value while printing a directory listing, an error message or the path itself
+leaks the whole thing. Both the value and its containing path get the handling Usage quota reads
+gives a vendor token. Published text records what redaction covers today, and a path-shaped secret
+is the case it does not yet name, so E7's change adds it there in the same commit.
+
+### The read this adds, and why `config.py` has to name it
+
+Finding a session's socket means reading a path that is no harness store and lies under no root
+`config.resolve_store_roots` returns. That function documents three Claude roots today,
+`claude.projects`, `claude.tasks` and `claude.teams`, and no fourth. Scope makes a read outside the
+documented store paths a security bug "however the path was derived", so this read is a security bug
+until its location is documented there. Naming it belongs to E7's change rather than to this
+section: the commit that opens the socket adds the directory to the documented roots, and a reviewer
+who finds the open without the entry has found the bug this paragraph predicts.
+
+### How this relates to Light harness usage, and to the outbound count
+
+They are two pathways and not one, which is why invariant 1 names them apart. Light harness usage
+starts a fresh harness process and hands it text Cargento composed out of a session, so the
+operator's own words leave the machine on a request Cargento made. A hand-off request writes one
+line to a socket on this machine, to a session the operator already started and is already paying
+for. Cargento makes no network request for it, and the fixed verb carries nothing derived from any
+session.
+
+What leaves the machine afterwards is what that session sends next, on its own connection and its
+own credentials, exactly as everything else that session does leaves. So this pathway adds nothing
+to invariant 1's count of outbound requests, and the invariant names it anyway: a reader counting
+network exposures who found no mention of a verb that causes a vendor round trip would be right to
+distrust the count.
+
+It does spend the operator's capacity, and Light harness usage's rule about that holds here without
+being restated. A feature that consumes capacity states what it consumed.
+
+### Failure is a decline, never a hang
+
+An absent socket, a stale token, a session that never answers, an inbound setting that refuses, a
+message that lapses: each one ends as the board reporting that the hand-off was not delivered. None
+of them holds a request open, blocks a shutdown, or leaves a session parked. This is the ask lane's
+rule in the other direction and it is there for the same reason: neither end of this exchange may be
+able to wedge the other.
+
+Cargento does not retry. A verb that resent itself when a session did not answer would spend the
+operator's remaining window on delivery attempts at the exact moment the window is the thing running
+out.
+
+### The off switch
+
+The feature ships `--no-handoff` with it: a flag that disables the pathway for a run regardless of
+the stored setting, mirroring `--no-ask` and `--no-history` at every one of their sites, including
+the branch that forwards flags to a respawned daemon, so a restart cannot re-enable what the
+operator disabled. That flag does not exist yet, and this document does not claim it does. No
+feature sends the verb, so there is nothing to switch off. A test holds those two statements
+together: it asserts this section still says nothing is sent and that the parser still has no such
+flag, so whoever adds the flag is failed here until they amend this section too.
+
+### Violation, and what is accepted rather than solved
+
+A violation of any boundary in this section is a security bug: text sent into a session that is not
+the one fixed verb, a verb sent to a session that refuses inbound messages, an authentication line
+presented, the token or its containing path reaching a log, a `--diagnose` line or a loopback
+response, a retry, a socket read from a location the store roots do not document, or a request that
+blocks rather than declines.
+
+What is accepted rather than solved: as far as the harness's own documentation goes, the socket
+directory is per-user, so other accounts are held out only as well as that documented shape holds,
+and E7's capture is what settles it rather than this paragraph. What is certain either way is that
+the directory does nothing about other processes of the same account. Anything running as the
+operator can send the same verb to the same session without going through Cargento at all. That stays inside the
+trust boundary for the reason Known and accepted gives for the rest of this document, since such a
+process can read the operator's secret material directly, and it is the same limit the ask lane
+already accepts on loopback.
 
 ## Published text (credential redaction)
 
@@ -1170,7 +1545,13 @@ hook's output is untrusted regardless of who wrote it. Codex's payloads carry `p
 transcript path; none of those reach a socket. `statusline_hook.py` also shapes `/api/usage` down to
 the `quota` block alone, which is what this document asks for a paragraph below rather than sending
 the whole status-line document and relying on the server to discard it. `cwd` and `transcript_path` are
-matching hints and are never echoed to `/api/data`.
+matching hints and are never echoed to `/api/data`. Every clause above holds today. One
+written-down feature would change two of them, and Irreversible actions above is where that is
+settled rather than left to break this sentence: it would add a shape identifier, and it would stop
+the tool name being dropped, on the reasoning that section gives. The prompt, the tool input and the
+tool output would stay dropped. The count in this paragraph, the same count in `config.py`'s stated
+reason for `event_body_cap_bytes`, and `events.ALLOWED_FIELDS` itself move in one commit or
+`test_documentation.EventEnvelopeEnumerationTest` goes red.
 
 One published field is derived from a transcript filename, and the sentence above is the one it has
 to be read against. `resume_id` carries the session id a harness's own CLI takes to re-enter that

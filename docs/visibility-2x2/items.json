@@ -82,7 +82,7 @@
       "id": "end",
       "name": "End of sessions",
       "question": "Did anything die quietly?",
-      "promise": "Nothing finishes invisibly. Work that finished and was never read is flagged, sessions that went quiet go stale, and a session that ends leaving uncommitted changes says so."
+      "promise": "Nothing finishes invisibly. Work that finished and was never read is flagged, and a session that ends leaving uncommitted changes says so."
     }
   ],
   "states": [
