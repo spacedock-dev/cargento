@@ -312,6 +312,14 @@ The cadence is one-shot, on the `session_ended` edge. Never a poll, never on dem
 turn stop: the completion stamp written when a turn stops is a different edge, and probing there
 would put one subprocess in the user's repository per turn for the life of the session.
 
+The cadence is not a bound on how many probes run at once, and that took a second gate. One edge per
+session at most once each still allowed 240 live probes per harness and 960 across the four event
+sources, because the event budget refills for the whole of a probe's ten seconds — each one a real
+`git status` in a real repository. So a session already being probed is refused a second probe, and
+the process holds at most 32 in flight across every harness. The accepted cost is that a refused
+probe leaves the reading the first one produced in place, which can be up to ten seconds old and
+stays until another session end arrives.
+
 The off switch is `--no-git`. The probe is on by default and that flag turns it off. It mirrors
 `--no-spacedock` at every one of that flag's sites, including the branch that forwards flags to a
 respawned daemon, so a restart cannot re-enable a probe the user disabled. With the probe off no

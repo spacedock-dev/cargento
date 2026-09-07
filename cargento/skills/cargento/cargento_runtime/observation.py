@@ -147,9 +147,18 @@ ASK_GENERATION = "*ask"
 def _spawn_thread(run: Callable[[], None]) -> None:
     """One daemon thread per probe, matching `quota._spawn_thread`.
 
-    A pool would bound the thread count, and it is not worth one here: the probe
-    fires on `session_ended` only, at most once per edge, and the timeout bounds
-    how long each lives.
+    Still no pool, and the reason is no longer the cadence. This docstring used to
+    say the probe "fires on `session_ended` only, at most once per edge, and the
+    timeout bounds how long each lives" — all true, and none of it a bound on how
+    many run at once. Measured (DRC-4443): the event budget allows 40 burst plus
+    20/s for the probe's whole 10 s life, so 240 live probe threads per harness
+    and 960 across the four normalizers, each a real `git status` in a real
+    repository.
+
+    What bounds it is `Observation._git_inflight`, claimed under the lock before
+    a dispatch and released in a `finally` — `quota`'s `usage_fetch_inflight`
+    pattern, which this class already reuses for the focus command. A pool would
+    bound the threads and not the subprocesses, which is the expensive half.
     """
     threading.Thread(target=run, name="cargento-git-probe", daemon=True).start()
 
@@ -230,6 +239,22 @@ class Observation:
         # describes, and the reducer's own clears lapse with the overlay that
         # carries them while a reading does not.
         self._git: dict[SessionKey, runtime_git.GitStatus] = {}
+        # The session keys with a probe in flight, on `quota`'s per-vendor
+        # pattern (`usage_fetch_inflight`, discarded in its own `finally`) and on
+        # `_focus_inflight`'s two hundred lines below. Both a per-key gate and a
+        # ceiling, because they answer different callers: the per-key gate stops a
+        # redelivered or looped end from putting one repository under N probes,
+        # and `git_probe_max_inflight` stops a caller that varies the session id,
+        # which is a payload field. `_spawn_thread`'s docstring carries what the
+        # unbounded ceiling measured.
+        #
+        # The accepted cost, which is new on this path: refusing an overlapping
+        # probe keeps the reading the first one produces, so a row can hold a
+        # reading up to `git_probe_timeout_sec` old — and indefinitely so if no
+        # further edge arrives. That is the refuse-rather-than-evict trade
+        # `_mark_git` and `quota` already make, and a stale reading of the tree a
+        # session stopped in is worth more than N probes of it.
+        self._git_inflight: set[SessionKey] = set()
         # (harness, sid) -> the terminal a raise would name. Held beside `_git`
         # but NOT bounded the same way (see `_focus_at`), and not in the overlay
         # ledger either: an overlay is a display claim that lapses, while a pane
@@ -388,8 +413,14 @@ class Observation:
                 self._bump("retired")
                 self._mark_ended(key, event.timestamp)
                 if self.config.git_probe_enabled and event.cwd:
-                    # Noted here and dispatched below, once the lock is released.
-                    probe_cwd = event.cwd
+                    # Claimed here and dispatched below, once the lock is
+                    # released. The claim has to happen under the lock even though
+                    # the dispatch must not: two handler threads reaching this
+                    # with the same key is exactly the case being refused.
+                    if self._claim_git(key):
+                        probe_cwd = event.cwd
+                    else:
+                        self._bump("git.inflight")
                 # The session is over, so the pane it ran in is nobody's target.
                 # Retired here rather than in `_mark_finished`, which is where
                 # the git reading goes: that method pops on a WORKING overlay,
@@ -433,7 +464,17 @@ class Observation:
             # hook open past its timeout. Dispatching from inside the `with` block
             # above would fix only the second of those.
             cwd = probe_cwd
-            self._spawn(lambda: self._probe_and_mark(key, cwd))
+            try:
+                self._spawn(lambda: self._probe_and_mark(key, cwd))
+            except RuntimeError:
+                # `Thread.start` raises this when the interpreter can start no
+                # more threads, which is the failure the ceiling above exists to
+                # keep away from. Releasing the claim matters anyway: nothing else
+                # would, and this session would then be unprobeable for the life
+                # of the process.
+                with self._lock:
+                    self._git_inflight.discard(key)
+                    self._bump("git.failed")
         return "accepted"
 
     def _remember(self, key: SessionKey, overlay: runtime_events.Overlay) -> None:
@@ -638,6 +679,19 @@ class Observation:
         """The real probe, bound to this run's timeout. Replaced wholesale in tests."""
         return runtime_git.probe(cwd, timeout_sec=self.config.git_probe_timeout_sec)
 
+    def _claim_git(self, key: SessionKey) -> bool:
+        """Take this session's probe slot, or refuse. Caller must hold `_lock`.
+
+        Two gates on one set: this key is not already being probed, and the
+        process is under its ceiling. `_git_inflight`'s comment carries why both.
+        """
+        if key in self._git_inflight:
+            return False
+        if len(self._git_inflight) >= self.config.git_probe_max_inflight:
+            return False
+        self._git_inflight.add(key)
+        return True
+
     def _probe_and_mark(self, key: SessionKey, cwd: str) -> None:
         """Run one probe off-thread, then take the lock only to record two scalars.
 
@@ -647,15 +701,23 @@ class Observation:
         anything git raises here can carry a path in its text.
         """
         try:
-            result = self._git_prober(cwd)
-        except Exception:  # noqa: BLE001 — a raising probe must not kill its own thread
+            try:
+                result = self._git_prober(cwd)
+            except Exception:  # noqa: BLE001 — a raising probe must not kill its own thread
+                with self._lock:
+                    self._bump("git.failed")
+                return
+            if result is None:
+                return
             with self._lock:
-                self._bump("git.failed")
-            return
-        if result is None:
-            return
-        with self._lock:
-            self._mark_git(key, result)
+                self._mark_git(key, result)
+        finally:
+            # In a `finally` rather than beside each return, for `quota`'s reason
+            # at `usage_fetch_inflight`: a probe that raised must not leave the
+            # key claimed, or the raise disables the feature for that session
+            # rather than costing it one reading.
+            with self._lock:
+                self._git_inflight.discard(key)
 
     def _mark_git(self, key: SessionKey, result: runtime_git.GitStatus) -> None:
         """Record a reading, refusing rather than evicting at the same cap.

@@ -780,6 +780,15 @@ class GitProbeContractDocumentationTest(unittest.TestCase):
             self.FLAT,
         )
         self.assertNotIn("Empty and relative elements are now dropped", self.FLAT)
+
+    def test_the_contract_states_the_bound_on_probes_in_flight(self) -> None:
+        # DRC-4443. Derived from the runtime rather than written twice: the
+        # ceiling moving in code and not in the section, or the reverse, fails
+        # here. The cadence sentence beside it is not this claim — one edge per
+        # session, at most once each, still allowed 960 live probes.
+        ceiling = make_config().git_probe_max_inflight
+        self.assertIn(f"at most {ceiling} in flight across every harness", self.FLAT)
+        self.assertIn("a session already being probed is refused a second probe", self.FLAT)
         # And the violation clause has to name them, or they are documented
         # behaviour rather than boundaries.
         self.assertIn("an executable taken from anywhere but the resolved absolute path", self.FLAT)
